@@ -1,68 +1,72 @@
-# Spike (a) results: INTERIM, 7 Oct 2026
+# Spike (a) results, with follow ups (a2) and (a3): 7 Oct 2026
 
-**Status:** partly run. Everything that could be checked without your hands is done. The rest is in `TESTING.md` (about 45 minutes). This file is final only after that session.
+**Status:** done for the question that mattered: can a panel on macOS 27 be clicked without taking the user's typing? **Yes, but only if we create the panel ourselves, non activating from the start.** The founder approved that construction for M2 (T01, technical doc section 4). The checks this spike did not run move to M2 and are re-run on the new construction.
 
 ## Headline
 
-**The research's panel recipe (design A) fails on macOS 27.** A panel that is allowed to take the keyboard makes the whole app active when it's clicked, even though it's marked "non activating". That's the bug reported as tauri-nspanel issue 123, now reproduced on this Mac 4 times out of 4. Design B, where the docked character can never take the keyboard and typing happens in a separate card, is the plan B; it hasn't been clicked yet, so it's first in your session.
-
-Everything else checked so far passes: quiet launch, no Dock icon, no permissions, docking inside the work area, staying on the active Space through every switch, and nothing typed ever written to the log.
+1. **The research's recipe (design A) fails on macOS 27.** Clicking the panel made Panel Spike the front app and took the keyboard: 4 of 4 clicks in the interim run, and 7 activations in the founder's session (design A, first click off).
+2. **Plan B (design B) fails too.** The docked panel never took the keyboard, but a click still brought Panel Spike to the front (first click from Terminal), and clicking inside the typing card did the same. Only the keyboard route (hotkey, type, Esc) worked.
+3. **The cause is how the panel is built, not the web view and not macOS 27 itself.** tauri-nspanel turns an ordinary window into a panel and adds the "don't activate" flag afterwards. A panel created with that flag from the start stayed quiet with no web view (spike a2, 13 clicks) and with a web view (25 clicks).
+4. **The fix works with Tauri's own pages (spike a3).** Our own `NSPanel`, created non activating, holding Tauri's web view: 25 clicks on the character, the hotkey, type and Esc route, and two clicks inside the card all left the front app unchanged. The card clicks were recorded both by the page and by a native mouse monitor.
 
 ## Environment
 
-macOS 27.0.1 (26A434), MacBook Pro, Apple Silicon, built in Retina display only (no external monitor). Rust 1.99.0, tauri-cli 2.12.1. Crates (from `Cargo.lock`): tauri 2.12.1, tao 0.37.1, wry 0.57.0, tauri-nspanel 2.1.0, tauri-plugin-global-shortcut 2.4.0, objc2 0.6.5, objc2-app-kit 0.3.2. Release build, ad hoc signed.
+macOS 27.0.1 (26A434), MacBook Pro, Apple Silicon, built in display only. Rust 1.99.0, Tauri 2.12.1 (wry 0.57.0, tao 0.37.1), tauri-nspanel 2.1.0 (spike a only), Swift 6.4 (spike a2). Release builds, ad hoc signed, opened like a user would.
+
+## The click test, all designs
+
+In the founder's session, the founder typed in Terminal or Claude while clicking. "Front app" is what macOS reports as frontmost, and the app's own log is cross checked with the founder's eyes and screenshots.
+
+| Design | Clicks on the character | Typing card: hotkey, type, Esc | Click inside the card | Verdict |
+|---|---|---|---|---|
+| A: tauri-nspanel, key capable panel | App came to the front and took the keyboard (interim 4 of 4; session: 7 activations, typing went into the panel) | not run | not run | **Fail** |
+| B: tauri-nspanel, never key dock plus card | App came to the front from the first click (14 clicks) | Pass | App came to the front | **Fail** |
+| a2: native panel, no web view | 13 clicks, never active | n/a | n/a | Pass |
+| a2: native panel, web view inside | 25 clicks, never active | n/a | n/a | Pass |
+| **a3: native panel, Tauri page inside** | **25 clicks, never active** | **Pass** | **Pass (2 clicks, logged twice)** | **Pass** |
+
+Logs: `~/Library/Application Support/dev.companion.spike.panel/events.jsonl` (spike a; `python3 scripts/analyze.py --run all`), `.../dev.companion.spike.native/events.jsonl` (a2), `.../dev.companion.spike.a3/events.jsonl` (a3). Session runs: spike a `1791388602328-29545` (B1 clicks), `1791388696963-29736` (A0 clicks), `1791388805367-29909` (B1 card); a3 `1791389647499-34274` onward. Pre-flight runs `1791387236059-23108` to `1791387287022-24543` are not evidence.
 
 ## The M0 pass checks
 
-| M0 check | Result | Evidence |
-|---|---|---|
-| Opening it doesn't interrupt you (no Dock icon, front app unchanged) | **Passed** (automated, both designs) | `launch-check.sh`: front app unchanged, macOS saw no activation, app type `UIElement`. Control run with Calculator correctly failed. Typing in Terminal during launch, and opening from Finder: your session, test 1 |
-| Clicking the character 10 times never steals typing | **Failed for design A.** Design B not run yet | Event log, 4 of 4 clicks on a design A panel: the panel became key within 3 to 8 ms of the mouse down, before any request, with the app already active, then Panel Spike became the front app. Your session, test 2 |
-| Typing in the panel, then Esc hands typing back | **Failed for design A** (clicking the text box activated the app). Design B and "design A by hotkey" not run yet | Event log, run `...-9018` at +70.8 s. Your session, test 3 |
-| Visible over full screen apps | Not run | Your session, test 4 |
-| Same place on every Space | **Passed so far** (6 of 6 Space switches during your own use, preset 0: level 3, all Spaces) | `space_sample` after every switch: visible, on the active Space, not key. Those apps were in maximized windows, not true full screen. Your session, test 5 |
-| Display unplug redocks within 2 s | Not run (no external monitor) | Your session, test 6, if you can borrow one; otherwise stays "not run" |
-| Stage Manager | Not run | Your session, test 5 |
-| No permission prompt; not listed under any privacy section | **Passed so far** (no prompt appeared; the bundle has no usage descriptions or privacy entitlements) | `check-bundle.sh`. The System Settings lists: your session, test 7 |
-| Release build behaves like dev | **Passed so far** (every run above was the release build opened like a user would) | |
-
-## What else was checked
-
-| Check | Result |
+| M0 check | Result |
 |---|---|
-| tauri-nspanel 2.1.0 compiles with Tauri 2.12.1 (never tested together before) | Passed, first try, one copy of each objc2 library |
-| Rust unit tests (launch settings, docking maths, display matching, preset table) | 7 of 7 pass |
-| Analyzer tests (every check fails a bad log and passes a good one) | 27 of 27 pass |
-| Lint: no focus stealing, activation or permission needing calls | Passes. Clippy refuses the dangerous calls by type (it caught a planted multi line `show()` and `set_focus()`), plus a text search over Rust, JS and config for permission APIs |
-| All 6 hotkeys register (no permission) | Passed |
-| Presets: level and Space behaviour read back exactly as set, no AppKit exception | Passed |
-| Docked on the right edge inside the work area, below the menu bar | Passed |
-| Nothing typed ever reaches the log | Passed (privacy check over every run) |
+| Opening it doesn't interrupt you | **Passed** for every launch from Terminal across the three spikes, with a control that correctly failed. Finder double click: not run, moves to M2 |
+| Clicking the character 10 times never steals typing | **Failed** on tauri-nspanel (both designs). **Passed** on the a3 construction |
+| Typing in the panel, then Esc hands typing back | **Passed** by hotkey on design B and on a3. Clicking into the card: failed on B, **passed** on a3 |
+| Visible over full screen apps | Not run, moves to M2 (on a3) |
+| Same place on every Space | **Mostly** in normal windows: 12 of 13 samples visible at preset 0 (the interim report's "6 of 6" was wrong; one sample right after switching to Claude reported the panel covered). Re-run in M2 |
+| Display unplug redocks within 2 s | Not run (no second display), moves to M2 |
+| Stage Manager | Not run, moves to M2 |
+| No permission prompt; not listed under any privacy section | No prompt appeared; the bundles have no usage descriptions or privacy entitlements. System Settings lists: not run, moves to M2 |
+| Release build behaves like dev | Passed (every run was a release build) |
+
+## To re-check in M2
+
+- **The app privately counts itself as active while the card has the keyboard.** In spike a (design B) and in a3, `NSApp.isActive` reports true while the card is key, although the front app never changes and typing elsewhere is unaffected. Check it has no side effects (menus, focus rings, other apps).
+- **Clicking the card when it is visible but not key** (after the user switched to another app). In spike a this activated the app; a3 only tested clicks while the card already had the keyboard.
+- Everything marked "moves to M2" above, plus IPC, events and background throttling after the web view moves into our panel.
+- The counter reset hotkey (Ctrl+Option+Cmd+R) never reached spike a in the founder's session; harmless there, but check hotkey delivery in M2.
 
 ## Things we learned along the way
 
-1. **Design A is out on macOS 27** (above). Whether design B survives clicks, and whether taking the keyboard by hotkey (no click) is safe, decide the recipe for M2.
-2. **Wispr Flow keeps an invisible overlay** at the highest window level over the right 490 points of the screen, top to bottom. Our panel sits under it, and clicks still reached our panel (your clicks were logged), so the overlay lets clicks through. Worth remembering: other always on top tools may cover our edge.
-3. **Computer use can't drive this test.** It refuses clicks on apps it can't grant, and Panel Spike (never installed) can't be granted. A click control did prove its clicks travel the real path (clicking Calculator behind TextEdit brought Calculator forward), but the panel clicks have to be yours.
-4. **wry asks macOS to activate the app every time it builds a page** (`NSApplication::activate()` in wry 0.57), which the research didn't know about. On macOS 27 the request wasn't granted in any of 6 launches: the app stayed inactive right after each page was built (logged as `webview_built`). Worth watching in M2.
-5. **The witness needed tightening.** When someone uses the Mac during a test, "the front app changed" is not the panel's fault. The checks now fail only when Panel Spike itself takes the front.
+1. **wry asks macOS to activate the app every time it builds a page.** On macOS 27 the request was not granted in any launch. Worth watching.
+2. **Wispr Flow keeps an invisible, click through overlay** at the highest level over the right 490 points of the screen. Clicks still reached our panel.
+3. **Computer use can't drive this test** (it can't be granted access to an app that isn't installed), so the clicks were the founder's.
+4. **Clicky avoids the problem** by making its overlay ignore clicks entirely, so it offers no technique for a clickable character.
+5. **Reading the chat between steps moves the keyboard.** Steps that test typing must be done in one go before switching apps.
 
-## Independent review before your session
+## Research (7 Oct 2026)
 
-Two reviewers checked the spike's code and its checks, and found 20 problems. All are fixed. The ones that mattered most:
+- tauri-nspanel issue 123, "In macOS 27 the panel focuses like a window" (opened 15 Sept 2026): open, no replies or fix. https://github.com/ahkohd/tauri-nspanel/issues/123
+- tauri-nspanel converts after creation (`setStyleMask` in `lib.rs`). FunWithPanels notes that a converted window can still activate its app. https://github.com/mitchchn/FunWithPanels
+- macOS 26 tightened app activation (Apple forum thread 807805). https://developer.apple.com/forums/thread/807805
+- Clicky: native panels, non activating at creation, overlays ignore mouse events. https://github.com/farzaa/clicky
+- No public reports from Raycast, Alfred, Wispr Flow and similar apps about clicks on macOS 27.
 
-- **The checks were too lenient about activation.** They waited for macOS's "became active" notification, which arrived up to 1.7 s late. Now any sign of Panel Spike being active counts, so design A's failure is caught at the moment of the click.
-- **Esc could look like it worked when it didn't.** The release now checks the app's real key window, not just the panel's own flag, and fails if Panel Spike is still active.
-- **Small traps removed:** no app menu (so Cmd+Q or Ctrl+Cmd+F can't act on the panel), Esc works anywhere in the panel, every click on the panel is matched to a page event, moving the macOS Dock now redocks the panel, and iCloud's file tags no longer break the signature check.
+## [verify] items settled
 
-## Analyzer output
-
-The full `analyze.py --run all` output is pasted here after your session.
-
-## [verify] items settled so far
-
-- tauri-nspanel 2.1 builds and runs on Tauri 2.12.1 and macOS 27: **yes**.
-- tauri-nspanel issue 123 on macOS 27: **reproduced** for a key capable panel. Plan B under test.
-- `activate_ignoring_other_apps(false)`, Accessory policy between `build()` and `run()`, and `LSUIElement`: no Dock icon and no activation at launch: **confirmed**.
-- Global hotkeys need no permission: **confirmed** (6 registered, no prompt).
-- Floating level 3 with "all Spaces" stays on the active Space through Space switches: **yes, in normal windows**. Over true full screen: your session.
+- tauri-nspanel 2.1 builds and runs on Tauri 2.12.1 and macOS 27: yes, but its panels activate the app on click on macOS 27. **Dropped.**
+- `activate_ignoring_other_apps(false)`, Accessory policy between `build()` and `run()`, and `LSUIElement`: no Dock icon and no activation at launch: confirmed.
+- Global hotkeys need no permission: confirmed.
+- A natively created non activating panel holding Tauri's web view keeps the user's typing on click: confirmed (spike a3).

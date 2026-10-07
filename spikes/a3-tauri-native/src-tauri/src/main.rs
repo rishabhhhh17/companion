@@ -8,8 +8,10 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{
     NSApplication, NSBackingStoreType, NSColor, NSPanel, NSScreen, NSView, NSWindow,
     NSWindowButton, NSWindowCollectionBehavior as B, NSWindowStyleMask as M, NSWindowTitleVisibility,
-    NSWorkspace,
+    NSWorkspace, NSEvent, NSEventMask,
 };
+use block2::RcBlock;
+use std::ptr::NonNull;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -223,6 +225,19 @@ fn main() {
             let card_ns: &NSWindow = unsafe { &*(card_w.ns_window()? as *const NSWindow) };
             let dock = make_panel(mtm, dock_ns, false, dock_frame);
             let card = make_panel(mtm, card_ns, true, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(CARD.0, CARD.1)));
+            // Native witness: every mouse down macOS delivers to our panels, independent of the page.
+            let block = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent {
+                let ev = unsafe { e.as_ref() };
+                let mtm = MainThreadMarker::new().unwrap();
+                let which = ev.window(mtm).map(|w| {
+                    with_panels(|d, c| if std::ptr::eq(&*w, &**c as &NSWindow) { "card" } else if std::ptr::eq(&*w, &**d as &NSWindow) { "dock" } else { "other" }).unwrap_or("other")
+                }).unwrap_or("none");
+                let ck = with_panels(|_, c| c.isKeyWindow()).unwrap_or(false);
+                log("native_mousedown", json!({ "panel": which, "app_active": active(mtm), "card_key_before": ck }));
+                e.as_ptr()
+            });
+            let monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown, &block) };
+            std::mem::forget(monitor);
             dock.orderFrontRegardless();
             log("dock_shown", json!({ "app_active": active(mtm) }));
             PANELS.with(|p| *p.borrow_mut() = Some((dock, card)));
