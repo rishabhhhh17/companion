@@ -1,0 +1,110 @@
+# ---------------------------------------------------------------
+# Secrets and signing material. Never commit these, ever.
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+*.pem
+*.key
+*.key.pub
+AuthKey_*.p8
+# Tauri updater (minisign) keys. Back these up offline; losing them strands every user.
+*.minisign
+tauri-signing*.key
+# Temporary keychains created for signing in CI
+*.keychain
+*.keychain-db
+# Tool configs that can hold tokens
+.npmrc
+.envrc
+.vercel/
+# Cloudflare Wrangler local secrets and state (relay worker, Telegram bot token)
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+# ---------------------------------------------------------------
+# Dependencies and build output
+# ---------------------------------------------------------------
+node_modules/
+dist/
+build/
+out/
+.turbo/
+.vite/
+coverage/
+*.tsbuildinfo
+target/
+# Tauri generated files
+app/src-tauri/gen/
+# Build artifacts that must never be committed:
+# - binaries/ holds only our compiled runner sidecar (runner-<target triple>).
+# - vendor/ holds Anthropic's signed Claude binary (about 233 MB), copied
+#   byte for byte from the pinned SDK package and bundled through
+#   bundle.macOS.files. Committing it would redistribute Anthropic's binary,
+#   and GitHub refuses files over 100 MB anyway.
+**/src-tauri/binaries/
+vendor/
+**/vendor/
+runner-*-apple-darwin
+runner-*-pc-windows-msvc.exe
+spikes/**/claude
+spikes/**/claude.exe
+# Throwaway Claude config and temp folders used by spikes (may hold transcripts)
+spikes/**/claude-config/
+spikes/**/claude-tmp/
+
+# ---------------------------------------------------------------
+# Large downloads that are fetched at runtime, never bundled
+# ---------------------------------------------------------------
+# Whisper models
+*.gguf
+ggml-*.bin
+# Playwright browsers
+ms-playwright/
+.playwright/
+
+# ---------------------------------------------------------------
+# Screen recordings and captures. Spike evidence stays outside the repo,
+# because recordings of dashboards can show keys. RESULTS.md links to them.
+# ---------------------------------------------------------------
+*.mov
+*.mp4
+*.m4v
+*.webm
+
+# ---------------------------------------------------------------
+# Logs, caches, local state
+# ---------------------------------------------------------------
+*.log
+logs/
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+.cache/
+tmp/
+
+# Companion's own per-run notes, if we dogfood Companion on this repo
+.companion/session.md
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json
+
+# ---------------------------------------------------------------
+# OS and editors
+# ---------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.Spotlight-V100
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
