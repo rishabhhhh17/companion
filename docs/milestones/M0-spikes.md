@@ -136,6 +136,7 @@ The founder chose **trimmed** on 7 Oct 2026, and asked to run spike (a) first an
 
 **What we'll build.**
 - A tiny Tauri 2.12.1 app with one 56 by 56 point window, turned into a non activating panel with `tauri-nspanel` 2.1.0. Plain HTML, no React.
+- **Result (7 Oct 2026):** tauri-nspanel's panels take the front on click on macOS 27; M2 uses panels we create natively instead (spikes a2 and a3, see T01 and `spikes/a-panel/RESULTS.md`).
 - The app runs as an "accessory" app: no Dock icon, never the active app. It must not activate at launch (Tauri's default is to activate, so we turn that off explicitly).
 - A debug readout inside the panel: a click counter, "panel has keyboard: yes or no", the app in front, the current display.
 - A small text box that takes typing only when clicked, then hands typing straight back.
