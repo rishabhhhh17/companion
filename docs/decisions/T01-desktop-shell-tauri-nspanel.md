@@ -1,6 +1,6 @@
 # T01. Desktop shell: Tauri 2.12 with non activating panels
 
-- **Status:** Accepted from research; open items checked in M0 spike (a). Updated 7 Oct 2026 after desk research and review.
+- **Status:** Accepted from research; open items checked in M0 spike (a). Updated 7 Oct 2026 after desk research, review and spike (a) interim results.
 - **Date:** 2026-10-06
 - **Source:** technical_research.md section 1, row 1; section 4 (also section 1 prototype lesson five, section 19 pitfalls 16, 18 and 19, section 20 questions 4 and 5); M0-desk-research-details.md section (a)
 - **Related:** F01, F02, F04, F11, T04, T11, T12
@@ -28,7 +28,7 @@ The full panel recipe is in technical_research.md section 4. Rules a coding agen
 
 ## Open [verify] items
 Checked in spike (a) on macOS 27 unless noted.
-- **[verify]** tauri-nspanel issue 123: clicking a panel made key may activate the app. Plan B: the dock never becomes key; typing moves to a separate card window.
+- **Reproduced 7 Oct 2026 (spike a, interim):** tauri-nspanel issue 123. On macOS 27.0.1, 4 of 4 clicks on a key capable panel made it key and activated the app, so the "key only while typing" recipe fails as written. **[verify]** plan B (the dock never becomes key; typing in a separate card window) and `acceptFirstMouse: false`. If plan B wins, this decision's recipe changes and the founder is told (`spikes/a-panel/RESULTS.md`).
 - **[verify]** the lowest window level that shows over full screen Spaces; Apple DTS and shipping apps disagree.
 - **[verify]** whether `canJoinAllApplications` is needed, with Stage Manager on and off (macOS 15 and 27).
 - **[verify]** the panel stays put after a full screen app exits (tauri-nspanel issue 76), and a release build launched from Finder behaves like dev (tauri issue 5566).

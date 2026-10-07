@@ -17,8 +17,8 @@
 ## Alternatives considered
 - A vision judge as pass or fail: rejected; screenshots are evidence only (section 1, row 7).
 
-## Pending founder decision (options only, not build guidance)
-The pricing hypothesis gives Free "basic proof (build and tests)" and Plus the full ladder (product_research.md section 15). That conflicts with the rule that "done" means proven, with browser checks second. Options: (1) rungs 1 to 5 for everyone, and Plus adds rungs 6 and 7 (recommended); (2) Free results are labelled "built and tested, not checked in a browser" and never "done". Until the founder decides, gate no rung by plan.
+## Founder decision (7 Oct 2026, F14)
+Every user, Free or Plus, gets rungs 1 to 5, including the real browser check, so "done" means the same thing on every plan. Plus adds rungs 6 and 7 (screenshot evidence and the second model review). The pricing table in product_research.md section 15 now says so.
 
 ## What this means for the build
 Pass signals and timeouts per rung are in technical_research.md section 7.

@@ -34,13 +34,13 @@ The shared core is four parts: **characters**, **agent engine**, **memory**, **t
 
 **Hands off the user's things**
 9. Never steal keyboard focus. Panels are non activating.
-10. Companion's own machinery never writes the user's git (branch, staging area, history). Undo uses our shadow snapshots. Agent commands that would change the user's git need approval. (The research's user clicked undo helper conflicts with this rule; it waits for the founder's decision, see `docs/milestones/M0-spikes.md`.)
+10. Companion's own machinery never writes the user's git (branch, staging area, history). Undo uses our shadow snapshots. Agent commands that would change the user's git need approval. If an agent made a commit, Companion shows the exact git command to undo it, or asks through an approval card; it never runs one on its own (F13).
 11. One global hotkey stops everything: every agent, task, capture and the microphone.
 
 **Safety and proof**
 12. Safety lives in hooks, deny rules and allowlists, never in prompts. `canUseTool` is only the approval UI.
 13. Never send, pay, delete or go live without a tap. Unattended tasks never exceed their allowlist. Never use `bypassPermissions`.
-14. "Done" means proven: exit codes first, browser checks second, a screenshot judgment only as extra evidence.
+14. "Done" means proven: exit codes first, browser checks second, a screenshot judgment only as extra evidence. Every user gets the browser check, Free or Plus (F14).
 
 **Memory and tone**
 15. Project memory may be filled in from the granted folder and agent runs, always visibly and with its source. The profile learns only from explicit signals inside Companion. Every line can be forgotten. Never store health, money, relationships or moods, or secrets.
@@ -77,7 +77,7 @@ docs/
   architecture.md    every feature on the map -> the modules that own it
   milestones/        one plan per milestone (M0-spikes.md first), plus the M0 desk research
   outreach/          drafts the founder sends by hand
-spikes/              (planned, M0) throwaway proofs, one folder per spike, each with RESULTS.md
+spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS (a-panel exists)
 scripts/             (planned, M0) build helpers: copy and verify Anthropic's binary, signing checks
 protocol/            (planned, M1) JSON lines protocol v1: schema, types, shared fixtures
 runner/              (planned, M1) TypeScript sidecar on Bun: agents, safety, checkpoints, proof, ship, memory, task log
@@ -90,7 +90,7 @@ relay/               (planned, Beta) Cloudflare Worker relay and the phone web a
 
 ## Running tests
 
-Nothing runs yet; the first code arrives in M0 spikes and M1. These are the planned commands; update this section the day each one starts working.
+Product code arrives in M1; these are the planned commands, so update this section the day each one starts working. Spike (a) has its own working checks: see `spikes/a-panel/README.md`.
 
 | Suite | Command | Covers |
 |---|---|---|

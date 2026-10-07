@@ -1,6 +1,6 @@
 # M0: Spikes
 
-**Status:** proposed, waiting for the founder's approval. **Written:** 7 Oct 2026. **Source:** technical doc section 18 (M0 row), product doc section 18 (phase 0). **Desk research behind it:** `docs/milestones/M0-desk-research.md`.
+**Status:** approved by the founder on 7 Oct 2026: the trimmed M0, with the Console sign in step in spike (c). Spike (a) runs first, then the founder reviews its result before the rest continue. **Written:** 7 Oct 2026. **Source:** technical doc section 18 (M0 row), product doc section 18 (phase 0). **Desk research behind it:** `docs/milestones/M0-desk-research.md`.
 
 ## What M0 is for
 
@@ -116,7 +116,7 @@ So the full plan is **about 19 working days, roughly 4 weeks full time**. That's
 
 My recommendation is trimmed. It's the first item in "Decisions for you" at the end. Technical doc section 18 still shows M0 as weeks 1 to 2, so the week numbers for M0 and every later milestone move by about 2 weeks, depending on your choice.
 
-The table is the full plan:
+The founder chose **trimmed** on 7 Oct 2026, and asked to run spike (a) first and review its result before the others. The table below is the full plan's order; the trimmed changes are noted under it.
 
 | When | Spike | Why in this order |
 |---|---|---|
@@ -141,7 +141,7 @@ The table is the full plan:
 - A small text box that takes typing only when clicked, then hands typing straight back.
 - A switch that cycles window levels (floating, status, screen saver) and Space behaviours, so we find the lowest level that works over full screen apps on macOS 27.
 - Docking on the right edge inside the screen's work area (never under the menu bar or Dock), remembered per display, redocked when a display is unplugged.
-- A power test: transparent against opaque, animating against still, measured with `powermetrics` (a trimmed M0 moves this to M2).
+- (Moved to M2 by the trimmed M0: the power test, transparent against opaque, animating against still, measured with `powermetrics`.)
 - The same checks repeated in a release build opened from Finder.
 
 **How we'll know it passed.**
@@ -153,7 +153,6 @@ The table is the full plan:
 - Unplugging the external monitor brings the character back to the built in screen within 2 seconds, on the same edge.
 - With Stage Manager on, the character stays visible and isn't pulled into the stage strip.
 - No permission prompt at any point, and the app is listed under none of Accessibility, Input Monitoring or Screen Recording afterwards.
-- Power numbers recorded for the M2 idle budget.
 
 **What could go wrong, and plan B.**
 - *An open bug report says that on macOS 27, clicking a panel that can take typing makes the app active.* That would break "never steal focus." Plan B: the docked character can never take typing, and typing happens in a separate small card window opened only when you click or press the ask hotkey.
@@ -162,7 +161,7 @@ The table is the full plan:
 - *Release builds behave differently from dev builds* (an old Tauri report). Plan B: mark the app as an accessory app in `Info.plist` and test the signed build again in spike (b).
 - *A transparent panel costs noticeable power on your 120 Hz screen.* Plan B: make the docked tab opaque and keep transparency only for the brief card animation.
 
-**What you do by hand.** Create three desktops (Mission Control, click + twice). Have Safari and Terminal ready to go full screen. Turn Stage Manager on and off when asked. Borrow the external monitor for the unplug test. Type your Mac password for `sudo powermetrics` (it only measures). Record the key tests with Cmd+Shift+5 and save the recordings outside the repo. Optional: ask a friend on macOS 15 or 26 to run the release build for 15 minutes, since we can only test macOS 27 here.
+**What you do by hand.** Create three desktops (Mission Control, click + twice). Have Safari and Terminal ready to go full screen. Turn Stage Manager on and off when asked. Borrow the external monitor for the unplug test. Record the key tests with Cmd+Shift+5 and save the recordings outside the repo. Optional: ask a friend on macOS 15 or 26 to run the release build for 15 minutes, since we can only test macOS 27 here.
 
 **Estimate.** 3.5 working days.
 
@@ -215,7 +214,7 @@ The table is the full plan:
 - The list of environment variables to remove before using your plan was longer than the research first said (fixed 7 Oct). Ten more variables, plus the `apiKeyHelper` setting, can silently override a plan login, including `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_PROFILE`. One user report describes $447 billed to the API instead of a Max plan, which is why the list matters.
 - Setting `CLAUDE_CONFIG_DIR` to its own default path (`~/.claude`) makes Claude Code look in a different Keychain slot (open bug #92252). So Companion never sets it to the default path: it leaves it unset, or adopts the value your shell already exports. A folder at a different path is fine, and that's how this spike tests without touching your real login.
 - On the plan route, your claude.ai connectors (mail, drive and so on) load into every session unless we turn them off with `strictMcpConfig`.
-- **A fourth way in, worth your decision (decision 2):** `claude auth login --console` lets someone pay by API usage by signing in to their Anthropic Console account in the browser. Companion never sees a key at all.
+- **A fourth way in, approved for testing (decision 2):** `claude auth login --console` lets someone pay by API usage by signing in to their Anthropic Console account in the browser. Companion never sees a key at all.
 
 **What we'll build.**
 - A small script using the SDK's own bundled Claude binary (2.1.291, checked to be Anthropic signed), never the `claude` on your `PATH` (2.1.288).
@@ -224,7 +223,7 @@ The table is the full plan:
 - Two detectors. The **SDK check**, used at first run and for routine detection: a long lived streaming session whose prompt hasn't sent anything yet reads `accountInfo()` or `initializationResult()` and the `system/init` message, spending no tokens. And **`auth status`**, used only while waiting for the sign in and when you press "Check again" (which also fills the details panel).
 - A "Use my Claude plan" button that opens Terminal running Anthropic's own `claude auth login` against the test folder, then checks `auth status` every 3 seconds for at most 5 minutes, stopping the moment you're signed in. It opens Terminal through a small `.command` file, which needs no extra macOS permission.
 - A local page with a big coloured badge (grey Not connected, green Plan, blue API key, purple Cloud, orange Unknown), the buttons (including "Check again"), a details panel, and a "Run a one line test" button that sends one tiny prompt and shows which account answered. Every Claude error code is turned into one plain sentence.
-- Optional, only if you say yes to decision 2: a "Use my Console account" button that opens Terminal running `claude auth login --console` against the test folder. We record what both detectors report, since nobody knows yet which state a keyless Console sign in shows. Such a sign in may store a profile in `~/.config/anthropic`, outside the test folder, so afterwards we sign it out and check that your normal Claude Code still works on your plan.
+- Approved (decision 2): a "Use my Console account" button that opens Terminal running `claude auth login --console` against the test folder. We record what both detectors report, since nobody knows yet which state a keyless Console sign in shows. Such a sign in may store a profile in `~/.config/anthropic`, outside the test folder, so afterwards we sign it out and check that your normal Claude Code still works on your plan.
 
 **How we'll know it passed.**
 - **Not connected:** with the empty test folder, the SDK check turns the badge grey within 3 seconds. Pressing "Check again" runs `auth status`, and it agrees. If the SDK check can't report this state at all, that's recorded (see plan B).
@@ -236,7 +235,7 @@ The table is the full plan:
 - **Sign out:** signing the test folder out (`claude auth logout` with the test folder) and pressing "Check again" brings the badge back to grey. Your real login is never signed out.
 - **Existing login:** with `CLAUDE_CONFIG_DIR` unset, one single SDK check sees your existing Claude Code login and shows the right badge, with no Keychain prompt. This is the only check that touches your real login, and it runs once.
 - **Next morning** (login token expired), opening the page once still shows Plan through the SDK check (never `auth status` at launch), the test works, and an hour later you're still signed in.
-- Optional, only after a yes to decision 2: the Console sign in shows a badge, and what both detectors reported is written down.
+- The Console sign in (decision 2) shows a badge, and what both detectors reported is written down.
 - A search of every log finds no key or token, only variable names and states.
 
 **What could go wrong, and plan B.**
@@ -246,7 +245,7 @@ The table is the full plan:
 - *macOS keeps asking for your password for "Claude Code-credentials"* (a known bug). We note it. Companion must never touch that Keychain item itself.
 - *You can't easily buy Console credits from India* (international card in US dollars). Plan B: test the error paths with a fake key (free) and finish the real key check when credits arrive.
 
-**What you do by hand.** Check which Claude plan you're on (claude.ai settings). Store the spike API key in your Keychain yourself with `security add-generic-password -s companion-spike -a anthropic -w`, which asks for the key without showing it. Open your `~/.zshrc` and note whether it exports `ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_OAUTH_TOKEN`, without pasting any values anywhere. Approve the sign in in your browser (it goes to the test folder). Never sign out of your real Claude Code login during this spike. Open the page again the next morning, and an hour after that. If you said yes to decision 2, also approve the Console sign in in your browser.
+**What you do by hand.** Check which Claude plan you're on (claude.ai settings). Store the spike API key in your Keychain yourself with `security add-generic-password -s companion-spike -a anthropic -w`, which asks for the key without showing it. Open your `~/.zshrc` and note whether it exports `ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_OAUTH_TOKEN`, without pasting any values anywhere. Approve the sign in in your browser (it goes to the test folder). Never sign out of your real Claude Code login during this spike. Open the page again the next morning, and an hour after that. Also approve the Console sign in in your browser (decision 2).
 
 **Estimate.** 2 working days (1.5 if run together with spike g).
 
@@ -271,7 +270,7 @@ The table is the full plan:
 - Clipboard handling: save every item, write ours marked "temporary, don't record," paste, check the field really holds the new text, then restore your clipboard only if nothing else touched it.
 - Before pasting, check you're still in the same app and the same text box. If not, the text goes on the clipboard and the spike says "copied instead."
 - Terminal mode: read only your selection, never send any key, copy the result, and say "Copied, press Cmd+V."
-- A small test of whether Claude Code follows a pasted prompt as well as a typed one, since it marks pasted text as possibly untrusted (a trimmed M0 moves this to M5).
+- A small test of whether Claude Code follows a pasted prompt as well as a typed one, since it marks pasted text as possibly untrusted. (Moved to M5 by the trimmed M0.)
 
 **How we'll know it passed.**
 - Paste Spike asks for Accessibility once, under its own name, and no other permission prompt ever appears.
@@ -286,7 +285,6 @@ The table is the full plan:
 - In Terminal with Claude Code mid task, the spike copies only. Claude Code isn't interrupted and no rewind menu opens.
 - The results table records, for each app, what was needed to read it.
 - The clipboard privacy test (using Apple's preview switch, which still exists on 27.0.x) records whether an alert appears and its exact words.
-- Claude Code test: a typed lead in line ("Do the task in the paste below") followed by the paste works in 5 of 5 tasks.
 
 **What could go wrong, and plan B.**
 - *An app returns nothing on the first hotkey.* Plan B: the retry ladder, then the Edit > Copy menu fallback.
@@ -370,7 +368,7 @@ The table is the full plan:
 - Not listed under Accessibility or Input Monitoring, and no prompt for either.
 - Idle for 5 minutes: no orange dot, near 0% CPU.
 - **Denied path:** after `tccutil reset Microphone dev.companion.spike.voice`, relaunching and clicking Don't Allow, holding the key shows "Microphone is off" with a working Settings button, not an empty transcript. Turning access back on in Settings and relaunching makes it work again.
-- Recorded for information: Hindi and Hinglish quality with `base` and `small` (a trimmed M0 moves this to M2), memory use, cold first run time.
+- Recorded for information: memory use and cold first run time. (Hindi and Hinglish quality moved to M2 by the trimmed M0.)
 
 **What could go wrong, and plan B.**
 - *The library doesn't build on macOS 27.* Plan B: `transcribe-cpp`.
@@ -440,18 +438,15 @@ Every spike has either passed, or failed with a plan B that you've chosen, and t
 
 ## Decisions for you
 
-**Before M0 starts:**
+**Decided on 7 Oct 2026:**
 
-1. **Full, trimmed or lean M0.** Full is about 19 working days (roughly 4 weeks full time). Trimmed is about 17 (roughly 3.5 weeks): it moves three extras to the milestones that need them anyway (the power numbers to M2, the pasted versus typed Claude Code study to M5, Hindi voice quality to M2). Lean is about 15 (roughly 3 weeks): trimmed, plus moving spike (f) voice into M2, since Handy already shows the voice stack works. **My recommendation: trimmed.** Every spike's core yes or no question is still answered in M0, and the extras get measured in their own milestones.
-2. **A fourth way to connect Claude, the Console sign in.** Besides API key, plan and cloud, `claude auth login --console` lets someone pay by API usage by signing in to their Anthropic Console account in the browser, so Companion never handles a key. The trade off: Prompt help can't use the fastest direct path for those users. **My recommendation: yes, test it in spike (c)** (an optional step that runs only on your yes), and decide in M1 whether to offer it.
-
-**Before M1 (found while reviewing the research; not urgent this week):**
-
-3. **The undo helper and your git rule.** The research plans an undo button for when an agent made a git commit during a step: Companion would run `git reset --soft` back to the commit it recorded and put back the saved staging area (`.git/index`). It also plans a separate git worktree per agent. Both write the user's git, and your rule says Companion's own machinery never does. Options: (a) drop the helper, and show the user the exact git command to run themselves, or run it as an approval card like any other agent git change; (b) allow it as an explicit exception that the user clicks. The same choice applies to the per agent worktrees. **My recommendation: (a)**, which keeps your rule exactly.
-4. **What Free users get from the proof ladder.** The pricing idea gives Free "basic proof (build and tests)", but your rule says done means proven, with a browser check second. Options: (a) rungs 1 to 5 for everyone (install, build, tests, dev server and a quick check in a real browser), with Plus adding rungs 6 and 7; (b) Free results are labelled "built and tested, not checked in a browser" and never "done". **My recommendation: (a), rungs 1 to 5 for everyone.**
+1. **M0 length: trimmed** (about 17 working days). Spike (a) runs first, and you review its result before the rest continue.
+2. **The Console sign in: test it** in spike (c). Whether to offer it to users is decided in M1.
+3. **Undo never writes your git** (F13). The undo helper and per agent worktrees are dropped. When an agent made a commit, Companion shows you the exact git command to undo it, or asks through an approval card. Rule 10 stays exactly as written.
+4. **Every user gets the browser check** (F14): proof rungs 1 to 5 for Free and Plus; Plus adds screenshot evidence and the second model review.
 
 **After the spikes, depending on results:**
 
 5. **If spike (e) shows Claude Code keeps your screenshots on disk.** Only two options keep your promise that captures of the user's screen are never written to disk: API key users' Show me how requests go straight to Anthropic's Messages API, so images never pass through Claude Code; or Anthropic adds a supported "no disk" mode. Wiping a Companion owned temp folder after every answer still puts the screen on disk for a few seconds, so it changes the promise, exactly as rewording it would. For plan users, unless Anthropic adds a switch, the choice is: Show me how works only with an API key, or the promise changes. Needed before M6.
 6. **If macOS starts showing clipboard alerts** (spike d), Prompt help pastes without restoring your clipboard, and says so. Needed before M5.
-7. **Which Whisper library** (spike f): `whisper-rs` if it works well, `transcribe-cpp` otherwise. Low stakes; we'll recommend one from the numbers (in M2 if you choose lean).
+7. **Which Whisper library** (spike f): `whisper-rs` if it works well, `transcribe-cpp` otherwise. Low stakes; we'll recommend one from the numbers.

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Panel Spike: the two panels may use core events and our own commands only. No shell, no fs.",
+  "windows": ["dock", "card"],
+  "permissions": ["core:default"]
+}

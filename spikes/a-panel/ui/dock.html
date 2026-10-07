@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Panel Spike dock</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-label="dock">
+  <main id="dock">
+    <section id="readout" aria-live="polite">
+      <div class="row"><b>Panel Spike</b> <span id="mode">mode ?</span></div>
+      <div class="row">Clicks on the circle: <b id="clicks">0</b></div>
+      <div class="row">Panel has keyboard: <b id="dockkey">?</b></div>
+      <div class="row">Front app: <b id="front">?</b></div>
+      <div class="row small" id="preset">preset ?</div>
+      <div class="row small" id="ipc">IPC: waiting</div>
+      <div class="row" id="typebox">
+        <input id="textbox" type="text" autocomplete="off" spellcheck="false" placeholder="Click here to type (Esc gives it back)" />
+        <button id="typebtn" type="button" hidden>Type</button>
+      </div>
+    </section>
+    <button id="character" type="button" aria-label="Character: click to count"></button>
+  </main>
+  <button id="compact-character" type="button" aria-label="Character (compact)" hidden></button>
+  <script src="app.js"></script>
+</body>
+</html>

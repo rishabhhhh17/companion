@@ -43,6 +43,7 @@ coverage/
 target/
 # Tauri generated files
 app/src-tauri/gen/
+spikes/**/src-tauri/gen/
 # Build artifacts that must never be committed:
 # - binaries/ holds only our compiled runner sidecar (runner-<target triple>).
 # - vendor/ holds Anthropic's signed Claude binary (about 233 MB), copied
