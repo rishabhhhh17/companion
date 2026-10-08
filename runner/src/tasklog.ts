@@ -1,13 +1,14 @@
 // A small local database of every task, for the timeline, Where was I and recaps.
 // It holds a short redacted label, never the full prompt, screen content or secrets.
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
+import { openDatabase } from "./db.ts";
 
 export type TaskRow = { id: number; project: string; agent: string; mode: string; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 
 export class TaskLog {
   private db: Database;
-  constructor(path: string) {
-    this.db = new Database(path);
+  constructor(path: string, onProblem?: (message: string) => void) {
+    this.db = openDatabase(path, onProblem);
     this.db.run(`CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, agent TEXT NOT NULL, mode TEXT NOT NULL,
       label TEXT NOT NULL, status TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, started_at TEXT NOT NULL, ended_at TEXT)`);
@@ -16,6 +17,8 @@ export class TaskLog {
     if (!have.includes("checkpoint")) this.db.run("ALTER TABLE tasks ADD COLUMN checkpoint TEXT");
     if (!have.includes("changed")) this.db.run("ALTER TABLE tasks ADD COLUMN changed INTEGER");
     if (!have.includes("proof")) this.db.run("ALTER TABLE tasks ADD COLUMN proof TEXT");
+    // A task still marked "running" when the log opens was cut short by a crash or a forced quit.
+    this.db.run("UPDATE tasks SET status = 'interrupted', ended_at = COALESCE(ended_at, started_at) WHERE status = 'running'");
   }
   start(r: { project: string; agent: string; mode: string; label: string; startedAt: string }): number {
     const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at) VALUES (?, ?, ?, ?, 'running', ?)");

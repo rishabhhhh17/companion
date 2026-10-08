@@ -33,7 +33,7 @@ export type BrowserResult = { ok: boolean; skipped?: string; problems: string[];
 export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number; clickButtons?: boolean };
 
 // Buttons that sound like they send, pay, delete or publish are never pressed by a check.
-const RISKY = /delet|remov|\bpay|buy|purchas|send|submit|sign.?out|log.?out|publish|deploy|reset|checkout|order|eras|clear|cancel|unsubscribe|subscribe|\bpost\b|confirm|donat|upload|install|download|transfer|withdraw|\bgo live/i;
+const RISKY = /delet|remov|\bpay|buy|purchas|send|submit|sign.?out|log.?out|publish|deploy|reset|checkout|order|eras|clear|cancel|unsubscribe|subscribe|\bpost\b|confirm|donat|upload|install|download|transfer|withdraw|\bgo live|eliminar|borrar|pagar|comprar|enviar|publicar|cerrar sesi|supprimer|payer|acheter|envoyer|publier|d[ée]connexion|l[öo]schen|bezahlen|kaufen|senden|absenden|abmelden|excluir|sair|remover|apagar|削除|送信|支払|购买|删除|发送|支付|삭제|결제|보내기/i;
 const MAX_BUTTONS = 8;
 
 const ignorable = (url: string) => /\/favicon\.ico(\?|$)/.test(url);
@@ -45,7 +45,15 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
   const result: BrowserResult = { ok: false, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 };
   if (!browserInstalled()) return { ...result, skipped: "The hidden browser is not installed yet, so the page was not opened.", ms: 0 };
   const timeout = o.timeoutMs ?? 15000;
-  const browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! });
+  let browser: import("playwright-core").Browser;
+  try { browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! }); }
+  catch (e) { return { ...result, skipped: `The hidden browser could not be started (${(e as Error).message.split("\n")[0]}), so the page was not opened.`, ms: Date.now() - t0 }; }
+  // However the check goes, the browser is closed by this deadline, so nothing is left running on the person's Mac.
+  let hardStop: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<BrowserResult>((res) => { hardStop = setTimeout(() => { browser.close().catch(() => {}); res(finish({ ...result, problems: [...result.problems, "The page check took too long and was stopped"] }, t0)); }, timeout * 4 + 10_000); });
+  return await Promise.race([run(), deadline]).finally(() => clearTimeout(hardStop));
+
+  async function run(): Promise<BrowserResult> {
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
     const page = await context.newPage();
@@ -60,7 +68,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
       if (r.request().isNavigationRequest() && r.frame() === page.mainFrame() && !mainStatus) mainStatus = r.status();
       if (r.status() >= 400 && !ignorable(r.url()) && !r.request().isNavigationRequest()) result.failedRequests.push(`${r.url()} (${r.status()})`);
     });
-    try { await page.goto(url, { waitUntil: "load", timeout }); }
+    try { await page.goto(url, { waitUntil: "domcontentloaded", timeout }); await page.waitForLoadState("load", { timeout: Math.min(timeout, 5000) }).catch(() => {}); }
     catch (e) { result.problems.push(`The page could not be reached: ${(e as Error).message.split("\n")[0]}`); return finish(result, t0); }
     if (mainStatus >= 400) result.problems.push(`The page answered with an error (${mainStatus})`);
     await page.waitForTimeout(500);
@@ -81,6 +89,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout);
     return finish(result, t0);
   } finally { await browser.close().catch(() => {}); }
+  }
 }
 
 // Press each plain button once (a handful at most), to see whether the page still works when used.
@@ -91,7 +100,10 @@ async function tryButtons(page: import("playwright-core").Page, url: string, set
     let ok = true;
     try { const u = new URL(route.request().url()); ok = u.host === home || u.protocol === "data:" || u.protocol === "blob:"; } catch { ok = false; }
     if (!ok) blockedByUs.add(route.request().url());
-    return ok ? route.continue() : route.abort();
+    if (!ok) return route.abort();
+    // Whatever the label says, a press never changes anything on a server: writes are answered with "nothing to do".
+    if (!["GET", "HEAD", "OPTIONS"].includes(route.request().method())) return route.fulfill({ status: 204, body: "" });
+    return route.continue();
   });
   const pick = 'button[type="button"], button:not([type]):not(form button), [role="button"], input[type="button"]';
   const count = Math.min(await page.locator(pick).count().catch(() => 0), 40);

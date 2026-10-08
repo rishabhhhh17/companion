@@ -17,6 +17,8 @@ function Dock() {
     return () => reducedQuery.removeEventListener("change", f);
   }, []);
   const label = characterWords(m);
+  const waiting = m.approvals.length;
+  const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
   // A click opens or closes the card; dragging moves the character along the screen edge.
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
   const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false }; (e.target as HTMLElement).setPointerCapture(e.pointerId); void invoke("char_click"); };
@@ -35,11 +37,12 @@ function Dock() {
   return (
     <main className="dock">
       <button className="character" type="button" data-state={m.character} data-motion={motionFor(m.character, reduced)}
-        aria-label={`${S.characterName}: ${label}`}
-        onPointerDown={down} onPointerMove={move} onPointerUp={up}>
-        {m.approvals.length > 0 && <span className="badge" aria-label={S.needsYouTitle}>{m.approvals.length}</span>}
+        aria-label={spoken}
+        onPointerDown={down} onPointerMove={move} onPointerUp={up}
+        onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
+        {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
-      <div className="muted" aria-live="polite">{label}</div>
+      <div className="muted" role="status" aria-live="polite">{label}</div>
     </main>
   );
 }

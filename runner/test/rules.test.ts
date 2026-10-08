@@ -99,7 +99,7 @@ describe("the agent can never change the rules", () => {
     expect(applyRules([], edit(".companion/rules.txt"), P)?.decision).toBe("deny");
     expect(applyRules([], run("echo x >> .companion/rules.txt"), P)?.decision).toBe("deny");
   });
-  test("other files in that folder are fine", () => expect(applyRules([], edit(".companion/notes.md"), P)).toBeNull());
+  test("nothing in that folder is the agent's to write, since it also holds Companion's own notes and settings", () => expect(applyRules([], edit(".companion/notes.md"), P)?.decision).toBe("deny"));
 });
 
 describe("in a real task", () => {

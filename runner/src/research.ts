@@ -4,21 +4,28 @@ export type Research = { title: string; answer: string; notes: Note[] };
 
 const clean = (s: string) => s.replace(/\s+/g, " ").trim();
 
-// Only plain web pages on the open internet. Never this Mac, a home network, a cloud metadata address, or a login in the address.
+// Only plain web pages on the open internet. Never this Mac, a home or company network, a cloud metadata address, a name that
+// only pretends to be public (like localtest.me), a bare machine name, or a login written into the address.
+const PRIVATE_ENDINGS = [".local", ".internal", ".localhost", ".lan", ".home", ".corp", ".localdomain", ".intranet", ".private", ".svc", ".home.arpa", ".test", ".invalid"];
+const LOOKS_PUBLIC_BUT_POINTS_HOME = ["localtest.me", "lvh.me", "nip.io", "sslip.io", "xip.io", "traefik.me", "localho.st", "vcap.me", "lacolhost.com"];
 export function isSafeUrl(raw: string): boolean {
   let u: URL;
   try { u = new URL(raw); } catch { return false; }
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
   if (u.username || u.password) return false;
-  const h = u.hostname.toLowerCase();
-  if (!h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return false;
-  if (h.startsWith("[")) return false;
+  let h: string;
+  try { h = decodeURIComponent(u.hostname).toLowerCase(); } catch { return false; }
+  h = h.replace(/\.+$/, "");                                       // "localhost." is localhost
+  if (!h || h.startsWith("[") || h === "localhost" || /[^a-z0-9.-]/.test(h)) return false;
+  if (PRIVATE_ENDINGS.some((e) => h.endsWith(e)) || LOOKS_PUBLIC_BUT_POINTS_HOME.some((d) => h === d || h.endsWith(`.${d}`))) return false;
   const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h);
   if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    if (a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224) return false;
+    const [a, b, c] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if (a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) ||
+        (a === 198 && (b === 18 || b === 19)) || (a === 192 && b === 0 && (c === 0 || c === 2)) || (a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113) || a >= 224) return false;
+    return true;
   }
-  return true;
+  return h.includes(".");                                           // a bare name like "printer" or "router" is on someone's own network
 }
 
 export function parseResearch(text: string): Research | null {

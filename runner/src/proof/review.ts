@@ -78,7 +78,7 @@ export function parseReview(text: string): Review | null {
   let j: any;
   try { j = JSON.parse(text.slice(a, b + 1)); } catch { return null; }
   const concerns = Array.isArray(j?.concerns) ? j.concerns.filter((x: unknown): x is string => typeof x === "string").map((x: string) => x.replace(/\s+/g, " ").trim()).filter(Boolean) : [];
-  if (j?.verdict === "approve") return { verdict: "approve", concerns };
+  if (j?.verdict === "approve") return concerns.length ? { verdict: "changes", concerns } : { verdict: "approve", concerns };   // "approve, but..." is not an approval
   if (j?.verdict === "changes" && concerns.length) return { verdict: "changes", concerns };
   return null;
 }

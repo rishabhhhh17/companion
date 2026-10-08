@@ -5,13 +5,13 @@
 // index, so the user's .git, index, branches and history are never read for
 // writing. A project that is not a git project never gets a .git.
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { randomBytes } from "node:crypto";
 
 export type Skipped = { path: string; reason: string };
 export type Checkpoint = { id: string; commit: string; label: string; files: number; skipped: Skipped[]; createdAt: string; envFiles: string[] };
-export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[] };
+export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[] };
 
 const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_EXCLUDES = [
@@ -20,7 +20,16 @@ const DEFAULT_EXCLUDES = [
 ];
 const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage"]);
 
+const stores = new Map<string, CheckpointStore>();
+
 export class CheckpointStore {
+  /** One store per project for the whole program, so two jobs can never take a snapshot at the same moment. */
+  static shared(shadowDir: string, projectDir: string): CheckpointStore {
+    const key = `${resolve(shadowDir)}|${resolve(projectDir)}`;
+    let s = stores.get(key);
+    if (!s) { s = new CheckpointStore(shadowDir, projectDir); stores.set(key, s); }
+    return s;
+  }
   readonly shadowDir: string;
   readonly projectDir: string;
   private queue: Promise<unknown> = Promise.resolve();
@@ -70,6 +79,42 @@ export class CheckpointStore {
     return out;
   }
 
+  private async gitFull(args: string[], opts: { index?: string } = {}): Promise<{ out: string; err: string; code: number }> {
+    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe" });
+    const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+    return { out, err, code: await p.exited };
+  }
+
+  // Folders that have their own git history (a project inside a project, or a submodule). Undo cannot cover them.
+  private findNestedGit(): string[] {
+    const found: string[] = [];
+    const walk = (dir: string, depth: number) => {
+      if (depth > 4) return;
+      let names: string[];
+      try { names = readdirSync(dir); } catch { return; }
+      for (const name of names) {
+        if (name === ".git" || ENV_SKIP_DIRS.has(name)) continue;
+        const p = join(dir, name);
+        let st; try { st = lstatSync(p); } catch { continue; }
+        if (!st.isDirectory()) continue;
+        if (existsSync(join(p, ".git"))) { found.push(relative(this.projectDir, p)); continue; }
+        walk(p, depth + 1);
+      }
+    };
+    walk(this.projectDir, 0);
+    return found.sort();
+  }
+
+  // Is any folder on the way to this path a link? A link could lead outside the project, and Companion must never write or delete through one.
+  private hasLinkOnTheWay(abs: string): boolean {
+    let dir = dirname(abs);
+    while (dir.length > this.projectDir.length && dir.startsWith(this.projectDir + sep)) {
+      try { if (lstatSync(dir).isSymbolicLink()) return true; } catch { /* gone */ }
+      dir = dirname(dir);
+    }
+    return false;
+  }
+
   private ensureInit() {
     if (existsSync(join(this.shadowDir, "HEAD"))) return;
     mkdirSync(this.shadowDir, { recursive: true });
@@ -115,18 +160,38 @@ export class CheckpointStore {
       const parent = last ? (await this.git(["rev-parse", last.ref])).trim() : null;
       if (parent) await this.git(["read-tree", parent], { index: idx });
 
-      // New files over 2 MiB are skipped and reported, never silently saved.
+      // Files over 2 MiB, new or grown, are skipped and reported, never silently saved. Folders with their own git history are
+      // reported as not covered. Neither is allowed to break the snapshot.
       const skipped: Skipped[] = [];
-      const fresh = (await this.git(["ls-files", "-z", "--others", "--exclude-standard"], { index: idx })).split("\0").filter(Boolean);
-      for (const rel of fresh) {
+      const excluded: string[] = [];
+      const candidates = [
+        ...(await this.git(["ls-files", "-z", "--others", "--exclude-standard"], { index: idx })).split("\0"),
+        ...(await this.git(["ls-files", "-z", "-m"], { index: idx })).split("\0"),
+      ].filter(Boolean);
+      for (const rel of new Set(candidates)) {
         try {
-          const st = statSync(join(this.projectDir, rel));
-          if (st.isFile() && st.size > MAX_NEW_FILE_BYTES) skipped.push({ path: rel, reason: `over 2 MiB (${(st.size / 1048576).toFixed(1)} MiB)` });
+          const st = lstatSync(join(this.projectDir, rel));
+          if (st.isFile() && st.size > MAX_NEW_FILE_BYTES) { skipped.push({ path: rel, reason: `over 2 MiB (${(st.size / 1048576).toFixed(1)} MiB), so the earlier saved version is kept` }); excluded.push(rel); }
         } catch { /* vanished while scanning */ }
       }
+      for (const rel of this.findNestedGit()) { skipped.push({ path: `${rel}/`, reason: "this folder has its own git history, so changes inside it are not covered by Undo" }); excluded.push(rel); }
 
-      await this.git(["add", "-A", "--", "."], { index: idx });
-      for (const s of skipped) await this.git(["rm", "--cached", "-q", "--ignore-unmatch", "--", s.path], { index: idx });
+      const addOnce = async (extra: string[]) => {
+        const specFile = join(this.shadowDir, `pathspec-${process.pid}-${randomBytes(4).toString("hex")}`);
+        try {
+          writeFileSync(specFile, [".", ...[...excluded, ...extra].map((p) => `:(exclude,literal)${p}`)].join("\0") + "\0");
+          return await this.gitFull(["add", "-A", "--ignore-errors", `--pathspec-from-file=${specFile}`, "--pathspec-file-nul"], { index: idx });
+        } finally { rmSync(specFile, { force: true }); }
+      };
+      let added = await addOnce([]);
+      if (added.code !== 0) {
+        // Some file could not be read (permissions, a locked Docker volume). Leave it out, say so, and keep going.
+        const unreadable = [...added.err.matchAll(/(?:open\("([^"]+)"\)|unable to index file '([^']+)'|could not open directory '([^']+?)\/?')/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter(Boolean);
+        if (unreadable.length === 0) throw new Error(`git add failed: ${added.err.trim()}`);
+        for (const rel of new Set(unreadable)) skipped.push({ path: rel, reason: "could not be read, so it was left out of the saved state" });
+        added = await addOnce(unreadable);
+        if (added.code !== 0) throw new Error(`git add failed: ${added.err.trim()}`);
+      }
 
       const tree = (await this.git(["write-tree"], { index: idx })).trim();
       const commitArgs = ["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", label];
@@ -155,7 +220,7 @@ export class CheckpointStore {
       for (const name of names) {
         const p = join(dir, name);
         let st;
-        try { st = statSync(p); } catch { continue; }
+        try { st = lstatSync(p); } catch { continue; }          // a link is never followed or copied
         if (st.isDirectory()) { if (!ENV_SKIP_DIRS.has(name)) walk(p, depth + 1); }
         else if (st.isFile() && (name === ".env" || name.startsWith(".env."))) found.push(relative(this.projectDir, p));
       }
@@ -223,11 +288,13 @@ export class CheckpointStore {
       rmSync(idx, { force: true });
     }
 
-    // Remove what exists now but did not exist then.
+    // Remove what exists now but did not exist then. Never through a link: it could lead out of the project.
+    const leftAlone: string[] = [];
     const added = (await this.git(["diff-tree", "-r", "--name-only", "--no-renames", "--diff-filter=A", "-z", targetMeta.commit, safety.commit]))
       .split("\0").filter(Boolean);
     for (const rel of added) {
       const abs = this.inProject(rel);
+      if (this.hasLinkOnTheWay(abs)) { leftAlone.push(rel); continue; }
       rmSync(abs, { force: true, recursive: false });
       let dir = dirname(abs);
       while (dir !== this.projectDir && dir.startsWith(this.projectDir + sep)) {
@@ -236,19 +303,24 @@ export class CheckpointStore {
       }
     }
 
-    // .env files: put back the old ones, remove ones created since.
+    // .env files: put back the old ones, remove ones created since. Never write through a link.
     const envRestored: string[] = [];
     for (const rel of targetMeta.envFiles) {
       const src = join(this.metaPath(id), "env", rel);
       if (!existsSync(src)) continue;
       const dst = this.inProject(rel);
+      if (this.hasLinkOnTheWay(dst)) { leftAlone.push(rel); continue; }
       mkdirSync(dirname(dst), { recursive: true });
+      try { if (lstatSync(dst).isSymbolicLink()) rmSync(dst, { force: true }); } catch { /* not there */ }   // replace the link itself, not what it points at
       copyFileSync(src, dst);
       envRestored.push(rel);
     }
     for (const rel of safety.envFiles) {
-      if (!targetMeta.envFiles.includes(rel)) rmSync(this.inProject(rel), { force: true });
+      if (targetMeta.envFiles.includes(rel)) continue;
+      const abs = this.inProject(rel);
+      if (this.hasLinkOnTheWay(abs)) { leftAlone.push(rel); continue; }
+      rmSync(abs, { force: true });
     }
-    return { restored: id, safetyCheckpoint: safety.id, envRestored };
+    return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone };
   }
 }

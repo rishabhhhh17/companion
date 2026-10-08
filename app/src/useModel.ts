@@ -11,7 +11,7 @@ export function useModel(): [Model, (e: { type: string; [k: string]: unknown }) 
     const off = listen("runner-event", (e) => dispatch(e.payload as { type: string }));
     return () => { off.then((f) => f()); };
   }, []);
-  // "Done" settles back to ready after a few seconds.
+  // "Done" settles back to ready after a while, long enough to notice it.
   useEffect(() => {
     if (m.character !== "done") return;
     const t = setTimeout(() => dispatch({ type: "ui.settle" }), 4000);

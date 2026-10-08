@@ -105,6 +105,8 @@ Product code arrives in M1; these are the planned commands, so update this secti
 
 Feature suites (Prompt help targets, Show me how eval, voice latency) live in `evals/` and run before merging that feature.
 
+Installs that tasks run use Node 20 or newer; under Claude's sandbox, Node 18 cannot reach the registry (it tries IPv6 first). Say so in plain words if a task fails that way.
+
 ## Before you start any task
 
 1. Read the product doc sections for the feature (section 3 is the map, section 10 is what Companion may see, section 11 is what we dropped) and the matching technical doc section.

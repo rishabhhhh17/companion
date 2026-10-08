@@ -27,6 +27,10 @@ function secretsGate(project: string, allow: Set<string> | undefined, scan: type
   const all = scan(project);
   const left = allow?.size ? all.findings.filter((f) => !allow.has(fingerprint(f))) : all.findings;
   const allowed = all.findings.length - left.length;
+  if (left.length === 0 && all.unreadablePublic) {
+    return { allowed, gate: { id: ID, label: LABEL, status: "could_not_check", overridable: true,
+      detail: `${all.unreadablePublic} file${all.unreadablePublic === 1 ? "" : "s"} that would be published ${all.unreadablePublic === 1 ? "was" : "were"} too large or could not be read, so I could not look for keys in ${all.unreadablePublic === 1 ? "it" : "them"}. If you know they hold none, you can confirm that yourself.` } };
+  }
   if (left.length === 0) {
     const note = all.skipped ? ` ${all.skipped} large or binary file${all.skipped === 1 ? " was" : "s were"} not looked at.` : "";
     return { allowed, gate: { id: ID, label: LABEL, status: "passed", detail: `Looked through ${all.scanned} file${all.scanned === 1 ? "" : "s"} and found no keys or passwords.${note}` } };

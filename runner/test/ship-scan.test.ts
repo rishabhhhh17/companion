@@ -113,7 +113,7 @@ describe("scanning a real folder", () => {
     expect(r.findings).toEqual([]);
     expect(r.skipped).toBeGreaterThanOrEqual(2);
   });
-  test("a folder that does not exist is nothing to scan, not a crash", () => expect(scanProject("/nowhere/at/all")).toEqual({ findings: [], scanned: 0, skipped: 0 }));
+  test("a folder that does not exist is nothing to scan, not a crash", () => expect(scanProject("/nowhere/at/all")).toEqual({ findings: [], scanned: 0, skipped: 0, unreadablePublic: 0 }));
   test("a project with a thousand files finishes quickly", () => {
     const d = tmp(); for (let i = 0; i < 1000; i++) put(d, { [`src/f${i}.js`]: `export const n${i} = ${i};` });
     const t0 = Date.now(); const r = scanProject(d);

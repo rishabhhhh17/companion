@@ -20,6 +20,7 @@ export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app:
 export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[] }[]; walkthrough?: boolean };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
+export type RunnerPing = Envelope & { type: "runner.ping" };
 export type ShipCheck = Envelope & { type: "ship.check"; project: string; runChecks?: boolean; confirm?: string[] };
 export type ResearchAsk = Envelope & { type: "research.ask"; project: string; agent: string; question: string; model: string; budgetUsd: number };
 export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number };
@@ -29,7 +30,7 @@ export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice
 export type DrivePause = Envelope & { type: "drive.pause"; agent: string; reason: "editor" | "terminal" | "you" };
 export type DriveResume = Envelope & { type: "drive.resume"; agent: string };
 export type TasksList = Envelope & { type: "tasks.list"; project: string };
-export type Command = ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -68,6 +69,7 @@ export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval:
 export type PlanReady = Envelope & { type: "plan.ready"; agent: string; steps: { id: number; title: string }[]; truncated: boolean; estimateUsd: number };
 export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: number; total: number; title: string; status: "started" | "done" | "not_done" | "stopped" | "over_budget" };
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
+export type RunnerPong = Envelope & { type: "runner.pong" };
 export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
 export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file: string };
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
@@ -75,7 +77,7 @@ export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reas
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[] };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
-export type Event = ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -92,6 +94,7 @@ const COMMANDS: Record<string, Check[]> = {
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
+  "runner.ping": [],
   "ship.check": [str("project")],
   "research.ask": [str("project"), str("agent"), str("question"), str("model"), num("budgetUsd")],
   "rescue.diagnose": [str("project"), str("agent"), str("model"), num("budgetUsd")],
@@ -111,6 +114,7 @@ const COMMANDS: Record<string, Check[]> = {
 const EVENTS: Record<string, Check[]> = {
   "runner.hello": [str("runnerVersion"), str("sdk")],
   "tasks.list": [str("project"), list("tasks")],
+  "runner.pong": [],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), str("file")],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],
@@ -155,4 +159,5 @@ function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {
 
 export const parseCommand = (line: string): Parsed<Command> => parseWith<Command>(line, COMMANDS);
 export const parseEvent = (line: string): Parsed<Event> => parseWith<Event>(line, EVENTS);
-export const serialize = (msg: Command | Event): string => JSON.stringify(msg);
+// Half an emoji is not valid text and the app refuses it, so any stray half is replaced before a message is sent.
+export const serialize = (msg: Command | Event): string => JSON.stringify(msg, (_k, v) => (typeof v === "string" ? v.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd") : v));

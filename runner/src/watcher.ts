@@ -17,6 +17,8 @@ export class ProjectWatcher {
 
   // The agent is running a tool (or the checks): changes now are its own.
   begin(id: string) { this.tools.set(id, Date.now()); }
+  // A tool that was stopped partway may never report back. Forget all of them so the person's next edit is noticed again.
+  clearTools() { this.tools.clear(); this.lastEnd = Date.now(); }
   end(id: string) { if (this.tools.delete(id)) this.lastEnd = Date.now(); }
   private busy(): boolean {
     const max = this.o.maxBusyMs ?? 10 * 60_000, now = Date.now();

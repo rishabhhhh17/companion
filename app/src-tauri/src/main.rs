@@ -5,6 +5,7 @@
 
 mod docking;
 mod fullscreen;
+mod logfile;
 mod permissions;
 mod ax;
 mod phelp;
@@ -27,7 +28,6 @@ use std::ptr::NonNull;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
-use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use docking::{card_frame, choice, dock_frame, inside, pick, signature, snap, Prefs, Rect, Screen};
 use std::path::PathBuf;
@@ -85,18 +85,21 @@ fn active(mtm: MainThreadMarker) -> bool {
     NSApplication::sharedApplication(mtm).isActive()
 }
 
+fn app_folder() -> std::path::PathBuf { std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app") }
+static VERBOSE: OnceLock<bool> = OnceLock::new();
+
+/// Writes one line to the small local log. By default only a few important events are written, never which apps you are
+/// using. A developer can turn full detail on (the file `debug` in the app's folder, or COMPANION_DEBUG_LOG=1). It stays under 512 KB.
 pub(crate) fn log(ev: &str, extra: Value) {
-    let dir = format!("{}/Library/Application Support/dev.companion.app", std::env::var("HOME").unwrap_or_default());
+    let dir = app_folder();
+    let verbose = *VERBOSE.get_or_init(|| logfile::verbose_enabled(&dir, std::env::var("COMPANION_DEBUG_LOG").ok().as_deref()));
+    if !logfile::should_log(ev, verbose) { return; }
     let _ = std::fs::create_dir_all(&dir);
-    let mut d = json!({ "run": RUN.get(), "seq": SEQ.fetch_add(1, Ordering::SeqCst) + 1, "ev": ev,
-        "t": now() as u64, "ms": (now() - T0.get().copied().unwrap_or(0)) as u64, "front": front() });
-    if let (Value::Object(a), Value::Object(b)) = (&mut d, extra) {
-        a.extend(b);
-    }
-    let _g = LOG.lock();
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(format!("{dir}/events.jsonl")) {
-        let _ = writeln!(f, "{d}");
-    }
+    let mut d = json!({ "run": RUN.get(), "seq": SEQ.fetch_add(1, Ordering::SeqCst) + 1, "ev": ev, "t": now() as u64, "ms": (now() - T0.get().copied().unwrap_or(0)) as u64 });
+    if verbose { if let Value::Object(a) = &mut d { a.insert("front".into(), json!(front())); } }
+    if let (Value::Object(a), Value::Object(b)) = (&mut d, extra) { a.extend(b); }
+    let _g = LOG.lock().unwrap_or_else(|e| e.into_inner());
+    logfile::append_line(&dir.join("events.jsonl"), &d.to_string(), logfile::MAX_BYTES);
 }
 
 fn with_panels<R>(f: impl FnOnce(&NSPanel, &NSPanel) -> R) -> Option<R> {
@@ -168,7 +171,7 @@ fn with_prefs<R>(f: impl FnOnce(&mut Prefs) -> R) -> R {
     let p = g.get_or_insert_with(|| std::fs::read_to_string(prefs_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default());
     f(p)
 }
-fn save_prefs() { with_prefs(|p| { let _ = std::fs::write(prefs_path(), serde_json::to_string(p).unwrap_or_default()); }); }
+fn save_prefs() { with_prefs(|p| { let _ = logfile::write_atomic(&prefs_path(), serde_json::to_string(p).unwrap_or_default().as_bytes()); }); }
 
 // AppKit counts from the bottom left of the primary screen; the maths counts from the top left.
 fn to_appkit(r: Rect, primary_h: f64) -> NSRect { NSRect::new(NSPoint::new(r[0], primary_h - (r[1] + r[3])), NSSize::new(r[2], r[3])) }
@@ -258,7 +261,7 @@ fn arm_result_keys(app: &AppHandle, on: bool) {
 #[tauri::command] fn ph_consent(app: AppHandle, choice: String) { phelp::consent_answer(&app, &choice); }
 #[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); }
 #[tauri::command] fn ph_accept(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, false); }
-#[tauri::command] fn ph_restore(app: AppHandle) { phelp::put_back(&app, true); }
+#[tauri::command] fn ph_restore(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, true); }
 #[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
 #[tauri::command] fn ph_answer(app: AppHandle, answer: String) { arm_result_keys(&app, false); phelp::answer(&app, answer); }
 
@@ -523,9 +526,16 @@ fn main() {
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || tick(&h2));
             });
-            app.global_shortcut().register(k)?;
-            app.global_shortcut().register(x)?;
-            app.global_shortcut().register(sc_read())?;
+            // Another app may already own one of our hotkeys. That must never stop Companion from opening.
+            let mut taken: Vec<&str> = Vec::new();
+            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help")] {
+                if app.global_shortcut().register(sc).is_err() { taken.push(what); }
+            }
+            if !taken.is_empty() {
+                log("hotkey_unavailable", json!({ "which": taken }));
+                let list = taken.join(", ");
+                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-hotkeys", "type": "app.notice", "message": format!("Another app is already using the keys for: {list}. Those shortcuts will not work until it lets go of them. You can still use the buttons.") }));
+            }
             start_runner(app.handle());
             // The menu bar icon: hide or show, stop everything, quit. Clicking it never takes your typing.
             let hide = MenuItemBuilder::with_id("hide", "Hide or show Companion").build(app)?;

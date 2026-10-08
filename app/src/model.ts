@@ -59,7 +59,7 @@ export function plainError(reason: string): string {
   const nc = /Not connected:.*$/.exec(reason);
   if (nc) return nc[0];
   const r = reason.replace(/^engine error:\s*/i, "");
-  return `Something went wrong: ${r}`;
+  return `Something went wrong: ${r.replace(/[.\s]+$/, "")}. Try again, and if it keeps happening, press Stop and start a new task.`;
 }
 
 type Ev = Record<string, any> & { type?: string };
@@ -69,7 +69,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.settle": return withAgents(m, Object.fromEntries(Object.entries(m.agents).map(([a, s]) => [a, s === "done" ? "idle" : s])) as Record<string, CharacterState>);
     case "ui.approvalAnswered": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
-    case "app.stop_everything": return { ...withAgents({ ...m, approvals: [], task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
+    // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
+    case "app.runner_restarted": return { ...withAgents({ ...m, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
+    case "app.stop_everything": return { ...withAgents({ ...m, approvals: [], plan: null, drive: null, stuck: null, paused: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -102,9 +106,9 @@ export function reduce(m: Model, e: Ev): Model {
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
-    case "plan.ready": return { ...m, plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, task: null, receipt: null, error: null, notice: null };
-    case "loop.stuck": return { ...m, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: e.options ?? [] } };
-    case "drive.paused": return { ...m, paused: { reason: e.reason, path: e.path } };
+    case "plan.ready": return { ...m, plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
+    case "loop.stuck": return { ...m, plan: null, paused: null, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: Array.isArray(e.options) && e.options.length ? e.options : [{ id: "different", label: "Try a different way" }, { id: "stop", label: "Stop here" }] } };
+    case "drive.paused": return { ...m, stuck: null, paused: { reason: e.reason, path: e.path } };
     case "ui.resumed": return { ...m, paused: null };
     case "ui.stuckAnswered": return { ...m, stuck: null };
     case "rescue.report": return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
@@ -181,7 +185,8 @@ export function motionFor(state: CharacterState, reduced: boolean): "none" | "br
 export function formatUsd(usd: number): string {
   if (usd <= 0) return "free so far";
   if (usd < 0.01) return "less than 1 cent";
-  if (usd < 1) return `${Math.round(usd * 100)} cents`;
+  const cents = Math.round(usd * 100);
+  if (cents < 100) return cents === 1 ? "1 cent" : `${cents} cents`;
   return `$${usd.toFixed(2)}`;
 }
 

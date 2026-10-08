@@ -22,8 +22,8 @@ describe("the options we hand to the SDK", () => {
     expect(o.permissionMode).toBe("acceptEdits");
   });
   test("runs only the binary we name, never one found on PATH", () => expect(o.pathToClaudeCodeExecutable).toBe("/x/claude"));
-  test("loads only project settings and no outside connectors", () => {
-    expect(o.settingSources).toEqual(["project"]);
+  test("loads no settings files and no outside connectors", () => {
+    expect(o.settingSources).toEqual([]);
     expect(o.strictMcpConfig).toBe(true);
     expect(o.mcpServers ?? {}).toEqual({});
   });

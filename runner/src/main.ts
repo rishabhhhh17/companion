@@ -18,17 +18,25 @@ let n = 0;
 const emit = (e: Event) => { process.stdout.write(serialize(e) + "\n"); };
 const say = (e: Record<string, unknown>) => emit({ v: PROTOCOL_VERSION, id: `r${++n}`, ts: new Date().toISOString(), ...e } as unknown as Event);
 
-const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db")), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db")), dailyCeilingUsd: Number(process.env.COMPANION_DAILY_CEILING_USD) > 0 ? Number(process.env.COMPANION_DAILY_CEILING_USD) : 10, emit });
+// If a local file is damaged or cannot be written, Companion still starts and says so in plain words.
+const notes: string[] = [];
+const problem = (m: string) => { notes.push(m); };
+const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: Number(process.env.COMPANION_DAILY_CEILING_USD) > 0 ? Number(process.env.COMPANION_DAILY_CEILING_USD) : 10, emit });
 const assist = settings.engine === "sdk" || settings.assistStub ? new AssistService({ ...createLanes(settings), images: new ImageStore(), emit }) : null;
 const inflight = new Set<Promise<unknown>>();
 
+// The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
+process.stdout.on("error", () => process.exit(0));
 say({ type: "runner.hello", runnerVersion: "0.0.1", sdk: SDK_VERSION });
+for (const m of notes) say({ type: "protocol.error", reason: m });
 if (settings.engine === "sdk") {
   const a = await currentAuth(settings);
   say({ type: "auth.status", method: a.method, ...(a.method === "api_key" ? { source: "keychain" } : {}) });
 }
 
 function dispatch(cmd: Command) {
+  // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
+  if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   const work = cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);

@@ -38,13 +38,15 @@ describe("running a command with a time limit", () => {
     const dir = tmp();
     expect((await runCommand("pwd", { cwd: dir, timeoutMs: 5000 })).stdout.trim()).toBe(dir);
   });
-  test("account keys are not visible to project commands, and CI is on", async () => {
+  test("account keys are not visible to project commands, and CI is only on when asked for", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-api03-FAKEFAKEFAKEFAKEFAKE0123456789";
     try {
       const r = await runCommand("env", { cwd: tmp(), timeoutMs: 5000 });
       expect(r.stdout).not.toContain("FAKEFAKE");
       expect(r.stdout).not.toContain("ANTHROPIC_API_KEY");
-      expect(r.stdout).toContain("CI=1");
+      expect(r.stdout).not.toContain("CI=1");
+      const t = await runCommand("env", { cwd: tmp(), timeoutMs: 5000, env: { CI: "1" } });
+      expect(t.stdout).toContain("CI=1");
     } finally { delete process.env.ANTHROPIC_API_KEY; }
   });
   test("very long output is cut to the end, where the error usually is", async () => {
@@ -154,8 +156,9 @@ describe("noticing weakened tests", () => {
     expect(r.ok).toBe(false);
   });
   test("no tests before and none after is fine", () => expect(analyzeTests({}, {}).ok).toBe(true));
-  test("moving tests to another file still flags the removed file, so a person looks", () => {
-    expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(4) }).problems.join(" ")).toContain("a.test.ts");
+  test("moving tests to another file is fine when no test is lost, and flags the file when some are", () => {
+    expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(4) }).ok).toBe(true);
+    expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(2) }).problems.join(" ")).toContain("a.test.ts");
   });
 });
 

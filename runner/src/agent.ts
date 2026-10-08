@@ -2,6 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
+import { runCommand } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -13,7 +14,7 @@ import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
-import { label as makeLabel } from "./redact.ts";
+import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
@@ -68,10 +69,9 @@ export const defaultExecutor: ToolExecutor = async (call, { project }) => {
       return { ok: true, output: `edited ${String(i.file_path)}` };
     }
     if (call.name === "Bash") {
-      const p = Bun.spawn(["sh", "-c", String(i.command)], { cwd: project, env: buildChildEnv(process.env, { route: "plan" }), stdout: "pipe", stderr: "pipe", timeout: 120_000 });
-      const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-      const code = await p.exited;
-      return { ok: code === 0, output: (out + err).slice(0, 20_000) };
+      const r = await runCommand(String(i.command), { cwd: project, timeoutMs: 120_000, });
+      const code = r.code;
+      return { ok: code === 0, output: (r.stdout + r.stderr).slice(0, 20_000) };
     }
     return { ok: true, output: "" };
   } catch (e) {
@@ -80,7 +80,7 @@ export const defaultExecutor: ToolExecutor = async (call, { project }) => {
 };
 
 const summary = (c: ToolUse): string => {
-  if (c.name === "Bash") return `Running: ${String(c.input.command).slice(0, 200)}`;
+  if (c.name === "Bash") return `Running: ${clip(redact(String(c.input.command)), 200)}`;
   if (c.input.file_path) return `${c.name}: ${String(c.input.file_path)}`;
   return c.name;
 };
@@ -98,6 +98,7 @@ export class AgentRunner {
   private resumers = new Map<string, (c: string) => void>();
   private resumeEarly = new Set<string>();
   // The last proof result for each project, and which saved version it was for. Shipping needs a pass on the exact version.
+  private rulesSaid = new Set<string>();
   private lastProof = new Map<string, { verdict: string; snapshot: string }>();   // "Carry on" pressed before the loop is waiting for it
 
   // Take the wheel: stop the current step now; the plan waits for the person to resume.
@@ -108,6 +109,7 @@ export class AgentRunner {
     this.emit({ type: "drive.paused", agent, reason, ...(path ? { path } : {}) } as never);
     this.state(agent, "needsYou");
     this.sessions.get(agent)?.abort.abort();
+    this.watchers.get(agent)?.clearTools();
   }
   private counter = 0;
   private ledger: Ledger;
@@ -178,10 +180,38 @@ export class AgentRunner {
 
   private store(project: string): CheckpointStore {
     const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
-    return new CheckpointStore(join(this.o.shadowRoot, `${id}.git`), project);
+    return CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
   }
 
+  private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
+  private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
+  private touched = new Set<string>();               // agents whose task has started changing the project
+
+  // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
   private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+    const key = resolve(cmd.project);
+    if (this.sessions.has(cmd.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
+    const holder = this.projectBusy.get(key);
+    if (holder && holder !== cmd.agent) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
+    this.projectBusy.set(key, cmd.agent);
+    try {
+      return await this.runInner(cmd, opts);
+    } catch (e) {
+      const row = this.openTasks.get(cmd.agent);
+      if (row !== undefined) { try { this.o.log.finish(row, "error", 0, this.now().toISOString()); } catch { /* the log is not worth a second failure */ } this.openTasks.delete(cmd.agent); }
+      const why = clip(redact(String((e as Error).message ?? e).split("\n")[0]), 160);
+      this.fail(this.touched.has(cmd.agent) ? `The task stopped unexpectedly (${why}). Look at your project, and use Undo if something is not right.` : `The task could not start (${why}). Nothing in your project was changed.`, cmd.agent);
+      this.state(cmd.agent, "error");
+      return { status: "error", usd: 0 };
+    } finally {
+      this.sessions.delete(cmd.agent);
+      this.projectBusy.delete(key);
+      this.touched.delete(cmd.agent);
+      this.watchers.get(cmd.agent)?.clearTools();     // a tool that was stopped partway may never have reported back
+    }
+  }
+
+  private async runInner(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
     const room = this.room(cmd.project);
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -194,11 +224,13 @@ export class AgentRunner {
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
     this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped } as never);
     const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString() });
+    this.openTasks.set(cmd.agent, taskId);
+    this.touched.add(cmd.agent);
     this.state(cmd.agent, "thinking");
 
     let usd = 0, booked = 0, commands = 0, status = "done";
     const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; };
-    const notUndoable: string[] = [];
+    const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
 
@@ -297,6 +329,7 @@ export class AgentRunner {
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
+    this.openTasks.delete(cmd.agent);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
@@ -409,7 +442,7 @@ export class AgentRunner {
   private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
-    const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch"]);
+    const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
     const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
     await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
@@ -546,7 +579,17 @@ export class AgentRunner {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
     const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
     // House rules can only make a call stricter, never looser.
-    const ruled = applyRules(loadRules(cmd.project).rules, { tool: tool.name, input: tool.input }, cmd.project);
+    const loaded = loadRules(cmd.project);
+    const said = `${cmd.project}\n${loaded.problems.join("\n")}`;
+    if (loaded.problems.length && !this.rulesSaid.has(said)) {
+      this.rulesSaid.add(said);
+      this.emit({ type: "protocol.error", reason: `Your house rules file has a problem. ${loaded.problems.slice(0, 3).join(" ")}` } as never);
+    }
+    let ruled = applyRules(loaded.rules, { tool: tool.name, input: tool.input }, cmd.project);
+    // A rules file that cannot be read must not mean "no rules": anything that is not plain reading asks first.
+    if (loaded.broken && !ruled && base.decision === "allow" && !["Read", "Grep", "Glob", "LS"].includes(tool.name)) {
+      ruled = { decision: "ask", risk: "irreversible", reason: "Your house rules file could not be read, so I am asking first.", undoable: base.undoable };
+    }
     const rank = { allow: 0, ask: 1, deny: 2 } as const;
     const verdict: Verdict = ruled && rank[ruled.decision] > rank[base.decision] ? ruled : base;
     const sum = summary(tool);
@@ -577,7 +620,7 @@ export class AgentRunner {
       tell("ran");
     }
     if (tool.name === "Bash") countCommand();
-    if (!verdict.undoable) notUndoable.push(String(tool.input.command ?? sum));
+    if (!verdict.undoable) notUndoable.push(clip(redact(String(tool.input.command ?? sum)), 300));
     this.state(cmd.agent, "working");
     if (verdict.decision === "allow") tell("ran");
     // From here until the tool finishes, file changes are the agent's own.

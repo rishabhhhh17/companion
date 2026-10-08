@@ -26,7 +26,8 @@ export function detectProject(dir: string): Detected {
   const pkg = hasPkg ? readJson(pkgPath) ?? {} : {};
   const scripts: Record<string, string> = typeof pkg.scripts === "object" && pkg.scripts ? pkg.scripts : {};
   const lock = LOCKS.find(([f]) => existsSync(join(dir, f)));
-  const pm: PackageManager | null = hasPkg ? lock?.[1] ?? "npm" : null;
+  const declared = typeof pkg.packageManager === "string" ? (/^(npm|pnpm|yarn|bun)@/.exec(pkg.packageManager)?.[1] as PackageManager | undefined) : undefined;
+  const pm: PackageManager | null = hasPkg ? lock?.[1] ?? declared ?? "npm" : null;
   const run = (name: string) => `${pm} run ${name}`;
 
   const checks: Check[] = [];
