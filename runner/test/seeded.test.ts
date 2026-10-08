@@ -59,6 +59,20 @@ describe("a page with an error in its code (only the browser check sees it)", ()
   }, 120000);
 });
 
+describe("a page that loads fine but breaks when you press its button (found in the first real run)", () => {
+  const page = (fn: string) => `<!doctype html><h1>Hello from Companion</h1><button onclick="${fn}()">Launch</button><script>function ok(){ document.title = "ok"; }</script>`;
+  test("never done while the button calls something that does not exist", async () => {
+    const r = await go({ "notes.txt": "x" }, [[write("index.html", page("launchRocket"))], [write("index.html", page("launchRocket"))], [write("index.html", page("launchRocket"))]]);
+    notDone(r);
+    expect(JSON.stringify(results(r.events).at(-1).steps)).toContain("launchRocket is not defined");
+  }, 120000);
+  test("done once the button works", async () => {
+    const r = await go({ "notes.txt": "x" }, [[write("index.html", page("launchRocket"))], [write("index.html", page("ok"))]]);
+    done(r);
+    expect(r.engine.calls[1].prompt).toContain("launchRocket");
+  }, 120000);
+});
+
 describe("a build that fails", () => {
   const files = (cmd: string) => [write("package.json", pkg({ build: cmd })), write("index.html", GOOD_PAGE)];
   test("never done, and the build's own error reaches Claude", async () => {

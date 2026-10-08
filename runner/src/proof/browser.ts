@@ -30,12 +30,18 @@ export async function installBrowser(): Promise<{ ok: boolean; detail: string }>
 }
 
 export type BrowserResult = { ok: boolean; skipped?: string; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number };
-export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number };
+export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number; clickButtons?: boolean };
+
+// Buttons that sound like they send, pay, delete or publish are never pressed by a check.
+const RISKY = /delet|remov|\bpay|buy|purchas|send|submit|sign.?out|log.?out|publish|deploy|reset|checkout|order|eras|clear|cancel|unsubscribe|subscribe|\bpost\b|confirm|donat|upload|install|download|transfer|withdraw|\bgo live/i;
+const MAX_BUTTONS = 8;
 
 const ignorable = (url: string) => /\/favicon\.ico(\?|$)/.test(url);
+const blockedByUs = new Set<string>();
 
 export async function browserCheck(url: string, o: BrowserOptions = {}): Promise<BrowserResult> {
   const t0 = Date.now();
+  blockedByUs.clear();
   const result: BrowserResult = { ok: false, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 };
   if (!browserInstalled()) return { ...result, skipped: "The hidden browser is not installed yet, so the page was not opened.", ms: 0 };
   const timeout = o.timeoutMs ?? 15000;
@@ -44,9 +50,11 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
     const page = await context.newPage();
     page.on("framenavigated", (f) => { if (f === page.mainFrame()) result.visited.push(f.url()); });
-    page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) result.consoleErrors.push(m.text()); });
-    page.on("pageerror", (e) => result.problems.push(`The page crashed with: ${e.message}`));
-    page.on("requestfailed", (r) => { const why = r.failure()?.errorText ?? "failed"; if (!ignorable(r.url()) && !/ERR_ABORTED/.test(why)) result.failedRequests.push(`${r.url()} (${why})`); });
+    let pressing = "";
+    const after = () => (pressing ? ` (after pressing "${pressing}")` : "");
+    page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) result.consoleErrors.push(m.text() + after()); });
+    page.on("pageerror", (e) => result.problems.push(`The page crashed with: ${e.message}${after()}`));
+    page.on("requestfailed", (r) => { const why = r.failure()?.errorText ?? "failed"; if (!ignorable(r.url()) && !blockedByUs.has(r.url()) && !/ERR_ABORTED/.test(why)) result.failedRequests.push(`${r.url()} (${why})`); });
     let mainStatus = 0;
     page.on("response", (r) => {
       if (r.request().isNavigationRequest() && r.frame() === page.mainFrame() && !mainStatus) mainStatus = r.status();
@@ -70,8 +78,36 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
       }
       await page.waitForTimeout(300);
     }
+    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout);
     return finish(result, t0);
   } finally { await browser.close().catch(() => {}); }
+}
+
+// Press each plain button once (a handful at most), to see whether the page still works when used.
+// Never anything risky, never a form submit, and nothing may reach beyond the page's own address.
+async function tryButtons(page: import("playwright-core").Page, url: string, setPressing: (label: string) => void, timeout: number) {
+  const home = new URL(url).host;
+  await page.context().route("**/*", (route) => {
+    let ok = true;
+    try { const u = new URL(route.request().url()); ok = u.host === home || u.protocol === "data:" || u.protocol === "blob:"; } catch { ok = false; }
+    if (!ok) blockedByUs.add(route.request().url());
+    return ok ? route.continue() : route.abort();
+  });
+  const pick = 'button[type="button"], button:not([type]):not(form button), [role="button"], input[type="button"]';
+  const count = Math.min(await page.locator(pick).count().catch(() => 0), 40);
+  let pressed = 0;
+  for (let i = 0; i < count && pressed < MAX_BUTTONS; i++) {
+    const b = page.locator(pick).nth(i);
+    if (!(await b.isVisible().catch(() => false)) || !(await b.isEnabled().catch(() => false))) continue;
+    const label = ((await b.innerText({ timeout: 1000 }).catch(() => "")) || (await b.getAttribute("value").catch(() => "")) || (await b.getAttribute("aria-label").catch(() => "")) || "").trim().slice(0, 60);
+    if (RISKY.test(label)) continue;
+    setPressing(label || "a button");
+    pressed++;
+    await b.click({ timeout: Math.min(timeout, 2000) }).catch(() => {});
+    await page.waitForTimeout(300);
+    if (page.url() !== url) await page.goto(url, { waitUntil: "load", timeout }).catch(() => {});
+  }
+  setPressing("");
 }
 
 function finish(r: BrowserResult, t0: number): BrowserResult {
