@@ -8,7 +8,7 @@ import { browserCheck, type BrowserOptions, type BrowserResult } from "./browser
 import { detectProject, type Detected } from "./detect.ts";
 import { runCommand, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
-import { analyzeTests, isTestFile } from "./testguard.ts";
+import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser";
 export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number };
@@ -82,6 +82,9 @@ export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   // --- 2. build and checks
   if (cancelled()) return result("cancelled");
   t0 = Date.now(); emit("checks", "running");
+  // A task that "fixes" a failing check by making it check nothing has not fixed anything.
+  const weakened = analyzeScripts(bf["package.json"], af["package.json"]);
+  if (!weakened.ok) return result("failed", finish("checks", "failed", weakened.problems.join(". ") + ". Please fix the real problem instead of weakening the check.", t0));
   if (det.checks.length) {
     for (const c of det.checks) {
       const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs });

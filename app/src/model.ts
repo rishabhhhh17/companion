@@ -100,6 +100,11 @@ export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
   }
 }
 
+// A check failed and Claude is working on it again: say "fixing", not "Not done", until it has really ended.
+export function isFixing(m: Model): boolean {
+  return m.task?.proof?.verdict === "failed" && ["thinking", "working", "checking"].includes(m.character);
+}
+
 // Tells the user when the work needed more than one try, so a fix never goes unnoticed.
 export function triesNote(m: Model): string | null {
   const p = m.task?.proof;

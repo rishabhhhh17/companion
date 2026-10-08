@@ -29,6 +29,7 @@ export const S = {
   noRecent: "Nothing yet.",
   checkingTitle: "Checking the work",
   notDone: "Not done",
+  fixing: "Fixing a failed check",
   notDoneHelp: "I did not say it was finished, because this check failed:",
   proven: "Checked and working",
   provenGaps: "Checked, with some checks skipped",

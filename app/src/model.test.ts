@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, historyWords, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -210,5 +210,21 @@ describe("saying how many tries it took", () => {
   });
   test("no result yet means no note", () => {
     expect(triesNote(run([...start]))).toBeNull();
+  });
+});
+
+describe("a failed check that Claude is still fixing", () => {
+  const failed = ev({ type: "proof.result", agent: "a", verdict: "failed", steps: [], tries: 1 });
+  test("while Claude is working again, it is fixing, not Not done", () => {
+    const m = run([...start, failed, ev({ type: "agent.state", agent: "a", state: "working" })]);
+    expect(isFixing(m)).toBe(true);
+  });
+  test("once everything has stopped on a failure, it is not fixing any more", () => {
+    const m = run([...start, failed, ev({ type: "agent.state", agent: "a", state: "error" })]);
+    expect(isFixing(m)).toBe(false);
+    expect(notDoneReason(m)).not.toBeNull();
+  });
+  test("a task that never failed is never fixing", () => {
+    expect(isFixing(run([...start, ev({ type: "agent.state", agent: "a", state: "working" })]))).toBe(false);
   });
 });

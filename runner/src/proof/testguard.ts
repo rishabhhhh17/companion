@@ -17,3 +17,23 @@ export function analyzeTests(before: Record<string, string>, after: Record<strin
   if (sum(a, SWITCHED_OFF) > sum(b, SWITCHED_OFF)) problems.push("A test was switched off (skip, only or todo) in this task");
   return { ok: problems.length === 0, before: bn, after: an, problems };
 }
+
+// Did the task weaken the project's own checks (build, tests, lint) so they pass without checking anything?
+const CHECK_SCRIPTS = ["build", "test", "lint", "typecheck", "type-check", "check"];
+const DOES_NOTHING = /^\s*(?:true|:|exit\s+0|echo\b[^;&|]*|(?:sh|bash)\s+-c\s+["']?\s*(?:true|:|exit\s+0)\s*["']?|echo\b[^;&|]*(?:&&|;)\s*(?:true|exit\s+0))\s*$/;
+function scriptsOf(text: string | undefined): Record<string, string> | null {
+  if (text === undefined) return null;
+  try { const s = JSON.parse(text)?.scripts; return s && typeof s === "object" ? s : {}; } catch { return null; }
+}
+export function analyzeScripts(before: string | undefined, after: string | undefined): { ok: boolean; problems: string[] } {
+  const [b, a] = [scriptsOf(before), scriptsOf(after)];
+  const problems: string[] = [];
+  if (b && a) {
+    for (const n of CHECK_SCRIPTS) {
+      if (typeof b[n] !== "string") continue;
+      if (typeof a[n] !== "string") problems.push(`The "${n}" step was removed from package.json`);
+      else if (a[n] !== b[n] && DOES_NOTHING.test(a[n]) && !DOES_NOTHING.test(b[n])) problems.push(`The "${n}" step now checks nothing (it was changed to: ${a[n]})`);
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}

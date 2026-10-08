@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../src/proof/exec.ts";
 import { detectProject } from "../src/proof/detect.ts";
-import { analyzeTests } from "../src/proof/testguard.ts";
+import { analyzeScripts, analyzeTests } from "../src/proof/testguard.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -156,5 +156,36 @@ describe("noticing weakened tests", () => {
   test("no tests before and none after is fine", () => expect(analyzeTests({}, {}).ok).toBe(true));
   test("moving tests to another file still flags the removed file, so a person looks", () => {
     expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(4) }).problems.join(" ")).toContain("a.test.ts");
+  });
+});
+
+describe("weakening the project's own checks to make them pass", () => {
+  const pk = (scripts: Record<string, string>) => JSON.stringify({ name: "x", scripts });
+  test("a build that is replaced by an echo is caught", () => {
+    const r = analyzeScripts(pk({ build: "vite build" }), pk({ build: "echo Build successful" }));
+    expect(r.ok).toBe(false);
+    expect(r.problems[0]).toMatch(/build.*checks nothing/i);
+  });
+  for (const noop of ["true", ":", "exit 0", "sh -c 'exit 0'", "echo ok", "echo done && true"]) {
+    test(`"${noop}" counts as checking nothing`, () => expect(analyzeScripts(pk({ test: "bun test" }), pk({ test: noop })).ok).toBe(false));
+  }
+  test("a removed build, test or lint step is caught", () => {
+    for (const n of ["build", "test", "lint", "typecheck", "check"]) {
+      expect(analyzeScripts(pk({ [n]: "real" }), pk({})).ok).toBe(false);
+    }
+  });
+  test("changing a check to another real command is fine", () => {
+    expect(analyzeScripts(pk({ build: "vite build" }), pk({ build: "tsc && vite build" })).ok).toBe(true);
+  });
+  test("adding a new script, or leaving everything alone, is fine", () => {
+    expect(analyzeScripts(pk({ build: "vite build" }), pk({ build: "vite build", dev: "vite" })).ok).toBe(true);
+    expect(analyzeScripts(pk({ build: "echo hi" }), pk({ build: "echo hi" })).ok).toBe(true);
+  });
+  test("a project without a package file, or a broken one, is not a problem", () => {
+    expect(analyzeScripts(undefined, undefined).ok).toBe(true);
+    expect(analyzeScripts("{not json", pk({ build: "echo x" })).ok).toBe(true);
+  });
+  test("a check that was already a do nothing step is not blamed on this task", () => {
+    expect(analyzeScripts(pk({ test: "echo no tests" }), pk({ test: "echo no tests" })).ok).toBe(true);
   });
 });

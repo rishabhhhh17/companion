@@ -87,6 +87,21 @@ describe("a build that fails", () => {
   }, 120000);
 });
 
+describe("a failing build made to pass by checking nothing (found in the first real run)", () => {
+  const initial = { "package.json": pkg({ build: "sh -c 'echo broken >&2; exit 1'" }), "index.html": GOOD_PAGE };
+  test("is caught, and Claude is told to fix the real problem", async () => {
+    const cheat = write("package.json", pkg({ build: "echo Build successful" }));
+    const r = await go(initial, [[cheat], [cheat], [cheat]]);
+    notDone(r);
+    expect(r.engine.calls[1].prompt).toMatch(/checks nothing/);
+    expect(r.engine.calls[1].prompt).toMatch(/real problem/);
+  }, 120000);
+  test("a genuine fix of the build is accepted", async () => {
+    const r = await go(initial, [[write("package.json", pkg({ build: "echo Build successful" }))], [write("package.json", pkg({ build: "sh -c 'test -f index.html'" }))]]);
+    done(r);
+  }, 120000);
+});
+
 describe("a server that answers with an error", () => {
   const files = (status: number) => [write("package.json", pkg({ dev: "bun server.js" })), write("server.js", SERVER(status))];
   test("never done while the main page answers 500", async () => {

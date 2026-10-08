@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
-import { formatUsd, historyWords, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -47,7 +47,7 @@ function Card() {
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted">{notDoneReason(m) ? S.notDone : stateLabel(m.character)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      <div className="row between"><b>{S.characterName}</b><span className="muted">{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : stateLabel(m.character)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
@@ -79,7 +79,7 @@ function Card() {
 
       {m.task?.proof && m.task.proof.steps.length > 0 && (
         <section className={`panel ${notDoneReason(m) ? "amber" : ""}`} aria-label={S.checkingTitle}>
-          <h2>{notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
+          <h2>{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
           {m.task.proof.steps.map((s) => (
             <div className={`line ${s.status === "failed" ? "blocked" : ""}`} key={s.rung}>
               {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
@@ -87,7 +87,7 @@ function Card() {
             </div>
           ))}
           {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
-          {notDoneReason(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
+          {notDoneReason(m) && !isFixing(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
         </section>
       )}
 
