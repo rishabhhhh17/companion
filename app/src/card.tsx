@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
-import { phWords, blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { confirmable, shipWords, phWords, blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -55,6 +55,7 @@ function Card() {
   useEffect(() => {
     if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" });
   }, [m.ph?.stage, m.ph?.text]);
+  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "");
     if (!c || !project) return;
@@ -88,6 +89,7 @@ function Card() {
           <button className="btn" type="button" onClick={plan}>{S.planIt}</button>
           <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
+          <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
         </div>
       )}
       {!project && <div className="notice">{S.noProject}</div>}
@@ -128,6 +130,21 @@ function Card() {
           )}
           {(m.ph.stage === "pasted") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_restore")}>{S.phRestore}</button></div>}
           {["refused", "error", "nothing_to_read", "needs_accessibility", "copied", "restored", "pasted"].includes(m.ph.stage) && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.phDismiss}</button></div>}
+        </section>
+      )}
+
+      {m.ship && (
+        <section className={`panel ${m.ship.canShip ? "" : "amber"}`} aria-label={S.shipTitle}>
+          <h2>{S.shipTitle}</h2>
+          <div className="line"><b>{shipWords(m)}</b></div>
+          {m.ship.gates.map((g) => (
+            <div key={g.id} className={`line ${g.status === "blocked" ? "blocked" : ""}`}>
+              {g.label}: {({ passed: "Passed", blocked: "Blocked", could_not_check: "Could not check", not_applicable: "Not needed" } as const)[g.status]}
+              <span className="muted"> {g.detail}</span>
+              {confirmable(m).includes(g.id) && <div className="row"><button className="btn" type="button" onClick={() => shipIt({ confirm: [g.id] })}>{S.shipConfirm}</button></div>}
+            </div>
+          ))}
+          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.shipClosed" })}>{S.shipClose}</button></div>
         </section>
       )}
 

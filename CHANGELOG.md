@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 4 (night): 9 Oct 2026
+
+**Ship, part one: the safety checks before anything goes on the internet.**
+
+- **Check before shipping** (new button) runs every gate and says in one sentence whether the project may go on the internet.
+- **Secrets:** it looks through your files and the built site for keys, tokens and passwords, including ones every visitor could read (like a secret hidden in a `NEXT_PUBLIC_` setting). A hit blocks shipping and names the file and line, never repeating the secret. Keys that are meant to be public (Stripe publishable keys, Supabase anon keys) are allowed.
+- **Database:** for Supabase projects, a table anyone can reach without row level security blocks shipping. It reads your migration files, and checks the live database when connected.
+- **Checked on this exact version:** nothing ships unless the project was checked, passed, and has not changed since. A gate that could not run is never counted as a pass. You can confirm a gate you checked yourself (like the live database), but never a blocked one.
+- Tried on the real runner: a clean page may ship, a leaked key, a key inside the built site and an unprotected table are all blocked, and an edit after the check blocks it again. The deploy itself comes next.
+
 ## Day 4 (later): 9 Oct 2026
 
 **Build mode, checked against real Claude, and four bugs found and fixed.**

@@ -28,3 +28,5 @@ export const askResearch = (project: string, question: string): Command | null =
   const q = question.replace(/\s+/g, " ").trim();
   return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: DEFAULT_MODEL, budgetUsd: 2 } : null;
 };
+export const checkShip = (project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
+  ({ v: 1, id: id(), type: "ship.check", project, ...(o.runChecks ? { runChecks: true } : {}), ...(o.confirm?.length ? { confirm: o.confirm } : {}) });

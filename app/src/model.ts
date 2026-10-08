@@ -19,7 +19,10 @@ export type PromptHelp = {
   stage: string; app?: string; message?: string; streaming?: string;
   text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
 };
+export type ShipGate = { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean };
+export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[] };
 export type Model = {
+  ship: ShipReport | null;
   ph: PromptHelp | null;
   research: ResearchCard | null;
   rescue: RescueCard | null;
@@ -39,7 +42,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -71,7 +74,7 @@ export function reduce(m: Model, e: Ev): Model {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
     }
-    case "checkpoint.created": return { ...m, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
+    case "checkpoint.created": return { ...m, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
     case "agent.tool": {
       const t = m.task ?? { agent: e.agent, label: "", lines: [], costUsd: 0 };
@@ -111,9 +114,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "assist.prompt.delta": return m.ph ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
     case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
     case "assist.error": return e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } };
+    case "ship.gates": return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
+    case "ui.shipClosed": return { ...m, ship: null };
     case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], file: e.file }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
-    case "ui.planRequested": return { ...m, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
+    case "ui.planRequested": return { ...m, ship: null, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
     case "ui.planCancelled": return { ...m, plan: null, rescue: null };
     case "drive.step": {
       const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
@@ -184,6 +189,18 @@ export function formatUsd(usd: number): string {
 export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
 }
+
+// One sentence: may this go on the internet?
+export function shipWords(m: Model): string | null {
+  const s = m.ship;
+  if (!s) return null;
+  if (s.canShip) return "Ready to ship: every check passed";
+  const b = s.blockedBy.length, n = s.needsYou.length;
+  const parts = [b ? `${b} ${b === 1 ? "thing is" : "things are"} blocking it` : "", n ? `${n} ${n === 1 ? "needs" : "need"} you` : ""].filter(Boolean);
+  return `Not ready to ship: ${parts.join(" and ")}`;
+}
+// The gates that could not run and may be confirmed by the person.
+export const confirmable = (m: Model): string[] => (m.ship?.gates ?? []).filter((g) => g.status === "could_not_check" && g.overridable).map((g) => g.id);
 
 // The one line shown for each Prompt help stage.
 export function phWords(m: Model): string | null {
