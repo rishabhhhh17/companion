@@ -1,6 +1,6 @@
 # M3: Proof before "done". Plan for approval
 
-**Status:** waiting for the founder's approval. No code until approved. **Written:** 8 Oct 2026. **Source:** technical doc section 7, the M3 row in section 18, decision T07 (the proof ladder) and F14 (every user gets the browser check), product doc section 6. Decisions behind it: F14, T07, T05, T06.
+**Status:** approved 8 Oct 2026. Built so far: the ladder, the runner wiring, the fix loop (two retries), the card checklist and Not done, and the seeded broken projects with fixed twins (static page error, failing build, 500 from a server, a deleted test, an old server that must not rescue a crashed one). Left: the basic timeline, then a short real run with the founder. **Written:** 8 Oct 2026. **Source:** technical doc section 7, the M3 row in section 18, decision T07 (the proof ladder) and F14 (every user gets the browser check), product doc section 6. Decisions behind it: F14, T07, T05, T06.
 
 ## What M3 is
 
