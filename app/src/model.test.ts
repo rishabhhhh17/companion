@@ -112,3 +112,27 @@ describe("paths in plain words", () => {
   test("no project means no change", () => expect(plainPath("Write: /a/b", "")).toBe("Write: /a/b"));
   test("works for several paths in one line", () => expect(plainPath("mv /p/a.txt /p/b.txt", "/p")).toBe("mv a.txt b.txt"));
 });
+
+describe("answered approvals and step lines stay in step on every page", () => {
+  const req = ev({ type: "approval.request", approval: "ap_1", agent: "a", checkpoint: "cp", toolUseId: "t1", risk: "git", title: "git push", expiresAt: "z" });
+  test("an announced answer removes the card and the badge on a page that never saw the click", () => {
+    const m = run([req, ev({ type: "approval.resolved", approval: "ap_1", agent: "a", outcome: "denied" })]);
+    expect(m.approvals).toEqual([]);
+  });
+  test("an expired or cancelled approval also goes away", () => {
+    for (const outcome of ["expired", "cancelled", "allowed"]) expect(run([req, ev({ type: "approval.resolved", approval: "ap_1", agent: "a", outcome })]).approvals).toEqual([]);
+  });
+  test("the same step is updated, not repeated", () => {
+    const m = run([...start,
+      ev({ type: "agent.tool", agent: "a", tool: "Bash", summary: "Running: git push", toolUseId: "t1", undoable: false, outcome: "needs_approval" }),
+      ev({ type: "agent.tool", agent: "a", tool: "Bash", summary: "Running: git push", toolUseId: "t1", undoable: false, outcome: "ran" })]);
+    expect(m.task?.lines.length).toBe(1);
+    expect(m.task?.lines[0].outcome).toBe("ran");
+  });
+  test("different steps stay separate", () => {
+    const m = run([...start,
+      ev({ type: "agent.tool", agent: "a", tool: "Write", summary: "Write: a", toolUseId: "t1", undoable: true, outcome: "ran" }),
+      ev({ type: "agent.tool", agent: "a", tool: "Write", summary: "Write: b", toolUseId: "t2", undoable: true, outcome: "ran" })]);
+    expect(m.task?.lines.length).toBe(2);
+  });
+});

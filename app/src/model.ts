@@ -2,7 +2,7 @@
 // Input: events from the runner (protocol) plus a few events from the app itself.
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
-export type ToolLine = { text: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
+export type ToolLine = { id: string; text: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
 export type Receipt = { checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
 export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number };
@@ -53,8 +53,12 @@ export function reduce(m: Model, e: Ev): Model {
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
     case "agent.tool": {
       const t = m.task ?? { agent: e.agent, label: "", lines: [], costUsd: 0 };
-      return { ...m, task: { ...t, lines: [...t.lines, { text: e.summary, outcome: e.outcome ?? "" }] } };
+      const line = { id: String(e.toolUseId ?? ""), text: e.summary, outcome: e.outcome ?? "" };
+      // The same step is updated as it moves from "waiting" to "ran" or "denied", never listed twice.
+      const at = line.id ? t.lines.findIndex((l) => l.id === line.id) : -1;
+      return { ...m, task: { ...t, lines: at >= 0 ? t.lines.map((l, i) => (i === at ? line : l)) : [...t.lines, line] } };
     }
+    case "approval.resolved": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
     case "cost.update": return m.task ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
     case "approval.request":
       if (m.approvals.some((a) => a.id === e.approval)) return m;

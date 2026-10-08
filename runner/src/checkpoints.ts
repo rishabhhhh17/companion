@@ -16,6 +16,7 @@ export type RestoreResult = { restored: string; safetyCheckpoint: string; envRes
 const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_EXCLUDES = [
   "node_modules/", ".next/", "dist/", "build/", ".turbo/", ".cache/", "__pycache__/", ".venv/", "venv/", "target/", "coverage/", ".DS_Store",
+  ".claude/.cc-writes",   // Claude Code's own write tracking, not the user's work
 ];
 const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage"]);
 

@@ -210,3 +210,43 @@ describe("the task log", () => {
     expect(row.label).not.toContain("sk-ant");
   });
 });
+
+describe("an answered approval is announced to everyone", () => {
+  const resolved = (events: Event[]) => events.filter((e) => e.type === "approval.resolved") as any[];
+  test("allowed, with the same tool line marked as ran", async () => {
+    const r = setup([bash("git push origin main")], { executor: async () => ({ ok: true, output: "" }) });
+    const done = r.runner.handle(start(r.project));
+    await waitFor(() => !!request(r.events));
+    const req = request(r.events);
+    await r.runner.handle({ v: 1, id: "a", type: "approval.resolve", approval: req.approval, decision: "allow", scope: "once" });
+    await done;
+    expect(resolved(r.events).map((e) => [e.approval, e.outcome])).toEqual([[req.approval, "allowed"]]);
+    const lines = r.events.filter((e) => e.type === "agent.tool") as any[];
+    expect(lines.map((l) => l.outcome)).toEqual(["needs_approval", "ran"]);
+    expect(new Set(lines.map((l) => l.toolUseId)).size).toBe(1);
+  });
+  test("denied, with the tool line marked as denied", async () => {
+    const r = setup([bash("git push")], { executor: async () => ({ ok: true, output: "" }) });
+    const done = r.runner.handle(start(r.project));
+    await waitFor(() => !!request(r.events));
+    await r.runner.handle({ v: 1, id: "a", type: "approval.resolve", approval: request(r.events).approval, decision: "deny", scope: "once" });
+    await done;
+    expect(resolved(r.events)[0].outcome).toBe("denied");
+    expect((r.events.filter((e) => e.type === "agent.tool") as any[]).map((l) => l.outcome)).toEqual(["needs_approval", "denied"]);
+  });
+  test("expired when nobody answers", async () => {
+    const project = tmp("proj");
+    const events: Event[] = [];
+    const runner = new AgentRunner({ shadowRoot: tmp("shadow"), engine: new ScriptedEngine([bash("git push")]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), approvalTimeoutMs: 30 });
+    await runner.handle(start(project));
+    expect(resolved(events)[0].outcome).toBe("expired");
+  });
+  test("cancelled by the kill switch", async () => {
+    const r = setup([bash("git push")]);
+    const done = r.runner.handle(start(r.project));
+    await waitFor(() => !!request(r.events));
+    await r.runner.handle({ v: 1, id: "k", type: "agent.interruptAll", reason: "kill switch" });
+    await done;
+    expect(resolved(r.events)[0].outcome).toBe("cancelled");
+  });
+});

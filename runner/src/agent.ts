@@ -189,11 +189,15 @@ export class AgentRunner {
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),
       } as never);
       this.state(cmd.agent, "needsYou");
+      let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
       const allowed = await new Promise<boolean>((res) => {
-        const t = setTimeout(() => { s.pending.delete(approval); res(false); }, timeout);
-        s.pending.set(approval, (ok) => { clearTimeout(t); res(ok); });
+        const t = setTimeout(() => { s.pending.delete(approval); how = "expired"; res(false); }, timeout);
+        s.pending.set(approval, (ok) => { clearTimeout(t); how = ok ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; res(ok); });
       });
-      if (!allowed) return { allow: false, reason: "The user did not allow this command." };
+      // Tell every page, so none keeps a stale card or badge.
+      this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
+      if (!allowed) { tell("denied"); return { allow: false, reason: "The user did not allow this command." }; }
+      tell("ran");
     }
     if (tool.name === "Bash") countCommand();
     if (!verdict.undoable) notUndoable.push(String(tool.input.command ?? sum));
