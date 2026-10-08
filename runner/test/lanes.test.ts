@@ -194,3 +194,27 @@ describe("model override for testing", () => {
     expect(readSettings({}).model).toBeUndefined();
   });
 });
+
+import { StubFast } from "../src/lanes.ts";
+describe("the free test stand in for Prompt help (never used unless switched on)", () => {
+  test("it streams a fixed, visibly marked improvement and costs nothing", async () => {
+    const got: string[] = [];
+    const r = await new StubFast().run({ text: "make it work" }, (t) => got.push(t), new AbortController().signal);
+    expect(r.text).toBe("[Test improvement] make it work. Then check that it works.");
+    expect(got.join("")).toBe(r.text);
+    expect(r.costUsd).toBe(0);
+  });
+  test("it keeps the markers it is given, so the same rules apply", async () => {
+    const r = await new StubFast().run({ text: "run [[KEEP_1]] now" }, () => {}, new AbortController().signal);
+    expect(r.text).toContain("[[KEEP_1]]");
+  });
+  test("a stop request ends it", async () => {
+    const ac = new AbortController(); ac.abort();
+    await expect(new StubFast().run({ text: "x" }, () => {}, ac.signal)).rejects.toThrow();
+  });
+  test("it is chosen only by the setting", () => {
+    expect(readSettings({ COMPANION_ASSIST_STUB: "1" }).assistStub).toBe(true);
+    expect(readSettings({}).assistStub).toBe(false);
+    expect(readSettings({ COMPANION_ASSIST_STUB: "yes" }).assistStub).toBe(false);
+  });
+});

@@ -78,6 +78,16 @@ export class FastLane {
   }
 }
 
+// A free stand in for Claude, for trying the Mac parts of Prompt help without using anyone's plan. Switched on by a setting only.
+export class StubFast implements FastLike {
+  async run(req: { text: string }, onDelta: (t: string) => void, signal: AbortSignal) {
+    if (signal.aborted) throw new Error("cancelled");
+    const text = `[Test improvement] ${req.text}. Then check that it works.`;
+    for (const part of text.match(/.{1,12}/g) ?? []) onDelta(part);
+    return { text, costUsd: 0 };
+  }
+}
+
 // ---------- images, in memory only ----------
 
 export type Image = { base64: string; mediaType: string; w?: number; h?: number };

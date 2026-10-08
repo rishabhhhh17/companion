@@ -42,3 +42,6 @@ button { font: inherit; }
 .error { color: var(--danger); margin: 8px 0; }
 .notice { color: var(--muted); margin: 8px 0; }
 h2 { font-size: 13px; margin: 0 0 4px; }
+
+.added { background: rgba(60, 180, 90, 0.25); border-radius: 3px; }
+.removed { background: rgba(220, 70, 70, 0.22); text-decoration: line-through; border-radius: 3px; }

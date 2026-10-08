@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
-import { blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { phWords, blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -51,6 +51,10 @@ function Card() {
     dispatch({ type: "ui.planRequested" });
     void send(diagnose(project));
   };
+  // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk).
+  useEffect(() => {
+    if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" });
+  }, [m.ph?.stage, m.ph?.text]);
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "");
     if (!c || !project) return;
@@ -89,6 +93,43 @@ function Card() {
       {!project && <div className="notice">{S.noProject}</div>}
       {m.notice && <div className="notice">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
+
+      {m.ph && (
+        <section className="panel amber" aria-label={S.phTitle}>
+          <h2>{S.phTitle}</h2>
+          {phWords(m) && <div className="line">{phWords(m)}</div>}
+          {m.ph.stage === "consent" && (
+            <div className="row">
+              <button className="btn primary" type="button" onClick={() => void invoke("ph_consent", { choice: "always" })}>{S.phAlways}</button>
+              <button className="btn" type="button" onClick={() => void invoke("ph_consent", { choice: "once" })}>{S.phOnce}</button>
+              <button className="btn" type="button" onClick={() => void invoke("ph_consent", { choice: "never" })}>{S.phNever}</button>
+            </div>
+          )}
+          {m.ph.stage === "thinking" && m.ph.streaming && <div className="line muted">{m.ph.streaming}</div>}
+          {m.ph.stage === "ready" && (
+            <>
+              <div className="line">{m.ph.diff.map(([op, t], i) => <span key={i} className={op === "+" ? "added" : op === "-" ? "removed" : ""}>{t}</span>)}</div>
+              {m.ph.handback === "copy" && <div className="line muted">{S.phCopyHint}</div>}
+              {m.ph.question && (
+                <>
+                  <div className="line"><b>{m.ph.question}</b></div>
+                  <div className="row">
+                    {(m.ph.options ?? []).map((o) => <button key={o} className="btn" type="button" onClick={() => void invoke("ph_answer", { answer: o })}>{o}</button>)}
+                    <button className="btn" type="button" onClick={() => void invoke("ph_answer", { answer: "Skip this question and just improve it." })}>{S.phSkip}</button>
+                  </div>
+                </>
+              )}
+              <div className="row">
+                <button className="btn primary" type="button" onClick={() => void invoke("ph_accept")}>{S.phUse}</button>
+                <button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.phDismiss}</button>
+              </div>
+              <div className="line muted">{S.phHotkeys}</div>
+            </>
+          )}
+          {(m.ph.stage === "pasted") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_restore")}>{S.phRestore}</button></div>}
+          {["refused", "error", "nothing_to_read", "needs_accessibility", "copied", "restored", "pasted"].includes(m.ph.stage) && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.phDismiss}</button></div>}
+        </section>
+      )}
 
       {m.research && (
         <section className="panel" aria-label={m.research.title}>
