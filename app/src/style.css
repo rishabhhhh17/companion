@@ -1,0 +1,11 @@
+:root { --bg: #ffffff; --fg: #111; --muted: #666; --accent: #ff9a2e; font: 14px -apple-system, "SF Pro Text", sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #9a9a9f; } }
+html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; overflow: hidden; }
+#root { padding: 12px; }
+.row { margin: 3px 0; }
+.muted { color: var(--muted); font-size: 12px; }
+.character { position: absolute; right: 14px; bottom: 14px; width: 64px; height: 64px; border-radius: 50%; background: var(--accent); border: 0; padding: 0; }
+.character:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.type { margin-top: 6px; padding: 4px 16px; }
+input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px; margin: 6px 0; background: var(--bg); color: var(--fg); border: 1px solid var(--muted); border-radius: 6px; }
+.titlebar-space { height: 22px; }
