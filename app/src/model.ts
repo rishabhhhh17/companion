@@ -146,6 +146,13 @@ export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
 }
 
+// The word under the character and at the top of the card. A failed check is "Not done", never a crash.
+export function characterWords(m: Model): string {
+  if (isFixing(m)) return "Fixing a failed check";
+  if (m.character === "error" && notDoneReason(m)) return "Not done";
+  return stateLabel(m.character);
+}
+
 // Show file paths the way a person thinks of them: inside the project, not the whole path on the disk.
 export function plainPath(text: string, project: string): string {
   if (!project) return text;

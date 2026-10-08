@@ -9,6 +9,8 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - After a task changes files, Companion checks the work itself before the character says Done: it builds, runs the tests, starts the project and opens it in a hidden browser.
 - If a check fails, the error goes back to Claude to fix, up to two more tries inside the spending limit. If it still fails, the card says Not done and says why in plain words.
 - A task that deletes a test to make the tests pass is caught.
+- Found by trying it for real: a page whose button called a missing function passed, so the check now presses the page's plain buttons (never risky ones). Claude also "fixed" a failing build by turning it into `echo Build successful`, so weakening a build, test or lint step is now caught too.
+- The card shows each check as it runs, says "Fixing a failed check" while Claude retries, "Fixed after 2 tries" when it worked, and "Not done" with the reason when it did not. Past tasks are listed under Recent tasks.
 - Tested on small broken projects (a page with a code error, a failing build, a server answering with an error, a deleted test). Each must never reach Done, and each fixed twin must.
 
 ## Day 2: 8 Oct 2026

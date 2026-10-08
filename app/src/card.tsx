@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
-import { formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { characterWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -47,7 +47,7 @@ function Card() {
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted">{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : stateLabel(m.character)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}

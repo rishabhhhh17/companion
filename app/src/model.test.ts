@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -226,5 +226,21 @@ describe("a failed check that Claude is still fixing", () => {
   });
   test("a task that never failed is never fixing", () => {
     expect(isFixing(run([...start, ev({ type: "agent.state", agent: "a", state: "working" })]))).toBe(false);
+  });
+});
+
+describe("the word under the character", () => {
+  const failed = ev({ type: "proof.result", agent: "a", verdict: "failed", steps: [{ rung: "checks", label: "Building", status: "failed", detail: "x" }], tries: 3 });
+  test("a task that ended on a failed check says Not done, not Something went wrong", () => {
+    expect(characterWords(run([...start, failed, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe("Not done");
+  });
+  test("a real error still says something went wrong", () => {
+    expect(characterWords(run([...start, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe("Something went wrong");
+  });
+  test("while fixing it says so", () => {
+    expect(characterWords(run([...start, failed, ev({ type: "agent.state", agent: "a", state: "working" })]))).toBe("Fixing a failed check");
+  });
+  test("an ordinary state keeps its usual word", () => {
+    expect(characterWords(run([...start]))).toBe("Thinking");
   });
 });

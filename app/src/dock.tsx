@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "./tauri.ts";
-import { motionFor, stateLabel } from "./model.ts";
+import { characterWords, motionFor } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
@@ -16,7 +16,7 @@ function Dock() {
     reducedQuery.addEventListener("change", f);
     return () => reducedQuery.removeEventListener("change", f);
   }, []);
-  const label = stateLabel(m.character);
+  const label = characterWords(m);
   // A click opens or closes the card; dragging moves the character along the screen edge.
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
   const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false }; (e.target as HTMLElement).setPointerCapture(e.pointerId); void invoke("char_click"); };

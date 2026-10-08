@@ -1,6 +1,6 @@
 # M3: Proof before "done". Plan for approval
 
-**Status:** approved 8 Oct 2026. Built so far: the ladder, the runner wiring, the fix loop (two retries), the card checklist and Not done, and the seeded broken projects with fixed twins (static page error, failing build, 500 from a server, a deleted test, an old server that must not rescue a crashed one). Left: the basic timeline, then a short real run with the founder. **Written:** 8 Oct 2026. **Source:** technical doc section 7, the M3 row in section 18, decision T07 (the proof ladder) and F14 (every user gets the browser check), product doc section 6. Decisions behind it: F14, T07, T05, T06.
+**Status:** built and tried for real on 9 Oct 2026. The real run with the founder found three holes, all fixed: the browser check did not press buttons, a task could pass by turning the build into an `echo`, and the character said "Something went wrong" for a failed check. Left: merge the branch, then rungs 6 and 7 move to M4. **Written:** 8 Oct 2026. **Source:** technical doc section 7, the M3 row in section 18, decision T07 (the proof ladder) and F14 (every user gets the browser check), product doc section 6. Decisions behind it: F14, T07, T05, T06.
 
 ## What M3 is
 
