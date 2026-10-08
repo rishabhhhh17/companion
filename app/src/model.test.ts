@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, initial, motionFor, plainError, reduce, type Model } from "./model.ts";
+import { formatUsd, initial, motionFor, plainError, plainPath, reduce, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -104,4 +104,11 @@ describe("motion and money", () => {
     expect(formatUsd(0.069)).toBe("7 cents");
     expect(formatUsd(1.234)).toBe("$1.23");
   });
+});
+
+describe("paths in plain words", () => {
+  test("the project folder is dropped from a path", () => expect(plainPath("Write: /Users/me/Developer/companion-playground/index.html", "/Users/me/Developer/companion-playground")).toBe("Write: index.html"));
+  test("a path outside the project is left alone", () => expect(plainPath("Write: /etc/hosts", "/Users/me/p")).toBe("Write: /etc/hosts"));
+  test("no project means no change", () => expect(plainPath("Write: /a/b", "")).toBe("Write: /a/b"));
+  test("works for several paths in one line", () => expect(plainPath("mv /p/a.txt /p/b.txt", "/p")).toBe("mv a.txt b.txt"));
 });

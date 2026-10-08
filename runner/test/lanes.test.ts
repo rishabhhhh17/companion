@@ -179,3 +179,18 @@ describe("the assist service turns commands into events", () => {
     expect((events.find((e) => e.type === "assist.error") as any).reason).toBe("cancelled");
   });
 });
+
+import { pickModel, readSettings } from "../src/engines.ts";
+describe("model override for testing", () => {
+  test("a model in the settings wins over the page's", () => expect(pickModel("claude-sonnet-5-5", "claude-haiku-4-5-20251001")).toBe("claude-haiku-4-5-20251001"));
+  test("without one, the page's model is used", () => {
+    expect(pickModel("claude-sonnet-5-5", undefined)).toBe("claude-sonnet-5-5");
+    expect(pickModel("claude-sonnet-5-5", "  ")).toBe("claude-sonnet-5-5");
+  });
+  test("settings read the model and the plan route from the environment", () => {
+    const s = readSettings({ COMPANION_MODEL: "m", COMPANION_ROUTE: "plan" });
+    expect(s.model).toBe("m");
+    expect(s.route).toBe("plan");
+    expect(readSettings({}).model).toBeUndefined();
+  });
+});

@@ -90,3 +90,9 @@ export function formatUsd(usd: number): string {
 export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
 }
+
+// Show file paths the way a person thinks of them: inside the project, not the whole path on the disk.
+export function plainPath(text: string, project: string): string {
+  if (!project) return text;
+  return text.split(project.endsWith("/") ? project : project + "/").join("");
+}
