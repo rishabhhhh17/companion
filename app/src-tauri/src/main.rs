@@ -3,6 +3,9 @@
 //! Rule 9: never steal keyboard focus. Nothing here calls show(), set_focus() or
 //! makeKeyAndOrderFront on a panel.
 
+mod docking;
+mod permissions;
+
 mod runner;
 
 use objc2::rc::Retained;
@@ -19,9 +22,13 @@ use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
+use docking::{card_frame, choice, dock_frame, inside, pick, signature, snap, Prefs, Rect, Screen};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::image::Image;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -92,7 +99,11 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel.setFloatingPanel(true);
     panel.setHidesOnDeactivate(false);
     panel.setLevel(3);
-    panel.setCollectionBehavior(B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::Stationary | B::IgnoresCycle);
+    // By default the character stays out of full screen apps (the product default). Setting
+    // COMPANION_OVER_FULLSCREEN=1 adds fullScreenAuxiliary so it shows over them (a user setting later).
+    let mut behavior = B::CanJoinAllSpaces | B::Stationary | B::IgnoresCycle;
+    if std::env::var("COMPANION_OVER_FULLSCREEN").is_ok_and(|v| v == "1") { behavior |= B::FullScreenAuxiliary; }
+    panel.setCollectionBehavior(behavior);
     panel.setBackgroundColor(Some(&NSColor::whiteColor()));
     if card {
         panel.setTitlebarAppearsTransparent(true);
@@ -113,9 +124,88 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
 
 /// Place the card next to the character, keeping its top level with the character's top.
 fn place_card(d: &NSPanel, c: &NSPanel) {
-    let (df, h) = (d.frame(), CARD_H.load(Ordering::SeqCst) as f64);
-    c.setFrame_display(NSRect::new(NSPoint::new(df.origin.x - CARD.0 - 8.0, df.origin.y + df.size.height - h), NSSize::new(CARD.0, h)), true);
+    let mtm = MainThreadMarker::new().unwrap();
+    let list = screens_now(mtm);
+    let Some(first) = list.first() else { return };
+    let ph = first.frame[3];
+    let df = from_appkit(d.frame(), ph);
+    let (cx, cy) = (df[0] + df[2] / 2.0, df[1] + df[3] / 2.0);
+    let scr = list.iter().find(|s| cx >= s.frame[0] && cx < s.frame[0] + s.frame[2] && cy >= s.frame[1] && cy < s.frame[1] + s.frame[3]).unwrap_or(first);
+    let edge = with_prefs(|p| choice(p, &scr.id).0);
+    let cf = card_frame(df, (CARD.0, CARD_H.load(Ordering::SeqCst) as f64), scr.work, edge);
+    c.setFrame_display(to_appkit(cf, ph), true);
 }
+
+// ---------- screens and docking glue (the maths is in docking.rs, tested) ----------
+
+fn data_dir() -> PathBuf { PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app") }
+fn prefs_path() -> PathBuf { data_dir().join("dock.json") }
+static PREFS: Mutex<Option<Prefs>> = Mutex::new(None);
+static SIG: Mutex<String> = Mutex::new(String::new());
+
+fn with_prefs<R>(f: impl FnOnce(&mut Prefs) -> R) -> R {
+    let mut g = PREFS.lock().unwrap();
+    let p = g.get_or_insert_with(|| std::fs::read_to_string(prefs_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default());
+    f(p)
+}
+fn save_prefs() { with_prefs(|p| { let _ = std::fs::write(prefs_path(), serde_json::to_string(p).unwrap_or_default()); }); }
+
+// AppKit counts from the bottom left of the primary screen; the maths counts from the top left.
+fn to_appkit(r: Rect, primary_h: f64) -> NSRect { NSRect::new(NSPoint::new(r[0], primary_h - (r[1] + r[3])), NSSize::new(r[2], r[3])) }
+fn from_appkit(f: NSRect, primary_h: f64) -> Rect { [f.origin.x, primary_h - (f.origin.y + f.size.height), f.size.width, f.size.height] }
+
+fn screens_now(mtm: MainThreadMarker) -> Vec<Screen> {
+    let list = NSScreen::screens(mtm);
+    let primary_h = list.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+    list.iter().enumerate().map(|(i, s)| {
+        let (f, v) = (s.frame(), s.visibleFrame());
+        let frame = from_appkit(f, primary_h);
+        Screen { id: format!("{}x{}@{},{}", frame[2], frame[3], frame[0], frame[1]), frame, work: from_appkit(v, primary_h), primary: i == 0 }
+    }).collect()
+}
+
+/// Put the character where it belongs: the saved display, else the same size, else under the mouse,
+/// else the primary one; inside the work area, on its saved edge at its saved height.
+fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
+    let list = screens_now(mtm);
+    let Some(first) = list.first() else { return };
+    let ph = first.frame[3];
+    let m = NSEvent::mouseLocation();
+    let Some((target, how)) = with_prefs(|p| pick(&list, p, (m.x, ph - m.y)).map(|(s, h)| (s.clone(), h))) else { return };
+    let (edge, pct) = with_prefs(|p| {
+        if p.last_screen != target.id { p.last_screen = target.id.clone(); }
+        choice(p, &target.id)
+    });
+    let f = dock_frame(target.work, DOCK, edge, pct);
+    with_panels(|d, c| {
+        d.setFrame_display(to_appkit(f, ph), true);
+        if c.isVisible() { place_card(d, c); }
+    });
+    if !quiet { log("redock", json!({ "reason": reason, "how": how, "screen": target.id, "frame": f, "inside_work": inside(f, target.work) })); }
+}
+
+/// Dragging the character: it snaps to the nearer side edge of the display under the cursor.
+#[tauri::command]
+fn drag_dock(app: AppHandle, x: f64, y: f64) {
+    let _ = app.run_on_main_thread(move || {
+        let mtm = MainThreadMarker::new().unwrap();
+        let list = screens_now(mtm);
+        let Some(first) = list.first() else { return };
+        let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
+        let (edge, pct) = snap(target.work, DOCK, x, y);
+        with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); });
+        apply_dock(mtm, "drag", true);
+    });
+}
+
+#[tauri::command]
+fn drop_dock(app: AppHandle) {
+    save_prefs();
+    let _ = app.run_on_main_thread(|| log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen) }))));
+}
+
+#[tauri::command]
+fn permissions_status() -> permissions::Permissions { permissions::current() }
 
 /// Show the card. `keyboard` is true only when the user asked to type (hotkey or Type button);
 /// clicking the character shows the card without taking the keyboard.
@@ -214,6 +304,9 @@ fn close_card(app: AppHandle) {
 
 fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
+    // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.
+    let sig = signature(&screens_now(mtm));
+    if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } { apply_dock(mtm, "screens_changed", false); }
     let act = active(mtm);
     let fr = front();
     let ck = with_panels(|_, c| c.isKeyWindow()).unwrap_or(false);
@@ -286,12 +379,11 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command, drag_dock, drop_dock, permissions_status])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
-            let vf = NSScreen::mainScreen(mtm).map(|s| s.visibleFrame()).unwrap();
-            let dock_frame = NSRect::new(NSPoint::new(vf.origin.x + vf.size.width - DOCK.0, vf.origin.y + vf.size.height / 2.0 - DOCK.1 / 2.0), NSSize::new(DOCK.0, DOCK.1));
+            let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
             let mk = |label: &str, page: &str, size: (f64, f64)| {
                 WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
                     .visible(false)
@@ -320,19 +412,41 @@ fn main() {
             });
             let monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown, &block) };
             std::mem::forget(monitor);
-            dock.orderFrontRegardless();
-            log("dock_shown", json!({ "app_active": active(mtm) }));
             PANELS.with(|p| *p.borrow_mut() = Some((dock, card)));
+            apply_dock(mtm, "launch", false);
+            *SIG.lock().unwrap() = signature(&screens_now(mtm));
+            with_panels(|d, _| d.orderFrontRegardless());
+            log("dock_shown", json!({ "app_active": active(mtm) }));
             let _ = APP.set(app.handle().clone());
             let h = app.handle().clone();
             std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(Duration::from_millis(500));
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || tick(&h2));
             });
             app.global_shortcut().register(k)?;
             app.global_shortcut().register(x)?;
             start_runner(app.handle());
+            // The menu bar icon: hide or show, stop everything, quit. Clicking it never takes your typing.
+            let hide = MenuItemBuilder::with_id("hide", "Hide or show Companion").build(app)?;
+            let stop = MenuItemBuilder::with_id("stop", "Stop everything").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit Companion").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&hide, &stop, &quit]).build()?;
+            TrayIconBuilder::new()
+                .icon(Image::from_bytes(include_bytes!("../icons/32x32.png"))?)
+                .tooltip("Companion")
+                .menu(&menu)
+                .on_menu_event(|app, e| match e.id().as_ref() {
+                    "hide" => { let _ = app.run_on_main_thread(|| { with_panels(|d, c| if d.isVisible() { d.orderOut(None); c.orderOut(None); } else { d.orderFrontRegardless(); }); }); }
+                    "stop" => {
+                        let r = app.state::<runner::Runner>().stop_everything("menu");
+                        log("menu_stop_everything", json!({ "sent": r.is_ok() }));
+                        let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
             let h = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(2));

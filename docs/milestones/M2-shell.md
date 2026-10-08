@@ -1,6 +1,6 @@
 # M2: The app shell. Plan for approval
 
-**Status:** waiting for the founder's approval. No code until approved. **Written:** 8 Oct 2026. **Source:** technical doc section 4 (the panel recipe, as changed by T01), section 2 (processes), the M2 row in section 18; product doc section 4 (Presence). Decisions behind it: T01 (native panels), F04 (characters), F11 (never steal focus, never watch), F15 (agents first, logic before looks).
+**Status:** approved by the founder on 8 Oct 2026, Option A (the essentials). Built so far: the app skeleton with native panels, the runner link, the character and cards, the ask box, the stop everything key, docking per display with dragging, the menu bar icon, and the permissions framework. **Left: the hands on check with the founder.** Hidden over full screen apps is done by leaving out fullScreenAuxiliary (to be checked in the hands on session); the small needs-you badge over full screen apps is not built yet. **Written:** 8 Oct 2026. **Source:** technical doc section 4 (the panel recipe, as changed by T01), section 2 (processes), the M2 row in section 18; product doc section 4 (Presence). Decisions behind it: T01 (native panels), F04 (characters), F11 (never steal focus, never watch), F15 (agents first, logic before looks).
 
 ## What M2 is
 
