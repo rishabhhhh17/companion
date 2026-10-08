@@ -91,6 +91,8 @@ describe("the ceiling in the runner", () => {
   test("a plan stops starting new steps once the ceiling is reached", async () => {
     const plan: Step = { text: '```json\n["One","Two","Three"]\n```', costUsd: 0.01 };
     const r = setup([[plan], [write("1.txt", 0.3)], [write("2.txt", 0.3)], [write("3.txt", 0.3)]], 0.7);
+    await Bun.sleep(100);
+    await Bun.sleep(100);
     await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "d", goal: "g", model: "m", budgetUsd: 5 });
     await r.runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "d", steps: ["One", "Two", "Three"] });
     const done = r.events.find((e) => e.type === "drive.done") as any;

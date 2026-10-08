@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, approvePlan, chooseLoop, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
-import { characterWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { answerApproval, approvePlan, chooseLoop, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -88,6 +88,15 @@ function Card() {
         </section>
       )}
 
+      {m.paused && (
+        <section className="panel amber" aria-label={S.pausedTitle}>
+          <h2>{S.pausedTitle}</h2>
+          <div className="line">{pausedWords(m)}</div>
+          <div className="line muted">{S.pausedHelp}</div>
+          <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
+        </section>
+      )}
+
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>
           <h2>{S.stuckTitle}</h2>
@@ -105,6 +114,7 @@ function Card() {
       {m.drive && (
         <section className="panel">
           <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
+          {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
         </section>
       )}
 

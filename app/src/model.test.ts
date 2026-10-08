@@ -1,8 +1,8 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { approvePlan, chooseLoop, planDrive } from "./commands.ts";
-import { driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { approvePlan, chooseLoop, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
+import { pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -315,5 +315,25 @@ describe("the daily limit in plain words", () => {
   });
   test("a plan that stopped on it says so", () => {
     expect(driveWords(run([ev({ type: "drive.done", agent: "a", status: "daily_limit", completed: 1, total: 3, usdEstimate: 0 })]))).toBe("Stopped after 1 of 3 steps: the daily limit for this project was reached");
+  });
+});
+
+describe("Drive: paused because you took the wheel", () => {
+  const paused = (reason: string, path?: string) => ev({ type: "drive.paused", agent: "a", reason, ...(path ? { path } : {}) });
+  test("a pause shows why, in plain words", () => {
+    expect(pausedWords(run([paused("files_changed", "src/app.js")]))).toBe("Paused because you changed src/app.js");
+    expect(pausedWords(run([paused("editor")]))).toBe("Paused because you opened your editor");
+    expect(pausedWords(run([paused("terminal")]))).toBe("Paused because you opened your terminal");
+    expect(pausedWords(run([paused("you")]))).toBe("Paused because you asked it to");
+  });
+  test("it is not paused until told so", () => expect(pausedWords(run([...start]))).toBeNull());
+  test("resuming clears the pause", () => expect(pausedWords(reduce(run([paused("editor")]), { type: "ui.resumed" } as never))).toBeNull());
+  test("the plan carrying on or ending clears it too", () => {
+    expect(pausedWords(run([paused("editor"), ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "x", status: "started" })]))).toBeNull();
+    expect(pausedWords(run([paused("editor"), ev({ type: "drive.done", agent: "a", status: "interrupted", completed: 0, total: 1, usdEstimate: 0 })]))).toBeNull();
+  });
+  test("the commands are valid protocol", () => {
+    expect(parseCommand(serialize(resumeDrive())).ok).toBe(true);
+    expect(parseCommand(serialize(pauseDrive())).ok).toBe(true);
   });
 });

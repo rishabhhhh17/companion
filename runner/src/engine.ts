@@ -13,6 +13,8 @@ export type EngineOptions = {
   resumeSession?: string;
   // Planning: the engine may read the project but must not change anything.
   planOnly?: boolean;
+  // The engine tells us when a tool it ran has finished (so we know which file changes were the agent's own).
+  toolDone?: (toolUseId?: string) => void;
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

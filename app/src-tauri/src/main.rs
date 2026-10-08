@@ -7,6 +7,7 @@ mod docking;
 mod fullscreen;
 mod permissions;
 mod visibility;
+mod wheel;
 
 mod runner;
 
@@ -68,6 +69,13 @@ fn front() -> String {
         .map(|s| s.to_string())
         .unwrap_or_default()
 }
+
+/// The id of the app in front (for example "com.apple.Terminal"). Only the id, never any window content.
+fn front_id() -> String {
+    NSWorkspace::sharedWorkspace().frontmostApplication().and_then(|a| a.bundleIdentifier()).map(|s| s.to_string()).unwrap_or_default()
+}
+
+static WHEEL: Mutex<Option<wheel::Wheel>> = Mutex::new(None);
 
 fn active(mtm: MainThreadMarker) -> bool {
     NSApplication::sharedApplication(mtm).isActive()
@@ -345,6 +353,12 @@ fn tick(app: &AppHandle) {
     if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } { apply_dock(mtm, "screens_changed", false); }
     let act = active(mtm);
     let fr = front();
+    // Take the wheel: the editor or terminal came to the front while a plan runs, so ask it to pause.
+    if let Some(reason) = WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_front(&front_id()) {
+        let cmd = json!({ "v": 1, "id": format!("wheel{}", now()), "type": "drive.pause", "agent": "builder-1", "reason": reason });
+        let _ = app.state::<runner::Runner>().send(&cmd);
+        log("take_the_wheel", json!({ "reason": reason }));
+    }
     let ck = with_panels(|_, c| c.isKeyWindow()).unwrap_or(false);
     LAST.with(|l| {
         let mut l = l.borrow_mut();
@@ -376,7 +390,10 @@ fn start_runner(app: &AppHandle) {
         .unwrap_or_else(|| format!("{}/Developer/companion-playground", std::env::var("HOME").unwrap_or_default()));
     let _ = PROJECT.set(project);
     let result = runner::locations(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"))
-        .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, |t| log("runner_event", json!({ "kind": t }))));
+        .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, |t| {
+            log("runner_event", json!({ "kind": t }));
+            WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_runner_event(t);
+        }));
     match result {
         Ok(()) => log("runner_started", json!({})),
         Err(e) => {

@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 3 (evening): 9 Oct 2026
+
+**Drive got its safety rails.**
+
+- **Fix loop breaker:** if the same failure happens three times in a row, the plan stops and asks: try a different approach, or stop here.
+- **House rules:** a short list in `.companion/rules.txt` (for example "never edit pricing.txt", "ask before installing packages"). They are enforced in code, can only make things stricter, and the agent can never change them.
+- **Daily limit per project:** the app keeps its own count of what each project spent today and stops new work at the limit.
+- **Take the wheel:** the plan pauses within about a second when you change a project file yourself, or bring your editor or terminal to the front. Nothing more runs until you press Carry on, and your changes are kept. It only looks at which app is in front and which files changed, never at what you type.
+
 ## Day 3 (later): 9 Oct 2026
 
 **Drive: a plan first, then one checked step at a time.**

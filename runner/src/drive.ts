@@ -37,3 +37,5 @@ export function failureSignature(f: { rung: string; detail: string }): string {
 export const differentPrompt = (title: string, f: { label: string; detail: string }) =>
   `Step: ${title}\n\nThe same check has failed three times in a row with the same problem, so the current approach is not working.\nFailed check: ${f.label}\nWhat happened: ${f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
 export const STUCK_OPTIONS = [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }];
+export const pausedPrompt = (title: string) =>
+  `You were paused because the person looked at or changed the project themselves. Re-read whatever you need, keep their changes, and carry on with this step: ${title}`;

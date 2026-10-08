@@ -23,8 +23,10 @@ export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number };
 export type DriveApprove = Envelope & { type: "drive.approve"; agent: string; steps: string[] };
 export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice: "different" | "stop" };
+export type DrivePause = Envelope & { type: "drive.pause"; agent: string; reason: "editor" | "terminal" | "you" };
+export type DriveResume = Envelope & { type: "drive.resume"; agent: string };
 export type TasksList = Envelope & { type: "tasks.list"; project: string };
-export type Command = LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -63,10 +65,11 @@ export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval:
 export type PlanReady = Envelope & { type: "plan.ready"; agent: string; steps: { id: number; title: string }[]; truncated: boolean; estimateUsd: number };
 export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: number; total: number; title: string; status: "started" | "done" | "not_done" | "stopped" | "over_budget" };
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
+export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reason: "files_changed" | "editor" | "terminal" | "you"; path?: string };
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[] };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
-export type Event = LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -83,6 +86,8 @@ const COMMANDS: Record<string, Check[]> = {
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
+  "drive.pause": [str("agent"), oneOf("reason", ["editor", "terminal", "you"])],
+  "drive.resume": [str("agent")],
   "loop.choose": [str("agent"), oneOf("choice", ["different", "stop"])],
   "agent.send": [str("agent"), str("text")],
   "agent.interrupt": [str("agent")],
@@ -97,6 +102,7 @@ const COMMANDS: Record<string, Check[]> = {
 const EVENTS: Record<string, Check[]> = {
   "runner.hello": [str("runnerVersion"), str("sdk")],
   "tasks.list": [str("project"), list("tasks")],
+  "drive.paused": [str("agent"), oneOf("reason", ["files_changed", "editor", "terminal", "you"])],
   "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options")],
   "plan.ready": [str("agent"), list("steps"), bool("truncated"), num("estimateUsd")],
   "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],

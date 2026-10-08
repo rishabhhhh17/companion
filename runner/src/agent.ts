@@ -7,7 +7,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
-import { differentPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
+import { ProjectWatcher } from "./watcher.ts";
+import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
@@ -85,6 +86,16 @@ export class AgentRunner {
   private driving = new Set<string>();
   private driveStop = new Set<string>();
   private choices = new Map<string, (c: string) => void>();
+  private watchers = new Map<string, ProjectWatcher>();
+  private pauseReq = new Map<string, { reason: string; path?: string }>();
+  private resumers = new Map<string, (c: string) => void>();
+
+  // Take the wheel: stop the current step now; the plan waits for the person to resume.
+  private requestPause(agent: string, reason: string, path?: string) {
+    if (!this.watchers.has(agent) || this.pauseReq.has(agent) || this.driveStop.has(agent)) return;
+    this.pauseReq.set(agent, { reason, path });
+    this.sessions.get(agent)?.abort.abort();
+  }
   private counter = 0;
   private ledger: Ledger;
   constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); }
@@ -105,13 +116,22 @@ export class AgentRunner {
       case "agent.start": await this.run(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "drive.approve": return this.driveApprove(cmd);
+      case "drive.pause": {
+        if (!this.watchers.has(cmd.agent)) { this.fail("Nothing is running to pause.", cmd.agent); return; }
+        this.requestPause(cmd.agent, cmd.reason); return;
+      }
+      case "drive.resume": {
+        const r = this.resumers.get(cmd.agent);
+        if (!r) { this.fail("The agent is not paused.", cmd.agent); return; }
+        this.resumers.delete(cmd.agent); r("resume"); return;
+      }
       case "loop.choose": {
         const r = this.choices.get(cmd.agent);
         if (!r) { this.fail("Nothing is waiting for an answer.", cmd.agent); return; }
         this.choices.delete(cmd.agent); r(cmd.choice); return;
       }
-      case "agent.interrupt": { this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interrupt": { this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
+      case "agent.interruptAll": { for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
@@ -168,7 +188,8 @@ export class AgentRunner {
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       const gen = this.o.engine.start({
         prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession,
-        authorize: (tool) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }),
+        authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
+        toolDone: (id) => { if (id) this.watchers.get(cmd.agent)?.end(id); },
       });
       try {
         let next = await gen.next();
@@ -183,7 +204,8 @@ export class AgentRunner {
           let result: ToolResult | undefined;
           if (turn.tool) {
             const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
-            result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
+            try { result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason }; }
+            finally { if (a.wid) this.watchers.get(cmd.agent)?.end(a.wid); }
             if (abort.signal.aborted) { status = "interrupted"; return false; }
           } else if (turn.text) {
             this.state(cmd.agent, "working");
@@ -219,11 +241,12 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
       let res: LadderResult;
+      this.watchers.get(cmd.agent)?.begin("ladder");
       try {
         res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal });
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
-      }
+      } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries } as never);
       if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; break; }
@@ -329,16 +352,41 @@ export class AgentRunner {
     this.driveStop.delete(cmd.agent);
     const total = steps.length;
     let remaining = plan.budgetUsd - plan.usd, spent = plan.usd, completed = 0, status = "done", session = plan.sessionId;
+    // Take the wheel: watch for changes the agent did not make, only while the plan is running.
+    const watcher = new ProjectWatcher(plan.project, (path) => this.requestPause(cmd.agent, "files_changed", path));
+    this.watchers.set(cmd.agent, watcher);
+    watcher.start();
+    // Wait here until the person resumes (true) or stops (false).
+    const pauseHere = async (): Promise<boolean> => {
+      const p = this.pauseReq.get(cmd.agent);
+      if (!p) return true;
+      this.emit({ type: "drive.paused", agent: cmd.agent, reason: p.reason, ...(p.path ? { path: p.path } : {}) } as never);
+      this.state(cmd.agent, "needsYou");
+      const choice = await new Promise<string>((res) => this.resumers.set(cmd.agent, res));
+      this.pauseReq.delete(cmd.agent);
+      return choice === "resume" && !this.driveStop.has(cmd.agent);
+    };
     try {
       for (let i = 0; i < total; i++) {
         const index = i + 1, title = steps[i];
         if (this.driveStop.has(cmd.agent)) { status = "interrupted"; break; }
+        if (!(await pauseHere())) { status = "interrupted"; break; }
         if (this.room(plan.project) <= 0) { status = "daily_limit"; this.dailyLimit(cmd.agent); this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
         const stepCmd = (prompt: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt, model: plan.model, budgetUsd: remaining });
-        let r = await this.run(stepCmd(stepPrompt(index, total, title)), { resumeSession: session });
-        session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
+        let prompt = stepPrompt(index, total, title);
+        let r: Awaited<ReturnType<AgentRunner["run"]>>;
+        for (;;) {
+          r = await this.run(stepCmd(prompt), { resumeSession: session });
+          session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
+          // Paused in the middle of the step: wait, then carry on with the same step.
+          if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
+            if (await pauseHere()) { prompt = pausedPrompt(title); continue; }
+            r = { ...r, status: "interrupted" };
+          }
+          break;
+        }
         // The same failure three times: stop and ask, once per step.
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
           this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck, options: STUCK_OPTIONS } as never);
@@ -354,13 +402,16 @@ export class AgentRunner {
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: r.status === "interrupted" ? "stopped" : r.status === "error_max_budget_usd" ? "over_budget" : "not_done" } as never);
         break;
       }
-    } finally { this.driving.delete(cmd.agent); }
+    } finally {
+      watcher.stop(); this.watchers.delete(cmd.agent); this.pauseReq.delete(cmd.agent); this.resumers.delete(cmd.agent);
+      this.driving.delete(cmd.agent);
+    }
     this.emit({ type: "drive.done", agent: cmd.agent, status, completed, total, usdEstimate: Math.round(spent * 1e6) / 1e6 } as never);
   }
 
   // Judge one tool call. Returns whether it may run. Used by the runner for scripted engines
   // and by the real engine's PreToolUse hook; either way the safety rules are the same.
-  private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void): Promise<{ allow: boolean; reason: string }> {
+  private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
     const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
     // House rules can only make a call stricter, never looser.
@@ -398,6 +449,9 @@ export class AgentRunner {
     if (!verdict.undoable) notUndoable.push(String(tool.input.command ?? sum));
     this.state(cmd.agent, "working");
     if (verdict.decision === "allow") tell("ran");
-    return { allow: true, reason: "" };
+    // From here until the tool finishes, file changes are the agent's own.
+    const wid = sdkId ?? toolUseId;
+    this.watchers.get(cmd.agent)?.begin(wid);
+    return { allow: true, reason: "", wid };
   }
 }

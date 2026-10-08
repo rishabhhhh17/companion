@@ -19,3 +19,4 @@
 {"v":1,"id":"e32","type":"drive.step","agent":"driver-1","index":1,"total":2,"title":"Make the page","status":"started"}
 {"v":1,"id":"e33","type":"drive.done","agent":"driver-1","status":"done","completed":2,"total":2,"usdEstimate":0.31}
 {"v":1,"id":"e34","type":"loop.stuck","agent":"driver-1","index":2,"title":"Add a booking form","failure":{"label":"Opening it in a browser","detail":"The page logged an error: x is not defined"},"options":[{"id":"different","label":"Try a different approach"},{"id":"stop","label":"Stop here"}]}
+{"v":1,"id":"e35","type":"drive.paused","agent":"driver-1","reason":"files_changed","path":"src/app.js"}

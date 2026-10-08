@@ -27,7 +27,7 @@ function setup(rounds: Step[][], proofs: LadderResult[] = [ok()]) {
   const log = new TaskLog(":memory:");
   let n = 0;
   const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)] });
-  const plan = (budgetUsd = 5) => runner.handle({ v: 1, id: "p1", type: "drive.plan", project, agent: "d1", goal: "build a booking page", model: "m", budgetUsd });
+  const plan = async (budgetUsd = 5) => { await Bun.sleep(100); /* project files are a moment old, like real ones */ return runner.handle({ v: 1, id: "p1", type: "drive.plan", project, agent: "d1", goal: "build a booking page", model: "m", budgetUsd }); };
   const approve = (steps: string[]) => runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "d1", steps });
   return { project, events, engine, log, runner, plan, approve };
 }

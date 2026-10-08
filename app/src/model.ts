@@ -12,7 +12,9 @@ export type HistoryItem = { id: number; label: string; status: string; usd: numb
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
 export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[] };
+export type Paused = { reason: string; path?: string };
 export type Model = {
+  paused: Paused | null;
   stuck: StuckCard | null;
   plan: PlanCard | null;
   drive: DriveProgress | null;
@@ -28,7 +30,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -90,13 +92,15 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "plan.ready": return { ...m, plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, error: null, notice: null };
     case "loop.stuck": return { ...m, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: e.options ?? [] } };
+    case "drive.paused": return { ...m, paused: { reason: e.reason, path: e.path } };
+    case "ui.resumed": return { ...m, paused: null };
     case "ui.stuckAnswered": return { ...m, stuck: null };
     case "ui.planCancelled": return { ...m, plan: null };
     case "drive.step": {
       const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
-      return { ...m, plan: null, stuck: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
+      return { ...m, plan: null, stuck: null, paused: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
     }
-    case "drive.done": return { ...m, plan: null, stuck: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
+    case "drive.done": return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
     case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
@@ -160,6 +164,16 @@ export function formatUsd(usd: number): string {
 // The one word shown under the character (plain, never cute).
 export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
+}
+
+// Why the agent is waiting for you, in one plain sentence.
+export function pausedWords(m: Model): string | null {
+  const p = m.paused;
+  if (!p) return null;
+  if (p.reason === "files_changed") return `Paused because you changed ${p.path ?? "a file"}`;
+  if (p.reason === "editor") return "Paused because you opened your editor";
+  if (p.reason === "terminal") return "Paused because you opened your terminal";
+  return "Paused because you asked it to";
 }
 
 // How a Drive plan ended, in one plain sentence.
