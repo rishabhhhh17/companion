@@ -32,7 +32,7 @@ button { font: inherit; }
 .row.between { justify-content: space-between; }
 .ask { display: flex; gap: 6px; margin: 8px 0; }
 .ask input { flex: 1; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
-.btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.btn { white-space: nowrap; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
 .btn.danger { color: var(--danger); }
 .panel { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }

@@ -1,6 +1,8 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { parseCommand, serialize } from "../../protocol/index.ts";
+import { approvePlan, chooseLoop, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
+import { blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -242,5 +244,130 @@ describe("the word under the character", () => {
   });
   test("an ordinary state keeps its usual word", () => {
     expect(characterWords(run([...start]))).toBe("Thinking");
+  });
+});
+
+describe("Drive: the plan card and progress", () => {
+  const plan = ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "Make the page" }, { id: 2, title: "Add a form" }], truncated: false, estimateUsd: 0.5 });
+  test("a plan waiting for approval is shown with its steps and cost estimate", () => {
+    const m = run([plan]);
+    expect(m.plan).toMatchObject({ agent: "a", steps: ["Make the page", "Add a form"], truncated: false, estimateUsd: 0.5 });
+  });
+  test("the character asks for you while a plan waits", () => {
+    expect(run([plan, ev({ type: "agent.state", agent: "a", state: "needsYou" })]).character).toBe("needsYou");
+  });
+  test("starting the work removes the plan card and shows progress", () => {
+    const m = run([plan, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "Make the page", status: "started" })]);
+    expect(m.plan).toBeNull();
+    expect(m.drive).toMatchObject({ index: 1, total: 2, title: "Make the page", status: "started" });
+  });
+  test("progress moves from step to step", () => {
+    const m = run([plan, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "Make the page", status: "started" }), ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "Make the page", status: "done" }), ev({ type: "drive.step", agent: "a", index: 2, total: 2, title: "Add a form", status: "started" })]);
+    expect(m.drive).toMatchObject({ index: 2, status: "started", completed: 1 });
+  });
+  test("the finished plan says how far it got, in plain words", () => {
+    const m = run([plan, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "x", status: "done" }), ev({ type: "drive.done", agent: "a", status: "not_done", completed: 1, total: 2, usdEstimate: 0.1 })]);
+    expect(driveWords(m)).toBe("Stopped after 1 of 2 steps: a check failed");
+  });
+  test("each ending has its own plain sentence", () => {
+    const done = (status: string, completed: number) => driveWords(run([ev({ type: "drive.done", agent: "a", status, completed, total: 3, usdEstimate: 0 })]));
+    expect(done("done", 3)).toBe("All 3 steps are done");
+    expect(done("interrupted", 1)).toBe("Stopped after 1 of 3 steps: you stopped it");
+    expect(done("error_max_budget_usd", 2)).toBe("Stopped after 2 of 3 steps: the spending limit was reached");
+  });
+  test("cancelling the plan removes the card", () => {
+    expect(reduce(run([plan]), { type: "ui.planCancelled" } as never).plan).toBeNull();
+  });
+  test("a new plan replaces progress from an old one", () => {
+    const m = run([ev({ type: "drive.done", agent: "a", status: "done", completed: 1, total: 1, usdEstimate: 0 }), plan]);
+    expect(m.drive).toBeNull();
+  });
+  test("a plan that is too long says it was shortened", () => {
+    expect(run([ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "x" }], truncated: true, estimateUsd: 0.2 })]).plan?.truncated).toBe(true);
+  });
+  test("the new commands are valid protocol", () => {
+    expect(parseCommand(serialize(planDrive("/p", "a booking page"))).ok).toBe(true);
+    expect(parseCommand(serialize(approvePlan(["a", "b"]))).ok).toBe(true);
+  });
+});
+
+describe("Drive: the 'this keeps failing' card", () => {
+  const stuck = ev({ type: "loop.stuck", agent: "a", index: 2, title: "Add a form", failure: { label: "Opening it in a browser", detail: "x is not defined" }, options: [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }] });
+  test("it shows the evidence and the options", () => {
+    const m = run([stuck]);
+    expect(m.stuck).toMatchObject({ index: 2, title: "Add a form", failure: "Opening it in a browser: x is not defined" });
+    expect(m.stuck?.options.map((o) => o.id)).toEqual(["different", "stop"]);
+  });
+  test("answering removes it", () => expect(reduce(run([stuck]), { type: "ui.stuckAnswered" } as never).stuck).toBeNull());
+  test("the plan carrying on removes it too", () => {
+    expect(run([stuck, ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Add a form", status: "done" })]).stuck).toBeNull();
+    expect(run([stuck, ev({ type: "drive.done", agent: "a", status: "not_done", completed: 1, total: 3, usdEstimate: 0 })]).stuck).toBeNull();
+  });
+  test("the answer is valid protocol", () => {
+    expect(parseCommand(serialize(chooseLoop("different"))).ok).toBe(true);
+    expect(parseCommand(serialize(chooseLoop("stop"))).ok).toBe(true);
+  });
+});
+
+describe("the daily limit in plain words", () => {
+  test("the error says what happened and what to do", () => {
+    expect(plainError("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.")).toBe("This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.");
+  });
+  test("a plan that stopped on it says so", () => {
+    expect(driveWords(run([ev({ type: "drive.done", agent: "a", status: "daily_limit", completed: 1, total: 3, usdEstimate: 0 })]))).toBe("Stopped after 1 of 3 steps: the daily limit for this project was reached");
+  });
+});
+
+describe("Drive: paused because you took the wheel", () => {
+  const paused = (reason: string, path?: string) => ev({ type: "drive.paused", agent: "a", reason, ...(path ? { path } : {}) });
+  test("a pause shows why, in plain words", () => {
+    expect(pausedWords(run([paused("files_changed", "src/app.js")]))).toBe("Paused because you changed src/app.js");
+    expect(pausedWords(run([paused("editor")]))).toBe("Paused because you opened your editor");
+    expect(pausedWords(run([paused("terminal")]))).toBe("Paused because you opened your terminal");
+    expect(pausedWords(run([paused("you")]))).toBe("Paused because you asked it to");
+  });
+  test("it is not paused until told so", () => expect(pausedWords(run([...start]))).toBeNull());
+  test("resuming clears the pause", () => expect(pausedWords(reduce(run([paused("editor")]), { type: "ui.resumed" } as never))).toBeNull());
+  test("the plan carrying on or ending clears it too", () => {
+    expect(pausedWords(run([paused("editor"), ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "x", status: "started" })]))).toBeNull();
+    expect(pausedWords(run([paused("editor"), ev({ type: "drive.done", agent: "a", status: "interrupted", completed: 0, total: 1, usdEstimate: 0 })]))).toBeNull();
+  });
+  test("the commands are valid protocol", () => {
+    expect(parseCommand(serialize(resumeDrive())).ok).toBe(true);
+    expect(parseCommand(serialize(pauseDrive())).ok).toBe(true);
+  });
+});
+
+describe("telling you when something was blocked", () => {
+  const tool = (id: string, summary: string, outcome: string) => ev({ type: "agent.tool", agent: "a", tool: "Edit", summary, toolUseId: id, undoable: true, outcome });
+  test("blocked and refused actions are listed in plain words", () => {
+    const m = run([...start, tool("1", "Edit: pricing.txt", "blocked"), tool("2", "Write: index.html", "ran"), tool("3", "Running: git push", "denied")]);
+    expect(blockedNote(m, "")).toBe("2 actions were not done: Edit: pricing.txt; Running: git push");
+  });
+  test("one blocked action reads naturally", () => {
+    expect(blockedNote(run([...start, tool("1", "Edit: pricing.txt", "blocked")]), "")).toBe("1 action was not done: Edit: pricing.txt");
+  });
+  test("a step that was blocked and then allowed is not listed", () => {
+    expect(blockedNote(run([...start, tool("1", "Running: git push", "needs_approval"), tool("1", "Running: git push", "ran")]), "")).toBeNull();
+  });
+  test("nothing blocked means no note", () => expect(blockedNote(run([...start, tool("1", "Write: a", "ran")]), "")).toBeNull());
+  test("the project folder is left out of the file names", () => {
+    expect(blockedNote(run([...start, tool("1", "Edit: /Users/me/proj/pricing.txt", "blocked")]), "/Users/me/proj")).toBe("1 action was not done: Edit: pricing.txt");
+  });
+});
+
+describe("starting a plan clears the last task from the card", () => {
+  const finished = [...start, ev({ type: "agent.tool", agent: "a", tool: "Edit", summary: "Edit: a.txt", toolUseId: "t", undoable: true, outcome: "ran" }), ev({ type: "receipt", agent: "a", checkpoint: "cp_0001", changed: [{ file: "a.txt", kind: "added" }], commands: 0, notUndoable: [], proof: "skipped", usdEstimate: 0.01 })];
+  test("asking for a plan removes the old task, receipt and error", () => {
+    const m = reduce({ ...run(finished), error: "old problem" }, { type: "ui.planRequested" } as never);
+    expect(m.task).toBeNull();
+    expect(m.receipt).toBeNull();
+    expect(m.error).toBeNull();
+    expect(m.drive).toBeNull();
+  });
+  test("the plan arriving also leaves the card clean", () => {
+    const m = run([...finished, ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "x" }], truncated: false, estimateUsd: 0.2 })]);
+    expect(m.task).toBeNull();
+    expect(m.receipt).toBeNull();
   });
 });

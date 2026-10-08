@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
-import { characterWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { answerApproval, approvePlan, chooseLoop, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -15,6 +15,8 @@ function Card() {
   const box = useRef<HTMLInputElement>(null);
   const [project, setProject] = useState("");
   const [undone, setUndone] = useState(false);
+  const [draft, setDraft] = useState<string[]>([]);
+  useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
 
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); }, []);
   // The timeline: ask when the project is known, and again whenever a task ends.
@@ -43,6 +45,15 @@ function Card() {
     if (box.current) box.current.value = "";
   };
 
+  const plan = () => {
+    const goal = box.current?.value.trim() ?? "";
+    if (!goal || !project) return;
+    setUndone(false);
+    dispatch({ type: "ui.planRequested" });
+    void send(planDrive(project, goal));
+    if (box.current) box.current.value = "";
+  };
+
   return (
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
@@ -53,11 +64,60 @@ function Card() {
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} />
         {working ? <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>
-                 : <button className="btn primary" type="button" onClick={submit}>{S.start}</button>}
+                 : <><button className="btn" type="button" onClick={plan}>{S.planIt}</button><button className="btn primary" type="button" onClick={submit}>{S.start}</button></>}
       </div>
       {!project && <div className="notice">{S.noProject}</div>}
       {m.notice && <div className="notice">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
+
+      {m.plan && (
+        <section className="panel amber" aria-label={S.planTitle}>
+          <h2>{S.planTitle}</h2>
+          <div className="line muted">{S.planHelp}</div>
+          {draft.map((t, i) => (
+            <div className="row" key={i}>
+              <input type="text" value={t} aria-label={`${S.stepOf} ${i + 1}`} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? e.target.value : x)))} />
+              <button className="btn" type="button" onClick={() => setDraft(draft.filter((_, j) => j !== i))}>{S.removeStep}</button>
+            </div>
+          ))}
+          {m.plan.truncated && <div className="line">{S.planTooLong}</div>}
+          <div className="line muted">{S.planCost}: {formatUsd(m.plan.estimateUsd)}</div>
+          <div className="row">
+            <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
+            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.planCancel}</button>
+          </div>
+        </section>
+      )}
+
+      {m.paused && (
+        <section className="panel amber" aria-label={S.pausedTitle}>
+          <h2>{S.pausedTitle}</h2>
+          <div className="line">{pausedWords(m)}</div>
+          <div className="line muted">{S.pausedHelp}</div>
+          <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
+        </section>
+      )}
+
+      {m.stuck && (
+        <section className="panel amber" aria-label={S.stuckTitle}>
+          <h2>{S.stuckTitle}</h2>
+          <div className="line">{S.stepOf} {m.stuck.index}: {m.stuck.title}</div>
+          <div className="line muted">{S.stuckHelp}</div>
+          <div className="line">{m.stuck.failure}</div>
+          <div className="row">
+            {m.stuck.options.map((o, i) => (
+              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {m.drive && (
+        <section className="panel">
+          <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
+          {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
+        </section>
+      )}
 
       {m.approvals.map((a) => (
         <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>
@@ -98,6 +158,7 @@ function Card() {
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
           {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
+          {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
           {m.receipt.changed.length > 0 && !undone && project && (
             <div className="row"><button className="btn danger" type="button" onClick={() => { void send(undo(project, m.receipt!.checkpoint)); setUndone(true); }}>{S.undo}</button></div>

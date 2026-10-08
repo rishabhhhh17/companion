@@ -23,7 +23,7 @@ export function resolveClaudeBinary(override?: string): string {
 
 export type SdkConfig = {
   project: string; model: string; budgetUsd: number; claudeBinary: string; env: Record<string, string>;
-  authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string;
+  authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string; planOnly?: boolean; toolDone?: (toolUseId?: string) => void;
 };
 
 export function buildSdkOptions(c: SdkConfig) {
@@ -39,6 +39,7 @@ export function buildSdkOptions(c: SdkConfig) {
       return out("deny", `Companion could not check this safely: ${(e as Error).message}`);
     }
   };
+  const post = async (input: any, toolUseId: string | undefined) => { try { c.toolDone?.(toolUseId ?? input?.tool_use_id); } catch { /* never break the run */ } return {}; };
   return {
     cwd: c.project,
     pathToClaudeCodeExecutable: c.claudeBinary,
@@ -47,9 +48,9 @@ export function buildSdkOptions(c: SdkConfig) {
     strictMcpConfig: true,
     mcpServers: {},
     systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: COMPANION_APPEND },
-    permissionMode: "acceptEdits" as const,
+    permissionMode: (c.planOnly ? "plan" : "acceptEdits") as "plan" | "acceptEdits",
     disallowedTools: ["Bash(sudo *)"],
-    hooks: { PreToolUse: [{ hooks: [hook] }] },
+    hooks: { PreToolUse: [{ hooks: [hook] }], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
     canUseTool: async () => ({ behavior: "deny" as const, message: "Companion decides in its safety hook, not here." }),
     sandbox: { enabled: process.platform === "darwin", allowUnsandboxedCommands: false },
     maxBudgetUsd: c.budgetUsd,
@@ -69,7 +70,7 @@ export class SdkEngine implements Engine {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; queryFn?: typeof realQuery }) {}
 
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession });
+    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone });
     const q = (this.o.queryFn ?? realQuery)({ prompt: opts.prompt, options: options as never });
     let lastTotal = 0, sessionId: string | undefined;
     for await (const m of q as AsyncIterable<any>) {

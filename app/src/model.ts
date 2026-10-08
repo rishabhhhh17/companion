@@ -9,7 +9,15 @@ export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number }
 export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
 export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
+export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
+export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
+export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[] };
+export type Paused = { reason: string; path?: string };
 export type Model = {
+  paused: Paused | null;
+  stuck: StuckCard | null;
+  plan: PlanCard | null;
+  drive: DriveProgress | null;
   history: HistoryItem[];
   runnerUp: boolean;
   connected: "unknown" | "api_key" | "plan" | "none";
@@ -22,7 +30,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -35,6 +43,7 @@ const withAgents = (m: Model, agents: Record<string, CharacterState>): Model => 
 
 export function plainError(reason: string): string {
   if (/error_max_budget_usd/.test(reason)) return "Stopped: the spending limit for this task was reached. Nothing more was run.";
+  if (/^daily_limit/.test(reason)) return "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.";
   const nc = /Not connected:.*$/.exec(reason);
   if (nc) return nc[0];
   const r = reason.replace(/^engine error:\s*/i, "");
@@ -81,6 +90,18 @@ export function reduce(m: Model, e: Ev): Model {
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
+    case "plan.ready": return { ...m, plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, task: null, receipt: null, error: null, notice: null };
+    case "loop.stuck": return { ...m, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: e.options ?? [] } };
+    case "drive.paused": return { ...m, paused: { reason: e.reason, path: e.path } };
+    case "ui.resumed": return { ...m, paused: null };
+    case "ui.stuckAnswered": return { ...m, stuck: null };
+    case "ui.planRequested": return { ...m, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
+    case "ui.planCancelled": return { ...m, plan: null };
+    case "drive.step": {
+      const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
+      return { ...m, plan: null, stuck: null, paused: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
+    }
+    case "drive.done": return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
     case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
@@ -144,6 +165,33 @@ export function formatUsd(usd: number): string {
 // The one word shown under the character (plain, never cute).
 export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
+}
+
+// What the task was not allowed to do (a safety rule or a house rule said no), so a "Done" is never read as "all of it".
+export function blockedNote(m: Model, project: string): string | null {
+  const lines = (m.task?.lines ?? []).filter((l) => l.outcome === "blocked" || l.outcome === "denied");
+  if (lines.length === 0) return null;
+  const list = lines.map((l) => plainPath(l.text, project)).join("; ");
+  return `${lines.length} ${lines.length === 1 ? "action was" : "actions were"} not done: ${list}`;
+}
+
+// Why the agent is waiting for you, in one plain sentence.
+export function pausedWords(m: Model): string | null {
+  const p = m.paused;
+  if (!p) return null;
+  if (p.reason === "files_changed") return `Paused because you changed ${p.path ?? "a file"}`;
+  if (p.reason === "editor") return "Paused because you opened your editor";
+  if (p.reason === "terminal") return "Paused because you opened your terminal";
+  return "Paused because you asked it to";
+}
+
+// How a Drive plan ended, in one plain sentence.
+export function driveWords(m: Model): string | null {
+  const f = m.drive?.finished;
+  if (!f) return null;
+  if (f.status === "done") return `All ${f.total} steps are done`;
+  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : f.status === "daily_limit" ? "the daily limit for this project was reached" : "a check failed";
+  return `Stopped after ${f.completed} of ${f.total} steps: ${why}`;
 }
 
 // The word under the character and at the top of the card. A failed check is "Not done", never a crash.
