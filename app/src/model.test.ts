@@ -1,7 +1,7 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { approvePlan, chooseLoop, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
+import { approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
 import { blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -370,4 +370,28 @@ describe("starting a plan clears the last task from the card", () => {
     expect(m.task).toBeNull();
     expect(m.receipt).toBeNull();
   });
+});
+
+describe("Rescue: the report", () => {
+  const report = ev({ type: "rescue.report", agent: "a", summary: "A portfolio site made with Vite.", works: ["The pages are all there"], broken: "The build fails because a package is missing.", steps: [{ id: 1, title: "Install it" }, { id: 2, title: "Build again" }], evidence: [{ label: "Building and checking the code", status: "failed", detail: "Cannot find module 'left-pad'" }, { label: "Installing what the project needs", status: "skipped", detail: "Nothing new" }], estimateUsd: 0.5 });
+  test("the report keeps what it is, what works and what is broken", () => {
+    expect(run([report]).rescue).toMatchObject({ summary: "A portfolio site made with Vite.", works: ["The pages are all there"], broken: "The build fails because a package is missing." });
+  });
+  test("what the checks found is shown as plain lines, failures first", () => {
+    expect(run([report]).rescue?.evidence.map((e) => e.status)).toEqual(["failed", "skipped"]);
+  });
+  test("the report arriving with its plan leaves the plan card ready", () => {
+    const m = run([report, ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "Install it" }], truncated: false, estimateUsd: 0.5 })]);
+    expect(m.rescue).not.toBeNull();
+    expect(m.plan?.steps).toEqual(["Install it"]);
+  });
+  test("starting or cancelling the plan removes the report too", () => {
+    expect(reduce(run([report]), { type: "ui.planCancelled" } as never).rescue).toBeNull();
+    expect(run([report, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "x", status: "started" })]).rescue).toBeNull();
+  });
+  test("asking for a new diagnosis clears the old one", () => {
+    expect(reduce(run([report]), { type: "ui.planRequested" } as never).rescue).toBeNull();
+  });
+  test("the command is valid protocol", () => expect(parseCommand(serialize(diagnose("/p"))).ok).toBe(true));
+  test("Rescue asks the stronger model for the diagnosis", () => expect((diagnose("/p") as any).model).toBe(DIAGNOSE_MODEL));
 });

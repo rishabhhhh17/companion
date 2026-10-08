@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
+import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
@@ -115,6 +116,7 @@ export class AgentRunner {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
+      case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "drive.approve": return this.driveApprove(cmd);
       case "drive.pause": {
         if (!this.watchers.has(cmd.agent)) { this.fail("Nothing is running to pause.", cmd.agent); return; }
@@ -278,40 +280,42 @@ export class AgentRunner {
 
   // --- Drive: plan first (read only), then one approved step at a time ---
 
-  private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
-    const room = this.room(cmd.project);
-    if (room <= 0) { this.dailyLimit(cmd.agent); return; }
-    const planBudget = Math.min(cmd.budgetUsd, room);
+  // A session that may only look. Anything that is not a plain look is refused here, in code.
+  // `body` gets a way to ask Claude and finishes by setting the right state itself.
+  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; allow?: Set<string>; refuse?: string },
+    body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
+    const room = this.room(spec.project);
+    if (room <= 0) { this.dailyLimit(spec.agent); return; }
+    const budget = Math.min(spec.budgetUsd, room);
     const abort = new AbortController();
-    const session: Session = { agent: cmd.agent, abort, pending: new Map() };
-    this.sessions.set(cmd.agent, session);
-    this.driving.add(cmd.agent);
-    this.driveStop.delete(cmd.agent);
-    this.plans.delete(cmd.agent);
-    this.state(cmd.agent, "thinking");
-    let usd = 0, sessionId: string | undefined;
+    this.sessions.set(spec.agent, { agent: spec.agent, abort, pending: new Map() });
+    this.driving.add(spec.agent);
+    this.driveStop.delete(spec.agent);
+    this.plans.delete(spec.agent);
+    this.state(spec.agent, "thinking");
+    const st = { usd: 0, sessionId: undefined as string | undefined, abort };
     const exec = this.o.executor ?? defaultExecutor;
-    // One reading round. Anything that is not a plain look is refused here, in code.
+    const allowed = spec.allow ?? READ_ONLY_TOOLS;
+    const authorize = async (tool: ToolUse) => {
+      const ok = allowed.has(tool.name);
+      this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
+      return ok ? { allow: true, reason: "" } : { allow: false, reason: spec.refuse ?? "Blocked by Companion: this can only look at the project, not change it." };
+    };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
-      const authorize = async (tool: ToolUse) => {
-        const ok = READ_ONLY_TOOLS.has(tool.name);
-        this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
-        return ok ? { allow: true, reason: "" } : { allow: false, reason: "Blocked by Companion: planning can only look at the project, not change it." };
-      };
-      const gen = this.o.engine.start({ prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, planBudget - usd), resumeSession: resume, planOnly: true, authorize });
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: resume, planOnly: true, authorize });
       try {
         let next = await gen.next();
         while (!next.done) {
           if (abort.signal.aborted) break;
           const turn = next.value;
-          if (turn.sessionId) sessionId = turn.sessionId;
-          usd += turn.costUsd;
-          if (usd > planBudget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
+          if (turn.sessionId) st.sessionId = turn.sessionId;
+          st.usd += turn.costUsd;
+          if (st.usd > budget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
           let result: ToolResult | undefined;
           if (turn.tool) {
             const a = await authorize(turn.tool);
-            result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
+            result = a.allow ? await exec(turn.tool, { project: spec.project }) : { ok: false, output: a.reason };
           } else if (turn.text) text += turn.text + "\n";
           next = await gen.next(result);
         }
@@ -319,27 +323,58 @@ export class AgentRunner {
       return text;
     };
     try {
+      await body(ask, st);
+    } catch (e) {
+      const msg = (e as Error).message;
+      this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, spec.agent);
+      this.state(spec.agent, "error");
+    } finally {
+      this.ledger.add(spec.project, st.usd);
+      this.sessions.delete(spec.agent);
+      this.driving.delete(spec.agent);
+    }
+  }
+
+  private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal)));
-      if (steps.length > MAX_STEPS && !abort.signal.aborted) {
-        const again = parsePlan(await ask(shortenPrompt(steps.length), sessionId));
+      if (steps.length > MAX_STEPS && !st.abort.signal.aborted) {
+        const again = parsePlan(await ask(shortenPrompt(steps.length), st.sessionId));
         if (again.length) steps = again;
       }
-      if (abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (steps.length === 0) { this.fail("Claude did not give a usable plan. Try describing the goal in a little more detail.", cmd.agent); this.state(cmd.agent, "error"); return; }
       const truncated = steps.length > MAX_STEPS;
       const kept = steps.slice(0, MAX_STEPS);
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd, sessionId });
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
       this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
       this.state(cmd.agent, "needsYou");
-    } catch (e) {
-      const msg = (e as Error).message;
-      this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, cmd.agent);
-      this.state(cmd.agent, "error");
-    } finally {
-      this.ledger.add(cmd.project, usd);
-      this.sessions.delete(cmd.agent);
-      this.driving.delete(cmd.agent);
-    }
+    });
+  }
+
+  // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.
+  private async rescueDiagnose(cmd: Extract<Command, { type: "rescue.diagnose" }>): Promise<void> {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd }, async (ask, st) => {
+      const store = this.store(cmd.project);
+      const snap = await store.snapshot("Rescue: the project as it was found");
+      this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      let res: LadderResult;
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal }); }
+      catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
+      if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
+      const evidence = res.steps.map((x) => ({ label: x.label, status: x.status, detail: x.detail }));
+      this.state(cmd.agent, "thinking");
+      const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
+      if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (!d) { this.fail("Claude did not give a usable diagnosis. Try again, or describe what is wrong.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
+      const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
+      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimateUsd(steps.length) } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimateUsd(steps.length) } as never);
+      this.state(cmd.agent, "needsYou");
+    });
   }
 
   private async driveApprove(cmd: Extract<Command, { type: "drive.approve" }>): Promise<void> {

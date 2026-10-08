@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, approvePlan, chooseLoop, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { answerApproval, approvePlan, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
@@ -45,6 +45,12 @@ function Card() {
     if (box.current) box.current.value = "";
   };
 
+  const rescue = () => {
+    if (!project) return;
+    setUndone(false);
+    dispatch({ type: "ui.planRequested" });
+    void send(diagnose(project));
+  };
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
     if (!goal || !project) return;
@@ -64,11 +70,22 @@ function Card() {
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} />
         {working ? <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>
-                 : <><button className="btn" type="button" onClick={plan}>{S.planIt}</button><button className="btn primary" type="button" onClick={submit}>{S.start}</button></>}
+                 : <><button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button><button className="btn" type="button" onClick={plan}>{S.planIt}</button><button className="btn primary" type="button" onClick={submit}>{S.start}</button></>}
       </div>
       {!project && <div className="notice">{S.noProject}</div>}
       {m.notice && <div className="notice">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
+
+      {m.rescue && (
+        <section className="panel" aria-label={S.rescueTitle}>
+          <h2>{S.rescueTitle}</h2>
+          <div className="line">{m.rescue.summary}</div>
+          {m.rescue.works.length > 0 && <div className="line"><b>{S.rescueWorks}:</b> {m.rescue.works.join("; ")}</div>}
+          <div className="line"><b>{S.rescueBroken}:</b> {m.rescue.broken}</div>
+          <div className="line muted"><b>{S.rescueChecks}:</b></div>
+          {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
+        </section>
+      )}
 
       {m.plan && (
         <section className="panel amber" aria-label={S.planTitle}>
