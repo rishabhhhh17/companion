@@ -95,11 +95,15 @@ export class AgentRunner {
   private watchers = new Map<string, ProjectWatcher>();
   private pauseReq = new Map<string, { reason: string; path?: string }>();
   private resumers = new Map<string, (c: string) => void>();
+  private resumeEarly = new Set<string>();   // "Carry on" pressed before the loop is waiting for it
 
   // Take the wheel: stop the current step now; the plan waits for the person to resume.
   private requestPause(agent: string, reason: string, path?: string) {
     if (!this.watchers.has(agent) || this.pauseReq.has(agent) || this.driveStop.has(agent)) return;
     this.pauseReq.set(agent, { reason, path });
+    // Say so at once: winding the running step down can take a moment, and the person should not wait for it.
+    this.emit({ type: "drive.paused", agent, reason, ...(path ? { path } : {}) } as never);
+    this.state(agent, "needsYou");
     this.sessions.get(agent)?.abort.abort();
   }
   private counter = 0;
@@ -130,8 +134,9 @@ export class AgentRunner {
       }
       case "drive.resume": {
         const r = this.resumers.get(cmd.agent);
-        if (!r) { this.fail("The agent is not paused.", cmd.agent); return; }
-        this.resumers.delete(cmd.agent); r("resume"); return;
+        if (r) { this.resumers.delete(cmd.agent); r("resume"); return; }
+        if (this.pauseReq.has(cmd.agent)) { this.resumeEarly.add(cmd.agent); return; }   // paused, but the step is still winding down
+        this.fail("The agent is not paused.", cmd.agent); return;
       }
       case "loop.choose": {
         const r = this.choices.get(cmd.agent);
@@ -187,7 +192,8 @@ export class AgentRunner {
     const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString() });
     this.state(cmd.agent, "thinking");
 
-    let usd = 0, commands = 0, status = "done";
+    let usd = 0, booked = 0, commands = 0, status = "done";
+    const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; };
     const notUndoable: string[] = [];
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
@@ -205,7 +211,7 @@ export class AgentRunner {
           if (abort.signal.aborted) { status = "interrupted"; return false; }
           const turn = next.value;
           if (turn.sessionId) sessionId = turn.sessionId;
-          usd += turn.costUsd;
+          usd += turn.costUsd; book();
           this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { in: 0, cacheRead: 0, out: 0 } } as never);
           if (usd > budget) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
 
@@ -223,8 +229,10 @@ export class AgentRunner {
         if (abort.signal.aborted) { status = "interrupted"; return false; }
         return true;
       } catch (e) {
+        // Real Claude throws when it is stopped. If a stop was asked for, that is a stop, not a crash.
+        if (abort.signal.aborted && !(e instanceof EngineStop)) { status = "interrupted"; return false; }
         const msg = (e as Error).message;
-        if (e instanceof EngineStop) usd += e.costUsd;
+        if (e instanceof EngineStop) { usd += e.costUsd; book(); }
         status = /^error_max_[a-z_]+/.exec(msg)?.[0] ?? "error";
         this.fail(status === "error" ? `engine error: ${msg}` : msg, cmd.agent);
         return false;
@@ -250,10 +258,11 @@ export class AgentRunner {
       const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
       let res: LadderResult;
       this.watchers.get(cmd.agent)?.begin("ladder");
-      const review = this.o.reviewer && needsReview(changed) ? async () => {
-        const paths = new Set(changed.map((c) => c.file));
-        const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), await store.readFiles(after.id, (p) => paths.has(p))];
-        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; });
+      const paths = new Set(changed.map((c) => c.file));
+      const afterFiles = this.o.reviewer ? await store.readFiles(after.id, (p) => paths.has(p)) : {};
+      const review = this.o.reviewer && needsReview(changed, afterFiles) ? async () => {
+        const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), afterFiles];
+        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; book(); });
         return parseReview(text);
       } : undefined;
       try {
@@ -281,7 +290,7 @@ export class AgentRunner {
       proof = "skipped";
     }
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
-    this.ledger.add(cmd.project, usd);
+    book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
@@ -327,6 +336,8 @@ export class AgentRunner {
     this.plans.delete(spec.agent);
     this.state(spec.agent, "thinking");
     const st = { usd: 0, sessionId: undefined as string | undefined, abort };
+    let booked = 0;
+    const book = () => { this.ledger.add(spec.project, st.usd - booked); booked = st.usd; };
     const exec = this.o.executor ?? defaultExecutor;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
     const authorize = async (tool: ToolUse) => {
@@ -344,7 +355,7 @@ export class AgentRunner {
           if (abort.signal.aborted) break;
           const turn = next.value;
           if (turn.sessionId) st.sessionId = turn.sessionId;
-          st.usd += turn.costUsd;
+          st.usd += turn.costUsd; book();
           if (st.usd > budget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
           let result: ToolResult | undefined;
           if (turn.tool) {
@@ -359,11 +370,14 @@ export class AgentRunner {
     try {
       await body(ask, st);
     } catch (e) {
+      // A stop is not a crash (real Claude throws when it is stopped).
+      if (e instanceof EngineStop) { st.usd += e.costUsd; book(); }   // a run that stopped on its limit still cost something
+      if (abort.signal.aborted && !(e instanceof EngineStop)) { this.state(spec.agent, "idle"); return; }
       const msg = (e as Error).message;
       this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, spec.agent);
       this.state(spec.agent, "error");
     } finally {
-      this.ledger.add(spec.project, st.usd);
+      book();
       this.sessions.delete(spec.agent);
       this.driving.delete(spec.agent);
     }
@@ -447,11 +461,12 @@ export class AgentRunner {
     watcher.start();
     // Wait here until the person resumes (true) or stops (false).
     const pauseHere = async (): Promise<boolean> => {
-      const p = this.pauseReq.get(cmd.agent);
-      if (!p) return true;
-      this.emit({ type: "drive.paused", agent: cmd.agent, reason: p.reason, ...(p.path ? { path: p.path } : {}) } as never);
+      if (!this.pauseReq.has(cmd.agent)) return true;
       this.state(cmd.agent, "needsYou");
-      const choice = await new Promise<string>((res) => this.resumers.set(cmd.agent, res));
+      let choice: string;
+      if (this.driveStop.has(cmd.agent)) choice = "interrupt";
+      else if (this.resumeEarly.delete(cmd.agent)) choice = "resume";
+      else choice = await new Promise<string>((res) => this.resumers.set(cmd.agent, res));
       this.pauseReq.delete(cmd.agent);
       return choice === "resume" && !this.driveStop.has(cmd.agent);
     };
@@ -492,7 +507,7 @@ export class AgentRunner {
         break;
       }
     } finally {
-      watcher.stop(); this.watchers.delete(cmd.agent); this.pauseReq.delete(cmd.agent); this.resumers.delete(cmd.agent);
+      watcher.stop(); this.watchers.delete(cmd.agent); this.pauseReq.delete(cmd.agent); this.resumers.delete(cmd.agent); this.resumeEarly.delete(cmd.agent);
       this.driving.delete(cmd.agent);
     }
     this.emit({ type: "drive.done", agent: cmd.agent, status, completed, total, usdEstimate: Math.round(spent * 1e6) / 1e6 } as never);
