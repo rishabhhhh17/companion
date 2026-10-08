@@ -98,6 +98,7 @@ Product code arrives in M1; these are the planned commands, so update this secti
 | Runner (headless) | `cd runner && bun test` (works since 8 Oct 2026: protocol, undo, safety, runner, Keychain, lanes; memory arrives in M8). `cd runner && bun run typecheck` checks types. Manual: `bun scripts/demo.ts` (free demo) and `bun scripts/real-run.ts` (a real run; needs the test login) | Protocol, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log |
 | Rust shell | `cd app/src-tauri && cargo test --release` (21 tests: runner link, docking maths, permissions) and `app/scripts/lint-permissions.sh` (no permission asking calls) | Paste back, redaction, image resize and coordinate mapping, permissions state |
 | UI | `cd app && bun test` and `bun run typecheck` (31 tests: character state, approvals, receipts, plain errors, command shapes) | Character state mapping, cards, protocol client |
+| Prompt help eval | `cd evals/prompt-help && bun test` (free); `bun run run.ts --real` (asks real Claude, only when asked) | The scorer and the 30 cases; the real run measures rewrite quality |
 | Protocol fixtures | run by both runner and Rust suites | Rust and TypeScript agree on every event |
 | Everything | `scripts/test-all.sh` | All of the above; run before every merge |
 
