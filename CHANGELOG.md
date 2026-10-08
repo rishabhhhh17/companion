@@ -2,6 +2,18 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Hardening pass: 9 Oct 2026
+
+**Before more features: making what exists hold up on other people's Macs.** No new buttons. Everything below is covered by tests (runner 1018, shell 99, pages 126), and the real Claude run of Build mode passed before the safety changes and needs one more run.
+
+- **The engine can no longer hang the app.** If the engine stops answering it is restarted with growing pauses, a bad line from it cannot stall the app, and "Stop everything" kills a stuck engine instead of waiting for it.
+- **Your files are safer.** Undo never follows a link out of your project, huge files and projects inside projects are left out of snapshots instead of breaking them, and only one thing at a time may write to a project.
+- **Claude's reach is smaller.** Commands run in a sandbox that blocks writes outside the project and reads of private folders (keys, browser data, mail), and only lets installs reach the usual package sites. Anything that changes your project's own settings (.git, .claude, .companion) is refused. Commands inside `sh -c`, `env`, `xargs` and friends are now looked through.
+- **Checks cannot see your keys.** Install, test and start commands get a short list of safe settings instead of everything in your environment. A start command that just finishes (a tool, not a website) is skipped instead of failed, and a stopped check also stops what it started.
+- **Fewer false "Done" and false "Not done".** Tests switched off with `|| true`, `--passWithNoTests` or by commenting them out are caught, moved test files are not, and Python and Go tests count. The browser check never sends a write to a server while pressing buttons, always closes its browser, and says "skipped" if it cannot start.
+- **Shipping checks read more carefully.** More key shapes (web addresses with passwords, bearer tokens, webhooks, more services), settings files that git does not ignore, files too big to read in the published folder, wide open database rules, renamed tables, and database code that builds tables while it runs.
+- **Easier to use.** The character opens from the keyboard and with VoiceOver and says how many things wait for you. Questions that need you come first. Enter and Esc leave Chinese, Japanese and Korean typing alone. Changes in Prompt help can be read without colour. Buttons have unique names. Stronger contrast, a visible focus ring, high contrast and forced colour modes. Text can be selected and copied. "Done" stays about 12 seconds. A stop or an engine restart clears old plans and questions.
+
 ## Day 4 (night): 9 Oct 2026
 
 **Ship, part one: the safety checks before anything goes on the internet.**
