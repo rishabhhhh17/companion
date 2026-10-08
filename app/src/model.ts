@@ -41,6 +41,7 @@ const withAgents = (m: Model, agents: Record<string, CharacterState>): Model => 
 
 export function plainError(reason: string): string {
   if (/error_max_budget_usd/.test(reason)) return "Stopped: the spending limit for this task was reached. Nothing more was run.";
+  if (/^daily_limit/.test(reason)) return "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.";
   const nc = /Not connected:.*$/.exec(reason);
   if (nc) return nc[0];
   const r = reason.replace(/^engine error:\s*/i, "");
@@ -166,7 +167,7 @@ export function driveWords(m: Model): string | null {
   const f = m.drive?.finished;
   if (!f) return null;
   if (f.status === "done") return `All ${f.total} steps are done`;
-  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : "a check failed";
+  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : f.status === "daily_limit" ? "the daily limit for this project was reached" : "a check failed";
   return `Stopped after ${f.completed} of ${f.total} steps: ${why}`;
 }
 

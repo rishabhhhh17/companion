@@ -11,6 +11,7 @@ import { differentPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, p
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
+import { Ledger } from "./ledger.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
@@ -30,6 +31,8 @@ export type RunnerOptions = {
   emit: (e: Event) => void;
   executor?: ToolExecutor;
   proof?: ProofRunner;
+  ledger?: Ledger;
+  dailyCeilingUsd?: number;
   approvalTimeoutMs?: number;
   now?: () => Date;
 };
@@ -83,7 +86,12 @@ export class AgentRunner {
   private driveStop = new Set<string>();
   private choices = new Map<string, (c: string) => void>();
   private counter = 0;
-  constructor(private o: RunnerOptions) {}
+  private ledger: Ledger;
+  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); }
+
+  // What this project may still spend today.
+  private room(project: string): number { return (this.o.dailyCeilingUsd ?? 10) - this.ledger.spentToday(project); }
+  private dailyLimit(agent: string) { this.fail("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.", agent); }
 
   private now() { return (this.o.now ?? (() => new Date()))(); }
   private emit<T extends Omit<Event, "v" | "id">>(e: T) {
@@ -137,6 +145,9 @@ export class AgentRunner {
   }
 
   private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+    const room = this.room(cmd.project);
+    if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
+    const budget = Math.min(cmd.budgetUsd, room);
     const store = this.store(cmd.project);
     const lbl = makeLabel(cmd.prompt);
     const abort = new AbortController();
@@ -156,7 +167,7 @@ export class AgentRunner {
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       const gen = this.o.engine.start({
-        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, cmd.budgetUsd - usd), resumeSession,
+        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession,
         authorize: (tool) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }),
       });
       try {
@@ -167,7 +178,7 @@ export class AgentRunner {
           if (turn.sessionId) sessionId = turn.sessionId;
           usd += turn.costUsd;
           this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { in: 0, cacheRead: 0, out: 0 } } as never);
-          if (usd > cmd.budgetUsd) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
+          if (usd > budget) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
 
           let result: ToolResult | undefined;
           if (turn.tool) {
@@ -219,7 +230,7 @@ export class AgentRunner {
 
       proof = "failed"; status = "not_done";
       { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail }; } }
-      if (tries >= MAX_TRIES || usd >= cmd.budgetUsd) { if (usd >= cmd.budgetUsd) status = "error_max_budget_usd"; break; }
+      if (tries >= MAX_TRIES || usd >= budget) { if (usd >= budget) status = "error_max_budget_usd"; break; }
       // Send the evidence back into the same conversation and try again.
       const f = res.failedAt ?? res.steps.at(-1);
       this.state(cmd.agent, "working");
@@ -233,6 +244,7 @@ export class AgentRunner {
       proof = "skipped";
     }
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
+    this.ledger.add(cmd.project, usd);
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
@@ -244,6 +256,9 @@ export class AgentRunner {
   // --- Drive: plan first (read only), then one approved step at a time ---
 
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
+    const room = this.room(cmd.project);
+    if (room <= 0) { this.dailyLimit(cmd.agent); return; }
+    const planBudget = Math.min(cmd.budgetUsd, room);
     const abort = new AbortController();
     const session: Session = { agent: cmd.agent, abort, pending: new Map() };
     this.sessions.set(cmd.agent, session);
@@ -261,7 +276,7 @@ export class AgentRunner {
         this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
         return ok ? { allow: true, reason: "" } : { allow: false, reason: "Blocked by Companion: planning can only look at the project, not change it." };
       };
-      const gen = this.o.engine.start({ prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, cmd.budgetUsd - usd), resumeSession: resume, planOnly: true, authorize });
+      const gen = this.o.engine.start({ prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, planBudget - usd), resumeSession: resume, planOnly: true, authorize });
       try {
         let next = await gen.next();
         while (!next.done) {
@@ -269,7 +284,7 @@ export class AgentRunner {
           const turn = next.value;
           if (turn.sessionId) sessionId = turn.sessionId;
           usd += turn.costUsd;
-          if (usd > cmd.budgetUsd) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
+          if (usd > planBudget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
           let result: ToolResult | undefined;
           if (turn.tool) {
             const a = await authorize(turn.tool);
@@ -298,6 +313,7 @@ export class AgentRunner {
       this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, cmd.agent);
       this.state(cmd.agent, "error");
     } finally {
+      this.ledger.add(cmd.project, usd);
       this.sessions.delete(cmd.agent);
       this.driving.delete(cmd.agent);
     }
@@ -317,6 +333,7 @@ export class AgentRunner {
       for (let i = 0; i < total; i++) {
         const index = i + 1, title = steps[i];
         if (this.driveStop.has(cmd.agent)) { status = "interrupted"; break; }
+        if (this.room(plan.project) <= 0) { status = "daily_limit"; this.dailyLimit(cmd.agent); this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
         const stepCmd = (prompt: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt, model: plan.model, budgetUsd: remaining });
