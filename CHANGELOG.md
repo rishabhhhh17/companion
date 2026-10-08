@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 4: 10 Oct 2026
+
+**Prompt help: the thinking is done, the Mac parts come next.**
+
+- The rewrite logic: code, links, commands and pasted errors come back exactly as you wrote them, a rewrite cannot balloon to many times your length, and the card will show a real word by word difference instead of two blocks.
+- It knows four kinds of app (a coding agent in a terminal, a chat assistant, an app builder, anything else) and gives each its own kind of help. For terminals the answer is "copied, press Cmd+V".
+- Project information is shared only for a folder you granted, only names and short lists (never file contents), with secrets removed.
+- It may ask one short question, with quick answers to tap, and you can skip it.
+- The safety rules are written and tested: password boxes and password managers are never read, each app asks once (once, always or never), nothing is read until the "reading your text" light is on, nothing is pasted if you moved to another app or box, and no text ever goes into a log.
+- A set of 30 rough prompts and a scorer to measure rewrite quality later.
+
 ## Day 3 (night): 9 Oct 2026
 
 **Rescue, Research and a second opinion.**

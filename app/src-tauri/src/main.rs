@@ -6,6 +6,8 @@
 mod docking;
 mod fullscreen;
 mod permissions;
+#[allow(dead_code)] // wired to the hotkey in M5b
+mod prompthelp;
 mod visibility;
 mod wheel;
 

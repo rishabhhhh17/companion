@@ -146,7 +146,7 @@ describe("the assist service turns commands into events", () => {
     expect(events.filter((e) => e.type === "assist.prompt.delta").map((e: any) => e.text)).toEqual(["Add ", "it"]);
     const done = events.find((e) => e.type === "assist.prompt.done") as any;
     expect(done.text).toBe("Add it");
-    expect(done.diff).toEqual([["-", "make it"], ["+", "Add it"]]);
+    expect(done.diff).toEqual([["-", "make"], ["+", "Add"], ["=", " it"]]);
     expect(done.usdEstimate).toBeCloseTo(0.003, 6);
   });
   test("a failure becomes an assist.error with a plain reason", async () => {
