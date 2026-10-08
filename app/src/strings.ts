@@ -31,7 +31,7 @@ export const S = {
   planStart: "Start the plan",
   planCancel: "Cancel",
   planTooLong: "The plan was cut to 12 steps.",
-  planCost: "Rough cost",
+  planCost: "Rough cost, at most",
   removeStep: "Remove",
   stepOf: "Step",
   stuckTitle: "This keeps failing",

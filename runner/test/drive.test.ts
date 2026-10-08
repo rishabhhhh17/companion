@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
-import { parsePlan } from "../src/drive.ts";
+import { estimateUsd, MAX_STEPS, parsePlan, planPrompt } from "../src/drive.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
 
@@ -186,5 +186,21 @@ describe("every step can be undone on its own", () => {
     await r.runner.handle({ v: 1, id: "u", type: "checkpoint.restore", project: r.project, checkpoint: cps[1] });
     expect(existsSync(join(r.project, "one.txt"))).toBe(true);
     expect(existsSync(join(r.project, "two.txt"))).toBe(false);
+  });
+});
+
+describe("what Claude is asked for when planning", () => {
+  test("it asks for few, meaningful steps and never for editor or file mechanics", () => {
+    const p = planPrompt("make a page");
+    expect(p).toMatch(/as few steps as/i);
+    expect(p).toMatch(/small goal/i);
+    expect(p).toMatch(/not.*(open|save)/i);
+    expect(p).toMatch(/something.*(see|check)/i);
+    expect(p).toContain("make a page");
+    expect(p).toContain(String(MAX_STEPS));
+  });
+  test("the cost shown is an upper limit that grows with the number of steps, never zero", () => {
+    expect(estimateUsd(1)).toBeGreaterThan(0);
+    expect(estimateUsd(4)).toBeGreaterThan(estimateUsd(2));
   });
 });

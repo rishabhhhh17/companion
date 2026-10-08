@@ -18,12 +18,20 @@ export function parsePlan(text: string): string[] {
 }
 
 export const planPrompt = (goal: string) =>
-  `Plan this goal for a person who is not an engineer. Look around the project (read only, change nothing), then reply with ONLY a JSON list of short steps in plain words, for example ["Make the page", "Add a form"]. At most ${MAX_STEPS} steps. Each step must be small and checkable on its own.\n\nGoal: ${goal}`;
+  `Plan this goal for a person who is not an engineer. Look around the project first (read only, change nothing).
+
+Reply with ONLY a JSON list of short steps in plain words, for example ["Add the prices section", "Add the contact line"].
+- Use as few steps as the goal needs. A small goal is 1 to 3 steps. Never more than ${MAX_STEPS}.
+- Each step is one real change that produces something a person could see or check, such as "Add the prices section" or "Make the form send an email".
+- Do not include steps about opening editors, saving files, opening a browser or looking at the result. Companion saves, checks and opens things itself.
+
+Goal: ${goal}`;
 export const shortenPrompt = (n: number) =>
   `That plan has ${n} steps. Please reply again with ONLY a JSON list of at most ${MAX_STEPS} steps, combining small ones.`;
 export const stepPrompt = (i: number, n: number, title: string) =>
   `Step ${i} of ${n}: ${title}\n\nDo only this step, keep the change small, and stop when it is done.`;
 // A rough, honest estimate to show before the person presses Start.
+// It is an upper limit ("up to"), because most steps cost far less.
 export const estimateUsd = (steps: number) => Math.round(steps * 0.25 * 100) / 100;
 
 // Tools that only look. Everything else is refused while planning, in code.
