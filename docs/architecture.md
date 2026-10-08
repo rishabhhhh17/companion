@@ -204,6 +204,7 @@ Every row of product doc section 3, plus the features the brief and the technica
 | Feature | Release | Rust shell | Runner | UI | Needs from the shared core |
 |---|---|---|---|---|---|
 | Explain | Alpha | None | `explain` (output style), `engine` fast lane (check question) | `cards` (collapsible "why") | Engine: output style in agent sessions. Memory: explanation level from the profile |
+| Shared memory swarm (Pro, parked, F15) | Later | None | `memory` exposed to other agents (read and write, MCP server), same scope filter | settings | Memory: the plain files stay vendor neutral. Trust: other agents go through the same approvals and proof. Nothing built before the Pro path resumes |
 | Memory | Alpha | None | `memory`, `tasklog` | `memory-page`, toasts | Memory: provenance, scope filter (never health, money, relationships, moods, secrets) |
 | Tutor | Later (Learn) | None | `agents` (tutor spec), `explain` (Learning style) | `cards` | Engine: a new agent spec and output style, no engine change |
 

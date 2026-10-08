@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 2: 8 Oct 2026
+
+**Fixed the panel problem and set the launch order.**
+
+- Found the cause of the focus bug from day 1: panels made by our chosen library activate the app on any click on the newest macOS. A panel built natively, "don't activate" from the very first moment, stays quiet, even with a web page inside. That is how Companion's panels will be built.
+- The founder set the launch priority: agents that do the work come first and are the best part, then prompt help while you code, then shared memory, and the pointing feature last. Logic first, looks later.
+- New for later: a calm, professional website and onboarding, and a parked Pro idea, a shared memory for people who already run their own agents.
+
 ## Day 1: 7 Oct 2026
 
 **Checked the plan against reality before writing any code.**

@@ -1,6 +1,6 @@
 # F06. Two paths in one app; Geeked is parked
 
-- **Status:** Fixed. Founder decision; do not reopen without the founder.
+- **Status:** Fixed. Founder decision; do not reopen without the founder. Added to 8 Oct 2026: the shared memory swarm is a parked Pro plan idea (F15).
 - **Date:** 2026-10-06
 - **Source:** product_research.md section 1, decision 6
 - **Related:** F07, F08, F12, T02, T07

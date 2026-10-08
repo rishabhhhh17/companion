@@ -41,6 +41,7 @@ The most important fact for the business is Anthropic's rule for products that r
 10. Bring your own Claude; no paying for or reselling model usage.
 11. Never passively watch the screen or track activity. Never steal keyboard focus.
 12. YC is not a focus. Names are not decided.
+13. **Founder update, 8 Oct 2026 (F15).** Launch priority: agents (Build mode) first and best, Prompt help while you code, shared memory, and Show me how last. Logic before looks. A beautiful, calm, professional website and onboarding flow come later, and the site should help the company grow beyond the product. A Pro plan idea is parked: a swarm of connected memory for people who already run agents. Prompt help should show recommendations in a clean, changeable style, not chat bubbles. Confirmed the same day: Prompt help works only on the user's hotkey (Companion never watches and speaks up unasked, rules 5, 6 and 11), and "lots of questions" means short clarifying questions inside Prompt help, not a longer questionnaire.
 
 ## 2. The product explained simply: one companion, four jobs
 
@@ -496,7 +497,7 @@ Dates are targets for a solo founder working mostly through Claude Code; the gat
 
 ## 21. Geeked path: parked
 
-The Geeked (Pro) path, for engineers already running Claude Code, Codex or Cursor, is parked while the Curious path is built. The earlier research verdict stands for when it resumes: it is real but modest, it gets about a fifth of total effort, its wedge is a cross vendor proof and review queue followed by a quota guard, the dock and approval inbox are free table stakes, and memory sync and pull request babysitting are skipped. The full research lives outside this repo in "Pro mode for engineers". **What the build must do now:** nothing Geeked specific, but keep the event protocol vendor tagged and the proof engine independent of how an agent was started, so a hooks based observer can be added later without a rewrite.
+The Geeked (Pro) path, for engineers already running Claude Code, Codex or Cursor, is parked while the Curious path is built. The earlier research verdict stands for when it resumes: it is real but modest, it gets about a fifth of total effort, its wedge is a cross vendor proof and review queue followed by a quota guard, the dock and approval inbox are free table stakes, and memory sync and pull request babysitting are skipped. The full research lives outside this repo in "Pro mode for engineers". **8 Oct 2026 (F15):** the shared memory swarm (one memory that all of a user's agents read and write) is added to this parked path as a Pro plan idea. **What the build must do now:** nothing Geeked specific, keep memory plain files and vendor neutral, but keep the event protocol vendor tagged and the proof engine independent of how an agent was started, so a hooks based observer can be added later without a rewrite.
 
 ## 22. Sources
 

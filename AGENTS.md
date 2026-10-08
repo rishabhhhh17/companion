@@ -77,6 +77,7 @@ docs/
   architecture.md    every feature on the map -> the modules that own it
   milestones/        one plan per milestone (M0-spikes.md first), plus the M0 desk research
   outreach/          drafts the founder sends by hand
+  status/            dated status snapshots, written so a reader with no context can follow the project
 spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS (a-panel exists)
 scripts/             (planned, M0) build helpers: copy and verify Anthropic's binary, signing checks
 protocol/            (planned, M1) JSON lines protocol v1: schema, types, shared fixtures

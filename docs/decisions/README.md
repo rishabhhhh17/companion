@@ -26,6 +26,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F12](F12-names-open-yc-not-a-focus.md) | Names are open; YC is not a focus |
 | [F13](F13-undo-never-writes-your-git.md) | Undo never writes your git: no undo helper, no per agent worktrees (7 Oct 2026) |
 | [F14](F14-browser-check-for-everyone.md) | Every user, Free or Plus, gets the browser check (7 Oct 2026) |
+| [F15](F15-launch-priorities-and-new-ideas.md) | Launch priorities (agents first, Prompt help, memory, Show me how last), the Pro memory idea, the website and onboarding (8 Oct 2026) |
 
 ## Technical decisions (accepted, open items checked where shown)
 
