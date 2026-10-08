@@ -83,7 +83,7 @@ scripts/             (planned, M0) build helpers: copy and verify Anthropic's bi
 protocol/            JSON lines protocol v1: types, parser, shared fixtures (M1, started)
 runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log (M1, done); proof, ship, memory come later
 app/src-tauri/       (planned, M1 for the runner supervisor and Keychain; the rest from M2) Rust shell: windows, hotkeys, assist, voice, watch, secrets, permissions
-app/                 (planned, M2) Tauri 2 + React UI: dock, characters, cards, ask box, memory page
+app/                 Tauri 2 + React shell: native panels, runner link, character, cards, ask box, docking, tray (M2, started); memory page later
 app/vendor/          (planned, M2) Anthropic's Claude binary, copied from the pinned SDK package at build time; never committed
 evals/               (planned, M3+) quality suites: Prompt help targets, Show me how screenshots, voice latency, rescue projects
 relay/               (planned, Beta) Cloudflare Worker relay and the phone web app
@@ -96,8 +96,8 @@ Product code arrives in M1; these are the planned commands, so update this secti
 | Suite | Command | Covers |
 |---|---|---|
 | Runner (headless) | `cd runner && bun test` (works since 8 Oct 2026: protocol, undo, safety, runner, Keychain, lanes; memory arrives in M8). `cd runner && bun run typecheck` checks types. Manual: `bun scripts/demo.ts` (free demo) and `bun scripts/real-run.ts` (a real run; needs the test login) | Protocol, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log |
-| Rust shell | `cd app/src-tauri && cargo test` | Paste back, redaction, image resize and coordinate mapping, permissions state |
-| UI | `cd app && bun run test` | Character state mapping, cards, protocol client |
+| Rust shell | `cd app/src-tauri && cargo test --release` (21 tests: runner link, docking maths, permissions) and `app/scripts/lint-permissions.sh` (no permission asking calls) | Paste back, redaction, image resize and coordinate mapping, permissions state |
+| UI | `cd app && bun test` and `bun run typecheck` (31 tests: character state, approvals, receipts, plain errors, command shapes) | Character state mapping, cards, protocol client |
 | Protocol fixtures | run by both runner and Rust suites | Rust and TypeScript agree on every event |
 | Everything | `scripts/test-all.sh` | All of the above; run before every merge |
 

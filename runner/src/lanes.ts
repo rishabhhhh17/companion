@@ -166,10 +166,13 @@ function validPoint(i: any, img: Image): Point | null {
 
 // ---------- commands in, events out ----------
 
+export interface FastLike { run(req: { text: string }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
+export interface VisionLike { locate(req: { image: Image; question: string; ocr: Ocr[] }, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> }
+
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
-  constructor(private o: { fast: FastLane; vision: VisionLane; images: ImageStore; emit: (e: Event) => void }) {}
+  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   async handle(cmd: Command): Promise<void> {

@@ -1,0 +1,28 @@
+// Every name and every line a user reads lives here, never in logic (rule 21).
+// Names are placeholders and will change. Plain words, no cute talk (rule 16).
+export const S = {
+  product: "Companion",
+  characterName: "Spark",
+  askPlaceholder: "What should I do?",
+  start: "Start",
+  stop: "Stop",
+  cardHint: "Esc closes this",
+  allow: "Allow",
+  dontAllow: "Don't allow",
+  needsYouTitle: "Needs your OK",
+  undo: "Undo everything this task did",
+  undone: "Undone.",
+  receiptTitle: "What changed",
+  nothingChanged: "Nothing changed.",
+  cannotUndo: "Cannot be undone",
+  cost: "Cost",
+  commands: "commands run",
+  added: "added",
+  modified: "changed",
+  deleted: "removed",
+  blocked: "Blocked",
+  waiting: "Waiting for you",
+  denied: "Not allowed",
+  noProject: "No project folder is set yet.",
+  closeCard: "Close",
+} as const;
