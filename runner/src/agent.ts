@@ -15,6 +15,7 @@ import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
+import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
@@ -95,7 +96,9 @@ export class AgentRunner {
   private watchers = new Map<string, ProjectWatcher>();
   private pauseReq = new Map<string, { reason: string; path?: string }>();
   private resumers = new Map<string, (c: string) => void>();
-  private resumeEarly = new Set<string>();   // "Carry on" pressed before the loop is waiting for it
+  private resumeEarly = new Set<string>();
+  // The last proof result for each project, and which saved version it was for. Shipping needs a pass on the exact version.
+  private lastProof = new Map<string, { verdict: string; snapshot: string }>();   // "Carry on" pressed before the loop is waiting for it
 
   // Take the wheel: stop the current step now; the plan waits for the person to resume.
   private requestPause(agent: string, reason: string, path?: string) {
@@ -127,6 +130,7 @@ export class AgentRunner {
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "research.ask": return this.researchAsk(cmd);
+      case "ship.check": return this.shipCheck(cmd);
       case "drive.approve": return this.driveApprove(cmd);
       case "drive.pause": {
         if (!this.watchers.has(cmd.agent)) { this.fail("Nothing is running to pause.", cmd.agent); return; }
@@ -271,6 +275,7 @@ export class AgentRunner {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries } as never);
+      this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
       if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; break; }
 
@@ -418,6 +423,28 @@ export class AgentRunner {
       this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes, file: `.companion/research/${name}` } as never);
       this.state(cmd.agent, "done");
     });
+  }
+
+  // Ship: may this go on the internet? Runs every gate and says which one stops it. Nothing is deployed here.
+  private async shipCheck(cmd: Extract<Command, { type: "ship.check" }>): Promise<void> {
+    const store = this.store(cmd.project);
+    const now = await store.snapshot("Ship check");
+    let rec = this.lastProof.get(cmd.project);
+    const stale = async () => !rec || (await store.diff(rec.snapshot, now.id)).length > 0;
+    if (cmd.runChecks && (await stale())) {
+      // Check the project exactly as it is now, with no model involved.
+      const ac = new AbortController();
+      this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: "ship", rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      try {
+        const res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
+        this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
+        if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(cmd.project, rec); }
+      } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete("ship"); }
+    }
+    const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await stale()) } : undefined;
+    const report = await runGates({ project: cmd.project, proof, confirmed: cmd.confirm });
+    this.emit({ type: "ship.gates", project: cmd.project, ...report } as never);
   }
 
   // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.

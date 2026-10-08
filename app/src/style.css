@@ -28,7 +28,7 @@ button { font: inherit; }
 
 /* The card */
 .card { padding: 22px 14px 12px; }
-.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0;  flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .ask { display: flex; gap: 6px; margin: 8px 0; }
 .ask input { flex: 1; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }

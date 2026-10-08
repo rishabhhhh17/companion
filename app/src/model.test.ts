@@ -1,8 +1,8 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { askResearch, approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
-import { phWords, blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { checkShip, askResearch, approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
+import { confirmable, shipWords, phWords, blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -462,5 +462,40 @@ describe("Prompt help on the card", () => {
     expect(phWords(run([stage("needs_accessibility")]))).toMatch(/Accessibility/);
     expect(phWords(run([stage("nothing_to_read", { app: "Cursor" })]))).toMatch(/Cursor/);
     expect(phWords(run([]))).toBeNull();
+  });
+});
+
+describe("Ship: the report on the card", () => {
+  const gates = (o: Record<string, unknown> = {}) => ev({ type: "ship.gates", project: "/p", canShip: false, blockedBy: ["secrets"], needsYou: ["database_access"], confirmed: [], allowedCount: 0, gates: [
+    { id: "checked", label: "The work was checked", status: "passed", detail: "The checks passed on this exact version." },
+    { id: "secrets", label: "No secrets would be published", status: "blocked", detail: "Found a Stripe live key in src/pay.js (line 3).", findings: ["Found a Stripe live key in src/pay.js (line 3)."] },
+    { id: "database_access", label: "Database access is protected", status: "could_not_check", detail: "I could not check your live database.", overridable: true },
+  ], ...o });
+  test("each gate is shown with its words, in order", () => {
+    const m = run([gates()]);
+    expect(m.ship?.gates.map((g) => [g.id, g.status])).toEqual([["checked", "passed"], ["secrets", "blocked"], ["database_access", "could_not_check"]]);
+  });
+  test("one plain sentence says whether it may ship", () => {
+    expect(shipWords(run([gates()]))).toBe("Not ready to ship: 1 thing is blocking it and 1 needs you");
+    expect(shipWords(run([gates({ canShip: true, blockedBy: [], needsYou: [], gates: [{ id: "checked", label: "x", status: "passed", detail: "" }] })]))).toBe("Ready to ship: every check passed");
+    expect(shipWords(run([gates({ blockedBy: ["a", "b"], needsYou: [] })]))).toBe("Not ready to ship: 2 things are blocking it");
+    expect(shipWords(run([]))).toBeNull();
+  });
+  test("only a gate that says it may be confirmed offers a confirm button", () => {
+    const m = run([gates()]);
+    expect(confirmable(m)).toEqual(["database_access"]);
+  });
+  test("the report keeps what you confirmed", () => {
+    const m = run([gates({ confirmed: ["database_access"], canShip: true, blockedBy: [], needsYou: [] })]);
+    expect(m.ship?.confirmed).toEqual(["database_access"]);
+  });
+  test("a new task or plan or closing clears it", () => {
+    expect(run([gates(), ...start]).ship).toBeNull();
+    expect(reduce(run([gates()]), { type: "ui.planRequested" } as never).ship).toBeNull();
+    expect(reduce(run([gates()]), { type: "ui.shipClosed" } as never).ship).toBeNull();
+  });
+  test("the commands are valid protocol, and confirming names the gates", () => {
+    expect(parseCommand(serialize(checkShip("/p", { runChecks: true }))).ok).toBe(true);
+    expect((checkShip("/p", { confirm: ["database_access"] }) as any).confirm).toEqual(["database_access"]);
   });
 });

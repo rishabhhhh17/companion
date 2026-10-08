@@ -210,6 +210,40 @@ await scenario("second-model-review", only, async (note) => {
   return good?.status === "passed" && bad?.status === "failed";
 });
 
+await scenario("ship-gates", only, async (note) => {
+  // No model is used: this is the real runner process with the real proof ladder and the real gates.
+  const gatesOf = async (dir: string, extra: Record<string, unknown> = {}) => {
+    const r = new Real(dir); await r.ready();
+    r.send({ v: 1, id: "s", type: "ship.check", project: dir, runChecks: true, ...extra });
+    const g = await r.until((e) => e.type === "ship.gates", 120_000);
+    const raw = JSON.stringify(r.events); r.stop();
+    return { g, raw };
+  };
+  const clean = tmp("shipclean"); put(clean, { "index.html": "<!doctype html><h1>My studio</h1><p>Welcome</p>" });
+  const a = await gatesOf(clean);
+  note(`clean page: canShip = ${a.g?.canShip}; gates = ${JSON.stringify(a.g?.gates.map((x: any) => x.id + ":" + x.status))}`);
+  const leak = tmp("shipleak"); put(leak, { "index.html": "<!doctype html><h1>Shop</h1>", "src/pay.js": 'const k = "sk_live_51H8aAbCdEfGhIjKlMnOpQrStUvWx123456789ABCDEFGHIJKL";' });
+  const b = await gatesOf(leak);
+  const sec = b.g?.gates.find((x: any) => x.id === "secrets");
+  note(`leaked key: canShip = ${b.g?.canShip}; secrets = ${sec?.status}; says: ${String(sec?.detail).slice(0, 110)}; key in any event = ${b.raw.includes("sk_live_51H8aAb")}`);
+  const built = tmp("shipbuilt"); put(built, { "index.html": "<!doctype html><h1>x</h1>", "dist/main.js": 'k="sk_live_51H8aAbCdEfGhIjKlMnOpQrStUvWx123456789ABCDEFGHIJKL"' });
+  const c = await gatesOf(built);
+  note(`key inside the built site: ${String(c.g?.gates.find((x: any) => x.id === "secrets")?.detail).slice(0, 120)}`);
+  const db = tmp("shipdb"); put(db, { "index.html": "<!doctype html><h1>app</h1>", "package.json": JSON.stringify({ name: "app", dependencies: { "@supabase/supabase-js": "2" } }), "supabase/migrations/001.sql": "create table public.orders (id int);" });
+  const d = await gatesOf(db);
+  note(`unprotected table: canShip = ${d.g?.canShip}; ${d.g?.gates.find((x: any) => x.id === "database_access")?.status}: ${String(d.g?.gates.find((x: any) => x.id === "database_access")?.detail).slice(0, 100)}`);
+  const stale = tmp("shipstale"); put(stale, { "index.html": "<!doctype html><h1>one</h1>" });
+  const rr = new Real(stale); await rr.ready();
+  rr.send({ v: 1, id: "s1", type: "ship.check", project: stale, runChecks: true });
+  await rr.until((e) => e.type === "ship.gates", 120_000);
+  writeFileSync(join(stale, "index.html"), "<!doctype html><h1>two, changed by hand</h1>");
+  const n = rr.events.length;
+  rr.send({ v: 1, id: "s2", type: "ship.check", project: stale });
+  const e2 = await rr.until((e) => e.type === "ship.gates", 30_000, n); rr.stop();
+  note(`changed after the check: canShip = ${e2?.canShip}; ${e2?.gates.find((x: any) => x.id === "checked")?.detail}`);
+  return a.g?.canShip === true && b.g?.canShip === false && sec?.status === "blocked" && !b.raw.includes("sk_live_51H8aAb") && /anyone who opens your site/i.test(String(c.g?.gates.find((x: any) => x.id === "secrets")?.detail)) && d.g?.canShip === false && e2?.canShip === false;
+});
+
 console.log("\n\n================ SUMMARY ================");
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}`);
 console.log(`estimated usage: about $${totalUsd.toFixed(3)} (an estimate, on the test plan login)`);
