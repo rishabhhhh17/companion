@@ -98,6 +98,7 @@ export class AgentRunner {
   private resumers = new Map<string, (c: string) => void>();
   private resumeEarly = new Set<string>();
   // The last proof result for each project, and which saved version it was for. Shipping needs a pass on the exact version.
+  private rulesSaid = new Set<string>();
   private lastProof = new Map<string, { verdict: string; snapshot: string }>();   // "Carry on" pressed before the loop is waiting for it
 
   // Take the wheel: stop the current step now; the plan waits for the person to resume.
@@ -578,7 +579,17 @@ export class AgentRunner {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
     const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
     // House rules can only make a call stricter, never looser.
-    const ruled = applyRules(loadRules(cmd.project).rules, { tool: tool.name, input: tool.input }, cmd.project);
+    const loaded = loadRules(cmd.project);
+    const said = `${cmd.project}\n${loaded.problems.join("\n")}`;
+    if (loaded.problems.length && !this.rulesSaid.has(said)) {
+      this.rulesSaid.add(said);
+      this.emit({ type: "protocol.error", reason: `Your house rules file has a problem. ${loaded.problems.slice(0, 3).join(" ")}` } as never);
+    }
+    let ruled = applyRules(loaded.rules, { tool: tool.name, input: tool.input }, cmd.project);
+    // A rules file that cannot be read must not mean "no rules": anything that is not plain reading asks first.
+    if (loaded.broken && !ruled && base.decision === "allow" && !["Read", "Grep", "Glob", "LS"].includes(tool.name)) {
+      ruled = { decision: "ask", risk: "irreversible", reason: "Your house rules file could not be read, so I am asking first.", undoable: base.undoable };
+    }
     const rank = { allow: 0, ask: 1, deny: 2 } as const;
     const verdict: Verdict = ruled && rank[ruled.decision] > rank[base.decision] ? ruled : base;
     const sum = summary(tool);
