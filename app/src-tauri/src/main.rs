@@ -142,6 +142,7 @@ fn data_dir() -> PathBuf { PathBuf::from(std::env::var("HOME").unwrap_or_default
 fn prefs_path() -> PathBuf { data_dir().join("dock.json") }
 static PREFS: Mutex<Option<Prefs>> = Mutex::new(None);
 static SIG: Mutex<String> = Mutex::new(String::new());
+static LAST_DRAG: Mutex<(f64, f64, f64, f64)> = Mutex::new((0.0, 0.0, 0.0, 0.0)); // x, y, work x, work width
 
 fn with_prefs<R>(f: impl FnOnce(&mut Prefs) -> R) -> R {
     let mut g = PREFS.lock().unwrap();
@@ -193,6 +194,7 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
         let Some(first) = list.first() else { return };
         let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
         let (edge, pct) = snap(target.work, DOCK, x, y);
+        *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
         with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); });
         apply_dock(mtm, "drag", true);
     });
@@ -201,8 +203,15 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
     save_prefs();
-    let _ = app.run_on_main_thread(|| log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen) }))));
+    let _ = app.run_on_main_thread(|| {
+        let (x, y, wx, ww) = *LAST_DRAG.lock().unwrap();
+        log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen), "last_pointer": [x, y], "work_x_and_width": [wx, ww] })));
+    });
 }
+
+/// A page that has just loaded asks for the status messages it missed.
+#[tauri::command]
+fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner::Runner>().replay() }
 
 #[tauri::command]
 fn permissions_status() -> permissions::Permissions { permissions::current() }
@@ -348,7 +357,7 @@ fn start_runner(app: &AppHandle) {
             let a = app.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(1));
-                let _ = a.emit("runner-event", json!({ "v": 1, "id": "app-norunner", "type": "app.runner_down", "reason": e }));
+                runner::Runner::publish(&a, json!({ "v": 1, "id": "app-norunner", "type": "app.runner_down", "reason": e }));
             });
         }
     }
@@ -379,7 +388,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command, drag_dock, drop_dock, permissions_status])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

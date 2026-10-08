@@ -5,7 +5,9 @@ use serde_json::Value;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::collections::BTreeMap;
 use std::sync::Mutex;
+use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
 pub const PROTOCOL_VERSION: i64 = 1;
@@ -58,9 +60,29 @@ pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, d
     Ok(Locations { bun: bun.into(), runner: runner.into(), data })
 }
 
-pub struct Runner { stdin: Mutex<Option<ChildStdin>>, child: Mutex<Option<Child>> }
+/// Status messages a page that loads late still needs (who is connected, is the engine up).
+const STICKY: &[&str] = &["runner.hello", "auth.status", "app.runner_down"];
+
+/// Remember the latest sticky event of each type. Returns true if it was kept.
+pub fn remember(map: &mut BTreeMap<String, Value>, v: &Value) -> bool {
+    match v.get("type").and_then(Value::as_str) {
+        Some(t) if STICKY.contains(&t) => { map.insert(t.to_string(), v.clone()); true }
+        _ => false,
+    }
+}
+
+pub struct Runner { stdin: Mutex<Option<ChildStdin>>, child: Mutex<Option<Child>>, sticky: Mutex<BTreeMap<String, Value>> }
 impl Runner {
-    pub fn new() -> Self { Self { stdin: Mutex::new(None), child: Mutex::new(None) } }
+    pub fn new() -> Self { Self { stdin: Mutex::new(None), child: Mutex::new(None), sticky: Mutex::new(BTreeMap::new()) } }
+
+    /// What to replay to a page that has just loaded, oldest meaning first.
+    pub fn replay(&self) -> Vec<Value> { self.sticky.lock().unwrap().values().cloned().collect() }
+
+    /// Tell every page, and remember it for pages that load later.
+    pub fn publish(app: &AppHandle, v: Value) {
+        remember(&mut app.state::<Runner>().sticky.lock().unwrap(), &v);
+        let _ = app.emit("runner-event", v);
+    }
 
     /// Start the runner and forward each event line to the pages as "runner-event".
     pub fn start(&self, app: &AppHandle, loc: &Locations, on_type: impl Fn(&str) + Send + 'static) -> Result<(), String> {
@@ -82,11 +104,11 @@ impl Runner {
                 for line in split_lines(&mut buf, &chunk[..n]) {
                     if let Ok(v) = serde_json::from_str::<Value>(&line) {
                         on_type(v.get("type").and_then(Value::as_str).unwrap_or("?"));   // the type only, never the content
-                        let _ = app.emit("runner-event", v);
+                        Runner::publish(&app, v);
                     }
                 }
             }
-            let _ = app.emit("runner-event", serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down" }));
+            Runner::publish(&app, serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down" }));
         });
         Ok(())
     }
@@ -159,6 +181,24 @@ mod tests {
         let none = |_: &str| None;
         let e = locations(None, &none, "/d".into()).unwrap_err();
         assert!(e.contains("dev-setup.sh"));
+    }
+    #[test]
+    fn a_page_that_loads_late_gets_the_status_it_missed() {
+        let mut m = BTreeMap::new();
+        assert!(remember(&mut m, &json!({"type":"runner.hello","sdk":"1"})));
+        assert!(remember(&mut m, &json!({"type":"auth.status","method":"none"})));
+        assert_eq!(m.len(), 2);
+    }
+    #[test]
+    fn only_the_latest_of_each_status_is_kept_and_busy_events_are_not_stored() {
+        let mut m = BTreeMap::new();
+        remember(&mut m, &json!({"type":"auth.status","method":"none"}));
+        remember(&mut m, &json!({"type":"auth.status","method":"api_key"}));
+        assert_eq!(m["auth.status"]["method"], "api_key");
+        assert!(!remember(&mut m, &json!({"type":"agent.state","state":"working"})));
+        assert!(!remember(&mut m, &json!({"type":"cost.update"})));
+        assert!(!remember(&mut m, &json!({"no_type":1})));
+        assert_eq!(m.len(), 1);
     }
     #[test]
     fn the_runner_down_event_and_stop_command_have_the_right_shape() {
