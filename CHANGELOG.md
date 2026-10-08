@@ -13,6 +13,8 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - The safety rules are written and tested: password boxes and password managers are never read, each app asks once (once, always or never), nothing is read until the "reading your text" light is on, nothing is pasted if you moved to another app or box, and no text ever goes into a log.
 - A set of 30 rough prompts and a scorer to measure rewrite quality later.
 
+**Prompt help works on a real Mac.** In TextEdit: press the hotkey, a light shows first, the text box is read, a card shows what changed word by word, Use it puts the better version in, and Put my original back undoes it. Along the way we found and fixed three real problems: a freeze when changing hotkeys inside a hotkey, pastes landing in our own card instead of your app, and a simulated Cmd+V that did not land (the app's own Edit > Paste menu does). A free test mode lets this be tried without using any plan.
+
 ## Day 3 (night): 9 Oct 2026
 
 **Rescue, Research and a second opinion.**

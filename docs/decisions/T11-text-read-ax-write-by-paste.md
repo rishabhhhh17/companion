@@ -36,6 +36,14 @@ The read order, Electron and Chromium triggers, crates and pasteboard steps are 
 - **Indicator rules added by the spike:** let the indicator draw (about 0.15 s) before touching the other app; set the panel level last, because turning on the floating flag resets it to 3. With both, the banner was seen over Dia at level 25. Over a true full screen app: still to check in M2 (T01 [verify]).
 - Per app checks for Chrome, Safari, ChatGPT, Cursor, Lovable, Cmd+Z, Send and Enter, a clipboard image, switching apps, Terminal and the clipboard alert move to M5.
 
+## Settled in M5b, 9 Oct 2026 (TextEdit, on the founder's Mac, with a free stand in for Claude)
+- The whole loop works: hotkey, light first, Accessibility read, consent per app, diff card, paste back, restore. Reads took about 0.2 s. Only Accessibility was asked.
+- **Pasting by sending Cmd+V did not land** from inside the app, although the spike's did. Pressing the app's own **Edit > Paste** menu item through Accessibility did land, so that is now the first method and Cmd+V the fallback. The menu route only works for apps with an English Edit menu, so other languages and apps without that menu still need checking.
+- **Clicking our card makes it the active window** (it can take the keyboard), so a paste would go to our own card. Before pasting we hand the keyboard back to the app the text came from, and if that fails we copy instead.
+- **Hotkey handlers must not change hotkeys themselves.** Registering or unregistering a shortcut inside a shortcut handler froze the shortcut plugin. The work now runs on its own thread.
+- **Dev builds must be signed with a stable certificate** (the developer's own Apple Development one), or macOS forgets the Accessibility permission on every rebuild. The build script does this and refuses to sign anything if Anthropic's Claude binary is inside the bundle.
+- The clipboard is not read or restored yet; after a paste it holds our text, and the card says so. Checking the clipboard alert is still open.
+
 ## Open [verify] items
 - **[verify]** pasteboard privacy prompt enforcement on macOS 26 and 27 (section 20, question 13). Apple removed the preview switch in the macOS 27.2 betas without saying why, so default enforcement may be close. Keep the test Mac off 27.2 until spike (d) runs.
 - Rich editors ignoring value writes is an inference to verify per app.

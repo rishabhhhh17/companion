@@ -23,6 +23,7 @@ extern "C" {
     fn AXUIElementCopyAttributeValue(el: CFTypeRef, attr: CFTypeRef, value: *mut CFTypeRef) -> AXError;
     fn AXUIElementSetAttributeValue(el: CFTypeRef, attr: CFTypeRef, value: CFTypeRef) -> AXError;
     fn AXValueCreate(kind: u32, ptr: *const c_void) -> CFTypeRef;
+    fn AXUIElementPerformAction(el: CFTypeRef, action: CFTypeRef) -> AXError;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
@@ -30,6 +31,10 @@ extern "C" {
     fn CFGetTypeID(cf: CFTypeRef) -> usize;
     fn CFStringGetTypeID() -> usize;
     fn CFHash(cf: CFTypeRef) -> usize;
+    fn CFArrayGetTypeID() -> usize;
+    fn CFArrayGetCount(a: CFTypeRef) -> isize;
+    fn CFArrayGetValueAtIndex(a: CFTypeRef, i: isize) -> CFTypeRef;
+    fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
     fn CFDictionaryCreate(alloc: CFTypeRef, keys: *const CFTypeRef, values: *const CFTypeRef, n: isize, kcb: CFTypeRef, vcb: CFTypeRef) -> CFTypeRef;
     static kCFBooleanTrue: CFTypeRef;
     static kCFTypeDictionaryKeyCallBacks: c_void;
@@ -41,7 +46,10 @@ extern "C" {
     fn CGEventCreateKeyboardEvent(src: CFTypeRef, key: u16, down: bool) -> CFTypeRef;
     fn CGEventSetFlags(ev: CFTypeRef, flags: u64);
     fn CGEventPost(tap: u32, ev: CFTypeRef);
+    fn CGPreflightPostEventAccess() -> bool;
 }
+/// Is this app allowed to send key presses? (A question only; it never asks.)
+pub fn may_post_events() -> bool { unsafe { CGPreflightPostEventAccess() } }
 
 #[link(name = "Carbon", kind = "framework")]
 extern "C" { fn IsSecureEventInputEnabled() -> bool; }
@@ -177,6 +185,34 @@ fn post_key(key: u16, flags: u64) {
         if !src.is_null() { CFRelease(src); }
     }
 }
+/// The children of an element, each retained so they stay valid after the list is released.
+fn children(el: &Cf) -> Vec<Cf> {
+    let Some(list) = attr(el, "AXChildren") else { return vec![] };
+    unsafe {
+        if CFGetTypeID(list.0) != CFArrayGetTypeID() { return vec![]; }
+        (0..CFArrayGetCount(list.0)).filter_map(|i| { let v = CFArrayGetValueAtIndex(list.0, i); if v.is_null() { None } else { Cf::new(CFRetain(v)) } }).collect()
+    }
+}
+
+/// Presses a menu item of the app (for example Edit, then Paste) the way a person would, through Accessibility.
+/// This does not depend on sending key presses. It only works for apps with an English menu of that name.
+pub fn press_menu(pid: i32, menu: &str, item: &str) -> bool {
+    let Some(app) = Cf::new(unsafe { AXUIElementCreateApplication(pid) }) else { return false };
+    let Some(bar) = attr(&app, "AXMenuBar") else { return false };
+    for top in children(&bar) {
+        if text_attr(&top, "AXTitle").as_deref() != Some(menu) { continue; }
+        for sub in children(&top) {
+            for entry in children(&sub) {
+                if text_attr(&entry, "AXTitle").as_deref() == Some(item) {
+                    let a = cfstr("AXPress");
+                    return unsafe { AXUIElementPerformAction(entry.0, as_ref(&a)) == AX_OK };
+                }
+            }
+        }
+    }
+    false
+}
+
 pub fn press_paste() { post_key(KEY_V, FLAG_COMMAND); }
 #[allow(dead_code)]
 pub fn press_select_all() { post_key(KEY_A, FLAG_COMMAND); }
@@ -186,7 +222,6 @@ pub fn press_select_all() { post_key(KEY_A, FLAG_COMMAND); }
 #[allow(dead_code)] // used once macOS clipboard alerts are checked on this Mac ([verify] in the M5b session)
 pub struct SavedClipboard { items: Vec<Vec<(Retained<objc2_app_kit::NSPasteboardType>, Retained<NSData>)>>, count: isize }
 
-#[allow(dead_code)]
 pub fn clipboard_change_count() -> isize { NSPasteboard::generalPasteboard().changeCount() }
 
 /// Saves every item on the clipboard so it can be put back. Only call this when macOS will not show an alert for it.
