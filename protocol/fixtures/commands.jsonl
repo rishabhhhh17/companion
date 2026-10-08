@@ -10,3 +10,4 @@
 {"v":1,"id":"c10","type":"tasks.list","project":"p_9f2c"}
 {"v":1,"id":"c11","type":"drive.plan","project":"p_9f2c","agent":"driver-1","goal":"A booking page for my studio","model":"claude-sonnet-5-5","budgetUsd":5}
 {"v":1,"id":"c12","type":"drive.approve","agent":"driver-1","steps":["Make the page","Add a booking form"]}
+{"v":1,"id":"c13","type":"loop.choose","agent":"driver-1","choice":"different"}

@@ -34,6 +34,8 @@ export const S = {
   planCost: "Rough cost",
   removeStep: "Remove",
   stepOf: "Step",
+  stuckTitle: "This keeps failing",
+  stuckHelp: "The same check has failed three times in a row, so more tries are unlikely to help.",
   recentTitle: "Recent tasks",
   noRecent: "Nothing yet.",
   checkingTitle: "Checking the work",

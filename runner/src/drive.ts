@@ -28,3 +28,12 @@ export const estimateUsd = (steps: number) => Math.round(steps * 0.25 * 100) / 1
 
 // Tools that only look. Everything else is refused while planning, in code.
 export const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite"]);
+
+// Two failures are "the same" when the same check failed with the same words once numbers
+// (ports, times, line numbers) are ignored. Three in a row means the loop is not getting anywhere.
+export function failureSignature(f: { rung: string; detail: string }): string {
+  return `${f.rung}:${f.detail.toLowerCase().replace(/\d+/g, "N").replace(/\s+/g, " ").trim().slice(0, 240)}`;
+}
+export const differentPrompt = (title: string, f: { label: string; detail: string }) =>
+  `Step: ${title}\n\nThe same check has failed three times in a row with the same problem, so the current approach is not working.\nFailed check: ${f.label}\nWhat happened: ${f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
+export const STUCK_OPTIONS = [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }];

@@ -1,7 +1,7 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { approvePlan, planDrive } from "./commands.ts";
+import { approvePlan, chooseLoop, planDrive } from "./commands.ts";
 import { driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -288,5 +288,23 @@ describe("Drive: the plan card and progress", () => {
   test("the new commands are valid protocol", () => {
     expect(parseCommand(serialize(planDrive("/p", "a booking page"))).ok).toBe(true);
     expect(parseCommand(serialize(approvePlan(["a", "b"]))).ok).toBe(true);
+  });
+});
+
+describe("Drive: the 'this keeps failing' card", () => {
+  const stuck = ev({ type: "loop.stuck", agent: "a", index: 2, title: "Add a form", failure: { label: "Opening it in a browser", detail: "x is not defined" }, options: [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }] });
+  test("it shows the evidence and the options", () => {
+    const m = run([stuck]);
+    expect(m.stuck).toMatchObject({ index: 2, title: "Add a form", failure: "Opening it in a browser: x is not defined" });
+    expect(m.stuck?.options.map((o) => o.id)).toEqual(["different", "stop"]);
+  });
+  test("answering removes it", () => expect(reduce(run([stuck]), { type: "ui.stuckAnswered" } as never).stuck).toBeNull());
+  test("the plan carrying on removes it too", () => {
+    expect(run([stuck, ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Add a form", status: "done" })]).stuck).toBeNull();
+    expect(run([stuck, ev({ type: "drive.done", agent: "a", status: "not_done", completed: 1, total: 3, usdEstimate: 0 })]).stuck).toBeNull();
+  });
+  test("the answer is valid protocol", () => {
+    expect(parseCommand(serialize(chooseLoop("different"))).ok).toBe(true);
+    expect(parseCommand(serialize(chooseLoop("stop"))).ok).toBe(true);
   });
 });

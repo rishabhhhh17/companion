@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, approvePlan, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { answerApproval, approvePlan, chooseLoop, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { characterWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
@@ -84,6 +84,20 @@ function Card() {
           <div className="row">
             <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.planCancel}</button>
+          </div>
+        </section>
+      )}
+
+      {m.stuck && (
+        <section className="panel amber" aria-label={S.stuckTitle}>
+          <h2>{S.stuckTitle}</h2>
+          <div className="line">{S.stepOf} {m.stuck.index}: {m.stuck.title}</div>
+          <div className="line muted">{S.stuckHelp}</div>
+          <div className="line">{m.stuck.failure}</div>
+          <div className="row">
+            {m.stuck.options.map((o, i) => (
+              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
+            ))}
           </div>
         </section>
       )}

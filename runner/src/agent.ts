@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
-import { estimateUsd, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, stepPrompt } from "./drive.ts";
+import { differentPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
@@ -80,6 +80,7 @@ export class AgentRunner {
   private plans = new Map<string, PendingPlan>();
   private driving = new Set<string>();
   private driveStop = new Set<string>();
+  private choices = new Map<string, (c: string) => void>();
   private counter = 0;
   constructor(private o: RunnerOptions) {}
 
@@ -95,8 +96,13 @@ export class AgentRunner {
       case "agent.start": await this.run(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "drive.approve": return this.driveApprove(cmd);
-      case "agent.interrupt": { this.driveStop.add(cmd.agent); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const a of this.driving) this.driveStop.add(a); for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "loop.choose": {
+        const r = this.choices.get(cmd.agent);
+        if (!r) { this.fail("Nothing is waiting for an answer.", cmd.agent); return; }
+        this.choices.delete(cmd.agent); r(cmd.choice); return;
+      }
+      case "agent.interrupt": { this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
+      case "agent.interruptAll": { for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
@@ -129,7 +135,7 @@ export class AgentRunner {
     return new CheckpointStore(join(this.o.shadowRoot, `${id}.git`), project);
   }
 
-  private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string }> {
+  private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
     const store = this.store(cmd.project);
     const lbl = makeLabel(cmd.prompt);
     const abort = new AbortController();
@@ -189,6 +195,8 @@ export class AgentRunner {
     // that changed files is checked, and a failed check goes back to Claude (twice at most).
     const MAX_TRIES = 3;
     let proof: "passed" | "failed" | "skipped" = "skipped";
+    const sigs: string[] = [];
+    let lastFailure: { label: string; detail: string } | undefined;
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let ok = await round(cmd.prompt, opts.resumeSession);
     for (let tries = 1; ; tries++) {
@@ -209,6 +217,7 @@ export class AgentRunner {
       if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; break; }
 
       proof = "failed"; status = "not_done";
+      { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail }; } }
       if (tries >= MAX_TRIES || usd >= cmd.budgetUsd) { if (usd >= cmd.budgetUsd) status = "error_max_budget_usd"; break; }
       // Send the evidence back into the same conversation and try again.
       const f = res.failedAt ?? res.steps.at(-1);
@@ -227,7 +236,8 @@ export class AgentRunner {
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
-    return { status, usd, sessionId };
+    const stuck = proof === "failed" && sigs.length >= 3 && new Set(sigs.slice(-3)).size === 1 ? lastFailure : undefined;
+    return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
 
   // --- Drive: plan first (read only), then one approved step at a time ---
@@ -308,9 +318,19 @@ export class AgentRunner {
         if (this.driveStop.has(cmd.agent)) { status = "interrupted"; break; }
         if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
-        const r = await this.run({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt: stepPrompt(index, total, title), model: plan.model, budgetUsd: remaining }, { resumeSession: session });
-        session = r.sessionId ?? session;
-        remaining -= r.usd; spent += r.usd;
+        const stepCmd = (prompt: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt, model: plan.model, budgetUsd: remaining });
+        let r = await this.run(stepCmd(stepPrompt(index, total, title)), { resumeSession: session });
+        session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
+        // The same failure three times: stop and ask, once per step.
+        if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
+          this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck, options: STUCK_OPTIONS } as never);
+          this.state(cmd.agent, "needsYou");
+          const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));
+          if (choice === "different" && remaining > 0) {
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: session });
+            session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
+          } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
+        }
         if (r.status === "done") { completed++; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "done" } as never); continue; }
         status = r.status;
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: r.status === "interrupted" ? "stopped" : r.status === "error_max_budget_usd" ? "over_budget" : "not_done" } as never);
