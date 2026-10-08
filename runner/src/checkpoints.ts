@@ -42,6 +42,7 @@ export class CheckpointStore {
 
   snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)); }
   restore(id: string): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id)); }
+  diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
   list(): Promise<Checkpoint[]> { return this.serial(async () => this.refs().map((r) => this.readMeta(r.id)!).filter(Boolean)); }
 
   // ---------- git plumbing ----------
@@ -170,6 +171,16 @@ export class CheckpointStore {
       chmodSync(dst, 0o600);
     }
     return files;
+  }
+
+  private async diffNow(fromId: string, toId: string) {
+    const a = this.readMeta(fromId), b = this.readMeta(toId);
+    if (!a || !b) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
+    const out = await this.git(["diff-tree", "-r", "--name-status", "--no-renames", "-z", a.commit, b.commit]);
+    const parts = out.split("\0").filter(Boolean);
+    const res: { file: string; kind: "added" | "modified" | "deleted" }[] = [];
+    for (let i = 0; i + 1 < parts.length; i += 2) res.push({ file: parts[i + 1], kind: parts[i] === "A" ? "added" : parts[i] === "D" ? "deleted" : "modified" });
+    return res.sort((x, y) => x.file.localeCompare(y.file));
   }
 
   // ---------- restore ----------

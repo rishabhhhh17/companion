@@ -27,7 +27,7 @@ export type CheckpointCreated = Envelope & {
   skipped: { path: string; reason: string }[];
 };
 export type AgentState = Envelope & { type: "agent.state"; agent: string; state: AgentStateName };
-export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: string; summary: string; toolUseId: string; undoable: boolean };
+export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: string; summary: string; toolUseId: string; undoable: boolean; outcome?: "ran" | "blocked" | "needs_approval" | "denied" };
 export type ApprovalRequest = Envelope & {
   type: "approval.request"; approval: string; agent: string; checkpoint: string; toolUseId: string;
   risk: "irreversible" | "git" | "outside_project" | "install" | "network"; title: string; expiresAt: string;
