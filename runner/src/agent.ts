@@ -11,9 +11,15 @@ import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
 import { buildChildEnv, evaluate } from "./safety.ts";
+import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
 import type { TaskLog } from "./tasklog.ts";
 
 export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
+
+// What the checker is given: the project, the two snapshots to compare, a way to report each rung,
+// and the stop signal. Tests pass a stand in; the default runs the real ladder.
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal };
+export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
   shadowRoot: string;
@@ -21,6 +27,7 @@ export type RunnerOptions = {
   log: TaskLog;
   emit: (e: Event) => void;
   executor?: ToolExecutor;
+  proof?: ProofRunner;
   approvalTimeoutMs?: number;
   now?: () => Date;
 };
@@ -161,7 +168,24 @@ export class AgentRunner {
     // Receipt: compare the state before with the state now.
     const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
     const changed = await store.diff(before.id, after.id);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof: "skipped", usdEstimate: usd } as never);
+
+    // Proof: "done" has to be earned. Only a task that ended normally and changed files is checked.
+    let proof: "passed" | "failed" | "skipped" = "skipped";
+    if (status === "done" && changed.length > 0 && !abort.signal.aborted) {
+      this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      let res: LadderResult;
+      try {
+        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal });
+      } catch (e) {
+        res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
+      }
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
+      if (res.verdict === "failed") { status = "not_done"; proof = "failed"; }
+      else if (res.verdict === "cancelled" || abort.signal.aborted) status = "interrupted";
+      else if (res.verdict !== "nothing_to_check") proof = "passed";
+    }
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.o.log.finish(taskId, status, usd, this.now().toISOString());
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
