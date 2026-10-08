@@ -6,6 +6,8 @@
 mod docking;
 mod fullscreen;
 mod permissions;
+mod ax;
+mod phelp;
 #[allow(dead_code)] // wired to the hotkey in M5b
 mod prompthelp;
 mod visibility;
@@ -83,7 +85,7 @@ fn active(mtm: MainThreadMarker) -> bool {
     NSApplication::sharedApplication(mtm).isActive()
 }
 
-fn log(ev: &str, extra: Value) {
+pub(crate) fn log(ev: &str, extra: Value) {
     let dir = format!("{}/Library/Application Support/dev.companion.app", std::env::var("HOME").unwrap_or_default());
     let _ = std::fs::create_dir_all(&dir);
     let mut d = json!({ "run": RUN.get(), "seq": SEQ.fetch_add(1, Ordering::SeqCst) + 1, "ev": ev,
@@ -229,6 +231,36 @@ fn drop_dock(app: AppHandle) {
 /// A page that has just loaded asks for the status messages it missed.
 #[tauri::command]
 fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner::Runner>().replay() }
+
+// ---- Prompt help (M5b): the hotkey is the only way anything is read ----
+
+fn sc_mods() -> Modifiers { Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER }
+fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
+fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
+fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }
+static ARMED: AtomicU64 = AtomicU64::new(0);
+
+/// Accept and dismiss hotkeys exist only while a result is showing, and give themselves up after a minute and a half.
+/// Esc is taken from the person's apps only for that long (T11).
+fn arm_result_keys(app: &AppHandle, on: bool) {
+    let gs = app.global_shortcut();
+    if on {
+        let gen = ARMED.fetch_add(1, Ordering::SeqCst) + 1;
+        let _ = gs.register(sc_accept()); let _ = gs.register(sc_esc());
+        let a = app.clone();
+        std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(90)); if ARMED.load(Ordering::SeqCst) == gen { arm_result_keys(&a, false); } });
+    } else {
+        ARMED.fetch_add(1, Ordering::SeqCst);
+        let _ = gs.unregister(sc_accept()); let _ = gs.unregister(sc_esc());
+    }
+}
+
+#[tauri::command] fn ph_consent(app: AppHandle, choice: String) { phelp::consent_answer(&app, &choice); }
+#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); }
+#[tauri::command] fn ph_accept(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, false); }
+#[tauri::command] fn ph_restore(app: AppHandle) { phelp::put_back(&app, true); }
+#[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
+#[tauri::command] fn ph_answer(app: AppHandle, answer: String) { arm_result_keys(&app, false); phelp::answer(&app, answer); }
 
 #[tauri::command]
 fn permissions_status() -> permissions::Permissions { permissions::current() }
@@ -425,6 +457,17 @@ fn main() {
                     if s == &k {
                         log("hotkey", json!({ "id": "K" }));
                         open_card(app, "hotkey", true);
+                    } else if s == &sc_read() {
+                        log("hotkey", json!({ "id": "R" }));
+                        arm_result_keys(app, false);
+                        phelp::on_hotkey(app, open_card);
+                    } else if s == &sc_accept() {
+                        log("hotkey", json!({ "id": "A" }));
+                        arm_result_keys(app, false);
+                        phelp::put_back(app, false);
+                    } else if s == &sc_esc() {
+                        arm_result_keys(app, false);
+                        phelp::dismiss(app);
                     } else if s == &x {
                         let r = app.state::<runner::Runner>().stop_everything("kill switch");
                         log("hotkey", json!({ "id": "X", "stop_everything": true, "sent": r.is_ok() }));
@@ -434,7 +477,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -481,6 +524,7 @@ fn main() {
             });
             app.global_shortcut().register(k)?;
             app.global_shortcut().register(x)?;
+            app.global_shortcut().register(sc_read())?;
             start_runner(app.handle());
             // The menu bar icon: hide or show, stop everything, quit. Clicking it never takes your typing.
             let hide = MenuItemBuilder::with_id("hide", "Hide or show Companion").build(app)?;

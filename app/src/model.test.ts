@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { askResearch, approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
-import { blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { phWords, blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -414,4 +414,53 @@ describe("Research: the notes card", () => {
     expect(c.model).not.toBe(DIAGNOSE_MODEL);
   });
   test("an empty question makes no command", () => expect(askResearch("/p", "   ")).toBeNull());
+});
+
+describe("Prompt help on the card", () => {
+  const stage = (s: string, o: Record<string, unknown> = {}) => ev({ type: "app.prompt_help", stage: s, ...o });
+  const done = ev({ type: "assist.prompt.done", req: "ph_1", text: "Build a photo gallery page.", diff: [["-", "make"], ["+", "Build"], ["=", " a gallery thing"]], usdEstimate: 0.003, handback: "paste", question: "Open full size on click?", options: ["Yes", "No"] });
+  test("pressing the hotkey lights the reading stage right away, with the app's name", () => {
+    expect(run([stage("reading", { app: "Claude" })]).ph).toMatchObject({ stage: "reading", app: "Claude" });
+  });
+  test("the improved text streams in while it thinks", () => {
+    const m = run([stage("thinking", { app: "Claude" }), ev({ type: "assist.prompt.delta", req: "ph_1", text: "Build a " }), ev({ type: "assist.prompt.delta", req: "ph_1", text: "photo gallery" })]);
+    expect(m.ph).toMatchObject({ stage: "thinking", streaming: "Build a photo gallery" });
+  });
+  test("when it is done the card is ready with the diff, the question and quick answers", () => {
+    const m = run([stage("thinking", { app: "Claude" }), done]);
+    expect(m.ph).toMatchObject({ stage: "ready", text: "Build a photo gallery page.", handback: "paste", question: "Open full size on click?", options: ["Yes", "No"] });
+    expect(m.ph?.diff[1]).toEqual(["+", "Build"]);
+  });
+  test("an error is shown in plain words and ends the stage", () => {
+    expect(run([stage("thinking"), ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]).ph).toMatchObject({ stage: "error", message: "The improved version came out much longer than yours, so I left yours alone." });
+  });
+  test("a cancelled request leaves nothing on the card", () => {
+    expect(run([stage("thinking"), ev({ type: "assist.error", req: "x", reason: "cancelled" })]).ph).toBeNull();
+  });
+  test("every ending has a message: pasted, copied, restored, refused", () => {
+    for (const s of ["pasted", "copied", "restored", "refused", "error"]) expect(run([stage(s, { message: "Done." })]).ph?.message, s).toBe("Done.");
+  });
+  test("needing Accessibility, consent and nothing to read are their own stages", () => {
+    expect(run([stage("needs_accessibility")]).ph?.stage).toBe("needs_accessibility");
+    expect(run([stage("consent", { app: "Cursor" })]).ph).toMatchObject({ stage: "consent", app: "Cursor" });
+    expect(run([stage("nothing_to_read", { app: "Cursor" })]).ph?.stage).toBe("nothing_to_read");
+  });
+  test("dismissing clears it", () => expect(run([stage("reading"), stage("dismissed")]).ph).toBeNull());
+  test("a new press starts over, with the old text gone", () => {
+    const m = run([stage("thinking"), done, stage("reading", { app: "Cursor" })]);
+    expect(m.ph).toMatchObject({ stage: "reading", app: "Cursor" });
+    expect(m.ph?.text).toBeUndefined();
+  });
+  test("a Prompt help event is not mistaken for the agent's task", () => {
+    const m = run([stage("reading"), done]);
+    expect(m.task).toBeNull();
+    expect(m.character).toBe("idle");
+  });
+  test("what to show for each stage, in plain words", () => {
+    expect(phWords(run([stage("reading", { app: "Claude" })]))).toBe("Reading your text in Claude");
+    expect(phWords(run([stage("thinking", { app: "Claude" })]))).toBe("Improving it");
+    expect(phWords(run([stage("needs_accessibility")]))).toMatch(/Accessibility/);
+    expect(phWords(run([stage("nothing_to_read", { app: "Cursor" })]))).toMatch(/Cursor/);
+    expect(phWords(run([]))).toBeNull();
+  });
 });

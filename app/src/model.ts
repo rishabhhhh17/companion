@@ -15,7 +15,12 @@ export type StuckCard = { index: number; title: string; failure: string; options
 export type Paused = { reason: string; path?: string };
 export type RescueCard = { summary: string; works: string[]; broken: string; evidence: { label: string; status: string; detail: string }[] };
 export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file: string };
+export type PromptHelp = {
+  stage: string; app?: string; message?: string; streaming?: string;
+  text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
+};
 export type Model = {
+  ph: PromptHelp | null;
   research: ResearchCard | null;
   rescue: RescueCard | null;
   paused: Paused | null;
@@ -34,7 +39,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -100,6 +105,12 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.resumed": return { ...m, paused: null };
     case "ui.stuckAnswered": return { ...m, stuck: null };
     case "rescue.report": return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
+    case "app.prompt_help":
+      // Each stage starts fresh, so the old text never lingers into a new press.
+      return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [] } };
+    case "assist.prompt.delta": return m.ph ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
+    case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
+    case "assist.error": return e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } };
     case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], file: e.file }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
     case "ui.planRequested": return { ...m, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
@@ -172,6 +183,20 @@ export function formatUsd(usd: number): string {
 // The one word shown under the character (plain, never cute).
 export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
+}
+
+// The one line shown for each Prompt help stage.
+export function phWords(m: Model): string | null {
+  const p = m.ph;
+  if (!p) return null;
+  switch (p.stage) {
+    case "reading": return `Reading your text in ${p.app ?? "this app"}`;
+    case "thinking": return "Improving it";
+    case "needs_accessibility": return "Turn on Accessibility for Companion in System Settings, then press the hotkey again.";
+    case "nothing_to_read": return `I could not find text to read in ${p.app ?? "this app"}. Click into the text box first.`;
+    case "consent": return `Allow Prompt help to read the text box in ${p.app ?? "this app"}?`;
+    default: return p.message ?? null;
+  }
 }
 
 // What the task was not allowed to do (a safety rule or a house rule said no), so a "Done" is never read as "all of it".

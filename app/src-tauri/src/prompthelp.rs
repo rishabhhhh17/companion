@@ -18,6 +18,7 @@ const BUILT_IN_NEVER: &[&str] = &[
 #[derive(Default, Clone)]
 pub struct Denylist { user: BTreeSet<String> }
 impl Denylist {
+    pub const fn empty() -> Denylist { Denylist { user: BTreeSet::new() } }
     pub fn add(&mut self, bundle_id: &str) { if !bundle_id.is_empty() { self.user.insert(bundle_id.to_string()); } }
     pub fn remove(&mut self, bundle_id: &str) { self.user.remove(bundle_id); }
     pub fn contains(&self, bundle_id: &str) -> bool { BUILT_IN_NEVER.contains(&bundle_id) || self.user.contains(bundle_id) }
