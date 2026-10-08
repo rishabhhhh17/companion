@@ -19,7 +19,7 @@ const emit = (e: Event) => { process.stdout.write(serialize(e) + "\n"); };
 const say = (e: Record<string, unknown>) => emit({ v: PROTOCOL_VERSION, id: `r${++n}`, ts: new Date().toISOString(), ...e } as unknown as Event);
 
 const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db")), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db")), dailyCeilingUsd: Number(process.env.COMPANION_DAILY_CEILING_USD) > 0 ? Number(process.env.COMPANION_DAILY_CEILING_USD) : 10, emit });
-const assist = settings.engine === "sdk" ? new AssistService({ ...createLanes(settings), images: new ImageStore(), emit }) : null;
+const assist = settings.engine === "sdk" || settings.assistStub ? new AssistService({ ...createLanes(settings), images: new ImageStore(), emit }) : null;
 const inflight = new Set<Promise<unknown>>();
 
 say({ type: "runner.hello", runnerVersion: "0.0.1", sdk: SDK_VERSION });

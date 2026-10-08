@@ -7,7 +7,10 @@ DIR="$HOME/Library/Application Support/dev.companion.app"
 BUN="$(command -v bun)"
 PLAY="$HOME/Developer/companion-playground"
 mkdir -p "$DIR" "$PLAY"
-if [ "${1:-}" = "--plan" ]; then
+if [ "${1:-}" = "--stub" ]; then
+  # Free: Prompt help uses a fixed stand in instead of Claude, to try the Mac parts without using any plan.
+  ENVJ=',"env":{"COMPANION_ASSIST_STUB":"1"}'
+elif [ "${1:-}" = "--plan" ]; then
   # Use the separate test sign in (never a key) and a cheaper model, for trying real tasks.
   ENVJ=',"env":{"COMPANION_ROUTE":"plan","COMPANION_MODEL":"claude-haiku-4-5-20251001","CLAUDE_CONFIG_DIR":"'"$HOME"'/Library/Application Support/Companion-test-claude"}'
 else

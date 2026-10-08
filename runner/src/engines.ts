@@ -4,12 +4,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "./engine.ts";
 import { DEFAULT_REF, resolveAuth, type KeychainRef } from "./keychain.ts";
-import { FastLane, VisionLane, type FastLike, type VisionLike } from "./lanes.ts";
+import { FastLane, StubFast, VisionLane, type FastLike, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 
 export type Settings = {
-  engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string;
+  engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
 };
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
@@ -23,6 +23,7 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     claudeBin: env.COMPANION_CLAUDE_BIN,
     model: env.COMPANION_MODEL || undefined,
     script,
+    assistStub: env.COMPANION_ASSIST_STUB === "1",
   };
 }
 
@@ -55,6 +56,7 @@ export function createEngine(s: Settings): Engine {
 
 // The two small lanes, created per request so they always use the current sign in.
 export function createLanes(s: Settings): { fast: FastLike; vision: VisionLike } {
+  if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) } };
   const lane = async () => {
     const a = await currentAuth(s);
     if (a.method === "none") throw new Error(NOT_CONNECTED);
