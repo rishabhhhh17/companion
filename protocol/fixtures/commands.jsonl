@@ -16,3 +16,4 @@
 {"v":1,"id":"c16","type":"rescue.diagnose","project":"p_9f2c","agent":"rescuer-1","model":"claude-opus-5-5","budgetUsd":3}
 {"v":1,"id":"c17","type":"research.ask","project":"p_9f2c","agent":"researcher-1","question":"How do I take payments on my site?","model":"claude-sonnet-5-5","budgetUsd":2}
 {"v":1,"id":"c18","type":"ship.check","project":"p_9f2c","runChecks":true}
+{"v":1,"id":"c19","type":"runner.ping"}

@@ -46,9 +46,10 @@ extern "C" {
     fn CGEventCreateKeyboardEvent(src: CFTypeRef, key: u16, down: bool) -> CFTypeRef;
     fn CGEventSetFlags(ev: CFTypeRef, flags: u64);
     fn CGEventPost(tap: u32, ev: CFTypeRef);
-    fn CGPreflightPostEventAccess() -> bool;
+    #[allow(dead_code)] fn CGPreflightPostEventAccess() -> bool;
 }
 /// Is this app allowed to send key presses? (A question only; it never asks.)
+#[allow(dead_code)]
 pub fn may_post_events() -> bool { unsafe { CGPreflightPostEventAccess() } }
 
 #[link(name = "Carbon", kind = "framework")]
@@ -66,6 +67,7 @@ const KEY_V: u16 = 9;
 /// An owned Core Foundation object, released when dropped.
 pub struct Cf(CFTypeRef);
 unsafe impl Send for Cf {}
+unsafe impl Sync for Cf {}   // Accessibility element handles may be used from any thread
 impl Drop for Cf { fn drop(&mut self) { if !self.0.is_null() { unsafe { CFRelease(self.0) } } } }
 impl Cf {
     fn new(p: CFTypeRef) -> Option<Cf> { if p.is_null() { None } else { Some(Cf(p)) } }
@@ -222,6 +224,7 @@ pub fn press_select_all() { post_key(KEY_A, FLAG_COMMAND); }
 #[allow(dead_code)] // used once macOS clipboard alerts are checked on this Mac ([verify] in the M5b session)
 pub struct SavedClipboard { items: Vec<Vec<(Retained<objc2_app_kit::NSPasteboardType>, Retained<NSData>)>>, count: isize }
 
+#[allow(dead_code)]
 pub fn clipboard_change_count() -> isize { NSPasteboard::generalPasteboard().changeCount() }
 
 /// Saves every item on the clipboard so it can be put back. Only call this when macOS will not show an alert for it.

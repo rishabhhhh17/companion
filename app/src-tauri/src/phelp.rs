@@ -8,7 +8,8 @@ use crate::ax;
 use crate::prompthelp as rules;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -16,17 +17,23 @@ const INDICATOR_DRAW: Duration = Duration::from_millis(150);
 
 struct Pending {
     pid: i32, bundle: String, name: String,
-    element: ax::Cf, element_id: u64,
+    element: Arc<ax::Cf>, element_id: u64,
     original: String, had_selection: bool,
     improved: Option<String>, handback_copy: bool,
 }
 #[derive(Default)]
 struct State { consent: Option<rules::Consent>, deny: rules::Denylist, awaiting: Option<(i32, String, String)>, pending: Option<Pending> }
+/// The state lock. If some thread ever panicked while holding it, later users still get it: one mistake must not break Prompt help for good.
+fn st() -> std::sync::MutexGuard<'static, State> { STATE.lock().unwrap_or_else(|e| e.into_inner()) }
+/// Counts hotkey presses and dismissals, so a paste that is already under way can tell the person has moved on.
+static GEN: AtomicU64 = AtomicU64::new(0);
+static PASTING: AtomicBool = AtomicBool::new(false);
+
 static STATE: Mutex<State> = Mutex::new(State { consent: None, deny: rules::Denylist::empty(), awaiting: None, pending: None });
 
 fn data_file() -> PathBuf { PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app/prompt_help.json") }
 fn load_consent() -> rules::Consent { std::fs::read_to_string(data_file()).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|v| rules::Consent::from_json(&v)).unwrap_or_default() }
-fn save_consent(c: &rules::Consent) { if let Some(d) = data_file().parent() { let _ = std::fs::create_dir_all(d); } let _ = std::fs::write(data_file(), c.to_json().to_string()); }
+fn save_consent(c: &rules::Consent) { if let Some(d) = data_file().parent() { let _ = std::fs::create_dir_all(d); } let _ = crate::logfile::write_atomic(&data_file(), c.to_json().to_string().as_bytes()); }
 fn now_ms() -> u128 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0) }
 
 /// Tell the pages what stage Prompt help is in. Never any of the person's text except what the page needs to show.
@@ -63,7 +70,8 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         let Some(front) = ax::front_app() else { crate::log("prompt_help_step", json!({ "step": "no_front_app" })); return };
         crate::log("prompt_help_step", json!({ "step": "front", "app": front.bundle_id }));
         if front.bundle_id.is_empty() || front.bundle_id.starts_with("dev.companion") { say(&app, "error", json!({ "message": "Click into the text box you want help with first, then press the hotkey." })); return; }
-        {   let mut st = STATE.lock().unwrap(); st.pending = None; st.awaiting = None; }
+        {   let mut s = st(); s.pending = None; s.awaiting = None; }
+        GEN.fetch_add(1, Ordering::SeqCst);
         // The light comes first, and gets a moment to draw, before anything is read (rule 5).
         let mut session = rules::ReadSession::default();
         say(&app, "reading", json!({ "app": front.name }));
@@ -77,7 +85,7 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         }
         let Some(f) = ax::focused(front.pid) else { say(&app, "nothing_to_read", json!({ "app": front.name })); note("read", &front.bundle_id, t0.elapsed().as_millis() as u64, 0, "no_field"); return; };
         let verdict = {
-            let mut st = STATE.lock().unwrap();
+            let mut st = st();
             if st.consent.is_none() { st.consent = Some(load_consent()); }
             let State { consent, deny, .. } = &mut *st;
             rules::read_verdict(&f.role, &f.subrole, ax::secure_input_enabled(), &front.bundle_id, deny, consent.as_mut().unwrap())
@@ -85,7 +93,7 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         match verdict {
             rules::ReadVerdict::Ok => finish_read(&app, session, front.pid, front.bundle_id, front.name, t0),
             rules::ReadVerdict::NeedConsent => {
-                STATE.lock().unwrap().awaiting = Some((front.pid, front.bundle_id.clone(), front.name.clone()));
+                st().awaiting = Some((front.pid, front.bundle_id.clone(), front.name.clone()));
                 say(&app, "consent", json!({ "app": front.name }));
             }
             other => { say(&app, "refused", json!({ "message": other.plain() })); note("read", &front.bundle_id, 0, 0, "refused"); }
@@ -102,7 +110,7 @@ fn finish_read(app: &AppHandle, mut session: rules::ReadSession, pid: i32, bundl
             note("read", &bundle, t0.elapsed().as_millis() as u64, chars, r.rung);
             let element_id = el.id();
             let text = r.text.clone();
-            STATE.lock().unwrap().pending = Some(Pending { pid, bundle: bundle.clone(), name: name.clone(), element: el, element_id, original: r.text, had_selection: r.had_selection, improved: None, handback_copy: false });
+            st().pending = Some(Pending { pid, bundle: bundle.clone(), name: name.clone(), element: Arc::new(el), element_id, original: r.text, had_selection: r.had_selection, improved: None, handback_copy: false });
             say(app, "thinking", json!({ "app": name, "selection": r.had_selection }));
             send_prompt(app, &bundle, &text, None);
         }
@@ -115,9 +123,9 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
     let app = app.clone();
     let choice = match choice { "once" => rules::Choice::Once, "always" => rules::Choice::Always, _ => rules::Choice::Never };
     std::thread::spawn(move || {
-        let Some((pid, bundle, name)) = STATE.lock().unwrap().awaiting.take() else { return };
+        let Some((pid, bundle, name)) = st().awaiting.take() else { return };
         {
-            let mut st = STATE.lock().unwrap();
+            let mut st = st();
             if st.consent.is_none() { st.consent = Some(load_consent()); }
             let c = st.consent.as_mut().unwrap();
             c.record(&bundle, choice);
@@ -125,7 +133,7 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
         }
         if choice == rules::Choice::Never { say(&app, "refused", json!({ "message": rules::ReadVerdict::RefusedByYou.plain() })); return; }
         // Ask the rules again so "once" is used up by this one read.
-        let ok = { let mut st = STATE.lock().unwrap(); st.consent.as_mut().unwrap().decide(&bundle) == rules::Decision::Allow };
+        let ok = { let mut st = st(); st.consent.as_mut().unwrap().decide(&bundle) == rules::Decision::Allow };
         if !ok { return; }
         let mut session = rules::ReadSession::default();
         session.indicator_on();
@@ -137,14 +145,14 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
 
 /// The page has shown the improved text; remember it so accept can paste it. Nothing is stored on disk.
 pub fn ready(improved: String, handback_copy: bool) {
-    if let Some(p) = STATE.lock().unwrap().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
+    if let Some(p) = st().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
 }
 
-pub fn dismiss(app: &AppHandle) { STATE.lock().unwrap().pending = None; say(app, "dismissed", json!({})); }
+pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); st().pending = None; say(app, "dismissed", json!({})); }
 
 /// Answer the one question and ask again, without asking another.
 pub fn answer(app: &AppHandle, answer: String) {
-    let (bundle, original) = match STATE.lock().unwrap().pending.as_ref() { Some(p) => (p.bundle.clone(), p.original.clone()), None => return };
+    let (bundle, original) = match st().pending.as_ref() { Some(p) => (p.bundle.clone(), p.original.clone()), None => return };
     say(app, "thinking", json!({}));
     send_prompt(app, &bundle, &original, Some(&answer));
 }
@@ -158,61 +166,63 @@ fn current_focus(pid: i32) -> Option<(i32, u64)> {
 
 /// Put the improved text in (accept) or the original back (restore). Always by paste, after the rules agree.
 pub fn put_back(app: &AppHandle, restore: bool) {
+    // Two clicks at once must not paste twice.
+    if PASTING.swap(true, Ordering::SeqCst) { return; }
     let app = app.clone();
-    std::thread::spawn(move || {
-        let (text, current_len, handback_copy, at_read, name, had_selection) = {
-            let st = STATE.lock().unwrap();
-            let Some(p) = st.pending.as_ref() else { return };
-            let text = if restore { p.original.clone() } else { match &p.improved { Some(t) => t.clone(), None => return } };
-            let current = ax::value_of(&p.element).unwrap_or_default();
-            (text, current.encode_utf16().count(), p.handback_copy, rules::Focus { pid: p.pid, element: p.element_id }, p.name.clone(), p.had_selection)
-        };
-        let now = current_focus(at_read.pid).map(|(pid, element)| rules::Focus { pid, element }).unwrap_or(rules::Focus { pid: -1, element: 0 });
-        match rules::paste_plan(at_read, now, handback_copy && !restore, false) {
-            rules::PasteVerdict::CopyOnly(msg) => { ax::write_clipboard(&text); say(&app, "copied", json!({ "message": msg })); note("paste", &name, 0, text.chars().count(), "copied"); }
-            rules::PasteVerdict::Paste => {
-                // The clipboard is put back only when macOS will not alert for reading it. Until that is checked on this Mac, it is not read.
-                let plan = rules::clipboard_plan(rules::AccessBehavior::Unknown);
-                let ours = ax::write_clipboard(&text);
-                let mut selected = true;
-                {
-                    let st = STATE.lock().unwrap();
-                    let p = st.pending.as_ref().unwrap();
-                    // Replace the whole box, or only the selection if that is what was read.
-                    if !(had_selection && !restore) { selected = ax::select_all(&p.element, current_len); std::thread::sleep(Duration::from_millis(60)); }
-                }
-                let fronted = ax::ensure_front(at_read.pid);
-                std::thread::sleep(Duration::from_millis(250));
-                crate::log("prompt_help_step", json!({ "step": "before_paste", "selected": selected, "fronted": fronted, "front": ax::front_app().map(|f| f.bundle_id), "may_post": ax::may_post_events(), "clipboard_changed": ax::clipboard_change_count() != ours }));
-                if !fronted {
-                    say(&app, "copied", json!({ "message": "I could not return to your text box, so I copied the text instead. Press Cmd+V where you want it." }));
-                    note("paste", &name, 0, text.chars().count(), "no_focus");
-                    return;
-                }
-                // First the app's own Edit > Paste (no key presses needed); if that did not put the text in, Cmd+V.
-                let probe: String = text.chars().take(24).collect();
-                let check = |ms: u64| -> bool {
-                    let started = Instant::now();
-                    while started.elapsed() < Duration::from_millis(ms) {
-                        std::thread::sleep(Duration::from_millis(100));
-                        if STATE.lock().unwrap().pending.as_ref().and_then(|p| ax::value_of(&p.element)).is_some_and(|v| v.contains(probe.as_str())) { return true; }
-                    }
-                    false
-                };
-                let menu_pressed = ax::press_menu(at_read.pid, "Edit", "Paste");
-                let mut landed = menu_pressed && check(1200);
-                let mut how = if landed { "menu" } else { "none" };
-                if !landed {
-                    ax::press_paste();
-                    landed = check(1500);
-                    if landed { how = "keys"; }
-                }
-                crate::log("prompt_help_step", json!({ "step": "pasted_by", "how": how, "menu_pressed": menu_pressed }));
-                let tell = match plan { rules::ClipboardPlan::SkipAndTell(_) if restore => "Your clipboard now holds your original text.", rules::ClipboardPlan::SkipAndTell(m) => m, rules::ClipboardPlan::SaveAndRestore => "" };
-                let msg = if landed { format!("{} {tell}", if restore { "Your original is back." } else { "Done." }) } else { format!("I pasted it, but could not confirm it landed. {tell}") };
-                say(&app, if restore { "restored" } else { "pasted" }, json!({ "message": msg.trim(), "confirmed": landed }));
-                note("paste", &name, 0, text.chars().count(), if landed { "landed" } else { "unconfirmed" });
+    std::thread::spawn(move || { put_back_now(&app, restore); PASTING.store(false, Ordering::SeqCst); });
+}
+
+fn put_back_now(app: &AppHandle, restore: bool) {
+    let gen = GEN.load(Ordering::SeqCst);
+    // Take what is needed out of the shared state and let go of it: the calls into the other app below can be slow.
+    let (text, handback_copy, at_read, name, had_selection, element) = {
+        let s = st();
+        let Some(p) = s.pending.as_ref() else { return };
+        let text = if restore { p.original.clone() } else { match &p.improved { Some(t) => t.clone(), None => return } };
+        (text, p.handback_copy, rules::Focus { pid: p.pid, element: p.element_id }, p.name.clone(), p.had_selection, p.element.clone())
+    };
+    let moved_on = || GEN.load(Ordering::SeqCst) != gen;
+    let focus_now = || current_focus(at_read.pid).map(|(pid, element)| rules::Focus { pid, element }).unwrap_or(rules::Focus { pid: -1, element: 0 });
+    match rules::paste_plan(at_read, focus_now(), handback_copy && !restore, false) {
+        rules::PasteVerdict::CopyOnly(msg) => { ax::write_clipboard(&text); say(app, "copied", json!({ "message": msg })); note("paste", &name, 0, text.chars().count(), "copied"); }
+        rules::PasteVerdict::Paste => {
+            // The clipboard is put back only when macOS will not alert for reading it. Until that is checked on this Mac, it is not read.
+            let plan = rules::clipboard_plan(rules::AccessBehavior::Unknown);
+            let current_len = ax::value_of(&element).unwrap_or_default().encode_utf16().count();
+            ax::write_clipboard(&text);
+            // Replace the whole box, or only the selection if that is what was read.
+            if !(had_selection && !restore) { ax::select_all(&element, current_len); std::thread::sleep(Duration::from_millis(60)); }
+            let fronted = ax::ensure_front(at_read.pid);
+            std::thread::sleep(Duration::from_millis(250));
+            if !fronted {
+                say(app, "copied", json!({ "message": "I could not return to your text box, so I copied the text instead. Press Cmd+V where you want it." }));
+                note("paste", &name, 0, text.chars().count(), "no_focus");
+                return;
             }
+            // Just before pasting, make sure the person is still in the same box and has not moved on. If not, only copy.
+            if moved_on() { note("paste", &name, 0, text.chars().count(), "cancelled"); return; }
+            if focus_now() != at_read {
+                say(app, "copied", json!({ "message": "You moved to another box, so I copied the text instead of pasting. Press Cmd+V where you want it." }));
+                note("paste", &name, 0, text.chars().count(), "moved");
+                return;
+            }
+            // The app's own Edit > Paste first. Cmd+V only when that menu item could not be pressed at all: pressing both would paste twice.
+            let probe: String = text.chars().take(24).collect();
+            let check = |ms: u64| -> bool {
+                let started = Instant::now();
+                while started.elapsed() < Duration::from_millis(ms) {
+                    std::thread::sleep(Duration::from_millis(100));
+                    if ax::value_of(&element).is_some_and(|v| v.contains(probe.as_str())) { return true; }
+                }
+                false
+            };
+            let menu_pressed = ax::press_menu(at_read.pid, "Edit", "Paste");
+            let (landed, how) = if menu_pressed { (check(1500), "menu") } else { ax::press_paste(); (check(1500), "keys") };
+            crate::log("prompt_help_step", json!({ "step": "pasted_by", "how": how, "landed": landed }));
+            let tell = match plan { rules::ClipboardPlan::SkipAndTell(_) if restore => "Your clipboard now holds your original text.", rules::ClipboardPlan::SkipAndTell(m) => m, rules::ClipboardPlan::SaveAndRestore => "" };
+            let msg = if landed { format!("{} {tell}", if restore { "Your original is back." } else { "Done." }) } else { format!("I pasted it, but could not confirm it landed. Please look at your text box. {tell}") };
+            say(app, if restore { "restored" } else { "pasted" }, json!({ "message": msg.trim(), "confirmed": landed }));
+            note("paste", &name, 0, text.chars().count(), if landed { "landed" } else { "unconfirmed" });
         }
-    });
+    }
 }

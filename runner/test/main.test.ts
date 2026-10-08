@@ -44,6 +44,19 @@ describe("the runner program", () => {
     await r.close();
   });
 
+  test("it answers a heartbeat at once, even in the middle of a long task, so the app can tell it is alive", async () => {
+    const project = tmp("proj");
+    const r = launch([{ text: "thinking", costUsd: 0, delayMs: 3000 }]);
+    await r.waitFor(() => r.lines.length >= 1);
+    r.send(start(project));
+    await r.waitFor(() => r.events().some((e: any) => e.type === "agent.state"));
+    const before = r.lines.length;
+    r.send({ v: 1, id: "ping-1", type: "runner.ping" });
+    await r.waitFor(() => r.events().slice(before).some((e: any) => e.type === "runner.pong"), 1500);
+    r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "test" });
+    await r.close();
+  });
+
   test("every line it writes is a valid protocol event", async () => {
     const project = tmp("proj");
     const r = launch([{ tool: { name: "Bash", input: { command: "echo hi > a.txt" } }, costUsd: 0.01 }]);

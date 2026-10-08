@@ -29,6 +29,8 @@ if (settings.engine === "sdk") {
 }
 
 function dispatch(cmd: Command) {
+  // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
+  if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   const work = cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);
