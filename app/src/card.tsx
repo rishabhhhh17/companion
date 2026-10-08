@@ -49,6 +49,7 @@ function Card() {
     const goal = box.current?.value.trim() ?? "";
     if (!goal || !project) return;
     setUndone(false);
+    dispatch({ type: "ui.planRequested" });
     void send(planDrive(project, goal));
     if (box.current) box.current.value = "";
   };

@@ -355,3 +355,19 @@ describe("telling you when something was blocked", () => {
     expect(blockedNote(run([...start, tool("1", "Edit: /Users/me/proj/pricing.txt", "blocked")]), "/Users/me/proj")).toBe("1 action was not done: Edit: pricing.txt");
   });
 });
+
+describe("starting a plan clears the last task from the card", () => {
+  const finished = [...start, ev({ type: "agent.tool", agent: "a", tool: "Edit", summary: "Edit: a.txt", toolUseId: "t", undoable: true, outcome: "ran" }), ev({ type: "receipt", agent: "a", checkpoint: "cp_0001", changed: [{ file: "a.txt", kind: "added" }], commands: 0, notUndoable: [], proof: "skipped", usdEstimate: 0.01 })];
+  test("asking for a plan removes the old task, receipt and error", () => {
+    const m = reduce({ ...run(finished), error: "old problem" }, { type: "ui.planRequested" } as never);
+    expect(m.task).toBeNull();
+    expect(m.receipt).toBeNull();
+    expect(m.error).toBeNull();
+    expect(m.drive).toBeNull();
+  });
+  test("the plan arriving also leaves the card clean", () => {
+    const m = run([...finished, ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "x" }], truncated: false, estimateUsd: 0.2 })]);
+    expect(m.task).toBeNull();
+    expect(m.receipt).toBeNull();
+  });
+});
