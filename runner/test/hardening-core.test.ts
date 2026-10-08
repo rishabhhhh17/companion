@@ -258,3 +258,22 @@ describe("addresses that only look public", () => {
   }
   for (const u of ["https://developer.mozilla.org/en-US/docs/Web/HTML", "http://example.com", "https://docs.stripe.com/payments", "https://8.8.8.8/x", "https://a.b.co.uk/p?q=1"]) test(`allowed: ${u}`, () => expect(isSafeUrl(u), u).toBe(true));
 });
+
+describe("small parsers, harder cases", () => {
+  test("restoring pieces never confuses text that looks like a placeholder", async () => {
+    const { restore } = await import("../src/prompthelp.ts");
+    expect(restore("a [[KEEP_1]] b [[KEEP_1]] [[KEEP_9]] \u00000\u0000", ["X"])).toEqual({ text: "a X b   \u00000\u0000", missing: 0 });
+    expect(restore("nothing", ["X", "Y"])).toEqual({ text: "nothing\n\nKept as written:\nX\nY", missing: 2 });
+  });
+  test("a very long plan step is cut to a sensible length", async () => {
+    const { parsePlan } = await import("../src/drive.ts");
+    const [s] = parsePlan(JSON.stringify(["word ".repeat(100)]));
+    expect(s.length).toBeLessThanOrEqual(165);
+  });
+  test("the declared package manager is used when there is no lock file", async () => {
+    const { detectProject } = await import("../src/proof/detect.ts");
+    const { mkdtempSync, writeFileSync } = await import("node:fs"); const { tmpdir } = await import("node:os"); const { join } = await import("node:path");
+    const d = mkdtempSync(join(tmpdir(), "pm-")); writeFileSync(join(d, "package.json"), JSON.stringify({ packageManager: "pnpm@9.1.0", scripts: { build: "x" } }));
+    expect(detectProject(d).packageManager).toBe("pnpm");
+  });
+});

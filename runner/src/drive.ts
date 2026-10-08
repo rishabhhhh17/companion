@@ -1,7 +1,11 @@
 // Drive: a plan first, then one step at a time. This file holds the plain, testable parts.
 export const MAX_STEPS = 12;
 
-const clean = (s: string) => s.replace(/\s+/g, " ").trim();
+const MAX_STEP_CHARS = 160;
+const clean = (s: string) => {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length <= MAX_STEP_CHARS ? t : t.slice(0, MAX_STEP_CHARS).replace(/\s+\S*$/, "") + "…";
+};
 
 // Reads the plan out of Claude's answer: a JSON list (in a code block or in the middle of other words),
 // or failing that a numbered or bulleted list. Returns [] when there is nothing usable.

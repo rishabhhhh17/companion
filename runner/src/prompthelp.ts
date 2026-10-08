@@ -43,16 +43,15 @@ export function protect(text: string): { masked: string; spans: string[] } {
 
 // Puts every set aside piece back exactly. A piece the model dropped is added at the end, never lost.
 export function restore(output: string, spans: string[]): { text: string; missing: number } {
-  let text = output;
-  const lost: string[] = [];
-  spans.forEach((span, i) => {
-    const tok = TOKEN(i + 1);
-    const first = text.indexOf(tok);
-    if (first < 0) { lost.push(span); return; }
-    text = text.slice(0, first) + "\u0000" + i + "\u0000" + text.slice(first + tok.length);
-    text = text.split(tok).join("");              // a repeated marker is dropped, the piece appears once
+  const used = new Set<number>();
+  // One pass: the first marker for a piece becomes the piece, repeats and made up markers vanish.
+  let text = output.replace(/\[\[KEEP_(\d+)\]\]/g, (_m, n) => {
+    const i = Number(n) - 1;
+    if (i < 0 || i >= spans.length || used.has(i)) return "";
+    used.add(i);
+    return spans[i];
   });
-  text = text.replace(/\u0000(\d+)\u0000/g, (_m, i) => spans[Number(i)]);
+  const lost = spans.filter((_s, i) => !used.has(i));
   if (lost.length) text = `${text.trimEnd()}\n\nKept as written:\n${lost.join("\n")}`;
   return { text, missing: lost.length };
 }
