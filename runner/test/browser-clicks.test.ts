@@ -75,4 +75,15 @@ describe("buttons it must never press", () => {
     await browserCheck(serve({ "/": many }));
     expect(hits.filter((h) => /^\/b\d+$/.test(h)).length).toBeLessThanOrEqual(8);
   }, 60000);
+  test("a harmlessly named button that writes to the server never reaches it", async () => {
+    let wrote = 0;
+    const srv = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (req) => {
+      if (req.method !== "GET") { wrote++; return new Response("saved"); }
+      return new Response('<button onclick="fetch(\'/api\',{method:\'POST\'}).then(()=>{document.title=\'done\'})">Go</button>', { headers: { "content-type": "text/html" } });
+    } });
+    stops.push(() => srv.stop(true));
+    const r = await browserCheck(`http://127.0.0.1:${srv.port}/`);
+    expect(wrote).toBe(0);
+    expect(r.ok).toBe(true);
+  }, 30000);
 });
