@@ -3,11 +3,12 @@
 // scripted stand in) only supplies turns; everything safe happens here.
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
+import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
@@ -117,6 +118,7 @@ export class AgentRunner {
       case "agent.start": await this.run(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
+      case "research.ask": return this.researchAsk(cmd);
       case "drive.approve": return this.driveApprove(cmd);
       case "drive.pause": {
         if (!this.watchers.has(cmd.agent)) { this.fail("Nothing is running to pause.", cmd.agent); return; }
@@ -282,7 +284,7 @@ export class AgentRunner {
 
   // A session that may only look. Anything that is not a plain look is refused here, in code.
   // `body` gets a way to ask Claude and finishes by setting the right state itself.
-  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; allow?: Set<string>; refuse?: string },
+  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null },
     body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
     const room = this.room(spec.project);
     if (room <= 0) { this.dailyLimit(spec.agent); return; }
@@ -297,9 +299,10 @@ export class AgentRunner {
     const exec = this.o.executor ?? defaultExecutor;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
     const authorize = async (tool: ToolUse) => {
-      const ok = allowed.has(tool.name);
+      const refusal = allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      const ok = allowed.has(tool.name) && !refusal;
       this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
-      return ok ? { allow: true, reason: "" } : { allow: false, reason: spec.refuse ?? "Blocked by Companion: this can only look at the project, not change it." };
+      return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? "Blocked by Companion: this can only look at the project, not change it." };
     };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
@@ -349,6 +352,26 @@ export class AgentRunner {
       this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
       this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
       this.state(cmd.agent, "needsYou");
+    });
+  }
+
+  // Research: look things up (web allowed, safe addresses only) and file cited notes. Writes no code.
+  private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
+    const question = cmd.question.replace(/\s+/g, " ").trim();
+    if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
+    const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch"]);
+    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
+      const r = parseResearch(await ask(researchPrompt(question)));
+      if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      const dir = join(cmd.project, ".companion", "research");
+      mkdirSync(dir, { recursive: true });
+      const when = this.now();
+      const name = noteFileName(r.title, when, (f) => existsSync(join(dir, f)));
+      writeFileSync(join(dir, name), notesMarkdown(question, r, when), { flag: "wx" });
+      this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes, file: `.companion/research/${name}` } as never);
+      this.state(cmd.agent, "done");
     });
   }
 

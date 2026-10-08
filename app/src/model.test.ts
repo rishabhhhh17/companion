@@ -1,7 +1,7 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
+import { askResearch, approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
 import { blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -394,4 +394,24 @@ describe("Rescue: the report", () => {
   });
   test("the command is valid protocol", () => expect(parseCommand(serialize(diagnose("/p"))).ok).toBe(true));
   test("Rescue asks the stronger model for the diagnosis", () => expect((diagnose("/p") as any).model).toBe(DIAGNOSE_MODEL));
+});
+
+describe("Research: the notes card", () => {
+  const done = ev({ type: "research.done", agent: "a", title: "Taking payments", answer: "Use a hosted checkout page.", notes: [{ text: "Checkout is hosted.", source: "https://docs.stripe.com/payments/checkout" }], file: ".companion/research/2026-10-09-taking-payments.md" });
+  test("the answer, the notes with their sources and where they were filed", () => {
+    expect(run([done]).research).toMatchObject({ title: "Taking payments", answer: "Use a hosted checkout page.", file: ".companion/research/2026-10-09-taking-payments.md" });
+    expect(run([done]).research?.notes[0]).toEqual({ text: "Checkout is hosted.", source: "https://docs.stripe.com/payments/checkout" });
+  });
+  test("a new task or plan or question clears it", () => {
+    expect(run([done, ...start]).research).toBeNull();
+    expect(reduce(run([done]), { type: "ui.planRequested" } as never).research).toBeNull();
+    expect(reduce(run([done]), { type: "ui.researchRequested" } as never).research).toBeNull();
+  });
+  test("it can be dismissed", () => expect(reduce(run([done]), { type: "ui.researchClosed" } as never).research).toBeNull());
+  test("the command is valid protocol, and uses the everyday model", () => {
+    const c = askResearch("/p", "How do I take payments?") as any;
+    expect(parseCommand(serialize(c)).ok).toBe(true);
+    expect(c.model).not.toBe(DIAGNOSE_MODEL);
+  });
+  test("an empty question makes no command", () => expect(askResearch("/p", "   ")).toBeNull());
 });
