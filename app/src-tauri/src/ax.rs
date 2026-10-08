@@ -101,6 +101,20 @@ pub fn front_app() -> Option<Front> {
     Some(Front { pid: a.processIdentifier(), bundle_id: a.bundleIdentifier().map(|s| s.to_string()).unwrap_or_default(), name: a.localizedName().map(|s| s.to_string()).unwrap_or_default() })
 }
 
+/// Our own card can take the keyboard when it is clicked, and then a paste would land in our card instead of the person's box.
+/// Before pasting, give the keyboard back to the app the text came from (the person is returning to it anyway). True when it is in front.
+pub fn ensure_front(pid: i32) -> bool {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+    let in_front = || front_app().is_some_and(|f| f.pid == pid) && !NSRunningApplication::currentApplication().isActive();
+    if in_front() { return true; }
+    if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
+        #[allow(deprecated)]
+        app.activateWithOptions(NSApplicationActivationOptions::empty());
+    }
+    for _ in 0..20 { std::thread::sleep(Duration::from_millis(50)); if in_front() { return true; } }
+    false
+}
+
 pub struct Focused { pub element: Cf, pub role: String, pub subrole: String }
 pub fn focused(pid: i32) -> Option<Focused> {
     let app = Cf::new(unsafe { AXUIElementCreateApplication(pid) })?;

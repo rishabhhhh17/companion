@@ -181,6 +181,11 @@ pub fn put_back(app: &AppHandle, restore: bool) {
                     // Replace the whole box, or only the selection if that is what was read.
                     if !(had_selection && !restore) { ax::select_all(&p.element, current_len); std::thread::sleep(Duration::from_millis(60)); }
                 }
+                if !ax::ensure_front(at_read.pid) {
+                    say(&app, "copied", json!({ "message": "I could not return to your text box, so I copied the text instead. Press Cmd+V where you want it." }));
+                    note("paste", &name, 0, text.chars().count(), "no_focus");
+                    return;
+                }
                 ax::press_paste();
                 // Some apps take a moment to show pasted text, so look for up to two seconds.
                 let probe: String = text.chars().take(24).collect();
@@ -191,7 +196,7 @@ pub fn put_back(app: &AppHandle, restore: bool) {
                     landed = STATE.lock().unwrap().pending.as_ref().and_then(|p| ax::value_of(&p.element)).is_some_and(|v| v.contains(probe.as_str()));
                     if landed { break; }
                 }
-                let tell = match plan { rules::ClipboardPlan::SkipAndTell(m) => m, rules::ClipboardPlan::SaveAndRestore => "" };
+                let tell = match plan { rules::ClipboardPlan::SkipAndTell(_) if restore => "Your clipboard now holds your original text.", rules::ClipboardPlan::SkipAndTell(m) => m, rules::ClipboardPlan::SaveAndRestore => "" };
                 let msg = if landed { format!("{} {tell}", if restore { "Your original is back." } else { "Done." }) } else { format!("I pasted it, but could not confirm it landed. {tell}") };
                 say(&app, if restore { "restored" } else { "pasted" }, json!({ "message": msg.trim(), "confirmed": landed }));
                 note("paste", &name, 0, text.chars().count(), if landed { "landed" } else { "unconfirmed" });
