@@ -93,7 +93,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const isPackageFile = (p: string) => p === "package.json" || LOCKS.includes(p);
   const [bf, af] = [await o.store.readFiles(o.beforeId, isPackageFile), await o.store.readFiles(o.afterId, isPackageFile)];
   if (det.packageManager && needsInstall(bf, af, det.lockfile, existsSync(join(o.project, "node_modules")))) {
-    const r = await run(`${det.packageManager} install`, { cwd: o.project, timeoutMs: limits.installMs });
+    const r = await run(`${det.packageManager} install`, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
     if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0));
     finish("install", "passed", "Installed.", t0);
   } else finish("install", "skipped", "Nothing new to install.", t0);
@@ -106,7 +106,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (!weakened.ok) return result("failed", finish("checks", "failed", weakened.problems.join(". ") + ". Please fix the real problem instead of weakening the check.", t0));
   if (det.checks.length) {
     for (const c of det.checks) {
-      const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs });
+      const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal });
       if (r.code !== 0 || r.timedOut) return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs)}`, t0));
     }
     finish("checks", "passed", `${det.checks.map((c) => c.name).join(", ")} passed.`, t0);
@@ -119,7 +119,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const guard = analyzeTests(bt, at);
   if (!guard.ok) return result("failed", finish("tests", "failed", guard.problems.join(". ") + ".", t0));
   if (det.tests) {
-    const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs });
+    const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1" } });
     if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0));
     finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
   } else finish("tests", "skipped", "This project has no tests to run.", t0);
@@ -135,7 +135,13 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   t0 = Date.now(); emit("start", "running");
   let scriptText = "";
   try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(det.start.kind === "server" ? det.start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(o.project, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
-  const srv = await startServer(det.start, { cwd: o.project, timeoutMs: limits.startMs, scriptText });
+  const srv = await startServer(det.start, { cwd: o.project, timeoutMs: limits.startMs, scriptText, signal: o.signal });
+  if (!srv.ok && srv.aborted) return result("cancelled");
+  if (!srv.ok && srv.notAServer) {
+    finish("start", "skipped", "This project's start command is a tool, not a website, so there is no page to open.", t0);
+    finish("browser", "skipped", "There is no page to open.", Date.now());
+    return result(steps.some((s) => s.status === "passed") ? "passed" : "nothing_to_check");
+  }
   if (!srv.ok) return result("failed", finish("start", "failed", srv.reason, t0));
   finish("start", "passed", "It started.", t0);
   try {

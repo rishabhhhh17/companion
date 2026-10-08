@@ -250,3 +250,11 @@ describe("the take the wheel watcher forgets a tool that never reported back", (
     } finally { w.stop(); }
   });
 });
+
+import { isSafeUrl } from "../src/research.ts";
+describe("addresses that only look public", () => {
+  for (const u of ["http://localhost./", "http://x.local./a", "http://foo.internal./", "http://metadata.google.internal./", "https://localhost%2e/", "http://localtest.me", "http://127.0.0.1.nip.io", "http://printer", "http://router.home", "http://mymac.lan", "http://kubernetes.default.svc", "http://foo.corp", "http://100.64.0.1", "http://198.18.0.1", "http://192.0.0.1", "http://192.0.2.1", "http://203.0.113.9", "http://224.0.0.1", "http://0.0.0.0", "http://a.b.test"]) {
+    test(`refused: ${u}`, () => expect(isSafeUrl(u), u).toBe(false));
+  }
+  for (const u of ["https://developer.mozilla.org/en-US/docs/Web/HTML", "http://example.com", "https://docs.stripe.com/payments", "https://8.8.8.8/x", "https://a.b.co.uk/p?q=1"]) test(`allowed: ${u}`, () => expect(isSafeUrl(u), u).toBe(true));
+});

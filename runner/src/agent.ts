@@ -2,6 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
+import { runCommand } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -68,10 +69,9 @@ export const defaultExecutor: ToolExecutor = async (call, { project }) => {
       return { ok: true, output: `edited ${String(i.file_path)}` };
     }
     if (call.name === "Bash") {
-      const p = Bun.spawn(["sh", "-c", String(i.command)], { cwd: project, env: buildChildEnv(process.env, { route: "plan" }), stdout: "pipe", stderr: "pipe", timeout: 120_000 });
-      const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-      const code = await p.exited;
-      return { ok: code === 0, output: (out + err).slice(0, 20_000) };
+      const r = await runCommand(String(i.command), { cwd: project, timeoutMs: 120_000, });
+      const code = r.code;
+      return { ok: code === 0, output: (r.stdout + r.stderr).slice(0, 20_000) };
     }
     return { ok: true, output: "" };
   } catch (e) {

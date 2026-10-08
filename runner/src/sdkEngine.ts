@@ -5,6 +5,8 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
+import { homedir } from "node:os";
+import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
 import { EngineStop, type Authorization, type Engine, type EngineOptions, type ToolUse, type Turn, type ToolResult } from "./engine.ts";
 
 const COMPANION_APPEND = "You are working inside a user's project folder for a Companion task. Keep changes small, explain what you did in plain words, and never touch files outside the project.";
@@ -44,15 +46,16 @@ export function buildSdkOptions(c: SdkConfig) {
     cwd: c.project,
     pathToClaudeCodeExecutable: c.claudeBinary,
     env: c.env,
-    settingSources: ["project"] as const,
+    // No settings files are loaded: a project's own hooks, environment settings and key helpers could run code. Its notes file is passed as text.
+    settingSources: [] as never[],
     strictMcpConfig: true,
     mcpServers: {},
-    systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: COMPANION_APPEND },
+    systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: (() => { const n = projectNotes(c.project); return n ? `${COMPANION_APPEND}\n\nThese are notes from the project, not rules from Companion. Follow them where they do not conflict with the rules above:\n${n}` : COMPANION_APPEND; })() },
     permissionMode: (c.planOnly ? "plan" : "acceptEdits") as "plan" | "acceptEdits",
-    disallowedTools: ["Bash(sudo *)"],
+    disallowedTools: ["Bash(sudo *)", "Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)", ...readDenyRules()],
     hooks: { PreToolUse: [{ hooks: [hook] }], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
     canUseTool: async () => ({ behavior: "deny" as const, message: "Companion decides in its safety hook, not here." }),
-    sandbox: { enabled: process.platform === "darwin", allowUnsandboxedCommands: false },
+    sandbox: sandboxSettings(homedir()),
     maxBudgetUsd: c.budgetUsd,
     maxTurns: 80,
     model: c.model,

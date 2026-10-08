@@ -4,11 +4,11 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve, sep } from "node:path";
-import { buildChildEnv } from "../safety.ts";
+import { minimalEnv } from "../env.ts";
 import type { Start } from "./detect.ts";
 
 export type Running = { ok: true; url: string; port: number; stop: () => Promise<void> };
-export type Failed = { ok: false; reason: string };
+export type Failed = { ok: false; reason: string; notAServer?: boolean; aborted?: boolean };
 
 export function freePort(): Promise<number> {
   return new Promise((res, rej) => {
@@ -31,9 +31,27 @@ export function portArgs(scriptText: string, port: number): string {
   return "";
 }
 
+// Where the server says it is listening ("Local: http://localhost:5173/"), for servers that ignore the port we gave them.
+export function portsInOutput(text: string): number[] {
+  const found: number[] = [];
+  for (const m of text.matchAll(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d{2,5})/gi)) {
+    const n = Number(m[1]);
+    if (n > 0 && n < 65536 && !found.includes(n)) found.push(n);
+  }
+  return found;
+}
+// The first address that answers: IPv4 first, then IPv6 (some servers listen only there).
+async function answers(port: number): Promise<string | null> {
+  for (const host of ["127.0.0.1", "[::1]"]) {
+    const url = `http://${host}:${port}/`;
+    try { await fetch(url, { signal: AbortSignal.timeout(500), redirect: "manual" }); return url; } catch { /* not here */ }
+  }
+  return null;
+}
+
 const tail = (s: string, n = 600) => s.trim().slice(-n);
 
-export async function startServer(start: Start, o: { cwd: string; timeoutMs: number; scriptText?: string }): Promise<Running | Failed> {
+export async function startServer(start: Start, o: { cwd: string; timeoutMs: number; scriptText?: string; signal?: AbortSignal }): Promise<Running | Failed> {
   if (start.kind === "static") return serveStatic(start.dir);
 
   const hinted = start.port && start.autoPort === false && !(await portBusy(start.port));
@@ -42,7 +60,7 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
   const command = start.command + portArgs(o.scriptText ?? "", port);
   const child = spawn("sh", ["-c", command], {
     cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...buildChildEnv(process.env, { route: "plan" }), PORT: String(port), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" },
+    env: { ...minimalEnv(), PORT: String(port), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" },
   });
   let output = "", exited = false, exitCode: number | null = null;
   const grab = (c: Buffer) => { output = (output + c.toString("utf8")).slice(-4000); };
@@ -58,12 +76,18 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
 
   const deadline = Date.now() + o.timeoutMs;
   while (Date.now() < deadline) {
-    if (exited) return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim() };
-    try {
-      await fetch(url, { signal: AbortSignal.timeout(500) });
-      if (exited) return { ok: false, reason: `Something else answered on port ${port}, not this project's server. ${tail(output)}`.trim() };
-      return { ok: true, url, port, stop };
-    } catch { /* not up yet */ }
+    if (o.signal?.aborted) { await stop(); return { ok: false, aborted: true, reason: "Stopped before the server was ready." }; }
+    if (exited) {
+      if (exitCode === 0) return { ok: false, notAServer: true, reason: `The start command finished without staying on, so it is a tool and not a website. ${tail(output)}`.trim() };
+      return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim() };
+    }
+    for (const p of [port, ...portsInOutput(output).filter((x) => x !== port)]) {
+      const found = await answers(p);
+      if (found) {
+        if (exited) return { ok: false, reason: `Something else answered on port ${p}, not this project's server. ${tail(output)}`.trim() };
+        return { ok: true, url: found, port: p, stop };
+      }
+    }
     await Bun.sleep(150);
   }
   await stop();

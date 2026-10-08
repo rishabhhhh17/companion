@@ -130,10 +130,10 @@ describe("other dangerous commands", () => {
       expect(bash(p, c).decision, c).toBe("allow");
     }
   });
-  test("curl that only reads is allowed, local psql is allowed", () => {
+  test("curl that only reads is allowed; any database command asks, because Undo cannot bring back database changes", () => {
     const p = proj();
     expect(bash(p, "curl -s https://example.com").decision).toBe("allow");
-    expect(bash(p, "psql postgres://localhost/dev -c 'select 1'").decision).toBe("allow");
+    expect(bash(p, "psql postgres://localhost/dev -c 'select 1'").decision).toBe("ask");
   });
 });
 
