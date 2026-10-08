@@ -458,16 +458,17 @@ fn main() {
                         log("hotkey", json!({ "id": "K" }));
                         open_card(app, "hotkey", true);
                     } else if s == &sc_read() {
+                        // Changing hotkeys from inside a hotkey handler can deadlock the shortcut plugin, so hand the work to another thread.
                         log("hotkey", json!({ "id": "R" }));
-                        arm_result_keys(app, false);
-                        phelp::on_hotkey(app, open_card);
+                        let a = app.clone();
+                        std::thread::spawn(move || { arm_result_keys(&a, false); phelp::on_hotkey(&a, open_card); });
                     } else if s == &sc_accept() {
                         log("hotkey", json!({ "id": "A" }));
-                        arm_result_keys(app, false);
-                        phelp::put_back(app, false);
+                        let a = app.clone();
+                        std::thread::spawn(move || { arm_result_keys(&a, false); phelp::put_back(&a, false); });
                     } else if s == &sc_esc() {
-                        arm_result_keys(app, false);
-                        phelp::dismiss(app);
+                        let a = app.clone();
+                        std::thread::spawn(move || { arm_result_keys(&a, false); phelp::dismiss(&a); });
                     } else if s == &x {
                         let r = app.state::<runner::Runner>().stop_everything("kill switch");
                         log("hotkey", json!({ "id": "X", "stop_everything": true, "sent": r.is_ok() }));

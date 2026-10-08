@@ -35,7 +35,12 @@ fn say(app: &AppHandle, stage: &str, extra: Value) {
     if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) { for (k, x) in e { o.insert(k.clone(), x.clone()); } }
     let _ = app.emit("runner-event", v);
 }
-fn note(kind: &str, app_id: &str, ms: u64, chars: usize, outcome: &str) { crate::log("prompt_help", rules::log_line(kind, app_id, ms, chars, outcome)); }
+fn note(kind: &str, app_id: &str, ms: u64, chars: usize, outcome: &str) {
+    // The helper names the event "ev"; rename it so it does not replace the log's own event name.
+    let mut v = rules::log_line(kind, app_id, ms, chars, outcome);
+    if let Some(o) = v.as_object_mut() { if let Some(k) = o.remove("ev") { o.insert("kind".into(), k); } }
+    crate::log("prompt_help", v);
+}
 
 const TERMINALS: &[&str] = &["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"];
 const CHAT_APPS: &[&str] = &["com.openai.codex", "com.anthropic.claudefordesktop", "com.openai.chat", "com.google.gemini"];
@@ -54,7 +59,9 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
     let app = app.clone();
     std::thread::spawn(move || {
         let t0 = Instant::now();
-        let Some(front) = ax::front_app() else { return };
+        crate::log("prompt_help_step", json!({ "step": "thread_started" }));
+        let Some(front) = ax::front_app() else { crate::log("prompt_help_step", json!({ "step": "no_front_app" })); return };
+        crate::log("prompt_help_step", json!({ "step": "front", "app": front.bundle_id }));
         if front.bundle_id.is_empty() || front.bundle_id.starts_with("dev.companion") { say(&app, "error", json!({ "message": "Click into the text box you want help with first, then press the hotkey." })); return; }
         {   let mut st = STATE.lock().unwrap(); st.pending = None; st.awaiting = None; }
         // The light comes first, and gets a moment to draw, before anything is read (rule 5).
@@ -63,6 +70,7 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         open_card(&app, "prompt_help", false);
         std::thread::sleep(INDICATOR_DRAW);
         session.indicator_on();
+        crate::log("prompt_help_step", json!({ "step": "indicator_lit", "trusted": ax::trusted(false) }));
         if !ax::trusted(false) {
             let ok = ax::trusted(true);          // the first press shows macOS's own question; nothing is asked before this
             if !ok { say(&app, "needs_accessibility", json!({})); note("read", &front.bundle_id, 0, 0, "needs_accessibility"); return; }
@@ -174,8 +182,15 @@ pub fn put_back(app: &AppHandle, restore: bool) {
                     if !(had_selection && !restore) { ax::select_all(&p.element, current_len); std::thread::sleep(Duration::from_millis(60)); }
                 }
                 ax::press_paste();
-                std::thread::sleep(Duration::from_millis(450));
-                let landed = STATE.lock().unwrap().pending.as_ref().and_then(|p| ax::value_of(&p.element)).is_some_and(|v| v.contains(text.chars().take(24).collect::<String>().as_str()));
+                // Some apps take a moment to show pasted text, so look for up to two seconds.
+                let probe: String = text.chars().take(24).collect();
+                let started = Instant::now();
+                let mut landed = false;
+                while started.elapsed() < Duration::from_millis(2000) {
+                    std::thread::sleep(Duration::from_millis(100));
+                    landed = STATE.lock().unwrap().pending.as_ref().and_then(|p| ax::value_of(&p.element)).is_some_and(|v| v.contains(probe.as_str()));
+                    if landed { break; }
+                }
                 let tell = match plan { rules::ClipboardPlan::SkipAndTell(m) => m, rules::ClipboardPlan::SaveAndRestore => "" };
                 let msg = if landed { format!("{} {tell}", if restore { "Your original is back." } else { "Done." }) } else { format!("I pasted it, but could not confirm it landed. {tell}") };
                 say(&app, if restore { "restored" } else { "pasted" }, json!({ "message": msg.trim(), "confirmed": landed }));
