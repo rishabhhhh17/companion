@@ -114,3 +114,58 @@ describe("the ceiling in the runner", () => {
     expect(errors(r.events)[0]).toMatch(/daily limit/i);
   });
 });
+
+describe("spending counts as it happens, not only when a job ends", () => {
+  const w = (f: string, costUsd: number, delayMs?: number): Step => ({ tool: { name: "Write", input: { file_path: f, content: "x" } }, costUsd, ...(delayMs ? { delayMs } : {}) });
+  test("during a task, what it has spent so far is already in the ledger", async () => {
+    const project = tmp("live"); writeFileSync(join(project, "a.txt"), "x");
+    const ledger = new Ledger(":memory:");
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([[w("a.txt", 0.05), { text: "later", costUsd: 0.01, delayMs: 1500 }]]), log: new TaskLog(":memory:"), emit: () => {}, ledger, dailyCeilingUsd: 10, proof: async () => ({ verdict: "passed", steps: [] }) });
+    const run = runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 3 });
+    await Bun.sleep(600);
+    expect(ledger.spentToday(project)).toBeCloseTo(0.05, 6);
+    await run;
+    expect(ledger.spentToday(project)).toBeCloseTo(0.06, 6);
+  });
+  test("a plan's cost is in the ledger the moment the plan card appears, so the next job already sees it", async () => {
+    const project = tmp("plan"); writeFileSync(join(project, "a.txt"), "x");
+    const ledger = new Ledger(":memory:");
+    let seenAtPlan = -1;
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([[{ text: '["One"]', costUsd: 0.2 }]]), log: new TaskLog(":memory:"), emit: (e) => { if (e.type === "plan.ready") seenAtPlan = ledger.spentToday(project); }, ledger, dailyCeilingUsd: 10 });
+    await Bun.sleep(100);
+    await runner.handle({ v: 1, id: "p", type: "drive.plan", project, agent: "d", goal: "g", model: "m", budgetUsd: 5 });
+    expect(seenAtPlan).toBeCloseTo(0.2, 6);
+  });
+  test("each cost is counted once, not twice", async () => {
+    const project = tmp("once"); writeFileSync(join(project, "a.txt"), "x");
+    const ledger = new Ledger(":memory:");
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([[w("a.txt", 0.03), w("b.txt", 0.04)]]), log: new TaskLog(":memory:"), emit: () => {}, ledger, dailyCeilingUsd: 10, proof: async () => ({ verdict: "passed", steps: [] }) });
+    await runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 3 });
+    expect(ledger.spentToday(project)).toBeCloseTo(0.07, 6);
+  });
+});
+
+import { EngineStop, type Engine } from "../src/engine.ts";
+describe("the cost of a run that stopped on its limit is still counted", () => {
+  const stopping = (cost: number): Engine => ({ async *start() { throw new EngineStop("error_max_budget_usd: the run stopped", cost); } });
+  test("a plan that hit its budget leaves its cost in the ledger", async () => {
+    const project = tmp("stopcost"); const ledger = new Ledger(":memory:");
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: stopping(0.04), log: new TaskLog(":memory:"), emit: () => {}, ledger, dailyCeilingUsd: 10 });
+    await Bun.sleep(50);
+    await runner.handle({ v: 1, id: "p", type: "drive.plan", project, agent: "d", goal: "g", model: "m", budgetUsd: 5 });
+    expect(ledger.spentToday(project)).toBeCloseTo(0.04, 6);
+  });
+  test("so do a diagnosis and a research", async () => {
+    const project = tmp("stopcost2"); const ledger = new Ledger(":memory:");
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: stopping(0.03), log: new TaskLog(":memory:"), emit: () => {}, ledger, dailyCeilingUsd: 10, proof: async () => ({ verdict: "passed", steps: [] }) });
+    await runner.handle({ v: 1, id: "r", type: "rescue.diagnose", project, agent: "r", model: "m", budgetUsd: 5 });
+    await runner.handle({ v: 1, id: "q", type: "research.ask", project, agent: "x", question: "q?", model: "m", budgetUsd: 5 });
+    expect(ledger.spentToday(project)).toBeCloseTo(0.06, 6);
+  });
+  test("a task that hit its budget counts too", async () => {
+    const project = tmp("stopcost3"); writeFileSync(join(project, "a.txt"), "x"); const ledger = new Ledger(":memory:");
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: stopping(0.05), log: new TaskLog(":memory:"), emit: () => {}, ledger, dailyCeilingUsd: 10 });
+    await runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 3 });
+    expect(ledger.spentToday(project)).toBeCloseTo(0.05, 6);
+  });
+});

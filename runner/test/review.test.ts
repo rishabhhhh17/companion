@@ -29,6 +29,11 @@ describe("which changes are risky enough to review", () => {
     expect(needsReview(Array.from({ length: 4 }, (_, i) => ch(`f${i}.txt`, "deleted")))).toBe(true);
     expect(needsReview(Array.from({ length: 3 }, (_, i) => ch(`f${i}.txt`, "deleted")))).toBe(false);
   });
+  test("a secret written into an ordinary file makes the change risky, whatever the file is called", () => {
+    expect(needsReview([ch("public/app.js")], { "public/app.js": 'Stripe("sk_live_abcdefghijklmnopqrstuvwxyz")' })).toBe(true);
+    expect(needsReview([ch("src/App.tsx")], { "src/App.tsx": 'const password = "correcthorsebatterystaple"' })).toBe(true);
+    expect(needsReview([ch("index.html")], { "index.html": "<h1>Hello</h1>" })).toBe(false);
+  });
   test("nothing changed means nothing to review", () => expect(needsReview([])).toBe(false));
 });
 
@@ -56,7 +61,7 @@ describe("what the reviewer is shown", () => {
     const d = diffText({}, { ".env": "STRIPE_KEY=sk_live_abcdefghijklmnopqrstuvwxyz\nAPI_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789" }, 10_000);
     expect(d).not.toContain("sk_live_abcdefghijklmnopqrstuvwxyz");
     expect(d).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
-    expect(d).toContain("[hidden]");
+    expect(d).toMatch(/\[hidden/);
   });
   test("a well known key sitting in plain code is hidden even without a name next to it", () => {
     const d = diffText({}, { "a.js": 'fetch(url, ["sk_live_abcdefghijklmnopqrstuvwxyz", "AKIAABCDEFGHIJKLMNOP", "ghp_abcdefghijklmnopqrstuvwxyz0123456789"])' }, 10_000);
@@ -68,6 +73,22 @@ describe("what the reviewer is shown", () => {
     expect(d).not.toContain("a1b2c3d4e5f6g7h8i9");
   });
   test("ordinary text is left alone", () => expect(diffText({}, { "a.txt": "Hello there, welcome to my site" }, 10_000)).toContain("Hello there, welcome to my site"));
+  test("a hidden secret still says what kind of thing was there, so the reviewer can warn about it", () => {
+    const d = diffText({}, { "a.js": 'const k = "sk_live_abcdefghijklmnopqrstuvwxyz"; const g = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"; const a = "AKIAABCDEFGHIJKLMNOP"; const password = "correcthorsebatterystaple"' }, 10_000);
+    expect(d).toContain("[hidden Stripe live key]");
+    expect(d).toContain("[hidden GitHub token]");
+    expect(d).toContain("[hidden AWS key]");
+    expect(d).toMatch(/password\s*=\s*"?\[hidden secret value\]/);
+    expect(d).not.toMatch(/abcdefghijklmnopqrstuvwxyz|correcthorse/);
+  });
+  test("the prompt explains the markers and lists what not to complain about", () => {
+    const p = reviewPrompt("g", "d");
+    expect(p).toMatch(/\[hidden/);
+    expect(p).toMatch(/written (in|into) (this|the) (code|change)/i);
+    expect(p).toMatch(/do not flag/i);
+    expect(p).toMatch(/dependenc/i);
+    expect(p).toMatch(/approve.*(doubt|unsure|unless)/i);
+  });
   test("the prompt carries the goal and the change, and asks for a plain verdict", () => {
     const p = reviewPrompt("add a contact form", "DIFF HERE");
     expect(p).toContain("add a contact form"); expect(p).toContain("DIFF HERE");
@@ -147,6 +168,13 @@ describe("the reviewer in a real task", () => {
     expect(r.reviewer.calls[0].prompt).toContain("add payments");
     expect(r.reviewer.calls[0].prompt).toContain('"stripe":"1"');
     expect(r.reviewer.calls[0].planOnly).toBe(true);
+  });
+  test("an ordinary looking file that contains a live key is reviewed anyway", async () => {
+    const r = setup([[w("public/app.js", 'const s = Stripe("sk_live_abcdefghijklmnopqrstuvwxyz");')]], [[verdict({ verdict: "changes", concerns: ["A live key is in the page"] })]]);
+    await r.start();
+    expect(r.reviewer.calls.length).toBe(1);
+    expect(r.reviewer.calls[0].prompt).toContain("[hidden Stripe live key]");
+    expect(r.reviewer.calls[0].prompt).not.toContain("abcdefghijklmnopqrstuvwxyz");
   });
   test("an ordinary change is not reviewed, so nothing extra is spent", async () => {
     const r = setup([[w("index.html", "<h1>hi</h1>")]], [[verdict({ verdict: "approve", concerns: [] })]]);

@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 4 (later): 9 Oct 2026
+
+**Build mode, checked against real Claude, and four bugs found and fixed.**
+
+- A script now runs the whole Build mode list with real Claude on a throwaway project: a house rule and Undo, Drive (plan, two checked steps, undo one step), take the wheel, Rescue (it found the real bug and fixed it), Research (three cited notes), the daily limit and the second model review. All seven pass.
+- Bugs it found that scripted tests could never show: stopping real Claude was reported as a crash, so pausing and the Stop key ended plans in "error" (fixed: a stop is a stop); the daily limit was not counted until a job finished, so a second job could slip through (fixed: spending counts as it happens, including a run that hit its own limit); the second model could not see that a live key had been written into a page, because I hid it too well (fixed: it now sees "[hidden Stripe live key]"), and a leaked key in an ordinary file never triggered a review (fixed: any secret makes a change risky); and the pause took two seconds to show (now about a tenth of a second).
+- Also fixed a hang where "Carry on" or Stop could arrive before the plan was ready to hear it.
+
 ## Day 4: 10 Oct 2026
 
 **Prompt help: the thinking is done, the Mac parts come next.**
