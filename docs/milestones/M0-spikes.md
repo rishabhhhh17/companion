@@ -1,5 +1,7 @@
 # M0: Spikes
 
+**Update 8 Oct 2026:** spike (a) is finished (T01 changed) and spike (d) was shortened and passed (`spikes/d-paste/RESULTS.md`). The founder chose to stop running separate hands on spikes: (b), (c), (e), (f) and (g) become checks inside the milestones that need them (M1 to M6), with a hands on test only if one fails. (b) still needs the Apple Developer account for its signed part.
+
 **Status:** approved by the founder on 7 Oct 2026: the trimmed M0, with the Console sign in step in spike (c). Spike (a) runs first, then the founder reviews its result before the rest continue. **Written:** 7 Oct 2026. **Source:** technical doc section 18 (M0 row), product doc section 18 (phase 0). **Desk research behind it:** `docs/milestones/M0-desk-research.md`.
 
 ## What M0 is for

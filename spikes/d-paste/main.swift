@@ -38,9 +38,10 @@ final class Indicator {
     let label = NSTextField(labelWithString: "")
     init() {
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 44), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
+        // Set the level LAST: turning on isFloatingPanel resets it to 3.
+        panel.level = NSWindow.Level(rawValue: Int(ProcessInfo.processInfo.environment["INDICATOR_LEVEL"] ?? "25") ?? 25)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.backgroundColor = .white
         label.frame = NSRect(x: 12, y: 12, width: 336, height: 20)
@@ -49,7 +50,17 @@ final class Indicator {
         panel.contentView?.addSubview(label)
         if let vf = NSScreen.main?.visibleFrame { panel.setFrameOrigin(NSPoint(x: vf.midX - 180, y: vf.maxY - 80)) }
     }
-    func show(_ text: String) { label.stringValue = text; panel.orderFrontRegardless() }
+    func show(_ text: String) {
+        label.stringValue = text
+        panel.orderFrontRegardless()
+        // Probe: does macOS think the indicator is really on screen? (spike finding: it was not seen in some apps)
+        let started = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
+            log("indicator_probe", ["text_len": text.count, "level": panel.level.rawValue, "visible_occlusion": panel.occlusionState.contains(.visible),
+                                    "on_active_space": panel.isOnActiveSpace, "is_visible": panel.isVisible, "x": Int(panel.frame.minX), "y": Int(panel.frame.minY),
+                                    "front": frontApp()?.bundleIdentifier ?? "?", "since_show_ms": ms(started)])
+        }
+    }
     func hide() { panel.orderOut(nil) }
 }
 
@@ -162,20 +173,13 @@ func writeTransient(_ text: String) {
 }
 
 func sendKey(_ key: CGKeyCode, flags: CGEventFlags) {
-    let src = CGEventSource(stateID: .hidSystemState)
+    // A private event source ignores the modifier keys the user is still holding, so
+    // our Cmd+A is never mistaken for the user's Ctrl+Option+Cmd+A.
+    let src = CGEventSource(stateID: .privateState)
     for down in [true, false] {
         let e = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: down)
         e?.flags = flags
-        e?.post(tap: .cghidEventTap)
-    }
-}
-func waitForModifiersReleased() {
-    let deadline = Date().addingTimeInterval(2)
-    let mask: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand, .maskShift]
-    while Date() < deadline {
-        let f = CGEventSource.flagsState(.combinedSessionState)
-        if f.intersection(mask).isEmpty { return }
-        Thread.sleep(forTimeInterval: 0.05)
+        e?.post(tap: .cgSessionEventTap)
     }
 }
 
@@ -236,6 +240,8 @@ final class Spike: NSObject, NSApplicationDelegate {
         log("read_hotkey", ["app": bid, "trusted": trusted])
         guard trusted else { indicator.show("Allow Accessibility for Paste Spike, then press again"); DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.indicator.hide() }; return }
         indicator.show("Reading your text...")
+        // Let the indicator actually draw before touching the other app (rule: lit first).
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
         let isTerm = terminals.contains(bid)
         var r: ReadResult
         if isTerm {
@@ -277,12 +283,25 @@ final class Spike: NSObject, NSApplicationDelegate {
             log("accept", ["app": p.bid, "same_target": sameTarget, "pasted": false, "reason": p.terminal ? "terminal" : "moved", "ms": ms(t)])
             return
         }
-        waitForModifiersReleased()
         writeTransient(improved)
         let ours = pb.changeCount
-        if !p.hadSelection { sendKey(CGKeyCode(kVK_ANSI_A), flags: .maskCommand); Thread.sleep(forTimeInterval: 0.1) }
+        var selectMethod = "kept_selection"
+        if !p.hadSelection {
+            // Select everything by Accessibility if the field allows it, else Cmd+A.
+            if let el = p.element, let v = str(el, kAXValueAttribute as String) {
+                var range = CFRange(location: 0, length: (v as NSString).length)
+                if let val = AXValueCreate(.cfRange, &range),
+                   AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, val) == .success { selectMethod = "ax_range" }
+            }
+            if selectMethod != "ax_range" { sendKey(CGKeyCode(kVK_ANSI_A), flags: .maskCommand); selectMethod = "cmd_a" }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
         sendKey(CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
-        Thread.sleep(forTimeInterval: 0.5)
+        // poll for the new text instead of a fixed wait
+        for _ in 0..<20 {
+            Thread.sleep(forTimeInterval: 0.05)
+            if let el = focusedElement(AXUIElementCreateApplication(p.pid)), (str(el, kAXValueAttribute as String) ?? "").contains(improved) { break }
+        }
         // read back
         var readback = ""
         if let el = focusedElement(AXUIElementCreateApplication(p.pid)) { readback = str(el, kAXValueAttribute as String) ?? "" }
@@ -290,7 +309,7 @@ final class Spike: NSObject, NSApplicationDelegate {
         var restored = false
         if pb.changeCount == ours { restorePasteboard(saved); restored = true }
         log("accept", ["app": p.bid, "same_target": true, "pasted": true, "readback_ok": ok, "readback_len": readback.count, "readback_hash": sha(readback),
-                       "clipboard_restored": restored, "front_after": frontApp()?.bundleIdentifier ?? "?", "ms": ms(t)])
+                       "clipboard_restored": restored, "select_method": selectMethod, "front_after": frontApp()?.bundleIdentifier ?? "?", "ms": ms(t)])
     }
 
     func cancel(_ why: String) {
