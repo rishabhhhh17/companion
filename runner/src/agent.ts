@@ -3,15 +3,18 @@
 // scripted stand in) only supplies turns; everything safe happens here.
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
+import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
+import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
+import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { Ledger } from "./ledger.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
@@ -22,7 +25,7 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal };
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null> };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -34,6 +37,9 @@ export type RunnerOptions = {
   proof?: ProofRunner;
   ledger?: Ledger;
   dailyCeilingUsd?: number;
+  // Proof rung 7: a second model that reads risky changes. Off unless one is given.
+  reviewer?: Engine;
+  reviewModel?: string;
   approvalTimeoutMs?: number;
   now?: () => Date;
 };
@@ -115,6 +121,8 @@ export class AgentRunner {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
+      case "rescue.diagnose": return this.rescueDiagnose(cmd);
+      case "research.ask": return this.researchAsk(cmd);
       case "drive.approve": return this.driveApprove(cmd);
       case "drive.pause": {
         if (!this.watchers.has(cmd.agent)) { this.fail("Nothing is running to pause.", cmd.agent); return; }
@@ -242,8 +250,14 @@ export class AgentRunner {
       const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
       let res: LadderResult;
       this.watchers.get(cmd.agent)?.begin("ladder");
+      const review = this.o.reviewer && needsReview(changed) ? async () => {
+        const paths = new Set(changed.map((c) => c.file));
+        const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), await store.readFiles(after.id, (p) => paths.has(p))];
+        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; });
+        return parseReview(text);
+      } : undefined;
       try {
-        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal });
+        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review });
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -278,40 +292,64 @@ export class AgentRunner {
 
   // --- Drive: plan first (read only), then one approved step at a time ---
 
-  private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
-    const room = this.room(cmd.project);
-    if (room <= 0) { this.dailyLimit(cmd.agent); return; }
-    const planBudget = Math.min(cmd.budgetUsd, room);
+  // The second reviewer sees only the text it is given. Every tool is refused.
+  private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void): Promise<string> {
+    let text = "";
+    const gen = this.o.reviewer!.start({
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? "claude-opus-5-5", signal, budgetUsd, planOnly: true,
+      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
+    });
+    try {
+      let next = await gen.next();
+      while (!next.done) {
+        const turn = next.value;
+        spent(turn.costUsd);
+        let result: ToolResult | undefined;
+        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: "Blocked by Companion: the reviewer only reads the text it is given." }; }
+        else if (turn.text) text += turn.text + "\n";
+        next = await gen.next(result);
+      }
+    } finally { try { await gen.return(undefined); } catch { /* finished */ } }
+    return text;
+  }
+
+  // A session that may only look. Anything that is not a plain look is refused here, in code.
+  // `body` gets a way to ask Claude and finishes by setting the right state itself.
+  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null },
+    body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
+    const room = this.room(spec.project);
+    if (room <= 0) { this.dailyLimit(spec.agent); return; }
+    const budget = Math.min(spec.budgetUsd, room);
     const abort = new AbortController();
-    const session: Session = { agent: cmd.agent, abort, pending: new Map() };
-    this.sessions.set(cmd.agent, session);
-    this.driving.add(cmd.agent);
-    this.driveStop.delete(cmd.agent);
-    this.plans.delete(cmd.agent);
-    this.state(cmd.agent, "thinking");
-    let usd = 0, sessionId: string | undefined;
+    this.sessions.set(spec.agent, { agent: spec.agent, abort, pending: new Map() });
+    this.driving.add(spec.agent);
+    this.driveStop.delete(spec.agent);
+    this.plans.delete(spec.agent);
+    this.state(spec.agent, "thinking");
+    const st = { usd: 0, sessionId: undefined as string | undefined, abort };
     const exec = this.o.executor ?? defaultExecutor;
-    // One reading round. Anything that is not a plain look is refused here, in code.
+    const allowed = spec.allow ?? READ_ONLY_TOOLS;
+    const authorize = async (tool: ToolUse) => {
+      const refusal = allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      const ok = allowed.has(tool.name) && !refusal;
+      this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
+      return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? "Blocked by Companion: this can only look at the project, not change it." };
+    };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
-      const authorize = async (tool: ToolUse) => {
-        const ok = READ_ONLY_TOOLS.has(tool.name);
-        this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
-        return ok ? { allow: true, reason: "" } : { allow: false, reason: "Blocked by Companion: planning can only look at the project, not change it." };
-      };
-      const gen = this.o.engine.start({ prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, planBudget - usd), resumeSession: resume, planOnly: true, authorize });
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: resume, planOnly: true, authorize });
       try {
         let next = await gen.next();
         while (!next.done) {
           if (abort.signal.aborted) break;
           const turn = next.value;
-          if (turn.sessionId) sessionId = turn.sessionId;
-          usd += turn.costUsd;
-          if (usd > planBudget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
+          if (turn.sessionId) st.sessionId = turn.sessionId;
+          st.usd += turn.costUsd;
+          if (st.usd > budget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
           let result: ToolResult | undefined;
           if (turn.tool) {
             const a = await authorize(turn.tool);
-            result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
+            result = a.allow ? await exec(turn.tool, { project: spec.project }) : { ok: false, output: a.reason };
           } else if (turn.text) text += turn.text + "\n";
           next = await gen.next(result);
         }
@@ -319,27 +357,78 @@ export class AgentRunner {
       return text;
     };
     try {
+      await body(ask, st);
+    } catch (e) {
+      const msg = (e as Error).message;
+      this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, spec.agent);
+      this.state(spec.agent, "error");
+    } finally {
+      this.ledger.add(spec.project, st.usd);
+      this.sessions.delete(spec.agent);
+      this.driving.delete(spec.agent);
+    }
+  }
+
+  private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal)));
-      if (steps.length > MAX_STEPS && !abort.signal.aborted) {
-        const again = parsePlan(await ask(shortenPrompt(steps.length), sessionId));
+      if (steps.length > MAX_STEPS && !st.abort.signal.aborted) {
+        const again = parsePlan(await ask(shortenPrompt(steps.length), st.sessionId));
         if (again.length) steps = again;
       }
-      if (abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (steps.length === 0) { this.fail("Claude did not give a usable plan. Try describing the goal in a little more detail.", cmd.agent); this.state(cmd.agent, "error"); return; }
       const truncated = steps.length > MAX_STEPS;
       const kept = steps.slice(0, MAX_STEPS);
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd, sessionId });
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
       this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
       this.state(cmd.agent, "needsYou");
-    } catch (e) {
-      const msg = (e as Error).message;
-      this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, cmd.agent);
-      this.state(cmd.agent, "error");
-    } finally {
-      this.ledger.add(cmd.project, usd);
-      this.sessions.delete(cmd.agent);
-      this.driving.delete(cmd.agent);
-    }
+    });
+  }
+
+  // Research: look things up (web allowed, safe addresses only) and file cited notes. Writes no code.
+  private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
+    const question = cmd.question.replace(/\s+/g, " ").trim();
+    if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
+    const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch"]);
+    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
+      const r = parseResearch(await ask(researchPrompt(question)));
+      if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      const dir = join(cmd.project, ".companion", "research");
+      mkdirSync(dir, { recursive: true });
+      const when = this.now();
+      const name = noteFileName(r.title, when, (f) => existsSync(join(dir, f)));
+      writeFileSync(join(dir, name), notesMarkdown(question, r, when), { flag: "wx" });
+      this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes, file: `.companion/research/${name}` } as never);
+      this.state(cmd.agent, "done");
+    });
+  }
+
+  // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.
+  private async rescueDiagnose(cmd: Extract<Command, { type: "rescue.diagnose" }>): Promise<void> {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd }, async (ask, st) => {
+      const store = this.store(cmd.project);
+      const snap = await store.snapshot("Rescue: the project as it was found");
+      this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      let res: LadderResult;
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal }); }
+      catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
+      if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
+      const evidence = res.steps.map((x) => ({ label: x.label, status: x.status, detail: x.detail }));
+      this.state(cmd.agent, "thinking");
+      const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
+      if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (!d) { this.fail("Claude did not give a usable diagnosis. Try again, or describe what is wrong.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
+      const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
+      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimateUsd(steps.length) } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimateUsd(steps.length) } as never);
+      this.state(cmd.agent, "needsYou");
+    });
   }
 
   private async driveApprove(cmd: Extract<Command, { type: "drive.approve" }>): Promise<void> {
