@@ -58,7 +58,7 @@ const insideProject = (project: string, file: string) => { const w = whereIs(pro
 
 const WRITE_TOOLS: Record<string, string> = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
 const READ_PATHS: Record<string, string> = { Read: "file_path", Grep: "path", Glob: "path", LS: "path", NotebookRead: "notebook_path" };
-const SAFE_TOOLS = new Set(["TodoWrite", "Task", "WebSearch", "Agent", "ExitPlanMode"]);
+const SAFE_TOOLS = new Set(["TodoWrite", "Task", "WebSearch", "Agent", "ExitPlanMode", "ToolSearch"]);
 
 const protectedWhy = (part: string): string => part.startsWith(".git") ? "agents never write the project's .git folder or git settings" : "Companion's and Claude's own settings are not for the agent to change";
 

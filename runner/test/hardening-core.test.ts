@@ -277,3 +277,10 @@ describe("small parsers, harder cases", () => {
     expect(detectProject(d).packageManager).toBe("pnpm");
   });
 });
+
+describe("loading a tool's description is allowed", () => {
+  test("ToolSearch is not blocked, because research needs it to reach web search", async () => {
+    const { evaluate } = await import("../src/safety.ts");
+    expect(evaluate({ tool: "ToolSearch", input: { query: "web" } }, { project: "/tmp/x" }).decision).toBe("allow");
+  });
+});

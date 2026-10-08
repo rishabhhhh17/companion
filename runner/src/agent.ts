@@ -442,7 +442,7 @@ export class AgentRunner {
   private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
-    const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch"]);
+    const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
     const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
     await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
