@@ -80,8 +80,8 @@ docs/
   status/            dated status snapshots, written so a reader with no context can follow the project
 spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS (a-panel exists)
 scripts/             (planned, M0) build helpers: copy and verify Anthropic's binary, signing checks
-protocol/            (planned, M1) JSON lines protocol v1: schema, types, shared fixtures
-runner/              (planned, M1) TypeScript sidecar on Bun: agents, safety, checkpoints, proof, ship, memory, task log
+protocol/            JSON lines protocol v1: types, parser, shared fixtures (M1, started)
+runner/              TypeScript sidecar on Bun: checkpoints (done), then agents, safety, proof, ship, memory, task log (M1, started)
 app/src-tauri/       (planned, M1 for the runner supervisor and Keychain; the rest from M2) Rust shell: windows, hotkeys, assist, voice, watch, secrets, permissions
 app/                 (planned, M2) Tauri 2 + React UI: dock, characters, cards, ask box, memory page
 app/vendor/          (planned, M2) Anthropic's Claude binary, copied from the pinned SDK package at build time; never committed
@@ -95,7 +95,7 @@ Product code arrives in M1; these are the planned commands, so update this secti
 
 | Suite | Command | Covers |
 |---|---|---|
-| Runner (headless) | `cd runner && bun test` | Protocol, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log |
+| Runner (headless) | `cd runner && bun test` (works since 8 Oct 2026: protocol and undo; safety, budgets, memory and task log arrive in M1 and later) | Protocol, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log |
 | Rust shell | `cd app/src-tauri && cargo test` | Paste back, redaction, image resize and coordinate mapping, permissions state |
 | UI | `cd app && bun run test` | Character state mapping, cards, protocol client |
 | Protocol fixtures | run by both runner and Rust suites | Rust and TypeScript agree on every event |
