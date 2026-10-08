@@ -11,7 +11,8 @@ import { differentPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, p
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
-import { buildChildEnv, evaluate } from "./safety.ts";
+import { applyRules, loadRules } from "./rules.ts";
+import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
 import type { TaskLog } from "./tasklog.ts";
 
@@ -344,7 +345,11 @@ export class AgentRunner {
   // and by the real engine's PreToolUse hook; either way the safety rules are the same.
   private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void): Promise<{ allow: boolean; reason: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
-    const verdict = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
+    const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
+    // House rules can only make a call stricter, never looser.
+    const ruled = applyRules(loadRules(cmd.project).rules, { tool: tool.name, input: tool.input }, cmd.project);
+    const rank = { allow: 0, ask: 1, deny: 2 } as const;
+    const verdict: Verdict = ruled && rank[ruled.decision] > rank[base.decision] ? ruled : base;
     const sum = summary(tool);
     const tell = (outcome: "ran" | "blocked" | "needs_approval" | "denied") =>
       this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: sum, toolUseId, undoable: verdict.undoable, outcome } as never);
