@@ -53,7 +53,7 @@ describe("reading migration files", () => {
     expect(r.tables).toEqual(["real"]);
     expect(r.withoutRls).toEqual(["real"]);
   });
-  test("no tables at all is nothing wrong", () => expect(analyzeMigrations({ "a.sql": "select 1;" })).toEqual({ tables: [], withoutRls: [] }));
+  test("no tables at all is nothing wrong", () => expect(analyzeMigrations({ "a.sql": "select 1;" })).toEqual({ tables: [], withoutRls: [], openPolicies: [], dynamic: false }));
 });
 
 describe("asking the live database", () => {
