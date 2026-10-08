@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, initial, motionFor, plainError, reduce, type Model } from "./model.ts";
+import { characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -103,5 +103,144 @@ describe("motion and money", () => {
     expect(formatUsd(0.004)).toBe("less than 1 cent");
     expect(formatUsd(0.069)).toBe("7 cents");
     expect(formatUsd(1.234)).toBe("$1.23");
+  });
+});
+
+describe("paths in plain words", () => {
+  test("the project folder is dropped from a path", () => expect(plainPath("Write: /Users/me/Developer/companion-playground/index.html", "/Users/me/Developer/companion-playground")).toBe("Write: index.html"));
+  test("a path outside the project is left alone", () => expect(plainPath("Write: /etc/hosts", "/Users/me/p")).toBe("Write: /etc/hosts"));
+  test("no project means no change", () => expect(plainPath("Write: /a/b", "")).toBe("Write: /a/b"));
+  test("works for several paths in one line", () => expect(plainPath("mv /p/a.txt /p/b.txt", "/p")).toBe("mv a.txt b.txt"));
+});
+
+describe("answered approvals and step lines stay in step on every page", () => {
+  const req = ev({ type: "approval.request", approval: "ap_1", agent: "a", checkpoint: "cp", toolUseId: "t1", risk: "git", title: "git push", expiresAt: "z" });
+  test("an announced answer removes the card and the badge on a page that never saw the click", () => {
+    const m = run([req, ev({ type: "approval.resolved", approval: "ap_1", agent: "a", outcome: "denied" })]);
+    expect(m.approvals).toEqual([]);
+  });
+  test("an expired or cancelled approval also goes away", () => {
+    for (const outcome of ["expired", "cancelled", "allowed"]) expect(run([req, ev({ type: "approval.resolved", approval: "ap_1", agent: "a", outcome })]).approvals).toEqual([]);
+  });
+  test("the same step is updated, not repeated", () => {
+    const m = run([...start,
+      ev({ type: "agent.tool", agent: "a", tool: "Bash", summary: "Running: git push", toolUseId: "t1", undoable: false, outcome: "needs_approval" }),
+      ev({ type: "agent.tool", agent: "a", tool: "Bash", summary: "Running: git push", toolUseId: "t1", undoable: false, outcome: "ran" })]);
+    expect(m.task?.lines.length).toBe(1);
+    expect(m.task?.lines[0].outcome).toBe("ran");
+  });
+  test("different steps stay separate", () => {
+    const m = run([...start,
+      ev({ type: "agent.tool", agent: "a", tool: "Write", summary: "Write: a", toolUseId: "t1", undoable: true, outcome: "ran" }),
+      ev({ type: "agent.tool", agent: "a", tool: "Write", summary: "Write: b", toolUseId: "t2", undoable: true, outcome: "ran" })]);
+    expect(m.task?.lines.length).toBe(2);
+  });
+});
+
+describe("proof: the checklist and Not done", () => {
+  const step = (rung: string, status: string, detail = "", label = rung) => ev({ type: "proof.step", agent: "a", rung, label, status, detail, ms: 5 });
+  const result = (verdict: string, steps: unknown[], tries = 1) => ev({ type: "proof.result", agent: "a", verdict, steps, tries });
+  test("each check appears and updates in place as it moves from running to passed", () => {
+    const m = run([...start, step("checks", "running", "", "Building and checking the code"), step("checks", "passed", "", "Building and checking the code"), step("tests", "running", "", "Running the tests")]);
+    expect(m.task?.proof?.steps.map((s) => [s.rung, s.status])).toEqual([["checks", "passed"], ["tests", "running"]]);
+  });
+  test("a failed check says why in plain words and the task is marked not done", () => {
+    const m = run([...start, step("browser", "failed", "The page threw an error: foo is not defined", "Opening it in a browser"),
+      result("failed", [{ rung: "browser", label: "Opening it in a browser", status: "failed", detail: "The page threw an error: foo is not defined" }]),
+      ev({ type: "agent.state", agent: "a", state: "error" })]);
+    expect(m.task?.proof?.verdict).toBe("failed");
+    expect(notDoneReason(m)).toBe("Opening it in a browser: The page threw an error: foo is not defined");
+  });
+  test("a passing result is not a Not done", () => {
+    const m = run([...start, result("passed", [])]);
+    expect(notDoneReason(m)).toBeNull();
+  });
+  test("a retry starts a fresh checklist instead of stacking on the old one", () => {
+    const m = run([...start, step("browser", "failed", "boom"), result("failed", [], 1), step("checks", "running")]);
+    expect(m.task?.proof?.steps.map((s) => s.rung)).toEqual(["checks"]);
+    expect(m.task?.proof?.verdict).toBeUndefined();
+  });
+  test("a new task clears the old checklist", () => {
+    const m = run([...start, step("browser", "passed"), result("passed", []), ...start]);
+    expect(m.task?.proof).toBeUndefined();
+  });
+  test("the receipt carries whether the work was proven", () => {
+    const m = run([...start, ev({ type: "receipt", agent: "a", checkpoint: "cp_0001", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 })]);
+    expect(m.receipt?.proof).toBe("passed");
+  });
+  test("a proof step does not break when there is no task yet", () => {
+    expect(() => run([step("checks", "running")])).not.toThrow();
+  });
+  test("checking is shown as the word Checking", () => {
+    expect(stateLabel("checking")).toBe("Checking");
+  });
+});
+
+describe("the timeline of past tasks", () => {
+  const task = (id: number, label: string, status: string, proof: string | null = null) => ({ id, label, status, usd: 0.04, startedAt: "2026-10-08T10:00:00Z", endedAt: "t", checkpoint: "cp_000" + id, changed: 1, proof });
+  test("a list from the engine becomes the history", () => {
+    const m = run([ev({ type: "tasks.list", project: "/p", tasks: [task(2, "add a page", "done", "passed"), task(1, "fix it", "not_done", "failed")] })]);
+    expect(m.history.map((h) => h.label)).toEqual(["add a page", "fix it"]);
+  });
+  test("each line says in plain words how it ended", () => {
+    expect(historyWords(task(1, "x", "done", "passed"))).toBe("Done, checked");
+    expect(historyWords(task(1, "x", "done", "skipped"))).toBe("Done, not checked");
+    expect(historyWords(task(1, "x", "not_done", "failed"))).toBe("Not done");
+    expect(historyWords(task(1, "x", "interrupted"))).toBe("Stopped");
+    expect(historyWords(task(1, "x", "error_max_budget_usd"))).toBe("Stopped at the spending limit");
+    expect(historyWords(task(1, "x", "running"))).toBe("Running");
+    expect(historyWords(task(1, "x", "error"))).toBe("Something went wrong");
+  });
+  test("a newer list replaces the old one", () => {
+    const m = run([ev({ type: "tasks.list", project: "/p", tasks: [task(1, "a", "done")] }), ev({ type: "tasks.list", project: "/p", tasks: [] })]);
+    expect(m.history).toEqual([]);
+  });
+});
+
+describe("saying how many tries it took", () => {
+  const res = (verdict: string, tries: number) => ev({ type: "proof.result", agent: "a", verdict, steps: [], tries });
+  test("a pass on the first try says nothing extra", () => {
+    expect(triesNote(run([...start, res("passed", 1)]))).toBeNull();
+  });
+  test("a pass after a fix says how many tries it took", () => {
+    expect(triesNote(run([...start, res("failed", 1), res("passed", 2)]))).toBe("Fixed after 2 tries");
+  });
+  test("a failure after all tries says so", () => {
+    expect(triesNote(run([...start, res("failed", 3)]))).toBe("Still failing after 3 tries");
+  });
+  test("no result yet means no note", () => {
+    expect(triesNote(run([...start]))).toBeNull();
+  });
+});
+
+describe("a failed check that Claude is still fixing", () => {
+  const failed = ev({ type: "proof.result", agent: "a", verdict: "failed", steps: [], tries: 1 });
+  test("while Claude is working again, it is fixing, not Not done", () => {
+    const m = run([...start, failed, ev({ type: "agent.state", agent: "a", state: "working" })]);
+    expect(isFixing(m)).toBe(true);
+  });
+  test("once everything has stopped on a failure, it is not fixing any more", () => {
+    const m = run([...start, failed, ev({ type: "agent.state", agent: "a", state: "error" })]);
+    expect(isFixing(m)).toBe(false);
+    expect(notDoneReason(m)).not.toBeNull();
+  });
+  test("a task that never failed is never fixing", () => {
+    expect(isFixing(run([...start, ev({ type: "agent.state", agent: "a", state: "working" })]))).toBe(false);
+  });
+});
+
+describe("the word under the character", () => {
+  const failed = ev({ type: "proof.result", agent: "a", verdict: "failed", steps: [{ rung: "checks", label: "Building", status: "failed", detail: "x" }], tries: 3 });
+  test("a task that ended on a failed check says Not done, not Something went wrong", () => {
+    expect(characterWords(run([...start, failed, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe("Not done");
+  });
+  test("a real error still says something went wrong", () => {
+    expect(characterWords(run([...start, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe("Something went wrong");
+  });
+  test("while fixing it says so", () => {
+    expect(characterWords(run([...start, failed, ev({ type: "agent.state", agent: "a", state: "working" })]))).toBe("Fixing a failed check");
+  });
+  test("an ordinary state keeps its usual word", () => {
+    expect(characterWords(run([...start]))).toBe("Thinking");
   });
 });

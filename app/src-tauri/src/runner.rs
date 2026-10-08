@@ -15,7 +15,7 @@ pub const PROTOCOL_VERSION: i64 = 1;
 /// The commands a web page may send. Everything else is refused here, in Rust.
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
-    "assist.prompt", "assist.locate", "assist.cancel",
+    "assist.prompt", "assist.locate", "assist.cancel", "tasks.list",
 ];
 
 /// Checks a command from a web page. Returns the reason in plain words when refused.
@@ -50,14 +50,24 @@ pub fn split_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> Vec<String> {
 
 /// Where the runner is: a dev settings file, then environment variables.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf }
+pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String> }
+
+/// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
+/// switch accounts are refused here, so a settings file can never carry a secret into the runner.
+const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR"];
+
+pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
+    dev.get("env").and_then(Value::as_object).map(|o| {
+        o.iter().filter(|(k, _)| ENV_ALLOWED.contains(&k.as_str())).filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()
+    }).unwrap_or_default()
+}
 
 pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf) -> Result<Locations, String> {
     let dev: Value = dev_json.and_then(|s| serde_json::from_str(s).ok()).unwrap_or(Value::Null);
     let pick = |key: &str, var: &str| dev.get(key).and_then(Value::as_str).map(str::to_string).or_else(|| env(var));
     let bun = pick("bun", "COMPANION_BUN").ok_or("Companion cannot find Bun. Run app/scripts/dev-setup.sh")?;
     let runner = pick("runner", "COMPANION_RUNNER").ok_or("Companion cannot find the runner. Run app/scripts/dev-setup.sh")?;
-    Ok(Locations { bun: bun.into(), runner: runner.into(), data })
+    Ok(Locations { bun: bun.into(), runner: runner.into(), data, env: allowed_env(&dev) })
 }
 
 /// Status messages a page that loads late still needs (who is connected, is the engine up).
@@ -90,6 +100,7 @@ impl Runner {
         let mut child = Command::new(&loc.bun)
             .arg(&loc.runner)
             .env("COMPANION_DATA", &loc.data)
+            .envs(&loc.env)
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
             .spawn().map_err(|e| format!("could not start the runner: {e}"))?;
         let stdout = child.stdout.take().ok_or("no runner output")?;
@@ -139,7 +150,7 @@ mod tests {
 
     #[test]
     fn allows_the_commands_pages_need() {
-        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore"] {
+        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
         }
     }
@@ -175,6 +186,27 @@ mod tests {
         let l = locations(Some(r#"{"bun":"/dev/bun"}"#), &env, "/d".into()).unwrap();
         assert_eq!(l.bun, PathBuf::from("/dev/bun"));
         assert_eq!(l.runner, PathBuf::from("/env/main.ts"));
+    }
+    #[test]
+    fn the_dev_file_may_pass_only_safe_settings_to_the_runner() {
+        let dev = json!({"env": {"COMPANION_ROUTE":"plan","COMPANION_MODEL":"m","CLAUDE_CONFIG_DIR":"/x",
+            "ANTHROPIC_API_KEY":"sk-ant-secret","CLAUDE_CODE_OAUTH_TOKEN":"t","PATH":"/evil","COMPANION_ENGINE":"scripted"}});
+        let e = allowed_env(&dev);
+        assert_eq!(e.len(), 3);
+        assert_eq!(e["COMPANION_ROUTE"], "plan");
+        for k in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "PATH", "COMPANION_ENGINE"] { assert!(!e.contains_key(k), "{k}"); }
+    }
+    #[test]
+    fn a_missing_or_odd_env_section_gives_nothing() {
+        assert!(allowed_env(&json!({})).is_empty());
+        assert!(allowed_env(&json!({"env": "x"})).is_empty());
+        assert!(allowed_env(&json!({"env": {"COMPANION_ROUTE": 5}})).is_empty());
+    }
+    #[test]
+    fn locations_carry_the_safe_settings() {
+        let none = |_: &str| None;
+        let l = locations(Some(r#"{"bun":"/b","runner":"/r","env":{"COMPANION_ROUTE":"plan"}}"#), &none, "/d".into()).unwrap();
+        assert_eq!(l.env["COMPANION_ROUTE"], "plan");
     }
     #[test]
     fn missing_locations_give_a_plain_instruction() {

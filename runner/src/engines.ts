@@ -9,7 +9,7 @@ import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 
 export type Settings = {
-  engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[];
+  engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string;
 };
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
@@ -21,9 +21,13 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     data: env.COMPANION_DATA ?? join(homedir(), "Library", "Application Support", "Companion", "runner"),
     ref: { service: env.COMPANION_KEYCHAIN_SERVICE ?? DEFAULT_REF.service, account: env.COMPANION_KEYCHAIN_ACCOUNT ?? DEFAULT_REF.account },
     claudeBin: env.COMPANION_CLAUDE_BIN,
+    model: env.COMPANION_MODEL || undefined,
     script,
   };
 }
+
+// For testing, a model set in the settings wins over the one the page asked for (a cheaper one).
+export const pickModel = (requested: string, override?: string): string => (override && override.trim() ? override.trim() : requested);
 
 export type Auth = { method: "api_key" | "plan" | "none"; apiKey?: string };
 export async function currentAuth(s: Settings): Promise<Auth> {
@@ -41,7 +45,7 @@ class LazySdkEngine implements Engine {
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
     const a = await currentAuth(this.s);
     if (a.method === "none") throw new Error(NOT_CONNECTED);
-    yield* new SdkEngine({ claudeBinary: resolveClaudeBinary(this.s.claudeBin), env: childEnv(a) }).start(opts);
+    yield* new SdkEngine({ claudeBinary: resolveClaudeBinary(this.s.claudeBin), env: childEnv(a) }).start({ ...opts, model: pickModel(opts.model, this.s.model) });
   }
 }
 

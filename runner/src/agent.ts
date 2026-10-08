@@ -11,9 +11,15 @@ import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
 import { buildChildEnv, evaluate } from "./safety.ts";
+import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
 import type { TaskLog } from "./tasklog.ts";
 
 export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
+
+// What the checker is given: the project, the two snapshots to compare, a way to report each rung,
+// and the stop signal. Tests pass a stand in; the default runs the real ladder.
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal };
+export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
   shadowRoot: string;
@@ -21,6 +27,7 @@ export type RunnerOptions = {
   log: TaskLog;
   emit: (e: Event) => void;
   executor?: ToolExecutor;
+  proof?: ProofRunner;
   approvalTimeoutMs?: number;
   now?: () => Date;
 };
@@ -94,6 +101,11 @@ export class AgentRunner {
         try { await this.store(cmd.project).restore(cmd.checkpoint); } catch (e) { this.fail((e as Error).message); }
         return;
       }
+      case "tasks.list": {
+        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof }));
+        this.emit({ type: "tasks.list", project: cmd.project, tasks } as never);
+        return;
+      }
       case "agent.send": return; // follow ups arrive with the real engine
     }
   }
@@ -117,52 +129,94 @@ export class AgentRunner {
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
-    this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: before.label, files: before.files, skipped: before.skipped } as never);
+    this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped } as never);
     const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString() });
     this.state(cmd.agent, "thinking");
 
     let usd = 0, commands = 0, status = "done";
     const notUndoable: string[] = [];
     const exec = this.o.executor ?? defaultExecutor;
-    const gen = this.o.engine.start({
-      prompt: cmd.prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: cmd.budgetUsd,
-      authorize: (tool) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }),
-    });
+    let sessionId: string | undefined;
 
-    try {
-      let next = await gen.next();
-      while (!next.done) {
-        if (abort.signal.aborted) { status = "interrupted"; break; }
-        const turn = next.value;
-        usd += turn.costUsd;
-        this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { in: 0, cacheRead: 0, out: 0 } } as never);
-        if (usd > cmd.budgetUsd) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); break; }
+    // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
+    const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
+      const gen = this.o.engine.start({
+        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, cmd.budgetUsd - usd), resumeSession,
+        authorize: (tool) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }),
+      });
+      try {
+        let next = await gen.next();
+        while (!next.done) {
+          if (abort.signal.aborted) { status = "interrupted"; return false; }
+          const turn = next.value;
+          if (turn.sessionId) sessionId = turn.sessionId;
+          usd += turn.costUsd;
+          this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { in: 0, cacheRead: 0, out: 0 } } as never);
+          if (usd > cmd.budgetUsd) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
 
-        let result: ToolResult | undefined;
-        if (turn.tool) {
-          const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
-          result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
-          if (abort.signal.aborted) { status = "interrupted"; break; }
-        } else if (turn.text) {
-          this.state(cmd.agent, "working");
+          let result: ToolResult | undefined;
+          if (turn.tool) {
+            const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
+            result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
+            if (abort.signal.aborted) { status = "interrupted"; return false; }
+          } else if (turn.text) {
+            this.state(cmd.agent, "working");
+          }
+          next = await gen.next(result);
         }
-        next = await gen.next(result);
+        if (abort.signal.aborted) { status = "interrupted"; return false; }
+        return true;
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (e instanceof EngineStop) usd += e.costUsd;
+        status = /^error_max_[a-z_]+/.exec(msg)?.[0] ?? "error";
+        this.fail(status === "error" ? `engine error: ${msg}` : msg, cmd.agent);
+        return false;
+      } finally {
+        try { await gen.return(undefined); } catch { /* already finished */ }
       }
-      if (abort.signal.aborted && status === "done") status = "interrupted";
-    } catch (e) {
-      const msg = (e as Error).message;
-      if (e instanceof EngineStop) usd += e.costUsd;
-      status = /^error_max_[a-z_]+/.exec(msg)?.[0] ?? "error";
-      this.fail(status === "error" ? `engine error: ${msg}` : msg, cmd.agent);
-    } finally {
-      try { await gen.return(undefined); } catch { /* already finished */ }
-    }
+    };
 
-    // Receipt: compare the state before with the state now.
-    const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
-    const changed = await store.diff(before.id, after.id);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof: "skipped", usdEstimate: usd } as never);
-    this.o.log.finish(taskId, status, usd, this.now().toISOString());
+    // Receipt: compare the state before with the state now. Proof: "done" has to be earned, so a task
+    // that changed files is checked, and a failed check goes back to Claude (twice at most).
+    const MAX_TRIES = 3;
+    let proof: "passed" | "failed" | "skipped" = "skipped";
+    let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
+    let ok = await round(cmd.prompt);
+    for (let tries = 1; ; tries++) {
+      const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
+      changed = await store.diff(before.id, after.id);
+      if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) break;
+
+      this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      let res: LadderResult;
+      try {
+        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal });
+      } catch (e) {
+        res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
+      }
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries } as never);
+      if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
+      if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; break; }
+
+      proof = "failed"; status = "not_done";
+      if (tries >= MAX_TRIES || usd >= cmd.budgetUsd) { if (usd >= cmd.budgetUsd) status = "error_max_budget_usd"; break; }
+      // Send the evidence back into the same conversation and try again.
+      const f = res.failedAt ?? res.steps.at(-1);
+      this.state(cmd.agent, "working");
+      status = "done";
+      ok = await round(`The checks on your work failed. Please fix this and keep the change small.\n\nFailed check: ${f?.label ?? "unknown"}\nWhat happened: ${f?.detail ?? "no details"}`, sessionId);
+      if (ok && status === "done") {
+        const probe = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
+        if ((await store.diff(after.id, probe.id)).length === 0) { status = "not_done"; break; } // the fix changed nothing
+      }
+      if (!ok || status !== "done") break;
+      proof = "skipped";
+    }
+    // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
+    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
   }
@@ -189,11 +243,15 @@ export class AgentRunner {
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),
       } as never);
       this.state(cmd.agent, "needsYou");
+      let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
       const allowed = await new Promise<boolean>((res) => {
-        const t = setTimeout(() => { s.pending.delete(approval); res(false); }, timeout);
-        s.pending.set(approval, (ok) => { clearTimeout(t); res(ok); });
+        const t = setTimeout(() => { s.pending.delete(approval); how = "expired"; res(false); }, timeout);
+        s.pending.set(approval, (ok) => { clearTimeout(t); how = ok ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; res(ok); });
       });
-      if (!allowed) return { allow: false, reason: "The user did not allow this command." };
+      // Tell every page, so none keeps a stale card or badge.
+      this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
+      if (!allowed) { tell("denied"); return { allow: false, reason: "The user did not allow this command." }; }
+      tell("ran");
     }
     if (tool.name === "Bash") countCommand();
     if (!verdict.undoable) notUndoable.push(String(tool.input.command ?? sum));

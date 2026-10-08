@@ -146,6 +146,16 @@ describe("snapshot and undo", () => {
     expect(existsSync(join(p, "dist/new.js"))).toBe(true);
   });
 
+  test("Claude Code's own bookkeeping folder is not part of a snapshot or a receipt", async () => {
+    const p = project({ "a.txt": "one" });
+    const s = new CheckpointStore(tmp("shadow"), p);
+    const first = await s.snapshot("Before");
+    mkdirSync(join(p, ".claude"), { recursive: true });
+    writeFileSync(join(p, ".claude/.cc-writes"), "x");
+    const second = await s.snapshot("After");
+    expect(await s.diff(first.id, second.id)).toEqual([]);
+  });
+
   test("files the project's own .gitignore ignores are left alone", async () => {
     const p = project({ ".gitignore": "*.log\n", "a.txt": "one", "debug.log": "first" });
     const s = new CheckpointStore(tmp("shadow"), p);

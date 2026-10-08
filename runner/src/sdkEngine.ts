@@ -23,7 +23,7 @@ export function resolveClaudeBinary(override?: string): string {
 
 export type SdkConfig = {
   project: string; model: string; budgetUsd: number; claudeBinary: string; env: Record<string, string>;
-  authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal;
+  authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string;
 };
 
 export function buildSdkOptions(c: SdkConfig) {
@@ -58,6 +58,7 @@ export function buildSdkOptions(c: SdkConfig) {
     enableFileCheckpointing: true,
     includePartialMessages: false,
     abortController: controller,
+    ...(c.resumeSession ? { resume: c.resumeSession } : {}),
   };
 }
 
@@ -68,19 +69,20 @@ export class SdkEngine implements Engine {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; queryFn?: typeof realQuery }) {}
 
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal });
+    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession });
     const q = (this.o.queryFn ?? realQuery)({ prompt: opts.prompt, options: options as never });
-    let lastTotal = 0;
+    let lastTotal = 0, sessionId: string | undefined;
     for await (const m of q as AsyncIterable<any>) {
+      if (m.session_id) sessionId = String(m.session_id);
       if (m.type === "assistant") {
         const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
-        if (text) yield { text, costUsd: 0 };
+        if (text) yield { text, costUsd: 0, sessionId };
       } else if (m.type === "result") {
         const total = Number(m.total_cost_usd ?? 0);
         const delta = round(Math.max(0, total - lastTotal));
         lastTotal = total;
         if (m.subtype && m.subtype !== "success") throw new EngineStop(`${m.subtype}: the run stopped`, delta);
-        yield { costUsd: delta };
+        yield { costUsd: delta, sessionId };
       }
     }
   }

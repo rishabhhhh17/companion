@@ -1,0 +1,153 @@
+// The whole ladder, on small real projects that are healthy or broken in one known way.
+// Nothing here downloads anything: the "projects" use Bun's own server and Bun's test runner.
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CheckpointStore } from "../src/checkpoints.ts";
+import { needsInstall, runLadder, type StepUpdate } from "../src/proof/ladder.ts";
+import type { RunResult } from "../src/proof/exec.ts";
+
+const made: string[] = [];
+afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
+const tmp = () => { const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-ladder-"))); made.push(d); return d; };
+const put = (root: string, files: Record<string, string>) => { for (const [p, c] of Object.entries(files)) { mkdirSync(join(root, p, ".."), { recursive: true }); writeFileSync(join(root, p), c); } };
+const drop = (root: string, ...paths: string[]) => { for (const p of paths) rmSync(join(root, p), { force: true }); };
+
+// "Before" is what the project was; "after" is what the task left. The ladder compares them.
+async function scenario(before: Record<string, string>, change: (dir: string) => void, limits = {}, extra: Record<string, unknown> = {}) {
+  const dir = tmp();
+  put(dir, before);
+  const store = new CheckpointStore(tmp(), dir);
+  const b = await store.snapshot("before");
+  change(dir);
+  const a = await store.snapshot("after");
+  const updates: StepUpdate[] = [];
+  const result = await runLadder({ project: dir, store, beforeId: b.id, afterId: a.id, onStep: (u) => updates.push(u), limits: { checkMs: 15000, testMs: 30000, installMs: 15000, startMs: 15000, browserMs: 15000, ...limits }, ...extra });
+  return { result, updates, dir };
+}
+const GOOD_PAGE = "<!doctype html><h1>Hello from Companion</h1><p>hi</p>";
+const BAD_PAGE = "<!doctype html><h1>Hello</h1><script>nothing.here.is.defined()</script>";
+const SERVER = (status: number) => `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("<h1>Hello from the server</h1>", { status: ${status}, headers: { "content-type": "text/html" } }) });`;
+const pkg = (scripts: Record<string, string>) => JSON.stringify({ name: "x", version: "1.0.0", scripts });
+const TESTS = (n: number, fail = false) => `import { test, expect } from "bun:test";\n` + Array.from({ length: n }, (_, i) => `test("t${i}", () => { expect(1).toBe(${fail && i === 0 ? 2 : 1}); });`).join("\n");
+
+describe("a healthy project reaches the end", () => {
+  test("a plain web page: it opens, nothing is wrong, verdict passed", async () => {
+    const { result } = await scenario({ "notes.txt": "start" }, (d) => put(d, { "index.html": GOOD_PAGE }));
+    expect(result.verdict).toBe("passed");
+    expect(result.steps.find((s) => s.rung === "browser")?.status).toBe("passed");
+  }, 60000);
+  test("a project with a build, tests and a server passes every rung", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, {
+      "package.json": pkg({ build: "sh -c 'exit 0'", test: "bun test", dev: "bun server.js" }), "server.js": SERVER(200), "a.test.ts": TESTS(2),
+    }), {}, {});
+    if (result.verdict !== "passed") console.log(JSON.stringify(result.steps.filter((s) => s.status === "failed")));
+    expect(result.steps.map((s) => [s.rung, s.status])).toEqual([["install", "skipped"], ["checks", "passed"], ["tests", "passed"], ["start", "passed"], ["browser", "passed"]]);
+    expect(result.verdict).toBe("passed");
+  }, 90000);
+});
+
+describe("a broken project never reaches 'passed'", () => {
+  test("a build that fails stops the ladder there, with the error text", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ build: "sh -c 'echo build exploded >&2; exit 1'" }), "index.html": GOOD_PAGE }));
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.rung).toBe("checks");
+    expect(result.failedAt?.detail).toContain("build exploded");
+    expect(result.steps.some((s) => s.rung === "browser")).toBe(false);
+  }, 60000);
+  test("a web page with an error in its code fails at the browser check", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": BAD_PAGE }));
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.rung).toBe("browser");
+    expect(result.failedAt?.detail).toMatch(/nothing/);
+  }, 60000);
+  test("a server that answers with an error fails at the browser check", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ dev: "bun server.js" }), "server.js": SERVER(500) }));
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.rung).toBe("browser");
+    expect(result.failedAt?.detail).toContain("500");
+  }, 60000);
+  test("a server that crashes on start fails at the start rung", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ dev: "bun server.js" }), "server.js": 'throw new Error("cannot start: missing config");' }));
+    expect(result.failedAt?.rung).toBe("start");
+    expect(result.failedAt?.detail).toContain("missing config");
+  }, 60000);
+  test("tests that fail fail the ladder before the page is opened", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ test: "bun test" }), "a.test.ts": TESTS(2, true), "index.html": GOOD_PAGE }));
+    expect(result.failedAt?.rung).toBe("tests");
+    expect(result.steps.some((s) => s.rung === "start")).toBe(false);
+  }, 60000);
+  test("a task that deleted a test to make things pass is caught, even though the tests now pass", async () => {
+    const { result } = await scenario({ "package.json": pkg({ test: "bun test" }), "a.test.ts": TESTS(2, true) }, (d) => put(d, { "a.test.ts": TESTS(1) }));
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.rung).toBe("tests");
+    expect(result.failedAt?.detail).toMatch(/fewer tests/i);
+  }, 60000);
+  test("a task that removed a whole test file is named", async () => {
+    const { result } = await scenario({ "package.json": pkg({ test: "bun test" }), "a.test.ts": TESTS(2), "b.test.ts": TESTS(2) }, (d) => drop(d, "b.test.ts"));
+    expect(result.failedAt?.detail).toContain("b.test.ts");
+  }, 60000);
+  test("a check that runs forever is stopped and reported as too slow", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ build: "sleep 30" }) }), { checkMs: 700 });
+    expect(result.failedAt?.rung).toBe("checks");
+    expect(result.failedAt?.detail).toMatch(/too long|time/i);
+  }, 60000);
+});
+
+describe("being honest about what could not be checked", () => {
+  test("a folder with nothing to run says so and is not called passed", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "notes.txt": "just words" }));
+    expect(result.verdict).toBe("nothing_to_check");
+  });
+  test("when the hidden browser is missing, the rest still runs and the gap is stated", async () => {
+    const skipped = async () => ({ ok: false, skipped: "The hidden browser is not installed yet, so the page was not opened.", problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 });
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": GOOD_PAGE }), {}, { browser: skipped });
+    expect(result.verdict).toBe("passed_with_gaps");
+    expect(result.steps.find((s) => s.rung === "browser")).toMatchObject({ status: "skipped" });
+    expect(result.steps.find((s) => s.rung === "browser")?.detail).toContain("not installed");
+  }, 60000);
+});
+
+describe("the install rung", () => {
+  const pk = (deps: Record<string, string>) => JSON.stringify({ name: "x", dependencies: deps });
+  test("a changed lock file means install", () => expect(needsInstall({ "package.json": pk({}), "bun.lock": "a" }, { "package.json": pk({}), "bun.lock": "b" }, "bun.lock", true)).toBe(true));
+  test("changed dependencies mean install", () => expect(needsInstall({ "package.json": pk({}) }, { "package.json": pk({ vite: "^5" }) }, null, true)).toBe(true));
+  test("nothing changed means no install", () => expect(needsInstall({ "package.json": pk({ a: "1" }), "bun.lock": "a" }, { "package.json": pk({ a: "1" }), "bun.lock": "a" }, "bun.lock", true)).toBe(false));
+  test("dependencies but no node_modules folder means install", () => expect(needsInstall({ "package.json": pk({ a: "1" }) }, { "package.json": pk({ a: "1" }) }, null, false)).toBe(true));
+  test("no dependencies and no node_modules folder means no install", () => expect(needsInstall({ "package.json": pk({}) }, { "package.json": pk({}) }, null, false)).toBe(false));
+  test("a project without a package file never installs", () => expect(needsInstall({}, { "index.html": "x" }, null, false)).toBe(false));
+
+  test("install runs with the project's own manager when the ingredients changed, and a failed install stops the ladder", async () => {
+    const ran: string[] = [];
+    const fake = async (cmd: string): Promise<RunResult> => { ran.push(cmd); return { code: cmd.includes("install") ? 1 : 0, signal: null, stdout: "", stderr: "npm ERR! could not resolve nonexistent-pkg", timedOut: false, ms: 5 }; };
+    const { result } = await scenario({ "package.json": pk({}) }, (d) => put(d, { "package.json": pk({ "nonexistent-pkg": "1.0.0" }), "package-lock.json": "{}" }), {}, { run: fake });
+    expect(ran[0]).toBe("npm install");
+    expect(result.failedAt?.rung).toBe("install");
+    expect(result.failedAt?.detail).toContain("could not resolve");
+    expect(ran.length).toBe(1);
+  }, 60000);
+});
+
+describe("progress and cleanup", () => {
+  test("each rung reports that it is running, then how it ended, in order", async () => {
+    const { updates } = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": GOOD_PAGE }));
+    const seq = updates.map((u) => `${u.rung}:${u.status}`);
+    expect(seq.indexOf("start:running")).toBeLessThan(seq.indexOf("start:passed"));
+    expect(seq.indexOf("start:passed")).toBeLessThan(seq.indexOf("browser:running"));
+    expect(seq.at(-1)).toBe("browser:passed");
+  }, 60000);
+  test("the server it started is gone afterwards, even when the browser check failed", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ dev: "bun server.js" }), "server.js": SERVER(500) }));
+    expect(result.serverUrl).toBeTruthy();
+    await Bun.sleep(300);
+    const gone = await fetch(result.serverUrl!, { signal: AbortSignal.timeout(800) }).then(() => false, () => true);
+    expect(gone).toBe(true);
+  }, 60000);
+  test("it can be cancelled between rungs", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": GOOD_PAGE }), {}, { signal: ac.signal });
+    expect(result.verdict).toBe("cancelled");
+  }, 60000);
+});

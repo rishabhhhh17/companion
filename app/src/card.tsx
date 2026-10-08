@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, startTask, stopAgent, undo } from "./commands.ts";
-import { formatUsd, stateLabel } from "./model.ts";
+import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
+import { characterWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -17,6 +17,8 @@ function Card() {
   const [undone, setUndone] = useState(false);
 
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); }, []);
+  // The timeline: ask when the project is known, and again whenever a task ends.
+  useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
   useEffect(() => {
     const off = listen("opened", (e) => {
       if ((e.payload as { keyboard?: boolean } | null)?.keyboard) setTimeout(() => box.current?.focus(), 30);
@@ -45,7 +47,7 @@ function Card() {
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted">{stateLabel(m.character)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
@@ -70,8 +72,22 @@ function Card() {
 
       {m.task && m.task.lines.length > 0 && (
         <section className="panel">
-          <h2>{m.task.label || "Task"}</h2>
-          {m.task.lines.slice(-6).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.text}</div>)}
+          <h2>{m.task.label.length > 90 ? m.task.label.slice(0, 90) + "..." : m.task.label || "Task"}</h2>
+          {m.task.lines.slice(-6).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{plainPath(l.text, project)}</div>)}
+        </section>
+      )}
+
+      {m.task?.proof && m.task.proof.steps.length > 0 && (
+        <section className={`panel ${notDoneReason(m) ? "amber" : ""}`} aria-label={S.checkingTitle}>
+          <h2>{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
+          {m.task.proof.steps.map((s) => (
+            <div className={`line ${s.status === "failed" ? "blocked" : ""}`} key={s.rung}>
+              {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
+              {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
+            </div>
+          ))}
+          {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
+          {notDoneReason(m) && !isFixing(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
         </section>
       )}
 
@@ -81,11 +97,21 @@ function Card() {
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
+          {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
           {m.receipt.changed.length > 0 && !undone && project && (
             <div className="row"><button className="btn danger" type="button" onClick={() => { void send(undo(project, m.receipt!.checkpoint)); setUndone(true); }}>{S.undo}</button></div>
           )}
           {undone && <div className="line">{S.undone}</div>}
+        </section>
+      )}
+
+      {project && m.character !== "thinking" && m.character !== "working" && m.character !== "checking" && m.history.length > 0 && (
+        <section className="panel" aria-label={S.recentTitle}>
+          <h2>{S.recentTitle}</h2>
+          {m.history.slice(0, 5).map((h) => (
+            <div className="line" key={h.id}>{h.label.length > 50 ? h.label.slice(0, 50) + "..." : h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+          ))}
         </section>
       )}
     </main>

@@ -16,6 +16,7 @@ export type RestoreResult = { restored: string; safetyCheckpoint: string; envRes
 const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_EXCLUDES = [
   "node_modules/", ".next/", "dist/", "build/", ".turbo/", ".cache/", "__pycache__/", ".venv/", "venv/", "target/", "coverage/", ".DS_Store",
+  ".claude/.cc-writes",   // Claude Code's own write tracking, not the user's work
 ];
 const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage"]);
 
@@ -42,6 +43,7 @@ export class CheckpointStore {
 
   snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)); }
   restore(id: string): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id)); }
+  readFiles(id: string, keep: (path: string) => boolean, maxBytes = 200_000): Promise<Record<string, string>> { return this.serial(() => this.readFilesNow(id, keep, maxBytes)); }
   diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
   list(): Promise<Checkpoint[]> { return this.serial(async () => this.refs().map((r) => this.readMeta(r.id)!).filter(Boolean)); }
 
@@ -171,6 +173,19 @@ export class CheckpointStore {
       chmodSync(dst, 0o600);
     }
     return files;
+  }
+
+  // Text of selected files as they were at a checkpoint (for comparing before and after).
+  private async readFilesNow(id: string, keep: (p: string) => boolean, maxBytes: number): Promise<Record<string, string>> {
+    const m = this.readMeta(id);
+    if (!m) throw new Error(`Unknown checkpoint: ${id}`);
+    const names = (await this.git(["ls-tree", "-r", "--name-only", "-z", m.commit])).split("\0").filter((n) => n && keep(n)).slice(0, 2000);
+    const out: Record<string, string> = {};
+    for (const n of names) {
+      const text = await this.git(["cat-file", "blob", `${m.commit}:${n}`], { allowFail: true });
+      if (text.length <= maxBytes) out[n] = text;
+    }
+    return out;
   }
 
   private async diffNow(fromId: string, toId: string) {
