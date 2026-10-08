@@ -50,13 +50,13 @@ See: Terminal fills the left half of the screen, so the panel on the right never
 
 **0.4** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/set-launch.sh b 1 0
+~/Developer/companion/spikes/a-panel/scripts/set-launch.sh b 1 0
 ```
 See: `launch.json: {"mode":"b","afm":true,"preset":0}`. This makes the Finder launch in test 1 use design B.
 
 **0.5** Paste:
 ```bash
-[ -e ~/Documents/panel-spike-notes.txt ] || sed -n '/^PANEL SPIKE NOTES/,/^END OF NOTES/p' ~/Desktop/companion/spikes/a-panel/TESTING.md > ~/Documents/panel-spike-notes.txt; open -e ~/Documents/panel-spike-notes.txt
+[ -e ~/Documents/panel-spike-notes.txt ] || sed -n '/^PANEL SPIKE NOTES/,/^END OF NOTES/p' ~/Developer/companion/spikes/a-panel/TESTING.md > ~/Documents/panel-spike-notes.txt; open -e ~/Documents/panel-spike-notes.txt
 ```
 See: TextEdit opens **panel-spike-notes.txt**, which holds the notes sheet from the bottom of this page. It's saved in your Documents folder, outside the repo. Pasting this again later reopens your notes and never wipes them.
 
@@ -73,7 +73,7 @@ See: the menu bar (the app name next to the Apple logo) says **Terminal**.
 
 **1.1** Paste this, but **do not press Return yet**:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; sleep 4; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; sleep 4; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the command sits on the prompt line, not running yet.
 
@@ -94,7 +94,7 @@ See: a fresh prompt line.
 
 **1.6** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh
+~/Developer/companion/spikes/a-panel/scripts/stop.sh
 ```
 See: the panel disappears.
 
@@ -106,7 +106,7 @@ See: a "Go to Folder" box.
 
 **1.9** Paste this into **that box** (not into Terminal), then press Return:
 ```text
-~/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/
+~/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/
 ```
 See: a Finder window showing **Panel Spike**.
 
@@ -152,7 +152,7 @@ See: a fresh prompt line.
 
 **2.1.2** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: within 2 seconds the panel appears, and its top line says **mode B, AFM on**. It has a **Type** button.
 Note: 2.1 a.
@@ -166,7 +166,7 @@ Note: 2.1 b to e.
 
 **2.2.2** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=0 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=0 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM off**.
 Note: 2.2 a.
@@ -180,7 +180,7 @@ Note: 2.2 b to e.
 
 **2.3.2** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=0 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=0 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM off**. It has a text box instead of a Type button.
 Note: 2.3 a.
@@ -194,7 +194,7 @@ Note: 2.3 b to e.
 
 **2.4.2** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM on**.
 Note: 2.4 a.
@@ -214,7 +214,7 @@ Never click Terminal between typing `test` and pressing Esc.
 
 **3.2** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM on**.
 
@@ -310,7 +310,7 @@ Don't click the panel at all in this part.
 
 **3.28** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM on**.
 Note: 3d1.
@@ -349,7 +349,7 @@ This run carries on through tests 4, 5, 6 and 7. Don't restart it.
 
 **4.2** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM on**.
 
@@ -583,25 +583,25 @@ See: a fresh prompt line.
 
 **8.1** A0. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=0 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=0 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM off**. Note: 8.1 a. Then do K1 to K6 and T1 to T7. Note: 8.1 b to j.
 
 **8.2** A1. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM on**. Note: 8.2 a. Then do K1 to K6 and T1 to T7. Note: 8.2 b to j.
 
 **8.3** B0. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=0 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=0 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM off**. Note: 8.3 a. Then do K1 to K6 and T1 to T7. Note: 8.3 b to j.
 
 **8.4** B1. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM on**. Note: 8.4 a. Then do K1 to K6 and T1 to T7. Note: 8.4 b to j.
 
@@ -609,25 +609,25 @@ See: the top line says **mode B, AFM on**. Note: 8.4 a. Then do K1 to K6 and T1 
 
 **8.5** A0. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=0 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=0 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM off**. Note: 8.5 a. Then do K1 to K6 and T1 to T7. Note: 8.5 b to j.
 
 **8.6** A1. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=a --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode A, AFM on**. Note: 8.6 a. Then do K1 to K6 and T1 to T7. Note: 8.6 b to j.
 
 **8.7** B0. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=0 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=0 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM off**. Note: 8.7 a. Then do K1 to K6 and T1 to T7. Note: 8.7 b to j.
 
 **8.8** B1. Click inside the Terminal window, then paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Desktop/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
+~/Developer/companion/spikes/a-panel/scripts/stop.sh; open --env PANEL_MODE=b --env PANEL_AFM=1 "$HOME/Developer/companion/spikes/a-panel/src-tauri/target/release/bundle/macos/Panel Spike.app"
 ```
 See: the top line says **mode B, AFM on**. Note: 8.8 a. Then do K1 to K6 and T1 to T7. Note: 8.8 b to j.
 
@@ -637,7 +637,7 @@ See: the top line says **mode B, AFM on**. Note: 8.8 a. Then do K1 to K6 and T1 
 
 **9.1** Paste:
 ```bash
-~/Desktop/companion/spikes/a-panel/scripts/stop.sh
+~/Developer/companion/spikes/a-panel/scripts/stop.sh
 ```
 See: the panel disappears.
 
