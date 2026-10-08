@@ -1,6 +1,11 @@
-:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #d9d9de; --accent: #ff9a2e; --amber: #ffb020; --danger: #c0392b; --ok: #1e8a4c; font: 14px -apple-system, "SF Pro Text", sans-serif; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #9a9a9f; --line: #3a3a3e; } }
+:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #d9d9de; --edge: #767680; --accent: #ff9a2e; --amber: #ffb020; --danger: #c0392b; --ok: #1e8a4c; font: 14px -apple-system, "SF Pro Text", sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #a8a8ad; --line: #3a3a3e; --edge: #8e8e96; --danger: #ff7a6e; --ok: #4cc27f; } }
+@media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-width: 2px; } }
 html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; }
+/* What a person may want to copy (an error, a path, a plan step) can be selected. */
+.line, .error, .notice, h2 { user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 button { font: inherit; }
 .muted { color: var(--muted); font-size: 12px; }
 
@@ -31,8 +36,10 @@ button { font: inherit; }
 .row { display: flex; align-items: center; gap: 8px; margin: 6px 0;  flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .ask { display: flex; gap: 6px; margin: 8px 0; }
-.ask input { flex: 1; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
-.btn { white-space: nowrap; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.ask input, .row input[type="text"] { flex: 1; min-width: 0; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
+.btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); cursor: pointer; }
+.btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
 .btn.danger { color: var(--danger); }
 .panel { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
@@ -43,5 +50,9 @@ button { font: inherit; }
 .notice { color: var(--muted); margin: 8px 0; }
 h2 { font-size: 13px; margin: 0 0 4px; }
 
-.added { background: rgba(60, 180, 90, 0.25); border-radius: 3px; }
+ins.added, del.removed { text-decoration-thickness: 2px; }
+.added { background: rgba(60, 180, 90, 0.25); border-radius: 3px; text-decoration: underline; }
 .removed { background: rgba(220, 70, 70, 0.22); text-decoration: line-through; border-radius: 3px; }
+
+/* High contrast and forced colours: never rely on tint alone. */
+@media (forced-colors: active) { .character { forced-color-adjust: none; border: 2px solid CanvasText; } .badge { border: 1px solid CanvasText; } }

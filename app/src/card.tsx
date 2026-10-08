@@ -8,6 +8,8 @@ import { S } from "./strings.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
+// While a person is composing text (Japanese, Chinese, Korean...) Enter and Esc belong to the input method, not to us.
+const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
 
 function Card() {
   const [m, dispatch] = useModel();
@@ -17,6 +19,14 @@ function Card() {
   const [undone, setUndone] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
+  useEffect(() => { setUndone(false); }, [m.receipt?.checkpoint]);
+  // A question that needs the person moves keyboard focus to its first button, but only when this card already has the keyboard.
+  const urgent = useRef<HTMLDivElement>(null);
+  const urgentKey = m.approvals[0]?.id ?? (m.stuck ? "stuck" : m.paused ? "paused" : m.plan ? "plan" : "");
+  useEffect(() => {
+    if (!urgentKey || !document.hasFocus()) return;
+    urgent.current?.querySelector<HTMLElement>("button, input")?.focus();
+  }, [urgentKey]);
 
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); }, []);
   // The timeline: ask when the project is known, and again whenever a task ends.
@@ -75,12 +85,12 @@ function Card() {
   return (
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
-      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
+      <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} />
+          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); submit(); } }} />
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
       {!working && (
@@ -93,9 +103,64 @@ function Card() {
         </div>
       )}
       {!project && <div className="notice">{S.noProject}</div>}
-      {m.notice && <div className="notice">{m.notice}</div>}
+      {m.notice && <div className="notice" role="status">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
 
+      <div ref={urgent}>
+      {m.approvals.map((a) => (
+        <section className="panel amber" key={a.id} role="alert" aria-label={S.needsYouTitle}>
+          <h2>{S.needsYouTitle}</h2>
+          <div className="line">{a.title}</div>
+          <div className="row">
+            <button className="btn primary" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
+            <button className="btn" type="button" aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
+          </div>
+        </section>
+      ))}
+
+      {m.stuck && (
+        <section className="panel amber" aria-label={S.stuckTitle}>
+          <h2>{S.stuckTitle}</h2>
+          <div className="line">{S.stepOf} {m.stuck.index}: {m.stuck.title}</div>
+          <div className="line muted">{S.stuckHelp}</div>
+          <div className="line">{m.stuck.failure}</div>
+          <div className="row">
+            {m.stuck.options.map((o, i) => (
+              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {m.paused && (
+        <section className="panel amber" aria-label={S.pausedTitle}>
+          <h2>{S.pausedTitle}</h2>
+          <div className="line">{pausedWords(m)}</div>
+          <div className="line muted">{S.pausedHelp}</div>
+          <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
+        </section>
+      )}
+
+      {m.plan && (
+        <section className="panel amber" aria-label={S.planTitle}>
+          <h2>{S.planTitle}</h2>
+          <div className="line muted">{S.planHelp}</div>
+          {draft.map((t, i) => (
+            <div className="row" key={i}>
+              <input type="text" value={t} aria-label={`${S.stepOf} ${i + 1}`} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? e.target.value : x)))} />
+              <button className="btn" type="button" aria-label={`${S.removeStep} ${S.stepOf.toLowerCase()} ${i + 1}`} onClick={() => { setDraft(draft.filter((_, j) => j !== i)); setTimeout(() => urgent.current?.querySelector<HTMLElement>("input")?.focus(), 0); }}>{S.removeStep}</button>
+            </div>
+          ))}
+          {m.plan.truncated && <div className="line">{S.planTooLong}</div>}
+          <div className="line muted">{m.plan.estimateUsd > 0 ? `${S.planCost}: ${formatUsd(m.plan.estimateUsd)}` : S.planCostNone}</div>
+          <div className="row">
+            <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
+            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.planCancel}</button>
+          </div>
+        </section>
+      )}
+
+      </div>
       {m.ph && (
         <section className="panel amber" aria-label={S.phTitle}>
           <h2>{S.phTitle}</h2>
@@ -108,9 +173,10 @@ function Card() {
             </div>
           )}
           {m.ph.stage === "thinking" && m.ph.streaming && <div className="line muted">{m.ph.streaming}</div>}
+          {(m.ph.stage === "reading" || m.ph.stage === "thinking") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.planCancel}</button></div>}
           {m.ph.stage === "ready" && (
             <>
-              <div className="line">{m.ph.diff.map(([op, t], i) => <span key={i} className={op === "+" ? "added" : op === "-" ? "removed" : ""}>{t}</span>)}</div>
+              <div className="line">{m.ph.diff.map(([op, t], i) => op === "+" ? <ins key={i} className="added"><span className="sr">{S.diffAdded} </span>{t}</ins> : op === "-" ? <del key={i} className="removed"><span className="sr">{S.diffRemoved} </span>{t}</del> : <span key={i}>{t}</span>)}</div>
               {m.ph.handback === "copy" && <div className="line muted">{S.phCopyHint}</div>}
               {m.ph.question && (
                 <>
@@ -133,6 +199,13 @@ function Card() {
         </section>
       )}
 
+      {m.drive && (
+        <section className="panel">
+          <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
+          {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
+        </section>
+      )}
+
       {m.ship && (
         <section className={`panel ${m.ship.canShip ? "" : "amber"}`} aria-label={S.shipTitle}>
           <h2>{S.shipTitle}</h2>
@@ -141,7 +214,7 @@ function Card() {
             <div key={g.id} className={`line ${g.status === "blocked" ? "blocked" : ""}`}>
               {g.label}: {({ passed: "Passed", blocked: "Blocked", could_not_check: "Could not check", not_applicable: "Not needed" } as const)[g.status]}
               <span className="muted"> {g.detail}</span>
-              {confirmable(m).includes(g.id) && <div className="row"><button className="btn" type="button" onClick={() => shipIt({ confirm: [g.id] })}>{S.shipConfirm}</button></div>}
+              {confirmable(m).includes(g.id) && <div className="row"><button className="btn" type="button" aria-label={`${S.shipConfirm}: ${g.label}`} onClick={() => shipIt({ confirm: [g.id] })}>{S.shipConfirm}</button></div>}
             </div>
           ))}
           <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.shipClosed" })}>{S.shipClose}</button></div>
@@ -167,72 +240,13 @@ function Card() {
           <div className="line"><b>{S.rescueBroken}:</b> {m.rescue.broken}</div>
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
+          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button></div>
         </section>
       )}
-
-      {m.plan && (
-        <section className="panel amber" aria-label={S.planTitle}>
-          <h2>{S.planTitle}</h2>
-          <div className="line muted">{S.planHelp}</div>
-          {draft.map((t, i) => (
-            <div className="row" key={i}>
-              <input type="text" value={t} aria-label={`${S.stepOf} ${i + 1}`} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? e.target.value : x)))} />
-              <button className="btn" type="button" onClick={() => setDraft(draft.filter((_, j) => j !== i))}>{S.removeStep}</button>
-            </div>
-          ))}
-          {m.plan.truncated && <div className="line">{S.planTooLong}</div>}
-          <div className="line muted">{S.planCost}: {formatUsd(m.plan.estimateUsd)}</div>
-          <div className="row">
-            <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
-            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.planCancel}</button>
-          </div>
-        </section>
-      )}
-
-      {m.paused && (
-        <section className="panel amber" aria-label={S.pausedTitle}>
-          <h2>{S.pausedTitle}</h2>
-          <div className="line">{pausedWords(m)}</div>
-          <div className="line muted">{S.pausedHelp}</div>
-          <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
-        </section>
-      )}
-
-      {m.stuck && (
-        <section className="panel amber" aria-label={S.stuckTitle}>
-          <h2>{S.stuckTitle}</h2>
-          <div className="line">{S.stepOf} {m.stuck.index}: {m.stuck.title}</div>
-          <div className="line muted">{S.stuckHelp}</div>
-          <div className="line">{m.stuck.failure}</div>
-          <div className="row">
-            {m.stuck.options.map((o, i) => (
-              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {m.drive && (
-        <section className="panel">
-          <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
-          {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
-        </section>
-      )}
-
-      {m.approvals.map((a) => (
-        <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>
-          <h2>{S.needsYouTitle}</h2>
-          <div className="line">{a.title}</div>
-          <div className="row">
-            <button className="btn primary" type="button" onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
-            <button className="btn" type="button" onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
-          </div>
-        </section>
-      ))}
 
       {m.task && m.task.lines.length > 0 && (
-        <section className="panel">
-          <h2>{m.task.label.length > 90 ? m.task.label.slice(0, 90) + "..." : m.task.label || "Task"}</h2>
+        <section className="panel" aria-live="polite">
+          <h2>{m.task.label || "Task"}</h2>
           {m.task.lines.slice(-6).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{plainPath(l.text, project)}</div>)}
         </section>
       )}
@@ -271,7 +285,7 @@ function Card() {
         <section className="panel" aria-label={S.recentTitle}>
           <h2>{S.recentTitle}</h2>
           {m.history.slice(0, 5).map((h) => (
-            <div className="line" key={h.id}>{h.label.length > 50 ? h.label.slice(0, 50) + "..." : h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+            <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
           ))}
         </section>
       )}

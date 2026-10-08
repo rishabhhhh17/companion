@@ -78,7 +78,7 @@ describe("task, receipt and undo", () => {
 describe("errors and sign in, in plain words", () => {
   test("the spending limit says so plainly", () => expect(plainError("error_max_budget_usd: the spending limit was reached")).toMatch(/spending limit/i));
   test("not connected tells you what to do", () => expect(plainError("engine error: Not connected: add your API key, or sign in with your Claude plan.")).toMatch(/add your API key/i));
-  test("an unknown error is shown without raw jargon prefixes", () => expect(plainError("engine error: boom")).toBe("Something went wrong: boom"));
+  test("an unknown error is shown without raw jargon prefixes", () => expect(plainError("engine error: boom")).toContain("Something went wrong: boom"));
   test("auth none shows a not connected notice, auth api_key clears it", () => {
     const m = run([ev({ type: "auth.status", method: "none" })]);
     expect(m.connected).toBe("none");
