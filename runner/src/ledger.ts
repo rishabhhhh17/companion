@@ -1,13 +1,14 @@
 // The runner's own count of what each project spent today (an estimate, kept by us). It is only a guard on the
 // user's own spend: we never pay for, resell or route anyone's Claude usage.
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
+import { openDatabase } from "./db.ts";
 
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export class Ledger {
   private db: Database;
-  constructor(path: string, private now: () => Date = () => new Date()) {
-    this.db = new Database(path);
+  constructor(path: string, private now: () => Date = () => new Date(), onProblem?: (message: string) => void) {
+    this.db = openDatabase(path, onProblem);
     this.db.run("CREATE TABLE IF NOT EXISTS spend (project TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, PRIMARY KEY (project, day))");
   }
   add(project: string, usd: number) {

@@ -13,7 +13,7 @@ import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
-import { label as makeLabel } from "./redact.ts";
+import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
@@ -80,7 +80,7 @@ export const defaultExecutor: ToolExecutor = async (call, { project }) => {
 };
 
 const summary = (c: ToolUse): string => {
-  if (c.name === "Bash") return `Running: ${String(c.input.command).slice(0, 200)}`;
+  if (c.name === "Bash") return `Running: ${clip(redact(String(c.input.command)), 200)}`;
   if (c.input.file_path) return `${c.name}: ${String(c.input.file_path)}`;
   return c.name;
 };
@@ -108,6 +108,7 @@ export class AgentRunner {
     this.emit({ type: "drive.paused", agent, reason, ...(path ? { path } : {}) } as never);
     this.state(agent, "needsYou");
     this.sessions.get(agent)?.abort.abort();
+    this.watchers.get(agent)?.clearTools();
   }
   private counter = 0;
   private ledger: Ledger;
@@ -178,10 +179,38 @@ export class AgentRunner {
 
   private store(project: string): CheckpointStore {
     const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
-    return new CheckpointStore(join(this.o.shadowRoot, `${id}.git`), project);
+    return CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
   }
 
+  private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
+  private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
+  private touched = new Set<string>();               // agents whose task has started changing the project
+
+  // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
   private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+    const key = resolve(cmd.project);
+    if (this.sessions.has(cmd.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
+    const holder = this.projectBusy.get(key);
+    if (holder && holder !== cmd.agent) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
+    this.projectBusy.set(key, cmd.agent);
+    try {
+      return await this.runInner(cmd, opts);
+    } catch (e) {
+      const row = this.openTasks.get(cmd.agent);
+      if (row !== undefined) { try { this.o.log.finish(row, "error", 0, this.now().toISOString()); } catch { /* the log is not worth a second failure */ } this.openTasks.delete(cmd.agent); }
+      const why = clip(redact(String((e as Error).message ?? e).split("\n")[0]), 160);
+      this.fail(this.touched.has(cmd.agent) ? `The task stopped unexpectedly (${why}). Look at your project, and use Undo if something is not right.` : `The task could not start (${why}). Nothing in your project was changed.`, cmd.agent);
+      this.state(cmd.agent, "error");
+      return { status: "error", usd: 0 };
+    } finally {
+      this.sessions.delete(cmd.agent);
+      this.projectBusy.delete(key);
+      this.touched.delete(cmd.agent);
+      this.watchers.get(cmd.agent)?.clearTools();     // a tool that was stopped partway may never have reported back
+    }
+  }
+
+  private async runInner(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
     const room = this.room(cmd.project);
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -194,11 +223,13 @@ export class AgentRunner {
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
     this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped } as never);
     const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString() });
+    this.openTasks.set(cmd.agent, taskId);
+    this.touched.add(cmd.agent);
     this.state(cmd.agent, "thinking");
 
     let usd = 0, booked = 0, commands = 0, status = "done";
     const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; };
-    const notUndoable: string[] = [];
+    const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
 
@@ -297,6 +328,7 @@ export class AgentRunner {
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
+    this.openTasks.delete(cmd.agent);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
@@ -577,7 +609,7 @@ export class AgentRunner {
       tell("ran");
     }
     if (tool.name === "Bash") countCommand();
-    if (!verdict.undoable) notUndoable.push(String(tool.input.command ?? sum));
+    if (!verdict.undoable) notUndoable.push(clip(redact(String(tool.input.command ?? sum)), 300));
     this.state(cmd.agent, "working");
     if (verdict.decision === "allow") tell("ran");
     // From here until the tool finishes, file changes are the agent's own.

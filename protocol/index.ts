@@ -159,4 +159,5 @@ function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {
 
 export const parseCommand = (line: string): Parsed<Command> => parseWith<Command>(line, COMMANDS);
 export const parseEvent = (line: string): Parsed<Event> => parseWith<Event>(line, EVENTS);
-export const serialize = (msg: Command | Event): string => JSON.stringify(msg);
+// Half an emoji is not valid text and the app refuses it, so any stray half is replaced before a message is sent.
+export const serialize = (msg: Command | Event): string => JSON.stringify(msg, (_k, v) => (typeof v === "string" ? v.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd") : v));
