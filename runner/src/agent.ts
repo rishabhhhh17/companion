@@ -14,6 +14,7 @@ import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
+import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { Ledger } from "./ledger.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
@@ -24,7 +25,7 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal };
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null> };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -36,6 +37,9 @@ export type RunnerOptions = {
   proof?: ProofRunner;
   ledger?: Ledger;
   dailyCeilingUsd?: number;
+  // Proof rung 7: a second model that reads risky changes. Off unless one is given.
+  reviewer?: Engine;
+  reviewModel?: string;
   approvalTimeoutMs?: number;
   now?: () => Date;
 };
@@ -246,8 +250,14 @@ export class AgentRunner {
       const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
       let res: LadderResult;
       this.watchers.get(cmd.agent)?.begin("ladder");
+      const review = this.o.reviewer && needsReview(changed) ? async () => {
+        const paths = new Set(changed.map((c) => c.file));
+        const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), await store.readFiles(after.id, (p) => paths.has(p))];
+        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; });
+        return parseReview(text);
+      } : undefined;
       try {
-        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal });
+        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review });
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -281,6 +291,27 @@ export class AgentRunner {
   }
 
   // --- Drive: plan first (read only), then one approved step at a time ---
+
+  // The second reviewer sees only the text it is given. Every tool is refused.
+  private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void): Promise<string> {
+    let text = "";
+    const gen = this.o.reviewer!.start({
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? "claude-opus-5-5", signal, budgetUsd, planOnly: true,
+      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
+    });
+    try {
+      let next = await gen.next();
+      while (!next.done) {
+        const turn = next.value;
+        spent(turn.costUsd);
+        let result: ToolResult | undefined;
+        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: "Blocked by Companion: the reviewer only reads the text it is given." }; }
+        else if (turn.text) text += turn.text + "\n";
+        next = await gen.next(result);
+      }
+    } finally { try { await gen.return(undefined); } catch { /* finished */ } }
+    return text;
+  }
 
   // A session that may only look. Anything that is not a plain look is refused here, in code.
   // `body` gets a way to ask Claude and finishes by setting the right state itself.

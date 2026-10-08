@@ -8,9 +8,10 @@ import { browserCheck, type BrowserOptions, type BrowserResult } from "./browser
 import { detectProject, type Detected } from "./detect.ts";
 import { runCommand, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
+import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 
-export type Rung = "install" | "checks" | "tests" | "start" | "browser";
+export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
 export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number };
 export type Step = StepUpdate & { status: "passed" | "failed" | "skipped" };
 export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled";
@@ -23,11 +24,13 @@ export type LadderOptions = {
   onStep?: (u: StepUpdate) => void; signal?: AbortSignal; limits?: Partial<Limits>;
   run?: (command: string, o: { cwd: string; timeoutMs: number }) => Promise<RunResult>;
   browser?: (url: string, o: BrowserOptions) => Promise<BrowserResult>;
+  // Rung 7: a second model reads the change. Returns null when the review could not be done.
+  review?: () => Promise<Review | null>;
 };
 
 const LABELS: Record<Rung, string> = {
   install: "Installing what the project needs", checks: "Building and checking the code", tests: "Running the tests",
-  start: "Starting the project", browser: "Opening it in a browser",
+  start: "Starting the project", browser: "Opening it in a browser", review: "A second model reviewed the change",
 };
 const LOCKS = ["bun.lock", "bun.lockb", "pnpm-lock.yaml", "yarn.lock", "package-lock.json"];
 
@@ -53,6 +56,22 @@ function proofHints(dir: string): BrowserOptions {
 }
 
 export async function runLadder(o: LadderOptions): Promise<LadderResult> {
+  const r = await runRungs(o);
+  if (!o.review || (r.verdict !== "passed" && r.verdict !== "passed_with_gaps")) return r;
+  if (o.signal?.aborted) return { ...r, verdict: "cancelled" };
+  // --- 7. a second model reads the change
+  const t0 = Date.now();
+  o.onStep?.({ rung: "review", label: LABELS.review, status: "running", detail: "", ms: 0 });
+  let review: Review | null = null;
+  try { review = await o.review(); } catch { review = null; }
+  const done = (status: Step["status"], detail: string): Step => { const s: Step = { rung: "review", label: LABELS.review, status, detail, ms: Date.now() - t0 }; o.onStep?.(s); return s; };
+  if (!review) return { ...r, verdict: "passed_with_gaps", steps: [...r.steps, done("skipped", "The second review could not be completed, so this change was not double checked.")] };
+  if (review.verdict === "approve") return { ...r, steps: [...r.steps, done("passed", "The second model found no problems.")] };
+  const failed = done("failed", `The second model raised: ${review.concerns.slice(0, 3).join(" ")}`);
+  return { verdict: "failed", steps: [...r.steps, failed], failedAt: failed, ...(r.serverUrl ? { serverUrl: r.serverUrl } : {}) };
+}
+
+async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const limits = { ...DEFAULT_LIMITS, ...(o.limits ?? {}) };
   const run = o.run ?? runCommand;
   const browser = o.browser ?? browserCheck;

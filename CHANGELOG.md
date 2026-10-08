@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 3 (night): 9 Oct 2026
+
+**Rescue, Research and a second opinion.**
+
+- **Rescue:** point it at a stuck project. It checks the project exactly as it is, then says in plain words what it is, what works, what is wrong (two sentences) and gives a 3 to 7 step finish plan you can edit and start. It only looks; nothing changes until you approve the plan.
+- **Look up (Research):** ask a question and it files notes in your project at `.companion/research/`. Every note carries its web source, and notes without one are thrown away. It can only open public web pages (never this computer or a private network), and it writes no code.
+- **A second model reviews risky changes** (packages, secrets files, login, payments, databases, or big changes) before they can be called done. It sees only text with secret looking values hidden, can use no tools, and a review that cannot be completed is shown as a gap, never as a pass. It is off until switched on, because it costs a little more.
+
 ## Day 3 (evening): 9 Oct 2026
 
 **Drive got its safety rails.**
