@@ -1,6 +1,8 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { parseCommand, serialize } from "../../protocol/index.ts";
+import { approvePlan, planDrive } from "./commands.ts";
+import { driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -242,5 +244,49 @@ describe("the word under the character", () => {
   });
   test("an ordinary state keeps its usual word", () => {
     expect(characterWords(run([...start]))).toBe("Thinking");
+  });
+});
+
+describe("Drive: the plan card and progress", () => {
+  const plan = ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "Make the page" }, { id: 2, title: "Add a form" }], truncated: false, estimateUsd: 0.5 });
+  test("a plan waiting for approval is shown with its steps and cost estimate", () => {
+    const m = run([plan]);
+    expect(m.plan).toMatchObject({ agent: "a", steps: ["Make the page", "Add a form"], truncated: false, estimateUsd: 0.5 });
+  });
+  test("the character asks for you while a plan waits", () => {
+    expect(run([plan, ev({ type: "agent.state", agent: "a", state: "needsYou" })]).character).toBe("needsYou");
+  });
+  test("starting the work removes the plan card and shows progress", () => {
+    const m = run([plan, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "Make the page", status: "started" })]);
+    expect(m.plan).toBeNull();
+    expect(m.drive).toMatchObject({ index: 1, total: 2, title: "Make the page", status: "started" });
+  });
+  test("progress moves from step to step", () => {
+    const m = run([plan, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "Make the page", status: "started" }), ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "Make the page", status: "done" }), ev({ type: "drive.step", agent: "a", index: 2, total: 2, title: "Add a form", status: "started" })]);
+    expect(m.drive).toMatchObject({ index: 2, status: "started", completed: 1 });
+  });
+  test("the finished plan says how far it got, in plain words", () => {
+    const m = run([plan, ev({ type: "drive.step", agent: "a", index: 1, total: 2, title: "x", status: "done" }), ev({ type: "drive.done", agent: "a", status: "not_done", completed: 1, total: 2, usdEstimate: 0.1 })]);
+    expect(driveWords(m)).toBe("Stopped after 1 of 2 steps: a check failed");
+  });
+  test("each ending has its own plain sentence", () => {
+    const done = (status: string, completed: number) => driveWords(run([ev({ type: "drive.done", agent: "a", status, completed, total: 3, usdEstimate: 0 })]));
+    expect(done("done", 3)).toBe("All 3 steps are done");
+    expect(done("interrupted", 1)).toBe("Stopped after 1 of 3 steps: you stopped it");
+    expect(done("error_max_budget_usd", 2)).toBe("Stopped after 2 of 3 steps: the spending limit was reached");
+  });
+  test("cancelling the plan removes the card", () => {
+    expect(reduce(run([plan]), { type: "ui.planCancelled" } as never).plan).toBeNull();
+  });
+  test("a new plan replaces progress from an old one", () => {
+    const m = run([ev({ type: "drive.done", agent: "a", status: "done", completed: 1, total: 1, usdEstimate: 0 }), plan]);
+    expect(m.drive).toBeNull();
+  });
+  test("a plan that is too long says it was shortened", () => {
+    expect(run([ev({ type: "plan.ready", agent: "a", steps: [{ id: 1, title: "x" }], truncated: true, estimateUsd: 0.2 })]).plan?.truncated).toBe(true);
+  });
+  test("the new commands are valid protocol", () => {
+    expect(parseCommand(serialize(planDrive("/p", "a booking page"))).ok).toBe(true);
+    expect(parseCommand(serialize(approvePlan(["a", "b"]))).ok).toBe(true);
   });
 });

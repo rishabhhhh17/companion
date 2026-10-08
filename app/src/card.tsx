@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
-import { characterWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { answerApproval, approvePlan, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { characterWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -15,6 +15,8 @@ function Card() {
   const box = useRef<HTMLInputElement>(null);
   const [project, setProject] = useState("");
   const [undone, setUndone] = useState(false);
+  const [draft, setDraft] = useState<string[]>([]);
+  useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
 
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); }, []);
   // The timeline: ask when the project is known, and again whenever a task ends.
@@ -43,6 +45,14 @@ function Card() {
     if (box.current) box.current.value = "";
   };
 
+  const plan = () => {
+    const goal = box.current?.value.trim() ?? "";
+    if (!goal || !project) return;
+    setUndone(false);
+    void send(planDrive(project, goal));
+    if (box.current) box.current.value = "";
+  };
+
   return (
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
@@ -53,11 +63,36 @@ function Card() {
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} />
         {working ? <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>
-                 : <button className="btn primary" type="button" onClick={submit}>{S.start}</button>}
+                 : <><button className="btn" type="button" onClick={plan}>{S.planIt}</button><button className="btn primary" type="button" onClick={submit}>{S.start}</button></>}
       </div>
       {!project && <div className="notice">{S.noProject}</div>}
       {m.notice && <div className="notice">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
+
+      {m.plan && (
+        <section className="panel amber" aria-label={S.planTitle}>
+          <h2>{S.planTitle}</h2>
+          <div className="line muted">{S.planHelp}</div>
+          {draft.map((t, i) => (
+            <div className="row" key={i}>
+              <input type="text" value={t} aria-label={`${S.stepOf} ${i + 1}`} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? e.target.value : x)))} />
+              <button className="btn" type="button" onClick={() => setDraft(draft.filter((_, j) => j !== i))}>{S.removeStep}</button>
+            </div>
+          ))}
+          {m.plan.truncated && <div className="line">{S.planTooLong}</div>}
+          <div className="line muted">{S.planCost}: {formatUsd(m.plan.estimateUsd)}</div>
+          <div className="row">
+            <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
+            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.planCancel}</button>
+          </div>
+        </section>
+      )}
+
+      {m.drive && (
+        <section className="panel">
+          <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
+        </section>
+      )}
 
       {m.approvals.map((a) => (
         <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>

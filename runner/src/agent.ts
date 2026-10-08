@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
+import { estimateUsd, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
@@ -72,8 +73,13 @@ const summary = (c: ToolUse): string => {
   return c.name;
 };
 
+type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string };
+
 export class AgentRunner {
   private sessions = new Map<string, Session>();
+  private plans = new Map<string, PendingPlan>();
+  private driving = new Set<string>();
+  private driveStop = new Set<string>();
   private counter = 0;
   constructor(private o: RunnerOptions) {}
 
@@ -86,9 +92,11 @@ export class AgentRunner {
 
   async handle(cmd: Command): Promise<void> {
     switch (cmd.type) {
-      case "agent.start": return this.run(cmd);
-      case "agent.interrupt": { this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.start": await this.run(cmd); return;
+      case "drive.plan": return this.drivePlan(cmd);
+      case "drive.approve": return this.driveApprove(cmd);
+      case "agent.interrupt": { this.driveStop.add(cmd.agent); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
+      case "agent.interruptAll": { for (const a of this.driving) this.driveStop.add(a); for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
@@ -121,7 +129,7 @@ export class AgentRunner {
     return new CheckpointStore(join(this.o.shadowRoot, `${id}.git`), project);
   }
 
-  private async run(cmd: StartCmd): Promise<void> {
+  private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string }> {
     const store = this.store(cmd.project);
     const lbl = makeLabel(cmd.prompt);
     const abort = new AbortController();
@@ -136,7 +144,7 @@ export class AgentRunner {
     let usd = 0, commands = 0, status = "done";
     const notUndoable: string[] = [];
     const exec = this.o.executor ?? defaultExecutor;
-    let sessionId: string | undefined;
+    let sessionId: string | undefined = opts.resumeSession;
 
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
@@ -182,7 +190,7 @@ export class AgentRunner {
     const MAX_TRIES = 3;
     let proof: "passed" | "failed" | "skipped" = "skipped";
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
-    let ok = await round(cmd.prompt);
+    let ok = await round(cmd.prompt, opts.resumeSession);
     for (let tries = 1; ; tries++) {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
       changed = await store.diff(before.id, after.id);
@@ -219,6 +227,97 @@ export class AgentRunner {
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
+    return { status, usd, sessionId };
+  }
+
+  // --- Drive: plan first (read only), then one approved step at a time ---
+
+  private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
+    const abort = new AbortController();
+    const session: Session = { agent: cmd.agent, abort, pending: new Map() };
+    this.sessions.set(cmd.agent, session);
+    this.driving.add(cmd.agent);
+    this.driveStop.delete(cmd.agent);
+    this.plans.delete(cmd.agent);
+    this.state(cmd.agent, "thinking");
+    let usd = 0, sessionId: string | undefined;
+    const exec = this.o.executor ?? defaultExecutor;
+    // One reading round. Anything that is not a plain look is refused here, in code.
+    const ask = async (prompt: string, resume?: string): Promise<string> => {
+      let text = "";
+      const authorize = async (tool: ToolUse) => {
+        const ok = READ_ONLY_TOOLS.has(tool.name);
+        this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
+        return ok ? { allow: true, reason: "" } : { allow: false, reason: "Blocked by Companion: planning can only look at the project, not change it." };
+      };
+      const gen = this.o.engine.start({ prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, cmd.budgetUsd - usd), resumeSession: resume, planOnly: true, authorize });
+      try {
+        let next = await gen.next();
+        while (!next.done) {
+          if (abort.signal.aborted) break;
+          const turn = next.value;
+          if (turn.sessionId) sessionId = turn.sessionId;
+          usd += turn.costUsd;
+          if (usd > cmd.budgetUsd) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
+          let result: ToolResult | undefined;
+          if (turn.tool) {
+            const a = await authorize(turn.tool);
+            result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
+          } else if (turn.text) text += turn.text + "\n";
+          next = await gen.next(result);
+        }
+      } finally { try { await gen.return(undefined); } catch { /* finished */ } }
+      return text;
+    };
+    try {
+      let steps = parsePlan(await ask(planPrompt(cmd.goal)));
+      if (steps.length > MAX_STEPS && !abort.signal.aborted) {
+        const again = parsePlan(await ask(shortenPrompt(steps.length), sessionId));
+        if (again.length) steps = again;
+      }
+      if (abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+      if (steps.length === 0) { this.fail("Claude did not give a usable plan. Try describing the goal in a little more detail.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      const truncated = steps.length > MAX_STEPS;
+      const kept = steps.slice(0, MAX_STEPS);
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd, sessionId });
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
+      this.state(cmd.agent, "needsYou");
+    } catch (e) {
+      const msg = (e as Error).message;
+      this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${msg}`, cmd.agent);
+      this.state(cmd.agent, "error");
+    } finally {
+      this.sessions.delete(cmd.agent);
+      this.driving.delete(cmd.agent);
+    }
+  }
+
+  private async driveApprove(cmd: Extract<Command, { type: "drive.approve" }>): Promise<void> {
+    const plan = this.plans.get(cmd.agent);
+    if (!plan) { this.fail("There is no plan waiting for approval.", cmd.agent); return; }
+    const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, MAX_STEPS);
+    if (steps.length === 0) { this.fail("A plan needs at least one step.", cmd.agent); return; }
+    this.plans.delete(cmd.agent);
+    this.driving.add(cmd.agent);
+    this.driveStop.delete(cmd.agent);
+    const total = steps.length;
+    let remaining = plan.budgetUsd - plan.usd, spent = plan.usd, completed = 0, status = "done", session = plan.sessionId;
+    try {
+      for (let i = 0; i < total; i++) {
+        const index = i + 1, title = steps[i];
+        if (this.driveStop.has(cmd.agent)) { status = "interrupted"; break; }
+        if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
+        this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
+        const r = await this.run({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt: stepPrompt(index, total, title), model: plan.model, budgetUsd: remaining }, { resumeSession: session });
+        session = r.sessionId ?? session;
+        remaining -= r.usd; spent += r.usd;
+        if (r.status === "done") { completed++; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "done" } as never); continue; }
+        status = r.status;
+        this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: r.status === "interrupted" ? "stopped" : r.status === "error_max_budget_usd" ? "over_budget" : "not_done" } as never);
+        break;
+      }
+    } finally { this.driving.delete(cmd.agent); }
+    this.emit({ type: "drive.done", agent: cmd.agent, status, completed, total, usdEstimate: Math.round(spent * 1e6) / 1e6 } as never);
   }
 
   // Judge one tool call. Returns whether it may run. Used by the runner for scripted engines

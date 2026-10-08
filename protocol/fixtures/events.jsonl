@@ -15,3 +15,6 @@
 {"v":1,"id":"e21","type":"proof.step","agent":"builder-1","rung":"browser","label":"Opening it in a browser","status":"failed","detail":"The page answered with an error (500).","ms":669}
 {"v":1,"id":"e22","type":"proof.result","agent":"builder-1","verdict":"failed","steps":[{"rung":"checks","label":"Building and checking the code","status":"passed","detail":"build passed.","ms":120},{"rung":"browser","label":"Opening it in a browser","status":"failed","detail":"The page answered with an error (500).","ms":669}],"tries":1}
 {"v":1,"id":"e30","type":"tasks.list","project":"p_9f2c","tasks":[{"id":3,"label":"Add a contact form","status":"done","usd":0.04,"startedAt":"2026-10-08T10:00:00Z","endedAt":"2026-10-08T10:02:00Z","checkpoint":"cp_0001","changed":2,"proof":"passed"}]}
+{"v":1,"id":"e31","type":"plan.ready","agent":"driver-1","steps":[{"id":1,"title":"Make the page"},{"id":2,"title":"Add a booking form"}],"truncated":false,"estimateUsd":0.5}
+{"v":1,"id":"e32","type":"drive.step","agent":"driver-1","index":1,"total":2,"title":"Make the page","status":"started"}
+{"v":1,"id":"e33","type":"drive.done","agent":"driver-1","status":"done","completed":2,"total":2,"usdEstimate":0.31}

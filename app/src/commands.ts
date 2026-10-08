@@ -5,6 +5,7 @@ let n = 0;
 const id = () => `ui${Date.now().toString(36)}${++n}`;
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 export const DEFAULT_BUDGET_USD = 3;
+export const DRIVE_BUDGET_USD = 5;
 export const AGENT = "builder-1";
 
 export const startTask = (project: string, prompt: string): Command =>
@@ -15,3 +16,6 @@ export const undo = (project: string, checkpoint: string): Command =>
   ({ v: 1, id: id(), type: "checkpoint.restore", project, checkpoint });
 export const stopAgent = (): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent: AGENT });
 export const listTasks = (project: string): Command => ({ v: 1, id: id(), type: "tasks.list", project });
+export const planDrive = (project: string, goal: string): Command =>
+  ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: DEFAULT_MODEL, budgetUsd: DRIVE_BUDGET_USD });
+export const approvePlan = (steps: string[]): Command => ({ v: 1, id: id(), type: "drive.approve", agent: AGENT, steps });

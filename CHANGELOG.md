@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Day 3 (later): 9 Oct 2026
+
+**Drive: a plan first, then one checked step at a time.**
+
+- Type a goal and press Plan it. Claude looks around the project (it cannot change anything while planning, enforced in code) and writes a short plan in plain words, at most 12 steps, with a rough cost.
+- You can reword or remove steps, then press Start the plan.
+- Each step gets its own snapshot and its own checks, so any single step can be undone. If a step fails its checks after two fixes, the plan stops and says how far it got. One spending limit covers the whole plan, and the stop key ends it after the current step.
+
 ## Day 3: 9 Oct 2026
 
 **"Done" now has to be earned.**

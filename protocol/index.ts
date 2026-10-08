@@ -20,8 +20,10 @@ export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app:
 export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[] }[]; walkthrough?: boolean };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
+export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number };
+export type DriveApprove = Envelope & { type: "drive.approve"; agent: string; steps: string[] };
 export type TasksList = Envelope & { type: "tasks.list"; project: string };
-export type Command = TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -57,9 +59,12 @@ export type ProofResult = Envelope & { type: "proof.result"; agent: string; verd
 
 export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval: string; agent: string; outcome: "allowed" | "denied" | "expired" | "cancelled" };
 
+export type PlanReady = Envelope & { type: "plan.ready"; agent: string; steps: { id: number; title: string }[]; truncated: boolean; estimateUsd: number };
+export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: number; total: number; title: string; status: "started" | "done" | "not_done" | "stopped" | "over_budget" };
+export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
-export type Event = TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -74,6 +79,8 @@ const obj: (k: string) => Check = (k) => (m) => (typeof m[k] === "object" && m[k
 const COMMANDS: Record<string, Check[]> = {
   "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd")],
   "tasks.list": [str("project")],
+  "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
+  "drive.approve": [str("agent"), list("steps")],
   "agent.send": [str("agent"), str("text")],
   "agent.interrupt": [str("agent")],
   "agent.interruptAll": [str("reason")],
@@ -87,6 +94,9 @@ const COMMANDS: Record<string, Check[]> = {
 const EVENTS: Record<string, Check[]> = {
   "runner.hello": [str("runnerVersion"), str("sdk")],
   "tasks.list": [str("project"), list("tasks")],
+  "plan.ready": [str("agent"), list("steps"), bool("truncated"), num("estimateUsd")],
+  "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],
+  "drive.done": [str("agent"), str("status"), num("completed"), num("total"), num("usdEstimate")],
   "auth.status": [oneOf("method", ["api_key", "plan", "cloud", "none", "unknown"])],
   "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped")],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],

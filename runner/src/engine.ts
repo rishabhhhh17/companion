@@ -11,6 +11,8 @@ export type EngineOptions = {
   authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>;
   // Continue an earlier conversation (used to send proof failures back to the same session).
   resumeSession?: string;
+  // Planning: the engine may read the project but must not change anything.
+  planOnly?: boolean;
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

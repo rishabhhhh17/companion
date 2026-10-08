@@ -8,3 +8,5 @@
 {"v":1,"id":"c8","type":"assist.locate","req":"sm_7","question":"where is the API key in Supabase?","image":{"ref":"img_3","w":1456,"h":946},"ocr":[{"id":"o1","text":"Project Settings","box":[24,610,180,632]}],"walkthrough":true}
 {"v":1,"id":"c9","type":"assist.cancel","req":"sm_7"}
 {"v":1,"id":"c10","type":"tasks.list","project":"p_9f2c"}
+{"v":1,"id":"c11","type":"drive.plan","project":"p_9f2c","agent":"driver-1","goal":"A booking page for my studio","model":"claude-sonnet-5-5","budgetUsd":5}
+{"v":1,"id":"c12","type":"drive.approve","agent":"driver-1","steps":["Make the page","Add a booking form"]}

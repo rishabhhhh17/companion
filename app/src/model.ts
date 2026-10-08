@@ -9,7 +9,11 @@ export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number }
 export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
 export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
+export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
+export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
 export type Model = {
+  plan: PlanCard | null;
+  drive: DriveProgress | null;
   history: HistoryItem[];
   runnerUp: boolean;
   connected: "unknown" | "api_key" | "plan" | "none";
@@ -22,7 +26,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -81,6 +85,13 @@ export function reduce(m: Model, e: Ev): Model {
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
+    case "plan.ready": return { ...m, plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, error: null, notice: null };
+    case "ui.planCancelled": return { ...m, plan: null };
+    case "drive.step": {
+      const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
+      return { ...m, plan: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
+    }
+    case "drive.done": return { ...m, plan: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
     case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
@@ -144,6 +155,15 @@ export function formatUsd(usd: number): string {
 // The one word shown under the character (plain, never cute).
 export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
+}
+
+// How a Drive plan ended, in one plain sentence.
+export function driveWords(m: Model): string | null {
+  const f = m.drive?.finished;
+  if (!f) return null;
+  if (f.status === "done") return `All ${f.total} steps are done`;
+  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : "a check failed";
+  return `Stopped after ${f.completed} of ${f.total} steps: ${why}`;
 }
 
 // The word under the character and at the top of the card. A failed check is "Not done", never a crash.
