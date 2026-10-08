@@ -1,22 +1,30 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { invoke, listen, type AppState } from "./tauri.ts";
+import { invoke } from "./tauri.ts";
+import { motionFor, stateLabel } from "./model.ts";
+import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
+const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+
 function Dock() {
-  const [state, setState] = useState<AppState>({ clicks: 0, front: "", card_key: false });
+  const [m] = useModel();
+  const [reduced, setReduced] = useState(reducedQuery.matches);
   useEffect(() => {
-    const off = listen("state", (e) => setState(e.payload as AppState));
-    return () => { off.then((f) => f()); };
+    const f = () => setReduced(reducedQuery.matches);
+    reducedQuery.addEventListener("change", f);
+    return () => reducedQuery.removeEventListener("change", f);
   }, []);
+  const label = stateLabel(m.character);
   return (
-    <main>
-      <div className="row"><b>{S.product}</b> <span className="muted">{S.characterName}</span></div>
-      <div className="row muted">Clicks: {state.clicks}</div>
-      <div className="row muted">Front app: {state.front || "?"}</div>
-      <button className="type" type="button" onPointerDown={() => { void invoke("ui_click", { label: "dock:type" }); void invoke("open_card_cmd"); }}>{S.type}</button>
-      <button className="character" type="button" aria-label={S.characterName} onPointerDown={() => void invoke("char_click")} />
+    <main className="dock">
+      <button className="character" type="button" data-state={m.character} data-motion={motionFor(m.character, reduced)}
+        aria-label={`${S.characterName}: ${label}`}
+        onPointerDown={() => { void invoke("char_click"); void invoke("toggle_card"); }}>
+        {m.approvals.length > 0 && <span className="badge" aria-label={S.needsYouTitle}>{m.approvals.length}</span>}
+      </button>
+      <div className="muted" aria-live="polite">{label}</div>
     </main>
   );
 }

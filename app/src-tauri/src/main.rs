@@ -3,6 +3,8 @@
 //! Rule 9: never steal keyboard focus. Nothing here calls show(), set_focus() or
 //! makeKeyAndOrderFront on a panel.
 
+mod runner;
+
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
@@ -17,9 +19,10 @@ use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const DOCK: (f64, f64) = (160.0, 160.0);
@@ -31,10 +34,13 @@ static SEQ: AtomicU64 = AtomicU64::new(0);
 static CLICKS: AtomicU64 = AtomicU64::new(0);
 static LOG: Mutex<()> = Mutex::new(());
 static APP: OnceLock<AppHandle> = OnceLock::new();
+static PROJECT: OnceLock<String> = OnceLock::new();
+static CARD_H: AtomicU64 = AtomicU64::new(150);
 
 thread_local! {
     static PANELS: RefCell<Option<(Retained<NSPanel>, Retained<NSPanel>)>> = const { RefCell::new(None) };
     static LAST: RefCell<(bool, String, bool)> = RefCell::new((false, String::new(), false));
+    static LAST_STATE: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 fn now() -> u128 {
@@ -81,9 +87,7 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
         // Borderless panels never become key: the character never takes typing.
         M::Borderless | M::NonactivatingPanel
     };
-    let panel = unsafe {
-        NSPanel::initWithContentRect_styleMask_backing_defer(mtm.alloc::<NSPanel>(), frame, style, NSBackingStoreType::Buffered, false)
-    };
+    let panel = NSPanel::initWithContentRect_styleMask_backing_defer(mtm.alloc::<NSPanel>(), frame, style, NSBackingStoreType::Buffered, false);
     unsafe { panel.setReleasedWhenClosed(false) };
     panel.setFloatingPanel(true);
     panel.setHidesOnDeactivate(false);
@@ -107,21 +111,30 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel
 }
 
-fn open_card(app: &AppHandle, source: &str) {
-    log("card_open", json!({ "source": source }));
+/// Place the card next to the character, keeping its top level with the character's top.
+fn place_card(d: &NSPanel, c: &NSPanel) {
+    let (df, h) = (d.frame(), CARD_H.load(Ordering::SeqCst) as f64);
+    c.setFrame_display(NSRect::new(NSPoint::new(df.origin.x - CARD.0 - 8.0, df.origin.y + df.size.height - h), NSSize::new(CARD.0, h)), true);
+}
+
+/// Show the card. `keyboard` is true only when the user asked to type (hotkey or Type button);
+/// clicking the character shows the card without taking the keyboard.
+fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
+    log("card_open", json!({ "source": source, "keyboard": keyboard }));
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         with_panels(|d, c| {
-            let df = d.frame();
-            c.setFrame_display(NSRect::new(NSPoint::new(df.origin.x - CARD.0 - 8.0, df.origin.y + df.size.height - CARD.1), NSSize::new(CARD.0, CARD.1)), true);
+            place_card(d, c);
             c.orderFrontRegardless();
-            c.makeKeyWindow();
+            if keyboard { c.makeKeyWindow(); }
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
-        let _ = a.emit_to("card", "opened", ());
+        let _ = a.emit_to("card", "opened", json!({ "keyboard": keyboard }));
     });
 }
+
+fn card_visible() -> bool { with_panels(|_, c| c.isVisible()).unwrap_or(false) }
 
 #[tauri::command]
 fn char_click(app: AppHandle) -> u64 {
@@ -152,10 +165,43 @@ fn click_log(app: &AppHandle, label: &str, n: u64) {
     });
 }
 
+/// The only way a page can talk to the runner. Rust checks every command first.
+#[tauri::command]
+fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
+    runner::check_command(&cmd)?;
+    app.state::<runner::Runner>().send(&cmd)
+}
+
 #[tauri::command]
 fn open_card_cmd(app: AppHandle) {
-    open_card(&app, "button");
+    open_card(&app, "button", true);
 }
+
+/// Clicking the character shows or hides the card, and never takes the keyboard.
+#[tauri::command]
+fn toggle_card(app: AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if card_visible() {
+            with_panels(|_, c| c.orderOut(None));
+            log("card_closed", json!({ "source": "character" }));
+        } else {
+            open_card(&a, "character", false);
+        }
+    });
+}
+
+/// The card page tells us how tall its content is; we resize the panel to fit.
+#[tauri::command]
+fn resize_card(app: AppHandle, height: f64) {
+    let h = height.clamp(150.0, 520.0);
+    CARD_H.store(h as u64, Ordering::SeqCst);
+    let _ = app.run_on_main_thread(move || { with_panels(|d, c| if c.isVisible() { place_card(d, c) }); });
+}
+
+/// The folder tasks run in. For now it comes from the dev settings file or a safe playground folder.
+#[tauri::command]
+fn get_project() -> String { PROJECT.get().cloned().unwrap_or_default() }
 
 #[tauri::command]
 fn close_card(app: AppHandle) {
@@ -184,27 +230,63 @@ fn tick(app: &AppHandle) {
         }
         *l = (act, fr.clone(), ck);
     });
-    let _ = app.emit("state", json!({ "clicks": CLICKS.load(Ordering::SeqCst), "front": fr, "card_key": ck }));
+    // Only tell the pages when something changed, so an idle app does almost no work.
+    let state = json!({ "clicks": CLICKS.load(Ordering::SeqCst), "front": fr, "card_key": ck });
+    let sig = state.to_string();
+    if LAST_STATE.with(|l| l.replace(sig.clone())) != sig {
+        let _ = app.emit("state", state);
+    }
+}
+
+/// Start the runner. If it cannot start, say so to the pages in plain words; the app still opens.
+fn start_runner(app: &AppHandle) {
+    let data = PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app");
+    let dev = std::fs::read_to_string(data.join("dev.json")).ok();
+    let project = dev.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+        .and_then(|v| v.get("project").and_then(|p| p.as_str().map(String::from)))
+        .unwrap_or_else(|| format!("{}/Developer/companion-playground", std::env::var("HOME").unwrap_or_default()));
+    let _ = PROJECT.set(project);
+    let result = runner::locations(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"))
+        .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, |t| log("runner_event", json!({ "kind": t }))));
+    match result {
+        Ok(()) => log("runner_started", json!({})),
+        Err(e) => {
+            log("runner_failed", json!({ "reason": e }));
+            let a = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(1));
+                let _ = a.emit("runner-event", json!({ "v": 1, "id": "app-norunner", "type": "app.runner_down", "reason": e }));
+            });
+        }
+    }
 }
 
 fn main() {
     let _ = T0.set(now());
     let _ = RUN.set(format!("{}-{}", now(), std::process::id()));
-    let k = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER), Code::KeyK);
+    let mods = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
+    let k = Shortcut::new(Some(mods), Code::KeyK);   // open the ask box
+    let x = Shortcut::new(Some(mods), Code::KeyX);   // stop everything
     let app = tauri::Builder::default()
         .activate_ignoring_other_apps(false)
         .enable_macos_default_menu(false)
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
-                    if e.state == ShortcutState::Pressed && s == &k {
+                    if e.state != ShortcutState::Pressed { return; }
+                    if s == &k {
                         log("hotkey", json!({ "id": "K" }));
-                        open_card(app, "hotkey");
+                        open_card(app, "hotkey", true);
+                    } else if s == &x {
+                        let r = app.state::<runner::Runner>().stop_everything("kill switch");
+                        log("hotkey", json!({ "id": "X", "stop_everything": true, "sent": r.is_ok() }));
+                        let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
                     }
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, close_card])
+        .manage(runner::Runner::new())
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -249,6 +331,8 @@ fn main() {
                 let _ = h.run_on_main_thread(move || tick(&h2));
             });
             app.global_shortcut().register(k)?;
+            app.global_shortcut().register(x)?;
+            start_runner(app.handle());
             let h = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(2));
@@ -260,5 +344,9 @@ fn main() {
         .expect("build");
     let mut app = app;
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-    app.run(|_, _| {});
+    app.run(|app, ev| {
+        if let RunEvent::Exit = ev {
+            app.state::<runner::Runner>().shut_down();
+        }
+    });
 }

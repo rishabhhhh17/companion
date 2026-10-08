@@ -1,11 +1,44 @@
-:root { --bg: #ffffff; --fg: #111; --muted: #666; --accent: #ff9a2e; font: 14px -apple-system, "SF Pro Text", sans-serif; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #9a9a9f; } }
-html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; overflow: hidden; }
-#root { padding: 12px; }
-.row { margin: 3px 0; }
+:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #d9d9de; --accent: #ff9a2e; --amber: #ffb020; --danger: #c0392b; --ok: #1e8a4c; font: 14px -apple-system, "SF Pro Text", sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #9a9a9f; --line: #3a3a3e; } }
+html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; }
+button { font: inherit; }
 .muted { color: var(--muted); font-size: 12px; }
-.character { position: absolute; right: 14px; bottom: 14px; width: 64px; height: 64px; border-radius: 50%; background: var(--accent); border: 0; padding: 0; }
-.character:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
-.type { margin-top: 6px; padding: 4px 16px; }
-input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px; margin: 6px 0; background: var(--bg); color: var(--fg); border: 1px solid var(--muted); border-radius: 6px; }
-.titlebar-space { height: 22px; }
+
+/* The character: a simple shape, one per state. Motion is named by the model so reduced motion can freeze it. */
+.dock { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.character { position: relative; width: 76px; height: 76px; border-radius: 50%; background: var(--accent); border: 0; padding: 0; }
+.character:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+.character[data-state="off"] { filter: grayscale(1); opacity: .5; }
+.character[data-state="error"] { background: #8a8a90; transform: scaleY(.9); }
+.character[data-state="needsYou"] { box-shadow: 0 0 0 6px color-mix(in srgb, var(--amber) 45%, transparent); }
+.character[data-state="done"] { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 40%, transparent); }
+.character[data-motion="breathe"] { animation: breathe 4s ease-in-out infinite; }
+.character[data-motion="swirl"] { animation: swirl 2.4s linear infinite; }
+.character[data-motion="busy"] { animation: busy 1s ease-in-out infinite; }
+.character[data-motion="scan"] { animation: scan 1.6s ease-in-out infinite; }
+.character[data-motion="glow"] { animation: glow 1.8s ease-in-out infinite; }
+.character[data-motion="droop"] { animation: droop 3s ease-in-out infinite; }
+.badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--amber); color: #000; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+@keyframes breathe { 50% { transform: scale(1.04); } }
+@keyframes swirl { to { transform: rotate(360deg); } }
+@keyframes busy { 50% { transform: translateY(-4px) scale(1.03); } }
+@keyframes scan { 50% { opacity: .75; transform: scaleX(1.06); } }
+@keyframes glow { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--amber) 30%, transparent); } }
+@keyframes droop { 50% { transform: scaleY(.86) translateY(3px); } }
+
+/* The card */
+.card { padding: 22px 14px 12px; }
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row.between { justify-content: space-between; }
+.ask { display: flex; gap: 6px; margin: 8px 0; }
+.ask input { flex: 1; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+.btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
+.btn.danger { color: var(--danger); }
+.panel { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.panel.amber { border-color: var(--amber); }
+.line { font-size: 12px; margin: 2px 0; word-break: break-word; }
+.line.blocked { color: var(--danger); }
+.error { color: var(--danger); margin: 8px 0; }
+.notice { color: var(--muted); margin: 8px 0; }
+h2 { font-size: 13px; margin: 0 0 4px; }
