@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
-import { formatUsd, historyWords, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { formatUsd, historyWords, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -86,6 +86,7 @@ function Card() {
               {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
             </div>
           ))}
+          {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
           {notDoneReason(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
         </section>
       )}

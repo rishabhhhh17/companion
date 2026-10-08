@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, historyWords, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { formatUsd, historyWords, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -194,5 +194,21 @@ describe("the timeline of past tasks", () => {
   test("a newer list replaces the old one", () => {
     const m = run([ev({ type: "tasks.list", project: "/p", tasks: [task(1, "a", "done")] }), ev({ type: "tasks.list", project: "/p", tasks: [] })]);
     expect(m.history).toEqual([]);
+  });
+});
+
+describe("saying how many tries it took", () => {
+  const res = (verdict: string, tries: number) => ev({ type: "proof.result", agent: "a", verdict, steps: [], tries });
+  test("a pass on the first try says nothing extra", () => {
+    expect(triesNote(run([...start, res("passed", 1)]))).toBeNull();
+  });
+  test("a pass after a fix says how many tries it took", () => {
+    expect(triesNote(run([...start, res("failed", 1), res("passed", 2)]))).toBe("Fixed after 2 tries");
+  });
+  test("a failure after all tries says so", () => {
+    expect(triesNote(run([...start, res("failed", 3)]))).toBe("Still failing after 3 tries");
+  });
+  test("no result yet means no note", () => {
+    expect(triesNote(run([...start]))).toBeNull();
   });
 });

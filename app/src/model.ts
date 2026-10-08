@@ -100,6 +100,13 @@ export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
   }
 }
 
+// Tells the user when the work needed more than one try, so a fix never goes unnoticed.
+export function triesNote(m: Model): string | null {
+  const p = m.task?.proof;
+  if (!p?.verdict || p.tries <= 1) return null;
+  return p.verdict === "failed" ? `Still failing after ${p.tries} tries` : `Fixed after ${p.tries} tries`;
+}
+
 // Why the task is not done, in one plain line. Null when nothing failed.
 export function notDoneReason(m: Model): string | null {
   const p = m.task?.proof;
