@@ -16,7 +16,7 @@ export type AgentInterruptAll = Envelope & { type: "agent.interruptAll"; reason:
 export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" };
 export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string };
 
-export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light" };
+export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
 export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[] }[]; walkthrough?: boolean };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
@@ -54,7 +54,7 @@ export type Receipt = Envelope & {
 export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string };
 
 export type AssistPromptDelta = Envelope & { type: "assist.prompt.delta"; req: string; text: string };
-export type AssistPromptDone = Envelope & { type: "assist.prompt.done"; req: string; text: string; question?: string; diff: [string, string][]; usdEstimate: number };
+export type AssistPromptDone = Envelope & { type: "assist.prompt.done"; req: string; text: string; question?: string; options?: string[]; diff: [string, string][]; usdEstimate: number; handback: "paste" | "copy" };
 export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string };
 export type AssistError = Envelope & { type: "assist.error"; req: string; reason: string };
 
@@ -127,7 +127,7 @@ const EVENTS: Record<string, Check[]> = {
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), num("tries")],
   "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"])],
   "assist.prompt.delta": [str("req"), str("text")],
-  "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate")],
+  "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
   "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption")],
   "assist.error": [str("req"), str("reason")],
 };

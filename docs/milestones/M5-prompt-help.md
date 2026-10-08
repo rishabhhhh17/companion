@@ -1,6 +1,6 @@
 # M5: Prompt help. Plan for approval
 
-**Status:** waiting for the founder's approval. No code until approved. **Written:** 9 Oct 2026. **Source:** technical doc section 13 (read, rewrite, write back, consent), the M5 row in section 18, decision T11 and the spike (d) results (`spikes/d-paste/RESULTS.md`); product doc section 5 (the rubric). Decisions behind it: F15 (Prompt help is second in launch order; hotkey only; short clarifying questions), F07 and F11 (never watch passively, never steal focus), T11 (read through Accessibility, always write back by paste).
+**Status:** approved by the founder on 9 Oct 2026, with the recommended split (M5a logic now, M5b the real Mac parts after). **Written:** 9 Oct 2026. **Source:** technical doc section 13 (read, rewrite, write back, consent), the M5 row in section 18, decision T11 and the spike (d) results (`spikes/d-paste/RESULTS.md`); product doc section 5 (the rubric). Decisions behind it: F15 (Prompt help is second in launch order; hotkey only; short clarifying questions), F07 and F11 (never watch passively, never steal focus), T11 (read through Accessibility, always write back by paste).
 
 ## What M5 is
 
