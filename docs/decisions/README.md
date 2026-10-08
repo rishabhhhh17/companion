@@ -24,6 +24,9 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F10](F10-bring-your-own-claude.md) | Bring your own Claude |
 | [F11](F11-never-watch-never-steal-focus.md) | Never watch passively; never steal focus |
 | [F12](F12-names-open-yc-not-a-focus.md) | Names are open; YC is not a focus |
+| [F13](F13-undo-never-writes-your-git.md) | Undo never writes your git: no undo helper, no per agent worktrees (7 Oct 2026) |
+| [F14](F14-browser-check-for-everyone.md) | Every user, Free or Plus, gets the browser check (7 Oct 2026) |
+| [F15](F15-launch-priorities-and-new-ideas.md) | Launch priorities (agents first, Prompt help, memory, Show me how last), the Pro memory idea, the website and onboarding (8 Oct 2026) |
 
 ## Technical decisions (accepted, open items checked where shown)
 
@@ -45,8 +48,8 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [T14](T14-local-data-markdown-and-sqlite.md) | Local data in markdown files and SQLite | M1 |
 | [T15](T15-connectors-and-scheduled-tasks.md) | Connectors, folder watching and scheduled tasks | M12 |
 
-Pending founder decisions, written in the T records as options only (nothing is built for them until the founder decides):
-- T03: the Console sign in route (`claude auth login --console`).
+Still pending, written in the T records as options only (nothing is built for them until the founder decides):
 - T12: what to do if Claude Code keeps received screenshots on disk (spike (e) checks).
-- T06: the user clicked undo helper and per agent git worktrees, which both write the user's git.
-- T07: the pricing hypothesis that gives Free only build and test proof, which conflicts with "done means proven".
+- T03: whether to offer the Console sign in route (`claude auth login --console`) to users. Testing it in spike (c) is approved; the offer is decided in M1.
+
+Decided on 7 Oct 2026: the undo helper and per agent worktrees are dropped (F13, T06); every user gets proof rungs 1 to 5 (F14, T07).

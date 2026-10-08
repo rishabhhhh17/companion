@@ -14,7 +14,7 @@ Companion is global from day one, not India first. It ships on the Mac first, wi
 - Global pricing is handled by automatic regional prices through a merchant of record (a company that sells on our behalf and handles tax in each country), for example about ₹299 a month in India, payable by UPI (product_research.md section 15).
 
 ## What this means for the build
-- Pick tools that run on both systems: Tauri 2.12 and React, `tauri-nspanel` on macOS, a small `windows-rs` layer later (T01).
+- Pick tools that run on both systems: Tauri 2.12 and React, natively created panels on macOS (tauri-nspanel dropped 7 Oct 2026, see T01), a small `windows-rs` layer later.
 - Every Mac only API has a planned Windows twin: UI Automation and `SendInput` paste for Prompt help, Windows.Graphics.Capture for Show me how, the same local whisper code for voice (technical_research.md sections 13 to 15).
 - Characters dock on the side edges, never the notch, so the design works on Windows and external monitors (product_research.md section 4).
 - The runner compiles once per target, including Windows x64 and arm64 (`bun-windows-x64`, `bun-windows-arm64`), and the matching Claude binary comes from the SDK's `win32-x64` and `win32-arm64` packages. The build script maps the three naming schemes (technical_research.md section 5; T04).

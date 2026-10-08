@@ -1,0 +1,14 @@
+# Calls that could steal focus or activate the app. `scripts/lint-forbidden.sh`
+# runs clippy with these as errors, so they are caught by type, not by name.
+disallowed-methods = [
+  { path = "tauri::webview::WebviewWindow::show", reason = "makeKeyAndOrderFront: show panels with panel.show()" },
+  { path = "tauri::webview::WebviewWindow::set_focus", reason = "takes the keyboard and activates the app" },
+  { path = "tauri::webview::WebviewWindow::maximize", reason = "crashes full screen auxiliary panels" },
+  { path = "tauri::webview::WebviewWindow::set_fullscreen", reason = "crashes full screen auxiliary panels" },
+  { path = "tauri::window::Window::show", reason = "makeKeyAndOrderFront" },
+  { path = "tauri::window::Window::set_focus", reason = "takes the keyboard" },
+  { path = "tauri_nspanel::Panel::show_and_make_key", reason = "makes a panel key on show" },
+  { path = "objc2_app_kit::NSApplication::activate", reason = "activates the app" },
+  { path = "objc2_app_kit::NSApplication::activateIgnoringOtherApps", reason = "activates the app" },
+  { path = "objc2_app_kit::NSWindow::makeKeyAndOrderFront", reason = "takes the keyboard" },
+]

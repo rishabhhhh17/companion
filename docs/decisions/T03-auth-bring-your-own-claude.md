@@ -18,8 +18,8 @@ Users bring their own Claude: an API key in the OS keychain (the polished defaul
 - Managed credits: blocked for the Claude Code engine; a later, separate decision.
 - A Claude login inside Companion, touching Claude tokens, or asking users to paste a `claude setup-token` value: dropped.
 
-## Pending founder decision (an option, not part of the build)
-A fourth route: `claude auth login --console` in Terminal, billed by API usage to the user's Console org, with no key handled by Companion; the fast lane could not use the direct Messages API. Only on the founder's yes (M0 decision 2) does spike (c) add a Console step.
+## Founder decision on the Console route (7 Oct 2026)
+A fourth route: `claude auth login --console` in Terminal, billed by API usage to the user's Console org, with no key handled by Companion; the fast lane could not use the direct Messages API. The founder approved testing it: spike (c) adds a Console step. Whether to offer it to users is decided in M1.
 
 ## What this means for the build
 The full flow is in technical_research.md section 3. Rules a coding agent must never miss:

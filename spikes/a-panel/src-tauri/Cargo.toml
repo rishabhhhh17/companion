@@ -1,0 +1,26 @@
+[package]
+name = "panel-spike"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+description = "M0 spike (a): a non activating panel that never steals typing. Throwaway code."
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", features = ["macos-private-api"] }
+tauri-plugin-global-shortcut = "=2.4.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = "=2.1.0"
+objc2 = { version = "0.6", features = ["exception"] }
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3.2"
+block2 = "0.6"
+
+[profile.release]
+debug = false
