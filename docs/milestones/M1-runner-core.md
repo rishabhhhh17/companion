@@ -2,7 +2,7 @@
 
 **Status:** approved by the founder on 8 Oct 2026 ("go for it"), with Bun approved and `git push` set to **A: an approval card each time, never silent**. Work started.
 
-**Progress, 8 Oct 2026:** done and tested: the message language, undo (shadow snapshots), the safety rules and agent environment, the agent runner with receipts, the spending limit and the task log, and the connection to the real Agent SDK (pinned 0.3.293, its bundled Anthropic signed binary, the PreToolUse hook as the gate). **The real connection is UNPROVEN** until a real run: the founder has no key to give yet. Left: Keychain handling, the fast and vision lane plumbing, and the demo. **Written:** 8 Oct 2026. **Source:** technical doc sections 2, 3, 6 and 8, and the M1 row in section 18. Decisions behind it: T02 (engine), T04 (runner packaging), T05 (safety), T06 (undo), T14 (local data).
+**Progress, 8 Oct 2026:** done and tested: the message language, undo (shadow snapshots), the safety rules and agent environment, the agent runner with receipts, the spending limit and the task log, and the connection to the real Agent SDK (pinned 0.3.293, its bundled Anthropic signed binary, the PreToolUse hook as the gate). **The real connection is UNPROVEN** until a real run: the founder has no key to give yet. Keychain handling is also done (throwaway keychain in tests; agent commands proven not to see the key). Left: the fast and vision lane plumbing and the demo. **Written:** 8 Oct 2026. **Source:** technical doc sections 2, 3, 6 and 8, and the M1 row in section 18. Decisions behind it: T02 (engine), T04 (runner packaging), T05 (safety), T06 (undo), T14 (local data).
 
 ## What M1 is
 
