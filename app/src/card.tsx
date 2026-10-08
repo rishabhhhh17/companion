@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { answerApproval, startTask, stopAgent, undo } from "./commands.ts";
-import { formatUsd, plainPath, stateLabel } from "./model.ts";
+import { formatUsd, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -45,7 +45,7 @@ function Card() {
     <main className="card" ref={root}
       onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted">{stateLabel(m.character)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      <div className="row between"><b>{S.characterName}</b><span className="muted">{notDoneReason(m) ? S.notDone : stateLabel(m.character)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
@@ -75,12 +75,26 @@ function Card() {
         </section>
       )}
 
+      {m.task?.proof && m.task.proof.steps.length > 0 && (
+        <section className={`panel ${notDoneReason(m) ? "amber" : ""}`} aria-label={S.checkingTitle}>
+          <h2>{notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
+          {m.task.proof.steps.map((s) => (
+            <div className={`line ${s.status === "failed" ? "blocked" : ""}`} key={s.rung}>
+              {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
+              {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
+            </div>
+          ))}
+          {notDoneReason(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
+        </section>
+      )}
+
       {m.receipt && (
         <section className="panel">
           <h2>{S.receiptTitle}</h2>
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
+          {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
           {m.receipt.changed.length > 0 && !undone && project && (
             <div className="row"><button className="btn danger" type="button" onClick={() => { void send(undo(project, m.receipt!.checkpoint)); setUndone(true); }}>{S.undo}</button></div>

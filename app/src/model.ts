@@ -4,8 +4,10 @@
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 export type ToolLine = { id: string; text: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
-export type Receipt = { checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
-export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number };
+export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string };
+export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
+export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type Model = {
   runnerUp: boolean;
   connected: "unknown" | "api_key" | "plan" | "none";
@@ -63,10 +65,32 @@ export function reduce(m: Model, e: Ev): Model {
     case "approval.request":
       if (m.approvals.some((a) => a.id === e.approval)) return m;
       return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt }] };
-    case "receipt": return { ...m, receipt: { checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
+    case "proof.step": {
+      if (!m.task) return m;
+      const p = m.task.proof;
+      // A step arriving after a finished try means the work was sent back and is being checked again.
+      const base: ProofState = !p || p.verdict ? { steps: [], tries: (p?.tries ?? 0) } : p;
+      const line: ProofLine = { rung: e.rung, label: String(e.label ?? e.rung), status: e.status, detail: String(e.detail ?? "") };
+      const at = base.steps.findIndex((s) => s.rung === line.rung);
+      return { ...m, task: { ...m.task, proof: { ...base, steps: at >= 0 ? base.steps.map((s, i) => (i === at ? line : s)) : [...base.steps, line] } } };
+    }
+    case "proof.result": {
+      if (!m.task) return m;
+      const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
+      return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
+    }
+    case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
     case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
     default: return m;
   }
+}
+
+// Why the task is not done, in one plain line. Null when nothing failed.
+export function notDoneReason(m: Model): string | null {
+  const p = m.task?.proof;
+  if (!p || p.verdict !== "failed") return null;
+  const f = [...p.steps].reverse().find((s) => s.status === "failed") ?? p.steps.at(-1);
+  return f ? `${f.label}: ${f.detail}` : "A check failed.";
 }
 
 // How the character moves. Reduced motion freezes everything (Rive does not do this by itself).

@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, initial, motionFor, plainError, plainPath, reduce, type Model } from "./model.ts";
+import { formatUsd, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -134,5 +134,44 @@ describe("answered approvals and step lines stay in step on every page", () => {
       ev({ type: "agent.tool", agent: "a", tool: "Write", summary: "Write: a", toolUseId: "t1", undoable: true, outcome: "ran" }),
       ev({ type: "agent.tool", agent: "a", tool: "Write", summary: "Write: b", toolUseId: "t2", undoable: true, outcome: "ran" })]);
     expect(m.task?.lines.length).toBe(2);
+  });
+});
+
+describe("proof: the checklist and Not done", () => {
+  const step = (rung: string, status: string, detail = "", label = rung) => ev({ type: "proof.step", agent: "a", rung, label, status, detail, ms: 5 });
+  const result = (verdict: string, steps: unknown[], tries = 1) => ev({ type: "proof.result", agent: "a", verdict, steps, tries });
+  test("each check appears and updates in place as it moves from running to passed", () => {
+    const m = run([...start, step("checks", "running", "", "Building and checking the code"), step("checks", "passed", "", "Building and checking the code"), step("tests", "running", "", "Running the tests")]);
+    expect(m.task?.proof?.steps.map((s) => [s.rung, s.status])).toEqual([["checks", "passed"], ["tests", "running"]]);
+  });
+  test("a failed check says why in plain words and the task is marked not done", () => {
+    const m = run([...start, step("browser", "failed", "The page threw an error: foo is not defined", "Opening it in a browser"),
+      result("failed", [{ rung: "browser", label: "Opening it in a browser", status: "failed", detail: "The page threw an error: foo is not defined" }]),
+      ev({ type: "agent.state", agent: "a", state: "error" })]);
+    expect(m.task?.proof?.verdict).toBe("failed");
+    expect(notDoneReason(m)).toBe("Opening it in a browser: The page threw an error: foo is not defined");
+  });
+  test("a passing result is not a Not done", () => {
+    const m = run([...start, result("passed", [])]);
+    expect(notDoneReason(m)).toBeNull();
+  });
+  test("a retry starts a fresh checklist instead of stacking on the old one", () => {
+    const m = run([...start, step("browser", "failed", "boom"), result("failed", [], 1), step("checks", "running")]);
+    expect(m.task?.proof?.steps.map((s) => s.rung)).toEqual(["checks"]);
+    expect(m.task?.proof?.verdict).toBeUndefined();
+  });
+  test("a new task clears the old checklist", () => {
+    const m = run([...start, step("browser", "passed"), result("passed", []), ...start]);
+    expect(m.task?.proof).toBeUndefined();
+  });
+  test("the receipt carries whether the work was proven", () => {
+    const m = run([...start, ev({ type: "receipt", agent: "a", checkpoint: "cp_0001", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 })]);
+    expect(m.receipt?.proof).toBe("passed");
+  });
+  test("a proof step does not break when there is no task yet", () => {
+    expect(() => run([step("checks", "running")])).not.toThrow();
+  });
+  test("checking is shown as the word Checking", () => {
+    expect(stateLabel("checking")).toBe("Checking");
   });
 });
