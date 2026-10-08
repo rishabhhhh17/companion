@@ -101,6 +101,11 @@ export class AgentRunner {
         try { await this.store(cmd.project).restore(cmd.checkpoint); } catch (e) { this.fail((e as Error).message); }
         return;
       }
+      case "tasks.list": {
+        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof }));
+        this.emit({ type: "tasks.list", project: cmd.project, tasks } as never);
+        return;
+      }
       case "agent.send": return; // follow ups arrive with the real engine
     }
   }
@@ -209,8 +214,9 @@ export class AgentRunner {
       if (!ok || status !== "done") break;
       proof = "skipped";
     }
+    // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
+    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
-    this.o.log.finish(taskId, status, usd, this.now().toISOString());
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
   }

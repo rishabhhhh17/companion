@@ -15,7 +15,7 @@ pub const PROTOCOL_VERSION: i64 = 1;
 /// The commands a web page may send. Everything else is refused here, in Rust.
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
-    "assist.prompt", "assist.locate", "assist.cancel",
+    "assist.prompt", "assist.locate", "assist.cancel", "tasks.list",
 ];
 
 /// Checks a command from a web page. Returns the reason in plain words when refused.
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn allows_the_commands_pages_need() {
-        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore"] {
+        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
         }
     }

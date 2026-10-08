@@ -14,3 +14,4 @@ export const answerApproval = (approval: string, allow: boolean): Command =>
 export const undo = (project: string, checkpoint: string): Command =>
   ({ v: 1, id: id(), type: "checkpoint.restore", project, checkpoint });
 export const stopAgent = (): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent: AGENT });
+export const listTasks = (project: string): Command => ({ v: 1, id: id(), type: "tasks.list", project });

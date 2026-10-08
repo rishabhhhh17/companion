@@ -25,6 +25,8 @@ export const S = {
   denied: "Not allowed",
   noProject: "No project folder is set yet.",
   closeCard: "Close",
+  recentTitle: "Recent tasks",
+  noRecent: "Nothing yet.",
   checkingTitle: "Checking the work",
   notDone: "Not done",
   notDoneHelp: "I did not say it was finished, because this check failed:",

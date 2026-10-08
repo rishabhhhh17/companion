@@ -1,6 +1,6 @@
 // What the character and cards show, decided by plain code that can be tested without a screen.
 import { describe, expect, test } from "bun:test";
-import { formatUsd, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { formatUsd, historyWords, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -173,5 +173,26 @@ describe("proof: the checklist and Not done", () => {
   });
   test("checking is shown as the word Checking", () => {
     expect(stateLabel("checking")).toBe("Checking");
+  });
+});
+
+describe("the timeline of past tasks", () => {
+  const task = (id: number, label: string, status: string, proof: string | null = null) => ({ id, label, status, usd: 0.04, startedAt: "2026-10-08T10:00:00Z", endedAt: "t", checkpoint: "cp_000" + id, changed: 1, proof });
+  test("a list from the engine becomes the history", () => {
+    const m = run([ev({ type: "tasks.list", project: "/p", tasks: [task(2, "add a page", "done", "passed"), task(1, "fix it", "not_done", "failed")] })]);
+    expect(m.history.map((h) => h.label)).toEqual(["add a page", "fix it"]);
+  });
+  test("each line says in plain words how it ended", () => {
+    expect(historyWords(task(1, "x", "done", "passed"))).toBe("Done, checked");
+    expect(historyWords(task(1, "x", "done", "skipped"))).toBe("Done, not checked");
+    expect(historyWords(task(1, "x", "not_done", "failed"))).toBe("Not done");
+    expect(historyWords(task(1, "x", "interrupted"))).toBe("Stopped");
+    expect(historyWords(task(1, "x", "error_max_budget_usd"))).toBe("Stopped at the spending limit");
+    expect(historyWords(task(1, "x", "running"))).toBe("Running");
+    expect(historyWords(task(1, "x", "error"))).toBe("Something went wrong");
+  });
+  test("a newer list replaces the old one", () => {
+    const m = run([ev({ type: "tasks.list", project: "/p", tasks: [task(1, "a", "done")] }), ev({ type: "tasks.list", project: "/p", tasks: [] })]);
+    expect(m.history).toEqual([]);
   });
 });

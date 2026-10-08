@@ -14,3 +14,4 @@
 {"v":1,"id":"e20","type":"approval.resolved","approval":"ap_71","agent":"builder-1","outcome":"denied"}
 {"v":1,"id":"e21","type":"proof.step","agent":"builder-1","rung":"browser","label":"Opening it in a browser","status":"failed","detail":"The page answered with an error (500).","ms":669}
 {"v":1,"id":"e22","type":"proof.result","agent":"builder-1","verdict":"failed","steps":[{"rung":"checks","label":"Building and checking the code","status":"passed","detail":"build passed.","ms":120},{"rung":"browser","label":"Opening it in a browser","status":"failed","detail":"The page answered with an error (500).","ms":669}],"tries":1}
+{"v":1,"id":"e30","type":"tasks.list","project":"p_9f2c","tasks":[{"id":3,"label":"Add a contact form","status":"done","usd":0.04,"startedAt":"2026-10-08T10:00:00Z","endedAt":"2026-10-08T10:02:00Z","checkpoint":"cp_0001","changed":2,"proof":"passed"}]}

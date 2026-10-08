@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { answerApproval, startTask, stopAgent, undo } from "./commands.ts";
+import { answerApproval, startTask, stopAgent, undo, listTasks } from "./commands.ts";
 import { stateLabel } from "./model.ts";
 
 describe("commands from the pages are valid protocol", () => {
-  for (const [name, c] of [["start", startTask("/p", "Add a page")], ["allow", answerApproval("ap_1", true)], ["deny", answerApproval("ap_1", false)], ["undo", undo("/p", "cp_0001")], ["stop", stopAgent()]] as const) {
+  for (const [name, c] of [["start", startTask("/p", "Add a page")], ["allow", answerApproval("ap_1", true)], ["deny", answerApproval("ap_1", false)], ["undo", undo("/p", "cp_0001")], ["stop", stopAgent()], ["timeline", listTasks("/p")]] as const) {
     test(name, () => expect(parseCommand(serialize(c)).ok).toBe(true));
   }
   test("a task starts with a spending limit and the drive mode", () => {

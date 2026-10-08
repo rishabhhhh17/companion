@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerApproval, startTask, stopAgent, undo } from "./commands.ts";
-import { formatUsd, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { answerApproval, listTasks, startTask, stopAgent, undo } from "./commands.ts";
+import { formatUsd, historyWords, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -17,6 +17,8 @@ function Card() {
   const [undone, setUndone] = useState(false);
 
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); }, []);
+  // The timeline: ask when the project is known, and again whenever a task ends.
+  useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
   useEffect(() => {
     const off = listen("opened", (e) => {
       if ((e.payload as { keyboard?: boolean } | null)?.keyboard) setTimeout(() => box.current?.focus(), 30);
@@ -100,6 +102,15 @@ function Card() {
             <div className="row"><button className="btn danger" type="button" onClick={() => { void send(undo(project, m.receipt!.checkpoint)); setUndone(true); }}>{S.undo}</button></div>
           )}
           {undone && <div className="line">{S.undone}</div>}
+        </section>
+      )}
+
+      {project && m.character !== "thinking" && m.character !== "working" && m.character !== "checking" && m.history.length > 0 && (
+        <section className="panel" aria-label={S.recentTitle}>
+          <h2>{S.recentTitle}</h2>
+          {m.history.slice(0, 5).map((h) => (
+            <div className="line" key={h.id}>{h.label.length > 50 ? h.label.slice(0, 50) + "..." : h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+          ))}
         </section>
       )}
     </main>

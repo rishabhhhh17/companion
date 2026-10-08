@@ -8,7 +8,9 @@ export type ProofLine = { rung: string; label: string; status: "running" | "pass
 export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
 export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
 export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
+export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type Model = {
+  history: HistoryItem[];
   runnerUp: boolean;
   connected: "unknown" | "api_key" | "plan" | "none";
   agents: Record<string, CharacterState>;
@@ -20,7 +22,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -79,9 +81,22 @@ export function reduce(m: Model, e: Ev): Model {
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
+    case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
     case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
     default: return m;
+  }
+}
+
+// How a past task ended, in plain words.
+export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
+  switch (t.status) {
+    case "done": return t.proof === "passed" ? "Done, checked" : "Done, not checked";
+    case "not_done": return "Not done";
+    case "interrupted": return "Stopped";
+    case "error_max_budget_usd": return "Stopped at the spending limit";
+    case "running": return "Running";
+    default: return "Something went wrong";
   }
 }
 

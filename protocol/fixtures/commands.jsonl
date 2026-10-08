@@ -7,3 +7,4 @@
 {"v":1,"id":"c7","type":"assist.prompt","req":"ph_12","app":"com.anthropic.claudefordesktop","target":"chat","text":"make a gallery thing","project":"p_9f2c","style":"full"}
 {"v":1,"id":"c8","type":"assist.locate","req":"sm_7","question":"where is the API key in Supabase?","image":{"ref":"img_3","w":1456,"h":946},"ocr":[{"id":"o1","text":"Project Settings","box":[24,610,180,632]}],"walkthrough":true}
 {"v":1,"id":"c9","type":"assist.cancel","req":"sm_7"}
+{"v":1,"id":"c10","type":"tasks.list","project":"p_9f2c"}
