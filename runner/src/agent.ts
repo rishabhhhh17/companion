@@ -8,7 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { CheckpointStore } from "./checkpoints.ts";
-import type { Engine, ToolResult, ToolUse } from "./engine.ts";
+import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { label as makeLabel } from "./redact.ts";
 import { buildChildEnv, evaluate } from "./safety.ts";
 import type { TaskLog } from "./tasklog.ts";
@@ -124,7 +124,10 @@ export class AgentRunner {
     let usd = 0, commands = 0, status = "done";
     const notUndoable: string[] = [];
     const exec = this.o.executor ?? defaultExecutor;
-    const gen = this.o.engine.start({ prompt: cmd.prompt, project: cmd.project, model: cmd.model, signal: abort.signal });
+    const gen = this.o.engine.start({
+      prompt: cmd.prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: cmd.budgetUsd,
+      authorize: (tool) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }),
+    });
 
     try {
       let next = await gen.next();
@@ -137,7 +140,8 @@ export class AgentRunner {
 
         let result: ToolResult | undefined;
         if (turn.tool) {
-          result = await this.useTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
+          const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
+          result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason };
           if (abort.signal.aborted) { status = "interrupted"; break; }
         } else if (turn.text) {
           this.state(cmd.agent, "working");
@@ -146,8 +150,10 @@ export class AgentRunner {
       }
       if (abort.signal.aborted && status === "done") status = "interrupted";
     } catch (e) {
-      status = "error";
-      this.fail(`engine error: ${(e as Error).message}`, cmd.agent);
+      const msg = (e as Error).message;
+      if (e instanceof EngineStop) usd += e.costUsd;
+      status = /^error_max_[a-z_]+/.exec(msg)?.[0] ?? "error";
+      this.fail(status === "error" ? `engine error: ${msg}` : msg, cmd.agent);
     } finally {
       try { await gen.return(undefined); } catch { /* already finished */ }
     }
@@ -161,7 +167,9 @@ export class AgentRunner {
     this.sessions.delete(cmd.agent);
   }
 
-  private async useTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void): Promise<ToolResult> {
+  // Judge one tool call. Returns whether it may run. Used by the runner for scripted engines
+  // and by the real engine's PreToolUse hook; either way the safety rules are the same.
+  private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void): Promise<{ allow: boolean; reason: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
     const verdict = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
     const sum = summary(tool);
@@ -170,7 +178,7 @@ export class AgentRunner {
 
     if (verdict.decision === "deny") {
       tell("blocked");
-      return { ok: false, output: `Blocked by Companion: ${verdict.reason}` };
+      return { allow: false, reason: `Blocked by Companion: ${verdict.reason}` };
     }
     if (verdict.decision === "ask") {
       tell("needs_approval");
@@ -185,14 +193,12 @@ export class AgentRunner {
         const t = setTimeout(() => { s.pending.delete(approval); res(false); }, timeout);
         s.pending.set(approval, (ok) => { clearTimeout(t); res(ok); });
       });
-      if (!allowed) return { ok: false, output: "The user did not allow this command." };
-      this.state(cmd.agent, "working");
+      if (!allowed) return { allow: false, reason: "The user did not allow this command." };
     }
     if (tool.name === "Bash") countCommand();
     if (!verdict.undoable) notUndoable.push(String(tool.input.command ?? sum));
     this.state(cmd.agent, "working");
-    const r = await (this.o.executor ?? defaultExecutor)(tool, { project: cmd.project });
     if (verdict.decision === "allow") tell("ran");
-    return r;
+    return { allow: true, reason: "" };
   }
 }
