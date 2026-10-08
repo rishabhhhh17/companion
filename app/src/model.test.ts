@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { approvePlan, chooseLoop, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
-import { pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -335,5 +335,23 @@ describe("Drive: paused because you took the wheel", () => {
   test("the commands are valid protocol", () => {
     expect(parseCommand(serialize(resumeDrive())).ok).toBe(true);
     expect(parseCommand(serialize(pauseDrive())).ok).toBe(true);
+  });
+});
+
+describe("telling you when something was blocked", () => {
+  const tool = (id: string, summary: string, outcome: string) => ev({ type: "agent.tool", agent: "a", tool: "Edit", summary, toolUseId: id, undoable: true, outcome });
+  test("blocked and refused actions are listed in plain words", () => {
+    const m = run([...start, tool("1", "Edit: pricing.txt", "blocked"), tool("2", "Write: index.html", "ran"), tool("3", "Running: git push", "denied")]);
+    expect(blockedNote(m, "")).toBe("2 actions were not done: Edit: pricing.txt; Running: git push");
+  });
+  test("one blocked action reads naturally", () => {
+    expect(blockedNote(run([...start, tool("1", "Edit: pricing.txt", "blocked")]), "")).toBe("1 action was not done: Edit: pricing.txt");
+  });
+  test("a step that was blocked and then allowed is not listed", () => {
+    expect(blockedNote(run([...start, tool("1", "Running: git push", "needs_approval"), tool("1", "Running: git push", "ran")]), "")).toBeNull();
+  });
+  test("nothing blocked means no note", () => expect(blockedNote(run([...start, tool("1", "Write: a", "ran")]), "")).toBeNull());
+  test("the project folder is left out of the file names", () => {
+    expect(blockedNote(run([...start, tool("1", "Edit: /Users/me/proj/pricing.txt", "blocked")]), "/Users/me/proj")).toBe("1 action was not done: Edit: pricing.txt");
   });
 });

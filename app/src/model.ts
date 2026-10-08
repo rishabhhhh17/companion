@@ -166,6 +166,14 @@ export function stateLabel(s: CharacterState): string {
   return ({ off: "Off", idle: "Ready", listening: "Listening", thinking: "Thinking", working: "Working", checking: "Checking", needsYou: "Needs you", done: "Done", error: "Something went wrong" } as const)[s];
 }
 
+// What the task was not allowed to do (a safety rule or a house rule said no), so a "Done" is never read as "all of it".
+export function blockedNote(m: Model, project: string): string | null {
+  const lines = (m.task?.lines ?? []).filter((l) => l.outcome === "blocked" || l.outcome === "denied");
+  if (lines.length === 0) return null;
+  const list = lines.map((l) => plainPath(l.text, project)).join("; ");
+  return `${lines.length} ${lines.length === 1 ? "action was" : "actions were"} not done: ${list}`;
+}
+
 // Why the agent is waiting for you, in one plain sentence.
 export function pausedWords(m: Model): string | null {
   const p = m.paused;
