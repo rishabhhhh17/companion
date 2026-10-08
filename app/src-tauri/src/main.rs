@@ -4,7 +4,9 @@
 //! makeKeyAndOrderFront on a panel.
 
 mod docking;
+mod fullscreen;
 mod permissions;
+mod visibility;
 
 mod runner;
 
@@ -21,7 +23,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::io::Write;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use docking::{card_frame, choice, dock_frame, inside, pick, signature, snap, Prefs, Rect, Screen};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -43,6 +45,11 @@ static LOG: Mutex<()> = Mutex::new(());
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static PROJECT: OnceLock<String> = OnceLock::new();
 static CARD_H: AtomicU64 = AtomicU64::new(150);
+static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
+static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
+static FS_SMOOTH: Mutex<Option<visibility::Debounce>> = Mutex::new(None);
+static FS_RAW_LOGGED: AtomicU64 = AtomicU64::new(0);
+static FS_LAST_RAW: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static PANELS: RefCell<Option<(Retained<NSPanel>, Retained<NSPanel>)>> = const { RefCell::new(None) };
@@ -101,9 +108,9 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel.setLevel(3);
     // By default the character stays out of full screen apps (the product default). Setting
     // COMPANION_OVER_FULLSCREEN=1 adds fullScreenAuxiliary so it shows over them (a user setting later).
-    let mut behavior = B::CanJoinAllSpaces | B::Stationary | B::IgnoresCycle;
-    if std::env::var("COMPANION_OVER_FULLSCREEN").is_ok_and(|v| v == "1") { behavior |= B::FullScreenAuxiliary; }
-    panel.setCollectionBehavior(behavior);
+    // fullScreenAuxiliary lets it be on a full screen Space; whether it stays there is decided by
+    // visibility.rs, because on macOS 27 leaving the flag out did not hide it.
+    panel.setCollectionBehavior(B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::Stationary | B::IgnoresCycle);
     panel.setBackgroundColor(Some(&NSColor::whiteColor()));
     if card {
         panel.setTitlebarAppearsTransparent(true);
@@ -313,6 +320,26 @@ fn close_card(app: AppHandle) {
 
 fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
+    // Stay out of full screen apps unless the setting says otherwise.
+    let front_pid = NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier()).unwrap_or(0);
+    let displays: Vec<Rect> = screens_now(mtm).iter().map(|s| s.frame).collect();
+    let wins = fullscreen::sys::on_screen_windows();
+    let raw = fullscreen::front_app_is_full_screen(&wins, front_pid, &displays);
+    // The raw reading flickered in the field, so it must agree three times in a row before it counts.
+    // Raw changes are logged (a limited number) so the cause can be found from the log.
+    if FS_LAST_RAW.swap(raw, Ordering::SeqCst) != raw && FS_RAW_LOGGED.fetch_add(1, Ordering::SeqCst) < 60 {
+        let front: Vec<_> = wins.iter().filter(|w| w.pid == front_pid).take(4).map(|w| json!([w.layer, w.bounds])).collect();
+        log("fullscreen_raw", json!({ "raw": raw, "front_pid": front_pid, "our_panels_hidden": HIDDEN_BY_US.load(Ordering::SeqCst), "front_windows": front }));
+    }
+    let fs = FS_SMOOTH.lock().unwrap().get_or_insert_with(|| visibility::Debounce::new(false, 3)).push(raw);
+    let show = visibility::should_show(visibility::Inputs { full_screen_app_in_front: fs, show_over_full_screen: std::env::var("COMPANION_OVER_FULLSCREEN").is_ok_and(|v| v == "1"), user_hid_it: USER_HID.load(Ordering::SeqCst) });
+    if !show && !USER_HID.load(Ordering::SeqCst) && !HIDDEN_BY_US.swap(true, Ordering::SeqCst) {
+        with_panels(|d, c| { d.orderOut(None); c.orderOut(None); });
+        log("hidden_for_full_screen", json!({}));
+    } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
+        with_panels(|d, _| d.orderFrontRegardless());
+        log("shown_after_full_screen", json!({}));
+    }
     // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.
     let sig = signature(&screens_now(mtm));
     if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } { apply_dock(mtm, "screens_changed", false); }
@@ -446,7 +473,12 @@ fn main() {
                 .tooltip("Companion")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
-                    "hide" => { let _ = app.run_on_main_thread(|| { with_panels(|d, c| if d.isVisible() { d.orderOut(None); c.orderOut(None); } else { d.orderFrontRegardless(); }); }); }
+                    "hide" => { let _ = app.run_on_main_thread(|| {
+                        let hide = !USER_HID.load(Ordering::SeqCst);
+                        USER_HID.store(hide, Ordering::SeqCst);
+                        with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
+                        log("menu_hide", json!({ "hidden": hide }));
+                    }); }
                     "stop" => {
                         let r = app.state::<runner::Runner>().stop_everything("menu");
                         log("menu_stop_everything", json!({ "sent": r.is_ok() }));
