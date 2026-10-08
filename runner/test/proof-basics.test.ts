@@ -156,8 +156,9 @@ describe("noticing weakened tests", () => {
     expect(r.ok).toBe(false);
   });
   test("no tests before and none after is fine", () => expect(analyzeTests({}, {}).ok).toBe(true));
-  test("moving tests to another file still flags the removed file, so a person looks", () => {
-    expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(4) }).problems.join(" ")).toContain("a.test.ts");
+  test("moving tests to another file is fine when no test is lost, and flags the file when some are", () => {
+    expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(4) }).ok).toBe(true);
+    expect(analyzeTests({ "a.test.ts": T(4) }, { "b.test.ts": T(2) }).problems.join(" ")).toContain("a.test.ts");
   });
 });
 
