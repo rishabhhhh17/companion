@@ -4,6 +4,7 @@ import { shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
+import { Onboarding } from "./onboarding.tsx";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
@@ -112,6 +113,11 @@ function Card() {
   const [undone, setUndone] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
+  // The first run: shown until finished, remembered only on this Mac.
+  const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });
+  const pendingPrompt = useRef<string | null>(null);
+  useEffect(() => { if (onboarded && pendingPrompt.current && box.current) { box.current.value = pendingPrompt.current; box.current.focus(); pendingPrompt.current = null; } }, [onboarded]);
+  const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
   // The "remembered" toast stays for ten seconds after the last new line.
   useEffect(() => {
     if (!m.toast) return;
@@ -159,6 +165,34 @@ function Card() {
     return () => ro.disconnect();
   }, []);
 
+  // Show me how: the engine chose a point in the picture; the Mac side snaps it to a real button and draws the pointer.
+  const [walk, setWalk] = useState<{ goal: string; steps: string[] } | null>(null);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; req?: string; x?: number; y?: number; ocrId?: string; targetText?: string; caption?: string };
+      if (ev.type === "assist.point" && ev.req?.startsWith("sm_")) {
+        void invoke("showme_aim", { req: ev.req, x: ev.x, y: ev.y, ocrId: ev.ocrId ?? null, targetText: ev.targetText ?? "", caption: ev.caption ?? "" });
+        setWalk((w) => (w ? { ...w, steps: [...w.steps, ev.caption ?? ""] } : w));
+      }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
+  const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; stage?: string; text?: string };
+      if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
+        if (box.current) box.current.value = ev.text;
+        if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
+        else setTimeout(() => box.current?.focus(), 30);
+        dispatch({ type: "ui.voiceClosed" });
+      }
+    });
+    return () => { off.then((f) => f()); };
+  }, [autoSend]);
+  const showMe = (question: string, goal: string, steps: string[]) => { setWalk({ goal, steps }); void invoke("showme_start", { question }); };
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
@@ -201,6 +235,8 @@ function Card() {
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
+      {!onboarded && <Onboarding connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} onDone={finishOnboarding} />}
+      {onboarded && (<>
       <div className="row" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
@@ -225,8 +261,12 @@ function Card() {
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
+          <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
           <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
         </div>
+      )}
+      {!working && (
+        <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
       )}
       {!working && (
         <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
@@ -424,6 +464,29 @@ function Card() {
       )}
 
 
+      {m.voice && (
+        <section className={`panel ${["error", "mic_refused", "blocked", "needs_mic", "needs_model"].includes(m.voice.stage) ? "amber" : ""}`} role="status" aria-label={S.voiceTitle}>
+          <h2>{S.voiceTitle}</h2>
+          <div className="line">{m.voice.message}{m.voice.stage === "downloading" && typeof m.voice.percent === "number" ? ` ${m.voice.percent}%` : ""}</div>
+          {m.voice.stage === "needs_model" && <div className="row"><button className="btn primary" type="button" onClick={() => void invoke("voice_download")}>{S.voiceDownload}</button></div>}
+          {["error", "mic_refused", "blocked", "needs_mic", "silent", "model_ready"].includes(m.voice.stage) && <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.voiceClosed" })}>{S.voiceClose}</button></div>}
+        </section>
+      )}
+
+      {m.showme && (
+        <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" ? "amber" : ""}`} role="status" aria-label={S.showMe}>
+          <h2>{S.showMe}</h2>
+          <div className="line">{m.showme.message}</div>
+          {["pointing", "pointing_roughly"].includes(m.showme.stage) && walk && (
+            <div className="row">
+              <button className="btn primary" type="button" onClick={() => showMe(`${walk.goal}. So far I did: ${walk.steps.join("; ")}. What is the next step?`, walk.goal, walk.steps)}>{S.showMeNext}</button>
+              <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.showMeDone}</button>
+            </div>
+          )}
+          {["error", "needs_permission"].includes(m.showme.stage) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
+        </section>
+      )}
+
       {m.recap && (
         <section className="panel" role="status" aria-label={S.recapTitle}>
           <h2>{S.recapTitle}</h2>
@@ -470,6 +533,7 @@ function Card() {
           ))}
         </section>
       )}
+      </>)}
     </main>
   );
 }

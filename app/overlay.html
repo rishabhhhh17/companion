@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Companion pointer</title>
+<style>html,body{margin:0;background:transparent;overflow:hidden}svg{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none}
+.cap{position:fixed;font:600 15px -apple-system,"SF Pro Text",sans-serif;background:#111;color:#fff;padding:7px 11px;border-radius:9px;max-width:300px;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .25s}
+.cap.on{opacity:1}
+@keyframes pulse{0%{transform:scale(1);opacity:.95}70%{transform:scale(1.18);opacity:.35}100%{transform:scale(1);opacity:.95}}
+.ring{transform-box:fill-box;transform-origin:center;animation:pulse 1.4s ease-out infinite}
+@media (prefers-reduced-motion:reduce){.ring{animation:none}}</style></head>
+<body><svg id="s" aria-hidden="true"></svg><div id="cap" class="cap" role="status"></div><script type="module" src="/src/overlay.ts"></script></body></html>

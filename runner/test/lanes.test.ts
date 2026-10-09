@@ -92,12 +92,13 @@ describe("images stay in memory", () => {
 });
 
 describe("the vision lane", () => {
-  test("only the pointer tool is allowed, and no built in tools", () => {
+  test("no tools at all, one turn, and the answer is one line of JSON", () => {
     const o: any = buildVisionOptions({ ...cfg, model: "claude-sonnet-5-5" });
     expect(o.tools).toEqual([]);
-    expect(o.allowedTools).toEqual(["mcp__vision__point_at"]);
-    expect(Object.keys(o.mcpServers)).toEqual(["vision"]);
-    expect(o.maxTurns).toBeLessThanOrEqual(3);
+    expect(o.allowedTools).toEqual([]);
+    expect(o.mcpServers).toEqual({});
+    expect(o.maxTurns).toBe(1);
+    expect(o.systemPrompt).toMatch(/ONLY one line of JSON/);
     expect(JSON.stringify({ ...o, mcpServers: undefined })).not.toContain("bypassPermissions");
   });
   test("the question and the screenshot go in one message, with the on screen words", async () => {
@@ -111,21 +112,35 @@ describe("the vision lane", () => {
     expect(text).toContain("o1");
     expect(text).toContain("Project Settings");
   });
-  test("reads the chosen point from the model's tool call", async () => {
-    const call = { type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__vision__point_at", input: { x: 102, y: 621, ocrId: "o1", targetText: "Project Settings", confidence: 0.82, caption: "Click Project Settings" } }] } };
-    const lane = new VisionLane({ ...cfg, queryFn: fake([call, result(0.02)]) });
+  const said = (obj: unknown, usage?: unknown) => ({ type: "assistant", message: { content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj) }], usage } });
+  test("reads the chosen point from the model's one line answer", async () => {
+    const lane = new VisionLane({ ...cfg, queryFn: fake([said({ x: 102, y: 621, ocrId: "o1", targetText: "Project Settings", confidence: 0.82, caption: "Click Project Settings" })]) });
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
     expect(r.point).toMatchObject({ x: 102, y: 621, ocrId: "o1", confidence: 0.82 });
-    expect(r.costUsd).toBeCloseTo(0.02, 6);
+    expect(r.costUsd).toBeGreaterThan(0);
   });
-  test("no pointer call means no answer, not a made up one", async () => {
-    const lane = new VisionLane({ ...cfg, queryFn: fake([assistant("I cannot see it"), result(0.01)]) });
+  test("it copes with a code block or a few words around the line", async () => {
+    const lane = new VisionLane({ ...cfg, queryFn: fake([said('Sure!\n```json\n{"x":5,"y":6,"targetText":"a","confidence":0.9,"caption":"c"}\n```')]) });
+    expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal)).point).toMatchObject({ x: 5, y: 6 });
+  });
+  test("the answer is taken the moment it arrives, without waiting for the rest", async () => {
+    const slow = (async function* () { yield said({ x: 5, y: 5, targetText: "a", confidence: 0.9, caption: "c" }, { input_tokens: 1500, output_tokens: 40 }); await new Promise((r) => setTimeout(r, 3000)); yield result(0.5); })();
+    const lane = new VisionLane({ ...cfg, queryFn: (() => slow) as never });
+    const t0 = Date.now();
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
-    expect(r.point).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(1000); expect(r.point).not.toBeNull(); expect(r.costUsd).toBeCloseTo(1500 * 3e-6 + 40 * 15e-6, 6);
+  });
+  test("thinking is off for pointing, because speed is the point", () => {
+    expect((buildVisionOptions({ claudeBinary: "/x", env: {}, model: "m", signal: new AbortController().signal }) as any).thinking).toEqual({ type: "disabled" });
+  });
+  test("not finding it, or not answering in JSON, is no answer, not a made up one", async () => {
+    for (const reply of ['{"none":true}', "I cannot see it", "{ broken", '{"x":"left","y":1}']) {
+      const lane = new VisionLane({ ...cfg, queryFn: fake([said(reply)]) });
+      expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal)).point, reply).toBeNull();
+    }
   });
   test("a point outside the image is refused", async () => {
-    const call = { type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__vision__point_at", input: { x: 9999, y: 5, targetText: "x", confidence: 0.9, caption: "c" } }] } };
-    const lane = new VisionLane({ ...cfg, queryFn: fake([call, result(0)]) });
+    const lane = new VisionLane({ ...cfg, queryFn: fake([said({ x: 9999, y: 5, targetText: "x", confidence: 0.9, caption: "c" })]) });
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png", w: 100, h: 100 }, question: "q", ocr: [] }, cfg.signal);
     expect(r.point).toBeNull();
   });
@@ -155,8 +170,7 @@ describe("the assist service turns commands into events", () => {
     expect(events.some((e) => e.type === "assist.error")).toBe(true);
   });
   test("locate fetches the image by reference, answers with a point, and drops the image", async () => {
-    const call = { type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__vision__point_at", input: { x: 10, y: 20, targetText: "Save", confidence: 0.9, caption: "Click Save" } }] } };
-    const { svc, events, images } = mk([call, result(0.02)]);
+    const { svc, events, images } = mk([{ type: "assistant", message: { content: [{ type: "text", text: JSON.stringify({ x: 10, y: 20, targetText: "Save", confidence: 0.9, caption: "Click Save" }) }] } }]);
     images.put("img_3", { base64: "AAAA", mediaType: "image/png" });
     await svc.handle({ v: 1, id: "c", type: "assist.locate", req: "sm_1", question: "where is save?", image: { ref: "img_3", w: 100, h: 100 } });
     const pt = events.find((e) => e.type === "assist.point") as any;

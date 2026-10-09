@@ -249,3 +249,15 @@ describe("Companion's own memory writes are not mistaken for the person taking t
     expect(existsSync(join(project, "AGENTS.md"))).toBe(true);
   });
 });
+
+describe("a line the person chooses themselves", () => {
+  test("it is saved with the source they gave, announced, and still passes the same filter", async () => {
+    const t = setup();
+    await t.cmd({ type: "memory.add", scope: "profile", text: "Prefers short answers", source: "your answer at setup" });
+    expect(readFileSync(join(t.data, "profile.md"), "utf8")).toContain("your answer at setup");
+    expect(of(t.events, "memory.saved").at(-1)).toMatchObject({ scope: "profile", text: "Prefers short answers" });
+    await t.cmd({ type: "memory.add", scope: "profile", text: "I am anxious and in debt", source: "your answer at setup" });
+    expect(of(t.events, "memory.refused").at(-1).reason).toMatch(/never saved/i);
+    expect(readFileSync(join(t.data, "profile.md"), "utf8")).not.toContain("debt");
+  });
+});

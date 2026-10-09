@@ -24,6 +24,9 @@ extern "C" {
     fn AXUIElementSetAttributeValue(el: CFTypeRef, attr: CFTypeRef, value: CFTypeRef) -> AXError;
     fn AXValueCreate(kind: u32, ptr: *const c_void) -> CFTypeRef;
     fn AXUIElementPerformAction(el: CFTypeRef, action: CFTypeRef) -> AXError;
+    fn AXUIElementCreateSystemWide() -> CFTypeRef;
+    fn AXUIElementCopyElementAtPosition(el: CFTypeRef, x: f32, y: f32, out: *mut CFTypeRef) -> AXError;
+    fn AXValueGetValue(v: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
@@ -273,4 +276,37 @@ pub fn write_clipboard(text: &str) -> isize {
     let arr = objc2_foundation::NSArray::from_retained_slice(&[ProtocolObject::<dyn NSPasteboardWriting>::from_retained(it)]);
     pb.writeObjects(&arr);
     pb.changeCount()
+}
+
+// ---------- what is clickable at a place on the screen (Show me how) ----------
+
+const AX_VALUE_CGPOINT: u32 = 1;
+const AX_VALUE_CGSIZE: u32 = 2;
+const CLICKABLE: &[&str] = &["AXButton", "AXLink", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXMenuItem", "AXMenuBarItem", "AXTextField", "AXTextArea", "AXComboBox", "AXTab", "AXSlider", "AXDisclosureTriangle", "AXToolbarButton", "AXSegmentedControl", "AXSwitch", "AXRow", "AXCell"];
+
+fn frame_of(el: &Cf) -> Option<(f64, f64, f64, f64)> {
+    #[repr(C)] #[derive(Default)] struct P { x: f64, y: f64 }
+    #[repr(C)] #[derive(Default)] struct S { w: f64, h: f64 }
+    let (pos, size) = (attr(el, "AXPosition")?, attr(el, "AXSize")?);
+    let (mut p, mut s) = (P::default(), S::default());
+    unsafe {
+        if !AXValueGetValue(pos.0, AX_VALUE_CGPOINT, &mut p as *mut P as *mut c_void) || !AXValueGetValue(size.0, AX_VALUE_CGSIZE, &mut s as *mut S as *mut c_void) { return None; }
+    }
+    Some((p.x, p.y, s.w, s.h))
+}
+
+/// The nearest clickable thing at a point (global top-left points): the element the Mac reports there, or the closest
+/// parent that is a button, link, tab, field or similar. None if Accessibility is off or the app exposes nothing there.
+pub fn clickable_at(x: f64, y: f64) -> Option<(f64, f64, f64, f64)> {
+    if !trusted(false) { return None; }
+    let sys = Cf::new(unsafe { AXUIElementCreateSystemWide() })?;
+    let mut out: CFTypeRef = std::ptr::null();
+    if unsafe { AXUIElementCopyElementAtPosition(sys.0, x as f32, y as f32, &mut out) } != AX_OK { return None; }
+    let mut cur = Cf::new(out)?;
+    for _ in 0..6 {
+        let role = text_attr(&cur, "AXRole").unwrap_or_default();
+        if CLICKABLE.contains(&role.as_str()) { return frame_of(&cur); }
+        cur = attr(&cur, "AXParent")?;
+    }
+    None
 }

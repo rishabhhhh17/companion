@@ -44,3 +44,4 @@ export const setExplain = (project: string, enabled: boolean): Command => ({ v: 
 export const shipPreview = (project: string): Command => ({ v: 1, id: id(), type: "ship.preview", project });
 export const shipLive = (project: string, url: string): Command => ({ v: 1, id: id(), type: "ship.live", project, url, confirm: true });
 export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });
+export const addMemory = (project: string, scope: "project" | "profile", text: string, source: string): Command => ({ v: 1, id: id(), type: "memory.add", project, scope, text, source });

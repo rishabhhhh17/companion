@@ -261,6 +261,15 @@ export class AgentRunner {
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
       case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplain(cmd.enabled); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled() } as never); return; }
+      case "memory.add": {
+        // A line the person chose themselves (for example an answer at setup). It still goes through the same filter.
+        const m = this.memoryFor(cmd.project);
+        if (!m) { this.fail("Memory is not available.", undefined); return; }
+        const r = this.ownWrite(() => m.add(cmd.scope, cmd.text, cmd.source, this.now()));
+        if (!r.ok) this.emit({ type: "memory.refused", project: cmd.project, reason: r.reason } as never);
+        else this.emit({ type: "memory.saved", project: cmd.project, scope: cmd.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never);
+        return;
+      }
       case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.ownWrite(() => this.memoryCommand(cmd)); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);

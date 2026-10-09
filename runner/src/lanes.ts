@@ -4,7 +4,7 @@
 // Images are held in memory only and never written to disk (rule 5).
 
 import { tmpdir } from "node:os";
-import { query as realQuery, createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
@@ -105,34 +105,34 @@ export class ImageStore {
     return e.img;
   }
   delete(ref: string) { this.m.delete(ref); }
+  clear() { this.m.clear(); }
 }
 
 // ---------- vision lane ----------
 
 export type Ocr = { id: string; text: string; box: number[] };
 export type Point = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string };
-const VISION_TOOL = "mcp__vision__point_at";
-
-const VISION_SYSTEM = "You look at one screenshot and help someone find where to click. Call point_at exactly once with the pixel position of the target in the screenshot, the matching on screen text id if there is one, how sure you are from 0 to 1, and a short plain caption. If you cannot find it, do not call the tool.";
+const VISION_SYSTEM = [
+  "You look at one screenshot and help someone find where to click.",
+  'Reply with ONLY one line of JSON, nothing before or after it: {"x":number,"y":number,"ocrId":string or null,"targetText":string,"confidence":number from 0 to 1,"caption":string}.',
+  "x and y are pixels in the screenshot (origin top left). ocrId is the id of the matching on screen text if there is one. caption is a short plain instruction such as \"Click Deploy\".",
+  'If you cannot find it, reply {"none":true}.',
+].join(" ");
 
 export function buildVisionOptions(c: Common & { model: string }) {
-  const server = createSdkMcpServer({
-    name: "vision",
-    tools: [tool("point_at", "Point at the target on the screenshot", {
-      x: z.number(), y: z.number(), ocrId: z.string().optional(), targetText: z.string(), confidence: z.number().min(0).max(1), caption: z.string(),
-    }, async () => ({ content: [{ type: "text" as const, text: "ok" }] }))],
-  });
   return {
     cwd: tmpdir(),
     pathToClaudeCodeExecutable: c.claudeBinary,
     env: c.env,
     tools: [] as string[],
-    allowedTools: [VISION_TOOL],
+    allowedTools: [] as string[],
     settingSources: [] as never[],
     strictMcpConfig: true,
-    mcpServers: { vision: server },
+    mcpServers: {},
     systemPrompt: VISION_SYSTEM,
-    maxTurns: 3,
+    // Speed is the product here: no thinking, one turn, no tool to start, and the answer is a single line.
+    thinking: { type: "disabled" as const },
+    maxTurns: 1,
     model: c.model,
     canUseTool: deny,
     abortController: abortFrom(c.signal),
@@ -153,21 +153,49 @@ export async function* buildVisionMessages(image: Image, question: string, ocr: 
 export class VisionLane {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; model?: string; queryFn?: QueryFn }) {}
   async locate(req: { image: Image; question: string; ocr: Ocr[] }, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> {
-    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? "claude-sonnet-5-5", signal });
+    // Our own stop switch, so the engine process can be ended the moment the answer arrives instead of being waited for.
+    const ac = new AbortController();
+    const link = () => ac.abort();
+    if (signal.aborted) ac.abort(); else signal.addEventListener("abort", link, { once: true });
+    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? "claude-sonnet-5-5", signal: ac.signal });
     const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr) as never, options: options as never });
+    const done = () => { signal.removeEventListener("abort", link); };
+    // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that
+    // happens in the background, where nobody is waiting for it.
+    let got!: (r: { point: Point | null; costUsd: number }) => void;
+    const answer = new Promise<{ point: Point | null; costUsd: number }>((res) => { got = res; });
+    const finished = this.read(q as AsyncIterable<any>, req, (p, c) => got({ point: p, costUsd: round(c) }), () => ac.abort())
+      .then(() => got({ point: null, costUsd: 0 }), (e) => { got(Promise.reject(e) as never); });
+    void finished.catch(() => {});
+    try { return await answer; } finally { done(); }
+  }
+
+  private async read(q: AsyncIterable<any>, req: { image: Image }, set: (p: Point | null, cost: number) => void, stop: () => void): Promise<void> {
     let point: Point | null = null, cost = 0;
-    for await (const m of q as AsyncIterable<any>) {
+    for await (const m of q) {
       if (m.type === "assistant") {
-        for (const b of m.message?.content ?? []) {
-          if (b.type === "tool_use" && b.name === VISION_TOOL && !point) point = validPoint(b.input, req.image);
-        }
+        const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+        point = parsePointText(text, req.image);
+        // The answer is one line. Estimated from the tokens used, because the run is not waited on once it has arrived.
+        const u = m.message?.usage;
+        cost = u ? ((u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)) * 3e-6 + (u.cache_read_input_tokens ?? 0) * 3e-7 + (u.output_tokens ?? 0) * 15e-6 : 0.01;
+        set(point, cost);
+        stop();     // end the engine process now; do not wait for it to wind down
+        return;
       } else if (m.type === "result") {
         if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
         cost = Number(m.total_cost_usd ?? 0);
       }
     }
-    return { point, costUsd: round(cost) };
+    set(point, cost);
   }
+}
+
+// The reply is one line of JSON; anything else, or "none", is no answer.
+export function parsePointText(text: string, img: Image): Point | null {
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try { const j = JSON.parse(text.slice(a, b + 1)); return j?.none ? null : validPoint(j, img); } catch { return null; }
 }
 
 function validPoint(i: any, img: Image): Point | null {
@@ -185,13 +213,27 @@ export interface VisionLike { locate(req: { image: Image; question: string; ocr:
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
-  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string }) {}
+  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
+
+  // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
+  cancelAll() { for (const ac of this.active.values()) ac.abort(); this.o.images.clear(); }
 
   async handle(cmd: Command): Promise<void> {
     if (cmd.type === "assist.cancel") { this.active.get(cmd.req)?.abort(); return; }
     if (cmd.type === "assist.prompt") return this.prompt(cmd);
     if (cmd.type === "assist.locate") return this.locate(cmd);
+    if (cmd.type === "assist.image") return this.image(cmd);
+  }
+
+  // A screenshot arrives from the Mac side, is kept in memory for a few minutes at most, and is dropped as soon as it is used.
+  private image(cmd: Extract<Command, { type: "assist.image" }>) {
+    const okData = /^[A-Za-z0-9+/]+={0,2}$/.test(cmd.base64);
+    if (!okData || !Number.isFinite(cmd.w) || !Number.isFinite(cmd.h) || cmd.w <= 0 || cmd.h <= 0 || cmd.w > 4096 || cmd.h > 4096) {
+      return this.emit({ type: "assist.error", req: cmd.ref, reason: "The screenshot was not usable" });
+    }
+    try { this.o.images.put(cmd.ref, { base64: cmd.base64, mediaType: cmd.mediaType, w: cmd.w, h: cmd.h }); }
+    catch (e) { this.emit({ type: "assist.error", req: cmd.ref, reason: (e as Error).message }); }
   }
 
   private async prompt(cmd: Extract<Command, { type: "assist.prompt" }>) {
@@ -235,14 +277,19 @@ export class AssistService {
     if (!img) return this.emit({ type: "assist.error", req: cmd.req, reason: "The screenshot was not found or has expired" });
     const ac = new AbortController();
     this.active.set(cmd.req, ac);
+    // A question about the screen that has not been answered in half a minute is not coming; the person is told, not left waiting.
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
+    let timedOut = false;
     try {
-      const r = await this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [] }, ac.signal);
-      if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
+      const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [] }, ac.signal),
+        new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
+      if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : "cancelled" });
       if (!r.point) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
       this.emit({ type: "assist.point", req: cmd.req, step: 1, ...r.point });
     } catch (e) {
-      this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
+      this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
     } finally {
+      clearTimeout(timer);
       this.o.images.delete(cmd.image.ref);   // the screenshot is dropped as soon as it has been used
       this.active.delete(cmd.req);
     }

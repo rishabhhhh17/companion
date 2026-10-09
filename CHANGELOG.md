@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## See, hear and point; a first run: 9 Oct 2026
+
+**The "talk to your screen" parts are built. They are tested everywhere a test can reach; what needs your Mac's permission has not been tried by a person yet.**
+
+- **Show me how.** Type what you want to find and press Show me. A light comes on first, then one picture of the screen is taken (Companion's own windows and password managers are left out), card numbers, bank numbers, keys and tokens are blacked out on your Mac before anything is sent, and the picture lives in memory only. Claude names the spot, the Mac snaps it to the real button, and an arrow flies from the character to it with a ring and a short caption. "Next step" repeats it from where you are. If a password box is active, or Screen Recording is not allowed, nothing is captured. Stop everything removes the pointer and drops any picture.
+- **How well it aims** (on 48 questions about rendered dashboards, settings pages and deploy pages in light, dark and dense styles, scored against where the buttons really are): 48 of 48 on the spot, and 48 of 48 on the exact button. About 2.6 seconds from question to answer, after making it faster (no thinking, a one line answer, and not waiting for the engine to close). A question that gets no answer in 30 seconds now ends with a message instead of hanging. These pages are cleaner than a real busy screen, so the real number will be lower; a harder set comes next.
+- **Hold to talk.** Hold Control, Option, Command and V, talk, let go. Your voice is turned into words on this Mac by a speech model you download once (about 140 MB, checked against its published fingerprint). The microphone is open only while you hold the keys, never past a minute, a quick tap does nothing, and silence is told apart from a blocked microphone. Real check: a spoken sentence came back word for word in under a fifth of a second. The words go into the box; they are sent only if you turned on auto send.
+- **A first run.** Welcome, connect your Claude (paste your key into a password box; it goes straight into the Keychain and is never logged or kept on the page), pick your project folder, up to four optional choices that each say what they change, what Companion may ask for and when, and a first task to try.
+- A project's description and README are now part of what it knows.
+
 ## You choose the project folder: 9 Oct 2026
 
 - A **Change folder** button (and a list of recent folders) on the card. It uses the Mac's own folder chooser, so Companion never takes your keyboard. Companion refuses a folder that is too broad (your whole home folder), a system place, your Library, Companion's own data, or a private settings folder like `.ssh`, and it cannot be fooled by a link that points there. Switching clears the old project's cards, memory and history from the screen.
