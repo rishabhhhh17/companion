@@ -12,6 +12,20 @@ function rig() {
   return { events, images, seen, image, locate };
 }
 
+describe("Stop everything and the screenshot", () => {
+  test("a screenshot still held and a question in flight are both dropped", async () => {
+    const events: Event[] = [], images = new ImageStore();
+    let seenSignal: AbortSignal | undefined;
+    const vision = { locate: (_r: any, signal: AbortSignal) => { seenSignal = signal; return new Promise<any>(() => {}); } };
+    const svc = new AssistService({ fast: { run: async () => ({ text: "", costUsd: 0 }) }, vision: vision as never, images, emit: (e) => events.push(e) });
+    await svc.handle({ v: 1, id: "i", type: "assist.image", ref: "s1", mediaType: "image/jpeg", base64: "/9j/4AAQ", w: 100, h: 100 } as never);
+    void svc.handle({ v: 1, id: "l", type: "assist.locate", req: "r1", question: "q", image: { ref: "s1", w: 100, h: 100 } } as never);
+    await Bun.sleep(20);
+    svc.cancelAll();
+    expect(seenSignal!.aborted).toBe(true); expect(images.get("s1")).toBeUndefined();
+  });
+});
+
 describe("a screenshot sent from the Mac side", () => {
   test("the protocol accepts a jpeg or png and refuses anything else", () => {
     const base = { v: 1, id: "x", type: "assist.image", ref: "s", base64: "AAAA", w: 10, h: 10 };

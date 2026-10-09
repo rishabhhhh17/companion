@@ -105,6 +105,7 @@ export class ImageStore {
     return e.img;
   }
   delete(ref: string) { this.m.delete(ref); }
+  clear() { this.m.clear(); }
 }
 
 // ---------- vision lane ----------
@@ -187,6 +188,9 @@ export class AssistService {
   private n = 0;
   constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
+
+  // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
+  cancelAll() { for (const ac of this.active.values()) ac.abort(); this.o.images.clear(); }
 
   async handle(cmd: Command): Promise<void> {
     if (cmd.type === "assist.cancel") { this.active.get(cmd.req)?.abort(); return; }

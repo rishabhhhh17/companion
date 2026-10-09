@@ -59,6 +59,9 @@ static CLICKS: AtomicU64 = AtomicU64::new(0);
 static LOG: Mutex<()> = Mutex::new(());
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static PROJECT: Mutex<Option<String>> = Mutex::new(None);
+thread_local! { static OVERLAY: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) }; }
+/// What Show me how last saw, kept in memory until the model answers, then dropped.
+static SHOWME: Mutex<Option<(String, showme::Prepared)>> = Mutex::new(None);
 static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
@@ -402,6 +405,104 @@ fn close_card(app: AppHandle) {
     });
 }
 
+// ---------- Show me how: look, ask, point ----------
+
+/// The pointer's panel: covers one display, draws only the arrow, ring and caption, ignores the mouse, never takes the keyboard.
+fn make_overlay(mtm: MainThreadMarker, tauri_win: &NSWindow) -> Retained<NSPanel> {
+    let p = make_panel(mtm, tauri_win, false, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(100.0, 100.0)));
+    p.setOpaque(false);
+    p.setHasShadow(false);
+    p.setBackgroundColor(Some(&NSColor::clearColor()));
+    p.setIgnoresMouseEvents(true);
+    p.setLevel(25);
+    p
+}
+
+fn say_showme(app: &AppHandle, stage: &str, message: &str, extra: Value) {
+    let mut v = json!({ "v": 1, "id": format!("sm{}", now()), "type": "app.showme", "stage": stage, "message": message });
+    if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) { for (k, x) in e { o.insert(k.clone(), x.clone()); } }
+    runner::Runner::publish(app, v);
+}
+
+fn hide_overlay(app: &AppHandle) {
+    let _ = app.emit_to("overlay", "overlay-clear", ());
+    let _ = app.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
+}
+
+/// Stop everything also takes the pointer away and forgets what was seen.
+fn showme_stop(app: &AppHandle) { hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+
+/// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
+#[tauri::command]
+fn showme_start(app: AppHandle, question: String) {
+    let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
+    if question.is_empty() { say_showme(&app, "error", "Type what you want to find, then press Show me.", json!({})); return; }
+    std::thread::spawn(move || {
+        use showme::Platform;
+        let req = format!("sm_{}", now());
+        let (a1, a2, a3, req1, req2) = (app.clone(), app.clone(), app.clone(), req.clone(), req.clone());
+        let plat = macos_see::MacPlatform::new(
+            Box::new(move |jpeg, w, h| {
+                use base64::Engine;
+                let cmd = json!({ "v": 1, "id": format!("img{}", now()), "type": "assist.image", "ref": req1, "mediaType": "image/jpeg", "base64": base64::engine::general_purpose::STANDARD.encode(jpeg), "w": w, "h": h });
+                let _ = a1.state::<runner::Runner>().send(&cmd);
+            }),
+            Box::new(move |q, w, h, cands| {
+                let ocr: Vec<Value> = cands.iter().map(|(id, text, r)| json!({ "id": id, "text": text, "box": [r.x, r.y, r.w, r.h] })).collect();
+                let cmd = json!({ "v": 1, "id": format!("loc{}", now()), "type": "assist.locate", "req": req2, "question": q, "image": { "ref": req2, "w": w, "h": h }, "ocr": ocr });
+                let _ = a2.state::<runner::Runner>().send(&cmd);
+            }),
+            Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
+        );
+        if !plat.screen_recording_granted() {
+            // Asked here, the first time the feature is used, with a plain sentence first.
+            macos_see::request_screen_recording();
+            say_showme(&app, "needs_permission", "Allow Screen Recording for Companion in System Settings, then press Show me again. macOS may ask you to reopen Companion.", json!({}));
+            return;
+        }
+        log("showme_start", json!({}));
+        match showme::start(&plat, &question) {
+            Ok(prep) => {
+                let covered = prep.covered;
+                *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = Some((req.clone(), prep));
+                say_showme(&app, "thinking", if covered > 0 { "Finding it. I covered some private text first." } else { "Finding it" }, json!({ "req": req, "covered": covered }));
+            }
+            Err(showme::Refusal::NeedsScreenRecording) => say_showme(&app, "needs_permission", "Allow Screen Recording for Companion in System Settings, then press Show me again.", json!({})),
+            Err(showme::Refusal::SecureInput) => say_showme(&app, "error", "A password box is active, so I did not look at your screen. Click away from it and try again.", json!({})),
+            Err(showme::Refusal::CaptureFailed(e)) => say_showme(&app, "error", &format!("I could not look at your screen ({e})."), json!({})),
+            Err(showme::Refusal::PictureFailed(e)) => say_showme(&app, "error", &format!("I could not prepare the picture ({e})."), json!({})),
+        }
+    });
+}
+
+/// The engine chose a point in the picture: snap it to something real, then draw the pointer.
+#[tauri::command]
+fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String>, target_text: String, caption: String) {
+    let taken = { let mut g = SHOWME.lock().unwrap_or_else(|e| e.into_inner()); if g.as_ref().is_some_and(|(r, _)| *r == req) { g.take() } else { None } };
+    let Some((_, prep)) = taken else { return };
+    let plat = macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}), Box::new(|_| {}));
+    let s = showme::aim(&plat, &prep, x, y, ocr_id.as_deref(), &target_text);
+    let d = prep.shot.display;
+    log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact }));
+    let a = app.clone();
+    let caption2 = caption.clone();
+    let _ = app.run_on_main_thread(move || {
+        let mtm = MainThreadMarker::new().unwrap();
+        let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        // The flight starts at the character, wherever it is docked.
+        let from = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
+        let payload = json!({ "rect": { "x": s.rect.x - d.x, "y": s.rect.y - d.y, "w": s.rect.w, "h": s.rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": s.exact });
+        let ak = coords::rect_to_appkit(d, primary_h);
+        OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        let _ = a.emit_to("overlay", "overlay-point", payload);
+    });
+    say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, json!({}));
+}
+
+/// The pointer goes away: a click, Esc, Stop everything, or the ten seconds running out.
+#[tauri::command]
+fn showme_clear(app: AppHandle) { hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
+
 fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
     // Stay out of full screen apps unless the setting says otherwise.
@@ -517,12 +618,13 @@ fn main() {
                         let r = app.state::<runner::Runner>().stop_everything("kill switch");
                         log("hotkey", json!({ "id": "X", "stop_everything": true, "sent": r.is_ok() }));
                         let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                        showme_stop(&app);
                     }
                 })
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, showme_start, showme_aim, showme_clear, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -538,6 +640,7 @@ fn main() {
             };
             let dock_w = mk("dock", "dock.html", DOCK)?;
             let card_w = mk("card", "card.html", CARD)?;
+            let overlay_w = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(100.0, 100.0).build()?;
             let dock_ns: &NSWindow = unsafe { &*(dock_w.ns_window()? as *const NSWindow) };
             let card_ns: &NSWindow = unsafe { &*(card_w.ns_window()? as *const NSWindow) };
             let dock = make_panel(mtm, dock_ns, false, dock_frame);
@@ -555,6 +658,9 @@ fn main() {
             });
             let monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown, &block) };
             std::mem::forget(monitor);
+            let overlay_ns: &NSWindow = unsafe { &*(overlay_w.ns_window()? as *const NSWindow) };
+            let overlay = make_overlay(mtm, overlay_ns);
+            OVERLAY.with(|o| *o.borrow_mut() = Some(overlay));
             PANELS.with(|p| *p.borrow_mut() = Some((dock, card)));
             apply_dock(mtm, "launch", false);
             *SIG.lock().unwrap() = signature(&screens_now(mtm));
@@ -598,6 +704,7 @@ fn main() {
                         let r = app.state::<runner::Runner>().stop_everything("menu");
                         log("menu_stop_everything", json!({ "sent": r.is_ok() }));
                         let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                        showme_stop(&app);
                     }
                     "quit" => app.exit(0),
                     _ => {}

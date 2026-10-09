@@ -43,7 +43,7 @@ function dispatch(cmd: Command) {
   const work = cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);
-  if (cmd.type === "agent.interruptAll" && assist) void assist.handle({ v: 1, id: cmd.id, type: "assist.cancel", req: "*" } as Command);
+  if (cmd.type === "agent.interruptAll" && assist) assist.cancelAll();
   const p = work.catch((e: Error) => say({ type: "protocol.error", reason: `could not handle ${cmd.type}: ${e.message}` })).finally(() => inflight.delete(p));
   inflight.add(p);
 }
