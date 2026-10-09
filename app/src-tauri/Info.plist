@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>NSMicrophoneUsageDescription</key><string>Companion listens only while you hold its talk keys. Your voice is turned into words on this Mac and is never sent anywhere or saved.</string>
-</dict></plist>
+<plist version="1.0">
+<dict>
+  <!-- Accessory app from the very first instant: no Dock icon, never in Cmd+Tab. -->
+  <key>LSUIElement</key>
+  <true/>
+  <!-- Shown by macOS the first time the talk keys are used. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Companion listens only while you hold its talk keys. Your voice is turned into words on this Mac and is never sent anywhere or saved.</string>
+</dict>
+</plist>
