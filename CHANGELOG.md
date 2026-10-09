@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## It now knows what you are building: 9 Oct 2026
+
+- Project memory now includes an "About" line from the project's own description and the first paragraph of its README (with its source). Badges, headings, code and lists are skipped, a README that is a link out of the project is never read, and anything private is refused by the same filter as every other line. Agents and Prompt help start with it, so "a booking page for a dog groomer" is known, not only the tech.
+
 ## Explain, Where was I, and putting it online: 9 Oct 2026
 
 **Shared memory part two, and the last piece of Build mode.**
