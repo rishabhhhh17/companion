@@ -4,6 +4,7 @@
 // Images are held in memory only and never written to disk (rule 5).
 
 import { tmpdir } from "node:os";
+import { ensure as ensureShotDrive, wipe as wipeShotDrive } from "./ramdisk.ts";
 import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { Command, Event } from "../../protocol/index.ts";
@@ -133,6 +134,7 @@ export function buildVisionOptions(c: Common & { model: string }) {
     // Speed is the product here: no thinking, one turn, no tool to start, and the answer is a single line.
     thinking: { type: "disabled" as const },
     maxTurns: 1,
+    persistSession: false,      // no saved conversation: a picture of the screen must not end up in a log
     model: c.model,
     canUseTool: deny,
     abortController: abortFrom(c.signal),
@@ -151,13 +153,19 @@ export async function* buildVisionMessages(image: Image, question: string, ocr: 
 }
 
 export class VisionLane {
-  constructor(private o: { claudeBinary: string; env: Record<string, string>; model?: string; queryFn?: QueryFn }) {}
+  constructor(private o: { claudeBinary: string; env: Record<string, string>; model?: string; queryFn?: QueryFn; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> } }) {}
   async locate(req: { image: Image; question: string; ocr: Ocr[] }, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> {
     // Our own stop switch, so the engine process can be ended the moment the answer arrives instead of being waited for.
     const ac = new AbortController();
     const link = () => ac.abort();
     if (signal.aborted) ac.abort(); else signal.addEventListener("abort", link, { once: true });
-    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? "claude-sonnet-5-5", signal: ac.signal });
+    // Claude Code keeps a copy of every picture it is sent in its temporary folder. That folder is a drive in memory only,
+    // so a picture of someone's screen is never written to their disk. If that drive cannot be made, nothing is sent.
+    const drive = this.o.tmpDrive ?? { ensure: ensureShotDrive, wipe: wipeShotDrive };
+    let tmp: string;
+    try { tmp = await drive.ensure(); } catch (e) { done0(); throw e; }
+    function done0() { signal.removeEventListener("abort", link); }
+    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model: this.o.model ?? "claude-sonnet-5-5", signal: ac.signal });
     const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr) as never, options: options as never });
     const done = () => { signal.removeEventListener("abort", link); };
     // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that
@@ -166,7 +174,7 @@ export class VisionLane {
     const answer = new Promise<{ point: Point | null; costUsd: number }>((res) => { got = res; });
     const finished = this.read(q as AsyncIterable<any>, req, (p, c) => got({ point: p, costUsd: round(c) }), () => ac.abort())
       .then(() => got({ point: null, costUsd: 0 }), (e) => { got(Promise.reject(e) as never); });
-    void finished.catch(() => {});
+    void finished.catch(() => {}).finally(() => { void drive.wipe(); });   // once the engine has closed, the copy is erased
     try { return await answer; } finally { done(); }
   }
 

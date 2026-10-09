@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Screenshots never touch your disk: 9 Oct 2026
+
+- A real check found that Claude Code saves a copy of every picture it is sent (as a file in its temporary folder, and inside its saved conversation). For Show me how that would have put a picture of your screen on your SSD. Fixed: the conversation is not saved, and the temporary folder is a small drive that lives in memory only, erased after each answer and removed when idle. If it cannot be made, nothing is sent. A repeat of the real check found no copy on disk. Founder to confirm this reading of the promise (see T12).
+
 ## See, hear and point; a first run: 9 Oct 2026
 
 **The "talk to your screen" parts are built. They are tested everywhere a test can reach; what needs your Mac's permission has not been tried by a person yet.**

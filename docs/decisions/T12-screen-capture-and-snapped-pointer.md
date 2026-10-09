@@ -35,6 +35,11 @@ The pipeline is in technical_research.md sections 14 and 3. Rules a coding agent
 - The overlay is hidden unless a walkthrough runs; a walkthrough captures again only while it is visibly on.
 - Screen Recording and Accessibility are asked at first use; never edit the approvals file. Keep Clicky's MIT notice.
 
+## Settled by the real check (9 Oct 2026)
+- **Claude Code does write the picture to disk.** With a real call on the test login, two copies appeared: the image itself in `/tmp/claude-<uid>/.../images/1.jpg` (and it stays after the call), and the whole picture as text inside the saved conversation file in the config folder.
+- **What Companion does about it** (so rule 5 stays true without a new switch from Anthropic): the saved conversation is turned off for Show me how (`persistSession: false`), and Claude Code's temporary folder (`CLAUDE_CODE_TMPDIR`) is a small drive that lives in memory only (`runner/src/ramdisk.ts`, 32 MB, made on first use, erased after every answer, removed after two idle minutes and when the engine closes). If that drive cannot be made, nothing is sent. A repeat of the real check found no copy of the picture on the SSD.
+- **Founder to confirm:** this keeps the promise "captures are never written to disk" in its plain meaning (a drive in memory is not stored on the SSD), and it works for plan and API key users alike. The two options listed above (API key only, or wait for Anthropic) are no longer needed. If the founder prefers the stricter wording, say so and Show me how can be limited to API key users.
+
 ## Open [verify] items
 - **[verify]** (high impact) whether Claude Code writes received images to disk. The 2.1.288 binary suggests an image store under `/tmp/claude-<uid>` or `CLAUDE_CODE_TMPDIR` that only a diskless launch mode (not exposed by the SDK) skips. Spike (e) watches the folders during a real run.
 - **[verify]** image resizing: answered from reading the 2.1.288 binary (a 2000 x 2000 px cap for Sonnet 5.5 and Opus 5.5, recompression above about 3.75 MB raw). Spike (e) confirms on 2.1.291 (section 20, question 14); the pre resize rule holds either way.
