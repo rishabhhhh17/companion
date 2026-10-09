@@ -232,3 +232,20 @@ describe("Where was I", () => {
     expect(of(t.events, "protocol.error").at(-1).reason).toMatch(/time/i);
   });
 });
+
+describe("Companion's own memory writes are not mistaken for the person taking the wheel", () => {
+  test("a plan with memory on runs to the end without pausing", async () => {
+    const project = tmp("p"), data = tmp("d"), events: Event[] = [];
+    writeFileSync(join(project, "package.json"), JSON.stringify({ dependencies: { react: "1" } }));
+    const plan = '```json\n["Add a page","Add a footer"]\n```';
+    const engine = new ScriptedEngine([[say(plan)], [say("one")], [say("two")]]);
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), memoryDir: data, proof: async () => ({ verdict: "passed", steps: [] }) });
+    await Bun.sleep(100);
+    await runner.handle({ v: 1, id: "p", type: "drive.plan", project, agent: "d1", goal: "build it, keep answers shorter", model: "m", budgetUsd: 5 } as never);
+    await runner.handle({ v: 1, id: "a", type: "drive.approve", agent: "d1", steps: ["Add a page", "Add a footer"] } as never);
+    await Bun.sleep(900);
+    expect(of(events, "drive.paused")).toEqual([]);
+    expect(of(events, "drive.done")[0]).toMatchObject({ status: "done", completed: 2 });
+    expect(existsSync(join(project, "AGENTS.md"))).toBe(true);
+  });
+});

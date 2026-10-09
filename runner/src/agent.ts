@@ -129,6 +129,13 @@ export class AgentRunner {
   private ledger: Ledger;
   constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); }
 
+  // Companion's own notes are not the person taking the wheel: the watchers treat these writes as the agent's own.
+  private ownWrite<T>(fn: () => T): T {
+    const id = `own_${randomBytes(3).toString("hex")}`;
+    for (const w of this.watchers.values()) w.begin(id);
+    try { return fn(); } finally { for (const w of this.watchers.values()) w.end(id); }
+  }
+
   // ---------- memory ----------
   private memories = new Map<string, MemoryStore>();
   private memoryFor(project: string): MemoryStore | null {
@@ -140,6 +147,10 @@ export class AgentRunner {
   }
   // Save lines, and tell the app about each new one so it can show a toast with Undo. Memory never gets in a task's way.
   private remember(project: string, items: { scope: Scope; text: string; source: string }[]) {
+    if (!this.o.memoryDir || items.length === 0) return;
+    this.ownWrite(() => this.rememberNow(project, items));
+  }
+  private rememberNow(project: string, items: { scope: Scope; text: string; source: string }[]) {
     try {
       const m = this.memoryFor(project);
       if (!m) return;
@@ -250,7 +261,7 @@ export class AgentRunner {
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
       case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplain(cmd.enabled); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled() } as never); return; }
-      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.memoryCommand(cmd); return;
+      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.ownWrite(() => this.memoryCommand(cmd)); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "research.ask": return this.researchAsk(cmd);
