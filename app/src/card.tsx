@@ -1,16 +1,39 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerAgents, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { MemoryLine } from "./model.ts";
+import type { Explain, MemoryLine } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
+// When the person last used the card. Kept only on this Mac, in this page's own storage.
+const AWAY_MS = 30 * 60 * 1000, SEEN_KEY = "companion.lastSeen";
+const lastSeen = (): number => { try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch { return 0; } };
+const touch = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); } catch { /* storage may be unavailable */ } };
 // While a person is composing text (Japanese, Chinese, Korean...) Enter and Esc belong to the input method, not to us.
 const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
+
+function ExplainBox({ e }: { e: Explain }) {
+  const [picked, setPicked] = useState<number | null>(null);
+  return (
+    <details className="explain">
+      <summary>{S.explainTitle} <span className="muted">· {S.explainCost}</span></summary>
+      <ul>{e.bullets.map((b, i) => <li className="line" key={i}>{b}</li>)}</ul>
+      {e.question && (
+        <div>
+          <div className="line"><b>{S.explainCheck}:</b> {e.question.text}</div>
+          <div className="row">
+            {e.question.options.map((o, i) => <button key={i} className="btn" type="button" disabled={picked !== null} onClick={() => setPicked(i)}>{o}</button>)}
+          </div>
+          {picked !== null && <div className="line" role="status">{picked === e.question.correct ? S.explainRight : `${S.explainNot} ${e.question.options[e.question.correct]}`}</div>}
+        </div>
+      )}
+    </details>
+  );
+}
 
 function MemoryList({ title, scope, lines, project }: { title: string; scope: "project" | "profile"; lines: MemoryLine[]; project: string }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -81,6 +104,10 @@ function Card() {
   useEffect(() => {
     const off = listen("opened", (e) => {
       if ((e.payload as { keyboard?: boolean } | null)?.keyboard) setTimeout(() => box.current?.focus(), 30);
+      // Coming back after a break: ask what happened while away. Only Companion's own history is used.
+      const last = lastSeen();
+      if (last && project && Date.now() - last >= AWAY_MS) void send(askRecap(project, new Date(last).toISOString()));
+      touch();
     });
     return () => { off.then((f) => f()); };
   }, []);
@@ -131,7 +158,7 @@ function Card() {
 
   return (
     <main className="card" ref={root}
-      onPointerDown={(e) => void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName })}
+      onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
@@ -339,9 +366,19 @@ function Card() {
             <div className="row"><button className="btn danger" type="button" onClick={() => { void send(undo(project, m.receipt!.checkpoint)); setUndone(true); }}>{S.undo}</button></div>
           )}
           {undone && <div className="line">{S.undone}</div>}
+          {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
         </section>
       )}
 
+
+      {m.recap && (
+        <section className="panel" role="status" aria-label={S.recapTitle}>
+          <h2>{S.recapTitle}</h2>
+          {m.recap.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
+          <div className="line muted">{S.recapSource}</div>
+          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
+        </section>
+      )}
 
       {m.toast && (
         <section className="panel" role="status" aria-label={S.memoryTitle}>
@@ -364,6 +401,7 @@ function Card() {
           <MemoryList title={S.memoryProfile} scope="profile" lines={m.memory.profileLines} project={project} />
           <div className="row">
             <button className="btn" type="button" onClick={() => void send(pauseMemory(project, !m.memory!.paused))}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
+            <button className="btn" type="button" aria-pressed={m.explainOn} onClick={() => void send(setExplain(project, !m.explainOn))}>{S.explainSetting}: {m.explainOn ? "on" : "off"}</button>
             <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
             <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.memoryClosed" })}>{S.memoryClose}</button>

@@ -39,3 +39,5 @@ export const pauseMemory = (project: string, paused: boolean): Command => ({ v: 
 export const eraseMemory = (project: string, scope: "project" | "profile"): Command => ({ v: 1, id: id(), type: "memory.erase", project, scope });
 export const exportMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.export", project });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
+export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
+export const setExplain = (project: string, enabled: boolean): Command => ({ v: 1, id: id(), type: "explain.set", project, enabled });

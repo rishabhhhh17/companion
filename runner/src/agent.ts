@@ -201,6 +201,7 @@ export class AgentRunner {
     const m = this.memoryFor(project);
     if (!m) return;
     const p = m.list("project"), u = m.list("profile");
+    this.emit({ type: "explain.state", project, enabled: m.explainEnabled() } as never);
     this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems] } as never);
   }
   private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
