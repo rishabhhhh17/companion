@@ -15,7 +15,7 @@ pub const PROTOCOL_VERSION: i64 = 1;
 /// The commands a web page may send. Everything else is refused here, in Rust.
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
-    "assist.prompt", "assist.locate", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
+    "assist.prompt", "assist.locate", "assist.image", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback",
 ];
 

@@ -30,3 +30,4 @@
 {"v":1,"id":"c30","type":"ship.preview","project":"p_9f2c"}
 {"v":1,"id":"c31","type":"ship.live","project":"p_9f2c","url":"https://shop-abc.vercel.app","confirm":true}
 {"v":1,"id":"c32","type":"ship.rollback","project":"p_9f2c","confirm":true}
+{"v":1,"id":"c33","type":"assist.image","ref":"shot_1","mediaType":"image/jpeg","base64":"/9j/4AAQSkZJRg==","w":1280,"h":800}

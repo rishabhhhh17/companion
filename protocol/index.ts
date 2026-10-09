@@ -18,6 +18,7 @@ export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project
 
 export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
 export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[] }[]; walkthrough?: boolean };
+export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaType: "image/jpeg" | "image/png"; base64: string; w: number; h: number };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
 export type RunnerPing = Envelope & { type: "runner.ping" };
@@ -43,7 +44,7 @@ export type ExplainSet = Envelope & { type: "explain.set"; project: string; enab
 export type ShipPreview = Envelope & { type: "ship.preview"; project: string };
 export type ShipLive = Envelope & { type: "ship.live"; project: string; url: string; confirm: true };
 export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; confirm: true };
-export type Command = ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -134,6 +135,7 @@ const COMMANDS: Record<string, Check[]> = {
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
   "assist.locate": [str("req"), str("question"), obj("image")],
   "assist.cancel": [str("req")],
+  "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
 };
 
 const EVENTS: Record<string, Check[]> = {

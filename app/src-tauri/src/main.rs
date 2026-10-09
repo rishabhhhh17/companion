@@ -10,7 +10,11 @@ mod permissions;
 mod ax;
 mod phelp;
 #[allow(dead_code)] // wired to the hotkey in M5b
+mod coords;
+mod frame;
 mod projects;
+mod redact;
+mod snap;
 mod prompthelp;
 mod visibility;
 mod wheel;

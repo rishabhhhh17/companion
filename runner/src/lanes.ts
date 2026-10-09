@@ -192,6 +192,17 @@ export class AssistService {
     if (cmd.type === "assist.cancel") { this.active.get(cmd.req)?.abort(); return; }
     if (cmd.type === "assist.prompt") return this.prompt(cmd);
     if (cmd.type === "assist.locate") return this.locate(cmd);
+    if (cmd.type === "assist.image") return this.image(cmd);
+  }
+
+  // A screenshot arrives from the Mac side, is kept in memory for a few minutes at most, and is dropped as soon as it is used.
+  private image(cmd: Extract<Command, { type: "assist.image" }>) {
+    const okData = /^[A-Za-z0-9+/]+={0,2}$/.test(cmd.base64);
+    if (!okData || !Number.isFinite(cmd.w) || !Number.isFinite(cmd.h) || cmd.w <= 0 || cmd.h <= 0 || cmd.w > 4096 || cmd.h > 4096) {
+      return this.emit({ type: "assist.error", req: cmd.ref, reason: "The screenshot was not usable" });
+    }
+    try { this.o.images.put(cmd.ref, { base64: cmd.base64, mediaType: cmd.mediaType, w: cmd.w, h: cmd.h }); }
+    catch (e) { this.emit({ type: "assist.error", req: cmd.ref, reason: (e as Error).message }); }
   }
 
   private async prompt(cmd: Extract<Command, { type: "assist.prompt" }>) {
