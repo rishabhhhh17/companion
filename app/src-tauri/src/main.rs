@@ -872,3 +872,18 @@ fn main() {
         }
     });
 }
+
+#[cfg(test)]
+mod bundle_tests {
+    /// The app must never show a Dock icon, and must explain the microphone before macOS asks.
+    #[test]
+    fn the_info_file_keeps_the_no_dock_icon_setting_and_the_microphone_sentence() {
+        let plist = include_str!("../Info.plist");
+        assert!(plist.contains("<key>LSUIElement</key>") && plist.contains("<true/>"));
+        assert!(plist.contains("<key>NSMicrophoneUsageDescription</key>"));
+    }
+    #[test]
+    fn the_entitlements_allow_the_microphone() {
+        assert!(include_str!("../Entitlements.plist").contains("com.apple.security.device.audio-input"));
+    }
+}

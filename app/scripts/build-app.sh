@@ -23,5 +23,6 @@ if [ "${COMPANION_NO_DEV_SIGN:-}" != "1" ]; then
   fi
 fi
 codesign --verify --deep --strict "$APP" && echo "signature verifies"
-[ "$(plutil -extract LSUIElement raw "$APP/Contents/Info.plist")" = "true" ] && echo "LSUIElement true (no Dock icon)"
+if [ "$(plutil -extract LSUIElement raw "$APP/Contents/Info.plist" 2>/dev/null)" = "true" ]; then echo "LSUIElement true (no Dock icon)"; else echo "FAIL: the app would show a Dock icon (LSUIElement is missing)"; exit 1; fi
+plutil -extract NSMicrophoneUsageDescription raw "$APP/Contents/Info.plist" >/dev/null 2>&1 || { echo "FAIL: the microphone sentence is missing"; exit 1; }
 echo "built: $PWD/$APP"
