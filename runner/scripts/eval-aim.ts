@@ -41,15 +41,26 @@ const pages = (): Page[] => {
 
 const FIND = `() => { const sel = 'a,button,[role=button],input,select,summary'; const out = []; for (const e of document.querySelectorAll(sel)) { const r = e.getBoundingClientRect(); const t = (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().replace(/\\s+/g,' '); if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > innerHeight) continue; out.push({ t, x: r.x, y: r.y, w: r.width, h: r.height }); } return out; }`;
 
-const want = Number(process.argv[2]) || 999;
+const real = process.argv.includes("--real");
+const want = Number(process.argv.find((a) => /^\d+$/.test(a))) || 999;
+const SITES = ["https://github.com/login", "https://news.ycombinator.com", "https://en.wikipedia.org/wiki/Main_Page", "https://www.python.org", "https://vercel.com", "https://stripe.com", "https://supabase.com", "https://www.npmjs.com"];
+let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 const browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! });
 let n = 0, raw = 0, snapped = 0, none = 0, ms: number[] = [], cost = 0;
 const misses: string[] = [];
-for (const pg of pages()) {
+const realPages: Page[] = [];
+if (real) for (const url of SITES) realPages.push({ name: new URL(url).host, html: url, asks: [] });
+for (const pg of real ? realPages : pages()) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
-  await page.setContent(pg.html);
+  if (real) { try { await page.goto(pg.html, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(2500); } catch { await ctx.close(); continue; } } else await page.setContent(pg.html);
   const els: { t: string; x: number; y: number; w: number; h: number }[] = await page.evaluate(`(${FIND})()`);
+  if (real) {
+    // Pick up to six links or buttons with short, unique visible text.
+    const counts = new Map<string, number>(); for (const e of els) counts.set(e.t.toLowerCase(), (counts.get(e.t.toLowerCase()) ?? 0) + 1);
+    const ok = els.filter((e) => e.t.length >= 3 && e.t.length <= 30 && counts.get(e.t.toLowerCase()) === 1 && e.w >= 20 && e.h >= 14 && e.x >= 0 && e.x + e.w <= 1280 && e.y + e.h <= 800).sort(() => rnd() - 0.5).slice(0, 6);
+    pg.asks = ok.map((e) => ({ target: e.t, question: `Where is the "${e.t}" button or link?` }));
+  }
   const png = await page.screenshot({ type: "png" });
   for (const ask of pg.asks) {
     if (n >= want) break;

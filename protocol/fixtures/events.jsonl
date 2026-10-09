@@ -34,3 +34,4 @@
 {"v":1,"id":"e47","type":"explain.state","project":"p_9f2c","enabled":true}
 {"v":1,"id":"e48","type":"recap.ready","project":"p_9f2c","lines":["You were working on: Add a page","While you were away: 1 task ended, 1 checked","Nothing is waiting for you"]}
 {"v":1,"id":"e49","type":"ship.status","project":"p_9f2c","stage":"ready","detail":"The preview works. You can make it live.","previewUrl":"https://shop-abc.vercel.app","canGoLive":true}
+{"v":1,"id":"e50","type":"doctor.report","items":[{"id":"node","label":"Node","ok":true,"detail":"Version 22.1.0 is fine."}]}

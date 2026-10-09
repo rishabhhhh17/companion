@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { DoctorItem } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
-import { addMemory, setExplain } from "./commands.ts";
+import { addMemory, checkMac, setExplain } from "./commands.ts";
 import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
 import { invoke } from "./tauri.ts";
 import { S } from "./strings.ts";
 
-type Props = { connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; onDone: () => void };
+type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; onDone: () => void };
 
-export function Onboarding({ connected, project, send, pickFolder, setAutoSend, useTask, onDone }: Props) {
+export function Onboarding({ doctor, connected, project, send, pickFolder, setAutoSend, useTask, onDone }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   const [key, setKey] = useState("");
@@ -27,6 +28,7 @@ export function Onboarding({ connected, project, send, pickFolder, setAutoSend, 
     const k = key; setKey("");
     void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
   };
+  useEffect(() => { if (step === "permissions") void send(checkMac()); }, [step]);
   const n = STEPS.indexOf(step) + 1;
   return (
     <section className="panel" aria-label={S.obTitle}>
@@ -66,6 +68,10 @@ export function Onboarding({ connected, project, send, pickFolder, setAutoSend, 
       </>)}
       {step === "permissions" && (<>
         <h2>{S.obPermTitle}</h2><div className="line">{S.obPerm1}</div><div className="line">{S.obPerm2}</div><div className="line">{S.obPerm3}</div><div className="line muted">{S.obPermNone}</div>
+        {doctor && (<>
+          <h2>{S.obMacTitle}</h2>
+          {doctor.map((d) => <div className={`line ${d.ok ? "" : "blocked"}`} key={d.id}><b>{d.label}:</b> {d.detail}{d.fix ? <span className="muted"> {d.fix}</span> : null}</div>)}
+        </>)}
       </>)}
       {step === "first" && (<>
         <h2>{S.obFirstTitle}</h2>
