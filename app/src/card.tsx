@@ -1,8 +1,9 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
-import { confirmable, shipWords, phWords, blockedNote, characterWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { answerAgents, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
+import type { MemoryLine } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
@@ -11,6 +12,45 @@ const send = (cmd: unknown) => invoke("send_command", { cmd });
 // While a person is composing text (Japanese, Chinese, Korean...) Enter and Esc belong to the input method, not to us.
 const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
 
+function MemoryList({ title, scope, lines, project }: { title: string; scope: "project" | "profile"; lines: MemoryLine[]; project: string }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [sure, setSure] = useState(false);
+  return (
+    <div>
+      <h2>{title}</h2>
+      {lines.length === 0 && <div className="line muted">{S.memoryEmpty}</div>}
+      {lines.map((l) => (
+        <div className="line" key={l.id}>
+          {editing === l.id ? (
+            <div className="row">
+              <input type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { void send(editLine(project, scope, l.id, text)); setEditing(null); } if (e.key === "Escape") { e.stopPropagation(); setEditing(null); } }} />
+              <button className="btn" type="button" onClick={() => { void send(editLine(project, scope, l.id, text)); setEditing(null); }}>{S.memorySave}</button>
+            </div>
+          ) : (
+            <>
+              {l.text} <span className="muted">· {S.memoryFrom} {l.source}{l.date ? `, ${l.date}` : ""}</span>
+              <span className="row">
+                <button className="btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
+                <button className="btn danger" type="button" aria-label={`${S.memoryForget}: ${l.text}`} onClick={() => void send(forgetLine(project, scope, l.id))}>{S.memoryForget}</button>
+              </span>
+            </>
+          )}
+        </div>
+      ))}
+      {lines.length > 0 && !sure && <div className="row"><button className="btn" type="button" aria-label={`${S.memoryErase}: ${title}`} onClick={() => setSure(true)}>{S.memoryErase}</button></div>}
+      {sure && (
+        <div className="row" role="alert">
+          <span className="line">{S.memoryEraseSure}</span>
+          <button className="btn danger" type="button" onClick={() => { void send(eraseMemory(project, scope)); setSure(false); }}>{S.memoryEraseYes}</button>
+          <button className="btn" type="button" onClick={() => setSure(false)}>{S.planCancel}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Card() {
   const [m, dispatch] = useModel();
   const root = useRef<HTMLElement>(null);
@@ -18,11 +58,18 @@ function Card() {
   const [project, setProject] = useState("");
   const [undone, setUndone] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
+  const [off, setOff] = useState(false);
+  // The "remembered" toast stays for ten seconds after the last new line.
+  useEffect(() => {
+    if (!m.toast) return;
+    const t = setTimeout(() => dispatch({ type: "ui.toastClear" }), 10000);
+    return () => clearTimeout(t);
+  }, [m.toast?.lines.length]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
   useEffect(() => { setUndone(false); }, [m.receipt?.checkpoint]);
   // A question that needs the person moves keyboard focus to its first button, but only when this card already has the keyboard.
   const urgent = useRef<HTMLDivElement>(null);
-  const urgentKey = m.approvals[0]?.id ?? (m.stuck ? "stuck" : m.paused ? "paused" : m.plan ? "plan" : "");
+  const urgentKey = m.approvals[0]?.id ?? (m.agentsAsk ? "agents" : m.stuck ? "stuck" : m.paused ? "paused" : m.plan ? "plan" : "");
   useEffect(() => {
     if (!urgentKey || !document.hasFocus()) return;
     urgent.current?.querySelector<HTMLElement>("button, input")?.focus();
@@ -51,7 +98,7 @@ function Card() {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
     setUndone(false);
-    void send(startTask(project, prompt));
+    void send(startTask(project, prompt, off)); setOff(false);
     if (box.current) box.current.value = "";
   };
 
@@ -78,7 +125,7 @@ function Card() {
     if (!goal || !project) return;
     setUndone(false);
     dispatch({ type: "ui.planRequested" });
-    void send(planDrive(project, goal));
+    void send(planDrive(project, goal, off)); setOff(false);
     if (box.current) box.current.value = "";
   };
 
@@ -100,13 +147,27 @@ function Card() {
           <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
+          <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
         </div>
+      )}
+      {!working && (
+        <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
       )}
       {!project && <div className="notice">{S.noProject}</div>}
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
 
       <div ref={urgent}>
+      {m.agentsAsk && (
+        <section className="panel amber" role="alert" aria-label={S.agentsTitle}>
+          <h2>{S.agentsTitle}</h2>
+          <div className="line">{S.agentsAsk} {m.agentsAsk.join(" and ")}. {S.agentsAskEnd}</div>
+          <div className="row">
+            <button className="btn primary" type="button" onClick={() => { void send(answerAgents(project, "yes")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsYes}</button>
+            <button className="btn" type="button" onClick={() => { void send(answerAgents(project, "no")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsNo}</button>
+          </div>
+        </section>
+      )}
       {m.approvals.map((a) => (
         <section className="panel amber" key={a.id} role="alert" aria-label={S.needsYouTitle}>
           <h2>{S.needsYouTitle}</h2>
@@ -281,6 +342,35 @@ function Card() {
         </section>
       )}
 
+
+      {m.toast && (
+        <section className="panel" role="status" aria-label={S.memoryTitle}>
+          <div className="line">{savedWords(m)}</div>
+          <div className="row">
+            <button className="btn" type="button" onClick={() => { for (const l of m.toast!.lines) void send(forgetLine(project, l.scope, l.id)); dispatch({ type: "ui.toastClear" }); }}>{S.memoryUndo}</button>
+            <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.toastClear" }); void send(listMemory(project)); }}>{S.memorySeeAll}</button>
+          </div>
+        </section>
+      )}
+
+      {m.memory && (
+        <section className="panel" aria-label={S.memoryTitle}>
+          <h2>{S.memoryTitle}</h2>
+          <div className="line muted">{S.memoryNever}</div>
+          {m.memory.paused && <div className="line"><b>{S.memoryPaused}</b></div>}
+          {m.memory.problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
+          {m.memoryNote && <div className="line blocked" role="alert">{m.memoryNote}</div>}
+          <MemoryList title={S.memoryProject} scope="project" lines={m.memory.projectLines} project={project} />
+          <MemoryList title={S.memoryProfile} scope="profile" lines={m.memory.profileLines} project={project} />
+          <div className="row">
+            <button className="btn" type="button" onClick={() => void send(pauseMemory(project, !m.memory!.paused))}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
+            <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
+            <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>
+            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.memoryClosed" })}>{S.memoryClose}</button>
+          </div>
+          {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
+        </section>
+      )}
       {project && m.character !== "thinking" && m.character !== "working" && m.character !== "checking" && m.history.length > 0 && (
         <section className="panel" aria-label={S.recentTitle}>
           <h2>{S.recentTitle}</h2>

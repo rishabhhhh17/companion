@@ -8,16 +8,16 @@ export const DEFAULT_BUDGET_USD = 3;
 export const DRIVE_BUDGET_USD = 5;
 export const AGENT = "builder-1";
 
-export const startTask = (project: string, prompt: string): Command =>
-  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: DEFAULT_MODEL, budgetUsd: DEFAULT_BUDGET_USD });
+export const startTask = (project: string, prompt: string, offTheRecord = false): Command =>
+  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: DEFAULT_MODEL, budgetUsd: DEFAULT_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
 export const answerApproval = (approval: string, allow: boolean): Command =>
   ({ v: 1, id: id(), type: "approval.resolve", approval, decision: allow ? "allow" : "deny", scope: "once" });
 export const undo = (project: string, checkpoint: string): Command =>
   ({ v: 1, id: id(), type: "checkpoint.restore", project, checkpoint });
 export const stopAgent = (): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent: AGENT });
 export const listTasks = (project: string): Command => ({ v: 1, id: id(), type: "tasks.list", project });
-export const planDrive = (project: string, goal: string): Command =>
-  ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: DEFAULT_MODEL, budgetUsd: DRIVE_BUDGET_USD });
+export const planDrive = (project: string, goal: string, offTheRecord = false): Command =>
+  ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: DEFAULT_MODEL, budgetUsd: DRIVE_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
 export const approvePlan = (steps: string[]): Command => ({ v: 1, id: id(), type: "drive.approve", agent: AGENT, steps });
 export const chooseLoop = (choice: "different" | "stop"): Command => ({ v: 1, id: id(), type: "loop.choose", agent: AGENT, choice });
 export const pauseDrive = (): Command => ({ v: 1, id: id(), type: "drive.pause", agent: AGENT, reason: "you" });
@@ -30,3 +30,12 @@ export const askResearch = (project: string, question: string): Command | null =
 };
 export const checkShip = (project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
   ({ v: 1, id: id(), type: "ship.check", project, ...(o.runChecks ? { runChecks: true } : {}), ...(o.confirm?.length ? { confirm: o.confirm } : {}) });
+
+// Memory: what Companion knows, shown on a page the person can change.
+export const listMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.list", project });
+export const forgetLine = (project: string, scope: "project" | "profile", line: string): Command => ({ v: 1, id: id(), type: "memory.forget", project, scope, line });
+export const editLine = (project: string, scope: "project" | "profile", line: string, text: string): Command => ({ v: 1, id: id(), type: "memory.edit", project, scope, line, text });
+export const pauseMemory = (project: string, paused: boolean): Command => ({ v: 1, id: id(), type: "memory.pause", project, paused });
+export const eraseMemory = (project: string, scope: "project" | "profile"): Command => ({ v: 1, id: id(), type: "memory.erase", project, scope });
+export const exportMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.export", project });
+export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
