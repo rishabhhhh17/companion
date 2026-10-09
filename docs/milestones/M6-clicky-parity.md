@@ -25,8 +25,8 @@ Hotkey, light first, one capture with Companion and password managers left out o
 **Step 3. Voice (about 1 week)**
 Hold to talk, transcribed on your Mac (nothing but text leaves it), shown in the ask box before it sends. First use downloads a speech model once (about 140 MB). Optional spoken replies using the Mac's own voices. Works alongside Wispr Flow and Mac dictation. Microphone permission is asked the first time only.
 
-**Step 4. Characters (about 1 week)**
-All five characters with their own personalities, every state, reduced motion, light on battery. **Your choice below.**
+**Step 4. Characters: last, and only what the experience needs (a few days, optional)**
+The founder said on 9 Oct 2026 that the goal is how it works and feels to use, not the artwork. So the current placeholder character stays until everything else works. Only the parts that help use are done: clear states (listening, looking at your screen, thinking, pointing), calm motion, low battery use. Finished art for all five characters waits until the product works end to end.
 
 **Step 5. First run and questionnaire (about 4 working days)**
 Connect Claude (key or plan), pick a project folder, the optional five question questionnaire (each answer visibly changes how Companion behaves), explain each permission just before it is needed, and finish with a first working task.
@@ -41,24 +41,21 @@ Automatic checks as always (tests first for the risky parts: redaction before se
 ## What I need from you
 
 1. **Approve this plan,** or tell me what to change.
-2. **Characters, your choice:**
-   - **A (my recommendation): drawn and animated in code.** Five distinct abstract characters, smooth motion, ready now, easy to tune with you, and swappable later. No outside tool or cost.
-   - **B: Rive animation files.** The most polished route, but someone has to draw them in Rive's editor (a designer, or you), and the editor needs a paid seat to remove its splash screen. I cannot author those files by code alone.
-3. **For step 1:** two permission clicks (Screen Recording and Accessibility) for the test tool, and that I may use the test plan login for a few dozen small image questions (a few dollars at most, I will report the total).
-4. **Later, for step 3:** OK to download the speech model (about 140 MB) once.
-5. **For step 6:** Apple has to approve your developer enrollment. Nothing for you to do but wait.
+2. **For step 1:** two permission clicks (Screen Recording and Accessibility) for the test tool, and that I may use the test plan login for a few dozen small image questions (a few dollars at most, I will report the total).
+3. **Later, for step 3:** OK to download the speech model (about 140 MB) once.
+4. **For step 6:** Apple has to approve your developer enrollment. Nothing for you to do but wait.
 
 ## Time
 
-About **6 to 7 weeks** in total, mostly on my own. You are needed for approvals, the permission clicks, and one short guided session per step.
+About **5 to 6 weeks** in total, mostly on my own. You are needed for approvals, the permission clicks, and one short guided session per step.
 
 ## Risks and plan B
 
 - **Aim is not accurate enough.** Step 1 tells us before we spend two weeks. Plan B is the smaller region-highlight version, or snapping plus a short list of candidates you tap.
 - **macOS asks again for screen recording about monthly.** That is Apple's rule; the first run explains it.
 - **The screenshot disk question goes against us.** Then API key users get Show me how first, and plan users when a no disk mode exists.
-- **A character that looks flat.** Choice B above, or a designer for the final art; the code approach is built so art can be swapped without redoing the logic.
+- **The character art is plain.** Accepted for now; art is last, and the logic is built so art can be swapped later without redoing it.
 
 ## Approval
 
-Say **approved** (and A or B for the characters), and I will start with step 1.
+Say **approved**, and I will start with step 1.
