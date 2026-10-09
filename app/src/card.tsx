@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -32,6 +32,36 @@ function ExplainBox({ e }: { e: Explain }) {
         </div>
       )}
     </details>
+  );
+}
+
+function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean }; project: string; onClose: () => void }) {
+  const [ask, setAsk] = useState<"live" | "back" | null>(null);
+  const busy = ["checking_gates", "deploying", "checking_preview"].includes(f.stage);
+  return (
+    <section className={`panel ${f.stage === "failed" || f.stage === "refused" || f.stage === "not_signed_in" ? "amber" : ""}`} role="status" aria-label={S.onlineTitle}>
+      <h2>{S.onlineTitle}</h2>
+      <div className="line">{f.detail}</div>
+      {f.previewUrl && <div className="line muted">Preview: {f.previewUrl}</div>}
+      {f.productionUrl && <div className="line"><b>Live: {f.productionUrl}</b></div>}
+      {f.stage === "ready" && f.canGoLive && ask !== "live" && <div className="row"><button className="btn primary" type="button" onClick={() => setAsk("live")}>{S.makeLive}</button></div>}
+      {ask === "live" && f.previewUrl && (
+        <div className="row" role="alert">
+          <span className="line">{S.liveSure}</span>
+          <button className="btn primary" type="button" onClick={() => { void send(shipLive(project, f.previewUrl!)); setAsk(null); }}>{S.liveYes}</button>
+          <button className="btn" type="button" onClick={() => setAsk(null)}>{S.planCancel}</button>
+        </div>
+      )}
+      {f.stage === "live" && ask !== "back" && <div className="row"><button className="btn" type="button" onClick={() => setAsk("back")}>{S.rollBack}</button></div>}
+      {ask === "back" && (
+        <div className="row" role="alert">
+          <span className="line">{S.rollSure}</span>
+          <button className="btn primary" type="button" onClick={() => { void send(shipRollback(project)); setAsk(null); }}>{S.rollYes}</button>
+          <button className="btn" type="button" onClick={() => setAsk(null)}>{S.planCancel}</button>
+        </div>
+      )}
+      {!busy && <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>}
+    </section>
   );
 }
 
@@ -174,6 +204,7 @@ function Card() {
           <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
+          <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
           <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
         </div>
       )}
@@ -293,6 +324,8 @@ function Card() {
           {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
         </section>
       )}
+
+      {m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} />}
 
       {m.ship && (
         <section className={`panel ${m.ship.canShip ? "" : "amber"}`} aria-label={S.shipTitle}>

@@ -41,3 +41,6 @@ export const exportMemory = (project: string): Command => ({ v: 1, id: id(), typ
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
 export const setExplain = (project: string, enabled: boolean): Command => ({ v: 1, id: id(), type: "explain.set", project, enabled });
+export const shipPreview = (project: string): Command => ({ v: 1, id: id(), type: "ship.preview", project });
+export const shipLive = (project: string, url: string): Command => ({ v: 1, id: id(), type: "ship.live", project, url, confirm: true });
+export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });

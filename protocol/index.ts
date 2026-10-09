@@ -40,7 +40,10 @@ export type MemoryExport = Envelope & { type: "memory.export"; project: string }
 export type MemoryAgents = Envelope & { type: "memory.agents"; project: string; answer: "yes" | "no" | "remove" };
 export type RecapAsk = Envelope & { type: "recap.ask"; project: string; since: string };
 export type ExplainSet = Envelope & { type: "explain.set"; project: string; enabled: boolean };
-export type Command = RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type ShipPreview = Envelope & { type: "ship.preview"; project: string };
+export type ShipLive = Envelope & { type: "ship.live"; project: string; url: string; confirm: true };
+export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; confirm: true };
+export type Command = ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -105,6 +108,9 @@ const COMMANDS: Record<string, Check[]> = {
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
   "runner.ping": [],
+  "ship.preview": [str("project")],
+  "ship.live": [str("project"), str("url"), (m) => (m.confirm === true ? null : 'going live needs "confirm": true')],
+  "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
   "recap.ask": [str("project"), str("since")],
   "explain.set": [str("project"), bool("enabled")],
   "memory.list": [str("project")],
@@ -136,6 +142,7 @@ const EVENTS: Record<string, Check[]> = {
   "runner.pong": [],
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
+  "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate")],
   "explain.state": [str("project"), bool("enabled")],
   "recap.ready": [str("project"), list("lines")],

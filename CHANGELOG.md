@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Explain, Where was I, and putting it online: 9 Oct 2026
+
+**Shared memory part two, and the last piece of Build mode.**
+
+- **Explain:** after a task that changed files, a small "Why I did it" section under the result: two or three plain reasons and, sometimes, one quick multiple choice question. It costs a few extra words, so it says so. You can turn it off in the What I know page. It is not done for plan steps or off the record tasks, and a failure never disturbs the task. Checked with real Claude.
+- **Where was I:** when you open Companion after 30 minutes or more away and tasks ran or finished meanwhile, three lines: what you were working on, what ended while you were away, and what waits for you. Written by plain code from Companion's own task history only (no model, so it is free and cannot invent anything). Off the record tasks are not mentioned.
+- **Put it online (Vercel):** a button that runs every safety check, puts up a private preview through your own Vercel sign in, opens that preview in the hidden browser to check it works, and only then offers **Make it live**. Making it live asks twice, names the exact preview that was checked, refuses if the project changed since, and promotes that same preview instead of building again. **Roll back** is one more button. Everything that went online is recorded in `.companion/ships.json` in your project.
+- Companion never holds a Vercel token. If you are not signed in it says: open Terminal and run `vercel login`. It never starts the login itself. The agent can never run a deploy, promote or rollback on its own.
+- Honest limit: Vercel protects previews with its own login on some plans. If that happens the card says so and asks you to turn that protection off for previews. This part was built and tested against a stand in for Vercel; the real Vercel run waits for you to sign in.
+
 ## Shared memory, part one: 9 Oct 2026
 
 **Companion now remembers, and you can see and change all of it.**

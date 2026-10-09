@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { eraseMemory, forgetLine, editLine, exportMemory, listMemory, pauseMemory, answerAgents, askRecap, setExplain, planDrive, startTask } from "./commands.ts";
+import { eraseMemory, forgetLine, editLine, exportMemory, listMemory, pauseMemory, answerAgents, shipLive, shipPreview, shipRollback, askRecap, setExplain, planDrive, startTask } from "./commands.ts";
 import { initial, reduce, savedWords, type Model } from "./model.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()): Model => events.reduce<Model>((m, e) => reduce(m, e), from);
@@ -89,5 +89,25 @@ describe("Explain and Where was I in the pages", () => {
   test("the commands are valid protocol", () => {
     expect(parseCommand(serialize(askRecap("/p", "2026-10-09T10:00:00.000Z"))).ok).toBe(true);
     expect(parseCommand(serialize(setExplain("/p", false))).ok).toBe(true);
+  });
+});
+
+describe("putting a project online", () => {
+  test("the commands are valid protocol, and going live and rolling back carry the yes", () => {
+    for (const c of [shipPreview("/p"), shipLive("/p", "https://a.vercel.app"), shipRollback("/p")]) expect(parseCommand(serialize(c)).ok).toBe(true);
+    expect((shipLive("/p", "https://a.vercel.app") as any).confirm).toBe(true);
+    expect((shipRollback("/p") as any).confirm).toBe(true);
+  });
+  test("the card follows the steps, and only a checked preview can be made live", () => {
+    let m = run([{ type: "ship.status", project: "/p", stage: "deploying", detail: "Putting up a preview" }]);
+    expect(m.shipFlow).toMatchObject({ stage: "deploying", canGoLive: false });
+    m = run([{ type: "ship.status", project: "/p", stage: "ready", detail: "Works", previewUrl: "https://a.vercel.app", canGoLive: true }], m);
+    expect(m.shipFlow).toMatchObject({ stage: "ready", canGoLive: true, previewUrl: "https://a.vercel.app" });
+    m = run([{ type: "ship.status", project: "/p", stage: "failed", detail: "Broken", previewUrl: "https://a.vercel.app", canGoLive: false }], m);
+    expect(m.shipFlow!.canGoLive).toBe(false);
+  });
+  test("closing the ship card clears both the report and the steps", () => {
+    const m = run([{ type: "ship.status", project: "/p", stage: "live", detail: "ok" }, { type: "ui.shipClosed" }]);
+    expect(m.shipFlow).toBeNull();
   });
 });

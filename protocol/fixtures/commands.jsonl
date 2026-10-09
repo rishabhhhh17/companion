@@ -27,3 +27,6 @@
 {"v":1,"id":"c27","type":"memory.agents","project":"p_9f2c","answer":"yes"}
 {"v":1,"id":"c28","type":"recap.ask","project":"p_9f2c","since":"2026-10-09T11:00:00.000Z"}
 {"v":1,"id":"c29","type":"explain.set","project":"p_9f2c","enabled":false}
+{"v":1,"id":"c30","type":"ship.preview","project":"p_9f2c"}
+{"v":1,"id":"c31","type":"ship.live","project":"p_9f2c","url":"https://shop-abc.vercel.app","confirm":true}
+{"v":1,"id":"c32","type":"ship.rollback","project":"p_9f2c","confirm":true}

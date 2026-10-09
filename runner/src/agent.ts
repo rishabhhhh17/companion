@@ -23,6 +23,8 @@ import { askSignals, projectFacts } from "./memory/learn.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
 import { recapLines } from "./recap.ts";
+import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
+import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
@@ -52,6 +54,9 @@ export type RunnerOptions = {
   // Where the person's own profile and memory settings live. Without it, memory is off.
   memoryDir?: string;
   // Writes the "why" bullets after a task. Without it, Explain is off.
+  // Putting a preview and then the live site up. Without it, shipping beyond the safety check is off.
+  deployer?: Deployer;
+  browser?: typeof browserCheck;
   explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
 };
 
@@ -241,6 +246,9 @@ export class AgentRunner {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
       case "recap.ask": return this.recap(cmd);
+      case "ship.preview": return this.shipPreview(cmd);
+      case "ship.live": return this.shipLive(cmd);
+      case "ship.rollback": return this.shipRollback(cmd);
       case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplain(cmd.enabled); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled() } as never); return; }
       case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.memoryCommand(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
@@ -578,25 +586,133 @@ export class AgentRunner {
   }
 
   // Ship: may this go on the internet? Runs every gate and says which one stops it. Nothing is deployed here.
-  private async shipCheck(cmd: Extract<Command, { type: "ship.check" }>): Promise<void> {
-    const store = this.store(cmd.project);
+  // The files that changed between two snapshots, not counting Companion's own notes or the link files the Vercel tool leaves.
+  private async changedSince(store: CheckpointStore, from: string, to: string) {
+    return (await store.diff(from, to)).filter((c) => !c.file.startsWith(".vercel/") && !c.file.startsWith(".companion/"));
+  }
+
+  // Every gate, on the project exactly as it is now. With runChecks, the checks are run first if the last pass is out of date.
+  private async gateReport(project: string, runChecks: boolean, confirm?: string[]) {
+    const store = this.store(project);
     const now = await store.snapshot("Ship check");
-    let rec = this.lastProof.get(cmd.project);
-    const stale = async () => !rec || (await store.diff(rec.snapshot, now.id)).length > 0;
-    if (cmd.runChecks && (await stale())) {
+    let rec = this.lastProof.get(project);
+    const stale = async () => !rec || (await this.changedSince(store, rec.snapshot, now.id)).length > 0;
+    if (runChecks && (await stale())) {
       // Check the project exactly as it is now, with no model involved.
       const ac = new AbortController();
       this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
       const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: "ship", rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
       try {
-        const res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
+        const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
-        if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(cmd.project, rec); }
+        if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete("ship"); }
     }
     const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await stale()) } : undefined;
-    const report = await runGates({ project: cmd.project, proof, confirmed: cmd.confirm });
+    const report = await runGates({ project, proof, confirmed: confirm });
+    return { report, snapshot: now.id, proof: rec?.verdict ?? "skipped" };
+  }
+
+  private async shipCheck(cmd: Extract<Command, { type: "ship.check" }>): Promise<void> {
+    const { report } = await this.gateReport(cmd.project, !!cmd.runChecks, cmd.confirm);
     this.emit({ type: "ship.gates", project: cmd.project, ...report } as never);
+  }
+
+  // ---------- Ship: a preview first, then live only on a tap that names that preview ----------
+
+  private previews = new Map<string, { url: string; snapshot: string; gates: { id: string; status: string }[]; proof: string }>();
+  private shipping = new Set<string>();
+  private shipSay(project: string, stage: string, detail: string, extra: Record<string, unknown> = {}) {
+    this.emit({ type: "ship.status", project, stage, detail: clip(redact(detail), 400), ...extra } as never);
+  }
+  private shipTools(project: string): Deployer | null {
+    if (!this.o.deployer) { this.shipSay(project, "failed", "Putting a site on the internet is not set up on this Mac yet."); return null; }
+    if (this.shipping.has(resolve(project))) { this.shipSay(project, "refused", "Another ship step is already running. Wait for it to finish."); return null; }
+    return this.o.deployer;
+  }
+
+  private async shipPreview(cmd: Extract<Command, { type: "ship.preview" }>): Promise<void> {
+    const d = this.shipTools(cmd.project);
+    if (!d) return;
+    const key = resolve(cmd.project), ac = new AbortController();
+    this.shipping.add(key);
+    this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+    try {
+      this.previews.delete(key);
+      this.shipSay(cmd.project, "checking_gates", "Checking the project first.");
+      const { report, snapshot, proof } = await this.gateReport(cmd.project, true);
+      this.emit({ type: "ship.gates", project: cmd.project, ...report } as never);
+      if (ac.signal.aborted) return;
+      if (!report.canShip) { this.shipSay(cmd.project, "refused", "Not ready to go on the internet. The checks above say why."); return; }
+      if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
+      this.shipSay(cmd.project, "deploying", "Putting up a private preview. This can take a minute or two.");
+      const r = await d.preview(cmd.project, ac.signal);
+      if (ac.signal.aborted) { this.shipSay(cmd.project, "failed", "Stopped. Nothing went live."); return; }
+      if (!r.ok) { this.shipSay(cmd.project, r.reason === NOT_SIGNED_IN ? "not_signed_in" : "failed", r.reason); return; }
+      if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(r.url) || !isSafeUrl(r.url)) { this.shipSay(cmd.project, "failed", "The preview link looked wrong, so I did not open it."); return; }
+      this.shipSay(cmd.project, "checking_preview", "Opening the preview in a hidden browser to make sure it works.", { previewUrl: r.url });
+      const b = await (this.o.browser ?? browserCheck)(r.url, {});
+      if (ac.signal.aborted) return;
+      if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false }); return; }
+      if (!b.ok) {
+        const blocked = b.problems.some((p) => /\((401|403)\)/.test(p));
+        this.shipSay(cmd.project, "failed", blocked ? "The preview is behind Vercel's own login, so I could not open it. Turn off protection for previews in your Vercel project settings, then try again." : `The preview has a problem: ${b.problems.slice(0, 2).join(". ")}`, { previewUrl: r.url, canGoLive: false });
+        return;
+      }
+      const gates = report.gates.map((g) => ({ id: g.id, status: g.status }));
+      this.previews.set(key, { url: r.url, snapshot, gates, proof });
+      try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "preview", snapshot, url: r.url, gates, proof }); } catch { /* the record is not worth stopping for */ }
+      this.shipSay(cmd.project, "ready", "The preview works. Making it live puts it on the internet for everyone.", { previewUrl: r.url, canGoLive: true });
+    } catch (e) {
+      this.shipSay(cmd.project, "failed", `Something went wrong while putting up the preview (${clip(String((e as Error).message ?? e), 120)}). Nothing went live.`);
+    } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
+  }
+
+  private async shipLive(cmd: Extract<Command, { type: "ship.live" }>): Promise<void> {
+    const d = this.shipTools(cmd.project);
+    if (!d) return;
+    const key = resolve(cmd.project), ac = new AbortController();
+    this.shipping.add(key);
+    this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+    try {
+      if ((cmd as { confirm?: unknown }).confirm !== true) { this.shipSay(cmd.project, "refused", "Going live needs your yes."); return; }
+      const p = this.previews.get(key);
+      if (!p || p.url !== cmd.url) { this.shipSay(cmd.project, "refused", "That is not the preview that was checked. Make a new preview first."); return; }
+      const store = this.store(cmd.project);
+      const now = await store.snapshot("Before going live");
+      if ((await this.changedSince(store, p.snapshot, now.id)).length > 0) { this.previews.delete(key); this.shipSay(cmd.project, "refused", "The project changed after this preview was checked. Make a new preview first."); return; }
+      const { report } = await this.gateReport(cmd.project, false);
+      if (!report.canShip) { this.shipSay(cmd.project, "refused", "The safety checks no longer pass. Make a new preview first."); return; }
+      if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
+      this.shipSay(cmd.project, "deploying", "Making it live.");
+      const r = await d.promote(p.url, cmd.project, ac.signal);
+      if (!r.ok) { this.shipSay(cmd.project, "failed", `${r.reason} Nothing went live.`); return; }
+      this.previews.delete(key);
+      try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "live", snapshot: p.snapshot, url: p.url, productionUrl: r.productionUrl, gates: p.gates, proof: p.proof }); } catch { /* the record is not worth stopping for */ }
+      this.shipSay(cmd.project, "live", `It is live${r.productionUrl ? ` at ${r.productionUrl}` : ""}. Undo cannot take it off the internet; the Roll back button can.`, { previewUrl: p.url, ...(r.productionUrl ? { productionUrl: r.productionUrl } : {}) });
+    } catch (e) {
+      this.shipSay(cmd.project, "failed", `Something went wrong (${clip(String((e as Error).message ?? e), 120)}).`);
+    } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
+  }
+
+  private async shipRollback(cmd: Extract<Command, { type: "ship.rollback" }>): Promise<void> {
+    const d = this.shipTools(cmd.project);
+    if (!d) return;
+    const key = resolve(cmd.project), ac = new AbortController();
+    this.shipping.add(key);
+    this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+    try {
+      if ((cmd as { confirm?: unknown }).confirm !== true) { this.shipSay(cmd.project, "refused", "A rollback needs your yes."); return; }
+      const ships = readShips(cmd.project), lastLive = [...ships].reverse().find((s) => s.action === "live"), lastBack = [...ships].reverse().find((s) => s.action === "rollback");
+      if (!lastLive || (lastBack && lastBack.at > lastLive.at)) { this.shipSay(cmd.project, "refused", "Nothing has gone live from Companion that could be rolled back."); return; }
+      if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
+      const r = await d.rollback(cmd.project, ac.signal);
+      if (!r.ok) { this.shipSay(cmd.project, "failed", `${r.reason} The live site was not changed.`); return; }
+      try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "rollback", snapshot: lastLive.snapshot, gates: [], proof: lastLive.proof }); } catch { /* the record is not worth stopping for */ }
+      this.shipSay(cmd.project, "rolled_back", "The live site is back to the version before.");
+    } catch (e) {
+      this.shipSay(cmd.project, "failed", `Something went wrong (${clip(String((e as Error).message ?? e), 120)}). The live site was not changed.`);
+    } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
   }
 
   // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.
