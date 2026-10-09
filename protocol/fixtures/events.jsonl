@@ -30,3 +30,6 @@
 {"v":1,"id":"e43","type":"memory.exported","project":"p_9f2c","text":"# Everything Companion remembers"}
 {"v":1,"id":"e44","type":"memory.agents_ask","project":"p_9f2c","files":["AGENTS.md","CLAUDE.md"]}
 {"v":1,"id":"e45","type":"memory.agents_written","project":"p_9f2c","files":["AGENTS.md"]}
+{"v":1,"id":"e46","type":"explain.ready","agent":"builder-1","checkpoint":"cp_0001","bullets":["A plain form works in every browser."],"question":{"text":"Why a plain form?","options":["It works everywhere","It is faster"],"correct":0},"usdEstimate":0.002}
+{"v":1,"id":"e47","type":"explain.state","project":"p_9f2c","enabled":true}
+{"v":1,"id":"e48","type":"recap.ready","project":"p_9f2c","lines":["You were working on: Add a page","While you were away: 1 task ended, 1 checked","Nothing is waiting for you"]}

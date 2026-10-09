@@ -20,7 +20,7 @@ const LINE = /^- (.+?) — (.+?), (\d{4}-\d{2}-\d{2})(?: \{(m_[a-z0-9]{6,})\})?\
 const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
 const idFor = (text: string) => "m_" + createHash("sha256").update(text.toLowerCase()).digest("hex").slice(0, 8);
 
-type Prefs = { paused: boolean; forgotten: Record<string, string[]>; agents: Record<string, "approved" | "declined"> };
+type Prefs = { paused: boolean; forgotten: Record<string, string[]>; agents: Record<string, "approved" | "declined">; explain: boolean };
 type Raw = { kind: "other"; text: string } | { kind: "entry"; entry: Entry; hand: boolean };
 
 export class MemoryStore {
@@ -64,7 +64,7 @@ export class MemoryStore {
   }
 
   private prefs(): Prefs {
-    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {} }; } catch { return { paused: false, forgotten: {}, agents: {} }; }
+    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {}, explain: j.explain !== false }; } catch { return { paused: false, forgotten: {}, agents: {}, explain: true }; }
   }
   // Whether the person said yes or no to Companion adding its block to their own AGENTS.md and CLAUDE.md.
   agentsChoice(): "approved" | "declined" | undefined { return this.prefs().agents[this.key("project")]; }
@@ -77,6 +77,9 @@ export class MemoryStore {
   }
   // A line that was forgotten stays forgotten: it is not learned again from the same file or the same words.
   private key(scope: Scope) { return scope === "profile" ? "profile" : "project:" + createHash("sha256").update(this.o.project).digest("hex").slice(0, 12); }
+  // Explanations after each task are on unless the person turns them off.
+  explainEnabled(): boolean { return this.prefs().explain; }
+  setExplain(enabled: boolean) { this.savePrefs({ ...this.prefs(), explain: enabled }); }
   isPaused(): boolean { return this.prefs().paused; }
   setPaused(paused: boolean) { this.savePrefs({ ...this.prefs(), paused }); }
 

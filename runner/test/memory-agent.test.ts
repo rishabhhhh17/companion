@@ -175,3 +175,60 @@ describe("the shared AGENTS.md", () => {
     expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).not.toContain("Built with");
   });
 });
+
+describe("Explain", () => {
+  const explainer = (text: string, calls: any[] = []) => async (req: any) => { calls.push(req); return { text, costUsd: 0.002 }; };
+  const good = '{"why":["A plain form works in every browser."],"question":{"text":"Why a plain form?","options":["It works everywhere","It is faster"],"correct":0}}';
+  const setupE = (ex?: any) => {
+    const project = tmp("p"), data = tmp("d"), events: Event[] = [];
+    const engine = new ScriptedEngine([[{ tool: { name: "Write", input: { file_path: "a.txt", content: "x" } }, costUsd: 0.01 }, say("I added a simple form because it works everywhere.")]]);
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), memoryDir: data, explainer: ex, proof: async () => ({ verdict: "passed", steps: [] }) });
+    const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "s", type: "agent.start", project, agent: "b1", mode: "drive", prompt: "add a form", model: "m", budgetUsd: 1, ...extra } as never);
+    return { project, events, runner, start };
+  };
+  test("after a task that changed files, the bullets and the check question arrive", async () => {
+    const calls: any[] = []; const t = setupE(explainer(good, calls));
+    await t.start(); await Bun.sleep(100);
+    const e = of(t.events, "explain.ready")[0];
+    expect(e.bullets).toEqual(["A plain form works in every browser."]); expect(e.question.correct).toBe(0);
+    expect(calls[0].text).toContain("a.txt"); expect(calls[0].text).toContain("simple form");
+  });
+  test("it can be turned off, and stays off", async () => {
+    const t = setupE(explainer(good));
+    await t.runner.handle({ v: 1, id: "x", type: "explain.set", project: t.project, enabled: false } as never);
+    expect(of(t.events, "explain.state")[0].enabled).toBe(false);
+    await t.start(); await Bun.sleep(100);
+    expect(of(t.events, "explain.ready")).toEqual([]);
+  });
+  test("a model that fails or answers nonsense never disturbs the task", async () => {
+    for (const ex of [async () => { throw new Error("offline"); }, explainer("not json")]) {
+      const t = setupE(ex); await t.start(); await Bun.sleep(100);
+      expect(of(t.events, "explain.ready")).toEqual([]); expect(of(t.events, "receipt").length).toBe(1);
+    }
+  });
+  test("no explanation for a task that changed nothing, an off the record task, or when no explainer is given", async () => {
+    const calls: any[] = []; const off = setupE(explainer(good, calls));
+    await off.start({ offTheRecord: true }); await Bun.sleep(100);
+    expect(calls.length).toBe(0);
+    const none = setupE(undefined); await none.start(); await Bun.sleep(50);
+    expect(of(none.events, "explain.ready")).toEqual([]);
+  });
+});
+
+describe("Where was I", () => {
+  test("it answers from the task log only, and says nothing when nothing happened while away", async () => {
+    const t = setup([[say("a")]]);
+    await t.start("add a page");
+    await t.cmd({ type: "recap.ask", since: new Date(Date.now() + 60_000).toISOString() });
+    expect(of(t.events, "recap.ready").at(-1).lines).toEqual([]);
+    await t.cmd({ type: "recap.ask", since: new Date(Date.now() - 3600_000).toISOString() });
+    const lines = of(t.events, "recap.ready").at(-1).lines;
+    expect(lines.length).toBe(3);
+    expect(lines[0]).toContain("add a page");
+  });
+  test("a bad time is refused in plain words", async () => {
+    const t = setup();
+    await t.cmd({ type: "recap.ask", since: "yesterday-ish" });
+    expect(of(t.events, "protocol.error").at(-1).reason).toMatch(/time/i);
+  });
+});

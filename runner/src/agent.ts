@@ -21,6 +21,8 @@ import { Ledger } from "./ledger.ts";
 import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
+import { explainRequest, parseExplain } from "./explain.ts";
+import { recapLines } from "./recap.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
@@ -49,6 +51,8 @@ export type RunnerOptions = {
   now?: () => Date;
   // Where the person's own profile and memory settings live. Without it, memory is off.
   memoryDir?: string;
+  // Writes the "why" bullets after a task. Without it, Explain is off.
+  explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
 };
 
 type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean) => void> };
@@ -168,6 +172,31 @@ export class AgentRunner {
       return this.memoryFor(project)?.forAgent() ?? "";
     } catch { return ""; }
   }
+  // Where was I: three plain lines from the task history, only when something happened while the person was away.
+  private recap(cmd: Extract<Command, { type: "recap.ask" }>) {
+    if (Number.isNaN(Date.parse(cmd.since))) { this.fail("Where was I needs a time to look back from.", undefined); return; }
+    let pending = 0;
+    for (const s of this.sessions.values()) pending += s.pending.size;
+    const rows = this.o.log.list(cmd.project, 100);
+    this.emit({ type: "recap.ready", project: cmd.project, lines: recapLines(rows, new Date(cmd.since).toISOString(), pending) } as never);
+  }
+  // Explain: asks the fast model why the task did what it did. A problem here is never a problem for the task.
+  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string }, checkpoint: string, signal: AbortSignal) {
+    if (!this.o.explainer || input.changed.length === 0) return;
+    try {
+      const m = this.memoryFor(cmd.project);
+      if (m && !m.explainEnabled()) return;
+      const ac = new AbortController();
+      const stop = () => ac.abort();
+      signal.addEventListener("abort", stop, { once: true });
+      const timer = setTimeout(stop, 25_000);
+      try {
+        const r = await this.o.explainer(explainRequest(input), ac.signal);
+        const e = parseExplain(r.text);
+        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), usdEstimate: r.costUsd } as never);
+      } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
+    } catch { /* no explanation is better than a broken task */ }
+  }
   private memoryState(project: string) {
     const m = this.memoryFor(project);
     if (!m) return;
@@ -210,6 +239,8 @@ export class AgentRunner {
   async handle(cmd: Command): Promise<void> {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
+      case "recap.ask": return this.recap(cmd);
+      case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplain(cmd.enabled); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled() } as never); return; }
       case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.memoryCommand(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
@@ -316,6 +347,7 @@ export class AgentRunner {
     const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
+    let said = "";
 
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
@@ -341,6 +373,7 @@ export class AgentRunner {
             finally { if (a.wid) this.watchers.get(cmd.agent)?.end(a.wid); }
             if (abort.signal.aborted) { status = "interrupted"; return false; }
           } else if (turn.text) {
+            said = (said + " " + turn.text).slice(-1500);
             this.state(cmd.agent, "working");
           }
           next = await gen.next(result);
@@ -416,6 +449,7 @@ export class AgentRunner {
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && !this.driving.has(cmd.agent)) void this.explain(cmd, { label: lbl, changed, said }, before.id, abort.signal);
     const stuck = proof === "failed" && sigs.length >= 3 && new Set(sigs.slice(-3)).size === 1 ? lastFailure : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
