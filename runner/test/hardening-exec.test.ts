@@ -123,3 +123,15 @@ describe("starting a server", () => {
     expect(alive(pid)).toBe(false);
   }, 30000);
 });
+
+describe("stopping a command when its output says so", () => {
+  test("a command that starts something we do not want is stopped at once", async () => {
+    const t0 = Date.now();
+    const r = await runCommand("echo 'Starting login flow'; sleep 30", { cwd: tmp(), timeoutMs: 20000, stopWhen: /login flow/ });
+    expect(r.matched).toBe(true); expect(Date.now() - t0).toBeLessThan(3000);
+  });
+  test("without a match nothing changes", async () => {
+    const r = await runCommand("echo fine", { cwd: tmp(), timeoutMs: 5000, stopWhen: /login flow/ });
+    expect(r.matched).toBeUndefined(); expect(r.code).toBe(0);
+  });
+});

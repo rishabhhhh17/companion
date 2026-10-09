@@ -24,7 +24,14 @@ export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: strin
 export type MemoryLine = { id: string; text: string; source: string; date: string };
 export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profileLines: MemoryLine[]; problems: string[] };
 export type Saved = { id: string; scope: "project" | "profile"; text: string };
+export type Explain = { checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number } };
+export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean };
 export type Model = {
+  shipFlow: ShipFlow | null;
+  currentCheckpoint?: string;
+  explain: Explain | null;
+  explainOn: boolean;
+  recap: { lines: string[] } | null;
   memory: MemoryState | null;
   memoryNote: string | null;
   exported: string | null;
@@ -50,7 +57,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -86,7 +93,11 @@ export function reduce(m: Model, e: Ev): Model {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
     }
-    case "checkpoint.created": return { ...m, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
+    case "explain.ready": return (m.receipt?.checkpoint ?? m.currentCheckpoint) === e.checkpoint ? { ...m, explain: { checkpoint: e.checkpoint, bullets: e.bullets ?? [], question: e.question } } : m;
+    case "explain.state": return { ...m, explainOn: !!e.enabled };
+    case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
+    case "ui.recapClosed": return { ...m, recap: null };
+    case "checkpoint.created": return { ...m, explain: null, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
     case "agent.tool": {
       const t = m.task ?? { agent: e.agent, label: "", lines: [], costUsd: 0 };
@@ -127,7 +138,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
     case "assist.error": return e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } };
     case "ship.gates": return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
-    case "ui.shipClosed": return { ...m, ship: null };
+    case "ship.status": return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };
+    case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
     case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], file: e.file }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
     case "ui.planRequested": return { ...m, ship: null, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };

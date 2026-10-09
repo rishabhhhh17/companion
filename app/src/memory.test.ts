@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { eraseMemory, forgetLine, editLine, exportMemory, listMemory, pauseMemory, answerAgents, planDrive, startTask } from "./commands.ts";
+import { eraseMemory, forgetLine, editLine, exportMemory, listMemory, pauseMemory, answerAgents, shipLive, shipPreview, shipRollback, askRecap, setExplain, planDrive, startTask } from "./commands.ts";
 import { initial, reduce, savedWords, type Model } from "./model.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()): Model => events.reduce<Model>((m, e) => reduce(m, e), from);
@@ -62,5 +62,52 @@ describe("sharing with other tools", () => {
   });
   test("writing the files is told in plain words", () => {
     expect(run([{ type: "memory.agents_written", project: "/p", files: ["AGENTS.md", "CLAUDE.md"] }]).notice).toMatch(/AGENTS\.md and CLAUDE\.md/);
+  });
+});
+
+describe("Explain and Where was I in the pages", () => {
+  const ready = { type: "explain.ready", agent: "builder-1", checkpoint: "cp_1", bullets: ["A plain form works everywhere."], question: { text: "Why?", options: ["a", "b"], correct: 1 }, usdEstimate: 0.002 };
+  test("the explanation is kept for the result card, and a new task clears it", () => {
+    const m = run([{ type: "receipt", agent: "builder-1", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 }, ready]);
+    expect(m.explain).toMatchObject({ checkpoint: "cp_1", bullets: ["A plain form works everywhere."] });
+    expect(run([{ type: "checkpoint.created", project: "/p", agent: "builder-1", checkpoint: "cp_2", label: "Before: x", files: 0, skipped: [] }], m).explain).toBeNull();
+  });
+  test("an explanation for an older task is ignored", () => {
+    const m = run([{ type: "checkpoint.created", project: "/p", agent: "builder-1", checkpoint: "cp_2", label: "Before: x", files: 0, skipped: [] }, ready]);
+    expect(m.explain).toBeNull();
+  });
+  test("the recap shows only when there is something to say, and can be dismissed", () => {
+    expect(run([{ type: "recap.ready", project: "/p", lines: [] }]).recap).toBeNull();
+    const m = run([{ type: "recap.ready", project: "/p", lines: ["You were working on: a", "b", "c"] }]);
+    expect(m.recap!.lines.length).toBe(3);
+    expect(run([{ type: "ui.recapClosed" }], m).recap).toBeNull();
+  });
+  test("whether explanations are on is kept", () => {
+    expect(run([{ type: "explain.state", project: "/p", enabled: false }]).explainOn).toBe(false);
+    expect(initial().explainOn).toBe(true);
+  });
+  test("the commands are valid protocol", () => {
+    expect(parseCommand(serialize(askRecap("/p", "2026-10-09T10:00:00.000Z"))).ok).toBe(true);
+    expect(parseCommand(serialize(setExplain("/p", false))).ok).toBe(true);
+  });
+});
+
+describe("putting a project online", () => {
+  test("the commands are valid protocol, and going live and rolling back carry the yes", () => {
+    for (const c of [shipPreview("/p"), shipLive("/p", "https://a.vercel.app"), shipRollback("/p")]) expect(parseCommand(serialize(c)).ok).toBe(true);
+    expect((shipLive("/p", "https://a.vercel.app") as any).confirm).toBe(true);
+    expect((shipRollback("/p") as any).confirm).toBe(true);
+  });
+  test("the card follows the steps, and only a checked preview can be made live", () => {
+    let m = run([{ type: "ship.status", project: "/p", stage: "deploying", detail: "Putting up a preview" }]);
+    expect(m.shipFlow).toMatchObject({ stage: "deploying", canGoLive: false });
+    m = run([{ type: "ship.status", project: "/p", stage: "ready", detail: "Works", previewUrl: "https://a.vercel.app", canGoLive: true }], m);
+    expect(m.shipFlow).toMatchObject({ stage: "ready", canGoLive: true, previewUrl: "https://a.vercel.app" });
+    m = run([{ type: "ship.status", project: "/p", stage: "failed", detail: "Broken", previewUrl: "https://a.vercel.app", canGoLive: false }], m);
+    expect(m.shipFlow!.canGoLive).toBe(false);
+  });
+  test("closing the ship card clears both the report and the steps", () => {
+    const m = run([{ type: "ship.status", project: "/p", stage: "live", detail: "ok" }, { type: "ui.shipClosed" }]);
+    expect(m.shipFlow).toBeNull();
   });
 });
