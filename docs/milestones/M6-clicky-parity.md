@@ -1,6 +1,6 @@
 # M6 and friends: the "see it, hear it, point at it" parts. Plan for approval
 
-**Status:** waiting for the founder's approval. No code until approved. **Written:** 9 Oct 2026. **Source:** technical doc sections 12 (characters), 14 (Show me how), 15 (voice), 18 (M2, M6, M8, M9 rows); product doc section 4; decisions T12 (capture and snapped pointer), T13 (voice on the device), F04 (characters), F07 and F11 (never watch, never steal focus), F15 (order). **Why now:** on 9 Oct 2026 the founder asked to finish every feature before moving on, so Companion is as good to use as the best "talk to your screen" product, not just a strong builder.
+**Status:** approved by the founder on 9 Oct 2026 (characters last). **Built:** step 2 Show me how, step 3 voice, step 5 first run. **Not yet done:** the hands on tries (Screen Recording and Microphone have to be allowed by a person), the harder aim test on real busy screens, the disk question for screenshots (T12), step 4 character art, step 6 distribution. **Written:** 9 Oct 2026. **Source:** technical doc sections 12 (characters), 14 (Show me how), 15 (voice), 18 (M2, M6, M8, M9 rows); product doc section 4; decisions T12 (capture and snapped pointer), T13 (voice on the device), F04 (characters), F07 and F11 (never watch, never steal focus), F15 (order). **Why now:** on 9 Oct 2026 the founder asked to finish every feature before moving on, so Companion is as good to use as the best "talk to your screen" product, not just a strong builder.
 
 ## What "on par with Clicky" means here, in use
 
