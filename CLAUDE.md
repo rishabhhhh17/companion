@@ -4,6 +4,8 @@
 
 Everything that applies to every coding agent lives in `AGENTS.md` (imported above). These notes are only for Claude Code.
 
+**This is a paid product.** Read "The bar" in `AGENTS.md` before any work, and treat it as binding, not advice. Be rigorous and honest: verify with the real thing, say exactly what was and was not proven, and keep `docs/status/` true.
+
 **Plan mode.** Use plan mode for anything bigger than a small fix, and for the start of every milestone.
 
 **Testing Companion with Claude Code itself.** Companion drives Claude Code through the Agent SDK, so tests and spikes run real Claude Code processes. In every one:
