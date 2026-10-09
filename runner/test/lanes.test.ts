@@ -114,18 +114,30 @@ describe("the vision lane", () => {
   });
   const said = (obj: unknown, usage?: unknown) => ({ type: "assistant", message: { content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj) }], usage } });
   test("reads the chosen point from the model's one line answer", async () => {
-    const lane = new VisionLane({ ...cfg, queryFn: fake([said({ x: 102, y: 621, ocrId: "o1", targetText: "Project Settings", confidence: 0.82, caption: "Click Project Settings" })]) });
+    const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([said({ x: 102, y: 621, ocrId: "o1", targetText: "Project Settings", confidence: 0.82, caption: "Click Project Settings" })]) });
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
     expect(r.point).toMatchObject({ x: 102, y: 621, ocrId: "o1", confidence: 0.82 });
     expect(r.costUsd).toBeGreaterThan(0);
   });
   test("it copes with a code block or a few words around the line", async () => {
-    const lane = new VisionLane({ ...cfg, queryFn: fake([said('Sure!\n```json\n{"x":5,"y":6,"targetText":"a","confidence":0.9,"caption":"c"}\n```')]) });
+    const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([said('Sure!\n```json\n{"x":5,"y":6,"targetText":"a","confidence":0.9,"caption":"c"}\n```')]) });
     expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal)).point).toMatchObject({ x: 5, y: 6 });
+  });
+  test("the picture's temporary folder is the in-memory drive, nothing is saved, and it is erased afterwards; with no drive nothing is sent", async () => {
+    let seenEnv: any, seenOpts: any, wiped = false, sent = false;
+    const q = ((a: any) => { seenOpts = a.options; seenEnv = a.options.env; sent = true; return fake([said({ x: 5, y: 6, targetText: "a", confidence: 0.9, caption: "c" })])(a); }) as never;
+    const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/Volumes/CompanionShots", wipe: async () => { wiped = true; } }, queryFn: q });
+    await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
+    await Bun.sleep(20);
+    expect(seenEnv.CLAUDE_CODE_TMPDIR).toBe("/Volumes/CompanionShots"); expect(seenOpts.persistSession).toBe(false); expect(wiped).toBe(true);
+    sent = false;
+    const broken = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => { throw new Error("no drive"); }, wipe: async () => {} }, queryFn: q });
+    await expect(broken.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal)).rejects.toThrow(/no drive/);
+    expect(sent).toBe(false);
   });
   test("the answer is taken the moment it arrives, without waiting for the rest", async () => {
     const slow = (async function* () { yield said({ x: 5, y: 5, targetText: "a", confidence: 0.9, caption: "c" }, { input_tokens: 1500, output_tokens: 40 }); await new Promise((r) => setTimeout(r, 3000)); yield result(0.5); })();
-    const lane = new VisionLane({ ...cfg, queryFn: (() => slow) as never });
+    const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: (() => slow) as never });
     const t0 = Date.now();
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
     expect(Date.now() - t0).toBeLessThan(1000); expect(r.point).not.toBeNull(); expect(r.costUsd).toBeCloseTo(1500 * 3e-6 + 40 * 15e-6, 6);
@@ -135,12 +147,12 @@ describe("the vision lane", () => {
   });
   test("not finding it, or not answering in JSON, is no answer, not a made up one", async () => {
     for (const reply of ['{"none":true}', "I cannot see it", "{ broken", '{"x":"left","y":1}']) {
-      const lane = new VisionLane({ ...cfg, queryFn: fake([said(reply)]) });
+      const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([said(reply)]) });
       expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal)).point, reply).toBeNull();
     }
   });
   test("a point outside the image is refused", async () => {
-    const lane = new VisionLane({ ...cfg, queryFn: fake([said({ x: 9999, y: 5, targetText: "x", confidence: 0.9, caption: "c" })]) });
+    const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([said({ x: 9999, y: 5, targetText: "x", confidence: 0.9, caption: "c" })]) });
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png", w: 100, h: 100 }, question: "q", ocr: [] }, cfg.signal);
     expect(r.point).toBeNull();
   });
@@ -150,7 +162,7 @@ describe("the assist service turns commands into events", () => {
   const mk = (msgs: any[]) => {
     const events: Event[] = [];
     const images = new ImageStore();
-    const svc = new AssistService({ fast: new FastLane({ ...cfg, queryFn: fake(msgs) }), vision: new VisionLane({ ...cfg, queryFn: fake(msgs) }), images, emit: (e) => events.push(e) });
+    const svc = new AssistService({ fast: new FastLane({ ...cfg, queryFn: fake(msgs) }), vision: new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake(msgs) }), images, emit: (e) => events.push(e) });
     return { svc, events, images };
   };
   const prompt = (text: string) => ({ v: 1 as const, id: "c", type: "assist.prompt" as const, req: "ph_1", app: "a", target: "chat", text, style: "full" as const });

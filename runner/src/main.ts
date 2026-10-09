@@ -8,6 +8,7 @@ import { createEngine, createLanes, currentAuth, readSettings } from "./engines.
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore } from "./memory/store.ts";
+import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
 import { label } from "./redact.ts";
 import { TaskLog } from "./tasklog.ts";
@@ -69,6 +70,7 @@ async function main() {
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
   void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
+  void releaseShotDrive();
   await Promise.allSettled([...inflight]);
 }
 
