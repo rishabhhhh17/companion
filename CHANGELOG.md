@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## You choose the project folder: 9 Oct 2026
+
+- A **Change folder** button (and a list of recent folders) on the card. It uses the Mac's own folder chooser, so Companion never takes your keyboard. Companion refuses a folder that is too broad (your whole home folder), a system place, your Library, Companion's own data, or a private settings folder like `.ssh`, and it cannot be fooled by a link that points there. Switching clears the old project's cards, memory and history from the screen.
+- **Prompt help now gets the project.** Until now the hotkey never told the engine which folder you were working in, so the project facts and memory never reached it. They do now.
+
 ## It now knows what you are building: 9 Oct 2026
 
 - Project memory now includes an "About" line from the project's own description and the first paragraph of its README (with its source). Badges, headings, code and lists are skipped, a README that is a link out of the project is never read, and anything private is refused by the same filter as every other line. Agents and Prompt help start with it, so "a booking page for a dog groomer" is known, not only the tech.

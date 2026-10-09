@@ -10,6 +10,7 @@ mod permissions;
 mod ax;
 mod phelp;
 #[allow(dead_code)] // wired to the hotkey in M5b
+mod projects;
 mod prompthelp;
 mod visibility;
 mod wheel;
@@ -48,7 +49,7 @@ static SEQ: AtomicU64 = AtomicU64::new(0);
 static CLICKS: AtomicU64 = AtomicU64::new(0);
 static LOG: Mutex<()> = Mutex::new(());
 static APP: OnceLock<AppHandle> = OnceLock::new();
-static PROJECT: OnceLock<String> = OnceLock::new();
+static PROJECT: Mutex<Option<String>> = Mutex::new(None);
 static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
@@ -352,7 +353,36 @@ fn resize_card(app: AppHandle, height: f64) {
 
 /// The folder tasks run in. For now it comes from the dev settings file or a safe playground folder.
 #[tauri::command]
-fn get_project() -> String { PROJECT.get().cloned().unwrap_or_default() }
+fn get_project() -> String { current_project() }
+
+fn projects_path() -> PathBuf { data_dir().join("projects.json") }
+fn current_project() -> String { PROJECT.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default() }
+fn home_dir() -> String { std::env::var("HOME").unwrap_or_default() }
+
+/// The folders the person chose before (still on disk), newest first.
+#[tauri::command]
+fn list_projects() -> Vec<String> { projects::load(&projects_path()).still_there() }
+
+/// Switch to a folder from the list, or one just picked. Only folders that pass the checks are ever used.
+#[tauri::command]
+fn use_project(app: AppHandle, path: String) -> Result<String, String> {
+    let ok = projects::validate(&path, &home_dir(), &data_dir())?;
+    let folder = ok.to_string_lossy().to_string();
+    let mut p = projects::load(&projects_path());
+    p.use_folder(&folder);
+    let _ = logfile::write_atomic(&projects_path(), serde_json::to_string(&p).unwrap_or_default().as_bytes());
+    *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = Some(folder.clone());
+    log("project_changed", json!({}));
+    let _ = app.emit("project-changed", &folder);
+    Ok(folder)
+}
+
+/// Opens the Mac's own folder chooser (another process, so the keyboard is never taken), then uses the folder.
+#[tauri::command]
+async fn pick_project(app: AppHandle) -> Result<String, String> {
+    let chosen = tauri::async_runtime::spawn_blocking(projects::choose_folder).await.map_err(|_| "The folder chooser stopped.".to_string())?;
+    match chosen { Some(path) => use_project(app, path), None => Err(String::new()) }
+}
 
 #[tauri::command]
 fn close_card(app: AppHandle) {
@@ -425,7 +455,9 @@ fn start_runner(app: &AppHandle) {
     let project = dev.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
         .and_then(|v| v.get("project").and_then(|p| p.as_str().map(String::from)))
         .unwrap_or_else(|| format!("{}/Developer/companion-playground", std::env::var("HOME").unwrap_or_default()));
-    let _ = PROJECT.set(project);
+    // The folder the person chose last wins; the development settings file only supplies the first one.
+    let saved = projects::load(&projects_path()).current.filter(|c| std::path::Path::new(c).is_dir());
+    *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = Some(saved.unwrap_or(project));
     let result = runner::locations(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"))
         .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, |t| {
             log("runner_event", json!({ "kind": t }));
@@ -481,7 +513,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
