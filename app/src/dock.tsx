@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "./tauri.ts";
-import { characterWords, motionFor } from "./model.ts";
+import { characterWords, motionFor, visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
@@ -36,7 +36,7 @@ function Dock() {
   };
   return (
     <main className="dock">
-      <button className="character" type="button" data-state={m.character} data-motion={motionFor(m.character, reduced)}
+      <button className="character" type="button" data-state={visualState(m)} data-motion={motionFor(visualState(m), reduced)}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>

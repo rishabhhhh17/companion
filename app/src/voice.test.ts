@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { characterWords, initial, reduce, type Model } from "./model.ts";
+import { characterWords, initial, reduce, visualState, type Model } from "./model.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()): Model => events.reduce<Model>((m, e) => reduce(m, e), from);
 
@@ -19,5 +19,18 @@ describe("hold to talk in the pages", () => {
     const m = run([{ type: "app.voice", stage: "heard", message: "", text: "how do I deploy" }]);
     expect(m.voice!.text).toBe("how do I deploy");
     expect(run([{ type: "ui.voiceClosed" }], m).voice).toBeNull();
+  });
+});
+
+describe("what the character looks like", () => {
+  test("listening, looking at the screen, understanding and pointing each look different from ready", () => {
+    expect(visualState(run([{ type: "app.voice", stage: "listening", message: "" }]))).toBe("listening");
+    expect(visualState(run([{ type: "app.showme", stage: "looking", message: "" }]))).toBe("checking");
+    expect(visualState(run([{ type: "app.voice", stage: "transcribing", message: "" }]))).toBe("thinking");
+    expect(visualState(run([{ type: "app.showme", stage: "pointing", message: "" }]))).toBe("needsYou");
+    expect(visualState(initial())).toBe("idle");
+  });
+  test("when nothing special is happening it follows the agents", () => {
+    expect(visualState(run([{ type: "agent.state", agent: "a", state: "working" }]))).toBe("working");
   });
 });
