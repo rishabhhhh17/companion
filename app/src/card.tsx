@@ -171,6 +171,21 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
+  const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; stage?: string; text?: string };
+      if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
+        if (box.current) box.current.value = ev.text;
+        if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
+        else setTimeout(() => box.current?.focus(), 30);
+        dispatch({ type: "ui.voiceClosed" });
+      }
+    });
+    return () => { off.then((f) => f()); };
+  }, [autoSend]);
   const showMe = (question: string, goal: string, steps: string[]) => { setWalk({ goal, steps }); void invoke("showme_start", { question }); };
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
   const submit = () => {
@@ -241,6 +256,9 @@ function Card() {
           <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
           <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
         </div>
+      )}
+      {!working && (
+        <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
       )}
       {!working && (
         <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
@@ -437,6 +455,15 @@ function Card() {
         </section>
       )}
 
+
+      {m.voice && (
+        <section className={`panel ${["error", "mic_refused", "blocked", "needs_mic", "needs_model"].includes(m.voice.stage) ? "amber" : ""}`} role="status" aria-label={S.voiceTitle}>
+          <h2>{S.voiceTitle}</h2>
+          <div className="line">{m.voice.message}{m.voice.stage === "downloading" && typeof m.voice.percent === "number" ? ` ${m.voice.percent}%` : ""}</div>
+          {m.voice.stage === "needs_model" && <div className="row"><button className="btn primary" type="button" onClick={() => void invoke("voice_download")}>{S.voiceDownload}</button></div>}
+          {["error", "mic_refused", "blocked", "needs_mic", "silent", "model_ready"].includes(m.voice.stage) && <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.voiceClosed" })}>{S.voiceClose}</button></div>}
+        </section>
+      )}
 
       {m.showme && (
         <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" ? "amber" : ""}`} role="status" aria-label={S.showMe}>

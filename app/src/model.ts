@@ -27,7 +27,9 @@ export type Saved = { id: string; scope: "project" | "profile"; text: string };
 export type Explain = { checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number } };
 export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean };
 export type ShowMe = { stage: string; message: string; req?: string };
+export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Model = {
+  voice: Voice | null;
   showme: ShowMe | null;
   shipFlow: ShipFlow | null;
   currentCheckpoint?: string;
@@ -59,7 +61,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -102,6 +104,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.projectChanged": return { ...m, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": return e.stage === "done" ? { ...m, showme: null } : { ...m, showme: { stage: String(e.stage), message: String(e.message ?? ""), req: e.req } };
     case "assist.error": return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } });
+    case "app.voice": return e.stage === "idle" ? { ...m, voice: null } : { ...m, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
+    case "ui.voiceClosed": return { ...m, voice: null };
     case "ui.recapClosed": return { ...m, recap: null };
     case "checkpoint.created": return { ...m, explain: null, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
@@ -294,6 +298,8 @@ export function driveWords(m: Model): string | null {
 
 // The word under the character and at the top of the card. A failed check is "Not done", never a crash.
 export function characterWords(m: Model): string {
+  if (m.voice?.stage === "listening") return "Listening";
+  if (m.voice?.stage === "transcribing") return "Understanding you";
   if (m.showme && ["looking", "thinking"].includes(m.showme.stage)) return m.showme.stage === "looking" ? "Looking at your screen" : "Finding it";
   if (isFixing(m)) return "Fixing a failed check";
   if (m.character === "error" && notDoneReason(m)) return "Not done";

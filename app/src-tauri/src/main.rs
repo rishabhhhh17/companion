@@ -23,6 +23,9 @@ mod snap;
 mod prompthelp;
 #[allow(dead_code)]
 mod voice;
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+mod voice_mac;
 mod visibility;
 mod wheel;
 
@@ -253,6 +256,7 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 // ---- Prompt help (M5b): the hotkey is the only way anything is read ----
 
 fn sc_mods() -> Modifiers { Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER }
+fn sc_voice() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyV) }
 fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
 fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
 fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }
@@ -432,7 +436,7 @@ fn hide_overlay(app: &AppHandle) {
 }
 
 /// Stop everything also takes the pointer away and forgets what was seen.
-fn showme_stop(app: &AppHandle) { hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+fn showme_stop(app: &AppHandle) { voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 #[tauri::command]
@@ -504,6 +508,121 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
 /// The pointer goes away: a click, Esc, Stop everything, or the ten seconds running out.
 #[tauri::command]
 fn showme_clear(app: AppHandle) { hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
+
+// ---------- Hold to talk ----------
+
+enum VoiceMsg { Down(u64), Up(u64), Cancel }
+static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(None);
+
+fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
+    let mut v = json!({ "v": 1, "id": format!("vo{}", now()), "type": "app.voice", "stage": stage, "message": message });
+    if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) { for (k, x) in e { o.insert(k.clone(), x.clone()); } }
+    runner::Runner::publish(app, v);
+}
+
+fn voice_send(app: &AppHandle, m: VoiceMsg) {
+    let mut g = VOICE_TX.lock().unwrap_or_else(|e| e.into_inner());
+    if g.is_none() {
+        let (tx, rx) = std::sync::mpsc::channel::<VoiceMsg>();
+        *g = Some(tx);
+        let a = app.clone();
+        std::thread::spawn(move || voice_worker(a, rx));
+    }
+    if let Some(tx) = g.as_ref() { let _ = tx.send(m); }
+}
+
+/// One thread handles the key going down and up in order, so the microphone can never be left open or opened late.
+fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
+    let mut hold = voice::Hold::new();
+    let mut rec: Option<voice_mac::Recorder> = None;
+    let data = data_dir();
+    // The speech model is loaded while the person talks and let go after five idle minutes.
+    let mut speech: Option<voice_mac::Speech> = None;
+    let mut last_used = std::time::Instant::now();
+    loop {
+        let msg = rx.recv_timeout(Duration::from_secs(1));
+        if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
+        if speech.is_some() && hold.phase == voice::Phase::Idle && last_used.elapsed() > Duration::from_secs(300) { speech = None; }
+        // The microphone is closed by force after a minute, whatever the key is doing.
+        if hold.too_long(now() as u64) {
+            if let Some(r) = rec.take() { let _ = r.finish(); }
+            hold.cancel();
+            say_voice(&app, "error", "I stopped listening after a minute. Hold the keys and talk again.", json!({}));
+        }
+        match msg {
+            Ok(VoiceMsg::Down(t)) => {
+                if hold.down(t) != voice::Step::Start { continue; }
+                if !voice_mac::model_ready(&data) { hold.cancel(); say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); continue; }
+                match voice_mac::mic_status() {
+                    voice_mac::Mic::NotAsked => { hold.cancel(); voice_mac::ask_for_mic(); say_voice(&app, "needs_mic", "Allow the microphone in the box macOS shows, then hold the keys again.", json!({})); continue; }
+                    voice_mac::Mic::Refused => { hold.cancel(); say_voice(&app, "mic_refused", "The microphone is switched off for Companion. Turn it on in System Settings, Privacy and Security, Microphone. If it is not in the list, run this in Terminal and reopen Companion: tccutil reset Microphone dev.companion.app", json!({})); continue; }
+                    voice_mac::Mic::Allowed => {}
+                }
+                say_voice(&app, "listening", "Listening. Let go of the keys when you are done.", json!({}));
+                std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
+                match voice_mac::Recorder::start() {
+                    Ok(r) => {
+                        rec = Some(r); log("voice_listening", json!({}));
+                        if speech.is_none() { speech = voice_mac::load(&voice_mac::model_path(&data)).ok(); }   // while the person is talking
+                    }
+                    Err(e) => { hold.cancel(); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
+                }
+            }
+            Ok(VoiceMsg::Up(t)) => {
+                let (step, long_enough) = hold.up(t);
+                if step != voice::Step::Stop { continue; }
+                let Some(r) = rec.take() else { hold.finished(); continue };
+                let heard = r.finish();
+                if !long_enough { hold.finished(); say_voice(&app, "idle", "", json!({})); continue; }
+                match heard {
+                    Err(e) => { hold.finished(); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
+                    Ok((samples, ch, rate)) => {
+                        let mono = voice::to_mono_16k(&samples, ch, rate);
+                        drop(samples);
+                        match voice::heard(&mono) {
+                            voice::Heard::Blocked => { hold.finished(); say_voice(&app, "blocked", "The microphone gave me only silence. It may be switched off for Companion in System Settings, Privacy and Security, Microphone.", json!({})); }
+                            voice::Heard::Silent => { hold.finished(); say_voice(&app, "silent", "I did not hear anything. Try again a little closer.", json!({})); }
+                            voice::Heard::Sound => {
+                                say_voice(&app, "transcribing", "Understanding what you said", json!({}));
+                                let t0 = now();
+                                if speech.is_none() { speech = voice_mac::load(&voice_mac::model_path(&data)).ok(); }
+                                let out = match speech.as_ref() { Some(c) => voice_mac::transcribe_with(c, &mono).map(|t| voice::clean_transcript(&t)), None => Err("The speech model could not be loaded.".to_string()) };
+                                last_used = std::time::Instant::now();
+                                log("voice_transcribed", json!({ "ms": (now() - t0) as u64 }));   // timing only, never the words
+                                hold.finished();
+                                match out {
+                                    Ok(text) if !text.is_empty() => say_voice(&app, "heard", "", json!({ "text": text })),
+                                    Ok(_) => say_voice(&app, "silent", "I did not catch any words. Try again.", json!({})),
+                                    Err(e) => say_voice(&app, "error", &e, json!({})),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(VoiceMsg::Cancel) => { if let Some(r) = rec.take() { let _ = r.finish(); } if hold.cancel() { say_voice(&app, "idle", "", json!({})); } }
+            Err(_) => {}
+        }
+    }
+}
+
+/// Download the speech model once (the person asked for it with a button).
+#[tauri::command]
+fn voice_download(app: AppHandle) {
+    std::thread::spawn(move || {
+        let data = data_dir();
+        say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": 0 }));
+        let a = app.clone();
+        let r = voice_mac::download_model(&data, &move |got| {
+            let pct = ((got as f64 / voice_mac::MODEL_BYTES as f64) * 100.0).min(99.0) as u64;
+            say_voice(&a, "downloading", "Downloading the speech model", json!({ "percent": pct }));
+        });
+        match r {
+            Ok(()) => say_voice(&app, "model_ready", "The speech model is ready. Hold Control, Option, Command and V to talk.", json!({})),
+            Err(e) => say_voice(&app, "error", &e, json!({})),
+        }
+    });
+}
 
 fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
@@ -600,6 +719,12 @@ fn main() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
+                    // Hold to talk needs to know when the keys come up as well as down.
+                    if s == &sc_voice() {
+                        log("hotkey", json!({ "id": "V", "down": e.state == ShortcutState::Pressed }));
+                        voice_send(app, if e.state == ShortcutState::Pressed { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
+                        return;
+                    }
                     if e.state != ShortcutState::Pressed { return; }
                     if s == &k {
                         log("hotkey", json!({ "id": "K" }));
@@ -626,7 +751,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, showme_start, showme_aim, showme_clear, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, showme_start, showme_aim, showme_clear, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -677,7 +802,7 @@ fn main() {
             });
             // Another app may already own one of our hotkeys. That must never stop Companion from opening.
             let mut taken: Vec<&str> = Vec::new();
-            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help")] {
+            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk")] {
                 if app.global_shortcut().register(sc).is_err() { taken.push(what); }
             }
             if !taken.is_empty() {
