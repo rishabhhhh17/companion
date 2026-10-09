@@ -36,5 +36,12 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 ## Open [verify] items
 - None marked [verify]. The Chromium download size was not found in sources; measure it in M3, when Playwright is first downloaded (section 7).
 
+## What the build settled (hardening pass, 9 Oct 2026)
+- Proof commands run with a short allow-list environment (no keys), `CI=1` only for install and tests, and a stop signal that ends everything they started.
+- A start command that exits cleanly is a tool, not a website: the start and browser rungs are skipped, not failed.
+- The browser check answers any write request with "no content" while it presses buttons, so a button can never change a server, and a hard deadline always closes the browser.
+- The test guard also catches `|| true`, `; exit 0`, `--passWithNoTests`, commented out tests, and counts Python and Go tests. A moved test file is fine when no test is lost.
+- A second model answer of "approve, but with concerns" counts as changes needed.
+
 ## Revisit if
 The false "done" rate does not stay near zero, its target in product_research.md section 17.

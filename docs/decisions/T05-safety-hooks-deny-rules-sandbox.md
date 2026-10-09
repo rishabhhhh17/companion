@@ -37,5 +37,14 @@ The layers are in technical_research.md section 8. Rules a coding agent must nev
 - The config shape for `sandbox.network` in the SDK options (section 20, question 7).
 - `git push`, to settle in the M1 plan. The research disagrees: section 6 routes push to an approval, while section 8 lists `Bash(git push*)` as a deny rule and the M1 test expects "git push denied". Recommendation: an approval through the hook's `ask` and no deny rule, because the founder's rule says agent git changes need approval.
 
+## What the build settled (hardening pass, 9 Oct 2026)
+- The sandbox is on for macOS shell commands, `allowUnsandboxedCommands` is false, and writes are limited to the project, its caches and the package caches. The network allowlist holds the package registries and local servers only.
+- The sandbox does not cover the Read tool, so private folders (keys, browser data, mail, Keychains, Companion's own data) also have `Read(...)` deny rules. Both were checked with real Claude.
+- `settingSources` is empty, so a project cannot bring its own hooks, environment or `apiKeyHelper`. Its `CLAUDE.md` is passed as plain notes.
+- Writes to `.git`, `.claude` and `.companion` are always refused, and shell commands are read through `sh -c`, `env`, `xargs` and similar before judging them.
+- Account variables (`ANTHROPIC_*`, cloud and OAuth ones) and injection variables (`NODE_OPTIONS`, `DYLD_*`, `BASH_ENV`) never reach Claude Code or what it starts.
+- `ToolSearch` is allowed (research needs it to reach web search).
+- Known limit: installs inside the sandbox need Node 20 or newer, because Node 18 cannot reach the sandbox proxy.
+
 ## Revisit if
 An SDK upgrade changes the permission order or hook precedence and the M1 hook tests fail. Upgrades happen only on a branch with the full suite (pitfall 28).
