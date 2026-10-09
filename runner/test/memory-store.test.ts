@@ -75,6 +75,16 @@ describe("forgetting, editing, erasing", () => {
   });
 });
 
+describe("forgotten stays forgotten", () => {
+  test("a forgotten line is not learned again, but erase all starts fresh", () => {
+    const { m } = rig(); const a = m.add("project", "Uses React", "package.json", NOW); if (!a.ok) throw 0;
+    m.forget("project", a.entry.id);
+    expect(m.add("project", "Uses React", "package.json", NOW).ok).toBe(false);
+    m.eraseAll("project");
+    expect(m.add("project", "Uses React", "package.json", NOW).ok).toBe(true);
+  });
+});
+
 describe("pausing", () => {
   test("while paused nothing new is learned, and what is there stays", () => {
     const { m } = rig(); m.add("profile", "Prefers short answers", "a", NOW);

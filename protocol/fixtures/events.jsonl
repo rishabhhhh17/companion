@@ -24,3 +24,7 @@
 {"v":1,"id":"e37","type":"research.done","agent":"researcher-1","title":"Taking payments","answer":"Use a hosted checkout page.","notes":[{"text":"Checkout is a hosted payment page.","source":"https://docs.stripe.com/payments/checkout"}],"file":".companion/research/2026-10-09-taking-payments.md"}
 {"v":1,"id":"e38","type":"ship.gates","project":"p_9f2c","canShip":false,"gates":[{"id":"checked","label":"The work was checked","status":"passed","detail":"The checks passed on this exact version."},{"id":"secrets","label":"No secrets would be published","status":"blocked","detail":"Found a Stripe live key in src/pay.js (line 3).","findings":["Found a Stripe live key in src/pay.js (line 3)."]}],"blockedBy":["secrets"],"needsYou":[],"confirmed":[],"allowedCount":0}
 {"v":1,"id":"e39","type":"runner.pong"}
+{"v":1,"id":"e40","type":"memory.state","project":"p_9f2c","paused":false,"projectLines":[{"id":"m_1a2b3c4d","text":"Uses React and Vite","source":"package.json","date":"2026-10-09"}],"profileLines":[],"problems":[]}
+{"v":1,"id":"e41","type":"memory.saved","project":"p_9f2c","scope":"project","line":"m_1a2b3c4d","text":"Uses React and Vite","source":"package.json"}
+{"v":1,"id":"e42","type":"memory.refused","project":"p_9f2c","reason":"Health is never saved."}
+{"v":1,"id":"e43","type":"memory.exported","project":"p_9f2c","text":"# Everything Companion remembers"}

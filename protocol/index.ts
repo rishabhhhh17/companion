@@ -8,7 +8,7 @@ export type Envelope = { v: 1; id: string; ts?: string; project?: string; agent?
 
 export type AgentStart = Envelope & {
   type: "agent.start"; project: string; agent: string; mode: "drive" | "rescue" | "research" | "ship";
-  prompt: string; model: string; budgetUsd: number;
+  prompt: string; model: string; budgetUsd: number; offTheRecord?: boolean;
 };
 export type AgentSend = Envelope & { type: "agent.send"; agent: string; text: string };
 export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string };
@@ -24,13 +24,20 @@ export type RunnerPing = Envelope & { type: "runner.ping" };
 export type ShipCheck = Envelope & { type: "ship.check"; project: string; runChecks?: boolean; confirm?: string[] };
 export type ResearchAsk = Envelope & { type: "research.ask"; project: string; agent: string; question: string; model: string; budgetUsd: number };
 export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number };
-export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number };
+export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DriveApprove = Envelope & { type: "drive.approve"; agent: string; steps: string[] };
 export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice: "different" | "stop" };
 export type DrivePause = Envelope & { type: "drive.pause"; agent: string; reason: "editor" | "terminal" | "you" };
 export type DriveResume = Envelope & { type: "drive.resume"; agent: string };
 export type TasksList = Envelope & { type: "tasks.list"; project: string };
-export type Command = RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type MemoryScope = "project" | "profile";
+export type MemoryList = Envelope & { type: "memory.list"; project: string };
+export type MemoryForget = Envelope & { type: "memory.forget"; project: string; scope: MemoryScope; line: string };
+export type MemoryEdit = Envelope & { type: "memory.edit"; project: string; scope: MemoryScope; line: string; text: string };
+export type MemoryPause = Envelope & { type: "memory.pause"; project: string; paused: boolean };
+export type MemoryErase = Envelope & { type: "memory.erase"; project: string; scope: MemoryScope };
+export type MemoryExport = Envelope & { type: "memory.export"; project: string };
+export type Command = MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -95,6 +102,12 @@ const COMMANDS: Record<string, Check[]> = {
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
   "runner.ping": [],
+  "memory.list": [str("project")],
+  "memory.forget": [str("project"), oneOf("scope", ["project", "profile"]), str("line")],
+  "memory.edit": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text")],
+  "memory.pause": [str("project"), bool("paused")],
+  "memory.erase": [str("project"), oneOf("scope", ["project", "profile"])],
+  "memory.export": [str("project")],
   "ship.check": [str("project")],
   "research.ask": [str("project"), str("agent"), str("question"), str("model"), num("budgetUsd")],
   "rescue.diagnose": [str("project"), str("agent"), str("model"), num("budgetUsd")],
@@ -115,6 +128,10 @@ const EVENTS: Record<string, Check[]> = {
   "runner.hello": [str("runnerVersion"), str("sdk")],
   "tasks.list": [str("project"), list("tasks")],
   "runner.pong": [],
+  "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
+  "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
+  "memory.refused": [str("project"), str("reason")],
+  "memory.exported": [str("project"), str("text")],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), str("file")],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],

@@ -17,3 +17,10 @@
 {"v":1,"id":"c17","type":"research.ask","project":"p_9f2c","agent":"researcher-1","question":"How do I take payments on my site?","model":"claude-sonnet-5-5","budgetUsd":2}
 {"v":1,"id":"c18","type":"ship.check","project":"p_9f2c","runChecks":true}
 {"v":1,"id":"c19","type":"runner.ping"}
+{"v":1,"id":"c20","type":"memory.list","project":"p_9f2c"}
+{"v":1,"id":"c21","type":"memory.forget","project":"p_9f2c","scope":"project","line":"m_1a2b3c4d"}
+{"v":1,"id":"c22","type":"memory.edit","project":"p_9f2c","scope":"profile","line":"m_1a2b3c4d","text":"Prefers short answers"}
+{"v":1,"id":"c23","type":"memory.pause","project":"p_9f2c","paused":true}
+{"v":1,"id":"c24","type":"memory.erase","project":"p_9f2c","scope":"profile"}
+{"v":1,"id":"c25","type":"memory.export","project":"p_9f2c"}
+{"v":1,"id":"c26","type":"agent.start","project":"p_9f2c","agent":"builder-1","mode":"drive","prompt":"Add a contact page","model":"claude-sonnet-5-5","budgetUsd":1,"offTheRecord":true}

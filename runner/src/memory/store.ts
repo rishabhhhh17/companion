@@ -61,11 +61,19 @@ export class MemoryStore {
     return { entries: raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => r.entry), problems: problem ? [problem] : [] };
   }
 
-  isPaused(): boolean { try { return JSON.parse(readFileSync(this.settings(), "utf8")).paused === true; } catch { return false; } }
-  setPaused(paused: boolean) {
-    mkdirSync(this.o.profileDir, { recursive: true });
-    writeFileSync(this.settings(), JSON.stringify({ paused }), { mode: 0o600 });
+  private prefs(): { paused: boolean; forgotten: Record<string, string[]> } {
+    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {} }; } catch { return { paused: false, forgotten: {} }; }
   }
+  private savePrefs(p: { paused: boolean; forgotten: Record<string, string[]> }) {
+    mkdirSync(this.o.profileDir, { recursive: true });
+    const f = this.settings(), tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
+    writeFileSync(tmp, JSON.stringify(p), { mode: 0o600 });
+    renameSync(tmp, f);
+  }
+  // A line that was forgotten stays forgotten: it is not learned again from the same file or the same words.
+  private key(scope: Scope) { return scope === "profile" ? "profile" : "project:" + createHash("sha256").update(this.o.project).digest("hex").slice(0, 12); }
+  isPaused(): boolean { return this.prefs().paused; }
+  setPaused(paused: boolean) { this.savePrefs({ ...this.prefs(), paused }); }
 
   add(scope: Scope, text: string, source: string, now: Date = new Date()): AddResult {
     if (this.isPaused()) return { ok: false, reason: "Learning is paused." };
@@ -75,6 +83,7 @@ export class MemoryStore {
     if (/ — .+, \d{4}-\d{2}-\d{2}|\{m_[a-z0-9]+\}/.test(t) || t.startsWith("- ")) return { ok: false, reason: "That text has a format Companion uses itself." };
     const { raw, problem } = this.read(scope);
     if (problem) return { ok: false, reason: problem };
+    if ((this.prefs().forgotten[this.key(scope)] ?? []).includes(idFor(t))) return { ok: false, reason: "You asked me to forget that." };
     const dup = raw.find((r) => r.kind === "entry" && r.entry.text.toLowerCase() === t.toLowerCase());
     if (dup && dup.kind === "entry") return { ok: true, entry: dup.entry };
     const entry: Entry = { id: idFor(t), text: t, source: src, date: now.toISOString().slice(0, 10) };
@@ -88,8 +97,11 @@ export class MemoryStore {
     if (problem) return { ok: false, reason: problem };
     const at = raw.findIndex((r) => r.kind === "entry" && r.entry.id === id);
     if (at < 0) return { ok: false, reason: "That line is not in memory." };
+    const gone = (raw[at] as Extract<Raw, { kind: "entry" }>).entry.id;
     raw.splice(at, 1);
     this.write(scope, raw);
+    const p = this.prefs(), k = this.key(scope);
+    this.savePrefs({ ...p, forgotten: { ...p.forgotten, [k]: [...new Set([...(p.forgotten[k] ?? []), gone])].slice(-500) } });
     return { ok: true };
   }
 
@@ -106,7 +118,12 @@ export class MemoryStore {
   }
 
   eraseAll(scope: Scope): Plain {
-    try { rmSync(this.file(scope), { force: true }); return { ok: true }; } catch (e) { return { ok: false, reason: `Could not erase (${(e as Error).message}).` }; }
+    try {
+      rmSync(this.file(scope), { force: true });
+      const p = this.prefs(), k = this.key(scope);
+      if (p.forgotten[k]) { const { [k]: _gone, ...rest } = p.forgotten; this.savePrefs({ ...p, forgotten: rest }); }
+      return { ok: true };
+    } catch (e) { return { ok: false, reason: `Could not erase (${(e as Error).message}).` }; }
   }
 
   // What an agent is told, newest first within each part, the profile ahead of the project, cut to a number of words.
