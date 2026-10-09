@@ -199,6 +199,23 @@ await scenario("memory", only, async (note) => {
   return ok && !/Built with/.test(mem2) && !/Built with/.test(agents2);
 });
 
+await scenario("explain", only, async (note) => {
+  const dir = tmp("expl"); put(dir, { "index.html": "<h1>shop</h1>" });
+  const r = new Real(dir); if (!await r.ready()) return false;
+  r.send({ v: 1, id: "s1", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Add a paragraph under the heading in index.html that says the shop opens at nine. Then stop.", model: MODEL, budgetUsd: 0.3 });
+  const rec = await r.until((e) => e.type === "receipt", 150_000);
+  if (!rec) { note("no receipt in time"); r.stop(); return false; }
+  totalUsd += rec.usdEstimate ?? 0;
+  const ex = await r.until((e) => e.type === "explain.ready", 60_000);
+  if (!ex) { note("no explanation arrived"); r.stop(); return false; }
+  note(`bullets: ${JSON.stringify(ex.bullets)}; question: ${JSON.stringify(ex.question ?? null)}; cost = ${ex.usdEstimate}`);
+  r.send({ v: 1, id: "rc", type: "recap.ask", project: dir, since: new Date(Date.now() - 3600_000).toISOString() });
+  const rc = await r.until((e) => e.type === "recap.ready", 5000);
+  note(`recap: ${JSON.stringify(rc?.lines)}`);
+  r.stop();
+  return ex.bullets.length >= 1 && ex.bullets.length <= 3 && (rc?.lines?.length ?? 0) === 3;
+});
+
 await scenario("research", only, async (note) => {
   const dir = tmp("research"); put(dir, { "index.html": "<h1>site</h1>" });
   const r = new Real(dir); if (!await r.ready()) return false;

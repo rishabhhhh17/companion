@@ -189,13 +189,13 @@ export class AgentRunner {
       const ac = new AbortController();
       const stop = () => ac.abort();
       signal.addEventListener("abort", stop, { once: true });
-      const timer = setTimeout(stop, 25_000);
+      const timer = setTimeout(stop, 45_000);
       try {
         const r = await this.o.explainer(explainRequest(input), ac.signal);
         const e = parseExplain(r.text);
         if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), usdEstimate: r.costUsd } as never);
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
-    } catch { /* no explanation is better than a broken task */ }
+    } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
   private memoryState(project: string) {
     const m = this.memoryFor(project);
