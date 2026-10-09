@@ -299,6 +299,15 @@ export function driveWords(m: Model): string | null {
   return `Stopped after ${f.completed} of ${f.total} steps: ${why}`;
 }
 
+// What the character looks like right now. Listening to you and looking at your screen are shown even though no agent is working.
+export function visualState(m: Model): CharacterState {
+  if (m.voice?.stage === "listening") return "listening";
+  if (m.showme && ["looking", "thinking"].includes(m.showme.stage)) return "checking";
+  if (m.voice?.stage === "transcribing") return "thinking";
+  if (m.showme && ["pointing", "pointing_roughly"].includes(m.showme.stage)) return "needsYou";
+  return m.character;
+}
+
 // The word under the character and at the top of the card. A failed check is "Not done", never a crash.
 export function characterWords(m: Model): string {
   if (m.voice?.stage === "listening") return "Listening";

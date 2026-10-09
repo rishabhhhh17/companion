@@ -261,3 +261,11 @@ describe("a line the person chooses themselves", () => {
     expect(readFileSync(join(t.data, "profile.md"), "utf8")).not.toContain("debt");
   });
 });
+
+describe("a question that only reads the project does not create files in it", () => {
+  test("research learns what it knows into memory but writes no AGENTS.md or CLAUDE.md", async () => {
+    const t = setup([[say('{"title":"T","answer":"A","notes":[{"text":"n","source":"https://example.com/x"}]}')]]);
+    await t.cmd({ type: "research.ask", agent: "r1", question: "what is a dialog element", model: "m", budgetUsd: 1 });
+    expect(existsSync(join(t.project, "AGENTS.md"))).toBe(false); expect(existsSync(join(t.project, "CLAUDE.md"))).toBe(false);
+  });
+});

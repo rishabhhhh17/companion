@@ -185,14 +185,24 @@ function Card() {
       const ev = e.payload as { type?: string; stage?: string; text?: string };
       if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
         if (box.current) box.current.value = ev.text;
-        if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
+        if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (box.current) box.current.value = ""; }
+        else if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
         else setTimeout(() => box.current?.focus(), 30);
         dispatch({ type: "ui.voiceClosed" });
       }
     });
     return () => { off.then((f) => f()); };
   }, [autoSend]);
+  // Pressed from the keyboard: the next question typed or spoken is about the screen.
+  const [askMode, setAskMode] = useState<"task" | "showme">("task");
+  const askModeRef = useRef(askMode); askModeRef.current = askMode;
+  const showMeRef = useRef<(q: string, g: string, s: string[]) => void>(() => {});
+  useEffect(() => {
+    const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
+    return () => { off.then((f) => f()); };
+  }, []);
   const showMe = (question: string, goal: string, steps: string[]) => { setWalk({ goal, steps }); void invoke("showme_start", { question }); };
+  showMeRef.current = showMe;
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
@@ -248,9 +258,10 @@ function Card() {
         )}
       </div>
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
+      {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
-          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); submit(); } }} />
+          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); setAskMode("task"); if (box.current) box.current.value = ""; } } else submit(); } }} />
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
       {!working && (

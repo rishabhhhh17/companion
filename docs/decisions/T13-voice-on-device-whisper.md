@@ -32,6 +32,12 @@ Details are in technical_research.md section 15. Rules a coding agent must never
 - Speaking back is off by default; the opt in uses `AVSpeechSynthesizer` system voices.
 - Spike (f) passes when hold to talk gives text in under about one second after release for a short sentence with `base` (section 18).
 
+## Settled by the build (9 Oct 2026)
+- whisper-rs 0.16.0 with Metal builds and runs on this Mac (macOS 27, Apple Silicon). The base model (147,951,465 bytes, SHA-256 60ed5bc3...2efe, checked against Hugging Face's own record) is downloaded once into Companion's folder by the Mac's own `curl` and kept only if size and fingerprint match.
+- A spoken sentence made with the Mac's `say` came back word for word. Loading the model takes a few seconds, so it is loaded while the person is still holding the keys; transcribing a 3 second sentence then takes about 0.18 seconds (target was about 1 second). The model is let go after five idle minutes.
+- The global shortcut plugin reports key down and key up, so hold to talk needs no permission beyond the microphone. Default keys: Control, Option, Command and V.
+- Still to do by a person: the microphone permission prompt and a real voice through a real microphone.
+
 ## Open [verify] items
 - **[verify]** the release event still fires when the user lets go of the modifier before the main key.
 - **[verify]** whether `SpeechTranscriber` supports Hindi on macOS 27; print `supportedLocales` on the founder's Mac.

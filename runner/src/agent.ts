@@ -146,11 +146,11 @@ export class AgentRunner {
     return m;
   }
   // Save lines, and tell the app about each new one so it can show a toast with Undo. Memory never gets in a task's way.
-  private remember(project: string, items: { scope: Scope; text: string; source: string }[]) {
+  private remember(project: string, items: { scope: Scope; text: string; source: string }[], share = true) {
     if (!this.o.memoryDir || items.length === 0) return;
-    this.ownWrite(() => this.rememberNow(project, items));
+    this.ownWrite(() => this.rememberNow(project, items, share));
   }
-  private rememberNow(project: string, items: { scope: Scope; text: string; source: string }[]) {
+  private rememberNow(project: string, items: { scope: Scope; text: string; source: string }[], share: boolean) {
     try {
       const m = this.memoryFor(project);
       if (!m) return;
@@ -163,7 +163,8 @@ export class AgentRunner {
           this.emit({ type: "memory.saved", project, scope: i.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never);
         }
       }
-      if (newProjectLines) this.syncShared(project, false);
+      // The shared files are written by work that changes the project, not by a question that only reads it.
+      if (newProjectLines && share) this.syncShared(project, false);
     } catch { /* a memory problem is not worth stopping a task for */ }
   }
   // Keeps the shared AGENTS.md in step with project memory. A person's own files are only touched after a yes.
@@ -181,10 +182,10 @@ export class AgentRunner {
     } catch { /* sharing is never worth stopping a task for */ }
   }
   // What an agent is told. Nothing at all for an off the record task.
-  private learnAndRecall(project: string, said: string, offTheRecord: boolean | undefined): string {
+  private learnAndRecall(project: string, said: string, offTheRecord: boolean | undefined, share = true): string {
     if (offTheRecord) return "";
     try {
-      this.remember(project, [...projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })), ...askSignals(said)]);
+      this.remember(project, [...projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })), ...askSignals(said)], share);
       return this.memoryFor(project)?.forAgent() ?? "";
     } catch { return ""; }
   }
@@ -514,7 +515,7 @@ export class AgentRunner {
     if (room <= 0) { this.dailyLimit(spec.agent); return; }
     const budget = Math.min(spec.budgetUsd, room);
     const abort = new AbortController();
-    const recalled = this.learnAndRecall(spec.project, spec.said ?? "", spec.offTheRecord);
+    const recalled = this.learnAndRecall(spec.project, spec.said ?? "", spec.offTheRecord, false);
     this.sessions.set(spec.agent, { agent: spec.agent, abort, pending: new Map() });
     this.driving.add(spec.agent);
     this.driveStop.delete(spec.agent);
