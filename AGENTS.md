@@ -81,7 +81,7 @@ docs/
 spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS (a-panel exists)
 scripts/             (planned, M0) build helpers: copy and verify Anthropic's binary, signing checks
 protocol/            JSON lines protocol v1: types, parser, shared fixtures (M1, started)
-runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log (M1, done); proof, ship, memory come later
+runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log (M1, done); proof, ship, Drive, Rescue, Research and memory (project memory, profile, shared AGENTS.md) live in it
 app/src-tauri/       (planned, M1 for the runner supervisor and Keychain; the rest from M2) Rust shell: windows, hotkeys, assist, voice, watch, secrets, permissions
 app/                 Tauri 2 + React shell: native panels, runner link, character, cards, ask box, docking, tray (M2, started); memory page later
 app/vendor/          (planned, M2) Anthropic's Claude binary, copied from the pinned SDK package at build time; never committed

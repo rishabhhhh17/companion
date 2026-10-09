@@ -158,6 +158,47 @@ await scenario("rescue", only, async (note) => {
   return mentions && !!done && done.status === "done" && proofs.at(-1) === "passed";
 });
 
+await scenario("memory", only, async (note) => {
+  const dir = tmp("mem"); put(dir, { "package.json": JSON.stringify({ name: "shop", dependencies: { react: "18.0.0" } }) });
+  const r = new Real(dir); if (!await r.ready()) return false;
+  r.send({ v: 1, id: "s1", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Create a file hello.txt containing the word hi, and keep your answer shorter. Then stop.", model: MODEL, budgetUsd: 0.3 });
+  const rec = await r.until((e) => e.type === "receipt", 150_000);
+  if (!rec) { note(`no receipt in time; errors: ${JSON.stringify(r.of("protocol.error").map((e) => e.reason))}; states: ${JSON.stringify(r.of("agent.state").map((e) => e.state))}; tools: ${JSON.stringify(r.of("agent.tool").map((e) => `${e.tool}:${e.outcome}`))}`); r.stop(); return false; }
+  totalUsd += rec.usdEstimate ?? 0;
+  const mem = existsSync(join(dir, ".companion/project.md")) ? readFileSync(join(dir, ".companion/project.md"), "utf8") : "";
+  const prof = existsSync(join(r.data, "profile.md")) ? readFileSync(join(r.data, "profile.md"), "utf8") : "";
+  const agents = existsSync(join(dir, "AGENTS.md")) ? readFileSync(join(dir, "AGENTS.md"), "utf8") : "";
+  const claude = existsSync(join(dir, "CLAUDE.md")) ? readFileSync(join(dir, "CLAUDE.md"), "utf8") : "";
+  note(`project memory learned the stack = ${/Built with React/.test(mem)}; profile learned the preference = ${/Prefers short answers/.test(prof)}; saved events = ${r.of("memory.saved").length}`);
+  note(`AGENTS.md has the facts = ${/Built with React/.test(agents)}; no profile in it = ${!/short answers/.test(agents)}; CLAUDE.md imports it = ${claude.startsWith("@AGENTS.md")}`);
+  let ok = /Built with React/.test(mem) && /Prefers short answers/.test(prof) && /Built with React/.test(agents) && !/short answers/.test(agents) && claude.startsWith("@AGENTS.md") && rec.proof !== undefined;
+  // Off the record: nothing read, nothing written, nothing kept in the log or the snapshot label.
+  const before = readFileSync(join(dir, ".companion/project.md"), "utf8");
+  const n0 = r.events.length;
+  r.send({ v: 1, id: "s2", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Create a file private.txt containing ok. My brother Tomas is secretly selling the shop, keep it shorter. Then stop.", model: MODEL, budgetUsd: 0.3, offTheRecord: true });
+  const rec2 = await r.until((e) => e.type === "receipt", 150_000, n0);
+  if (!rec2) { note("off the record task never finished"); r.stop(); return false; }
+  totalUsd += rec2.usdEstimate ?? 0;
+  const after = readFileSync(join(dir, ".companion/project.md"), "utf8");
+  const cp = r.events.slice(n0).find((e) => e.type === "checkpoint.created");
+  r.send({ v: 1, id: "t", type: "tasks.list", project: dir });
+  const tl = await r.until((e) => e.type === "tasks.list", 5000, n0);
+  const logText = JSON.stringify(tl?.tasks ?? []);
+  note(`off the record: memory unchanged = ${before === after}; new lines announced = ${r.events.slice(n0).filter((e) => e.type === "memory.saved").length}; snapshot label = "${cp?.label}"; log mentions Tomas = ${/Tomas/.test(logText)}`);
+  ok = ok && before === after && !/Tomas/.test(logText) && !/Tomas/.test(String(cp?.label)) && r.events.slice(n0).every((e) => e.type !== "memory.saved");
+  // Forget a line: it leaves the project memory and the shared file, and stays out.
+  r.send({ v: 1, id: "l", type: "memory.list", project: dir });
+  const st = await r.until((e) => e.type === "memory.state", 5000, n0);
+  const line = st?.projectLines?.find((l: any) => /^Built with/.test(l.text));
+  if (!line) { note("no line to forget"); r.stop(); return false; }
+  r.send({ v: 1, id: "f", type: "memory.forget", project: dir, scope: "project", line: line.id });
+  await Bun.sleep(800);
+  const agents2 = readFileSync(join(dir, "AGENTS.md"), "utf8"), mem2 = readFileSync(join(dir, ".companion/project.md"), "utf8");
+  note(`after forgetting: gone from memory = ${!/Built with/.test(mem2)}; gone from AGENTS.md = ${!/Built with/.test(agents2)}`);
+  r.stop();
+  return ok && !/Built with/.test(mem2) && !/Built with/.test(agents2);
+});
+
 await scenario("research", only, async (note) => {
   const dir = tmp("research"); put(dir, { "index.html": "<h1>site</h1>" });
   const r = new Real(dir); if (!await r.ready()) return false;

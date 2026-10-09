@@ -2,6 +2,20 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Shared memory, part one: 9 Oct 2026
+
+**Companion now remembers, and you can see and change all of it.**
+
+- **Project memory** (`.companion/project.md` in your project): what it is built with, how to start and check it, where it deploys, and the goal of a plan you approved. Filled in from your project's files and your approved plans, never a form. Every line says where it came from and when.
+- **Your profile** (a private file in Companion's own folder): how you like to work. It learns only from what you say inside Companion ("shorter", "simpler words", "never touch the auth folder", "use Tailwind"). Never from your screen, other apps or your voice.
+- **Agents and Prompt help start with it.** What is remembered is added to every task, plan, rescue, research and Prompt help, as background that your request always outranks. Claude Code's own hidden memory stays off.
+- **What I know** button: read every line, Edit it, Forget it (it will not be learned again), stop learning for a while, erase a list, or see everything as text. A small note with Undo appears for ten seconds when something new is remembered.
+- **Off the record:** a tick box for one task. It reads no memory, writes none, and the history and snapshot name say only "Off the record task".
+- **Never remembered, in code:** health, money, relationships, moods, keys and passwords, contact details. Tested with many examples, including sneaky wording. When in doubt it skips the line.
+- **A shared `AGENTS.md`** (plus a `CLAUDE.md` that imports it) so Cursor, Codex, Copilot, VS Code, Windsurf, Zed and Claude Code all start from the same project facts and house rules. Project facts only: nothing personal. If you already have these files, Companion asks first, then adds one clearly marked block at the end that you can remove with one button. Forgetting a line removes it there too.
+- Checked with real Claude on the test login (about 5 cents): the facts, the preference, the shared files, an off the record task that left no trace, and forgetting a line.
+- Next in this milestone: Explain and Where was I.
+
 ## Hardening pass: 9 Oct 2026
 
 **Before more features: making what exists hold up on other people's Macs.** No new buttons. Everything below is covered by tests (runner 1018, shell 99, pages 126), and the real Claude run of Build mode passed before the safety changes and needs one more run.

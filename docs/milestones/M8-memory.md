@@ -1,6 +1,6 @@
 # M8: Shared memory, Explain and Where was I. Plan for approval
 
-**Status:** approved by the founder on 9 Oct 2026, with memory inside the project and the shared AGENTS.md written. M8a first, then M8b. **Written:** 9 Oct 2026. **Source:** technical doc section 11 and the M8 row in section 18; product doc section 8 (Grow with you) and section 10 (what Companion can see); decisions F15 (shared memory is third in the launch order, logic first), T14 (plain files plus SQLite), T10 (the fast lane), rule 15 in `AGENTS.md`. The onboarding questionnaire and first run demo are left out on purpose (F15 says onboarding comes later).
+**Status:** approved by the founder on 9 Oct 2026, with memory inside the project and the shared AGENTS.md written. M8a first, then M8b. **M8a built and checked with real Claude on 9 Oct 2026** (branch m8a/memory): memory files, the filter, learning, injection into agents and Prompt help, the What I know page, off the record, saved goals, and the shared AGENTS.md. **Left in M8a:** the hands on try out with the founder. **M8b (Explain, Where was I) not started.** **Written:** 9 Oct 2026. **Source:** technical doc section 11 and the M8 row in section 18; product doc section 8 (Grow with you) and section 10 (what Companion can see); decisions F15 (shared memory is third in the launch order, logic first), T14 (plain files plus SQLite), T10 (the fast lane), rule 15 in `AGENTS.md`. The onboarding questionnaire and first run demo are left out on purpose (F15 says onboarding comes later).
 
 ## What M8 is
 

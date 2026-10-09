@@ -28,6 +28,12 @@ Details are in technical_research.md section 11. Rules a coding agent must never
 - The SQLite task log sits in Application Support and holds tasks, timeline events (minus off the record content), decisions, house rules, approvals, Loop Closer items, Pattern Catcher candidates and saved tasks. Never synced in v1; the privacy page has "delete all" (section 11).
 - M1 check: task log rows are written for every task (section 18). M8 checks the memory page: every line shows its source and can be forgotten, and off the record tasks write nothing (section 18).
 
+## What the build settled (M8a, 9 Oct 2026)
+- Project memory is `.companion/project.md` inside the project, and the profile is `profile.md` in Companion's data folder (mode 0600). Each line is `- text — source, date {id}`; a line typed by hand is read as "you wrote it" and kept when the file is rewritten.
+- Every line passes a filter in code before it is written (health, money, relationships, moods, secrets, contact details); strict wins ties. A forgotten line is remembered only as an id, so it is not learned again.
+- The founder chose (9 Oct 2026) to write the shared `AGENTS.md` and a `CLAUDE.md` that imports it. Project facts and house rules only, never the profile. A person's existing files are never changed without a yes, and then only one marked block is added or removed.
+- Off the record tasks read and write no memory, and the task log and snapshot name hold only "Off the record task".
+
 ## Open [verify] items
 - None.
 
