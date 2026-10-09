@@ -213,7 +213,7 @@ export interface VisionLike { locate(req: { image: Image; question: string; ocr:
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
-  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string }) {}
+  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
@@ -277,14 +277,19 @@ export class AssistService {
     if (!img) return this.emit({ type: "assist.error", req: cmd.req, reason: "The screenshot was not found or has expired" });
     const ac = new AbortController();
     this.active.set(cmd.req, ac);
+    // A question about the screen that has not been answered in half a minute is not coming; the person is told, not left waiting.
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
+    let timedOut = false;
     try {
-      const r = await this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [] }, ac.signal);
-      if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
+      const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [] }, ac.signal),
+        new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
+      if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : "cancelled" });
       if (!r.point) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
       this.emit({ type: "assist.point", req: cmd.req, step: 1, ...r.point });
     } catch (e) {
-      this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
+      this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
     } finally {
+      clearTimeout(timer);
       this.o.images.delete(cmd.image.ref);   // the screenshot is dropped as soon as it has been used
       this.active.delete(cmd.req);
     }

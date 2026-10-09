@@ -26,6 +26,16 @@ describe("Stop everything and the screenshot", () => {
   });
 });
 
+describe("a question about the screen that never gets answered", () => {
+  test("ends with a plain message, and the screenshot is dropped", async () => {
+    const events: Event[] = [], images = new ImageStore();
+    const svc = new AssistService({ fast: { run: async () => ({ text: "", costUsd: 0 }) }, vision: { locate: () => new Promise<any>(() => {}) } as never, images, emit: (e) => events.push(e), locateTimeoutMs: 100 });
+    await svc.handle({ v: 1, id: "i", type: "assist.image", ref: "s1", mediaType: "image/jpeg", base64: "/9j/4AAQ", w: 100, h: 100 } as never);
+    await svc.handle({ v: 1, id: "l", type: "assist.locate", req: "r1", question: "q", image: { ref: "s1", w: 100, h: 100 } } as never);
+    expect((events.at(-1) as any).reason).toMatch(/took too long/); expect(images.get("s1")).toBeUndefined();
+  });
+});
+
 describe("a screenshot sent from the Mac side", () => {
   test("the protocol accepts a jpeg or png and refuses anything else", () => {
     const base = { v: 1, id: "x", type: "assist.image", ref: "s", base64: "AAAA", w: 10, h: 10 };
