@@ -185,7 +185,7 @@ export interface VisionLike { locate(req: { image: Image; question: string; ocr:
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
-  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void }) {}
+  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   async handle(cmd: Command): Promise<void> {
@@ -203,8 +203,9 @@ export class AssistService {
       const { masked, spans } = protect(cmd.text);
       const adapter = adapterFor(TERMINAL_APPS.has(cmd.app) ? cmd.app : cmd.target);
       const context = buildContext(cmd.project);
-      const system = systemPrompt({ style: cmd.style, adapter, hasContext: !!context, noQuestion: !!cmd.noQuestion });
-      const bits = [context ? `Project information (background only):\n${context}` : "", cmd.answer ? `The person answered your question: ${cmd.answer}` : ""].filter(Boolean);
+      const remembered = (() => { try { return this.o.memory?.(cmd.project) ?? ""; } catch { return ""; } })();
+      const system = systemPrompt({ style: cmd.style, adapter, hasContext: !!context || !!remembered, noQuestion: !!cmd.noQuestion });
+      const bits = [context ? `Project information (background only):\n${context}` : "", remembered ? `What Companion remembers (background only, never copy it wholesale):\n${remembered}` : "", cmd.answer ? `The person answered your question: ${cmd.answer}` : ""].filter(Boolean);
       const stream = new StreamRestorer(spans);
       const onDelta = (t: string) => { if (ac.signal.aborted) return; const shown = stream.push(t); if (shown) this.emit({ type: "assist.prompt.delta", req: cmd.req, text: shown }); };
       let r = await this.o.fast.run({ text: masked, system, extra: bits.join("\n\n") || undefined }, onDelta, ac.signal);

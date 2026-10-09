@@ -1,0 +1,168 @@
+// Companion's memory: plain markdown files a person can read and edit. Every line has a source and a date.
+// The project's file lives in the project (.companion/project.md); the profile lives in Companion's own folder.
+import { createHash, randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { screenLine } from "./filter.ts";
+
+export type Scope = "project" | "profile";
+export type Entry = { id: string; text: string; source: string; date: string };
+export type ListResult = { entries: Entry[]; problems: string[] };
+export type AddResult = { ok: true; entry: Entry } | { ok: false; reason: string };
+export type Plain = { ok: true } | { ok: false; reason: string };
+
+const PROFILE_CAP = 200;
+const HEAD: Record<Scope, string> = {
+  project: "# What Companion knows about this project\n\nCompanion keeps this file. You can read it, edit it, or delete any line. Each line says where it came from.\n",
+  profile: "# How you like to work\n\nCompanion keeps this file. You can read it, edit it, or delete any line. Each line says where it came from.\n",
+};
+const LINE = /^- (.+?) — (.+?), (\d{4}-\d{2}-\d{2})(?: \{(m_[a-z0-9]{6,})\})?\s*$/;
+const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
+const idFor = (text: string) => "m_" + createHash("sha256").update(text.toLowerCase()).digest("hex").slice(0, 8);
+
+type Prefs = { paused: boolean; forgotten: Record<string, string[]>; agents: Record<string, "approved" | "declined"> };
+type Raw = { kind: "other"; text: string } | { kind: "entry"; entry: Entry; hand: boolean };
+
+export class MemoryStore {
+  constructor(private o: { project: string; profileDir: string }) {}
+
+  private file(scope: Scope) { return scope === "project" ? join(this.o.project, ".companion", "project.md") : join(this.o.profileDir, "profile.md"); }
+  private settings() { return join(this.o.profileDir, "memory-settings.json"); }
+
+  private read(scope: Scope): { raw: Raw[]; problem?: string } {
+    if (scope === "project" && !this.o.project) return { raw: [] };   // no project given: only the profile exists
+    const f = this.file(scope);
+    if (!existsSync(f)) return { raw: [] };
+    let text: string;
+    try { text = readFileSync(f, "utf8"); } catch (e) { return { raw: [], problem: `The memory file could not be read (${(e as Error).code ?? "error"}), so it was left alone.` }; }
+    const raw: Raw[] = text.split("\n").map((line): Raw => {
+      const m = LINE.exec(line);
+      if (m) return { kind: "entry", entry: { id: m[4] ?? idFor(m[1]), text: m[1], source: m[2], date: m[3] }, hand: false };
+      const bullet = /^- (.+?)\s*$/.exec(line);
+      if (bullet) return { kind: "entry", entry: { id: idFor(bullet[1]), text: bullet[1], source: "you wrote it", date: "" }, hand: true };
+      return { kind: "other", text: line };
+    });
+    while (raw.length && raw[raw.length - 1].kind === "other" && (raw[raw.length - 1] as { text: string }).text === "") raw.pop();
+    return { raw };
+  }
+
+  private write(scope: Scope, raw: Raw[]) {
+    const f = this.file(scope);
+    const body = raw.map((r) => (r.kind === "other" ? r.text : r.hand ? `- ${r.entry.text}` : `- ${r.entry.text} — ${r.entry.source}, ${r.entry.date} {${r.entry.id}}`)).join("\n");
+    const hasHead = raw.some((r) => r.kind === "other" && r.text.startsWith("# "));
+    const out = (hasHead ? body : HEAD[scope] + "\n" + body).replace(/\n*$/, "\n");
+    mkdirSync(dirname(f), { recursive: true });
+    const tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
+    writeFileSync(tmp, out, { mode: scope === "profile" ? 0o600 : 0o644 });
+    renameSync(tmp, f);
+    if (scope === "profile") { try { chmodSync(f, 0o600); } catch { /* best effort */ } }
+  }
+
+  list(scope: Scope): ListResult {
+    const { raw, problem } = this.read(scope);
+    return { entries: raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => r.entry), problems: problem ? [problem] : [] };
+  }
+
+  private prefs(): Prefs {
+    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {} }; } catch { return { paused: false, forgotten: {}, agents: {} }; }
+  }
+  // Whether the person said yes or no to Companion adding its block to their own AGENTS.md and CLAUDE.md.
+  agentsChoice(): "approved" | "declined" | undefined { return this.prefs().agents[this.key("project")]; }
+  setAgentsChoice(c: "approved" | "declined" | undefined) { const p = this.prefs(), k = this.key("project"); const { [k]: _old, ...rest } = p.agents; this.savePrefs({ ...p, agents: c ? { ...rest, [k]: c } : rest }); }
+  private savePrefs(p: Prefs) {
+    mkdirSync(this.o.profileDir, { recursive: true });
+    const f = this.settings(), tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
+    writeFileSync(tmp, JSON.stringify(p), { mode: 0o600 });
+    renameSync(tmp, f);
+  }
+  // A line that was forgotten stays forgotten: it is not learned again from the same file or the same words.
+  private key(scope: Scope) { return scope === "profile" ? "profile" : "project:" + createHash("sha256").update(this.o.project).digest("hex").slice(0, 12); }
+  isPaused(): boolean { return this.prefs().paused; }
+  setPaused(paused: boolean) { this.savePrefs({ ...this.prefs(), paused }); }
+
+  add(scope: Scope, text: string, source: string, now: Date = new Date()): AddResult {
+    if (this.isPaused()) return { ok: false, reason: "Learning is paused." };
+    const t = oneLine(text), src = oneLine(source).replace(/[,{}]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Companion";
+    const s = screenLine(t);
+    if (!s.ok) return s;
+    if (/ — .+, \d{4}-\d{2}-\d{2}|\{m_[a-z0-9]+\}/.test(t) || t.startsWith("- ")) return { ok: false, reason: "That text has a format Companion uses itself." };
+    const { raw, problem } = this.read(scope);
+    if (problem) return { ok: false, reason: problem };
+    if ((this.prefs().forgotten[this.key(scope)] ?? []).includes(idFor(t))) return { ok: false, reason: "You asked me to forget that." };
+    const dup = raw.find((r) => r.kind === "entry" && r.entry.text.toLowerCase() === t.toLowerCase());
+    if (dup && dup.kind === "entry") return { ok: true, entry: dup.entry };
+    const entry: Entry = { id: idFor(t), text: t, source: src, date: now.toISOString().slice(0, 10) };
+    raw.push({ kind: "entry", entry, hand: false });
+    this.write(scope, scope === "profile" ? trim(raw, PROFILE_CAP) : raw);
+    return { ok: true, entry };
+  }
+
+  forget(scope: Scope, id: string): Plain {
+    const { raw, problem } = this.read(scope);
+    if (problem) return { ok: false, reason: problem };
+    const at = raw.findIndex((r) => r.kind === "entry" && r.entry.id === id);
+    if (at < 0) return { ok: false, reason: "That line is not in memory." };
+    const gone = (raw[at] as Extract<Raw, { kind: "entry" }>).entry.id;
+    raw.splice(at, 1);
+    this.write(scope, raw);
+    const p = this.prefs(), k = this.key(scope);
+    this.savePrefs({ ...p, forgotten: { ...p.forgotten, [k]: [...new Set([...(p.forgotten[k] ?? []), gone])].slice(-500) } });
+    return { ok: true };
+  }
+
+  edit(scope: Scope, id: string, text: string, now: Date = new Date()): Plain {
+    const t = oneLine(text), s = screenLine(t);
+    if (!s.ok) return s;
+    const { raw, problem } = this.read(scope);
+    if (problem) return { ok: false, reason: problem };
+    const at = raw.findIndex((r) => r.kind === "entry" && r.entry.id === id);
+    if (at < 0) return { ok: false, reason: "That line is not in memory." };
+    raw[at] = { kind: "entry", hand: false, entry: { id: idFor(t), text: t, source: "you edited it", date: now.toISOString().slice(0, 10) } };
+    this.write(scope, raw);
+    return { ok: true };
+  }
+
+  eraseAll(scope: Scope): Plain {
+    try {
+      rmSync(this.file(scope), { force: true });
+      const p = this.prefs(), k = this.key(scope);
+      if (p.forgotten[k]) { const { [k]: _gone, ...rest } = p.forgotten; this.savePrefs({ ...p, forgotten: rest }); }
+      return { ok: true };
+    } catch (e) { return { ok: false, reason: `Could not erase (${(e as Error).message}).` }; }
+  }
+
+  // What an agent is told, newest first within each part, the profile ahead of the project, cut to a number of words.
+  forAgent(maxWords = 1500): string {
+    const part = (title: string, scope: Scope) => {
+      const e = this.list(scope).entries.slice().reverse();
+      return { title, lines: e.map((x) => `- ${x.text}`) };
+    };
+    const parts = [part("How this person likes to work:", "profile"), part("About this project:", "project")];
+    let used = 0;
+    const out: string[] = [];
+    for (const p of parts) {
+      const keep: string[] = [];
+      for (const l of p.lines) { const w = l.split(/\s+/).length; if (used + w > maxWords) break; used += w; keep.push(l); }
+      if (keep.length) out.push(p.title, ...keep);
+    }
+    return out.join("\n");
+  }
+
+  exportText(): string {
+    const fmt = (title: string, scope: Scope) => {
+      const e = this.list(scope).entries;
+      return [`## ${title}`, ...(e.length ? e.map((x) => `- ${x.text} (from ${x.source}${x.date ? `, ${x.date}` : ""})`) : ["- Nothing yet."])].join("\n");
+    };
+    return `# Everything Companion remembers\n\n${fmt("About this project", "project")}\n\n${fmt("How you like to work", "profile")}\n`;
+  }
+}
+
+// Oldest lines go first; text a person wrote by hand is kept whenever anything else can go instead.
+function trim(raw: Raw[], cap: number): Raw[] {
+  const entries = raw.filter((r) => r.kind === "entry");
+  let over = entries.length - cap;
+  if (over <= 0) return raw;
+  const drop = new Set<Raw>();
+  for (const pass of [false, true]) for (const r of entries) { if (over <= 0) break; if (r.kind === "entry" && r.hand === pass && !drop.has(r)) { drop.add(r); over--; } }
+  return raw.filter((r) => !drop.has(r));
+}

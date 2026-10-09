@@ -29,6 +29,24 @@ function mk(replies: string[], opts: { deltas?: string[][] } = {}) {
 }
 const token = (req: Req) => req.text.match(/\[\[KEEP_\d+\]\]/)?.[0] ?? "";
 
+describe("what Companion remembers", () => {
+  test("it is sent as background next to the prompt, never inside the text being rewritten", async () => {
+    const calls: Req[] = [];
+    const fast = { async run(req: Req, onDelta: (t: string) => void) { calls.push(req); onDelta("Better"); return { text: "Better", costUsd: 0.001 }; } } as unknown as FastLike;
+    const svc = new AssistService({ fast, vision: { locate: async () => ({ point: null, costUsd: 0 }) }, images: new ImageStore(), emit: () => {}, memory: () => "- Prefers short answers" });
+    await svc.handle({ v: 1, id: "c", type: "assist.prompt", req: "ph", app: "com.openai.codex", target: "chat", text: "do it", style: "full" } as never);
+    expect(calls[0].extra).toContain("Prefers short answers");
+    expect(calls[0].text).not.toContain("short answers");
+  });
+  test("a memory that fails never stops the rewrite", async () => {
+    const calls: Req[] = [];
+    const fast = { async run(req: Req, onDelta: (t: string) => void) { calls.push(req); onDelta("Better"); return { text: "Better", costUsd: 0.001 }; } } as unknown as FastLike;
+    const svc = new AssistService({ fast, vision: { locate: async () => ({ point: null, costUsd: 0 }) }, images: new ImageStore(), emit: () => {}, memory: () => { throw new Error("disk"); } });
+    await svc.handle({ v: 1, id: "c", type: "assist.prompt", req: "ph", app: "com.openai.codex", target: "chat", text: "do it", style: "full" } as never);
+    expect(calls.length).toBe(1);
+  });
+});
+
 describe("what is sent to Claude", () => {
   test("code, links and commands are set aside before sending, so they cannot be changed", async () => {
     const r = mk(["Improved: [[KEEP_1]] and [[KEEP_2]]"]);

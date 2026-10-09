@@ -18,6 +18,9 @@ import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
+import { MemoryStore, type Scope } from "./memory/store.ts";
+import { askSignals, projectFacts } from "./memory/learn.ts";
+import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
@@ -44,6 +47,8 @@ export type RunnerOptions = {
   reviewModel?: string;
   approvalTimeoutMs?: number;
   now?: () => Date;
+  // Where the person's own profile and memory settings live. Without it, memory is off.
+  memoryDir?: string;
 };
 
 type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean) => void> };
@@ -85,7 +90,7 @@ const summary = (c: ToolUse): string => {
   return c.name;
 };
 
-type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string };
+type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string; offTheRecord?: boolean; goal?: string };
 
 export class AgentRunner {
   private sessions = new Map<string, Session>();
@@ -115,6 +120,82 @@ export class AgentRunner {
   private ledger: Ledger;
   constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); }
 
+  // ---------- memory ----------
+  private memories = new Map<string, MemoryStore>();
+  private memoryFor(project: string): MemoryStore | null {
+    if (!this.o.memoryDir) return null;
+    const key = resolve(project);
+    let m = this.memories.get(key);
+    if (!m) { m = new MemoryStore({ project: key, profileDir: this.o.memoryDir }); this.memories.set(key, m); }
+    return m;
+  }
+  // Save lines, and tell the app about each new one so it can show a toast with Undo. Memory never gets in a task's way.
+  private remember(project: string, items: { scope: Scope; text: string; source: string }[]) {
+    try {
+      const m = this.memoryFor(project);
+      if (!m) return;
+      let newProjectLines = 0;
+      for (const i of items) {
+        const known = new Set(m.list(i.scope).entries.map((e) => e.id));
+        const r = m.add(i.scope, i.text, i.source, this.now());
+        if (r.ok && !known.has(r.entry.id)) {
+          if (i.scope === "project") newProjectLines++;
+          this.emit({ type: "memory.saved", project, scope: i.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never);
+        }
+      }
+      if (newProjectLines) this.syncShared(project, false);
+    } catch { /* a memory problem is not worth stopping a task for */ }
+  }
+  // Keeps the shared AGENTS.md in step with project memory. A person's own files are only touched after a yes.
+  private agentsAsked = new Set<string>();
+  private syncShared(project: string, onlyIfPresent: boolean) {
+    try {
+      const m = this.memoryFor(project);
+      if (!m) return;
+      const choice = m.agentsChoice();
+      const r = syncAgentsFiles(project, m, { approved: choice === "approved", declined: choice === "declined", onlyIfPresent });
+      const key = resolve(project);
+      if (r.status === "needs_ask" && !this.agentsAsked.has(key)) { this.agentsAsked.add(key); this.emit({ type: "memory.agents_ask", project, files: r.files } as never); }
+      if (r.status === "written") this.emit({ type: "memory.agents_written", project, files: r.files } as never);
+      if (r.status === "failed" && r.reason) this.fail(r.reason);
+    } catch { /* sharing is never worth stopping a task for */ }
+  }
+  // What an agent is told. Nothing at all for an off the record task.
+  private learnAndRecall(project: string, said: string, offTheRecord: boolean | undefined): string {
+    if (offTheRecord) return "";
+    try {
+      this.remember(project, [...projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })), ...askSignals(said)]);
+      return this.memoryFor(project)?.forAgent() ?? "";
+    } catch { return ""; }
+  }
+  private memoryState(project: string) {
+    const m = this.memoryFor(project);
+    if (!m) return;
+    const p = m.list("project"), u = m.list("profile");
+    this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems] } as never);
+  }
+  private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
+    const m = this.memoryFor(cmd.project);
+    if (!m) { this.fail("Memory is not available.", undefined); return; }
+    const refuse = (reason: string) => this.emit({ type: "memory.refused", project: cmd.project, reason } as never);
+    switch (cmd.type) {
+      case "memory.list": break;
+      case "memory.forget": { const r = m.forget(cmd.scope, cmd.line); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
+      case "memory.edit": { const r = m.edit(cmd.scope, cmd.line, cmd.text, this.now()); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
+      case "memory.pause": m.setPaused(cmd.paused); break;
+      case "memory.agents": {
+        const dir = resolve(cmd.project);
+        if (cmd.answer === "yes") { m.setAgentsChoice("approved"); this.syncShared(cmd.project, false); }
+        else if (cmd.answer === "no") m.setAgentsChoice("declined");
+        else { m.setAgentsChoice("declined"); const gone = ["AGENTS.md", "CLAUDE.md"].filter((f) => removeSection(join(dir, f))); if (gone.length) this.emit({ type: "memory.agents_written", project: cmd.project, files: gone } as never); }
+        break;
+      }
+      case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
+      case "memory.export": this.emit({ type: "memory.exported", project: cmd.project, text: m.exportText() } as never); return;
+    }
+    this.memoryState(cmd.project);
+  }
+
   // What this project may still spend today.
   private room(project: string): number { return (this.o.dailyCeilingUsd ?? 10) - this.ledger.spentToday(project); }
   private dailyLimit(agent: string) { this.fail("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.", agent); }
@@ -129,6 +210,7 @@ export class AgentRunner {
   async handle(cmd: Command): Promise<void> {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
+      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.memoryCommand(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "research.ask": return this.researchAsk(cmd);
@@ -216,7 +298,8 @@ export class AgentRunner {
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
     const store = this.store(cmd.project);
-    const lbl = makeLabel(cmd.prompt);
+    const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(cmd.prompt);
+    const recalled = this.learnAndRecall(cmd.project, cmd.prompt, cmd.offTheRecord);
     const abort = new AbortController();
     const session: Session = { agent: cmd.agent, abort, pending: new Map() };
     this.sessions.set(cmd.agent, session);
@@ -237,7 +320,7 @@ export class AgentRunner {
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       const gen = this.o.engine.start({
-        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession,
+        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession, memory: recalled,
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
         toolDone: (id) => { if (id) this.watchers.get(cmd.agent)?.end(id); },
       });
@@ -362,12 +445,13 @@ export class AgentRunner {
 
   // A session that may only look. Anything that is not a plain look is refused here, in code.
   // `body` gets a way to ask Claude and finishes by setting the right state itself.
-  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null },
+  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; offTheRecord?: boolean; said?: string; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null },
     body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
     const room = this.room(spec.project);
     if (room <= 0) { this.dailyLimit(spec.agent); return; }
     const budget = Math.min(spec.budgetUsd, room);
     const abort = new AbortController();
+    const recalled = this.learnAndRecall(spec.project, spec.said ?? "", spec.offTheRecord);
     this.sessions.set(spec.agent, { agent: spec.agent, abort, pending: new Map() });
     this.driving.add(spec.agent);
     this.driveStop.delete(spec.agent);
@@ -386,7 +470,7 @@ export class AgentRunner {
     };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
-      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: resume, planOnly: true, authorize });
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: resume, planOnly: true, authorize, memory: recalled });
       try {
         let next = await gen.next();
         while (!next.done) {
@@ -422,7 +506,7 @@ export class AgentRunner {
   }
 
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
-    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal)));
       if (steps.length > MAX_STEPS && !st.abort.signal.aborted) {
         const again = parsePlan(await ask(shortenPrompt(steps.length), st.sessionId));
@@ -432,7 +516,7 @@ export class AgentRunner {
       if (steps.length === 0) { this.fail("Claude did not give a usable plan. Try describing the goal in a little more detail.", cmd.agent); this.state(cmd.agent, "error"); return; }
       const truncated = steps.length > MAX_STEPS;
       const kept = steps.slice(0, MAX_STEPS);
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal });
       this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
       this.state(cmd.agent, "needsYou");
     });
@@ -511,6 +595,7 @@ export class AgentRunner {
     const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, MAX_STEPS);
     if (steps.length === 0) { this.fail("A plan needs at least one step.", cmd.agent); return; }
     this.plans.delete(cmd.agent);
+    if (!plan.offTheRecord && plan.goal) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
     this.driving.add(cmd.agent);
     this.driveStop.delete(cmd.agent);
     const total = steps.length;
@@ -538,7 +623,7 @@ export class AgentRunner {
         if (this.room(plan.project) <= 0) { status = "daily_limit"; this.dailyLimit(cmd.agent); this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
-        const stepCmd = (prompt: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt, model: plan.model, budgetUsd: remaining });
+        const stepCmd = (prompt: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt, model: plan.model, budgetUsd: remaining, ...(plan.offTheRecord ? { offTheRecord: true } : {}) });
         let prompt = stepPrompt(index, total, title);
         let r: Awaited<ReturnType<AgentRunner["run"]>>;
         for (;;) {

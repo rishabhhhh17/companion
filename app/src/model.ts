@@ -21,7 +21,15 @@ export type PromptHelp = {
 };
 export type ShipGate = { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean };
 export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[] };
+export type MemoryLine = { id: string; text: string; source: string; date: string };
+export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profileLines: MemoryLine[]; problems: string[] };
+export type Saved = { id: string; scope: "project" | "profile"; text: string };
 export type Model = {
+  memory: MemoryState | null;
+  memoryNote: string | null;
+  exported: string | null;
+  toast: { lines: Saved[] } | null;
+  agentsAsk: string[] | null;
   ship: ShipReport | null;
   ph: PromptHelp | null;
   research: ResearchCard | null;
@@ -42,7 +50,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -73,7 +81,7 @@ export function reduce(m: Model, e: Ev): Model {
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     case "app.runner_restarted": return { ...withAgents({ ...m, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, approvals: [], plan: null, drive: null, stuck: null, paused: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -131,9 +139,28 @@ export function reduce(m: Model, e: Ev): Model {
     case "drive.done": return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
+    case "memory.state": return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
+    case "memory.refused": return { ...m, memoryNote: String(e.reason) };
+    case "memory.exported": return { ...m, exported: String(e.text ?? "") };
+    case "memory.saved": {
+      const lines = m.toast?.lines ?? [];
+      return lines.some((l) => l.id === e.line) ? m : { ...m, toast: { lines: [...lines, { id: String(e.line), scope: e.scope, text: String(e.text) }] } };
+    }
+    case "ui.toastClear": return { ...m, toast: null };
+    case "memory.agents_ask": return { ...m, agentsAsk: Array.isArray(e.files) ? e.files.map(String) : [] };
+    case "ui.agentsAnswered": return { ...m, agentsAsk: null };
+    case "memory.agents_written": return { ...m, notice: `Companion updated ${(e.files ?? []).join(" and ")} with the facts about this project.` };
+    case "ui.memoryClosed": return { ...m, memory: null, memoryNote: null, exported: null };
     case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
     default: return m;
   }
+}
+
+// The toast after Companion learns something new.
+export function savedWords(m: Model): string | null {
+  const l = m.toast?.lines ?? [];
+  if (l.length === 0) return null;
+  return l.length === 1 ? `Remembered: ${l[0].text}` : `Remembered ${l.length} new things`;
 }
 
 // How a past task ended, in plain words.

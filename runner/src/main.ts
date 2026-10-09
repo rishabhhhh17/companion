@@ -7,6 +7,7 @@ import { AgentRunner } from "./agent.ts";
 import { createEngine, createLanes, currentAuth, readSettings } from "./engines.ts";
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
+import { MemoryStore } from "./memory/store.ts";
 import { label } from "./redact.ts";
 import { TaskLog } from "./tasklog.ts";
 
@@ -21,8 +22,8 @@ const say = (e: Record<string, unknown>) => emit({ v: PROTOCOL_VERSION, id: `r${
 // If a local file is damaged or cannot be written, Companion still starts and says so in plain words.
 const notes: string[] = [];
 const problem = (m: string) => { notes.push(m); };
-const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: Number(process.env.COMPANION_DAILY_CEILING_USD) > 0 ? Number(process.env.COMPANION_DAILY_CEILING_USD) : 10, emit });
-const assist = settings.engine === "sdk" || settings.assistStub ? new AssistService({ ...createLanes(settings), images: new ImageStore(), emit }) : null;
+const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: Number(process.env.COMPANION_DAILY_CEILING_USD) > 0 ? Number(process.env.COMPANION_DAILY_CEILING_USD) : 10, memoryDir: settings.data, emit });
+const assist = settings.engine === "sdk" || settings.assistStub ? new AssistService({ ...createLanes(settings), images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
 const inflight = new Set<Promise<unknown>>();
 
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
