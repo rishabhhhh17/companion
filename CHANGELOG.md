@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Hotkeys for Show me how: 9 Oct 2026
+
+- **Control, Option, Command and S** opens the box ready for a question about your screen. Type it and press Enter, or hold the talk keys and say it. Nothing is captured until the question is sent. The character now looks different when it is listening, looking at your screen, working out your words, or pointing.
+
 ## Real websites, and a check of your Mac: 9 Oct 2026
 
 - **Aim on real, busy sites** (GitHub, Hacker News, Wikipedia, python.org, Vercel, Stripe, Supabase, npm; 44 questions): 41 right, and the 3 it declined were hidden "Skip to content" links that are not on screen, which is the right answer. About 2.6 seconds each. Costs about 30 cents per run of the test.

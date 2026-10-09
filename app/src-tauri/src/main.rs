@@ -257,6 +257,7 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 // ---- Prompt help (M5b): the hotkey is the only way anything is read ----
 
 fn sc_mods() -> Modifiers { Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER }
+fn sc_showme() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyS) }
 fn sc_voice() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyV) }
 fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
 fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
@@ -736,6 +737,13 @@ fn main() {
                         return;
                     }
                     if e.state != ShortcutState::Pressed { return; }
+                    if s == &sc_showme() {
+                        // Open the box ready for a question about the screen; nothing is captured until the question is sent.
+                        log("hotkey", json!({ "id": "S" }));
+                        open_card(app, "hotkey", true);
+                        let _ = app.emit("showme-mode", true);
+                        return;
+                    }
                     if s == &k {
                         log("hotkey", json!({ "id": "K" }));
                         open_card(app, "hotkey", true);
@@ -812,7 +820,7 @@ fn main() {
             });
             // Another app may already own one of our hotkeys. That must never stop Companion from opening.
             let mut taken: Vec<&str> = Vec::new();
-            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk")] {
+            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk"), (sc_showme(), "Show me how")] {
                 if app.global_shortcut().register(sc).is_err() { taken.push(what); }
             }
             if !taken.is_empty() {
