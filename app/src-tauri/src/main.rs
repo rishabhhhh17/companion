@@ -12,8 +12,13 @@ mod phelp;
 #[allow(dead_code)] // wired to the hotkey in M5b
 mod coords;
 mod frame;
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+mod macos_see;
 mod projects;
 mod redact;
+#[allow(dead_code)]
+mod showme;
 mod snap;
 mod prompthelp;
 mod visibility;
