@@ -53,6 +53,35 @@ The shared core is four parts: **characters**, **agent engine**, **memory**, **t
 20. Pin `@anthropic-ai/claude-agent-sdk` to an exact version (no caret), and always run the SDK's bundled Claude binary, never a `claude` found on `PATH`. Upgrade on a branch with the full suite.
 21. Names are placeholders. Product, path and character names live in one strings file, never in logic.
 
+## The bar: this is a paid product, built like a real company builds one
+
+Decided by the founder on 9 Oct 2026. Companion is what the founder will charge money for. It is not a demo, a hobby or a spike. Every agent working here builds it the way a serious software company ships a paid AI tool: slowly enough to be right, never pretending something works that nobody has checked. If a rule in this section clashes with speed, the rule wins.
+
+**What "done" means**
+1. A change is done only when its tests pass, the whole suite passes (`scripts/test-all.sh`), and the thing was exercised the way a user will meet it. For anything that touches Claude, the Mac, the network or money, that means a real run (`runner/scripts/real-verify.ts`, a real Mac check), not only a fake. A fake proves our wiring, never the world.
+2. Never say "works" for something that was only compiled or unit tested. Say what was proven and what was not. Keep the launch readiness table (`docs/status/`) true: built, real Claude, tried by a person, confidence, what is left.
+3. Anything that needs a permission click, a real microphone, a real screen or the founder's accounts is "not proven" until a person has tried it. Say so plainly; do not round it up.
+
+**How to change things without breaking things**
+4. Before saving a file you did not create, read it. Never overwrite a whole file when an edit will do (on 9 Oct 2026 a whole file replace silently removed the no Dock icon setting; a test and a build check now guard it). After every change, look at the diff for collateral damage, not only for what you meant to change.
+5. Every bug gets a test that fails without the fix. Bugs found by real runs and by the founder come first; they are the ones tests missed.
+6. Risky logic is tested first (rule 17). Safety, privacy, undo, money, memory scope and permissions are never merged without tests and a real check.
+7. Do not add a dependency, a download, a permission, a network call or stored data without saying why in the change, the changelog and the matching decision record.
+
+**Honesty and incidents**
+8. Report faithfully. If a test fails, a check was skipped or a result is a guess, say it first, not last. Estimates are labelled estimates.
+9. Anything that could leak a secret, store something private, touch the person's git, spend money or go live without a tap is an incident, not a bug. Stop other work, fix it, add the test, tell the founder in plain words, and note it in the changelog.
+10. Findings that cannot be fixed now are written down (readiness table, decision record, milestone plan), never left in someone's head.
+
+**Quality a user feels**
+11. Plain words everywhere a user reads. No jargon, no raw error text without a next step, no silent failures. If a feature cannot work (missing permission, offline, no key), it says why and what to do.
+12. It must never be a nuisance on the desktop: no focus stealing, no surprise windows or sounds, no background watching, low idle CPU and memory, everything stoppable with one key.
+13. Accessibility is part of done: keyboard and VoiceOver reach everything, text is readable, motion respects reduced motion.
+14. Speed is a feature. Measure it (the aim eval, the speech timing) and record the numbers; do not accept regressions.
+
+**Before anything ships to a person other than the founder**
+15. Full suite green, real Claude run green, the readiness table updated, the changelog written, no known incident open, and the founder told what is still unproven.
+
 ## How we work
 
 - **The founder is a solo, first time founder.** Explain decisions in plain words and say why. Ask before any big or irreversible step: a new dependency with a licence question, a change to a fixed decision, anything touching signing keys, deleting work.
