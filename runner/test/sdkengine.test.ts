@@ -14,6 +14,19 @@ afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, for
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-sdk-${l}-`))); made.push(d); return d; };
 const base = { project: "/p", model: "claude-sonnet-5-5", budgetUsd: 3, claudeBinary: "/x/claude", env: { PATH: "/usr/bin" }, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal };
 
+describe("what Companion remembers reaches the agent", () => {
+  test("it is added to the instructions, as background that the request outranks", () => {
+    const o: any = buildSdkOptions({ ...base, memory: "- Prefers short answers" });
+    expect(o.systemPrompt.append).toContain("Prefers short answers");
+    expect(o.systemPrompt.append).toMatch(/follow what they ask now/);
+  });
+  test("with no memory the instructions are as before", () => {
+    const o: any = buildSdkOptions(base);
+    expect(o.systemPrompt.append).not.toMatch(/remembers/);
+  });
+  test("Claude Code's own hidden memory stays off", () => expect(JSON.stringify(buildSdkOptions(base).env)).not.toContain("AUTO_MEMORY=0"));
+});
+
 describe("the options we hand to the SDK", () => {
   const o: any = buildSdkOptions(base);
   test("never bypasses permissions", () => {

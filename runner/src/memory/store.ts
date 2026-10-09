@@ -29,6 +29,7 @@ export class MemoryStore {
   private settings() { return join(this.o.profileDir, "memory-settings.json"); }
 
   private read(scope: Scope): { raw: Raw[]; problem?: string } {
+    if (scope === "project" && !this.o.project) return { raw: [] };   // no project given: only the profile exists
     const f = this.file(scope);
     if (!existsSync(f)) return { raw: [] };
     let text: string;

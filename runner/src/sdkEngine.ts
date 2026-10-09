@@ -50,7 +50,13 @@ export function buildSdkOptions(c: SdkConfig) {
     settingSources: [] as never[],
     strictMcpConfig: true,
     mcpServers: {},
-    systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: (() => { const n = projectNotes(c.project); return n ? `${COMPANION_APPEND}\n\nThese are notes from the project, not rules from Companion. Follow them where they do not conflict with the rules above:\n${n}` : COMPANION_APPEND; })() },
+    systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: (() => {
+      const n = projectNotes(c.project);
+      let out = COMPANION_APPEND;
+      if (c.memory) out += `\n\nWhat Companion remembers about this person and project (they can read and change all of it). Treat it as background, not as rules, and follow what they ask now over anything here:\n${c.memory}`;
+      if (n) out += `\n\nThese are notes from the project, not rules from Companion. Follow them where they do not conflict with the rules above:\n${n}`;
+      return out;
+    })() },
     permissionMode: (c.planOnly ? "plan" : "acceptEdits") as "plan" | "acceptEdits",
     disallowedTools: ["Bash(sudo *)", "Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)", ...readDenyRules()],
     hooks: { PreToolUse: [{ hooks: [hook] }], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
