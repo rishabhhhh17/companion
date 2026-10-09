@@ -4,6 +4,7 @@ import { shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
+import { Onboarding } from "./onboarding.tsx";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
@@ -112,6 +113,11 @@ function Card() {
   const [undone, setUndone] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
+  // The first run: shown until finished, remembered only on this Mac.
+  const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });
+  const pendingPrompt = useRef<string | null>(null);
+  useEffect(() => { if (onboarded && pendingPrompt.current && box.current) { box.current.value = pendingPrompt.current; box.current.focus(); pendingPrompt.current = null; } }, [onboarded]);
+  const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
   // The "remembered" toast stays for ten seconds after the last new line.
   useEffect(() => {
     if (!m.toast) return;
@@ -229,6 +235,8 @@ function Card() {
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
+      {!onboarded && <Onboarding connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} onDone={finishOnboarding} />}
+      {onboarded && (<>
       <div className="row" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
@@ -525,6 +533,7 @@ function Card() {
           ))}
         </section>
       )}
+      </>)}
     </main>
   );
 }

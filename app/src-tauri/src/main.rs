@@ -15,6 +15,7 @@ mod frame;
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 mod macos_see;
+mod keystore;
 mod projects;
 mod redact;
 #[allow(dead_code)]
@@ -395,6 +396,15 @@ fn use_project(app: AppHandle, path: String) -> Result<String, String> {
     Ok(folder)
 }
 
+/// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
+#[tauri::command]
+fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
+    keystore::save(&key)?;
+    log("api_key_saved", json!({}));
+    let _ = app.state::<runner::Runner>().send(&json!({ "v": 1, "id": format!("auth{}", now()), "type": "auth.check" }));
+    Ok(())
+}
+
 /// Opens the Mac's own folder chooser (another process, so the keyboard is never taken), then uses the folder.
 #[tauri::command]
 async fn pick_project(app: AppHandle) -> Result<String, String> {
@@ -751,7 +761,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, showme_start, showme_aim, showme_clear, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

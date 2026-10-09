@@ -32,14 +32,18 @@ const inflight = new Set<Promise<unknown>>();
 process.stdout.on("error", () => process.exit(0));
 say({ type: "runner.hello", runnerVersion: "0.0.1", sdk: SDK_VERSION });
 for (const m of notes) say({ type: "protocol.error", reason: m });
-if (settings.engine === "sdk") {
+async function announceAuth() {
+  if (settings.engine !== "sdk") return;
   const a = await currentAuth(settings);
   say({ type: "auth.status", method: a.method, ...(a.method === "api_key" ? { source: "keychain" } : {}) });
 }
+await announceAuth();
 
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
+  // After a key is saved the app asks again who we are signed in as.
+  if (cmd.type === "auth.check") { void announceAuth(); return; }
   const work = cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);

@@ -1,0 +1,83 @@
+import { useState } from "react";
+import type { Command } from "../../protocol/index.ts";
+import { addMemory, setExplain } from "./commands.ts";
+import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
+import { invoke } from "./tauri.ts";
+import { S } from "./strings.ts";
+
+type Props = { connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; onDone: () => void };
+
+export function Onboarding({ connected, project, send, pickFolder, setAutoSend, useTask, onDone }: Props) {
+  const [step, setStep] = useState<Step>("welcome");
+  const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
+  const [key, setKey] = useState("");
+  const [keyNote, setKeyNote] = useState("");
+  const ok = connected === "api_key" || connected === "plan";
+  const ctx = { connected: ok, project };
+  const go = (to: Step | null) => { if (to) setStep(to); };
+  const finish = () => {
+    for (const c of commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command, (on) => setExplain(project, on) as Command)) void send(c);
+    setAutoSend(answers.autoSend);
+    onDone();
+  };
+  const saveKey = () => {
+    const problem = keyLooksRight(key);
+    if (problem) { setKeyNote(problem); return; }
+    // The key goes straight to the Keychain; the box is emptied at once and nothing keeps a copy.
+    const k = key; setKey("");
+    void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
+  };
+  const n = STEPS.indexOf(step) + 1;
+  return (
+    <section className="panel" aria-label={S.obTitle}>
+      <div className="line muted">Step {n} of {STEPS.length}</div>
+      {step === "welcome" && (<>
+        <h2>{S.obTitle}</h2><div className="line">{S.obWelcome1}</div><div className="line">{S.obWelcome2}</div>
+      </>)}
+      {step === "connect" && (<>
+        <h2>{S.obConnectTitle}</h2>
+        {ok ? <div className="line"><b>{S.obConnected}</b></div> : (<>
+          <div className="line">{S.obKeyHelp}</div>
+          <div className="row">
+            <input type="password" autoComplete="off" spellCheck={false} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) saveKey(); }} />
+            <button className="btn primary" type="button" onClick={saveKey}>{S.obKeySave}</button>
+          </div>
+          {keyNote && <div className="error" role="alert">{keyNote}</div>}
+          <div className="line muted">{S.obPlanLater}</div>
+        </>)}
+      </>)}
+      {step === "folder" && (<>
+        <h2>{S.obFolderTitle}</h2><div className="line">{S.obFolderHelp}</div>
+        <div className="line"><b>{project ? project : "-"}</b></div>
+        <div className="row"><button className="btn primary" type="button" onClick={pickFolder}>{S.folderChange}</button></div>
+      </>)}
+      {step === "questions" && (<>
+        <h2>{S.obQuestionsTitle}</h2><div className="line muted">{S.obQuestionsHelp}</div>
+        {QUESTIONS.map((q) => (
+          <div key={q.key}>
+            <div className="line"><b>{q.ask}</b></div>
+            <div className="row">
+              <button className={`btn ${answers[q.key] ? "primary" : ""}`} type="button" aria-pressed={answers[q.key]} onClick={() => setAnswers({ ...answers, [q.key]: true })}>{q.yes}</button>
+              <button className={`btn ${!answers[q.key] ? "primary" : ""}`} type="button" aria-pressed={!answers[q.key]} onClick={() => setAnswers({ ...answers, [q.key]: false })}>{q.no}</button>
+            </div>
+          </div>
+        ))}
+        <div className="line muted">{effectsOf(answers).join(" ")}</div>
+      </>)}
+      {step === "permissions" && (<>
+        <h2>{S.obPermTitle}</h2><div className="line">{S.obPerm1}</div><div className="line">{S.obPerm2}</div><div className="line">{S.obPerm3}</div><div className="line muted">{S.obPermNone}</div>
+      </>)}
+      {step === "first" && (<>
+        <h2>{S.obFirstTitle}</h2>
+        <div className="row">{FIRST_TASKS.map((t) => <button key={t.label} className="btn" type="button" onClick={() => { finish(); useTask(t.prompt); }}>{t.label}</button>)}</div>
+      </>)}
+      <div className="row">
+        {back(step) && <button className="btn" type="button" onClick={() => go(back(step))}>{S.obBack}</button>}
+        {step === "welcome" && <button className="btn primary" type="button" onClick={() => go(next(step))}>{S.obStart}</button>}
+        {step !== "welcome" && step !== "first" && <button className="btn primary" type="button" disabled={!canContinue(step, ctx)} onClick={() => go(next(step))}>{S.obContinue}</button>}
+        {step === "questions" && <button className="btn" type="button" onClick={() => { setAnswers(DEFAULT_ANSWERS); go("permissions"); }}>{S.obSkip}</button>}
+        {step === "first" && <button className="btn primary" type="button" onClick={finish}>{S.obFinish}</button>}
+      </div>
+    </section>
+  );
+}

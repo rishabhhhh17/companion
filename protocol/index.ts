@@ -44,7 +44,9 @@ export type ExplainSet = Envelope & { type: "explain.set"; project: string; enab
 export type ShipPreview = Envelope & { type: "ship.preview"; project: string };
 export type ShipLive = Envelope & { type: "ship.live"; project: string; url: string; confirm: true };
 export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; confirm: true };
-export type Command = AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type AuthCheck = Envelope & { type: "auth.check" };
+export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
+export type Command = AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -112,6 +114,8 @@ const COMMANDS: Record<string, Check[]> = {
   "ship.preview": [str("project")],
   "ship.live": [str("project"), str("url"), (m) => (m.confirm === true ? null : 'going live needs "confirm": true')],
   "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
+  "auth.check": [],
+  "memory.add": [str("project"), oneOf("scope", ["project", "profile"]), str("text"), str("source")],
   "recap.ask": [str("project"), str("since")],
   "explain.set": [str("project"), bool("enabled")],
   "memory.list": [str("project")],
