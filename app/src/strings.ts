@@ -101,6 +101,7 @@ export const S = {
   obPermNone: "Nothing is asked now.",
   obFirstTitle: "Try something",
   obFinish: "Finish",
+  obMacTitle: "Your Mac",
   obBack: "Back",
   obContinue: "Continue",
   voiceTitle: "Talk to Companion",

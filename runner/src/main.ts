@@ -8,6 +8,7 @@ import { createEngine, createLanes, currentAuth, readSettings } from "./engines.
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore } from "./memory/store.ts";
+import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
 import { label } from "./redact.ts";
@@ -45,6 +46,7 @@ function dispatch(cmd: Command) {
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
+  if (cmd.type === "doctor.check") { void doctor().then((items) => say({ type: "doctor.report", items })).catch((e: Error) => say({ type: "protocol.error", reason: `could not check this Mac: ${e.message}` })); return; }
   const work = cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);

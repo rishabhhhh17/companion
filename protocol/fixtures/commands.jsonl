@@ -33,3 +33,4 @@
 {"v":1,"id":"c33","type":"assist.image","ref":"shot_1","mediaType":"image/jpeg","base64":"/9j/4AAQSkZJRg==","w":1280,"h":800}
 {"v":1,"id":"c34","type":"auth.check"}
 {"v":1,"id":"c35","type":"memory.add","project":"p_9f2c","scope":"profile","text":"Prefers short answers","source":"your answer at setup"}
+{"v":1,"id":"c36","type":"doctor.check"}

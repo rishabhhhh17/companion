@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Real websites, and a check of your Mac: 9 Oct 2026
+
+- **Aim on real, busy sites** (GitHub, Hacker News, Wikipedia, python.org, Vercel, Stripe, Supabase, npm; 44 questions): 41 right, and the 3 it declined were hidden "Skip to content" links that are not on screen, which is the right answer. About 2.6 seconds each. Costs about 30 cents per run of the test.
+- **Your Mac check** in the first run: Node (and whether it is new enough to install packages while Companion works), Git, the page checker and the Vercel tool, each with a plain sentence and what to do. Nothing is installed or changed by the check.
+
 ## Screenshots never touch your disk: 9 Oct 2026
 
 - A real check found that Claude Code saves a copy of every picture it is sent (as a file in its temporary folder, and inside its saved conversation). For Show me how that would have put a picture of your screen on your SSD. Fixed: the conversation is not saved, and the temporary folder is a small drive that lives in memory only, erased after each answer and removed when idle. If it cannot be made, nothing is sent. A repeat of the real check found no copy on disk. Founder to confirm this reading of the promise (see T12).
