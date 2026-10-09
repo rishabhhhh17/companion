@@ -21,6 +21,8 @@ mod redact;
 mod showme;
 mod snap;
 mod prompthelp;
+#[allow(dead_code)]
+mod voice;
 mod visibility;
 mod wheel;
 
