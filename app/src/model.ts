@@ -96,6 +96,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "explain.ready": return (m.receipt?.checkpoint ?? m.currentCheckpoint) === e.checkpoint ? { ...m, explain: { checkpoint: e.checkpoint, bullets: e.bullets ?? [], question: e.question } } : m;
     case "explain.state": return { ...m, explainOn: !!e.enabled };
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
+    // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
+    case "ui.projectChanged": return { ...m, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "ui.recapClosed": return { ...m, recap: null };
     case "checkpoint.created": return { ...m, explain: null, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });

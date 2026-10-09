@@ -57,6 +57,8 @@ pub fn target_kind(bundle: &str) -> &'static str {
 
 fn send_prompt(app: &AppHandle, bundle: &str, text: &str, answer: Option<&str>) {
     let mut cmd = json!({ "v": 1, "id": format!("ph{}", now_ms()), "type": "assist.prompt", "req": format!("ph_{}", now_ms()), "app": bundle, "target": target_kind(bundle), "text": text, "style": "full" });
+    // The folder the person chose gives Prompt help what the project is (its stack and purpose) and what Companion remembers.
+    { let project = crate::current_project(); if !project.is_empty() { cmd["project"] = json!(project); } }
     if let (Some(a), Some(o)) = (answer, cmd.as_object_mut()) { o.insert("answer".into(), json!(a)); o.insert("noQuestion".into(), json!(true)); }
     if let Err(e) = app.state::<crate::runner::Runner>().send(&cmd) { say(app, "error", json!({ "message": format!("Prompt help could not reach the engine ({e}).") })); }
 }

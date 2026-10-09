@@ -111,3 +111,20 @@ describe("putting a project online", () => {
     expect(m.shipFlow).toBeNull();
   });
 });
+
+describe("choosing the project folder", () => {
+  test("switching folders clears everything that belonged to the old one", () => {
+    const m = run([
+      { type: "receipt", agent: "builder-1", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 },
+      { type: "memory.state", project: "/a", paused: false, projectLines: [line("m_1", "Uses React")], profileLines: [], problems: [] },
+      { type: "memory.saved", project: "/a", scope: "project", line: "m_1", text: "Uses React", source: "package.json" },
+      { type: "tasks.list", project: "/a", tasks: [{ id: 1, label: "x", status: "done", usd: 0, startedAt: "", endedAt: null, checkpoint: null, changed: null, proof: null }] },
+      { type: "ui.projectChanged" },
+    ]);
+    expect(m.receipt).toBeNull(); expect(m.memory).toBeNull(); expect(m.toast).toBeNull(); expect(m.history).toEqual([]);
+  });
+  test("what the character is doing is not cleared by switching folders", () => {
+    const m = run([{ type: "agent.state", agent: "a", state: "working" }, { type: "ui.projectChanged" }]);
+    expect(m.character).toBe("working");
+  });
+});

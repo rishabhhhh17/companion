@@ -128,7 +128,16 @@ function Card() {
     urgent.current?.querySelector<HTMLElement>("button, input")?.focus();
   }, [urgentKey]);
 
-  useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); }, []);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [folderNote, setFolderNote] = useState("");
+  const loadRecent = () => void invoke("list_projects").then((l) => setRecent(Array.isArray(l) ? (l as string[]) : []));
+  useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); loadRecent(); }, []);
+  useEffect(() => {
+    const off = listen("project-changed", (e) => { setProject(String(e.payload ?? "")); dispatch({ type: "ui.projectChanged" }); setFolderNote(""); loadRecent(); });
+    return () => { off.then((f) => f()); };
+  }, []);
+  const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
+  const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
   useEffect(() => {
@@ -192,6 +201,17 @@ function Card() {
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
+      <div className="row" aria-label={S.folderLabel}>
+        <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
+        <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
+        {recent.length > 1 && (
+          <select aria-label={S.folderRecent} value="" onChange={(e) => { if (e.target.value) useFolder(e.target.value); }}>
+            <option value="">{S.folderRecent}</option>
+            {recent.filter((r) => r !== project).map((r) => <option key={r} value={r}>{r.split("/").filter(Boolean).slice(-2).join("/")}</option>)}
+          </select>
+        )}
+      </div>
+      {folderNote && <div className="error" role="alert">{folderNote}</div>}
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
           onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); submit(); } }} />
@@ -211,7 +231,7 @@ function Card() {
       {!working && (
         <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
       )}
-      {!project && <div className="notice">{S.noProject}</div>}
+      {!project && <div className="notice">{S.folderNone}</div>}
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
 
