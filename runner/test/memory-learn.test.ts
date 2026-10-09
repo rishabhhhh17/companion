@@ -58,3 +58,29 @@ describe("what a person says while asking", () => {
     for (const s of askSignals("I'm stressed and my wife says keep it shorter")) expect(screenLine(s.text).ok).toBe(true);
   });
 });
+
+describe("what the project is for", () => {
+  test("the package description and the first paragraph of the README become 'About' lines with their source", () => {
+    const d = tmp();
+    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "paws", description: "A booking page for a dog groomer" }));
+    writeFileSync(join(d, "README.md"), "# Paws\n\n[![build](https://img.shields.io/x.svg)](https://x)\n\nPaws lets customers book a dog grooming slot and pay a deposit online.\nIt is built for one small shop.\n\n## Setup\nrun it\n");
+    const facts = projectFacts(d);
+    expect(facts).toContainEqual({ text: "About: A booking page for a dog groomer", source: "package.json" });
+    expect(facts).toContainEqual({ text: "About: Paws lets customers book a dog grooming slot and pay a deposit online. It is built for one small shop.", source: "README.md" });
+  });
+  test("badges, headings, code and lists are skipped, and a README with no prose adds nothing", () => {
+    const d = tmp(); writeFileSync(join(d, "README.md"), "# Title\n\n```\nnpm install\n```\n\n- one\n- two\n");
+    expect(projectFacts(d).filter((f) => f.text.startsWith("About"))).toEqual([]);
+  });
+  test("a long paragraph is cut, and a README that mentions private things is not saved", () => {
+    const d = tmp(); writeFileSync(join(d, "README.md"), "x ".repeat(400));
+    for (const f of projectFacts(d).filter((f) => f.text.startsWith("About"))) expect(f.text.length).toBeLessThanOrEqual(300);
+    const e = tmp(); writeFileSync(join(e, "README.md"), "My wife has depression and this app helps us track it.\n");
+    expect(projectFacts(e).filter((f) => f.text.startsWith("About")).every((f) => screenLine(f.text).ok)).toBe(true);
+  });
+  test("a README that is a symlink to somewhere else is not followed", () => {
+    const d = tmp(), out = tmp(); writeFileSync(join(out, "secret.md"), "Private notes about the bank account.\n");
+    require("node:fs").symlinkSync(join(out, "secret.md"), join(d, "README.md"));
+    expect(projectFacts(d).filter((f) => f.text.startsWith("About"))).toEqual([]);
+  });
+});
