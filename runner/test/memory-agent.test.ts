@@ -132,3 +132,46 @@ describe("without a memory folder the runner behaves as before", () => {
     expect(engine.calls[0].memory ?? "").toBe("");
   });
 });
+
+describe("the shared AGENTS.md", () => {
+  test("a normal task in a project with no such files creates them", async () => {
+    const t = setup();
+    await t.start("go");
+    expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toContain("Built with React, Vite");
+    expect(readFileSync(join(t.project, "CLAUDE.md"), "utf8").split("\n")[0]).toBe("@AGENTS.md");
+    expect(of(t.events, "memory.agents_written")[0].files).toEqual(["AGENTS.md", "CLAUDE.md"]);
+  });
+  test("an off the record task writes no shared files either", async () => {
+    const t = setup();
+    await t.start("go", { offTheRecord: true });
+    expect(existsSync(join(t.project, "AGENTS.md"))).toBe(false);
+  });
+  test("a project's own files are left alone and the person is asked once; yes adds one block, no never asks again", async () => {
+    const t = setup([[say("a")], [say("b")], [say("c")]]);
+    writeFileSync(join(t.project, "AGENTS.md"), "# Team\nUse tabs.\n");
+    await t.start("go");
+    expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toBe("# Team\nUse tabs.\n");
+    expect(of(t.events, "memory.agents_ask").length).toBe(1);
+    await t.start("again");
+    expect(of(t.events, "memory.agents_ask").length).toBe(1);   // asked once
+    await t.cmd({ type: "memory.agents", answer: "yes" });
+    expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toContain("Built with React, Vite");
+    await t.cmd({ type: "memory.agents", answer: "remove" });
+    expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toBe("# Team\nUse tabs.\n");
+  });
+  test("saying no leaves the file alone, now and on later tasks", async () => {
+    const t = setup([[say("a")], [say("b")]]);
+    writeFileSync(join(t.project, "AGENTS.md"), "# Team\n");
+    await t.start("go"); await t.cmd({ type: "memory.agents", answer: "no" });
+    await t.start("again");
+    expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toBe("# Team\n");
+  });
+  test("forgetting a line removes it from the shared file too", async () => {
+    const t = setup();
+    await t.start("go");
+    await t.cmd({ type: "memory.list" });
+    const id = of(t.events, "memory.state").at(-1).projectLines.find((l: any) => l.text.startsWith("Built with")).id;
+    await t.cmd({ type: "memory.forget", scope: "project", line: id });
+    expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).not.toContain("Built with");
+  });
+});

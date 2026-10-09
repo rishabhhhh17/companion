@@ -20,6 +20,7 @@ import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
+import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
@@ -133,12 +134,31 @@ export class AgentRunner {
     try {
       const m = this.memoryFor(project);
       if (!m) return;
+      let newProjectLines = 0;
       for (const i of items) {
         const known = new Set(m.list(i.scope).entries.map((e) => e.id));
         const r = m.add(i.scope, i.text, i.source, this.now());
-        if (r.ok && !known.has(r.entry.id)) this.emit({ type: "memory.saved", project, scope: i.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never);
+        if (r.ok && !known.has(r.entry.id)) {
+          if (i.scope === "project") newProjectLines++;
+          this.emit({ type: "memory.saved", project, scope: i.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never);
+        }
       }
+      if (newProjectLines) this.syncShared(project, false);
     } catch { /* a memory problem is not worth stopping a task for */ }
+  }
+  // Keeps the shared AGENTS.md in step with project memory. A person's own files are only touched after a yes.
+  private agentsAsked = new Set<string>();
+  private syncShared(project: string, onlyIfPresent: boolean) {
+    try {
+      const m = this.memoryFor(project);
+      if (!m) return;
+      const choice = m.agentsChoice();
+      const r = syncAgentsFiles(project, m, { approved: choice === "approved", declined: choice === "declined", onlyIfPresent });
+      const key = resolve(project);
+      if (r.status === "needs_ask" && !this.agentsAsked.has(key)) { this.agentsAsked.add(key); this.emit({ type: "memory.agents_ask", project, files: r.files } as never); }
+      if (r.status === "written") this.emit({ type: "memory.agents_written", project, files: r.files } as never);
+      if (r.status === "failed" && r.reason) this.fail(r.reason);
+    } catch { /* sharing is never worth stopping a task for */ }
   }
   // What an agent is told. Nothing at all for an off the record task.
   private learnAndRecall(project: string, said: string, offTheRecord: boolean | undefined): string {
@@ -154,16 +174,23 @@ export class AgentRunner {
     const p = m.list("project"), u = m.list("profile");
     this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems] } as never);
   }
-  private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" }>) {
+  private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
     const m = this.memoryFor(cmd.project);
     if (!m) { this.fail("Memory is not available.", undefined); return; }
     const refuse = (reason: string) => this.emit({ type: "memory.refused", project: cmd.project, reason } as never);
     switch (cmd.type) {
       case "memory.list": break;
-      case "memory.forget": { const r = m.forget(cmd.scope, cmd.line); if (!r.ok) refuse(r.reason); break; }
-      case "memory.edit": { const r = m.edit(cmd.scope, cmd.line, cmd.text, this.now()); if (!r.ok) refuse(r.reason); break; }
+      case "memory.forget": { const r = m.forget(cmd.scope, cmd.line); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
+      case "memory.edit": { const r = m.edit(cmd.scope, cmd.line, cmd.text, this.now()); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
       case "memory.pause": m.setPaused(cmd.paused); break;
-      case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); break; }
+      case "memory.agents": {
+        const dir = resolve(cmd.project);
+        if (cmd.answer === "yes") { m.setAgentsChoice("approved"); this.syncShared(cmd.project, false); }
+        else if (cmd.answer === "no") m.setAgentsChoice("declined");
+        else { m.setAgentsChoice("declined"); const gone = ["AGENTS.md", "CLAUDE.md"].filter((f) => removeSection(join(dir, f))); if (gone.length) this.emit({ type: "memory.agents_written", project: cmd.project, files: gone } as never); }
+        break;
+      }
+      case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
       case "memory.export": this.emit({ type: "memory.exported", project: cmd.project, text: m.exportText() } as never); return;
     }
     this.memoryState(cmd.project);
@@ -183,7 +210,7 @@ export class AgentRunner {
   async handle(cmd: Command): Promise<void> {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
-      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": this.memoryCommand(cmd); return;
+      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.memoryCommand(cmd); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "research.ask": return this.researchAsk(cmd);

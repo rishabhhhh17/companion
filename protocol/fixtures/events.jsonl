@@ -28,3 +28,5 @@
 {"v":1,"id":"e41","type":"memory.saved","project":"p_9f2c","scope":"project","line":"m_1a2b3c4d","text":"Uses React and Vite","source":"package.json"}
 {"v":1,"id":"e42","type":"memory.refused","project":"p_9f2c","reason":"Health is never saved."}
 {"v":1,"id":"e43","type":"memory.exported","project":"p_9f2c","text":"# Everything Companion remembers"}
+{"v":1,"id":"e44","type":"memory.agents_ask","project":"p_9f2c","files":["AGENTS.md","CLAUDE.md"]}
+{"v":1,"id":"e45","type":"memory.agents_written","project":"p_9f2c","files":["AGENTS.md"]}

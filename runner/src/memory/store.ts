@@ -20,6 +20,7 @@ const LINE = /^- (.+?) — (.+?), (\d{4}-\d{2}-\d{2})(?: \{(m_[a-z0-9]{6,})\})?\
 const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
 const idFor = (text: string) => "m_" + createHash("sha256").update(text.toLowerCase()).digest("hex").slice(0, 8);
 
+type Prefs = { paused: boolean; forgotten: Record<string, string[]>; agents: Record<string, "approved" | "declined"> };
 type Raw = { kind: "other"; text: string } | { kind: "entry"; entry: Entry; hand: boolean };
 
 export class MemoryStore {
@@ -62,10 +63,13 @@ export class MemoryStore {
     return { entries: raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => r.entry), problems: problem ? [problem] : [] };
   }
 
-  private prefs(): { paused: boolean; forgotten: Record<string, string[]> } {
-    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {} }; } catch { return { paused: false, forgotten: {} }; }
+  private prefs(): Prefs {
+    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {} }; } catch { return { paused: false, forgotten: {}, agents: {} }; }
   }
-  private savePrefs(p: { paused: boolean; forgotten: Record<string, string[]> }) {
+  // Whether the person said yes or no to Companion adding its block to their own AGENTS.md and CLAUDE.md.
+  agentsChoice(): "approved" | "declined" | undefined { return this.prefs().agents[this.key("project")]; }
+  setAgentsChoice(c: "approved" | "declined" | undefined) { const p = this.prefs(), k = this.key("project"); const { [k]: _old, ...rest } = p.agents; this.savePrefs({ ...p, agents: c ? { ...rest, [k]: c } : rest }); }
+  private savePrefs(p: Prefs) {
     mkdirSync(this.o.profileDir, { recursive: true });
     const f = this.settings(), tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
     writeFileSync(tmp, JSON.stringify(p), { mode: 0o600 });

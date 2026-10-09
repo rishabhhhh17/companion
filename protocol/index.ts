@@ -37,7 +37,8 @@ export type MemoryEdit = Envelope & { type: "memory.edit"; project: string; scop
 export type MemoryPause = Envelope & { type: "memory.pause"; project: string; paused: boolean };
 export type MemoryErase = Envelope & { type: "memory.erase"; project: string; scope: MemoryScope };
 export type MemoryExport = Envelope & { type: "memory.export"; project: string };
-export type Command = MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type MemoryAgents = Envelope & { type: "memory.agents"; project: string; answer: "yes" | "no" | "remove" };
+export type Command = MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -108,6 +109,7 @@ const COMMANDS: Record<string, Check[]> = {
   "memory.pause": [str("project"), bool("paused")],
   "memory.erase": [str("project"), oneOf("scope", ["project", "profile"])],
   "memory.export": [str("project")],
+  "memory.agents": [str("project"), oneOf("answer", ["yes", "no", "remove"])],
   "ship.check": [str("project")],
   "research.ask": [str("project"), str("agent"), str("question"), str("model"), num("budgetUsd")],
   "rescue.diagnose": [str("project"), str("agent"), str("model"), num("budgetUsd")],
@@ -130,6 +132,8 @@ const EVENTS: Record<string, Check[]> = {
   "runner.pong": [],
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
+  "memory.agents_ask": [str("project"), list("files")],
+  "memory.agents_written": [str("project"), list("files")],
   "memory.refused": [str("project"), str("reason")],
   "memory.exported": [str("project"), str("text")],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],

@@ -24,3 +24,4 @@
 {"v":1,"id":"c24","type":"memory.erase","project":"p_9f2c","scope":"profile"}
 {"v":1,"id":"c25","type":"memory.export","project":"p_9f2c"}
 {"v":1,"id":"c26","type":"agent.start","project":"p_9f2c","agent":"builder-1","mode":"drive","prompt":"Add a contact page","model":"claude-sonnet-5-5","budgetUsd":1,"offTheRecord":true}
+{"v":1,"id":"c27","type":"memory.agents","project":"p_9f2c","answer":"yes"}
