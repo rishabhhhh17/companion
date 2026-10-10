@@ -1,0 +1,13 @@
+file://{{ROOT}}/src/crash.js:3
+  return undefinedThing.value;
+  ^
+
+ReferenceError: undefinedThing is not defined
+    at go (file://{{ROOT}}/src/crash.js:3:3)
+    at file://{{ROOT}}/src/crash.js:5:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+    at async loadESM (node:internal/process/esm_loader:34:7)
+    at async handleMainPromise (node:internal/modules/run_main:106:12)
+
+Node.js v18.20.8

@@ -1,0 +1,33 @@
+
+[7m[1m[36m RUN [39m[22m[27m [36mv2.1.4[39m [90m{{ROOT}}[39m
+
+ [31m❯[39m src/math.test.ts [2m ([22m[2m1 test[22m [2m|[22m [31m1 failed[39m[2m)[22m[90m 4[2mms[22m[39m
+[31m   [31m×[31m adds two numbers[90m 4[2mms[22m[31m[39m
+[31m     → expected -1 to be 5 // Object.is equality[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/math.test.ts[2m > [22madds two numbers
+[31m[1mAssertionError[22m: expected -1 to be 5 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 5[39m
+[31m+ -1[39m
+
+[36m [2m❯[22m src/math.test.ts:[2m5:21[22m[39m
+    [90m  3| [39m
+    [90m  4| [39m[34mtest[39m([32m"adds two numbers"[39m[33m,[39m () [33m=>[39m {
+    [90m  5| [39m  [34mexpect[39m([34madd[39m([34m2[39m[33m,[39m [34m3[39m))[33m.[39m[34mtoBe[39m([34m5[39m)[33m;[39m
+    [90m   | [39m                    [31m^[39m
+    [90m  6| [39m})[33m;[39m
+    [90m  7| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 18:00:47
+[2m   Duration [22m 323ms[2m (transform 167ms, setup 0ms, collect 164ms, tests 4ms, environment 0ms, prepare 34ms)[22m
+

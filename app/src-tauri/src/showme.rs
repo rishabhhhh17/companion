@@ -23,6 +23,8 @@ pub trait Platform {
     fn capture(&self) -> Result<Captured, String>;
     /// Text on the picture, boxes in picture pixels (top left origin).
     fn read_text(&self, frame: &Frame) -> Vec<OcrBox>;
+    /// A quicker, rougher read, tried first where speed matters. Defaults to the careful one.
+    fn read_text_fast(&self, frame: &Frame) -> Vec<OcrBox> { self.read_text(frame) }
     /// The nearest clickable element at a global point, if the Mac reports one.
     fn element_at(&self, p: Pt) -> Option<R>;
     fn send_image(&self, jpeg: &[u8], w: u32, h: u32);
@@ -68,6 +70,25 @@ pub fn start(p: &dyn Platform, question: &str) -> Result<Prepared, Refusal> {
     result
 }
 
+/// Point at the problem: light on, ONE capture, read the text (quickly first, carefully only if `find` came up empty),
+/// light off. `find` gets the text boxes in global points. The picture is dropped right here: nothing is sent anywhere.
+pub fn look_for<T>(p: &dyn Platform, find: impl Fn(&[OcrBox]) -> Option<T>) -> Result<(R, Option<T>), Refusal> {
+    if !p.screen_recording_granted() { return Err(Refusal::NeedsScreenRecording); }
+    if p.secure_input_on() { return Err(Refusal::SecureInput); }
+    p.indicator(true);
+    let result = (|| {
+        let cap = p.capture().map_err(Refusal::CaptureFailed)?;
+        let shot = Shot { display: cap.display, img_w: cap.frame.w as f64, img_h: cap.frame.h as f64 };
+        let global = |boxes: Vec<OcrBox>| boxes.into_iter().map(|b| OcrBox { rect: shot.rect_to_global(b.rect), ..b }).collect::<Vec<_>>();
+        let mut hit = find(&global(p.read_text_fast(&cap.frame)));
+        if hit.is_none() { hit = find(&global(p.read_text(&cap.frame))); }
+        drop(cap.frame);
+        Ok((shot.display, hit))
+    })();
+    p.indicator(false);
+    result
+}
+
 /// The model answered with a point in its picture: turn it into a real place on the screen.
 pub fn aim(p: &dyn Platform, prep: &Prepared, x: f64, y: f64, ocr_id: Option<&str>, target_text: &str) -> Snapped {
     let global = prep.shot.to_global(Pt { x, y });
@@ -99,6 +120,30 @@ mod tests {
     }
     fn tb(id: &str, text: &str, x: f64, y: f64) -> OcrBox { OcrBox { id: id.into(), text: text.into(), rect: R { x, y, w: 200.0, h: 30.0 } } }
 
+    #[test]
+    fn looking_for_the_problem_lights_up_first_captures_once_and_sends_nothing() {
+        let mut f = Fake::new(); f.text = vec![tb("a", "const total = 1;", 400.0, 200.0)];
+        let (d, hit) = look_for(&f, |b| b.first().map(|x| x.rect)).unwrap();
+        assert_eq!(f.said(), vec!["permission", "light on", "capture", "light off"]);
+        // full size picture pixels -> points on a half size display
+        let r = hit.unwrap(); assert_eq!((r.x, r.y), (200.0, 100.0)); assert_eq!(d.w, 1280.0);
+    }
+    #[test]
+    fn when_the_quick_read_misses_the_same_picture_is_read_again_carefully() {
+        let f = Fake::new();
+        let tries = std::cell::Cell::new(0);
+        let (_, hit) = look_for(&f, |_| { tries.set(tries.get() + 1); None::<()> }).unwrap();
+        assert!(hit.is_none()); assert_eq!(tries.get(), 2);
+        assert_eq!(f.said().iter().filter(|x| *x == "capture").count(), 1);
+    }
+    #[test]
+    fn looking_for_the_problem_respects_the_permission_and_password_boxes() {
+        let mut f = Fake::new(); f.granted = false;
+        assert_eq!(look_for(&f, |_| Some(())).err(), Some(Refusal::NeedsScreenRecording));
+        let mut f = Fake::new(); f.secure = true;
+        assert_eq!(look_for(&f, |_| Some(())).err(), Some(Refusal::SecureInput));
+        assert!(!f.said().iter().any(|x| x.starts_with("capture") || x.starts_with("light")));
+    }
     #[test]
     fn the_light_comes_on_before_the_capture_and_goes_off_after_the_send() {
         let f = Fake::new(); start(&f, "where?").unwrap();

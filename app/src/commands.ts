@@ -46,3 +46,5 @@ export const shipLive = (project: string, url: string): Command => ({ v: 1, id: 
 export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });
 export const addMemory = (project: string, scope: "project" | "profile", text: string, source: string): Command => ({ v: 1, id: id(), type: "memory.add", project, scope, text, source });
 export const checkMac = (): Command => ({ v: 1, id: id(), type: "doctor.check" });
+// Point at the problem: check the project as it is (no Claude, nothing changed) and say where it fails.
+export const findProblem = (project: string): Command => ({ v: 1, id: id(), type: "problem.find", project, agent: AGENT });

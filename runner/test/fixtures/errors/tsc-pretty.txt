@@ -1,0 +1,18 @@
+[96msrc/App.tsx[0m:[93m5[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'string' is not assignable to type 'number'.
+
+[7m5[0m   const total: number = "three";
+[7m [0m [91m        ~~~~~[0m
+
+[96msrc/App.tsx[0m:[93m6[0m:[93m69[0m - [91merror[0m[90m TS2552: [0mCannot find name 'totl'. Did you mean 'total'?
+
+[7m6[0m   return <button onClick={() => setCount(count + 1)}>Count {count} {totl}</button>;
+[7m [0m [91m                                                                    ~~~~[0m
+
+  [96msrc/App.tsx[0m:[93m5[0m:[93m9[0m
+    [7m5[0m   const total: number = "three";
+    [7m [0m [96m        ~~~~~[0m
+    'total' is declared here.
+
+
+Found 2 errors in the same file, starting at: src/App.tsx[90m:5[0m
+

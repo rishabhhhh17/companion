@@ -1,0 +1,9 @@
+1 | const a = 1;
+2 | function go() {
+3 |   return undefinedThing.value;
+             ^
+ReferenceError: undefinedThing is not defined
+      at go ({{ROOT}}/src/crash.js:3:10)
+      at {{ROOT}}/src/crash.js:5:1
+
+Bun v1.4.2 (macOS arm64)

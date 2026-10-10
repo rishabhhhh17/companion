@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult } from "./browser.ts";
 import { detectProject, type Detected } from "./detect.ts";
+import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
 import type { Review } from "./review.ts";
@@ -13,7 +14,8 @@ import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
 export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number };
-export type Step = StepUpdate & { status: "passed" | "failed" | "skipped" };
+// A failed step may carry the place it failed: a line in the project, a button, or at least the error sentence.
+export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem };
 export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled";
 export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
@@ -26,6 +28,8 @@ export type LadderOptions = {
   browser?: (url: string, o: BrowserOptions) => Promise<BrowserResult>;
   // Rung 7: a second model reads the change. Returns null when the review could not be done.
   review?: () => Promise<Review | null>;
+  // Point at the problem must not change anything: when packages are missing it says so instead of installing them.
+  noInstall?: boolean;
 };
 
 const LABELS: Record<Rung, string> = {
@@ -80,8 +84,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const cancelled = () => o.signal?.aborted === true;
 
   const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0) => o.onStep?.({ rung, label: LABELS[rung], status, detail, ms });
-  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number): Step => {
-    const s: Step = { rung, label: LABELS[rung], status, detail, ms: Date.now() - t0 };
+  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null): Step => {
+    const s: Step = { rung, label: LABELS[rung], status, detail, ms: Date.now() - t0, ...(problem ? { problem } : {}) };
     steps.push(s); emit(rung, status, detail, s.ms);
     return s;
   };
@@ -93,8 +97,12 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const isPackageFile = (p: string) => p === "package.json" || LOCKS.includes(p);
   const [bf, af] = [await o.store.readFiles(o.beforeId, isPackageFile), await o.store.readFiles(o.afterId, isPackageFile)];
   if (det.packageManager && needsInstall(bf, af, det.lockfile, existsSync(join(o.project, "node_modules")))) {
+    if (o.noInstall) {
+      const why = `This project's packages are not installed, so it cannot be checked yet. Run ${det.packageManager} install in the project folder, or press Fix it with me.`;
+      return result("failed", finish("install", "failed", why, t0, { kind: "message", message: why, from: "install" }));
+    }
     const r = await run(`${det.packageManager} install`, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
-    if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0));
+    if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install")));
     finish("install", "passed", "Installed.", t0);
   } else finish("install", "skipped", "Nothing new to install.", t0);
 
@@ -107,7 +115,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (det.checks.length) {
     for (const c of det.checks) {
       const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal });
-      if (r.code !== 0 || r.timedOut) return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs)}`, t0));
+      if (r.code !== 0 || r.timedOut) return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks")));
     }
     finish("checks", "passed", `${det.checks.map((c) => c.name).join(", ")} passed.`, t0);
   } else finish("checks", "skipped", "This project has no build or lint steps to run.", t0);
@@ -120,7 +128,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (!guard.ok) return result("failed", finish("tests", "failed", guard.problems.join(". ") + ".", t0));
   if (det.tests) {
     const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1" } });
-    if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0));
+    if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
   } else finish("tests", "skipped", "This project has no tests to run.", t0);
 
@@ -142,14 +150,14 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     finish("browser", "skipped", "There is no page to open.", Date.now());
     return result(steps.some((s) => s.status === "passed") ? "passed" : "nothing_to_check");
   }
-  if (!srv.ok) return result("failed", finish("start", "failed", srv.reason, t0));
+  if (!srv.ok) return result("failed", finish("start", "failed", srv.reason, t0, srv.output ? locateProblem(srv.output, o.project, "start") : null));
   finish("start", "passed", "It started.", t0);
   try {
     if (cancelled()) return result("cancelled", undefined, srv.url);
     t0 = Date.now(); emit("browser", "running");
     const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs });
     if (b.skipped) { finish("browser", "skipped", b.skipped, t0); return result("passed_with_gaps", undefined, srv.url); }
-    if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0), srv.url);
+    if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
     finish("browser", "passed", "The page opened with no errors.", t0);
     return result("passed", undefined, srv.url);
   } finally { await srv.stop(); }

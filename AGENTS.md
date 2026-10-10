@@ -110,8 +110,8 @@ docs/
 spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS (a-panel exists)
 scripts/             (planned, M0) build helpers: copy and verify Anthropic's binary, signing checks
 protocol/            JSON lines protocol v1: types, parser, shared fixtures (M1, started)
-runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log (M1, done); proof, ship, Drive, Rescue, Research and memory (project memory, profile, shared AGENTS.md) live in it
-app/src-tauri/       Rust shell: windows, hotkeys, Prompt help (ax, phelp), Show me how (macos_see capture and text reading, showme flow, snap, redact, coords, frame), hold to talk (voice rules, voice_mac microphone and speech model), project folder (projects), Keychain key saving (keystore), runner supervisor
+runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log (M1, done); proof (including locate, which turns a failed check into a file and line), ship, Drive, Rescue, Research and memory (project memory, profile, shared AGENTS.md) live in it
+app/src-tauri/       Rust shell: windows, hotkeys, Prompt help (ax, phelp), Show me how (macos_see capture and text reading, showme flow, snap, redact, coords, frame), Point at the problem (pointat), hold to talk (voice rules, voice_mac microphone and speech model), project folder (projects), Keychain key saving (keystore), runner supervisor
 app/                 Tauri 2 + React shell: native panels, runner link, character, cards, ask box, docking, tray (M2, started); memory page later
 app/vendor/          (planned, M2) Anthropic's Claude binary, copied from the pinned SDK package at build time; never committed
 evals/               (planned, M3+) quality suites: Prompt help targets, Show me how screenshots, voice latency, rescue projects

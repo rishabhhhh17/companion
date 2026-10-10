@@ -47,7 +47,8 @@ export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; 
 export type AuthCheck = Envelope & { type: "auth.check" };
 export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
 export type DoctorCheck = Envelope & { type: "doctor.check" };
-export type Command = DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type ProblemFind = Envelope & { type: "problem.find"; project: string; agent: string };
+export type Command = ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -77,7 +78,13 @@ export type AssistPromptDone = Envelope & { type: "assist.prompt.done"; req: str
 export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string };
 export type AssistError = Envelope & { type: "assist.error"; req: string; reason: string };
 
-export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number };
+// Where a check failed: a line in the project, a button in the app, or at least the error sentence.
+export type Problem =
+  | { kind: "line"; file: string; line: number; column?: number; lineText: string; message: string; from: string }
+  | { kind: "button"; label: string; message: string; from: "browser" }
+  | { kind: "message"; message: string; from: string };
+export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem };
+export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem };
 export type ProofStepEvent = Envelope & { type: "proof.step"; agent: string } & ProofStep;
 export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number };
 
@@ -94,7 +101,7 @@ export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reas
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[] };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
-export type Event = RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -117,6 +124,7 @@ const COMMANDS: Record<string, Check[]> = {
   "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
   "auth.check": [],
   "doctor.check": [],
+  "problem.find": [str("project"), str("agent")],
   "memory.add": [str("project"), oneOf("scope", ["project", "profile"]), str("text"), str("source")],
   "recap.ask": [str("project"), str("since")],
   "explain.set": [str("project"), bool("enabled")],
@@ -152,6 +160,7 @@ const EVENTS: Record<string, Check[]> = {
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
   "doctor.report": [list("items")],
+  "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"])],
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate")],
   "explain.state": [str("project"), bool("enabled")],
   "recap.ready": [str("project"), list("lines")],
