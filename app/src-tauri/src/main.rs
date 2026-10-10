@@ -77,6 +77,12 @@ fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 /// Your turn: the target the ring is waiting on (global points, label), and a number that Stop, Close or a newer ring changes.
 static TURN: Mutex<Option<(coords::R, String)>> = Mutex::new(None);
 static TURN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Until when a pointer (ring, caption) is on the overlay, in ms since 1970: confetti waits. A pointer that fades by
+/// itself after 10 s frees it then; one waiting for a click holds it until the overlay is hidden.
+static OVERLAY_BUSY_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn overlay_busy() -> bool { (now() as u64) < OVERLAY_BUSY_UNTIL.load(std::sync::atomic::Ordering::SeqCst) }
+/// Each celebration takes a number, so an older one's tidy up never cuts a newer one short.
+static PARTY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn turn_cancel() { TURN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
@@ -453,6 +459,7 @@ fn say_showme(app: &AppHandle, stage: &str, message: &str, extra: Value) {
 }
 
 fn hide_overlay(app: &AppHandle) {
+    OVERLAY_BUSY_UNTIL.store(0, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to("overlay", "overlay-clear", ());
     let _ = app.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
 }
@@ -507,6 +514,7 @@ fn showme_start(app: AppHandle, question: String) {
 
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
 fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) {
+    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + 10_500 }, std::sync::atomic::Ordering::SeqCst);
     let a = app.clone();
     let caption2 = caption.to_string();
     let _ = app.run_on_main_thread(move || {
@@ -616,6 +624,40 @@ fn do_it_for_me(app: AppHandle) {
                 let m = match why { "risky" | "dialog" | "no_label" => SELF, _ => "I could not click that one. Please click it yourself." };
                 say_showme(&app, "your_turn_miss", m, json!({}));
             }
+        }
+    });
+}
+
+// ---------- Celebration ----------
+
+/// Confetti from the character for the big moments (proof passed, it went live). Never over a ring that is waiting
+/// for the person, and it leaves the moment anything else needs the pointer.
+#[tauri::command]
+fn celebrate(app: AppHandle) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let free = || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none() && !overlay_busy();
+    if !free() { return; }
+    let (gen, party) = (POINT_GEN.load(SeqCst), PARTY_GEN.fetch_add(1, SeqCst) + 1);
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        // Checked again here: a pointer may have been drawn since the command came in.
+        if !free() || POINT_GEN.load(SeqCst) != gen { return; }
+        let mtm = MainThreadMarker::new().unwrap();
+        let screens = NSScreen::screens(mtm);
+        let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        let Some(dock) = with_panels(|dock, _| dock.frame()) else { return };
+        let (cx, cy) = (dock.origin.x + dock.size.width / 2.0, dock.origin.y + dock.size.height / 2.0);   // AppKit points
+        let Some(scr) = screens.iter().map(|s| s.frame()).find(|f| cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) else { return };
+        let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
+        let ak = coords::rect_to_appkit(d, primary_h);
+        OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        let _ = a.emit_to("overlay", "overlay-party", json!({ "x": cx - d.x, "y": (primary_h - cy) - d.y }));
+    });
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1700));
+        // Only the latest celebration tidies up, and never while a pointer has come up meanwhile.
+        if PARTY_GEN.load(SeqCst) == party && POINT_GEN.load(SeqCst) == gen && free() {
+            let _ = app.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
         }
     });
 }
@@ -998,7 +1040,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

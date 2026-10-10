@@ -508,7 +508,7 @@ export class AgentRunner {
     this.openTasks.delete(cmd.agent);
     // Off the record work gets no saved picture (nothing about it is kept).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}) } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}) } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));

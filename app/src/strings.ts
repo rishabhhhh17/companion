@@ -129,6 +129,7 @@ export const S = {
   showMeHint: "Type what you want to find or do on your screen, then press Show me. I look once, with a light on first.",
   showMeNext: "Next step",
   doItForMe: "Do it for me",
+  reactionsSetting: "Reactions and celebrations",
   showMeDone: "Done",
   showMeFlying: "Pointing",
   showMeCovered: "Private text on your screen was covered before anything was sent.",
