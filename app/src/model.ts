@@ -6,7 +6,7 @@ export type ToolLine = { id: string; text: string; outcome: "ran" | "blocked" | 
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
 export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string };
 export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number };
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string } };
 export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
@@ -25,7 +25,7 @@ export type MemoryLine = { id: string; text: string; source: string; date: strin
 export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profileLines: MemoryLine[]; problems: string[] };
 export type Saved = { id: string; scope: "project" | "profile"; text: string };
 export type Explain = { checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number } };
-export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean };
+export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } };
 export type ShowMe = { stage: string; message: string; req?: string };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
@@ -169,6 +169,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
     case "ship.gates": return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
     case "ship.status": return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };
+    // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.
+    case "ship.card": return m.shipFlow?.stage === "live" && typeof e.image === "string" ? { ...m, shipFlow: { ...m.shipFlow, card: { image: e.image, url: String(e.url ?? ""), title: String(e.title ?? "") } } } : m;
     case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
     case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], file: e.file }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
@@ -180,7 +182,9 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "drive.done": return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
-    case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate } };
+    // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
+    case "receipt.visual": return m.receipt && m.receipt.checkpoint === e.checkpoint ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
+    case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}) } };
     case "memory.state": return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
     case "memory.refused": return { ...m, memoryNote: String(e.reason) };
     case "memory.exported": return { ...m, exported: String(e.text ?? "") };

@@ -4,7 +4,7 @@
 
 import { runCommand } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
@@ -28,6 +28,10 @@ import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
+import { captureBefore, sweepWork } from "./proof/before.ts";
+import { makeShareCard, projectTitle } from "./ship/card.ts";
+import { drawReceipt } from "./proof/picture.ts";
+import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
 
 export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
@@ -57,8 +61,17 @@ export type RunnerOptions = {
   // Putting a preview and then the live site up. Without it, shipping beyond the safety check is off.
   deployer?: Deployer;
   browser?: typeof browserCheck;
+  // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
+  pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
   explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
 };
+
+// Receipt pictures are kept for the timeline, newest first, so they never fill the disk.
+const KEEP_PICTURES = 200;
+function pruneOldest(dir: string, keep: number) {
+  const files = readdirSync(dir).filter((f) => f.endsWith(".jpg")).map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
+  for (const x of files.slice(keep)) rmSync(join(dir, x.f), { force: true });
+}
 
 type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean) => void> };
 type StartCmd = Extract<Command, { type: "agent.start" }>;
@@ -105,6 +118,9 @@ export class AgentRunner {
   private sessions = new Map<string, Session>();
   private plans = new Map<string, PendingPlan>();
   private driving = new Set<string>();
+  private picturing = new Set<AbortController>();   // visual receipts being drawn, so Stop everything can end them
+  private backgroundJobs = new Set<Promise<void>>();   // pictures and cards; the runner waits for them before it exits
+  private projectTurn = new Map<string, Promise<unknown>>();   // a proof check and a picture never run a server at the same time
   private finding = new Map<string, { abort: AbortController; agent: string }>();   // point at the problem: one check per project at a time
   private driveStop = new Set<string>();
   private choices = new Map<string, (c: string) => void>();
@@ -128,7 +144,7 @@ export class AgentRunner {
   }
   private counter = 0;
   private ledger: Ledger;
-  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); }
+  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); if (o.pictures) sweepWork(o.pictures.workDir); }
 
   // Companion's own notes are not the person taking the wheel: the watchers treat these writes as the agent's own.
   private ownWrite<T>(fn: () => T): T {
@@ -252,6 +268,17 @@ export class AgentRunner {
   private emit<T extends Omit<Event, "v" | "id">>(e: T) {
     this.o.emit({ v: PROTOCOL_VERSION, id: `e${++this.counter}`, ts: this.now().toISOString(), ...e } as unknown as Event);
   }
+  /** Runs `fn` when no other proof check or picture is using this project's server and browser. */
+  private inTurn<T>(project: string, fn: () => Promise<T>): Promise<T> {
+    const key = resolve(project);
+    const run = (this.projectTurn.get(key) ?? Promise.resolve()).then(fn, fn);
+    this.projectTurn.set(key, run.catch(() => undefined));
+    return run;
+  }
+  private track(job: Promise<void>) { this.backgroundJobs.add(job); void job.finally(() => this.backgroundJobs.delete(job)); }
+  /** Pictures and cards still being made. The runner awaits this before it exits, so their servers and copies are cleaned up. */
+  background(): Promise<unknown> { return Promise.allSettled([...this.backgroundJobs]); }
+
   private state(agent: string, state: string) { this.emit({ type: "agent.state", agent, state } as never); }
   private fail(reason: string, agent?: string) { this.emit({ type: "protocol.error", reason, ...(agent ? { agent } : {}) } as never); }
 
@@ -295,7 +322,7 @@ export class AgentRunner {
         this.choices.delete(cmd.agent); r(cmd.choice); return;
       }
       case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
@@ -432,6 +459,7 @@ export class AgentRunner {
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
+    let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let ok = await round(cmd.prompt, opts.resumeSession);
     for (let tries = 1; ; tries++) {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
@@ -450,14 +478,14 @@ export class AgentRunner {
         return parseReview(text);
       } : undefined;
       try {
-        res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review });
+        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries } as never);
       this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
       if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
-      if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; break; }
+      if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; shot = res.shot; break; }
 
       proof = "failed"; status = "not_done";
       { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail }; } }
@@ -478,12 +506,62 @@ export class AgentRunner {
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.openTasks.delete(cmd.agent);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd } as never);
+    // Off the record work gets no saved picture (nothing about it is kept).
+    const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}) } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
+    if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
     if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && !this.driving.has(cmd.agent)) void this.explain(cmd, { label: lbl, changed, said }, before.id, abort.signal);
     const stuck = proof === "failed" && sigs.length >= 3 && new Set(sigs.slice(-3)).size === 1 ? lastFailure : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
+  }
+
+  // The "it's live" card, made in the background once the site is live. Stop everything ends it.
+  private async shareCard(project: string, url: string): Promise<void> {
+    const ac = new AbortController();
+    this.picturing.add(ac);
+    try {
+      let pkg: string | undefined;
+      try { pkg = JSON.parse(readFileSync(join(project, "package.json"), "utf8")).name; } catch { pkg = undefined; }
+      const title = projectTitle(typeof pkg === "string" ? pkg : undefined, project.split("/").filter(Boolean).pop() ?? "");
+      const date = this.now().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+      const card = await (this.o.pictures?.card ?? makeShareCard)({ url, title, date, signal: ac.signal });
+      if (!card || ac.signal.aborted) return;
+      this.emit({ type: "ship.card", project, url, title, image: card.jpeg, withShot: card.withShot } as never);
+    } catch { /* no card is not worth an error */ }
+    finally { this.picturing.delete(ac); }
+  }
+
+  // The visual receipt: run the earlier version in a private copy, compare the two pages, circle what changed.
+  // It runs after the task has ended, so it never holds the person up; Stop everything ends it.
+  private async visualReceipt(cmd: StartCmd, store: CheckpointStore, beforeId: string, after: PageShot): Promise<void> {
+    const pics = this.o.pictures!;
+    const ac = new AbortController();
+    this.picturing.add(ac);
+    // Every receipt that said a picture is coming gets an answer, so the card never waits forever.
+    const none = () => this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: false, caption: "", circles: 0 } as never);
+    try {
+      const out = await this.inTurn(cmd.project, async () => {
+        if (ac.signal.aborted) return null;
+        const b = await (pics.before ?? captureBefore)({ store, beforeId, project: cmd.project, workDir: pics.workDir, signal: ac.signal });
+        if (ac.signal.aborted || ("none" in b && b.none === "cancelled")) return null;
+        // Only a page that really had nothing, or really crashed, is drawn as "everything is new". Otherwise no circles are guessed.
+        const unknown = "none" in b && b.none === "not_pictured";
+        const pic = unknown ? { jpeg: after.jpeg, regions: [], how: "none" as const } : await (pics.draw ?? drawReceipt)("shot" in b ? b.shot : null, after, ac.signal);
+        return { b, pic, unknown };
+      });
+      if (!out || ac.signal.aborted) { none(); return; }
+      const { b, pic, unknown } = out;
+      const caption = unknown ? "This works now. The earlier version could not be pictured, so nothing is circled."
+        : "none" in b && b.none === "crashed" ? "Before, the page crashed on start. Now it works."
+        : pic.how === "all_new" ? "This works now. Everything on this page is new."
+        : pic.regions.length ? "This works now. What changed is circled." : "This works now. The page looks the same as before.";
+      let saved = "";
+      try { mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 }); saved = join(pics.saveDir, `${beforeId}.jpg`); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); pruneOldest(pics.saveDir, KEEP_PICTURES); } catch { saved = ""; }
+      this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: true, image: pic.jpeg, caption, circles: pic.regions.length, ...(saved ? { file: saved } : {}) } as never);
+    } catch { none(); }   // a missing picture never spoils a finished task
+    finally { this.picturing.delete(ac); }
   }
 
   // --- Drive: plan first (read only), then one approved step at a time ---
@@ -713,6 +791,7 @@ export class AgentRunner {
       this.previews.delete(key);
       try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "live", snapshot: p.snapshot, url: p.url, productionUrl: r.productionUrl, gates: p.gates, proof: p.proof }); } catch { /* the record is not worth stopping for */ }
       this.shipSay(cmd.project, "live", `It is live${r.productionUrl ? ` at ${r.productionUrl}` : ""}. Undo cannot take it off the internet; the Roll back button can.`, { previewUrl: p.url, ...(r.productionUrl ? { productionUrl: r.productionUrl } : {}) });
+      if (this.o.pictures) this.track(this.shareCard(cmd.project, r.productionUrl ?? p.url));
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong (${clip(String((e as Error).message ?? e), 120)}).`);
     } finally { this.shipping.delete(key); this.sessions.delete("ship"); }

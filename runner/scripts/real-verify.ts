@@ -113,6 +113,21 @@ await scenario("drive", only, async (note) => {
   return done.status === "done" && /Welcome to my site/.test(html) && /Made with Companion/.test(html) && proofs.every((v) => v !== "failed") && after !== html && okPlan;
 });
 
+await scenario("visual-receipt", only, async (note) => {
+  const dir = tmp("pic"); put(dir, { "index.html": "<!doctype html><html><head><title>Mugs</title></head><body style=\"font:16px sans-serif;margin:24px\"><h1>Hand made mugs</h1><p>Each one is thrown by hand.</p></body></html>" });
+  const r = new Real(dir); if (!await r.ready()) return false;
+  await Bun.sleep(200);
+  r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "a1", mode: "drive", prompt: "In index.html, add a button labelled 'Add to cart' right under the paragraph. Change nothing else.", model: MODEL, budgetUsd: 0.3 });
+  const rec = await r.until((e) => e.type === "receipt", 180_000);
+  if (!rec) { note("no receipt"); r.stop(); return false; }
+  totalUsd += rec.usdEstimate ?? 0;
+  const pic = await r.until((e) => e.type === "receipt.visual", 60_000);
+  note(`receipt proof = ${rec.proof}; picture after ${pic ? Math.round((pic.at - rec.at) / 100) / 10 : "-"} s; ${pic ? JSON.stringify({ caption: pic.caption, circles: pic.circles, file: !!pic.file }) : "no picture"}`);
+  if (pic?.file && process.env.COMPANION_KEEP_PICTURE) writeFileSync(process.env.COMPANION_KEEP_PICTURE, readFileSync(pic.file));
+  r.stop();
+  return rec.proof === "passed" && !!pic && pic.circles >= 1 && /works now/.test(pic.caption) && !!pic.file && existsSync(pic.file);
+});
+
 await scenario("take-the-wheel", only, async (note) => {
   const dir = tmp("wheel"); put(dir, { "index.html": "<!doctype html><html><body><h1>Hi</h1></body></html>", "mine.txt": "my notes" });
   const r = new Real(dir); if (!await r.ready()) return false;

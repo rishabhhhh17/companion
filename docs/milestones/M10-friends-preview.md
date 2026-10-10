@@ -21,6 +21,7 @@ Rescue, Drive, the fix loop breaker, the proof ladder, Explain, undo and snapsho
 
 ## Progress
 - **Item 1, Point at the problem: built 10 Oct 2026, waiting for the hands on session.** Errors from TypeScript, Vite, Vitest, ESLint, Node, Bun and Python become a file and line (17 tests on their real output); every failed check carries its place; Ctrl+Opt+Cmd+F checks the project with no Claude; the editor opens at the line; the line is found on screen with no model call. Eval (`runner/scripts/eval-point.ts`, then `cargo test point_eval -- --ignored`): 280 of 280 drawn editor screens, 0 wrong places, about 1.3 s. **[verify in the hands on session]** the Cursor link lands on the line, the real Cursor screen is read as well as the drawn ones, and Screen Recording works for this feature.
+- **Item 2, Visual receipt and "it's live" card: built 10 Oct 2026.** Before and after pictures in the hidden browser (the before version runs from a private copy in Companion's data, with the project's packages borrowed by a link), compared by what is on the page, with pictures compared when only the look changed; circled and shown on the receipt. The share card is made after going live, with Save picture to Downloads and Copy link. Real check (Haiku on the test login): passed, picture 0.8 s after the receipt. Vite and React was checked by hand. **[verify]** Next.js and other frameworks; the share card against a real Vercel deploy (needs `vercel login` in the hands on session).
 
 ## What gets built, in order
 

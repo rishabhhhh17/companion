@@ -36,8 +36,9 @@ function ExplainBox({ e }: { e: Explain }) {
   );
 }
 
-function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean }; project: string; onClose: () => void }) {
+function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } }; project: string; onClose: () => void }) {
   const [ask, setAsk] = useState<"live" | "back" | null>(null);
+  const [shared, setShared] = useState("");
   const busy = ["checking_gates", "deploying", "checking_preview"].includes(f.stage);
   return (
     <section className={`panel ${f.stage === "failed" || f.stage === "refused" || f.stage === "not_signed_in" ? "amber" : ""}`} role="status" aria-label={S.onlineTitle}>
@@ -52,6 +53,16 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
           <button className="btn primary" type="button" onClick={() => { void send(shipLive(project, f.previewUrl!)); setAsk(null); }}>{S.liveYes}</button>
           <button className="btn" type="button" onClick={() => setAsk(null)}>{S.planCancel}</button>
         </div>
+      )}
+      {f.stage === "live" && f.card && (
+        <figure className="receipt-shot">
+          <img src={`data:image/jpeg;base64,${f.card.image}`} alt={`${f.card.title} ${S.isLive}`} />
+          <div className="row">
+            <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(String(e)))}>{S.savePicture}</button>
+            <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(String(e)))}>{S.copyLink}</button>
+          </div>
+          {shared && <div className="line muted" role="status">{shared}</div>}
+        </figure>
       )}
       {f.stage === "live" && ask !== "back" && <div className="row"><button className="btn" type="button" onClick={() => setAsk("back")}>{S.rollBack}</button></div>}
       {ask === "back" && (
@@ -482,6 +493,13 @@ function Card() {
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
           {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
+          {m.receipt.visual?.image && !undone && (
+            <figure className="receipt-shot">
+              <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
+              <figcaption>{m.receipt.visual.caption}</figcaption>
+            </figure>
+          )}
+          {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
           {m.receipt.changed.length > 0 && !undone && project && (
