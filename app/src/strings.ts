@@ -128,6 +128,7 @@ export const S = {
   pointHint: "Stuck? Press Control, Option, Command and F. I check your project and point at what is wrong.",
   showMeHint: "Type what you want to find or do on your screen, then press Show me. I look once, with a light on first.",
   showMeNext: "Next step",
+  doItForMe: "Do it for me",
   showMeDone: "Done",
   showMeFlying: "Pointing",
   showMeCovered: "Private text on your screen was covered before anything was sent.",

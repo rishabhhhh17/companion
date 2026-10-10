@@ -26,7 +26,8 @@ export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profile
 export type Saved = { id: string; scope: "project" | "profile"; text: string };
 export type Explain = { checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number } };
 export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } };
-export type ShowMe = { stage: string; message: string; req?: string };
+// turn: the ring is waiting for the person's own click (Do it for me is offered).
+export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
 export type PointCard = { stage: "checking" | "found" | "clear" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
@@ -100,7 +101,7 @@ export function reduce(m: Model, e: Ev): Model {
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     case "app.runner_restarted": return { ...withAgents({ ...m, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -110,7 +111,15 @@ export function reduce(m: Model, e: Ev): Model {
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
     case "ui.projectChanged": return { ...m, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
-    case "app.showme": return e.stage === "done" ? { ...m, showme: null } : { ...m, showme: { stage: String(e.stage), message: String(e.message ?? ""), req: e.req } };
+    case "app.showme": {
+      if (e.stage === "done") return { ...m, showme: null };
+      const stage = String(e.stage);
+      // A miss keeps the message of the step it belongs to visible above it; the ring keeps waiting.
+      const turn = e.turn === true || (stage === "your_turn_miss" && !!m.showme?.turn) ? true : undefined;
+      // Only the answers to a ring (a miss, a hit, done for you) belong to the ring before them; anything else starts fresh.
+      const req = e.req ?? (stage.startsWith("your_turn") || stage === "done_for_you" ? m.showme?.req : undefined);
+      return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}) } };
+    }
     case "assist.error": return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } });
     case "app.voice": return e.stage === "idle" ? { ...m, voice: null } : { ...m, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
     case "ui.voiceClosed": return { ...m, voice: null };
@@ -327,7 +336,8 @@ export function visualState(m: Model): CharacterState {
   if (m.showme && ["looking", "thinking"].includes(m.showme.stage)) return "checking";
   if (m.point?.stage === "checking") return "checking";
   if (m.voice?.stage === "transcribing") return "thinking";
-  if (m.showme && ["pointing", "pointing_roughly"].includes(m.showme.stage)) return "needsYou";
+  if (m.showme && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage)) return "needsYou";
+  if (m.showme && ["your_turn_done", "done_for_you"].includes(m.showme.stage)) return "done";
   return m.character;
 }
 

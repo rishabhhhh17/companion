@@ -27,6 +27,7 @@ extern "C" {
     fn AXUIElementCreateSystemWide() -> CFTypeRef;
     fn AXUIElementCopyElementAtPosition(el: CFTypeRef, x: f32, y: f32, out: *mut CFTypeRef) -> AXError;
     fn AXValueGetValue(v: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
+    fn AXUIElementGetPid(el: CFTypeRef, pid: *mut i32) -> AXError;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
@@ -306,6 +307,47 @@ pub fn clickable_at(x: f64, y: f64) -> Option<(f64, f64, f64, f64)> {
     for _ in 0..6 {
         let role = text_attr(&cur, "AXRole").unwrap_or_default();
         if CLICKABLE.contains(&role.as_str()) { return frame_of(&cur); }
+        cur = attr(&cur, "AXParent")?;
+    }
+    None
+}
+
+/// Do it for me: press the clickable thing at a global point, the way a person would, through Accessibility.
+/// `check` sees the element's role, everything it says about itself (title, description, help, value, the text inside
+/// it), whether it sits in a dialog or sheet, and whether it is Companion's own; it decides at the moment of pressing.
+pub fn press_at_checked(x: f64, y: f64, check: impl Fn(&str, &[String], bool, bool) -> Result<(), &'static str>) -> Result<(), &'static str> {
+    if !trusted(false) { return Err("no_permission"); }
+    let el = clickable_el(x, y).ok_or("nothing_there")?;
+    let role = text_attr(&el, "AXRole").unwrap_or_default();
+    let mut texts: Vec<String> = ["AXTitle", "AXDescription", "AXHelp", "AXValue"].iter().filter_map(|a| text_attr(&el, a)).collect();
+    for c in children(&el).iter().take(12) {
+        texts.extend(["AXTitle", "AXDescription", "AXValue"].iter().filter_map(|a| text_attr(c, a)));
+        for g in children(c).iter().take(12) { texts.extend(["AXTitle", "AXDescription", "AXValue"].iter().filter_map(|a| text_attr(g, a))); }
+    }
+    let mut in_dialog = false;
+    let mut cur = attr(&el, "AXParent");
+    for _ in 0..12 {
+        let Some(p) = cur else { break };
+        let (r, sr) = (text_attr(&p, "AXRole").unwrap_or_default(), text_attr(&p, "AXSubrole").unwrap_or_default());
+        if r == "AXSheet" || sr == "AXDialog" || sr == "AXSystemDialog" || sr == "AXFloatingWindow" && r == "AXWindow" { in_dialog = true; break; }
+        cur = attr(&p, "AXParent");
+    }
+    let mut pid: i32 = 0;
+    let ours = unsafe { AXUIElementGetPid(el.0, &mut pid) } == AX_OK && pid == std::process::id() as i32;
+    check(&role, &texts, in_dialog, ours)?;
+    let a = cfstr("AXPress");
+    if unsafe { AXUIElementPerformAction(el.0, as_ref(&a)) } == AX_OK { Ok(()) } else { Err("refused") }
+}
+
+fn clickable_el(x: f64, y: f64) -> Option<Cf> {
+    if !trusted(false) { return None; }
+    let sys = Cf::new(unsafe { AXUIElementCreateSystemWide() })?;
+    let mut out: CFTypeRef = std::ptr::null();
+    if unsafe { AXUIElementCopyElementAtPosition(sys.0, x as f32, y as f32, &mut out) } != AX_OK { return None; }
+    let mut cur = Cf::new(out)?;
+    for _ in 0..6 {
+        let role = text_attr(&cur, "AXRole").unwrap_or_default();
+        if CLICKABLE.contains(&role.as_str()) { return Some(cur); }
         cur = attr(&cur, "AXParent")?;
     }
     None

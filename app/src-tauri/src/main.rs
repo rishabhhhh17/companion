@@ -22,6 +22,7 @@ mod redact;
 mod showme;
 mod pointat;
 mod share;
+mod yourturn;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -72,7 +73,11 @@ thread_local! { static OVERLAY: RefCell<Option<Retained<NSPanel>>> = const { Ref
 static SHOWME: Mutex<Option<(String, showme::Prepared)>> = Mutex::new(None);
 /// Point at the problem: each run takes a number; Stop, Close or a newer run changes it, and an older run then stops before it looks or draws.
 static POINT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); }
+fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); turn_cancel(); }
+/// Your turn: the target the ring is waiting on (global points, label), and a number that Stop, Close or a newer ring changes.
+static TURN: Mutex<Option<(coords::R, String)>> = Mutex::new(None);
+static TURN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn turn_cancel() { TURN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
@@ -458,6 +463,8 @@ fn showme_stop(app: &AppHandle) { point_cancel(); voice_send(app, VoiceMsg::Canc
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 #[tauri::command]
 fn showme_start(app: AppHandle, question: String) {
+    // A new question replaces whatever ring was up (and any pointing still on its way).
+    point_cancel(); hide_overlay(&app);
     let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
     if question.is_empty() { say_showme(&app, "error", "Type what you want to find, then press Show me.", json!({})); return; }
     std::thread::spawn(move || {
@@ -499,7 +506,7 @@ fn showme_start(app: AppHandle, question: String) {
 }
 
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
-fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool) {
+fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) {
     let a = app.clone();
     let caption2 = caption.to_string();
     let _ = app.run_on_main_thread(move || {
@@ -507,7 +514,7 @@ fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, e
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
         // The flight starts at the character, wherever it is docked.
         let from = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact });
+        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold });
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
@@ -521,14 +528,97 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     let Some((_, prep)) = taken else { return };
     let plat = macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}), Box::new(|_| {}));
     let s = showme::aim(&plat, &prep, x, y, ocr_id.as_deref(), &target_text);
+    POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);   // a point_problem still on its way must not draw over this
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact }));
-    draw_pointer(&app, prep.shot.display, s.rect, &caption, s.exact);
-    say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, json!({}));
+    draw_pointer(&app, prep.shot.display, s.rect, &caption, s.exact, true);
+    your_turn(&app, prep.shot.display, s.rect, &target_text);
+    say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, json!({ "turn": true }));
 }
 
 /// The pointer goes away: a click, Esc, Stop everything, or the ten seconds running out.
 #[tauri::command]
 fn showme_clear(app: AppHandle) { point_cancel(); hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
+
+// ---------- Your turn ----------
+
+/// The ring stays up and waits for the person's own click. Only the mouse position and whether a button is down are
+/// read, only while the ring is up (no permission needed, never keys, never screen content).
+fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str) {
+    turn_cancel();
+    *TURN.lock().unwrap_or_else(|e| e.into_inner()) = Some((target, label.to_string()));
+    let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    let alive = move || TURN_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let down = || unsafe { NSEvent::pressedMouseButtons() } & 1 == 1;
+        let mut w = yourturn::Watch::new(target, down());
+        // Companion's own character and card, read at the moment of a press (the card grows and moves while the ring is up).
+        let a2 = app.clone();
+        let ours = move || -> Vec<coords::R> {
+            let (tx, rx) = std::sync::mpsc::channel::<Vec<coords::R>>();
+            let _ = a2.run_on_main_thread(move || {
+                let mtm = MainThreadMarker::new().unwrap();
+                let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+                let v = with_panels(|dock, card| [dock, card].iter().filter(|p| p.isVisible()).map(|p| { let f = p.frame(); coords::R { x: f.origin.x, y: primary_h - f.origin.y - f.size.height, w: f.size.width, h: f.size.height } }).collect::<Vec<_>>()).unwrap_or_default();
+                let _ = tx.send(v);
+            });
+            rx.recv_timeout(Duration::from_millis(500)).unwrap_or_default()
+        };
+        let t0 = std::time::Instant::now();
+        log("your_turn", json!({}));
+        while alive() && t0.elapsed().as_millis() < yourturn::WAIT_MS as u128 {
+            std::thread::sleep(Duration::from_millis(yourturn::POLL_MS));
+            match w.sample(down(), macos_see::pointer(), &ours) {
+                Some(yourturn::Heard::Hit) => {
+                    if !alive() { return; }
+                    *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    log("your_turn_hit", json!({ "misses": w.misses }));
+                    let r = json!({ "x": target.x - display.x, "y": target.y - display.y, "w": target.w, "h": target.h });
+                    let _ = app.emit_to("overlay", "overlay-celebrate", json!({ "rect": r }));
+                    say_showme(&app, "your_turn_done", "That's it.", json!({}));
+                    std::thread::sleep(Duration::from_millis(1400));
+                    if alive() { hide_overlay(&app); }
+                    return;
+                }
+                Some(yourturn::Heard::Miss) => {
+                    let m = if w.misses >= 3 { "Not quite. Click inside the ring, or press Do it for me." } else { "Not quite. Click inside the ring." };
+                    say_showme(&app, "your_turn_miss", m, json!({ "misses": w.misses }));
+                }
+                _ => {}
+            }
+        }
+        // Waited long enough: the ring goes away quietly.
+        if alive() { turn_cancel(); hide_overlay(&app); say_showme(&app, "done", "", json!({})); }
+    });
+}
+
+/// Do it for me: press the target through Accessibility (asked for the first time this is used). Never anything that
+/// sends, pays, deletes or publishes: the label is checked again on the real element at the moment of pressing.
+#[tauri::command]
+fn do_it_for_me(app: AppHandle) {
+    let Some((target, label)) = TURN.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return };
+    let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    // Off the main thread: an app that is not answering can hold Accessibility for seconds, and Stop must still work.
+    std::thread::spawn(move || {
+        const SELF: &str = "This one sends, pays, deletes, publishes or answers a question, so please click it yourself.";
+        if yourturn::risky(&label) { say_showme(&app, "your_turn_miss", SELF, json!({})); return; }
+        if !ax::trusted(false) {
+            ax::trusted(true);
+            say_showme(&app, "needs_permission", "To click for you, Companion needs Accessibility. Allow it in System Settings, then press Do it for me again. Or click it yourself.", json!({}));
+            return;
+        }
+        if TURN_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
+        let c = target.center();
+        match ax::press_at_checked(c.x, c.y, yourturn::may_press) {
+            Ok(()) => { turn_cancel(); hide_overlay(&app); log("done_for_you", json!({})); say_showme(&app, "done_for_you", "Done. I clicked it for you.", json!({})); }
+            Err(why) => {
+                log("do_it_for_me_refused", json!({ "why": why }));
+                let m = match why { "risky" | "dialog" | "no_label" => SELF, _ => "I could not click that one. Please click it yourself." };
+                say_showme(&app, "your_turn_miss", m, json!({}));
+            }
+        }
+    });
+}
 
 // ---------- Point at the problem ----------
 
@@ -611,7 +701,12 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         if !alive() { return; }
         log("point_found", json!({ "kind": kind, "found": found.is_some(), "exact": found.map(|f| f.exact) }));
         match (found, display) {
-            (Some(f), Some(d)) => { draw_pointer(&app, d, f.rect, &cap, f.exact); say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({})); }
+            (Some(f), Some(d)) => {
+                let button = kind == "button";
+                draw_pointer(&app, d, f.rect, &cap, f.exact, button);
+                say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
+                if button { your_turn(&app, d, f.rect, &label); }
+            }
             _ => {
                 let what = match kind { "line" => "the line", "button" => "that button", _ => "that error" };
                 let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
@@ -903,7 +998,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

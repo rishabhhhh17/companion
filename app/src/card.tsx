@@ -227,6 +227,17 @@ function Card() {
     return () => { off.then((f) => f()); };
   }, []);
   const showMe = (question: string, goal: string, steps: string[]) => { setWalk({ goal, steps }); void invoke("showme_start", { question }); };
+  const nextStep = () => { if (walk) showMe(`${walk.goal}. So far I did: ${walk.steps.join("; ")}. What is the next step?`, walk.goal, walk.steps); };
+  // In a walkthrough, once the person clicked the step (or it was clicked for them), the next step follows on its own.
+  const stage = m.showme?.stage;
+  // The walkthrough ends whenever the pointer goes away (Esc, Stop everything, closing, waiting too long).
+  useEffect(() => { if (!m.showme) setWalk(null); }, [m.showme]);
+  useEffect(() => {
+    // Only a walkthrough's own ring moves it on (a Show me ring carries an "sm_" request; Point at the problem's does not).
+    if (!walk || !m.showme?.req?.startsWith("sm_") || (stage !== "your_turn_done" && stage !== "done_for_you")) return;
+    const t = setTimeout(() => nextStep(), 1100);
+    return () => clearTimeout(t);
+  }, [stage]);
   showMeRef.current = showMe;
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
   const submit = () => {
@@ -544,13 +555,15 @@ function Card() {
         <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" ? "amber" : ""}`} role="status" aria-label={S.showMe}>
           <h2>{S.showMe}</h2>
           <div className="line">{m.showme.message}</div>
-          {["pointing", "pointing_roughly"].includes(m.showme.stage) && walk && (
+          {["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && (walk || m.showme.turn) && (
             <div className="row">
-              <button className="btn primary" type="button" onClick={() => showMe(`${walk.goal}. So far I did: ${walk.steps.join("; ")}. What is the next step?`, walk.goal, walk.steps)}>{S.showMeNext}</button>
+              <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>
+              {walk && <button className="btn" type="button" onClick={() => nextStep()}>{S.showMeNext}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.showMeDone}</button>
             </div>
           )}
-          {(["error", "needs_permission", "opened"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
+          {["your_turn_done", "done_for_you"].includes(m.showme.stage) && !walk && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); }}>{S.onlineClose}</button></div>}
+          {(["error", "needs_permission", "opened"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
         </section>
       )}
 
