@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -177,6 +177,20 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Point at the problem: the key checks the project; when a place comes back, the pointer flies there.
+  const projectRef = useRef(project); projectRef.current = project;
+  useEffect(() => {
+    const offKey = listen("find-problem", () => {
+      if (!projectRef.current) { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
+      dispatch({ type: "ui.findProblem" });
+      void send(findProblem(projectRef.current));
+    });
+    const offFound = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; verdict?: string; problem?: unknown; project?: string };
+      if (ev.type === "problem.found" && ev.verdict === "failed" && ev.problem && ev.project === projectRef.current) void invoke("point_problem", { project: ev.project, problem: ev.problem });
+    });
+    return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
+  }, []);
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
@@ -318,6 +332,7 @@ function Card() {
             {m.stuck.options.map((o, i) => (
               <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
             ))}
+            {m.where && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.where })}>{S.pointWhere}</button>}
           </div>
         </section>
       )}
@@ -432,7 +447,10 @@ function Card() {
           <div className="line"><b>{S.rescueBroken}:</b> {m.rescue.broken}</div>
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button></div>
+          <div className="row">
+            {m.where && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.where })}>{S.pointWhere}</button>}
+            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
+          </div>
         </section>
       )}
 
@@ -484,6 +502,26 @@ function Card() {
         </section>
       )}
 
+      {m.point && (
+        <section className={`panel ${m.point.stage === "found" ? "amber" : ""}`} role="status" aria-label={S.pointTitle}>
+          <h2>{S.pointTitle}</h2>
+          {m.point.stage === "checking" && <div className="line">{S.pointChecking}</div>}
+          {m.point.stage === "clear" && <div className="line">{S.pointClear}</div>}
+          {m.point.stage === "nothing" && <div className="line">{S.pointNothing}</div>}
+          {m.point.stage === "found" && <>
+            <div className="line"><b>{m.point.label}</b></div>
+            <div className="line">{m.point.problem && m.point.problem.kind === "line" ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
+          </>}
+          {m.point.stage !== "checking" && (
+            <div className="row">
+              {m.point.stage === "found" && m.point.problem && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.point?.problem })}>{S.pointWhere}</button>}
+              {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
+              <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
+            </div>
+          )}
+        </section>
+      )}
+
       {m.showme && (
         <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" ? "amber" : ""}`} role="status" aria-label={S.showMe}>
           <h2>{S.showMe}</h2>
@@ -494,7 +532,7 @@ function Card() {
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.showMeDone}</button>
             </div>
           )}
-          {["error", "needs_permission"].includes(m.showme.stage) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
+          {(["error", "needs_permission", "opened"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
         </section>
       )}
 

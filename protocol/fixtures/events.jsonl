@@ -35,3 +35,5 @@
 {"v":1,"id":"e48","type":"recap.ready","project":"p_9f2c","lines":["You were working on: Add a page","While you were away: 1 task ended, 1 checked","Nothing is waiting for you"]}
 {"v":1,"id":"e49","type":"ship.status","project":"p_9f2c","stage":"ready","detail":"The preview works. You can make it live.","previewUrl":"https://shop-abc.vercel.app","canGoLive":true}
 {"v":1,"id":"e50","type":"doctor.report","items":[{"id":"node","label":"Node","ok":true,"detail":"Version 22.1.0 is fine."}]}
+{"v":1,"id":"e51","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"failed","label":"Running the tests","detail":"The tests did not pass.","problem":{"kind":"line","file":"src/math.test.ts","line":5,"column":21,"lineText":"expect(add(2, 3)).toBe(5);","message":"AssertionError: expected -1 to be 5","from":"tests"}}
+{"v":1,"id":"e52","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"passed"}

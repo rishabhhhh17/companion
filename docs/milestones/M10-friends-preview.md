@@ -19,6 +19,9 @@
 ## What is already built (reused, not rebuilt)
 Rescue, Drive, the fix loop breaker, the proof ladder, Explain, undo and snapshots, Prompt help (rewrite, diff, paste back on accept), memory, Where was I, voice (hold to talk), Make it live (stand in only), the ship gates (including the public database table check), the dock and cards, and the Show me how engine (one capture with secrets covered, snap to the real element, arrow and ring overlay; 48 of 48 on rendered pages, 41 of 44 on real sites, about 2.6 s).
 
+## Progress
+- **Item 1, Point at the problem: built 10 Oct 2026, waiting for the hands on session.** Errors from TypeScript, Vite, Vitest, ESLint, Node, Bun and Python become a file and line (17 tests on their real output); every failed check carries its place; Ctrl+Opt+Cmd+F checks the project with no Claude; the editor opens at the line; the line is found on screen with no model call. Eval (`runner/scripts/eval-point.ts`, then `cargo test point_eval -- --ignored`): 280 of 280 drawn editor screens, 0 wrong places, about 1.3 s. **[verify in the hands on session]** the Cursor link lands on the line, the real Cursor screen is read as well as the drawn ones, and Screen Recording works for this feature.
+
 ## What gets built, in order
 
 | # | Feature | How it works | Time |

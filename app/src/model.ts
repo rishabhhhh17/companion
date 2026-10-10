@@ -28,11 +28,17 @@ export type Explain = { checkpoint: string; bullets: string[]; question?: { text
 export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean };
 export type ShowMe = { stage: string; message: string; req?: string };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
+export type Problem = import("../../protocol/index.ts").Problem;
+export type PointCard = { stage: "checking" | "found" | "clear" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 export type Model = {
   doctor: DoctorItem[] | null;
   voice: Voice | null;
   showme: ShowMe | null;
+  // Point at the problem: the key was pressed and the project is being checked, or the answer came back.
+  point: PointCard | null;
+  // The place the last failed check pointed to, for "Show me where".
+  where: Problem | null;
   shipFlow: ShipFlow | null;
   currentCheckpoint?: string;
   explain: Explain | null;
@@ -63,7 +69,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -92,9 +98,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -103,7 +109,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "explain.state": return { ...m, explainOn: !!e.enabled };
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": return e.stage === "done" ? { ...m, showme: null } : { ...m, showme: { stage: String(e.stage), message: String(e.message ?? ""), req: e.req } };
     case "assist.error": return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } });
     case "app.voice": return e.stage === "idle" ? { ...m, voice: null } : { ...m, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
@@ -133,7 +139,19 @@ export function reduce(m: Model, e: Ev): Model {
       const at = base.steps.findIndex((s) => s.rung === line.rung);
       return { ...m, task: { ...m.task, proof: { ...base, steps: at >= 0 ? base.steps.map((s, i) => (i === at ? line : s)) : [...base.steps, line] } } };
     }
+    case "ui.findProblem": return { ...m, point: { stage: "checking" } };
+    // Closing puts the character back to rest; the check is over.
+    case "ui.pointClosed": return m.point?.agent && m.agents[m.point.agent] === "needsYou" ? withAgents({ ...m, point: null }, { ...m.agents, [m.point.agent]: "idle" }) : { ...m, point: null };
+    case "problem.found": {
+      // Only an answer to a press that is still waiting counts; one that arrives after Stop or a folder change is old news.
+      if (m.point?.stage !== "checking") return m;
+      if (e.verdict === "cancelled") return { ...m, point: null };
+      if (e.verdict === "failed") return { ...m, point: { stage: "found", label: String(e.label ?? ""), message: String(e.detail ?? ""), agent: e.agent, ...(e.problem ? { problem: e.problem } : {}) }, where: e.problem ?? null };
+      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : "clear" }, where: null };
+    }
     case "proof.result": {
+      const failed = e.verdict === "failed" ? (e.steps ?? []).find((s: any) => s.status === "failed") : undefined;
+      if (e.verdict !== "cancelled") m = { ...m, where: failed?.problem ?? null };
       if (!m.task) return m;
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
@@ -303,6 +321,7 @@ export function driveWords(m: Model): string | null {
 export function visualState(m: Model): CharacterState {
   if (m.voice?.stage === "listening") return "listening";
   if (m.showme && ["looking", "thinking"].includes(m.showme.stage)) return "checking";
+  if (m.point?.stage === "checking") return "checking";
   if (m.voice?.stage === "transcribing") return "thinking";
   if (m.showme && ["pointing", "pointing_roughly"].includes(m.showme.stage)) return "needsYou";
   return m.character;
@@ -313,6 +332,7 @@ export function characterWords(m: Model): string {
   if (m.voice?.stage === "listening") return "Listening";
   if (m.voice?.stage === "transcribing") return "Understanding you";
   if (m.showme && ["looking", "thinking"].includes(m.showme.stage)) return m.showme.stage === "looking" ? "Looking at your screen" : "Finding it";
+  if (m.point?.stage === "checking") return "Checking your project";
   if (isFixing(m)) return "Fixing a failed check";
   if (m.character === "error" && notDoneReason(m)) return "Not done";
   return stateLabel(m.character);

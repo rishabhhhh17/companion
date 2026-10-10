@@ -130,31 +130,35 @@ impl Platform for MacPlatform {
         Ok(Captured { frame: fr, display: rect })
     }
 
-    fn read_text(&self, frame: &Frame) -> Vec<OcrBox> {
-        // The Mac's own text reader, on a compressed copy that stays in memory.
-        let Ok(jpeg) = frame.to_jpeg(90) else { return vec![] };
-        let data = NSData::with_bytes(&jpeg);
-        let opts = NSDictionary::<objc2_vision::VNImageOption, AnyObject>::new();
-        let handler = unsafe { VNImageRequestHandler::initWithData_options(VNImageRequestHandler::alloc(), &data, &opts) };
-        let req = unsafe { VNRecognizeTextRequest::new() };
-        unsafe { req.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate); req.setUsesLanguageCorrection(false); }
-        let arr = NSArray::from_retained_slice(&[req.clone().into_super().into_super()]);
-        if unsafe { handler.performRequests_error(&arr) }.is_err() { return vec![]; }
-        let Some(results) = (unsafe { req.results() }) else { return vec![] };
-        let (w, h) = (frame.w as f64, frame.h as f64);
-        let mut out = Vec::new();
-        for (i, o) in results.iter().enumerate() {
-            let Some(obs) = o.downcast_ref::<VNRecognizedTextObservation>().map(|x| x.to_owned()) else { continue };
-            let cands = unsafe { obs.topCandidates(1) };
-            let Some(c) = cands.iter().next() else { continue };
-            let bb = unsafe { obs.boundingBox() };
-            let r = crate::coords::vision_box_to_image(bb.origin.x, bb.origin.y, bb.size.width, bb.size.height, w, h);
-            out.push(OcrBox { id: format!("o{i}"), text: unsafe { c.string() }.to_string(), rect: r });
-        }
-        out
-    }
+    fn read_text(&self, frame: &Frame) -> Vec<OcrBox> { read_text_at(frame, true) }
+    fn read_text_fast(&self, frame: &Frame) -> Vec<OcrBox> { read_text_at(frame, false) }
 
     fn element_at(&self, p: Pt) -> Option<R> { crate::ax::clickable_at(p.x, p.y).map(|(x, y, w, h)| R { x, y, w, h }) }
     fn send_image(&self, jpeg: &[u8], w: u32, h: u32) { (self.send_image)(jpeg, w, h) }
     fn ask(&self, question: &str, w: u32, h: u32, c: &[(String, String, R)]) { (self.ask)(question, w, h, c) }
+}
+
+/// The Mac's own text reader, on a compressed copy that stays in memory. `accurate` is slower and reads small or
+/// unusual text better; the fast mode is tried first where speed matters.
+pub fn read_text_at(frame: &Frame, accurate: bool) -> Vec<OcrBox> {
+    let Ok(jpeg) = frame.to_jpeg(90) else { return vec![] };
+    let data = NSData::with_bytes(&jpeg);
+    let opts = NSDictionary::<objc2_vision::VNImageOption, AnyObject>::new();
+    let handler = unsafe { VNImageRequestHandler::initWithData_options(VNImageRequestHandler::alloc(), &data, &opts) };
+    let req = unsafe { VNRecognizeTextRequest::new() };
+    unsafe { req.setRecognitionLevel(if accurate { VNRequestTextRecognitionLevel::Accurate } else { VNRequestTextRecognitionLevel::Fast }); req.setUsesLanguageCorrection(false); }
+    let arr = NSArray::from_retained_slice(&[req.clone().into_super().into_super()]);
+    if unsafe { handler.performRequests_error(&arr) }.is_err() { return vec![]; }
+    let Some(results) = (unsafe { req.results() }) else { return vec![] };
+    let (w, h) = (frame.w as f64, frame.h as f64);
+    let mut out = Vec::new();
+    for (i, o) in results.iter().enumerate() {
+        let Some(obs) = o.downcast_ref::<VNRecognizedTextObservation>().map(|x| x.to_owned()) else { continue };
+        let cands = unsafe { obs.topCandidates(1) };
+        let Some(c) = cands.iter().next() else { continue };
+        let bb = unsafe { obs.boundingBox() };
+        let r = crate::coords::vision_box_to_image(bb.origin.x, bb.origin.y, bb.size.width, bb.size.height, w, h);
+        out.push(OcrBox { id: format!("o{i}"), text: unsafe { c.string() }.to_string(), rect: r });
+    }
+    out
 }

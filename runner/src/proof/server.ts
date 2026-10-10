@@ -8,7 +8,7 @@ import { minimalEnv } from "../env.ts";
 import type { Start } from "./detect.ts";
 
 export type Running = { ok: true; url: string; port: number; stop: () => Promise<void> };
-export type Failed = { ok: false; reason: string; notAServer?: boolean; aborted?: boolean };
+export type Failed = { ok: false; reason: string; notAServer?: boolean; aborted?: boolean; output?: string };
 
 export function freePort(): Promise<number> {
   return new Promise((res, rej) => {
@@ -79,7 +79,7 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
     if (o.signal?.aborted) { await stop(); return { ok: false, aborted: true, reason: "Stopped before the server was ready." }; }
     if (exited) {
       if (exitCode === 0) return { ok: false, notAServer: true, reason: `The start command finished without staying on, so it is a tool and not a website. ${tail(output)}`.trim() };
-      return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim() };
+      return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim(), output };
     }
     for (const p of [port, ...portsInOutput(output).filter((x) => x !== port)]) {
       const found = await answers(p);
@@ -91,7 +91,7 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
     await Bun.sleep(150);
   }
   await stop();
-  return { ok: false, reason: `The server did not start within ${Math.round(o.timeoutMs / 1000)} seconds. ${tail(output)}`.trim() };
+  return { ok: false, reason: `The server did not start within ${Math.round(o.timeoutMs / 1000)} seconds. ${tail(output)}`.trim(), output };
 }
 
 // A plain folder of files, served from this process, only on this Mac, never above the folder.

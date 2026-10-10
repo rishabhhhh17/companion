@@ -27,7 +27,7 @@ import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
-import { runLadder, type LadderResult, type StepUpdate } from "./proof/ladder.ts";
+import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
 import type { TaskLog } from "./tasklog.ts";
 
 export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
@@ -105,6 +105,7 @@ export class AgentRunner {
   private sessions = new Map<string, Session>();
   private plans = new Map<string, PendingPlan>();
   private driving = new Set<string>();
+  private finding = new Map<string, { abort: AbortController; agent: string }>();   // point at the problem: one check per project at a time
   private driveStop = new Set<string>();
   private choices = new Map<string, (c: string) => void>();
   private watchers = new Map<string, ProjectWatcher>();
@@ -274,6 +275,7 @@ export class AgentRunner {
       case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.ownWrite(() => this.memoryCommand(cmd)); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
+      case "problem.find": return this.problemFind(cmd);
       case "research.ask": return this.researchAsk(cmd);
       case "ship.check": return this.shipCheck(cmd);
       case "drive.approve": return this.driveApprove(cmd);
@@ -292,8 +294,8 @@ export class AgentRunner {
         if (!r) { this.fail("Nothing is waiting for an answer.", cmd.agent); return; }
         this.choices.delete(cmd.agent); r(cmd.choice); return;
       }
-      case "agent.interrupt": { this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
+      case "agent.interruptAll": { for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
@@ -734,6 +736,33 @@ export class AgentRunner {
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong (${clip(String((e as Error).message ?? e), 120)}). The live site was not changed.`);
     } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
+  }
+
+  // Point at the problem: check the project exactly as it is (no Claude, nothing changed) and say where it fails,
+  // so the character can fly to that line, error or button.
+  private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
+    // Every press ends with problem.found, so the card never stays on "Checking".
+    const found = (verdict: string, fl?: Step) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) } as never);
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent)) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
+    const abort = new AbortController();
+    this.finding.set(cmd.project, { abort, agent: cmd.agent });
+    try {
+      const store = this.store(cmd.project);
+      const snap = await store.snapshot("Point at the problem: the project as it was found");
+      this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      let res: LadderResult;
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
+      catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
+      if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
+      const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
+      found(res.verdict, fl);
+      this.state(cmd.agent, fl ? "needsYou" : "idle");
+    } catch (e) {
+      this.fail(`Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
+      found("cancelled");
+      this.state(cmd.agent, "idle");
+    } finally { this.finding.delete(cmd.project); }
   }
 
   // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.

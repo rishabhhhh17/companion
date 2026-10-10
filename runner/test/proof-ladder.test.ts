@@ -151,3 +151,28 @@ describe("progress and cleanup", () => {
     expect(result.verdict).toBe("cancelled");
   }, 60000);
 });
+
+describe("a failed rung says where it failed (point at the problem)", () => {
+  test("a failing test points at the test's line in the project", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ test: "bun test" }), "src/sum.test.ts": `import { test, expect } from "bun:test";\n\ntest("sum", () => {\n  expect(1 + 1).toBe(3);\n});\n` }));
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.problem).toMatchObject({ kind: "line", file: "src/sum.test.ts", line: 4, lineText: "expect(1 + 1).toBe(3);", from: "tests" });
+  }, 60000);
+  test("a server that crashes on start points at the line that crashed", async () => {
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ dev: "bun server.js" }), "server.js": `const port = Number(process.env.PORT);\nconst config = JSON.parse(\"null\");\nconsole.log(config.name);\n` }));
+    expect(result.failedAt?.rung).toBe("start");
+    expect(result.failedAt?.problem).toMatchObject({ kind: "line", file: "server.js", line: 3, lineText: "console.log(config.name);" });
+  }, 60000);
+  test("a check that was weakened has no place to point at, only the words", async () => {
+    const { result } = await scenario({ "package.json": pkg({ test: "bun test" }), "a.test.ts": TESTS(3) }, (d) => put(d, { "a.test.ts": TESTS(1) }));
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.problem).toBeUndefined();
+  }, 60000);
+  test("when asked not to install, missing packages are named instead of installed", async () => {
+    const { result, dir } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": JSON.stringify({ name: "x", version: "1.0.0", dependencies: { "left-pad": "1.3.0" }, scripts: { test: "bun test" } }) }), {}, { noInstall: true });
+    expect(result.failedAt?.rung).toBe("install");
+    expect(result.failedAt?.problem).toMatchObject({ kind: "message" });
+    expect(result.failedAt?.detail).toContain("not installed");
+    expect(require("node:fs").existsSync(join(dir, "node_modules"))).toBe(false);
+  }, 60000);
+});

@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Stuck? Press the key: 10 Oct 2026
+
+- **Control, Option, Command and F** checks your project exactly as it is (nothing is changed, Claude is not asked, nothing is spent) and finds where it breaks. If the project's packages are not installed yet, it says so instead of installing them. Your editor (Cursor, VS Code or Windsurf, whichever you are in) opens at the failing line, and the character flies there and circles it with the error in one plain sentence. It works the same for a red error in your terminal, and for a button that breaks your page. **Fix it with me** then starts a rescue.
+- A failed check during any task now remembers its place too, so **Show me where** points at it later.
+- Finding the line uses your Mac's own text reader on a picture that stays in memory (a second one a moment later if your editor was still opening). No picture is sent anywhere for this. Stop everything, or closing the card, stops it before it looks.
+- It reads the errors of TypeScript, Vite, Vitest, ESLint, Node, Bun and Python (tested on their real output), and it only ever points at files inside your project: never at the tools' own files, never through a link that leads outside the folder.
+- **How well it finds the line** (on 280 realistic editor screens in dark, light and Cursor styles, three fonts and four sizes, scored against where the line really is): 280 of 280 in the right place, none in the wrong place. For very short lines like `}` it circles "around here" by the line number. The error in the terminal was found 280 of 280 times. About 1.3 seconds to read the screen. These are drawn editor screens; trying it in the real Cursor on your Mac is part of the next hands on session.
+
 ## Hotkeys for Show me how: 9 Oct 2026
 
 - **Control, Option, Command and S** opens the box ready for a question about your screen. Type it and press Enter, or hold the talk keys and say it. Nothing is captured until the question is sent. The character now looks different when it is listening, looking at your screen, working out your words, or pointing.

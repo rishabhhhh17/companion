@@ -20,6 +20,7 @@ mod projects;
 mod redact;
 #[allow(dead_code)]
 mod showme;
+mod pointat;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -68,6 +69,9 @@ static PROJECT: Mutex<Option<String>> = Mutex::new(None);
 thread_local! { static OVERLAY: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) }; }
 /// What Show me how last saw, kept in memory until the model answers, then dropped.
 static SHOWME: Mutex<Option<(String, showme::Prepared)>> = Mutex::new(None);
+/// Point at the problem: each run takes a number; Stop, Close or a newer run changes it, and an older run then stops before it looks or draws.
+static POINT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); }
 static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
@@ -258,6 +262,7 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 
 fn sc_mods() -> Modifiers { Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER }
 fn sc_showme() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyS) }
+fn sc_problem() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyF) }
 fn sc_voice() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyV) }
 fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
 fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
@@ -447,7 +452,7 @@ fn hide_overlay(app: &AppHandle) {
 }
 
 /// Stop everything also takes the pointer away and forgets what was seen.
-fn showme_stop(app: &AppHandle) { voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+fn showme_stop(app: &AppHandle) { point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 #[tauri::command]
@@ -492,6 +497,22 @@ fn showme_start(app: AppHandle, question: String) {
     });
 }
 
+/// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
+fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool) {
+    let a = app.clone();
+    let caption2 = caption.to_string();
+    let _ = app.run_on_main_thread(move || {
+        let mtm = MainThreadMarker::new().unwrap();
+        let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        // The flight starts at the character, wherever it is docked.
+        let from = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
+        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact });
+        let ak = coords::rect_to_appkit(d, primary_h);
+        OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        let _ = a.emit_to("overlay", "overlay-point", payload);
+    });
+}
+
 /// The engine chose a point in the picture: snap it to something real, then draw the pointer.
 #[tauri::command]
 fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String>, target_text: String, caption: String) {
@@ -499,26 +520,105 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     let Some((_, prep)) = taken else { return };
     let plat = macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}), Box::new(|_| {}));
     let s = showme::aim(&plat, &prep, x, y, ocr_id.as_deref(), &target_text);
-    let d = prep.shot.display;
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact }));
-    let a = app.clone();
-    let caption2 = caption.clone();
-    let _ = app.run_on_main_thread(move || {
-        let mtm = MainThreadMarker::new().unwrap();
-        let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-        // The flight starts at the character, wherever it is docked.
-        let from = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let payload = json!({ "rect": { "x": s.rect.x - d.x, "y": s.rect.y - d.y, "w": s.rect.w, "h": s.rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": s.exact });
-        let ak = coords::rect_to_appkit(d, primary_h);
-        OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
-        let _ = a.emit_to("overlay", "overlay-point", payload);
-    });
+    draw_pointer(&app, prep.shot.display, s.rect, &caption, s.exact);
     say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, json!({}));
 }
 
 /// The pointer goes away: a click, Esc, Stop everything, or the ten seconds running out.
 #[tauri::command]
-fn showme_clear(app: AppHandle) { hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
+fn showme_clear(app: AppHandle) { point_cancel(); hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
+
+// ---------- Point at the problem ----------
+
+fn editor_installed(bundle: &str) -> bool {
+    NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&objc2_foundation::NSString::from_str(bundle)).is_some()
+}
+
+/// Opens the failing file at its line (in the editor in front, or the first one installed, or the Mac's default),
+/// waits for it to come forward, then looks once (light first) and circles the line. Nothing is sent to a model.
+#[tauri::command]
+fn point_problem(app: AppHandle, project: String, problem: Value) {
+    let current = current_project();
+    if current.is_empty() { say_showme(&app, "error", "Choose your project folder first.", json!({})); return; }
+    // A check that finished after the folder changed belongs to the old project: never open its file in the new one.
+    if project != current { say_showme(&app, "error", "That problem was found in a different project folder, so I did not open anything.", json!({})); return; }
+    point_cancel();
+    let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    let alive = move || POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
+    std::thread::spawn(move || {
+        let kind = problem.get("kind").and_then(Value::as_str).unwrap_or("");
+        let message = problem.get("message").and_then(Value::as_str).unwrap_or("");
+        let mut opened: Option<(String, Option<String>)> = None;   // (what we say, the editor's bundle id)
+        if kind == "line" {
+            let rel = problem.get("file").and_then(Value::as_str).unwrap_or("");
+            let line = problem.get("line").and_then(Value::as_u64).unwrap_or(0) as u32;
+            let column = problem.get("column").and_then(Value::as_u64).map(|c| c as u32);
+            let file = match pointat::file_in_project(std::path::Path::new(&project), rel) { Ok(f) => f, Err(e) => { say_showme(&app, "error", &format!("I could not open that file: {e}."), json!({})); return; } };
+            let short = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let editor = pointat::choose_editor(&front_id(), editor_installed);
+            let (ok, name, bundle) = match editor.and_then(|i| pointat::editor_link(i, &file, line.max(1), column).map(|l| (i, l))) {
+                Some((i, link)) => (std::process::Command::new("/usr/bin/open").arg(&link).status().map(|s| s.success()).unwrap_or(false), pointat::EDITORS[i].2.to_string(), Some(pointat::EDITORS[i].0.to_string())),
+                None => (std::process::Command::new("/usr/bin/open").arg("-t").arg(&file).status().map(|s| s.success()).unwrap_or(false), "your text editor".to_string(), None),
+            };
+            log("point_open", json!({ "editor": name, "ok": ok }));
+            if !ok { say_showme(&app, "error", &format!("I could not open {short} in {name}."), json!({})); return; }
+            opened = Some((format!("Opened {short} at line {line} in {name}."), bundle));
+        }
+        // Give the editor a moment to come forward and draw the line.
+        if let Some((_, Some(bundle))) = &opened {
+            for _ in 0..20 { if front_id() == *bundle { break; } std::thread::sleep(Duration::from_millis(150)); }
+            std::thread::sleep(Duration::from_millis(700));
+        }
+        if !alive() { return; }
+        let said = opened.as_ref().map(|o| o.0.clone()).unwrap_or_default();
+        let a3 = app.clone();
+        let plat = macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}),
+            Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); }));
+        {
+            use showme::Platform;
+            if !plat.screen_recording_granted() {
+                macos_see::request_screen_recording();
+                let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
+                say_showme(&app, "needs_permission", &format!("{lead}To have me circle it on your screen, allow Screen Recording for Companion in System Settings, then try again."), json!({}));
+                return;
+            }
+        }
+        let fallback = match kind { "button" => "Pressing this button breaks the page", "line" => "This line fails", _ => "This is the error" };
+        let cap = pointat::caption(message, fallback);
+        let line_text = problem.get("lineText").and_then(Value::as_str).unwrap_or("").to_string();
+        let line_no = problem.get("line").and_then(Value::as_u64).unwrap_or(0) as u32;
+        let label = problem.get("label").and_then(Value::as_str).unwrap_or("").to_string();
+        let find = |boxes: &[snap::OcrBox]| match kind {
+            "line" => pointat::find_line(boxes, &line_text, line_no),
+            "button" => pointat::find_text(boxes, &label),
+            _ => pointat::find_text(boxes, message),
+        };
+        let mut found = None;
+        let mut display = None;
+        // The editor may still be drawing: one more look a moment later if the first finds nothing.
+        for attempt in 0..2 {
+            if attempt > 0 { std::thread::sleep(Duration::from_millis(800)); }
+            if !alive() { return; }
+            match showme::look_for(&plat, &find) {
+                Ok((d, hit)) => { display = Some(d); found = hit; if found.is_some() { break; } }
+                Err(showme::Refusal::SecureInput) => { say_showme(&app, "error", format!("{said} A password box is active, so I did not look at your screen.").trim(), json!({})); return; }
+                Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { say_showme(&app, "error", format!("{said} I could not look at your screen ({e}).").trim(), json!({})); return; }
+                Err(showme::Refusal::NeedsScreenRecording) => break,
+            }
+        }
+        if !alive() { return; }
+        log("point_found", json!({ "kind": kind, "found": found.is_some(), "exact": found.map(|f| f.exact) }));
+        match (found, display) {
+            (Some(f), Some(d)) => { draw_pointer(&app, d, f.rect, &cap, f.exact); say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({})); }
+            _ => {
+                let what = match kind { "line" => "the line", "button" => "that button", _ => "that error" };
+                let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
+                say_showme(&app, "opened", &format!("{lead}I could not spot {what} on your screen. {cap}"), json!({}));
+            }
+        }
+    });
+}
 
 // ---------- Hold to talk ----------
 
@@ -744,6 +844,13 @@ fn main() {
                         let _ = app.emit("showme-mode", true);
                         return;
                     }
+                    if s == &sc_problem() {
+                        // Stuck? Check the project as it is, then point at where it fails. Nothing is captured until a place is known.
+                        log("hotkey", json!({ "id": "F" }));
+                        open_card(app, "hotkey", false);
+                        let _ = app.emit("find-problem", true);
+                        return;
+                    }
                     if s == &k {
                         log("hotkey", json!({ "id": "K" }));
                         open_card(app, "hotkey", true);
@@ -769,7 +876,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -820,7 +927,7 @@ fn main() {
             });
             // Another app may already own one of our hotkeys. That must never stop Companion from opening.
             let mut taken: Vec<&str> = Vec::new();
-            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk"), (sc_showme(), "Show me how")] {
+            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk"), (sc_showme(), "Show me how"), (sc_problem(), "point at the problem")] {
                 if app.global_shortcut().register(sc).is_err() { taken.push(what); }
             }
             if !taken.is_empty() {
