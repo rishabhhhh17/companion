@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Your turn: 11 Oct 2026
+
+- **The ring now waits for you.** When Companion points at a button, it stays there until you click it yourself. Click the right thing and the ring turns green with a tick and a small burst of dots (just the tick if your Mac is set to reduce motion). Click somewhere else and it says "Not quite. Click inside the ring." In a walkthrough, the next step follows on its own.
+- **Do it for me** is always one button away. Companion presses it for you through Accessibility (macOS asks the first time). It presses only a plain button, link or tab that has words on it, never anything that sends, pays, deletes, publishes or answers a question (an "OK" in a dialog, for example), and the button is checked again at the moment of pressing.
+- **No new permission to notice your click.** While the ring is up, and only then, Companion reads where the mouse is and whether a button is down, which any app may do. It never reads your keys or your screen for this. Checked on a real Mac with a test app that had no permissions at all.
+
 ## "This works now", with a picture: 10 Oct 2026
 
 - **A before and after picture on every receipt** where Companion's checks opened your page. The earlier version of your project is copied into a private folder in Companion's own data (your project is not touched), started on its own, and photographed in the hidden browser. The two pages are compared by what they show, so the new thing is circled, not everything it pushed down. A change in colour or size is found by comparing the pictures. The receipt then says "This works now. What changed is circled." These are pictures of the app being built, never of your screen. The newest 200 are kept.

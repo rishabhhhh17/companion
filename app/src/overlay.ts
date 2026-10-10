@@ -1,9 +1,9 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { flightMs } from "./pointer.ts";
+import { burst, flightMs } from "./pointer.ts";
 
-type Point = { rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean };
+type Point = { rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
 const svg = document.getElementById("s")!;
 const cap = document.getElementById("cap") as HTMLElement;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -27,11 +27,12 @@ function show(p: Point) {
   const land = () => {
     ring.setAttribute("opacity", "1"); place(cx, cy - ry - 4, 0);
     const side = cx > innerWidth / 2 ? -1 : 1;
-    cap.textContent = p.caption + (p.exact ? "" : " (around here)");
+    cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
     cap.style.left = `${Math.max(8, Math.min(innerWidth - 320, side > 0 ? cx + rx + 12 : cx - rx - 12 - 300))}px`;
     cap.style.top = `${Math.max(8, Math.min(innerHeight - 60, cy - 18))}px`;
     cap.classList.add("on");
-    timer = setTimeout(clear, 10_000);
+    // A ring that waits for the person's click stays until they click, press Do it for me, or close it.
+    if (!p.hold) timer = setTimeout(clear, 10_000);
   };
   if (reduced) { land(); return; }
   const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy), dur = flightMs(dist);
@@ -49,3 +50,26 @@ function show(p: Point) {
 
 void listen("overlay-point", (e) => show(e.payload as Point));
 void listen("overlay-clear", () => clear());
+
+// The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion).
+function celebrate(rect: { x: number; y: number; w: number; h: number }) {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  clearTimeout(timer);
+  svg.querySelectorAll("path").forEach((a) => a.remove());
+  const ring = svg.querySelector("ellipse");
+  if (ring) { ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); ring.classList.remove("ring"); }
+  const cx = rect.x + rect.w / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
+  svg.appendChild(el("path", { d: `M${cx - 9} ${ty - 14} l6 6 l12 -13`, fill: "none", stroke: "#1e8a4c", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+  cap.textContent = "That's it."; 
+  if (!reduced) {
+    const dots = burst(rect).map((d, i) => { const c = el("circle", { cx: d.x, cy: d.y, r: d.r, fill: i % 2 ? "#ff9a2e" : "#1e8a4c" }); svg.appendChild(c); return { c, d }; });
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - t0) / 650), e = 1 - (1 - t) ** 3;
+      for (const { c, d } of dots) { c.setAttribute("cx", String(d.x + d.dx * e)); c.setAttribute("cy", String(d.y + d.dy * e)); c.setAttribute("opacity", String(1 - t)); }
+      if (t < 1) requestAnimationFrame(step); else dots.forEach(({ c }) => c.remove());
+    };
+    requestAnimationFrame(step);
+  }
+}
+void listen("overlay-celebrate", (e) => celebrate((e.payload as { rect: { x: number; y: number; w: number; h: number } }).rect));

@@ -62,7 +62,7 @@ fn shareable() -> Result<Retained<SCShareableContent>, String> {
 }
 
 /// The pointer in global top-left points.
-fn pointer() -> Pt {
+pub fn pointer() -> Pt {
     let p = unsafe { NSEvent::mouseLocation() };
     let primary_h = objc2_app_kit::NSScreen::screens(objc2::MainThreadMarker::new().unwrap_or_else(|| unsafe { objc2::MainThreadMarker::new_unchecked() })).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
     Pt { x: p.x, y: primary_h - p.y }
