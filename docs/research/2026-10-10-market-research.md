@@ -126,3 +126,32 @@ Written for the founder and their mentor after the mentor's session. Built the w
 - **"Mania"** could not be found under that name (mania.ai is a parked domain). Ask the mentor for a link.
 - Reddit and X could not be searched by the research tools, so first hand quotes from vibe coders are missing; the interviews fill that.
 - What Indian students will actually pay: no 2026 data; a landing page test or a short survey answers it.
+
+## 10. First hand evidence from X (read on 10 Oct 2026 through the founder's own browser)
+
+Reddit is blocked for the research tools in every browser available (safety restriction), so Reddit is still missing; X was read directly. Likes show how much a line resonated.
+
+**Stuck in fix loops is the loudest pain:**
+- Andrew Chen (1.6K likes, Feb 2025): "You can get the first 75% trivially, and it's amazing. Then try to make changes and iterate..."
+- levelsio (2K, Apr 2025): AI "stops understanding large code bases", so after the first prototype "you get stuck".
+- Matt Shumer (968, May 2025) shared a prompt for getting out of loops: people need help escaping them.
+- forgebitz (523, Jun 2025): "stuck in endless loops".
+- A small account (7 Oct 2026): "Vibe coding is 10 minutes of magic and 3 hours of telling the AI it didn't fix it. It always says it is fixed now." This is exactly what a checked fix answers.
+
+**Not understanding your own code:**
+- "Pure vibe coding is a Ponzi scheme. Eventually, the technical debt comes due, and if you don't understand the foundations, you can't pay it off." (5.4K, Mar 2026)
+- "Vibe coding works... until you need to change something. Then you realize you don't understand your own codebase." (277, Apr 2026)
+
+**Deploy is a known wall:** a paid hosting campaign (Jun 2026) runs on the line "deployment is still where most people get stuck". Advertisers target this pain.
+
+**Short beats long for learning:** "most 'learn to code with AI' tutorials drag on for hours and bury the good stuff in filler" (714, Sep 2026). A list of resources "grouped by what you're stuck on" got 3.9K likes (Sep 2026): people organise their learning around being stuck.
+
+**Credits and cost:** "Spend $200 in credits. Ship a buggy MVP." (May 2026); a competitor attacks Lovable on "$960/mo, limited credits" (Jul 2026). Bring your own key is a real advantage.
+
+**Claude ignoring instructions:** posts mostly blame the user ("your CLAUDE.md is useless, here is how to fix it", 279) and a behaviour file with a claimed 190K GitHub stars promises to stop "the four things every user complains about". People want the agent to follow their rules and do not know why it does not: medium signal for the "why did it ignore my rule" check.
+
+**HeyClicky, what the timeline shows:**
+- Growth came from founder demo videos (one with 14K likes) and fans who make animations and remixes of the character. The character itself creates love and free marketing.
+- HeyClicky is moving toward beginners who code: "let me help you finally install claude code plz" (Jun 2026).
+- A public teardown of its app (19 Jul 2026, 389 likes) questioned analytics data collection against its privacy policy. Privacy is a live wound in this category; our hotkey only, nothing stored design is a visible difference.
+- On 10 Oct 2026 it posted "i am changing": a change is coming; watch it.
