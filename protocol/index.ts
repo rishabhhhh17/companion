@@ -70,6 +70,7 @@ export type CostUpdate = Envelope & {
 export type Receipt = Envelope & {
   type: "receipt"; agent: string; checkpoint: string; changed: { file: string; kind: "added" | "modified" | "deleted" }[];
   commands: number; notUndoable: string[]; proof: "passed" | "failed" | "skipped"; usdEstimate: number;
+  picture?: boolean;   // a before and after picture is being made and will follow as receipt.visual
 };
 export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string };
 
@@ -101,7 +102,10 @@ export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reas
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[] };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
-export type Event = ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
+export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; caption: string; circles: number; file?: string };
+export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
+export type Event = ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -160,6 +164,8 @@ const EVENTS: Record<string, Check[]> = {
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
   "doctor.report": [list("items")],
+  "ship.card": [str("project"), str("url"), str("title"), str("image"), bool("withShot")],
+  "receipt.visual": [str("agent"), str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || (typeof m.image === "string" && m.image.length > 0) ? null : "a made picture needs \"image\""), num("circles")],
   "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"])],
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate")],
   "explain.state": [str("project"), bool("enabled")],

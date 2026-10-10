@@ -21,6 +21,7 @@ mod redact;
 #[allow(dead_code)]
 mod showme;
 mod pointat;
+mod share;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -620,6 +621,32 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
     });
 }
 
+// ---------- The it's live card ----------
+
+/// Save picture: the card goes to the person's Downloads folder, under a new name, only when they press the button.
+#[tauri::command]
+fn save_share_card(image: String, title: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(image.as_bytes()).map_err(|_| "that is not a picture".to_string())?;
+    share::check_jpeg(&bytes)?;
+    let home = std::env::var("HOME").map_err(|_| "your home folder was not found".to_string())?;
+    let dir = std::path::Path::new(&home).join("Downloads");
+    if !dir.is_dir() { return Err("your Downloads folder was not found".into()); }
+    let path = share::card_path(&dir, &title, |p| p.exists());
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map_err(|e| format!("could not save it ({e})"))?;
+    std::io::Write::write_all(&mut f, &bytes).map_err(|e| format!("could not save it ({e})"))?;
+    log("share_card_saved", json!({}));
+    Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+/// Copy link: only a web address, only on a press.
+#[tauri::command]
+fn copy_link(url: String) -> Result<(), String> {
+    if !share::is_web_link(&url) { return Err("that is not a web address".into()); }
+    ax::write_clipboard(&url);
+    Ok(())
+}
+
 // ---------- Hold to talk ----------
 
 enum VoiceMsg { Down(u64), Up(u64), Cancel }
@@ -876,7 +903,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

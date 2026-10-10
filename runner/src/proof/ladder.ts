@@ -17,7 +17,7 @@ export type StepUpdate = { rung: Rung; label: string; status: "running" | "passe
 // A failed step may carry the place it failed: a line in the project, a button, or at least the error sentence.
 export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem };
 export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled";
-export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string };
+export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
 export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_000, testMs: 5 * 60_000, startMs: 60_000, browserMs: 30_000 };
 
@@ -155,10 +155,10 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   try {
     if (cancelled()) return result("cancelled", undefined, srv.url);
     t0 = Date.now(); emit("browser", "running");
-    const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs });
+    const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs, shot: true });
     if (b.skipped) { finish("browser", "skipped", b.skipped, t0); return result("passed_with_gaps", undefined, srv.url); }
     if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
     finish("browser", "passed", "The page opened with no errors.", t0);
-    return result("passed", undefined, srv.url);
+    return { ...result("passed", undefined, srv.url), ...(b.shot ? { shot: b.shot } : {}) };
   } finally { await srv.stop(); }
 }

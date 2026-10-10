@@ -29,21 +29,23 @@ export async function installBrowser(): Promise<{ ok: boolean; detail: string }>
   return { ok: r.code === 0 && browserInstalled(), detail: (r.stderr || r.stdout).slice(-300) };
 }
 
-export type BrowserResult = { ok: boolean; skipped?: string; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number };
-export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number; clickButtons?: boolean };
+// A picture of the page as it first appears (before any button is pressed), and what is on it, for the visual receipt.
+export type PageShot = { jpeg: string; w: number; h: number; items: import("./visualdiff.ts").PageItem[] };
+export type BrowserResult = { ok: boolean; skipped?: string; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number; shot?: PageShot };
+export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal };
 
 // Buttons that sound like they send, pay, delete or publish are never pressed by a check.
 const RISKY = /delet|remov|\bpay|buy|purchas|send|submit|sign.?out|log.?out|publish|deploy|reset|checkout|order|eras|clear|cancel|unsubscribe|subscribe|\bpost\b|confirm|donat|upload|install|download|transfer|withdraw|\bgo live|eliminar|borrar|pagar|comprar|enviar|publicar|cerrar sesi|supprimer|payer|acheter|envoyer|publier|d[ée]connexion|l[öo]schen|bezahlen|kaufen|senden|absenden|abmelden|excluir|sair|remover|apagar|削除|送信|支払|购买|删除|发送|支付|삭제|결제|보내기/i;
 const MAX_BUTTONS = 8;
 
 const ignorable = (url: string) => /\/favicon\.ico(\?|$)/.test(url);
-const blockedByUs = new Set<string>();
 
 export async function browserCheck(url: string, o: BrowserOptions = {}): Promise<BrowserResult> {
   const t0 = Date.now();
-  blockedByUs.clear();
+  const blockedByUs = new Set<string>();   // per check, so two checks at once never mix up their lists
   const result: BrowserResult = { ok: false, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 };
   if (!browserInstalled()) return { ...result, skipped: "The hidden browser is not installed yet, so the page was not opened.", ms: 0 };
+  if (o.signal?.aborted) return { ...result, skipped: "Stopped.", ms: 0 };
   const timeout = o.timeoutMs ?? 15000;
   let browser: import("playwright-core").Browser;
   try { browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! }); }
@@ -51,7 +53,14 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
   // However the check goes, the browser is closed by this deadline, so nothing is left running on the person's Mac.
   let hardStop: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<BrowserResult>((res) => { hardStop = setTimeout(() => { browser.close().catch(() => {}); res(finish({ ...result, problems: [...result.problems, "The page check took too long and was stopped"] }, t0)); }, timeout * 4 + 10_000); });
-  return await Promise.race([run(), deadline]).finally(() => clearTimeout(hardStop));
+  // Stop: the browser closes at once and the check ends as skipped.
+  let onAbort: (() => void) | undefined;
+  const stopped = new Promise<BrowserResult>((res) => {
+    if (!o.signal) return;
+    onAbort = () => { browser.close().catch(() => {}); res({ ...result, skipped: "Stopped.", ms: Date.now() - t0 }); };
+    if (o.signal.aborted) onAbort(); else o.signal.addEventListener("abort", onAbort, { once: true });
+  });
+  return await Promise.race([run(), deadline, stopped]).finally(() => { clearTimeout(hardStop); if (onAbort) o.signal?.removeEventListener("abort", onAbort); });
 
   async function run(): Promise<BrowserResult> {
   try {
@@ -73,6 +82,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     if (mainStatus >= 400) result.problems.push(`The page answered with an error (${mainStatus})`);
     await page.waitForTimeout(500);
 
+    if (o.shot) result.shot = await pageShot(page).catch(() => undefined);
     const text = async () => (await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")) ?? "";
     const body = await text();
     for (const want of o.expectText ?? []) if (!body.includes(want)) result.problems.push(`The words "${want}" are not on the page`);
@@ -86,7 +96,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
       }
       await page.waitForTimeout(300);
     }
-    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout);
+    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout, blockedByUs);
     return finish(result, t0);
   } finally { await browser.close().catch(() => {}); }
   }
@@ -94,7 +104,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
 
 // Press each plain button once (a handful at most), to see whether the page still works when used.
 // Never anything risky, never a form submit, and nothing may reach beyond the page's own address.
-async function tryButtons(page: import("playwright-core").Page, url: string, setPressing: (label: string) => void, timeout: number) {
+async function tryButtons(page: import("playwright-core").Page, url: string, setPressing: (label: string) => void, timeout: number, blockedByUs: Set<string>) {
   const home = new URL(url).host;
   await page.context().route("**/*", (route) => {
     let ok = true;
@@ -128,4 +138,35 @@ function finish(r: BrowserResult, t0: number): BrowserResult {
   r.ms = Date.now() - t0;
   r.ok = r.problems.length === 0;
   return r;
+}
+
+const VIEW = { w: 1280, h: 800 };
+// Everything the person can see on the first screen: each piece of text, field, button and picture, with its place.
+export function pageItems(): { key: string; x: number; y: number; w: number; h: number }[] {
+  const out: { key: string; x: number; y: number; w: number; h: number }[] = [];
+  const skip = new Set(["script", "style", "noscript", "template", "head", "meta", "link"]);
+  const media = new Set(["img", "svg", "canvas", "video", "iframe", "picture"]);
+  const fields = new Set(["input", "textarea", "select"]);
+  for (const el of Array.from(document.body?.querySelectorAll("*") ?? [])) {
+    const tag = el.tagName.toLowerCase();
+    if (skip.has(tag)) continue;
+    if (el.closest("svg") && tag !== "svg") continue;
+    let text = "";
+    if (media.has(tag)) text = (el.getAttribute("alt") || el.getAttribute("aria-label") || (el.getAttribute("src") ?? "").split("/").pop() || tag).slice(0, 80);
+    else if (fields.has(tag)) { const f = el as HTMLInputElement; text = `${f.type ?? ""}:${f.placeholder || f.name || el.getAttribute("aria-label") || ""}:${f.type === "button" || f.type === "submit" ? f.value : ""}`; }
+    else { for (const n of Array.from(el.childNodes)) if (n.nodeType === 3) text += n.textContent ?? ""; text = text.replace(/\s+/g, " ").trim().slice(0, 120); if (!text) continue; }
+    const st = getComputedStyle(el);
+    if (st.visibility === "hidden" || st.display === "none" || Number(st.opacity) < 0.05) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
+    out.push({ key: `${tag}:${text}`, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
+    if (out.length >= 1500) break;
+  }
+  return out;
+}
+
+async function pageShot(page: import("playwright-core").Page): Promise<PageShot> {
+  const items = await page.evaluate(pageItems);
+  const jpeg = (await page.screenshot({ type: "jpeg", quality: 75, timeout: 5000 })).toString("base64");
+  return { jpeg, w: VIEW.w, h: VIEW.h, items };
 }

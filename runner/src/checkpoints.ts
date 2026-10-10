@@ -6,7 +6,7 @@
 // writing. A project that is not a git project never gets a .git.
 
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomBytes } from "node:crypto";
 
 export type Skipped = { path: string; reason: string };
@@ -54,6 +54,9 @@ export class CheckpointStore {
   restore(id: string): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id)); }
   readFiles(id: string, keep: (path: string) => boolean, maxBytes = 200_000): Promise<Record<string, string>> { return this.serial(() => this.readFilesNow(id, keep, maxBytes)); }
   diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
+  /** Copy the project as it was at a checkpoint (its private .env copies too) into an empty folder outside the project,
+   *  for the "before" picture of a visual receipt. The project itself is never touched. */
+  exportTo(id: string, dir: string): Promise<void> { return this.serial(() => this.exportNow(id, dir)); }
   list(): Promise<Checkpoint[]> { return this.serial(async () => this.refs().map((r) => this.readMeta(r.id)!).filter(Boolean)); }
 
   // ---------- git plumbing ----------
@@ -251,6 +254,25 @@ export class CheckpointStore {
       if (text.length <= maxBytes) out[n] = text;
     }
     return out;
+  }
+
+  private async exportNow(id: string, dir: string): Promise<void> {
+    const m = this.readMeta(id);
+    if (!m) throw new Error(`Unknown checkpoint: ${id}`);
+    const target = resolve(dir);
+    const rel = relative(this.projectDir, target);
+    if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) throw new Error("The copy must go outside the project folder");
+    if (!existsSync(target) || readdirSync(target).length > 0) throw new Error("The copy needs an empty folder");
+    const p = Bun.spawn(["sh", "-c", 'git -c core.quotepath=off archive --format=tar "$1" | tar -x -C "$2"', "sh", m.commit, target], { cwd: this.projectDir, env: this.env(), stdout: "ignore", stderr: "pipe" });
+    const err = await new Response(p.stderr).text();
+    if ((await p.exited) !== 0) throw new Error(`Could not copy the earlier version: ${err.trim().slice(0, 200)}`);
+    const envDir = join(this.metaPath(id), "env");
+    for (const f of m.envFiles ?? []) {
+      const src = join(envDir, f), dst = join(target, f);
+      if (!existsSync(src)) continue;
+      mkdirSync(dirname(dst), { recursive: true, mode: 0o700 });
+      copyFileSync(src, dst); chmodSync(dst, 0o600);
+    }
   }
 
   private async diffNow(fromId: string, toId: string) {

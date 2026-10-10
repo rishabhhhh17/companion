@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## "This works now", with a picture: 10 Oct 2026
+
+- **A before and after picture on every receipt** where Companion's checks opened your page. The earlier version of your project is copied into a private folder in Companion's own data (your project is not touched), started on its own, and photographed in the hidden browser. The two pages are compared by what they show, so the new thing is circled, not everything it pushed down. A change in colour or size is found by comparing the pictures. The receipt then says "This works now. What changed is circled." These are pictures of the app being built, never of your screen. The newest 200 are kept.
+- It happens after the task has finished, so you never wait for it. Stop everything ends it, closing the earlier version and the hidden browser at once. Off the record tasks get no picture. If the earlier version cannot be pictured (too slow, a port in use), the receipt says so and circles nothing, rather than guess.
+- **Real check** (Claude on the test login, about 7 cents): asked to add an "Add to cart" button to a sample page, the task passed its checks and the picture arrived 0.8 seconds after the receipt, with the button circled. A Vite and React project works too, with the earlier version starting in about 1.2 seconds. Next.js and other kinds of projects have not been tried yet.
+- **The "it's live" card.** When your site goes live, Companion opens the live address once in the hidden browser and makes a 1200 by 630 picture (the size link previews use): your project's name, "is live", the address, the date, and the site itself. **Save picture** puts it in your Downloads folder (it never replaces a file that is there), and **Copy link** copies the address. Nothing is posted anywhere for you.
+
 ## Stuck? Press the key: 10 Oct 2026
 
 - **Control, Option, Command and F** checks your project exactly as it is (nothing is changed, Claude is not asked, nothing is spent) and finds where it breaks. If the project's packages are not installed yet, it says so instead of installing them. Your editor (Cursor, VS Code or Windsurf, whichever you are in) opens at the failing line, and the character flies there and circles it with the error in one plain sentence. It works the same for a red error in your terminal, and for a button that breaks your page. **Fix it with me** then starts a rescue.

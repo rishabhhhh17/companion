@@ -37,3 +37,6 @@
 {"v":1,"id":"e50","type":"doctor.report","items":[{"id":"node","label":"Node","ok":true,"detail":"Version 22.1.0 is fine."}]}
 {"v":1,"id":"e51","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"failed","label":"Running the tests","detail":"The tests did not pass.","problem":{"kind":"line","file":"src/math.test.ts","line":5,"column":21,"lineText":"expect(add(2, 3)).toBe(5);","message":"AssertionError: expected -1 to be 5","from":"tests"}}
 {"v":1,"id":"e52","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"passed"}
+{"v":1,"id":"e53","type":"receipt.visual","agent":"a1","project":"p_9f2c","checkpoint":"cp_0001","made":true,"image":"/9j/4AAQSkZJRg==","caption":"This works now. What changed is circled.","circles":1}
+{"v":1,"id":"e54","type":"ship.card","project":"p_9f2c","url":"https://mug-shop.vercel.app","title":"Mug shop","image":"/9j/4AAQSkZJRg==","withShot":true}
+{"v":1,"id":"e55","type":"receipt.visual","agent":"a1","project":"p_9f2c","checkpoint":"cp_0001","made":false,"caption":"","circles":0}

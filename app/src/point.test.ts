@@ -68,3 +68,34 @@ describe("a failed check during a task keeps its place", () => {
     expect(m.character).toBe("idle");
   });
 });
+
+describe("the visual receipt on the card", () => {
+  const receipt = ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "index.html", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.1 });
+  test("the picture joins its own receipt", () => {
+    const m = run([receipt, ev({ type: "receipt.visual", agent: "a", project: "p", checkpoint: "cp_1", made: true, image: "abc", caption: "This works now. What changed is circled.", circles: 1 })]);
+    expect(m.receipt?.visual).toEqual({ image: "abc", caption: "This works now. What changed is circled." });
+  });
+  test("a picture for an older receipt is not shown on a newer one", () => {
+    const m = run([receipt, ev({ type: "receipt.visual", agent: "a", project: "p", checkpoint: "cp_0", made: true, image: "old", caption: "x", circles: 1 })]);
+    expect(m.receipt?.visual).toBeUndefined();
+  });
+  test("the card waits only when a picture was promised, and stops waiting when none comes", () => {
+    const promised = ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "index.html", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.1, picture: true });
+    expect(run([promised]).receipt?.picture).toBe(true);
+    expect(run([receipt]).receipt?.picture).toBeUndefined();
+    const m = run([promised, ev({ type: "receipt.visual", agent: "a", project: "p", checkpoint: "cp_1", made: false, caption: "", circles: 0 })]);
+    expect(m.receipt?.visual).toEqual({ caption: "" });
+  });
+});
+
+describe("the it's live card on the card", () => {
+  const live = ev({ type: "ship.status", project: "p", stage: "live", detail: "It is live", productionUrl: "https://mug-shop.vercel.app" });
+  const card = ev({ type: "ship.card", project: "p", url: "https://mug-shop.vercel.app", title: "Mug shop", image: "abc", withShot: true });
+  test("the card joins the live site", () => {
+    expect(run([live, card]).shipFlow?.card).toEqual({ image: "abc", url: "https://mug-shop.vercel.app", title: "Mug shop" });
+  });
+  test("after a close or a roll back it is not shown", () => {
+    expect(run([live, ev({ type: "ui.shipClosed" }), card]).shipFlow).toBeNull();
+    expect(run([live, ev({ type: "ship.status", project: "p", stage: "rolled_back", detail: "back" }), card]).shipFlow?.card).toBeUndefined();
+  });
+});
