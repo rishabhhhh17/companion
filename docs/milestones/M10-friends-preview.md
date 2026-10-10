@@ -1,12 +1,23 @@
 # M10: Friends preview, "stuck? press the key". Plan for approval
 
-**Status:** waiting for the founder's approval. **Written:** 10 Oct 2026. **Source:** the founder's feature plan (Companion Feature Plan.xlsx, 10 Oct 2026), the market research (`docs/research/2026-10-10-market-research.md`), the mentor session, and the launch readiness table. **Decision:** the founder chose on 10 Oct 2026 to launch the rescue tutor (hero) with HeyClicky style "show me on screen" features that point at the person's own project, not at generic app buttons.
+**Status:** waiting for the founder's approval. **Written:** 10 Oct 2026, updated the same day to bring all six features from the founder's sheet into M10. **Source:** the founder's feature plan (Companion Feature Plan.xlsx, 10 Oct 2026), the market research (`docs/research/2026-10-10-market-research.md`), the mentor session, and the launch readiness table. **Decision:** the founder chose on 10 Oct 2026 to launch the rescue tutor (hero) with HeyClicky style "show me on screen" features that point at the person's own project, not at generic app buttons. On 10 Oct 2026 the founder asked for Draw it for me, Show me how for builder tools and Prompt help with a visual diff to be built now, not after the beta.
 
 ## The hero, in one line
 "Stuck while building with AI? Press the key. It finds the problem on your screen, fixes it with you, and shows you why."
 
+## The six features from the founder's sheet, and where each one sits below
+
+| Sheet # | Feature | Why HeyClicky can't easily copy it | Item below |
+|---|---|---|---|
+| 1 | Point at the problem, not the button | Needs to read and run your project | 1 |
+| 2 | Visual receipt | Needs the proof engine | 2 |
+| 3 | Draw it for me | HeyClicky points; it doesn't explain with drawings | 4 |
+| 4 | Show me how, for builder tools | Goes deep on builder tools and knows your project's real setup | 8 |
+| 5 | Your turn mode | A learning loop with reactions | 3 |
+| 6 | Prompt help with a visual diff | Uses your project context; HeyClicky has no prompt coaching | 9 |
+
 ## What is already built (reused, not rebuilt)
-Rescue, Drive, the fix loop breaker, the proof ladder, Explain, undo and snapshots, Prompt help, memory, Where was I, voice (hold to talk), Make it live (stand in only), the dock and cards, and the Show me how engine (one capture with secrets covered, snap to the real element, arrow and ring overlay; 48 of 48 on rendered pages, 41 of 44 on real sites, about 2.6 s).
+Rescue, Drive, the fix loop breaker, the proof ladder, Explain, undo and snapshots, Prompt help (rewrite, diff, paste back on accept), memory, Where was I, voice (hold to talk), Make it live (stand in only), the ship gates (including the public database table check), the dock and cards, and the Show me how engine (one capture with secrets covered, snap to the real element, arrow and ring overlay; 48 of 48 on rendered pages, 41 of 44 on real sites, about 2.6 s).
 
 ## What gets built, in order
 
@@ -15,26 +26,30 @@ Rescue, Drive, the fix loop breaker, the proof ladder, Explain, undo and snapsho
 | 1 | **Point at the problem** | A failing check already gives the file, line and error text. The character opens that line in the person's editor (Cursor, VS Code, or the default app), finds it on screen with the Mac's text reader, and circles it with a short caption. Same for the red error in the terminal. For a broken button in the running app: when the app is open on screen, match the button's label from the browser check | About 1 week |
 | 2 | **Visual receipt** | After the checks pass: open the app, compare the page before and after to find what changed, circle it, "this works now". Also the shareable "it's live" card | About 4 days |
 | 3 | **Your turn mode** | The pointer waits for the person to click the target; a small celebration when they do. Noticing the click needs a system wide mouse click monitor while the pointer is up **[verify on the founder's Mac that macOS asks no permission for mouse clicks]**; if it does, fall back to a "Done" button. Never reads keys (rule 8) | About 4 days |
-| 4 | **Reactions and celebration** | Small reactions while working; a celebration when proof passes or it goes live. Can be switched off (the beta tests fun with it on for half the group) | Part of 5 |
-| 5 | **One real character** | Every state (idle, listening, looking, working, needs you, stuck, done), reduced motion, light on battery. Drawn in code unless the founder brings a designer | About 1 week |
-| 6 | **Open a Lovable, Bolt or Replit project** | From an exported folder or a GitHub clone; recognise the common stacks | 2 to 3 days |
-| 7 | **"Why did it ignore my rule?"** | Plain words check of the project's rules files (shadowed AGENTS.md, files too long, conflicts) and one tap to make a rule hard | 2 days |
-| 8 | **Beta measurement** | Counts only, on the device, shared only if the person agrees: opens without a notification, fixes that passed proof, projects shipped, shares; the fun layer on or off | 2 to 3 days |
+| 4 | **Draw it for me** | Ask "why did this break?" (typed or spoken). Companion reads the project and the failing check, and the model answers with a small diagram as data (boxes and arrows, at most 6 boxes, for example page → API → database, with the broken link marked), never as free drawing. The overlay draws it in plain shapes beside the problem, with one line under it, then fades after a few seconds or on Esc. Built from the project, so it needs no new screen capture. Pairs with the two line "why" | About 4 days |
+| 5 | **Reactions and celebration** | Small reactions while working; a celebration when proof passes or it goes live. Can be switched off (the beta tests fun with it on for half the group) | Part of 6 |
+| 6 | **One real character** | Every state (idle, listening, looking, working, needs you, stuck, done, drawing), reduced motion, light on battery. Drawn in code unless the founder brings a designer | About 1 week |
+| 7 | **Open a Lovable, Bolt or Replit project** | From an exported folder or a GitHub clone; recognise the common stacks | 2 to 3 days |
+| 8 | **Show me how, for builder tools** | Walkthroughs only for Lovable, Supabase, Vercel, Claude Code, Cursor and GitHub, driven by the project's real state. Example: the ship gate finds a public Supabase table, so "your table is public, click here to lock it" and the pointer walks the Supabase dashboard step by step (one capture per step while the walkthrough is visibly on, rule 5). Each tool gets a short checked playbook of where things live, so the pointer is not guessing. Companion never logs in, clicks or types for the person in these sites; it only points. An aim test on each tool's real pages, recorded like the earlier one | About 1.5 weeks |
+| 9 | **Prompt help with a visual diff** | On the Prompt help hotkey, before you send a prompt in Claude, Lovable, Cursor or Claude Code, the vague parts are underlined right on the text box (for example "make it better", "fix the bug" with no page named), each with the suggested wording; accept all or one by one, then paste back as today. The suggestions use the project memory (stack, page names, house rules). Finding where each word sits on screen uses the Mac's accessibility text ranges **[verify they work in Chrome and the Electron apps; if not, fall back to the diff card we already have]**. Only on the hotkey, never while typing (rule 5) | About 4 days |
+| 10 | **"Why did it ignore my rule?"** | Plain words check of the project's rules files (shadowed AGENTS.md, files too long, conflicts) and one tap to make a rule hard | 2 days |
+| 11 | **Beta measurement** | Counts only, on the device, shared only if the person agrees: opens without a notification, fixes that passed proof, projects shipped, shares, diagrams opened, walkthroughs finished, prompt suggestions accepted; the fun layer on or off | 2 to 3 days |
 
-**After the beta (as in the founder's sheet):** Draw it for me, Show me how for builder tools, Prompt help with a visual diff.
-**Skipped on purpose:** general app tutorials, dictation everywhere, proactive popups.
+**Skipped on purpose:** general app tutorials (Show me how stays limited to the six builder tools), dictation everywhere, proactive popups.
 
 ## How we will know it worked
-- Tests first for: finding a file and line on screen from an error, the before and after page diff, the click inside the target, the measurement never holding project text or screen content.
-- A real Claude run of the whole loop on broken sample projects (a Vite app, a static page, a Supabase app): stuck → pointed at the right line → fixed → proof passes → receipt circles the change.
-- An aim test for "point at the problem" on real editors and terminals, recorded like the earlier one.
-- The hands on session with the founder (Screen Recording, microphone, clicks, Vercel), then 5 friends, then the 50 person beta.
+- Tests first for: finding a file and line on screen from an error, the before and after page diff, the click inside the target, the diagram data (size limits, the broken link always marked, nothing drawn from screen text), each builder tool playbook step, mapping a vague phrase to its place on the text box, and the measurement never holding project text or screen content.
+- A real Claude run of the whole loop on broken sample projects (a Vite app, a static page, a Supabase app): stuck → pointed at the right line → diagram of why → fixed → proof passes → receipt circles the change.
+- Aim tests for "point at the problem" on real editors and terminals, and for each builder tool's real pages, recorded like the earlier one.
+- A Prompt help check on real prompts in Claude, Lovable and Cursor: the underlines land on the right words.
+- The hands on session with the founder (Screen Recording, microphone, clicks, Vercel, a Supabase test project), then 5 friends, then the 50 person beta.
 
 ## What I need from the founder
 1. Say **approved** (or change the list or the order).
-2. The hands on session when items 1 to 3 are ready.
-3. A name that is not "Companion" before the beta.
-4. Optional: a designer for the character art.
+2. The hands on session when items 1 to 4 are ready, and a second short one for items 8 and 9.
+3. A free Supabase test project for the walkthrough tests (no real data in it).
+4. A name that is not "Companion" before the beta.
+5. Optional: a designer for the character art.
 
 ## Time
-About 3 to 4 weeks of building, plus the sessions with the founder.
+About 5 to 6 weeks of building (up from 3 to 4, because items 4, 8 and 9 moved in from after the beta), plus the sessions with the founder.
