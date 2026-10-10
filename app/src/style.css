@@ -67,3 +67,16 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 .receipt-shot { margin: 8px 0 4px; }
 .receipt-shot img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line, rgba(127,127,127,.3)); }
 .receipt-shot figcaption { margin-top: 6px; font-weight: 600; }
+
+/* Reactions: one off moves that play over the state's own motion, then stop. */
+.character[data-react="nod"] { animation: nod .6s ease-out 1; }
+.character[data-react="wince"] { animation: wince .7s ease-out 1; }
+.character[data-react="cheer"] { animation: cheer .9s ease-out 1; }
+.character[data-react="cheer"]:not([data-state="needsYou"]) { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 45%, transparent); }
+.character[data-react="party"] { animation: party 1.4s ease-out 1; }
+.character[data-react="party"]:not([data-state="needsYou"]) { box-shadow: 0 0 0 8px color-mix(in srgb, var(--ok) 55%, transparent); }
+@keyframes nod { 30% { transform: translateY(4px); } 60% { transform: translateY(-2px); } }
+@keyframes wince { 25% { transform: scale(.9) rotate(-4deg); } 55% { transform: scale(.95) rotate(3deg); } }
+@keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
+@keyframes party { 20% { transform: translateY(-14px) rotate(-10deg) scale(1.08); } 45% { transform: translateY(0) rotate(8deg); } 65% { transform: translateY(-6px) rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) { .character[data-react] { animation: none; } }

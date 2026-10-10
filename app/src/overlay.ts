@@ -1,7 +1,7 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { burst, flightMs } from "./pointer.ts";
+import { at, burst, confetti, CONFETTI_S, flightMs } from "./pointer.ts";
 
 type Point = { rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
 const svg = document.getElementById("s")!;
@@ -73,3 +73,28 @@ function celebrate(rect: { x: number; y: number; w: number; h: number }) {
   }
 }
 void listen("overlay-celebrate", (e) => celebrate((e.payload as { rect: { x: number; y: number; w: number; h: number } }).rect));
+
+
+// The big celebration (proof passed on a fix, or the site went live): confetti from the character, once, then gone.
+// It draws in its own layer and never clears anything else on the overlay.
+function party(o: { x: number; y: number }) {
+  const layer = el("g", { class: "party" });
+  svg.appendChild(layer);
+  const bits = confetti(36, o.x > innerWidth / 2).map((p) => {
+    const r = el("rect", { x: o.x, y: o.y, width: 7, height: 4, rx: 1, fill: p.color });
+    layer.appendChild(r);
+    return { r, p };
+  });
+  const t0 = performance.now();
+  const step = (now: number) => {
+    const t = (now - t0) / 1000;
+    for (const { r, p } of bits) {
+      const d = at(p, t);
+      r.setAttribute("transform", `translate(${d.dx} ${d.dy}) rotate(${p.spin * t} ${o.x} ${o.y})`);
+      r.setAttribute("opacity", String(Math.max(0, 1 - t / CONFETTI_S)));
+    }
+    if (t < CONFETTI_S) requestAnimationFrame(step); else layer.remove();
+  };
+  requestAnimationFrame(step);
+}
+void listen("overlay-party", (e) => party(e.payload as { x: number; y: number }));

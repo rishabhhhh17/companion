@@ -71,6 +71,7 @@ export type Receipt = Envelope & {
   type: "receipt"; agent: string; checkpoint: string; changed: { file: string; kind: "added" | "modified" | "deleted" }[];
   commands: number; notUndoable: string[]; proof: "passed" | "failed" | "skipped"; usdEstimate: number;
   picture?: boolean;   // a before and after picture is being made and will follow as receipt.visual
+  inPlan?: boolean;    // one step of an approved plan (Drive); the plan as a whole ends with drive.done
 };
 export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string };
 

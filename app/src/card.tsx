@@ -1,5 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { reactionsOn, setReactions } from "./reactions.ts";
 import { findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -203,6 +204,8 @@ function Card() {
     return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
   }, []);
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
+  // Reactions and celebrations: one setting for the whole app, on unless turned off.
+  const [fun, setFun] = useState(reactionsOn);
   const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
   useEffect(() => {
@@ -598,6 +601,7 @@ function Card() {
           <div className="row">
             <button className="btn" type="button" onClick={() => void send(pauseMemory(project, !m.memory!.paused))}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
             <button className="btn" type="button" aria-pressed={m.explainOn} onClick={() => void send(setExplain(project, !m.explainOn))}>{S.explainSetting}: {m.explainOn ? "on" : "off"}</button>
+            <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
             <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
             <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.memoryClosed" })}>{S.memoryClose}</button>

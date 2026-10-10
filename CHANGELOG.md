@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Reactions and celebrations: 11 Oct 2026
+
+- **The character reacts as work moves.** A small nod when a check passes (one nod for a run of them, not five), a short wince when one fails, a cheer when a preview is ready, when you click the right thing, or when the before and after picture is in.
+- **Two moments get a real celebration:** finished work that passed its checks (a task, or a whole plan, not every step of it), and your site going live. The character jumps and confetti bursts from it, once, for about a second and a half. It never covers a pointer that is still showing you something.
+- Reactions are spaced out so they never feel twitchy, and they follow your Mac's reduce motion setting (no movement, no confetti; the character just glows green).
+- **One switch turns it all off:** "Reactions and celebrations" on the memory page. Half of the beta group will have it off, to see whether it helps.
+- No cheering words: the words stay as plain as before ("Done", "It is live").
+
 ## Your turn: 11 Oct 2026
 
 - **The ring now waits for you.** When Companion points at a button, it stays there until you click it yourself. Click the right thing and the ring turns green with a tick and a small burst of dots (just the tick if your Mac is set to reduce motion). Click somewhere else and it says "Not quite. Click inside the ring." In a walkthrough, the next step follows on its own.

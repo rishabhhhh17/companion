@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { invoke } from "./tauri.ts";
+import { invoke, listen } from "./tauri.ts";
+import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor, visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -15,6 +16,26 @@ function Dock() {
     const f = () => setReduced(reducedQuery.matches);
     reducedQuery.addEventListener("change", f);
     return () => reducedQuery.removeEventListener("change", f);
+  }, []);
+  // Reactions: short one off moves when something happens; the big one also sends confetti from the character.
+  const [react, setReact] = useState<{ r: Reaction; id: number } | null>(null);
+  const reactor = useRef(new Reactor());
+  const seq = useRef(0);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      if (!reactionsOn()) return;
+      const r = reactionFor(e.payload as never);
+      const got = r && reactor.current.push(r, Date.now());
+      if (!got) return;
+      const id = ++seq.current;   // each reaction is its own, so an older timer never cuts a newer one short
+      // Cleared for one frame first, so the same move twice in a row plays again (the button itself is never rebuilt,
+      // so keyboard focus and a drag in progress are kept).
+      setReact(null);
+      requestAnimationFrame(() => setReact({ r: got, id }));
+      setTimeout(() => setReact((c) => (c?.id === id ? null : c)), LENGTH_MS[got]);
+      if (got === "party" && !reducedQuery.matches) void invoke("celebrate");
+    });
+    return () => { off.then((f) => f()); };
   }, []);
   const label = characterWords(m);
   const waiting = m.approvals.length;
@@ -36,7 +57,7 @@ function Dock() {
   };
   return (
     <main className="dock">
-      <button className="character" type="button" data-state={visualState(m)} data-motion={motionFor(visualState(m), reduced)}
+      <button className="character" type="button" data-state={visualState(m)} data-motion={motionFor(visualState(m), reduced)} data-react={react?.r}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>

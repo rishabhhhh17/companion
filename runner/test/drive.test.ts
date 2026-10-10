@@ -96,6 +96,8 @@ describe("working through an approved plan", () => {
     expect(steps(r.events)).toEqual(["1:started", "1:done", "2:started", "2:done"]);
     expect(of(r.events, "checkpoint.created").length).toBe(2);
     expect(of(r.events, "receipt").length).toBe(2);
+    // Each step's receipt says it is part of a plan, so only the finished plan is celebrated.
+    expect(of(r.events, "receipt").every((x: any) => x.inPlan === true)).toBe(true);
     expect(r.engine.calls[1].prompt).toContain("Make the page");
     expect(r.engine.calls[1].prompt).toMatch(/step 1 of 2/i);
     expect(r.engine.calls[2].prompt).toContain("Add a form");

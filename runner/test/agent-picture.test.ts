@@ -41,6 +41,7 @@ describe("the visual receipt in a task", () => {
     await s.go(); await settle();
     const types = s.events.map((e) => e.type);
     expect(types.indexOf("receipt.visual")).toBeGreaterThan(types.indexOf("receipt"));
+    expect(of(s.events, "receipt")[0].inPlan).toBeUndefined();   // a task on its own, not a step of a plan
     const v = of(s.events, "receipt.visual")[0];
     expect(v).toMatchObject({ made: true, agent: "a1", project: s.project, checkpoint: of(s.events, "receipt")[0].checkpoint, caption: "This works now. What changed is circled.", circles: 1 });
     expect(existsSync(v.file)).toBe(true);
