@@ -155,3 +155,17 @@ Reddit is blocked for the research tools in every browser available (safety rest
 - HeyClicky is moving toward beginners who code: "let me help you finally install claude code plz" (Jun 2026).
 - A public teardown of its app (19 Jul 2026, 389 likes) questioned analytics data collection against its privacy policy. Privacy is a live wound in this category; our hotkey only, nothing stored design is a visible difference.
 - On 10 Oct 2026 it posted "i am changing": a change is coming; watch it.
+
+
+## Where we beat HeyClicky (founder's notes, 11 Oct 2026)
+
+Inferred from their changelog and this research, not from using their app. The founder will try HeyClicky on a real stuck moment and note what it gets wrong; until then treat this as a strong guess.
+
+1. They are a generalist (named agents, routines, several accounts, referral payouts): nobody is the hero user. We are the one thing for people stuck while building with AI.
+2. They guess from the screen; we know the project. Point at the problem uses the real failing line, terminal error and proof run. Hard to copy without running the project.
+3. They do not prove anything. Proof plus the visual receipt ("this works now", the change ringed) needs machinery they do not have.
+4. They hold your hand or do it for you; we do both. Your turn mode points and waits for the last click, then celebrates; "just do it" is one button away.
+5. Trust: they removed their proactive features twice and their routines run in the background. We never watch in the background, never touch your git, snapshot before every change, and have Undo. One line on the site.
+6. Cost: their plans are $0, $20 and $100 with upgrade prompts. We bring your own Claude key: no seat price for a beginner or student.
+
+**Do not copy:** agents, routines, referral programs (F16 parks them). **Risks:** a beginner who is not stuck in week one never sees the hero (answered by M10 item 6b, the sample stuck moment); they can add a "builder mode", so being deeper and earlier, fast, is the protection.
