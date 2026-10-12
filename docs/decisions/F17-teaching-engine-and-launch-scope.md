@@ -6,6 +6,8 @@
 
 ---
 
+> **Corrections and cuts of 12 Oct 2026** (by Claude Code on the founder's instruction; the founder's text is otherwise untouched): the status cells in section 3 and the build order in section 6 now match the code; and the founder cut, for the friends preview, "draw or circle to ask" (after the beta), the Supabase lesson pack (added during the beta), the "why did it ignore my rule" check (dropped), and settings guidance beyond Companion's own permissions. See the M10 plan for the estimates and dates.
+
 ## 1. What changed since F16
 
 1. **Draw it for me is back in the friends preview.** F16 had it "after beta". The founder wants it now.
@@ -33,7 +35,7 @@ Everything else in F16 is unchanged: the hero, the fun hypothesis, the beta plan
 | Drive | Fixes in small steps, snapshot before each one | Built |
 | Fix loop breaker | Stops after three failed tries and changes approach | Built |
 | Proof | Build, tests, browser check; never says done without it | Built |
-| Explain | Two short lines of "why" after each fix | Building (M8b) |
+| Explain | Two short lines of "why" after each fix | Built (M8b, PR 14). A defect found 12 Oct (it was asked to "improve the prompt") was fixed the same day (PR 38): 4 of 4 real answers about the work, 5 to 7 s |
 
 ### 3.2 Show me and teach me
 
@@ -42,12 +44,12 @@ Everything else in F16 is unchanged: the hero, the fun hypothesis, the beta plan
 | Point at the problem | Rings the failing line, terminal error or broken element | Built |
 | Visual receipt | After proof passes, rings what changed, says "this works now" | Built |
 | Your turn mode | Points, waits for the user's click, then celebrates; "just do it" button always there | Built |
-| **Draw it for me** | Hand drawn style sketch explaining why something broke, then fades. The user can also draw or circle something to ask about it | **Next to build** |
+| **Draw it for me** | Hand drawn style sketch explaining why something broke, then fades. The user can also draw or circle something to ask about it (**cut 12 Oct: after the beta**) | **In progress**: about 70% built on the parked branch `m10/draw-it` (data format, checks, layout, drawing, card); the "draw or circle to ask" part moved to after the beta (12 Oct cut) |
 | **Walkthrough engine** | Up to 15 steps, click detection, progress log, resume after pauses, proof check after each step, never repeats a step that just failed | To build |
 | **Lesson packs** | Ready made lessons as data files: Lovable, Vercel, Supabase first | To build |
 | **Settings guidance** | Walks the user to the exact permission, env var or API key | To build |
 | **Works on any app** | Pointing, drawing and walkthroughs on any app on screen, best effort | To build (same engine) |
-| Sample stuck moment | A guided practice run in the first run so everyone sees the hero in minute one | To build |
+| Sample stuck moment | A guided practice run in the first run so everyone sees the hero in minute one | To build (not started) |
 
 ### 3.3 Fun layer
 
@@ -55,7 +57,7 @@ Everything else in F16 is unchanged: the hero, the fun hypothesis, the beta plan
 |---|---|
 | One real character with all states | Parked, waiting for the founder's designs |
 | Reactions and celebration | Built |
-| Voice (hold to talk) | Status to be confirmed by Claude Code |
+| Voice (hold to talk) | Built (on device speech, 0.18 s on a real sentence). Never tried by a person: needs the microphone permission and the model download in the hands on session |
 | Dock and cards (Stop, Undo, Receipt) | Built |
 
 ### 3.4 Ships quietly
@@ -110,14 +112,14 @@ Undo and snapshots, Stop everything, Prompt help, memory and "What I know about 
 
 ### 4.5 Lesson packs
 
-* Friends preview: Lovable, Vercel, Supabase.
+* Friends preview: Lovable and Vercel. **Supabase is added during the beta (cut 12 Oct).**
 * During beta: Cursor, Claude Code, GitHub, then Bolt and Replit.
 * We do not chase 89 apps. Quality in few tools beats breadth.
 * Safety valve: if time runs short, ship the engine with Lovable and Vercel only.
 
 ### 4.6 Settings guidance
 
-* Covers our own first run (Screen Recording, Accessibility, Microphone) and the settings beginners get lost in (env vars, API keys, deploy settings).
+* **Friends preview (cut 12 Oct): our own permissions only** (Screen Recording, Accessibility, Microphone). The settings beginners get lost in (env vars, API keys, deploy settings) come after.
 * Never ask the user to paste a secret into chat. Point them to where it is stored.
 
 ## 5. Rules
@@ -140,7 +142,7 @@ All of these still apply. Additions are marked **new**.
 ## 6. Build order for the friends preview
 
 1. Docs fix (small change, first): see section 8.
-2. Finish M7b and M8b.
+2. Finish M7b and M8b. **Done (both merged before 12 Oct).**
 3. Sample stuck moment in the first run.
 4. Draw it for me.
 5. Walkthrough engine, including anywhere mode and the soft ring.

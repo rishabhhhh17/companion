@@ -22,36 +22,50 @@
 
 **How long.** 0.5 day for the fix and its real checks, plus an optional 0.5 day for the latency work. **Done first, before anything new is built on Explain or Draw it for me** (step 0a below).
 
-### The plan, in F17's build order, with estimates
-Working days of building, mine (a day is one focused working day). Gates are marked.
+### Re-plan of 12 Oct 2026 (after the founder's cuts), and step 0 results
+
+**Done today:** 0a, the fast lane fix (PR 38: Explain 4 of 4 about the work, 5 to 7 s instead of 11 to 37 s; a real diagram request parses 3 of 3). 0b, the web page structure spike (`spikes/ax-web-structure/RESULTS.md`): readable in a Chromium browser without switching anything on, with names and positions for buttons and links; Safari and Arc not measured. 0c, the mouse taking overlay spike (`spikes/draw-overlay/RESULTS.md`): a panel takes a drag and never the keyboard or the front app; the window under a point is found with no permission, which gives the clipping rule for rule 22.
+
+**Cuts from the founder:** no "draw or circle to ask" (after the beta); no Supabase pack (during the beta); no "why did it ignore my rule" check; settings guidance only for Companion's own permissions.
 
 | F17 step | What | Days | Gate |
 |---|---|---|---|
-| 1 | Docs fix (this change) | 0.5 | done |
-| 2 | Finish M7b and M8b | 0 | already done |
-| **0a** | **Fast lane fix** (above), then real checks on Explain and a diagram | **0.5** (+0.5 latency) | first, before anything new on Explain |
-| 0b | Spike: can the accessibility structure of web pages in Chrome, Safari and Arc be read (find a button by name), and how often? Decides how often a ring is solid and how often it is a soft guess in anywhere mode | 1 | decides the ring mix, not whether to build |
-| 0c | Spike: a draw overlay that takes the mouse but never the keyboard or the front app; and how to clip a drawing to one window and clear it when that window changes (rule 22) | 1 | go or change plan |
-| 3 | Sample stuck moment in the first run (built on Point at the problem and Your turn; becomes the first lesson when the engine lands) | 2 (+0.5 to convert) | |
-| 4 | **Draw it for me:** finish the hand drawn style sketch that fades (stays while speaking), with the diagram data path already built | 2.5 | |
-| 4b | The person draws or circles to ask: held on a registered hotkey (the same way hold to talk works; no key reading), mouse position and button state only, visible mode, light first, one capture of that region, solid ring only on a confirmed target, else words | 4 | |
-| 5 | **Walkthrough engine** (up to 15 steps, click detection, progress log, resume after pauses by re checking before going on, proof check after each step, a failed step is never repeated, lessons as data files): format and loader 1.5, target finding from the project and the accessibility structure 3, the runner 4, card and overlay 2, test harness with fake apps and real checks 2 | 12.5 | |
-| 5b | **Anywhere mode**: improvised lessons by the model, the soft "I think it is here" ring the person can correct, "did that work?" instead of proof, drawing clipped to its window | 5 | |
-| 6 | **Lesson packs** (6 to 8 lessons each): Lovable 5, Vercel 5, Supabase 5 | 15 | one founder session per pack (a Lovable account, `vercel login`, a Supabase test project) |
-| 7 | **Settings guidance:** Companion's own permissions (open the right System Settings page, guide the clicks, the proof is the permission check) 2.5; env vars and API keys (find the page, guide the value into the project's .env, check the name is set; never read or show a value) 3 | 5.5 | |
-| M10 10 | "Why did it ignore my rule?" | 2 | |
+| 0 | Fast lane fix and the two spikes | 2 | **done** |
+| 3 | Sample stuck moment in the first run (becomes the first lesson when the engine lands: +0.5) | 2.5 | |
+| 4 | Draw it for me: the hand drawn style sketch that fades (stays while speaking), on the diagram data path already built; add the route names the model must see | 2.5 | |
+| 5 | Walkthrough engine (format and loader 1.5, target finding 3, runner 4, card and overlay 2, harness and real checks 2) | 12.5 | |
+| 5b | Anywhere mode (improvised lessons, the soft ring, "did that work?", drawing clipped to its window) | 5 | |
+| 6 | Lesson packs: Lovable 5, Vercel 5 | 10 | a founder session per pack |
+| 7 | Settings guidance, Companion's own permissions only | 2.5 | |
 | 8 | Beta measurement (counts only; adds walkthrough completion, step success, soft ring corrections, anywhere versus builder tools) | 3.5 | |
-| | **Friends preview total** | **54** | about 10.8 weeks |
+| | **Remaining for the friends preview** | **39** | about 7.8 weeks |
 
-**Launch plumbing, outside the friends preview date** (F17 steps 8 to 11): settings screen with "delete everything" 3, updater 3, crash and log export 2, character wiring 2 when the designs arrive, signed and notarized installer about 5 once Apple approves. About 15 days, much of it waiting on the founder.
+**The date for the friends preview**
+- **Without buffer: about 7 Dec 2026** (39 working days from 13 Oct).
+- **With F17's 30 percent buffer: about 23 Dec 2026** (about 51 working days), which is also where the hands on sessions and what they find go.
+- Before the cuts it was week of 18 Jan 2027 (4 to 8 Jan with the safety valve). The cuts save 15 days: 4 (draw or circle) + 5 (Supabase) + 2 (rule check) + 3 (settings guidance beyond permissions) + 1 (0b and 0c came in under their 2.5).
 
-**Not at launch (F17 section 9):** Prompt help visual diff, packs beyond three tools, the full cast of characters, Windows, phone approvals, the questionnaire, Loop Closer, Pattern Catcher, Recaps, shared memory across models, Tutor mode, the Pro path, authored lessons for general apps.
+### Friends alpha: 10 to 15 people, with what is already built
 
-### The new date
-- **Friends preview: week of 18 Jan 2027.** That is 54 working days of building from 13 Oct (done about 28 Dec) plus F17's 30 percent buffer (about 70 days in all), which also covers the hands on sessions and what they find.
-- **With F17's safety valve** (the engine with the Lovable and Vercel packs only, Supabase added during the beta): 48 days, so **week of 4 to 8 Jan 2027**.
-- **Where this differs from F17.** F17 says about 5 to 6 weeks of build time. I cannot make the list above fit in that: the three lesson packs alone are 15 days, and anywhere mode with the engine is 17.5. The faster stretch so far (items 1 to 7 in 3 days) was code against things I can test on my own; lessons depend on other companies' real screens that I can only check with the founder's accounts, so I have not shortened these estimates. If the founder has a different 5 to 6 week scope in mind, say which parts to cut and I will re-plan.
-- Before F17 the friends preview was about 14 to 21 Nov 2026.
+**What they would get:** the hero loop as it is today. Press the key (Ctrl+Opt+Cmd+F) and Companion finds the failing line and points at it; fix with Drive or Rescue with proof; the before and after picture; your turn and Do it for me; Explain; undo; memory and where you left off; open a Lovable, Bolt or Replit project; Show me how; Prompt help; hold to talk; the plain dot with reactions. **What they would not get:** Draw it for me, the walkthrough engine, lessons, settings guidance, a character, an updater.
+
+**What it needs from me, with days:**
+
+| Need | Why | Days |
+|---|---|---|
+| A packaged installer (a signed disk image, scripts for signing and notarizing, a short install note) | Friends cannot build from source | 2 |
+| Minimal settings screen with **"delete everything"** (and the existing toggles in one place; no hotkey editing yet) | The privacy promise has to be reversible from inside the app | 3 |
+| Crash and log export (a plain text bundle with no project content, one button) | To fix what friends hit without screen sharing every time | 2 |
+| The sample stuck moment in the first run | Otherwise a friend who is not stuck that week never sees the hero | 2.5 |
+| A one page plain privacy note | What is read, when, and what is never stored | 0.5 |
+| **Total** | | **10** |
+| Updater (optional for 10 to 15: send new builds by hand; needed before the beta) | | +3 |
+
+**What it needs from the founder:** the hands on session first (Screen Recording, microphone and speech download, a real Cursor, `vercel login`), which nothing since 9 Oct has had; an Apple Developer enrolment for a notarized installer (without it, friends must approve the app in System Settings, which works for 10 to 15 people but is friction); and each friend needs their own Claude API key with a little credit (a real cost and a real hurdle: tell them up front). The character is **not** needed: the plain dot works.
+
+**Earliest date: about Wed 4 Nov 2026.** 10 working days of building from 13 Oct (ready about 26 Oct), the founder's hands on session about 27 to 28 Oct, two days to fix what it finds, then the first friends. It moves day for day if the hands on session or the Apple enrolment is later; if Apple's approval is not through, send the un notarized build and say so.
+
+**Can the launch plumbing run in parallel with the engine work? Yes, in two ways.** In calendar time: the founder's gates (Apple, the hands on session) run beside everything and should start now. In build time: installer scripts, crash export and the updater are self contained (scripts, new modules, little shared code) and can be built by separate agents in their own worktrees while I build the engine; the settings screen and the sample stuck moment share the card and the first run with the engine, so I would do those myself. With that split the alpha date holds and the friends preview date does not move; done one after the other instead, the friends preview moves by about 10 days (to about 6 Jan 2027 with buffer). The cost of parallel work is review time: each agent's change gets the same tests and a review pass before it merges.
 
 ### Risks, plainly
 1. **Web pages in the browser.** If macOS does not hand Companion the structure of a web page, most rings in Lovable, Vercel and Supabase are soft guesses or words only. Step 0b measures this first; it changes the mix, and the lessons (which carry their own target hints) lean on the project more.
