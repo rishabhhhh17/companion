@@ -44,6 +44,8 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
   const [withProjects, setWithProjects] = useState(false);
   const [problem, setProblem] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState("");
   const load = () => { void invoke("data_inventory").then((v) => setInv(v as Inventory)); void invoke("permission_overview").then((v) => setPerms(v as Record<PermissionKind, PermissionState>)); };
   useEffect(load, []);
   // The permission page is where the person changes things; coming back should show the new state.
@@ -77,6 +79,10 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      <h3>{S.exportLogsTitle}</h3>
+      <div className="line muted">{S.exportLogsHelp}</div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
+      {exported && <div className="line" role="status">{exported}</div>}
       {step === "idle" && <div className="row"><button className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
       {step !== "idle" && (
         <div className="line" role="alert">

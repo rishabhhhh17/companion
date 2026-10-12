@@ -24,6 +24,7 @@ mod pointat;
 mod share;
 mod yourturn;
 mod wipe;
+mod logexport;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -674,6 +675,47 @@ fn open_permission_page(which: String) -> Result<(), String> {
     std::process::Command::new("/usr/bin/open").arg(format!("x-apple.systempreferences:com.apple.preference.security?{pane}")).status().map(|_| ()).map_err(|_| "Could not open System Settings.".to_string())
 }
 
+/// Writes a support log to Downloads (never over a file), scrubbed of project content and anything secret, and shows it in
+/// Finder. Nothing is sent anywhere: the person decides whether to share it.
+#[tauri::command]
+async fn export_logs() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let (home, data) = (home_dir(), data_dir());
+        let cmd_out = |c: &str, a: &[&str]| std::process::Command::new(c).args(a).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+        let perms = permission_overview();
+        let word = |k: &str| match perms[k].as_str().unwrap_or("unknown") { "allowed" => "allowed", "not_allowed" => "not allowed", "not_asked" => "not asked yet", _ => "not checked" };
+        let pj = projects::load(&projects_path());
+        let mut projects: Vec<String> = pj.recent.clone();
+        if let Some(c) = pj.current.clone() { if !projects.contains(&c) { projects.push(c); } }
+        let inv = wipe::inventory(std::path::Path::new(&home), &data, key_saved(), &[]);
+        let kept: Vec<(String, u64)> = inv["items"].as_array().map(|a| a.iter().map(|r| (r["label"].as_str().unwrap_or("").to_string(), r["bytes"].as_u64().unwrap_or(0))).collect()).unwrap_or_default();
+        let facts = logexport::Facts {
+            version: env!("CARGO_PKG_VERSION").to_string(), macos: cmd_out("/usr/bin/sw_vers", &["-productVersion"]), arch: cmd_out("/usr/bin/uname", &["-m"]),
+            permissions: vec![("Screen Recording".into(), word("screen_recording").into()), ("Accessibility".into(), word("accessibility").into()), ("Microphone".into(), word("microphone").into())],
+            key_saved: key_saved(), speech_ready: voice_mac::model_ready(&data), browser_installed: std::fs::read_dir(std::path::Path::new(&home).join("Library/Application Support/Companion/browsers")).is_ok_and(|mut d| d.next().is_some()), kept,
+        };
+        let activity = [data.join("events.jsonl.1"), data.join("events.jsonl")].iter().filter_map(|p| std::fs::read_to_string(p).ok()).collect::<Vec<_>>().join("\n");
+        let crash = logexport::latest_crash(&std::path::Path::new(&home).join("Library/Logs/DiagnosticReports"), std::time::SystemTime::now());
+        // Words that identify the person or the machine: the user name and the computer's names.
+        let mut names: Vec<String> = vec![std::env::var("USER").unwrap_or_else(|_| home.rsplit('/').next().unwrap_or("").to_string()), cmd_out("/usr/sbin/scutil", &["--get", "ComputerName"]), cmd_out("/usr/sbin/scutil", &["--get", "LocalHostName"]), cmd_out("/bin/hostname", &[])];
+        names.retain(|n| !n.is_empty()); names.dedup();
+        let text = logexport::compose(&facts, &activity, crash.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &home, &names, &projects);
+        let dir = std::path::Path::new(&home).join("Downloads");
+        if !dir.is_dir() { return Err("Your Downloads folder was not found.".to_string()); }
+        let stamp = cmd_out("/bin/date", &["+%Y-%m-%d-%H%M"]);
+        // create_new never replaces a file; if another file takes the name a moment before us, the next name is tried.
+        let (mut path, mut file) = (std::path::PathBuf::new(), None);
+        for attempt in 0..5 {
+            path = logexport::unique_path(&dir, &if attempt == 0 { stamp.clone() } else { format!("{stamp}-{attempt}") }, |p| p.exists());
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) { Ok(f) => { file = Some(f); break; } Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue, Err(e) => return Err(format!("Could not save the log ({e}).")) }
+        }
+        let mut f = file.ok_or("Could not save the log (the name was taken).".to_string())?;
+        std::io::Write::write_all(&mut f, text.as_bytes()).map_err(|e| format!("Could not save the log ({e})."))?;
+        let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).status();   // shows the file in Finder
+        Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+    }).await.map_err(|_| "The export stopped.".to_string())?
+}
+
 static WIPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// A question macOS itself asks, so a script in a page can never answer it. Cancel is the default button.
@@ -1141,7 +1183,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
