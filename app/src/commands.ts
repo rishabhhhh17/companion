@@ -57,3 +57,6 @@ export const PRACTICE_PROMPT = "The tests in this project fail. Find the cause a
 export const PRACTICE_LABEL = "The tests in this project fail";
 export const startPractice = (project: string): Command =>
   ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt: PRACTICE_PROMPT, model: DEFAULT_MODEL, budgetUsd: 0.6 });
+// Draw it for me: why did this break, as a small diagram (from the project and the failing place, never the screen).
+export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
+  ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });

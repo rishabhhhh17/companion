@@ -2,7 +2,8 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { DELETE_PHRASE, deletableLines, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
-import { startPractice as practiceFixCommand, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { layoutDiagram } from "./layout.ts";
+import { startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -238,6 +239,26 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Draw it for me: ask why it broke; when the diagram comes back it is laid out here and drawn on the screen.
+  const asked = useRef(false);
+  useEffect(() => { if (!m.diagram) asked.current = false; }, [m.diagram]);
+  const drawIt = (question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }) => {
+    if (!projectRef.current || asked.current) return;
+    asked.current = true; dispatch({ type: "ui.diagramAsked" });
+    void send(askDiagram(projectRef.current, question, problem));
+  };
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; made?: boolean; project?: string; diagram?: any };
+      if (ev.type !== "diagram.ready" || !asked.current) return;
+      asked.current = false;
+      if (ev.made && ev.diagram && ev.project === projectRef.current) {
+        const laid = layoutDiagram(ev.diagram, 720);
+        void invoke("show_diagram", { diagram: { ...laid, caption: ev.diagram.caption, reason: ev.diagram.broken.reason } }).catch(() => {});
+      }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   const [link, setLink] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -439,6 +460,15 @@ function Card() {
           </>}
         </section>
       )}
+      {m.diagram && (
+        <section className={`panel ${m.diagram.stage === "none" ? "amber" : ""}`} role="status" aria-label={S.drawTitle}>
+          <h2>{S.drawTitle}</h2>
+          {m.diagram.stage === "asking" && <div className="line">{S.drawing}</div>}
+          {m.diagram.stage === "shown" && <><div className="line"><b>{m.diagram.brokenReason}</b></div><div className="line">{m.diagram.caption}</div><div className="line muted">{S.drawShown}</div></>}
+          {m.diagram.stage === "none" && <div className="line">{m.diagram.reason}</div>}
+          {m.diagram.stage !== "asking" && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.diagramClosed" }); }}>{S.pointClose}</button></div>}
+        </section>
+      )}
       {m.about && m.about.project === project && (
         <section className="panel" aria-label={S.aboutTitle}>
           <h2>{S.aboutTitle}</h2>
@@ -472,6 +502,7 @@ function Card() {
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
           <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
+          <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
           <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
           <button className="btn" type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((v) => !v)}>{S.settingsButton}</button>
         </div>
@@ -708,6 +739,7 @@ function Card() {
           {m.point.stage !== "checking" && (
             <div className="row">
               {m.point.stage === "found" && m.point.problem && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.point?.problem })}>{S.pointWhere}</button>}
+              {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
             </div>
