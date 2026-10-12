@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A plain privacy note for friends: 12 Oct 2026
+
+- `docs/alpha/PRIVACY.md`: what Companion reads and when, feature by feature, and exactly where each thing goes (your Mac, Claude under your key, Vercel under your login). It makes no claim about how Anthropic or Vercel treat data, and does not say that only one provider sees your screen. Draft for the founder to review before it is sent.
+
 ## An installer a friend can use: 12 Oct 2026
 
 - **Companion now carries its own engine.** Before this, the app found its engine only through the developer's settings file, so a copy on anyone else's Mac would not have started. The app now contains Bun, the runner and its packages, including Anthropic's own Claude binary, which is copied as is and never re-signed (its checksum is compared before and after signing).

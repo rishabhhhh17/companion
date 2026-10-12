@@ -1,0 +1,28 @@
+# What Companion reads, when, and where it goes (friends alpha, build 0.1.0)
+
+**Draft for the founder to review before it is sent to anyone.** Written from what the code does today. It makes no claim about how Anthropic handles data: read their terms for the key you use.
+
+## The short version
+- Companion looks at your screen or listens **only when you press its key**, with a light on first. It never watches in the background.
+- It uses **your own Claude key**. Companion has no server and never sees your key, your project or your screen: what Claude is sent goes from your Mac to Anthropic, under your account.
+- Nothing you did is kept anywhere but on your Mac, and **Settings, Delete everything** removes all of it.
+
+## Feature by feature
+| When | What Companion reads | Where it goes |
+|---|---|---|
+| You press **F** (point at the problem) | Runs your project's own checks and reads the failing line from your files. Then looks at your screen once, **on your Mac**, to find that line (the Mac's own text reader). The picture is never saved and never sent. | Nothing leaves your Mac for this step. |
+| You press **S** (ask about your screen) | One picture of the display you are on. Card numbers, bank numbers, keys and tokens that the text reader finds are blacked out first. Your password manager's windows and Companion's own are left out. | The picture (in memory only, never written to disk by Companion) is sent to Claude with your question, under your key. Claude Code itself keeps a copy of any picture it receives in its temporary folder; Companion points that folder at a drive in memory and erases it after each answer. |
+| You hold **V** (talk) | Your voice, only while you hold the keys. | Turned into words on your Mac by a speech model. The audio is never saved or sent; the words go in the box and are sent only if you send them. |
+| You ask for a task, a fix or a plan | The files of the project you chose, as Claude needs them. | Sent to Claude under your key, like any use of Claude Code. Companion's safety rules limit what it may change, and every change is snapshotted first so you can undo it. |
+| After a fix passes its checks | Opens your page in a hidden browser on your Mac and takes a picture of **your app** (never your screen), before and after. | Stays on your Mac. |
+| You go live | Your project's files go to Vercel through **your own Vercel login**, after safety checks and your yes. | To Vercel, by their tool. |
+| Always on | The last few things you did, as short notes (what is in `.companion/project.md` in your project, and a small profile in Companion's own folder). You can read, edit and forget every line in **What I know**. | Stays on your Mac. Never health, money, relationships, moods or secrets. |
+
+## What Companion keeps on your Mac
+Task history and spending, undo snapshots of your projects, receipt pictures, memory notes, the speech model, a hidden browser, settings and a small activity log (what happened, never what was typed, said or on screen). **Settings** lists them with sizes. **Delete everything** removes them and your saved key.
+
+## If you send a log
+**Settings, Save a log for support** writes a text file with no project content, nothing typed or said and nothing from your screen; your name, folders and keys are covered. You decide whether to send it.
+
+## What this note does not say
+Companion cannot see what Anthropic or Vercel do with what they receive, and does not claim to. Do not use it on a project you are not allowed to share with Claude.
