@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Open your Lovable, Bolt or Replit project: 12 Oct 2026
+
+- **About this project.** When you open a folder, Companion says in one line where it came from and what it is, for example "A Lovable project: Vite + React, with Supabase and Tailwind." It knows Lovable, Bolt and Replit exports, Next.js, Angular, Vue, Node servers, Python and plain pages.
+- **Install packages** when a project's packages are not there yet (common right after an export). Only when you press the button; Stop everything ends it.
+- **Settings it needs:** the names of settings the project reads that are not set on this Mac, the ones your page itself needs first. Names only, never a value.
+- **Plain warnings** for things that trip people up: a package.json renamed to package.json.bak, a workspace with the app one folder down, settings that live in Replit's .replit file and need a .env file here.
+- **Open from a link.** Paste a GitHub, GitLab or Bitbucket link, choose where it goes, and Companion copies it into a new folder there and opens it. Public projects only; a private one gets a plain sentence on what to do instead. It never copies into a folder that is already there.
+- Lovable exports often carry two lock files; Companion now uses npm for them (the one that is kept up to date), and it never picks a package manager this Mac does not have.
+- Checked on nine real public exports (three Lovable, three Bolt, four Replit, read only), and a real copy from GitHub.
+
 ## Reactions and celebrations: 11 Oct 2026
 
 - **The character reacts as work moves.** A small nod when a check passes (one nod for a run of them, not five), a short wince when one fails, a cheer when a preview is ready, when you click the right thing, or when the before and after picture is in.

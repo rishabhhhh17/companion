@@ -16,7 +16,7 @@ pub const PROTOCOL_VERSION: i64 = 1;
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
     "assist.prompt", "assist.locate", "assist.image", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
-    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find",
+    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install",
 ];
 
 /// Checks a command from a web page. Returns the reason in plain words when refused.
@@ -33,6 +33,17 @@ pub fn check_command(v: &Value) -> Result<(), String> {
         return Err(format!("the command {t} is not allowed from a page"));
     }
     Ok(())
+}
+
+/// Commands that run or read things in a project folder: from a page they may name only the folder the person chose.
+pub const PROJECT_BOUND: &[&str] = &["project.inspect", "project.install", "problem.find"];
+pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
+    let t = v.get("type").and_then(Value::as_str).unwrap_or("");
+    if !PROJECT_BOUND.contains(&t) { return Ok(()); }
+    match v.get("project").and_then(Value::as_str) {
+        Some(p) if !current.is_empty() && p == current => Ok(()),
+        _ => Err("that command may only name the project folder you chose".into()),
+    }
 }
 
 /// Splits a stream of bytes into whole lines, keeping a partial line for next time.
@@ -255,6 +266,15 @@ impl Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn install_inspect_and_find_may_only_name_the_chosen_project() {
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p });
+        assert!(check_project(&c("project.install", "/Users/me/site"), "/Users/me/site").is_ok());
+        assert!(check_project(&c("project.install", "/Users/me/other"), "/Users/me/site").is_err());
+        assert!(check_project(&c("problem.find", "/"), "/Users/me/site").is_err());
+        assert!(check_project(&c("project.inspect", "/Users/me/site"), "").is_err());
+        assert!(check_project(&c("memory.list", "/anything"), "/Users/me/site").is_ok());   // not a project bound command
+    }
     use serde_json::json;
 
     #[test]

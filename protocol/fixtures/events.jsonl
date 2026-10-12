@@ -40,3 +40,6 @@
 {"v":1,"id":"e53","type":"receipt.visual","agent":"a1","project":"p_9f2c","checkpoint":"cp_0001","made":true,"image":"/9j/4AAQSkZJRg==","caption":"This works now. What changed is circled.","circles":1}
 {"v":1,"id":"e54","type":"ship.card","project":"p_9f2c","url":"https://mug-shop.vercel.app","title":"Mug shop","image":"/9j/4AAQSkZJRg==","withShot":true}
 {"v":1,"id":"e55","type":"receipt.visual","agent":"a1","project":"p_9f2c","checkpoint":"cp_0001","made":false,"caption":"","circles":0}
+{"v":1,"id":"e56","type":"project.report","project":"p_9f2c","origin":"lovable","about":"A Lovable project: Vite + React, with Supabase.","stack":"Vite + React","needsInstall":true,"installCommand":"npm install","start":"npm run dev","missing":["VITE_API_URL"],"missingCount":1,"example":".env.example","notes":[]}
+{"v":1,"id":"e57","type":"project.install","project":"p_9f2c","stage":"done","detail":"Installed."}
+{"v":1,"id":"e58","type":"project.cloned","url":"https://github.com/me/mug-shop.git","ok":true,"path":"/Users/me/Projects/mug-shop","detail":"Copied."}

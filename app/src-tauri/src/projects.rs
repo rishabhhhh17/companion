@@ -50,9 +50,23 @@ pub fn load(file: &Path) -> Projects {
 }
 
 /// Asks the Mac's own folder chooser. It runs in another process, so Companion never takes the keyboard.
-pub fn choose_folder() -> Option<String> {
+pub fn choose_folder() -> Option<String> { choose("Pick the folder of the project Companion should work in") }
+
+/// Where a project copied from a link should go: the new folder is made inside the one chosen here.
+pub fn choose_parent() -> Option<String> { choose("Pick where to put the project (a new folder is made inside it)") }
+
+/// The folder a copied project goes into. Your home folder itself is fine here (the project gets its own folder
+/// inside it); system places, your Library, Companion's own data and private settings folders are not.
+pub fn validate_parent(path: &str, home: &str, data_dir: &Path) -> Result<PathBuf, String> {
+    let home_real = std::fs::canonicalize(home).unwrap_or_else(|_| PathBuf::from(home));
+    if std::fs::canonicalize(path.trim()).ok().as_deref() == Some(home_real.as_path()) { return Ok(home_real); }
+    validate(path, home, data_dir).map_err(|e| if e.contains("too broad") { "That folder cannot hold a project. Pick another one.".into() } else { e })
+}
+
+fn choose(prompt: &str) -> Option<String> {
+    let script = format!("POSIX path of (choose folder with prompt \"{prompt}\")");
     let out = std::process::Command::new("osascript")
-        .args(["-e", r#"POSIX path of (choose folder with prompt "Pick the folder of the project Companion should work in")"#])
+        .args(["-e", &script])
         .output().ok()?;
     if !out.status.success() { return None; }          // cancelled
     let s = String::from_utf8_lossy(&out.stdout).trim().trim_end_matches('/').to_string();
@@ -62,6 +76,15 @@ pub fn choose_folder() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_copied_project_may_go_in_the_home_folder_but_never_a_system_or_private_place() {
+        let home = tmp("home-p"); let data = tmp("data-p");
+        assert!(validate_parent(home.to_str().unwrap(), home.to_str().unwrap(), &data).is_ok());
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        assert!(validate_parent(home.join(".ssh").to_str().unwrap(), home.to_str().unwrap(), &data).is_err());
+        assert!(validate_parent("/", home.to_str().unwrap(), &data).is_err());
+        assert!(validate_parent(data.to_str().unwrap(), home.to_str().unwrap(), &data).is_err());
+    }
     fn tmp(name: &str) -> PathBuf { let d = std::env::temp_dir().join(format!("proj-{}-{}", name, std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d }
 
     #[test]

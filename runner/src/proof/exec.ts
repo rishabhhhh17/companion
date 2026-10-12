@@ -38,3 +38,6 @@ export function runCommand(command: string, o: { cwd: string; timeoutMs: number;
     child.on("error", (e) => { err += String(e.message); done(127, null); });
   });
 }
+
+/** One word for the shell, single quoted, so nothing in it ($, backticks, quotes) is ever expanded. */
+export const shq = (s: string): string => `'${s.replace(/'/g, "'\\''")}'`;

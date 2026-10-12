@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -156,6 +156,20 @@ function Card() {
   }, []);
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
+  // About this project: asked each time a folder is opened (reads files only).
+  useEffect(() => { if (project) void send(inspectProject(project)); }, [project]);
+  // Opened from a link: once it is copied, it becomes the project folder.
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; ok?: boolean; path?: string };
+      if (ev.type === "project.cloned") { setCopying(false); if (ev.ok && ev.path) useFolder(ev.path); }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  const [link, setLink] = useState("");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const openLink = () => { const u = link.trim(); if (!u || copying) return; dispatch({ type: "ui.cloneNoteClosed" }); void invoke("clone_project", { url: u }).then(() => { setLinkOpen(false); setLink(""); setCopying(true); }).catch((e) => { if (String(e)) setFolderNote(String(e)); }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
   useEffect(() => {
@@ -296,7 +310,34 @@ function Card() {
           </select>
         )}
       </div>
+      {copying && <div className="line muted" role="status">{S.copying}</div>}
+      {!linkOpen ? !copying && <div className="row"><button className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
+        <div className="row">
+          <input aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); } }} />
+          <button className="btn primary" type="button" onClick={openLink}>{S.openLinkGo}</button>
+          <button className="btn" type="button" onClick={() => setLinkOpen(false)}>{S.planCancel}</button>
+        </div>
+      )}
+      {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
+      {m.about && m.about.project === project && (
+        <section className="panel" aria-label={S.aboutTitle}>
+          <h2>{S.aboutTitle}</h2>
+          <div className="line">{m.about.about}</div>
+          {m.about.notes.map((n, i) => <div className="line" key={i}>{n}</div>)}
+          {m.about.needsInstall && !(m.install?.project === project && m.install.stage === "done") && (
+            <div className="row">
+              <span className="line">{S.aboutNeedsInstall}</span>
+              <button className="btn primary" type="button" disabled={m.install?.stage === "installing"} onClick={() => void send(installPackages(project))}>{m.install?.project === project && m.install.stage === "installing" ? S.aboutInstalling : S.aboutInstall}</button>
+            </div>
+          )}
+          {m.install?.project === project && <div className={`line ${m.install.stage === "failed" ? "blocked" : "muted"}`} role="status">{m.install.detail}</div>}
+          {m.about.missingCount > 0 && (
+            <div className="line">{S.aboutMissing} <b>{m.about.missing.join(", ")}</b>{m.about.missingCount > m.about.missing.length ? ` ${S.andMore.replace("{n}", String(m.about.missingCount - m.about.missing.length))}` : ""}. {m.about.example ? S.aboutMissingExample.replace("{file}", m.about.example) : S.aboutMissingHow}</div>
+          )}
+          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
+        </section>
+      )}
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}

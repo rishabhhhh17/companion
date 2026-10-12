@@ -358,6 +358,7 @@ fn click_log(app: &AppHandle, label: &str, n: u64) {
 #[tauri::command]
 fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
     runner::check_command(&cmd)?;
+    runner::check_project(&cmd, &current_project())?;
     app.state::<runner::Runner>().send(&cmd)
 }
 
@@ -428,6 +429,18 @@ fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
 async fn pick_project(app: AppHandle) -> Result<String, String> {
     let chosen = tauri::async_runtime::spawn_blocking(projects::choose_folder).await.map_err(|_| "The folder chooser stopped.".to_string())?;
     match chosen { Some(path) => use_project(app, path), None => Err(String::new()) }
+}
+
+/// Open a project from a link: the person picks where it goes, then the runner copies it into a new folder there.
+#[tauri::command]
+async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
+    let url = url.trim().to_string();
+    if !url.starts_with("https://") { return Err("Paste the project's link; it starts with https://".into()); }
+    let chosen = tauri::async_runtime::spawn_blocking(projects::choose_parent).await.map_err(|_| "The folder chooser stopped.".to_string())?;
+    let Some(parent) = chosen else { return Err(String::new()) };
+    let parent = projects::validate_parent(&parent, &home_dir(), &data_dir())?;
+    let cmd = json!({ "v": 1, "id": format!("clone{}", now()), "type": "project.clone", "url": url, "parent": parent.to_string_lossy() });
+    app.state::<runner::Runner>().send(&cmd).map_err(|_| "Companion's engine is not running. Try again in a moment.".to_string())
 }
 
 #[tauri::command]
@@ -1040,7 +1053,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

@@ -2,7 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
-import { runCommand } from "./proof/exec.ts";
+import { runCommand, shq } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -30,6 +30,9 @@ import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { captureBefore, sweepWork } from "./proof/before.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
+import { aboutLine, inspectProject } from "./proof/intake.ts";
+import { cloneTarget } from "./proof/clone.ts";
+import { detectProject } from "./proof/detect.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
@@ -118,6 +121,7 @@ export class AgentRunner {
   private sessions = new Map<string, Session>();
   private plans = new Map<string, PendingPlan>();
   private driving = new Set<string>();
+  private installing = new Map<string, AbortController>();   // package installs and clones the person started, so Stop everything ends them
   private picturing = new Set<AbortController>();   // visual receipts being drawn, so Stop everything can end them
   private backgroundJobs = new Set<Promise<void>>();   // pictures and cards; the runner waits for them before it exits
   private projectTurn = new Map<string, Promise<unknown>>();   // a proof check and a picture never run a server at the same time
@@ -303,6 +307,9 @@ export class AgentRunner {
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "problem.find": return this.problemFind(cmd);
+      case "project.inspect": return this.projectInspect(cmd.project);
+      case "project.install": return this.projectInstall(cmd.project);
+      case "project.clone": return this.projectClone(cmd);
       case "research.ask": return this.researchAsk(cmd);
       case "ship.check": return this.shipCheck(cmd);
       case "drive.approve": return this.driveApprove(cmd);
@@ -322,7 +329,7 @@ export class AgentRunner {
         this.choices.delete(cmd.agent); r(cmd.choice); return;
       }
       case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
@@ -842,6 +849,59 @@ export class AgentRunner {
       found("cancelled");
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
+  }
+
+  // About this project: where it came from, what it is built with, what it still needs. Reads files only.
+  private async projectInspect(project: string): Promise<void> {
+    if (!existsSync(project)) { this.fail("That project folder is not there any more."); return; }
+    const r = inspectProject(project);
+    this.emit({ type: "project.report", project, origin: r.origin, about: aboutLine(r), stack: r.stack, needsInstall: r.needsInstall, installCommand: r.installCommand, start: r.start, missing: r.env.missing.slice(0, 12), missingCount: r.env.missing.length, example: r.env.example, notes: r.notes } as never);
+  }
+
+  // Install the project's packages, only when the person pressed the button. The project's own install scripts run, as
+  // they would in a terminal, with the short allow-list environment (no keys); Stop everything ends it.
+  private async projectInstall(project: string): Promise<void> {
+    const say = (stage: string, detail: string) => this.emit({ type: "project.install", project, stage, detail } as never);
+    const key = resolve(project);
+    // Never while anything else works in this project: a check building while node_modules is rewritten would fail for nothing.
+    const busy = this.installing.has(key) || this.finding.size > 0 || this.shipping.size > 0 || this.sessions.size > 0 || this.driving.size > 0;
+    if (busy) { say("failed", "Companion is already working on this project. Wait for it to finish, or press Stop."); return; }
+    const det = detectProject(project);
+    if (!det.packageManager) { say("failed", "This project has no package list (package.json), so there is nothing to install."); return; }
+    const ac = new AbortController();
+    this.installing.set(key, ac);
+    try {
+      say("installing", `Installing what the project needs with ${det.packageManager}. This can take a few minutes the first time.`);
+      // Not in CI mode: pnpm then refuses a lock file that an export left out of date, and a person installing wants it to work.
+      const r = await this.inTurn(project, () => runCommand(`${det.packageManager} install${det.packageManager === "pnpm" ? " --no-frozen-lockfile" : ""}`, { cwd: project, timeoutMs: 10 * 60_000, signal: ac.signal }));
+      if (r.aborted) { say("cancelled", "Stopped. Some packages may be half installed; press Install again to finish."); return; }
+      if (r.code !== 0 || r.timedOut) { say("failed", `The install did not finish. ${(r.stderr || r.stdout).trim().split("\n").slice(-6).join(" ").slice(-400)}`); return; }
+      say("done", "Installed.");
+      await this.projectInspect(project);
+    } finally { this.installing.delete(key); }
+  }
+
+  // Open a project from a link: a new folder inside the folder the person chose. Never into an existing folder.
+  private async projectClone(cmd: Extract<Command, { type: "project.clone" }>): Promise<void> {
+    const t = cloneTarget(cmd.url);
+    const done = (ok: boolean, detail: string, path?: string) => this.emit({ type: "project.cloned", url: t?.url ?? cmd.url, ok, detail, ...(path ? { path } : {}) } as never);
+    if (!t) { done(false, "That is not a link to a GitHub, GitLab or Bitbucket project. It should look like https://github.com/name/project."); return; }
+    if (!existsSync(cmd.parent)) { done(false, "That folder is not there."); return; }
+    const dest = join(cmd.parent, t.name);
+    if (existsSync(dest)) { done(false, `There is already a folder called ${t.name} there. Open that one, or choose another place.`); return; }
+    const ac = new AbortController();
+    this.installing.set(dest, ac);
+    try {
+      // Single quoted: a folder name with $, backticks or quotes in it is only ever a name.
+      const r = await runCommand(`git clone --quiet ${shq(t.url)} ${shq(dest)}`, { cwd: cmd.parent, timeoutMs: 5 * 60_000, signal: ac.signal, env: { GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/usr/bin/false" } });
+      if (r.aborted) { rmSync(dest, { recursive: true, force: true }); done(false, "Stopped."); return; }
+      if (r.code !== 0 || r.timedOut) {
+        rmSync(dest, { recursive: true, force: true });
+        const why = /could not read Username|Authentication failed|not found|Repository not found/i.test(r.stderr) ? "It may be private, or the link may be wrong. For a private project, copy it with GitHub Desktop, then choose its folder." : r.stderr.trim().slice(-200);
+        done(false, `The project could not be copied. ${why}`); return;
+      }
+      done(true, `Copied ${t.name}.`, dest);
+    } finally { this.installing.delete(dest); }
   }
 
   // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.

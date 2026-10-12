@@ -48,3 +48,6 @@ export const addMemory = (project: string, scope: "project" | "profile", text: s
 export const checkMac = (): Command => ({ v: 1, id: id(), type: "doctor.check" });
 // Point at the problem: check the project as it is (no Claude, nothing changed) and say where it fails.
 export const findProblem = (project: string): Command => ({ v: 1, id: id(), type: "problem.find", project, agent: AGENT });
+// About this project, and installing its packages when the person presses the button.
+export const inspectProject = (project: string): Command => ({ v: 1, id: id(), type: "project.inspect", project });
+export const installPackages = (project: string): Command => ({ v: 1, id: id(), type: "project.install", project });
