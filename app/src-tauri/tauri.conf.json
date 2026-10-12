@@ -30,7 +30,8 @@
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist",
       "files": {
-        "Resources/engine": "../vendor/engine"
+        "Resources/engine": "../vendor/engine",
+        "Resources/sample": "../sample"
       },
       "minimumSystemVersion": "14.0"
     }

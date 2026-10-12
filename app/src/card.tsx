@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { DELETE_PHRASE, deletableLines, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
-import { inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { startPractice as practiceFixCommand, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -38,7 +38,7 @@ function ExplainBox({ e }: { e: Explain }) {
   );
 }
 
-function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend, onClose }: { explainOn: boolean; project: string; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend, onClose, onPractice }: { onPractice: () => void; explainOn: boolean; project: string; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -76,6 +76,7 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
         <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
       </div>
+      <div className="row"><button className="btn" type="button" onClick={onPractice}>{S.practiceAgainFromSettings}</button></div>
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
@@ -215,9 +216,16 @@ function Card() {
   const loadRecent = () => void invoke("list_projects").then((l) => setRecent(Array.isArray(l) ? (l as string[]) : []));
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); loadRecent(); }, []);
   useEffect(() => {
-    const off = listen("project-changed", (e) => { setProject(String(e.payload ?? "")); dispatch({ type: "ui.projectChanged" }); setFolderNote(""); loadRecent(); });
+    const off = listen("project-changed", (e) => { setProject(String(e.payload ?? "")); dispatch({ type: "ui.projectChanged", project: String(e.payload ?? "") }); setFolderNote(""); loadRecent(); });
     return () => { off.then((f) => f()); };
   }, []);
+  // The practice project: copied into a new folder, chosen as the project, and followed step by step.
+  const practiceBusy = useRef(false);
+  const beginPractice = () => {
+    if (practiceBusy.current) return;   // one practice folder per press
+    practiceBusy.current = true;
+    void invoke("create_practice").then((p) => dispatch({ type: "ui.practiceStarted", project: String(p) })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
+  };
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
   // About this project: asked each time a folder is opened (reads files only).
@@ -363,7 +371,7 @@ function Card() {
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} onDone={finishOnboarding} />}
+      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && (<>
       <div className="row" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
@@ -385,7 +393,52 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel explainOn={m.explainOn} project={project} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel explainOn={m.explainOn} project={project} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} />}
+      {m.practice && m.practice.project === project && (
+        <section className="panel" aria-label={S.practiceTitle}>
+          <h2>{S.practiceTitle}</h2>
+          {m.practice.stage === "start" && <>
+            <div className="line">{S.practiceStart}</div>
+            <div className="line muted">{S.practiceKeys}</div>
+            <div className="row">
+              <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
+              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
+            </div>
+          </>}
+          {m.practice.stage === "found" && <>
+            <div className="line"><b>{S.practiceFound}</b> {m.practice.where?.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where?.message}</div>
+            <div className="line muted">{S.practiceFoundMore}</div>
+            <div className="row">
+              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>
+              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
+            </div>
+          </>}
+          {m.practice.stage === "fixing" && <>
+            <div className="line">{S.practiceFixing}</div>
+            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
+          </>}
+          {m.practice.stage === "blocked" && <>
+            <div className="line">{S.practiceBlocked}</div>
+            {m.practice.why && <div className="line muted">{m.practice.why}</div>}
+            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button></div>
+          </>}
+          {m.practice.stage === "done" && <>
+            <div className="line"><b>{S.practiceDone}</b></div>
+            <div className="line muted">{S.practiceDoneMore}</div>
+            <div className="row">
+              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceClosed" }); pickFolder(); }}>{S.practiceOwn}</button>
+              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
+            </div>
+          </>}
+          {m.practice.stage === "failed" && <>
+            <div className="line">{S.practiceFailed}</div>
+            <div className="row">
+              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>
+              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
+            </div>
+          </>}
+        </section>
+      )}
       {m.about && m.about.project === project && (
         <section className="panel" aria-label={S.aboutTitle}>
           <h2>{S.aboutTitle}</h2>

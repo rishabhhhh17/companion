@@ -15,6 +15,7 @@ const FILES: Record<string, string> = {
   "src/math.test.ts": 'import { expect, test } from "vitest";\nimport { add } from "./math";\n\ntest("adds two numbers", () => {\n  expect(add(2, 3)).toBe(5);\n});\n',
   "src/crash.js": "const a = 1;\nfunction go() {\n  return undefinedThing.value;\n}\ngo();\n",
   "src/crash.py": "def go():\n    return 1 / 0\n\ngo()\n",
+  "test/signup.test.js": "// c\n// c\n// c\n// c\n// c\n// c\n// c\n// c\ntest('joining the list works', async () => {\n  const a = 1;\n  const b = 2;\n  const c = 3;\n  const d = 4;\n  const e = 5;\n  const f = 6;\n  const g = 7;\n  assert.strictEqual(res.status, 200);\n});\n",
   "src/bad2.ts": 'import { add } from "./math";\nexport const y = add(1 2);\n',
 };
 function project(): string {
@@ -54,6 +55,14 @@ describe("real tool output becomes a file and a line", () => {
   test("Python: the deepest frame in the project, not the first", () => {
     const p = project();
     expect(locateProblem(fixture("python", p), p, "tests")).toMatchObject({ kind: "line", file: "src/crash.py", line: 2, lineText: "return 1 / 0", message: "ZeroDivisionError: division by zero" });
+  });
+  test("Node's test runner (TAP): the failing check at line 17, not where the test starts at line 9, with its own message", () => {
+    const p = project();
+    expect(locateProblem(fixture("node-test-tap", p), p, "tests")).toMatchObject({ kind: "line", file: "test/signup.test.js", line: 17, lineText: "assert.strictEqual(res.status, 200);", message: "Pressing Join sends the email to /api/signup, which answered 404" });
+  });
+  test("Node's test runner (spec)", () => {
+    const p = project();
+    expect(locateProblem(fixture("node-test-spec", p), p, "tests")).toMatchObject({ kind: "line", file: "test/signup.test.js", line: 17 });
   });
   test("Vite: the project's file, never the build tool's own files in node_modules", () => {
     const p = project();
@@ -108,5 +117,9 @@ describe("no file and line", () => {
   test("a broken button in the browser check names the button", () => {
     expect(buttonProblem(['The page crashed with: Cannot read properties of undefined (reading \'map\') (after pressing "Save")'])).toEqual({ kind: "button", label: "Save", message: "Cannot read properties of undefined (reading 'map')", from: "browser" });
     expect(buttonProblem(["The page answered with an error (500)"])).toBeNull();
+  });
+  test("an error: line in some other tool's output is not taken for a TAP failure message", () => {
+    const p = project();
+    expect(locateProblem("src/App.tsx(5,9): error TS2322: Type mismatch.\nerror: 'a log line of the project'", p, "checks")).toMatchObject({ message: "Type mismatch." });
   });
 });

@@ -25,6 +25,7 @@ mod share;
 mod yourturn;
 mod wipe;
 mod logexport;
+mod practice;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -716,6 +717,17 @@ async fn export_logs() -> Result<String, String> {
     }).await.map_err(|_| "The export stopped.".to_string())?
 }
 
+/// The first run's practice project: copied into a new folder in the home folder, then chosen as the project. Never over
+/// anything that is there already.
+#[tauri::command]
+fn create_practice(app: AppHandle) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|_| "Could not find the practice project.".to_string())?;
+    let src = practice::source(&exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())?;
+    let dst = practice::make(&src, std::path::Path::new(&home_dir()))?;
+    log("practice_created", json!({}));
+    use_project(app, dst.to_string_lossy().to_string())
+}
+
 static WIPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// A question macOS itself asks, so a script in a page can never answer it. Cancel is the default button.
@@ -1184,7 +1196,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

@@ -51,3 +51,9 @@ export const findProblem = (project: string): Command => ({ v: 1, id: id(), type
 // About this project, and installing its packages when the person presses the button.
 export const inspectProject = (project: string): Command => ({ v: 1, id: id(), type: "project.inspect", project });
 export const installPackages = (project: string): Command => ({ v: 1, id: id(), type: "project.install", project });
+// The practice project's fix: a short fixed request on a small budget, so the first real use costs cents.
+export const PRACTICE_PROMPT = "The tests in this project fail. Find the cause and fix it with the smallest change. Do not change the tests.";
+/** The start of the practice task's label, so only its own receipt can finish the practice. */
+export const PRACTICE_LABEL = "The tests in this project fail";
+export const startPractice = (project: string): Command =>
+  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt: PRACTICE_PROMPT, model: DEFAULT_MODEL, budgetUsd: 0.6 });

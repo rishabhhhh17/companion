@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A practice run at the end of the first run: 12 Oct 2026
+
+- **Try the practice project.** The first run now ends with a small signup page that ships inside Companion and has one thing wrong on purpose (the Join button sends to an address the server does not have). It is copied into a new folder, Companion practice, in your home folder (never over anything), and Companion walks you through it: **Find what is wrong** (the same as pressing Control, Option, Command and F), which runs the project's own checks and points at the failing check; **Fix it with me**, a short fixed request on a 60 cent cap; and the proof, with the before and after picture and the celebration. So someone who is not stuck this week still sees the whole loop in the first minutes. You can skip it, and Settings has "Try the practice project again".
+- **Real checks on Claude, on the test login:** 3 of 3 runs passed with the small model (about 7 cents each), and one with Sonnet, the app's own default, passed in 36 seconds for 17 cents (so the card says "around 20 cents"). Claude fixed either side of the mismatch (the page's address, or the server answering it too), and never touched the test.
+- The same project is the set for the demo video.
+- Along the way: Node's own test output (two places per failure: where the test starts and the check that failed) is now read so the pointer lands on the failing check, with the failure's own words.
+
 ## A plain privacy note for friends: 12 Oct 2026
 
 - `docs/alpha/PRIVACY.md`: what Companion reads and when, feature by feature, and exactly where each thing goes (your Mac, Claude under your key, Vercel under your login). It makes no claim about how Anthropic or Vercel treat data, and does not say that only one provider sees your screen. Draft for the founder to review before it is sent.

@@ -16,7 +16,7 @@ const MAX_FILE = 2_000_000;
 const LINE_MAX = 200;
 const MESSAGE_MAX = 200;
 
-type Place = { path: string; line: number; column?: number; at: number; message?: string };
+type Place = { path: string; line: number; column?: number; at: number; message?: string; declared?: boolean };
 
 // path:line:col, path:line, path(line,col), with or without file://
 const AT = /(?:file:\/\/)?((?:\.{0,2}\/)?[\w@~+.-][^\s()"'<>|,:]*\.[A-Za-z0-9]{1,6})(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
@@ -36,7 +36,11 @@ function places(text: string): { list: Place[]; python: boolean } {
     const line = Number(m[2] ?? m[4]), column = m[3] ?? m[5];
     const rest = text.slice(m.index! + m[0].length).split("\n", 1)[0];
     const said = AFTER.exec(rest)?.[1]?.trim();
-    list.push({ path: m[1], line, ...(column ? { column: Number(column) } : {}), at: m.index!, ...(said ? { message: said } : {}) });
+    // TAP output also says where a test was declared ("location: '...:9:1'"): a fallback, never the first choice (the check
+    // that failed is in the stack, and is better to point at).
+    const lineStart = text.lastIndexOf("\n", m.index!) + 1;
+    const declared = /^\s*location:/.test(text.slice(lineStart, m.index!));
+    list.push({ path: m[1], line, ...(column ? { column: Number(column) } : {}), at: m.index!, ...(said ? { message: said } : {}), ...(declared ? { declared: true } : {}) });
   }
   // ESLint names the file on its own line and the places under it.
   const lines = text.split("\n");
@@ -67,6 +71,9 @@ function lineIn(project: string, root: string, p: Place): { file: string; lineTe
 }
 
 function sentence(text: string, last: boolean): string | null {
+  // TAP (Node's test runner) gives the failure's own words: error: 'Pressing Join ... answered 404'
+  const tap = /^(?:TAP version|not ok )/m.test(text) ? /^\s*(?:error|message):\s*'(.+)'\s*$/m.exec(text) : null;   // only in TAP output, never in a project's own log lines
+  if (tap) return tap[1];
   const rows = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const errors = rows.filter((l) => ERROR_LINE.test(l) && !/^at\s/.test(l));
   if (errors.length) return last ? errors.at(-1)! : errors[0];
@@ -81,7 +88,7 @@ export function locateProblem(output: string, project: string, from: string): Pr
   let root: string;
   try { root = realpathSync(project); } catch { return null; }
   const { list, python } = places(text);
-  const ordered = python ? [...list].reverse() : list;   // Python prints the deepest frame last
+  const ordered = (python ? [...list].reverse() : list).sort((a, b) => Number(!!a.declared) - Number(!!b.declared));   // Python prints the deepest frame last; a test's declaration only if nothing better
   const general = sentence(text, python);
   for (const p of ordered) {
     const hit = lineIn(project, root, p);
