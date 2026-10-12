@@ -26,8 +26,10 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F12](F12-names-open-yc-not-a-focus.md) | Names are open; YC is not a focus |
 | [F13](F13-undo-never-writes-your-git.md) | Undo never writes your git: no undo helper, no per agent worktrees (7 Oct 2026) |
 | [F14](F14-browser-check-for-everyone.md) | Every user, Free or Plus, gets the browser check (7 Oct 2026) |
-| [F15](F15-launch-priorities-and-new-ideas.md) | Launch priorities (agents first, Prompt help, memory, Show me how last), the Pro memory idea, the website and onboarding (8 Oct 2026) |
-| [F16](F16-rescue-tutor-is-the-launch-hero.md) | The rescue tutor ("stuck? press the key") is the launch hero; what is parked (10 Oct 2026) |
+| [F15](F15-launch-priorities-and-new-ideas.md) | (amended by F17) Launch priorities (agents first, Prompt help, memory, Show me how last), the Pro memory idea, the website and onboarding (8 Oct 2026) |
+| [F16](F16-rescue-tutor-is-the-launch-hero.md) | The rescue tutor ("stuck? press the key") is the launch hero; what is parked (10 Oct 2026; amended by F17) |
+| [F17](F17-teaching-engine-and-launch-scope.md) | Source of truth for scope and order: Draw it for me and a teaching engine that works on any app, lesson packs for Lovable, Vercel and Supabase, settings guidance, the targeting and confidence rule, the launch list and build order (12 Oct 2026; amends F15 and F16) |
+| [F17](F17-guided-teaching-engine-for-builder-tools.md) | Keep Draw it for me and build a guided teaching engine for builder tools now (Lovable, Vercel, Supabase first); lessons are data (12 Oct 2026) |
 
 ## Technical decisions (accepted, open items checked where shown)
 

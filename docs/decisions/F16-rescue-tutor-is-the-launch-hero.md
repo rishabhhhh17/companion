@@ -1,6 +1,6 @@
 # F16. The rescue tutor is the launch hero
 
-- **Status:** Founder decision, 10 Oct 2026. Not reopened.
+- **Status:** Founder decision, 10 Oct 2026. **Amended by F17 (12 Oct 2026):** Draw it for me and the teaching engine are in the friends preview, and the engine works on any app on screen. The hero and everything else here stand.
 - **Source:** the founder's feature plan (Companion Feature Plan.xlsx), `docs/research/2026-10-10-market-research.md`, the mentor session
 - **Related:** F15, T12, M10 (`docs/milestones/M10-friends-preview.md`)
 

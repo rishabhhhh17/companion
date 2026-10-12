@@ -1,6 +1,6 @@
 # F15. Launch priorities, the Pro memory idea, the website and onboarding
 
-- **Status:** Fixed. Founder decision of 8 Oct 2026; both open points confirmed by the founder the same day. It changes the order inside the Alpha, not the product (F07 stands: Show me how stays, it just comes last).
+- **Status:** Fixed. **Launch priorities amended by F17 (12 Oct 2026); where they differ, F17 wins.** Founder decision of 8 Oct 2026; both open points confirmed by the founder the same day. It changes the order inside the Alpha, not the product (F07 stands: Show me how stays, it just comes last).
 - **Date:** 2026-10-08
 - **Source:** founder message of 8 Oct 2026 (this record keeps its meaning in plain words)
 - **Related:** F03, F06, F07, F10, F11, T10, T11

@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The plan changes: teaching on any app: 12 Oct 2026
+
+- **Decided (F17):** Draw it for me is back in the friends preview, and Companion gets a guided teaching engine (up to 15 steps, click detection, a progress log, resume after pauses, a proof check after each step) that works on any app on screen, with ready made lessons for Lovable, Vercel and Supabase and guidance for settings, env vars and keys. A solid ring goes only where Companion has confirmed the target; a guess gets a soft ring and is called a guess; low confidence is words only. The plan and the new friends preview date are in the M10 plan, waiting for approval.
+- **Found:** the small model Explain uses was being told to "improve the prompt", so one explanation in four was about the prompt, not the work, and answers took 11 to 37 seconds. The fix comes first.
+
 ## The source files now say what the product is: 12 Oct 2026
 
 - The project's rules file (`AGENTS.md`) described the first idea (five characters helping with everything). It now states the launch hero, "stuck while building with AI? press the key", and what is out for now. A new decision record (F16) holds that choice and the parked list. The rules about the screen and your clicks now describe exactly what the new features do. A refreshed launch readiness table (12 Oct) shows what is built, what is still to do (six items) and, honestly, that none of the new features has been tried by a person yet.
