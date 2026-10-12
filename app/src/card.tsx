@@ -1,9 +1,9 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { DELETE_PHRASE, deletableLines, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
-import { walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -13,6 +13,9 @@ import { S } from "./strings.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
+// Beta numbers: a fixed name, counted only if the person turned numbers on.
+const SESSION_GAP_MS = 30 * 60 * 1000;
+const count = (name: string) => { void send(metricsNote(name)); };
 // When the person last used the card. Kept only on this Mac, in this page's own storage.
 const AWAY_MS = 30 * 60 * 1000, SEEN_KEY = "companion.lastSeen";
 const lastSeen = (): number => { try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch { return 0; } };
@@ -47,6 +50,14 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
+  const [nums, setNums] = useState<NumbersSummary | null>(null);
+  const [showNums, setShowNums] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    void send(metricsShow());
+    const off = listen("runner-event", (e) => { const ev = e.payload as { type?: string } & Partial<NumbersSummary>; if (ev.type === "metrics.summary") setNums({ enabled: !!ev.enabled, totals: ev.totals ?? {}, rates: ev.rates ?? {} }); });
+    return () => { off.then((f) => f()); };
+  }, []);
   const load = () => { void invoke("data_inventory").then((v) => setInv(v as Inventory)); void invoke("permission_overview").then((v) => setPerms(v as Record<PermissionKind, PermissionState>)); };
   useEffect(load, []);
   // The permission page is where the person changes things; coming back should show the new state.
@@ -81,6 +92,15 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      <h3>{S.numbersTitle}</h3>
+      <div className="line muted">{S.numbersHelp}</div>
+      <div className="row">
+        <button className="btn" type="button" aria-pressed={!!nums?.enabled} disabled={!nums} onClick={() => void send(metricsSet(!nums?.enabled))}>{S.numbersOn}: {nums?.enabled ? "on" : "off"}</button>
+        <button className="btn" type="button" onClick={() => { setShowNums((v) => !v); void send(metricsShow()); }}>{S.numbersShow}</button>
+        {nums && showNums && <button className="btn" type="button" onClick={() => { setCopied(false); void (navigator.clipboard?.writeText(numbersLines(nums).join("\n")) ?? Promise.reject(new Error("no clipboard"))).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }).catch(() => {}); }}>{copied ? S.numbersCopied : S.numbersCopy}</button>}
+        <button className="btn" type="button" onClick={() => { setShowNums(false); void send(metricsErase()); }}>{S.numbersErase}</button>
+      </div>
+      {nums && showNums && numbersLines(nums).map((l, i) => <div className="line" key={i}>{l}</div>)}
       <h3>{S.exportLogsTitle}</h3>
       <div className="line muted">{S.exportLogsHelp}</div>
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
@@ -275,6 +295,7 @@ function Card() {
       // Coming back after a break: ask what happened while away. Only Companion's own history is used.
       const last = lastSeen();
       if (last && project && Date.now() - last >= AWAY_MS) void send(askRecap(project, new Date(last).toISOString()));
+      if (!last || Date.now() - last >= SESSION_GAP_MS) count("session");   // a new visit after a break, not every time the card opens
       touch();
     });
     return () => { off.then((f) => f()); };
@@ -305,7 +326,7 @@ function Card() {
   useEffect(() => {
     const offKey = listen("find-problem", () => {
       if (!projectRef.current) { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
-      dispatch({ type: "ui.findProblem" });
+      dispatch({ type: "ui.findProblem" }); count("hero_press"); count("builder_use");
       void send(findProblem(projectRef.current));
     });
     const offFound = listen("runner-event", (e) => {
@@ -341,7 +362,7 @@ function Card() {
     const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
     return () => { off.then((f) => f()); };
   }, []);
-  const showMe = (question: string, goal: string, steps: string[]) => { setWalk({ goal, steps }); void invoke("showme_start", { question }); };
+  const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); setWalk({ goal, steps }); void invoke("showme_start", { question }); };
   const nextStep = () => { if (walk) showMe(`${walk.goal}. So far I did: ${walk.steps.join("; ")}. What is the next step?`, walk.goal, walk.steps); };
   // In a walkthrough, once the person clicked the step (or it was clicked for them), the next step follows on its own.
   const stage = m.showme?.stage;

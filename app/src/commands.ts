@@ -68,3 +68,9 @@ export const walkActed = (walk: string, how: "clicked" | "done_for_you", index?:
 export const walkAnswer = (walk: string, worked: boolean, index?: number): Command => ({ v: 1, id: id(), type: "walk.answer", walk, worked, ...(index !== undefined ? { index } : {}) });
 export const walkSkip = (walk: string, index?: number): Command => ({ v: 1, id: id(), type: "walk.skip", walk, ...(index !== undefined ? { index } : {}) });
 export const walkStop = (walk: string): Command => ({ v: 1, id: id(), type: "walk.stop", walk });
+
+// Beta numbers: counts on this Mac, off unless turned on. The runner accepts only its fixed list of names.
+export const metricsSet = (enabled: boolean): Command => ({ v: 1, id: id(), type: "metrics.set", enabled });
+export const metricsNote = (name: string): Command => ({ v: 1, id: id(), type: "metrics.note", name });
+export const metricsShow = (): Command => ({ v: 1, id: id(), type: "metrics.show" });
+export const metricsErase = (): Command => ({ v: 1, id: id(), type: "metrics.erase" });

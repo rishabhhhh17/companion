@@ -21,6 +21,8 @@ fn runner_group(name: &str) -> &'static str {
         n if n.starts_with("tasks.db") || n.starts_with("ledger.db") => "history",
         "shadow" => "undo",
         "receipts" | "work" => "pictures",
+        n if n.starts_with("metrics.json") => "numbers",
+        "walks" => "lessons",
         _ => "memory",
     }
 }
@@ -31,6 +33,8 @@ pub fn items(home: &Path, data: &Path) -> Vec<Item> {
         Item { id: "history", label: "Your task history and spending record", paths: vec![] },
         Item { id: "undo", label: "The undo snapshots of your projects", paths: vec![] },
         Item { id: "pictures", label: "Receipt pictures and the it's live cards", paths: vec![] },
+        Item { id: "numbers", label: "Your beta numbers (counts only, if you turned them on)", paths: vec![] },
+        Item { id: "lessons", label: "Where you are in each guided lesson", paths: vec![] },
         Item { id: "memory", label: "What Companion knows about you and your projects", paths: vec![] },
         Item { id: "speech", label: "The speech model for hold to talk", paths: vec![data.join("models")] },
         Item { id: "browser", label: "The hidden browser Companion checks your pages with", paths: vec![home.join("Library/Application Support/Companion")] },
@@ -221,6 +225,13 @@ mod tests {
         Mac { root, home, data }
     }
 
+    #[test]
+    fn beta_numbers_and_lesson_places_are_listed_and_removed_with_everything_else() {
+        assert_eq!(runner_group("metrics.json"), "numbers");
+        assert_eq!(runner_group("metrics.json.123.tmp"), "numbers");
+        assert_eq!(runner_group("walks"), "lessons");
+        assert_eq!(runner_group("memory-profile.json"), "memory");
+    }
     #[test]
     fn everything_is_grouped_in_the_persons_words_and_dev_json_is_not_among_it() {
         let m = mac("group");

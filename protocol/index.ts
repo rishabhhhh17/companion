@@ -59,7 +59,12 @@ export type WalkActed = Envelope & { type: "walk.acted"; walk: string; index?: n
 export type WalkAnswer = Envelope & { type: "walk.answer"; walk: string; index?: number; worked: boolean };
 export type WalkSkip = Envelope & { type: "walk.skip"; walk: string; index?: number };
 export type WalkStop = Envelope & { type: "walk.stop"; walk: string };
-export type Command = WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// Beta numbers: counts per day on this Mac, off unless turned on, never any content.
+export type MetricsSet = Envelope & { type: "metrics.set"; enabled: boolean };
+export type MetricsNote = Envelope & { type: "metrics.note"; name: string };
+export type MetricsShow = Envelope & { type: "metrics.show" };
+export type MetricsErase = Envelope & { type: "metrics.erase" };
+export type Command = MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -128,7 +133,8 @@ export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number
 export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
 export type WalkDone = Envelope & { type: "walk.done"; walk: string; project: string; lesson: string; title: string; steps: number };
 export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reason: string };
-export type Event = WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type MetricsSummary = Envelope & { type: "metrics.summary"; enabled: boolean; days: Record<string, Record<string, number>>; totals: Record<string, number>; rates: Record<string, number | null> };
+export type Event = MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -153,6 +159,10 @@ const COMMANDS: Record<string, Check[]> = {
   "doctor.check": [],
   "problem.find": [str("project"), str("agent")],
   "diagram.ask": [str("project"), str("question")],
+  "metrics.set": [bool("enabled")],
+  "metrics.note": [str("name")],
+  "metrics.show": [],
+  "metrics.erase": [],
   "walk.list": [str("project")],
   "walk.start": [str("project"), str("lesson")],
   "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
@@ -198,6 +208,7 @@ const EVENTS: Record<string, Check[]> = {
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
   "doctor.report": [list("items")],
   "diagram.ready": [str("project"), bool("made")],
+  "metrics.summary": [bool("enabled"), obj("days"), obj("totals"), obj("rates")],
   "walk.lessons": [str("project"), list("lessons")],
   "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
   "walk.ask": [str("walk"), num("index")],

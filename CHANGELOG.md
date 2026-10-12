@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Beta numbers, off by default: 12 Oct 2026
+
+- **Settings > Beta numbers.** Off until you turn it on. When on, Companion counts how often things happen: sessions, key presses for a problem, lessons started and finished, lesson steps that needed another way, checks that passed or failed, pointing in other apps compared with builder tools, and guesses you corrected. Counts per day, kept only on this Mac (about four months), **never** any words, names, files, paths or anything from your screen. Companion sends nothing: you can read the numbers, copy them to send to the person running the beta, and erase them. "Delete everything" removes them too.
+- These are the numbers the beta plan asks for (lesson completion, step success, the soft ring corrections, anywhere compared with builder use, proof pass rate). Retention and the "very disappointed" score come from the founder's own follow ups, not from the app.
+
 ## Guided lessons: 12 Oct 2026
 
 - **A Lessons button.** A lesson is a plain data file (up to 15 steps), not code: for each step, what to say, what to look for on the screen, and how to prove it worked. The first three ship with the app and cover Companion's own permissions: Screen Recording, Accessibility and the Microphone, each told only when you use the feature that needs it. New lessons can be added as files, with no new release.

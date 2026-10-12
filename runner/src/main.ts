@@ -16,13 +16,15 @@ import { label } from "./redact.ts";
 import { TaskLog } from "./tasklog.ts";
 import { FileWalkStore, projectChecker } from "./walk.ts";
 import { WalkService } from "./walkservice.ts";
+import { Metrics } from "./metrics.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
 mkdirSync(join(settings.data, "shadow"), { recursive: true });
 
 let n = 0;
-const emit = (e: Event) => { process.stdout.write(serialize(e) + "\n"); };
+const metrics = new Metrics(join(settings.data, "metrics.json"));
+const emit = (e: Event) => { metrics.observe(e); process.stdout.write(serialize(e) + "\n"); };
 const say = (e: Record<string, unknown>) => emit({ v: PROTOCOL_VERSION, id: `r${++n}`, ts: new Date().toISOString(), ...e } as unknown as Event);
 
 // If a local file is damaged or cannot be written, Companion still starts and says so in plain words.
@@ -51,6 +53,14 @@ function dispatch(cmd: Command) {
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
   if (cmd.type === "doctor.check") { void doctor().then((items) => say({ type: "doctor.report", items })).catch((e: Error) => say({ type: "protocol.error", reason: `could not check this Mac: ${e.message}` })); return; }
+  if (cmd.type.startsWith("metrics.")) {
+    if (cmd.type === "metrics.set") metrics.setEnabled(cmd.enabled);
+    else if (cmd.type === "metrics.note") { metrics.note(cmd.name); return; }
+    else if (cmd.type === "metrics.erase") metrics.erase();
+    say({ type: "metrics.summary", ...metrics.summary() });
+    return;
+  }
+  metrics.observeCommand(cmd);
   if (cmd.type === "agent.interruptAll") walks.stopAll();
   const work = cmd.type.startsWith("walk.") ? walks.handle(cmd as never) : cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
