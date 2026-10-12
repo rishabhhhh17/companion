@@ -23,6 +23,7 @@ mod showme;
 mod pointat;
 mod share;
 mod yourturn;
+mod wipe;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -641,6 +642,91 @@ fn do_it_for_me(app: AppHandle) {
     });
 }
 
+// ---------- Settings, and delete everything ----------
+
+fn key_saved() -> bool { keystore::exists(&keystore::service(), keystore::ACCOUNT) }
+
+/// What Companion keeps on this Mac, for the settings page. Sizing a big folder can take a moment, so off the main thread.
+#[tauri::command]
+async fn data_inventory() -> Value {
+    tauri::async_runtime::spawn_blocking(|| {
+        let projects: Vec<std::path::PathBuf> = projects::load(&projects_path()).still_there().into_iter().map(std::path::PathBuf::from).collect();
+        wipe::inventory(std::path::Path::new(&home_dir()), &data_dir(), key_saved(), &projects)
+    }).await.unwrap_or(Value::Null)
+}
+
+/// The three permissions as the settings page shows them: allowed, not allowed yet, or refused. Never prompts.
+#[tauri::command]
+fn permission_overview() -> Value {
+    let p = permissions::current();
+    let st = |s: permissions::Status| match s { permissions::Status::Granted => "allowed", permissions::Status::NotGranted => "not_allowed", permissions::Status::Unknown => "unknown" };
+    let mic = match voice_mac::mic_status() { voice_mac::Mic::Allowed => "allowed", voice_mac::Mic::NotAsked => "not_asked", voice_mac::Mic::Refused => "not_allowed" };
+    json!({ "accessibility": st(p.accessibility), "screen_recording": st(p.screen_recording), "microphone": mic })
+}
+
+/// Opens the right page of System Settings (opening a page changes nothing; the person decides there).
+#[tauri::command]
+fn open_permission_page(which: String) -> Result<(), String> {
+    let pane = match which.as_str() {
+        "accessibility" => "Privacy_Accessibility", "screen_recording" => "Privacy_ScreenCapture", "microphone" => "Privacy_Microphone",
+        _ => return Err("unknown page".into()),
+    };
+    std::process::Command::new("/usr/bin/open").arg(format!("x-apple.systempreferences:com.apple.preference.security?{pane}")).status().map(|_| ()).map_err(|_| "Could not open System Settings.".to_string())
+}
+
+static WIPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A question macOS itself asks, so a script in a page can never answer it. Cancel is the default button.
+fn confirm_delete_natively() -> bool {
+    let script = r#"display dialog "Delete everything Companion keeps on this Mac? This cannot be undone." buttons {"Cancel", "Delete everything"} default button "Cancel" cancel button "Cancel" with icon caution with title "Companion""#;
+    std::process::Command::new("/usr/bin/osascript").args(["-e", script]).output().is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("Delete everything"))
+}
+
+/// Deletes everything Companion keeps. The work is done by a helper (this same program, started with --wipe-everything)
+/// after the app has quit, so nothing is holding or rewriting the files; the helper then opens Companion again fresh.
+/// The person is asked twice: on the page, and by macOS itself. `with_projects` also removes Companion's own notes inside
+/// the person's recent projects.
+#[tauri::command]
+async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool) -> Result<(), String> {
+    use std::sync::atomic::Ordering::SeqCst;
+    if confirm != "delete everything" { return Err("Not confirmed.".into()); }
+    if WIPING.swap(true, SeqCst) { return Err("Already deleting.".into()); }
+    let asked = tauri::async_runtime::spawn_blocking(confirm_delete_natively).await.unwrap_or(false);
+    if !asked { WIPING.store(false, SeqCst); return Err(String::new()); }   // cancelled: nothing happened, nothing to say
+    let projects: Vec<String> = if with_projects { projects::load(&projects_path()).still_there() } else { vec![] };
+    let exe = std::env::current_exe().map_err(|_| { WIPING.store(false, SeqCst); "Could not start the cleanup.".to_string() })?;
+    let mut helper = std::process::Command::new(exe);
+    helper.arg("--wipe-everything").arg(std::process::id().to_string()).arg(if with_projects { "1" } else { "0" }).args(&projects)
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    if helper.spawn().is_err() { WIPING.store(false, SeqCst); return Err("Could not start the cleanup.".into()); }
+    // Everything stops, then the app quits; the helper is waiting for that.
+    showme_stop(&app);
+    let _ = app.state::<runner::Runner>().stop_everything("delete everything");
+    app.state::<runner::Runner>().shut_down();
+    app.exit(0);
+    Ok(())
+}
+
+/// The helper side: `--wipe-everything <app pid> <1 or 0 for project notes> [project folders]`. Runs before anything else
+/// of the app starts. Returns true when this run was the helper.
+fn wipe_helper_mode() -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    let Some(i) = args.iter().position(|a| a == "--wipe-everything") else { return false };
+    let pid = args.get(i + 1).cloned().unwrap_or_default();
+    let with_projects = args.get(i + 2).is_some_and(|a| a == "1");
+    let projects: Vec<std::path::PathBuf> = args.iter().skip(i + 3).map(std::path::PathBuf::from).collect();
+    let (home, data) = (home_dir(), data_dir());
+    let (home, data) = (std::path::PathBuf::from(home), data);
+    let bundle = std::env::current_exe().ok().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")).map(|p| p.to_path_buf()));
+    wipe::run_helper(&home, &data, &projects, with_projects, &wipe::Helper {
+        parent_gone: &|| !std::process::Command::new("/bin/kill").args(["-0", &pid]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success()),
+        delete_key: &|| { let _ = keystore::delete_item(&keystore::service(), keystore::ACCOUNT); },
+        relaunch: &|| { if let Some(b) = &bundle { let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(b).status(); } },   // not from a built app (a development run): nothing to open
+        wait: &|| std::thread::sleep(Duration::from_millis(150)),
+    });
+    true
+}
+
 // ---------- Celebration ----------
 
 /// Confetti from the character for the big moments (proof passed, it went live). Never over a ring that is waiting
@@ -996,6 +1082,8 @@ fn start_runner(app: &AppHandle) {
 }
 
 fn main() {
+    // The helper of "delete everything" runs before anything of the app starts.
+    if wipe_helper_mode() { return; }
     let _ = T0.set(now());
     let _ = RUN.set(format!("{}-{}", now(), std::process::id()));
     let mods = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
@@ -1053,7 +1141,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -1113,6 +1201,11 @@ fn main() {
                 runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-hotkeys", "type": "app.notice", "message": format!("Another app is already using the keys for: {list}. Those shortcuts will not work until it lets go of them. You can still use the buttons.") }));
             }
             start_runner(app.handle());
+            // If a "delete everything" could not remove some of it, the helper left a note; say it once.
+            if let Ok(note) = std::fs::read_to_string(data_dir().join("wipe-note.txt")) {
+                let _ = std::fs::remove_file(data_dir().join("wipe-note.txt"));
+                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-wipe-note", "type": "app.notice", "message": note }));
+            }
             // The menu bar icon: hide or show, stop everything, quit. Clicking it never takes your typing.
             let hide = MenuItemBuilder::with_id("hide", "Hide or show Companion").build(app)?;
             let stop = MenuItemBuilder::with_id("stop", "Stop everything").build(app)?;

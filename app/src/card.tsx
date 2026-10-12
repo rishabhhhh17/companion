@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
+import { DELETE_PHRASE, deletableLines, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -34,6 +35,63 @@ function ExplainBox({ e }: { e: Explain }) {
         </div>
       )}
     </details>
+  );
+}
+
+function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend, onClose }: { explainOn: boolean; project: string; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+  const [inv, setInv] = useState<Inventory | null>(null);
+  const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
+  const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
+  const [withProjects, setWithProjects] = useState(false);
+  const [problem, setProblem] = useState("");
+  const load = () => { void invoke("data_inventory").then((v) => setInv(v as Inventory)); void invoke("permission_overview").then((v) => setPerms(v as Record<PermissionKind, PermissionState>)); };
+  useEffect(load, []);
+  // The permission page is where the person changes things; coming back should show the new state.
+  useEffect(() => { const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
+  const busy = useRef(false);   // a second click while macOS is asking must not start a second delete
+  const remove = () => {
+    if (busy.current) return;
+    busy.current = true; setStep("deleting"); setProblem("");
+    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects }).catch((e) => { busy.current = false; setProblem(String(e)); setStep("confirm"); });
+  };
+  return (
+    <section className="panel" aria-label={S.settingsTitle}>
+      <h2>{S.settingsTitle}</h2>
+      <h3>{S.settingsPermissions}</h3>
+      <div className="line muted">{S.settingsPermissionsHelp}</div>
+      {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
+        const r = permissionRow(k, perms[k]);
+        return (
+          <div className="line" key={k}>
+            <b>{r.label}:</b> {r.state}. <span className="muted">{r.why}</span>
+            {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button></>}
+          </div>
+        );
+      })}
+      <h3>{S.settingsChoices}</h3>
+      <div className="row">
+        <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
+        <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
+        <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
+      </div>
+      <h3>{S.settingsKept}</h3>
+      {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
+      {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      {step === "idle" && <div className="row"><button className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
+      {step !== "idle" && (
+        <div className="line" role="alert">
+          <b>{S.deleteSure}</b>
+          <div className="line">{S.deleteExplain}</div>
+          {inv && inv.projectsWithNotes > 0 && <label className="check"><input type="checkbox" checked={withProjects} onChange={(e) => setWithProjects(e.target.checked)} /> {S.deleteProjects.replace("{n}", String(inv.projectsWithNotes))}</label>}
+          <div className="row">
+            <button className="btn danger" type="button" disabled={step === "deleting"} onClick={remove}>{step === "deleting" ? S.deleting : S.deleteYes}</button>
+            <button className="btn" type="button" disabled={step === "deleting"} onClick={() => setStep("idle")}>{S.planCancel}</button>
+          </div>
+          {problem && <div className="error" role="alert">{problem}</div>}
+        </div>
+      )}
+      <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>
+    </section>
   );
 }
 
@@ -220,6 +278,7 @@ function Card() {
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
   const [fun, setFun] = useState(reactionsOn);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
   useEffect(() => {
@@ -320,6 +379,7 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
+      {settingsOpen && <SettingsPanel explainOn={m.explainOn} project={project} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} />}
       {m.about && m.about.project === project && (
         <section className="panel" aria-label={S.aboutTitle}>
           <h2>{S.aboutTitle}</h2>
@@ -354,6 +414,7 @@ function Card() {
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
           <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
           <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
+          <button className="btn" type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((v) => !v)}>{S.settingsButton}</button>
         </div>
       )}
       {!working && (
