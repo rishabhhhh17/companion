@@ -2,6 +2,8 @@
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
 import { at, burst, confetti, CONFETTI_S, flightMs } from "./pointer.ts";
+import { fitLabel, wrapLines } from "./layout.ts";
+import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 
 type Point = { rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
 const svg = document.getElementById("s")!;
@@ -98,3 +100,74 @@ function party(o: { x: number; y: number }) {
   requestAnimationFrame(step);
 }
 void listen("overlay-party", (e) => party(e.payload as { x: number; y: number }));
+
+
+// Draw it for me: the diagram as a hand drawn sketch on a soft dark card. Boxes and arrows are drawn as a pen would make
+// them (the same every time), the broken place is circled and marked in red with its reason, and one line of caption sits
+// underneath. Strokes draw themselves on, box by box and then arrow by arrow (all at once with reduced motion), and the
+// whole thing fades by itself.
+type Laid = { nodes: { id: string; label: string; x: number; y: number; w: number; h: number; broken: boolean }[]; edges: { from: string; to: string; label?: string; points: [number, number][]; broken: boolean }[]; width: number; height: number; caption: string; reason: string };
+const RED = "#ff6b6b", INKC = "#f2efe6";
+const HAND = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
+function drawDiagram(d: Laid, dockX: number) {
+  clear();
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const pad = 26;
+  const W = Math.max(d.width + pad * 2, 380);
+  const perLine = Math.floor((W - pad * 2) / 8.6);   // letters that fit a line at the sizes used below
+  const reasonLines = wrapLines(d.reason, perLine, 3), captionLines = wrapLines(d.caption, Math.floor(perLine * 1.1), 3);
+  const below = 20 + reasonLines.length * 24 + 8 + captionLines.length * 21 + 14;
+  const H = d.height + pad * 2 + below;
+  const away = dockX > innerWidth / 2 ? -1 : 1;
+  const left = Math.max(12, Math.min(innerWidth - W - 12, innerWidth / 2 - W / 2 + away * 60)), top = Math.max(12, Math.min(innerHeight - H - 12, innerHeight * 0.28));
+  const g = el("g", { transform: `translate(${left} ${top})` });
+  svg.appendChild(g);
+  g.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, rx: 18, fill: "#17181d", opacity: 0.95 }));
+  g.appendChild(el("path", { d: sketchRect(9, 9, W - 18, H - 18, "frame"), fill: "none", stroke: "#3a3d46", "stroke-width": 1.6, "stroke-linecap": "round" }));
+  const body = el("g", { transform: `translate(${pad + (W - pad * 2 - d.width) / 2} ${pad})` });
+  g.appendChild(body);
+  const stroke = (dpath: string, color: string, width: number): SVGElement => el("path", { d: dpath, fill: "none", stroke: color, "stroke-width": width, "stroke-linecap": "round", "stroke-linejoin": "round" });
+  const text = (x: number, y: number, t: string, size: number, color: string, anchor = "start", weight = 600): SVGElement => { const e = el("text", { x, y, "text-anchor": anchor, fill: color, "font-size": size, "font-weight": weight, "font-family": HAND }); e.textContent = t; return e; };
+  const steps: SVGElement[][] = [[], []];
+  for (const n of d.nodes) {
+    const box = el("g", {});
+    box.appendChild(stroke(sketchRect(n.x, n.y, n.w, n.h, `box:${n.id}`), n.broken ? RED : INKC, n.broken ? 3 : 2.2));
+    box.appendChild(text(n.x + n.w / 2, n.y + n.h / 2 + 6, fitLabel(n.label, n.w, 18), 18, n.broken ? RED : INKC, "middle"));
+    body.appendChild(box); steps[0].push(box);
+  }
+  for (const e of d.edges) {
+    const [a, b] = e.points, col = e.broken ? RED : "#b8b5aa", line = el("g", {});
+    line.appendChild(stroke(sketchLine(a[0], a[1], b[0], b[1], `edge:${e.from}>${e.to}`), col, e.broken ? 3.2 : 2.2));
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    line.appendChild(stroke(`M${b[0] - 13 * Math.cos(ang - 0.45)} ${b[1] - 13 * Math.sin(ang - 0.45)} L${b[0]} ${b[1]} L${b[0] - 13 * Math.cos(ang + 0.45)} ${b[1] - 13 * Math.sin(ang + 0.45)}`, col, e.broken ? 3.2 : 2.2));
+    if (e.broken) {
+      const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      line.appendChild(stroke(sketchEllipse(mx, my, 17, 17, `ring:${e.from}>${e.to}`), RED, 2.6));
+      line.appendChild(text(mx, my + 9, "!", 28, RED, "middle", 900));
+    }
+    if (e.label) {
+      // The words sit above the arrow, cut to fit the gap between the boxes, so they are never hidden behind one.
+      const fit = Math.max(6, Math.floor(Math.abs(b[0] - a[0]) / 7));
+      line.appendChild(text((a[0] + b[0]) / 2, Math.min(a[1], b[1]) - (e.broken ? 26 : 14), e.label.length > fit ? e.label.slice(0, fit - 1) + "…" : e.label, 15, "#c9c6ba", "middle", 500));
+    }
+    body.appendChild(line); steps[1].push(line);
+  }
+  let ty = d.height + pad * 2 + 20;
+  for (const l of reasonLines) { g.appendChild(text(pad, ty, l, 17, RED, "start", 700)); ty += 24; }
+  ty += 8;
+  for (const l of captionLines) { g.appendChild(text(pad, ty, l, 15, "#d8d5ca", "start", 500)); ty += 21; }
+  if (!reduced) {
+    // Each stroke draws itself on, one group after another.
+    steps.forEach((group, gi) => group.forEach((x, k) => {
+      const paths = Array.from(x.querySelectorAll("path")) as SVGPathElement[];
+      x.setAttribute("opacity", "0");
+      const t0 = 150 + gi * 700 + k * 220;
+      setTimeout(() => {
+        x.setAttribute("opacity", "1");
+        for (const p of paths) { const len = p.getTotalLength?.() ?? 0; if (!len) continue; p.style.strokeDasharray = `${len}`; p.style.strokeDashoffset = `${len}`; p.getBoundingClientRect(); p.style.transition = "stroke-dashoffset .55s ease-out"; p.style.strokeDashoffset = "0"; }
+      }, t0);
+    }));
+  }
+  timer = setTimeout(() => { g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, 15_000);
+}
+void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number }; drawDiagram(p.diagram, p.dockX); });

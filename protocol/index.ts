@@ -48,10 +48,11 @@ export type AuthCheck = Envelope & { type: "auth.check" };
 export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
 export type DoctorCheck = Envelope & { type: "doctor.check" };
 export type ProblemFind = Envelope & { type: "problem.find"; project: string; agent: string };
+export type DiagramAsk = Envelope & { type: "diagram.ask"; project: string; question: string; problem?: { kind?: string; file?: string; line?: number; message?: string } };
 export type ProjectInspect = Envelope & { type: "project.inspect"; project: string };
 export type ProjectInstall = Envelope & { type: "project.install"; project: string };
 export type ProjectClone = Envelope & { type: "project.clone"; url: string; parent: string };
-export type Command = ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -112,7 +113,9 @@ export type ShipCard = Envelope & { type: "ship.card"; project: string; url: str
 export type ProjectReportEvent = Envelope & { type: "project.report"; project: string; origin: "lovable" | "bolt" | "replit" | "unknown"; about: string; stack: string; needsInstall: boolean; installCommand: string | null; start: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
 export type ProjectInstallEvent = Envelope & { type: "project.install"; project: string; stage: "installing" | "done" | "failed" | "cancelled"; detail: string };
 export type ProjectCloned = Envelope & { type: "project.cloned"; url: string; ok: boolean; path?: string; detail: string };
-export type Event = ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// The diagram is data: the page lays it out and the overlay draws it. made: false means none could be made.
+export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; ask?: string; made: boolean; reason?: string; diagram?: { nodes: { id: string; label: string }[]; edges: { from: string; to: string; label?: string }[]; broken: { node: string; reason: string } | { edge: [string, string]; reason: string }; caption: string }; usdEstimate?: number };
+export type Event = DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -136,6 +139,7 @@ const COMMANDS: Record<string, Check[]> = {
   "auth.check": [],
   "doctor.check": [],
   "problem.find": [str("project"), str("agent")],
+  "diagram.ask": [str("project"), str("question")],
   "project.inspect": [str("project")],
   "project.install": [str("project")],
   "project.clone": [str("url"), str("parent")],
@@ -174,6 +178,7 @@ const EVENTS: Record<string, Check[]> = {
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
   "doctor.report": [list("items")],
+  "diagram.ready": [str("project"), bool("made")],
   "project.report": [str("project"), oneOf("origin", ["lovable", "bolt", "replit", "unknown"]), str("about"), str("stack"), bool("needsInstall"), list("missing"), num("missingCount"), list("notes")],
   "project.install": [str("project"), oneOf("stage", ["installing", "done", "failed", "cancelled"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\"")],
   "project.cloned": [str("url"), bool("ok"), str("detail")],

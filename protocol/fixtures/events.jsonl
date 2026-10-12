@@ -43,3 +43,5 @@
 {"v":1,"id":"e56","type":"project.report","project":"p_9f2c","origin":"lovable","about":"A Lovable project: Vite + React, with Supabase.","stack":"Vite + React","needsInstall":true,"installCommand":"npm install","start":"npm run dev","missing":["VITE_API_URL"],"missingCount":1,"example":".env.example","notes":[]}
 {"v":1,"id":"e57","type":"project.install","project":"p_9f2c","stage":"done","detail":"Installed."}
 {"v":1,"id":"e58","type":"project.cloned","url":"https://github.com/me/mug-shop.git","ok":true,"path":"/Users/me/Projects/mug-shop","detail":"Copied."}
+{"v":1,"id":"e59","type":"diagram.ready","project":"p_9f2c","made":true,"diagram":{"nodes":[{"id":"page","label":"Signup page"},{"id":"api","label":"API route"}],"edges":[{"from":"page","to":"api","label":"sends the form"}],"broken":{"edge":["page","api"],"reason":"The page calls a route that does not exist."},"caption":"The button points at a route that was renamed."},"usdEstimate":0.001}
+{"v":1,"id":"e60","type":"diagram.ready","project":"p_9f2c","made":false,"reason":"Not enough to draw."}
