@@ -19,7 +19,7 @@ Refreshes `2026-10-09-launch-readiness.md` (which still holds the full table for
 | 10 | "Why did it ignore my rule?" | No | n/a | n/a | n/a | About 2 days |
 | 11 | Beta measurement | No | n/a | n/a | n/a | About 2 to 3 days |
 
-**Explain (M8b)** is built and has a defect found 12 Oct: it is asked to improve a prompt, so its answer can be about the prompt (1 of 4 real runs). Fix first, 0.5 day. **Remaining in the plan (updated by F17, see the M10 plan):** six items (4, 6b, 8, 9, 10, 11), about 3 weeks of the plan's own estimate, less in calendar time at the pace of items 1 to 7 (3 days for about 3 weeks of estimate). The real gate is the hands on session.
+**Explain (M8b)** is built and has a defect found 12 Oct: it is asked to improve a prompt, so its answer can be about the prompt (1 of 4 real runs). Fix first, 0.5 day. **Re-planned 12 Oct after the founder's cuts: 39 working days remain for the friends preview (about 7 Dec 2026 without buffer, about 23 Dec with); a friends alpha of 10 to 15 people could start about 4 Nov. See the M10 plan.** Old text:  six items (4, 6b, 8, 9, 10, 11), about 3 weeks of the plan's own estimate, less in calendar time at the pace of items 1 to 7 (3 days for about 3 weeks of estimate). The real gate is the hands on session.
 
 ## Overall (same three measures as 9 Oct)
 
