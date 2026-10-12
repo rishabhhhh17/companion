@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A log you can send when something goes wrong: 12 Oct 2026
+
+- **Save a log for support** in Settings writes one text file to your Downloads folder and shows it in Finder. It holds Companion's version and your Mac's, which permissions are allowed, what Companion keeps (sizes only), Companion's own activity log with times (what happened, never what was typed, said or on screen) and the newest crash report from the last two weeks if there is one.
+- **The activity log is an allowlist**: only Companion's own known events and fields go in (the app starting, the engine starting or failing, your own hotkeys); anything else, including the detailed developer logging that names the apps you use, is dropped. The crash report loses its list of other software on your Mac. Everything is then scrubbed: your home folder (only the first folder under it is kept), user name and computer's names, every project folder and its name ("project 1", "project 2"), identifiers, anything that looks like a key or token even inside a link or a path, and email addresses. It never replaces a file that is already there, and nothing is sent anywhere: you choose whether to share it.
+- Checked against this Mac's real 237 KB activity log: 68 lines kept, no folder, name or key survived. No crash report existed to try; the crash part is tested with made up reports. A second review found 9 problems (verbose logs, identifiers in crash reports, keys inside links, case and boundaries in paths, reading and cutting crash reports safely) and all are fixed with tests. Names with accents written in a different Unicode form from the one stored are not matched by path (the project's folder name alone is also covered).
+
 ## Settings, and delete everything: 12 Oct 2026
 
 - **A Settings button** on the card with three parts: what Companion may do on this Mac (Screen Recording, Accessibility, Microphone: allowed, not allowed or not asked yet, what each is for, and a button that opens the right page of System Settings; Companion still asks for each one only the first time you use the feature that needs it); your choices in one place (reactions, Explain, sending spoken words automatically); and what Companion keeps on this Mac, with sizes.
