@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Anywhere mode asks "did that work?": 12 Oct 2026
+
+- **Show me, step by step, in any app.** After you click the ring, Companion asks "Did that work?" before the next step. Yes goes on. No writes that step down as not working and asks for another way, so the same step is never suggested again. It stops at 15 steps and hands back in words. A guess still gets the soft "around here" ring, and rings stay inside their window.
+- Not tried by a person yet in a real third party app.
+
 ## Beta numbers, off by default: 12 Oct 2026
 
 - **Settings > Beta numbers.** Off until you turn it on. When on, Companion counts how often things happen: sessions, key presses for a problem, lessons started and finished, lesson steps that needed another way, checks that passed or failed, pointing in other apps compared with builder tools, and guesses you corrected. Counts per day, kept only on this Mac (about four months), **never** any words, names, files, paths or anything from your screen. Companion sends nothing: you can read the numbers, copy them to send to the person running the beta, and erase them. "Delete everything" removes them too.

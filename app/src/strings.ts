@@ -129,6 +129,7 @@ export const S = {
   drawing: "Drawing it from your project. Nothing is taken from your screen.",
   drawShown: "The picture is on your screen for a few seconds.",
   pointClose: "Close",
+  anywhereLimit: "That is as far as I can take you in one go (15 steps). Tell me what happened and press Show me again.",
   lessonsButton: "Lessons",
   lessonsTitle: "Guided lessons",
   lessonsNone: "No lessons yet.",

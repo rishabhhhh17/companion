@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
+import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -363,15 +364,23 @@ function Card() {
     return () => { off.then((f) => f()); };
   }, []);
   const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); setWalk({ goal, steps }); void invoke("showme_start", { question }); };
-  const nextStep = () => { if (walk) showMe(`${walk.goal}. So far I did: ${walk.steps.join("; ")}. What is the next step?`, walk.goal, walk.steps); };
+  // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
+  const [asking, setAsking] = useState(false);
+  const nextStep = (worked = true) => {
+    if (!walk) return;
+    setAsking(false);
+    const w = answered(walk, worked);
+    if (atLimit(w)) { void invoke("showme_clear"); setWalk(null); dispatch({ type: "app.showme", stage: "error", message: S.anywhereLimit }); return; }
+    showMe(nextQuestion(w), w.goal, w.steps);
+  };
   // In a walkthrough, once the person clicked the step (or it was clicked for them), the next step follows on its own.
   const stage = m.showme?.stage;
   // The walkthrough ends whenever the pointer goes away (Esc, Stop everything, closing, waiting too long).
-  useEffect(() => { if (!m.showme) setWalk(null); }, [m.showme]);
+  useEffect(() => { if (!m.showme) { setWalk(null); setAsking(false); } }, [m.showme]);
   useEffect(() => {
     // Only a walkthrough's own ring moves it on (a Show me ring carries an "sm_" request; Point at the problem's does not).
     if (!walk || !m.showme?.req?.startsWith("sm_") || (stage !== "your_turn_done" && stage !== "done_for_you")) return;
-    const t = setTimeout(() => nextStep(), 1100);
+    const t = setTimeout(() => setAsking(true), 900);
     return () => clearTimeout(t);
   }, [stage]);
   showMeRef.current = showMe;
@@ -854,6 +863,14 @@ function Card() {
               <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>
               {walk && <button className="btn" type="button" onClick={() => nextStep()}>{S.showMeNext}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.showMeDone}</button>
+            </div>
+          )}
+          {["your_turn_done", "done_for_you"].includes(m.showme.stage) && walk && asking && (
+            <div className="row">
+              <div className="line">{S.lessonWorked}</div>
+              <button className="btn primary" type="button" onClick={() => nextStep(true)}>{S.lessonYes}</button>
+              <button className="btn" type="button" onClick={() => nextStep(false)}>{S.lessonNo}</button>
+              <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); setAsking(false); }}>{S.showMeDone}</button>
             </div>
           )}
           {["your_turn_done", "done_for_you"].includes(m.showme.stage) && !walk && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); }}>{S.onlineClose}</button></div>}
