@@ -52,7 +52,14 @@ export type DiagramAsk = Envelope & { type: "diagram.ask"; project: string; ques
 export type ProjectInspect = Envelope & { type: "project.inspect"; project: string };
 export type ProjectInstall = Envelope & { type: "project.install"; project: string };
 export type ProjectClone = Envelope & { type: "project.clone"; url: string; parent: string };
-export type Command = DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// Walkthroughs: lessons are data files; the runner keeps the place, the app draws the ring and notices the click.
+export type WalkList = Envelope & { type: "walk.list"; project: string };
+export type WalkStart = Envelope & { type: "walk.start"; project: string; lesson: string; fresh?: boolean };
+export type WalkActed = Envelope & { type: "walk.acted"; walk: string; index?: number; how: "clicked" | "done_for_you" };
+export type WalkAnswer = Envelope & { type: "walk.answer"; walk: string; index?: number; worked: boolean };
+export type WalkSkip = Envelope & { type: "walk.skip"; walk: string; index?: number };
+export type WalkStop = Envelope & { type: "walk.stop"; walk: string };
+export type Command = WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -115,7 +122,13 @@ export type ProjectInstallEvent = Envelope & { type: "project.install"; project:
 export type ProjectCloned = Envelope & { type: "project.cloned"; url: string; ok: boolean; path?: string; detail: string };
 // The diagram is data: the page lays it out and the overlay draws it. made: false means none could be made.
 export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; ask?: string; made: boolean; reason?: string; diagram?: { nodes: { id: string; label: string }[]; edges: { from: string; to: string; label?: string }[]; broken: { node: string; reason: string } | { edge: [string, string]; reason: string }; caption: string }; usdEstimate?: number };
-export type Event = DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; steps: number; saved: boolean }[]; problems?: number };
+export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean };
+export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number };
+export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
+export type WalkDone = Envelope & { type: "walk.done"; walk: string; project: string; lesson: string; title: string; steps: number };
+export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reason: string };
+export type Event = WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -140,6 +153,12 @@ const COMMANDS: Record<string, Check[]> = {
   "doctor.check": [],
   "problem.find": [str("project"), str("agent")],
   "diagram.ask": [str("project"), str("question")],
+  "walk.list": [str("project")],
+  "walk.start": [str("project"), str("lesson")],
+  "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
+  "walk.answer": [str("walk"), bool("worked")],
+  "walk.skip": [str("walk")],
+  "walk.stop": [str("walk")],
   "project.inspect": [str("project")],
   "project.install": [str("project")],
   "project.clone": [str("url"), str("parent")],
@@ -179,6 +198,12 @@ const EVENTS: Record<string, Check[]> = {
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
   "doctor.report": [list("items")],
   "diagram.ready": [str("project"), bool("made")],
+  "walk.lessons": [str("project"), list("lessons")],
+  "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
+  "walk.ask": [str("walk"), num("index")],
+  "walk.help": [str("walk"), str("say")],
+  "walk.done": [str("walk"), str("project"), str("lesson"), str("title"), num("steps")],
+  "walk.stopped": [str("walk"), str("reason")],
   "project.report": [str("project"), oneOf("origin", ["lovable", "bolt", "replit", "unknown"]), str("about"), str("stack"), bool("needsInstall"), list("missing"), num("missingCount"), list("notes")],
   "project.install": [str("project"), oneOf("stage", ["installing", "done", "failed", "cancelled"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\"")],
   "project.cloned": [str("url"), bool("ok"), str("detail")],

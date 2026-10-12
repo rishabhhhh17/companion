@@ -39,3 +39,9 @@
 {"v":1,"id":"c39","type":"project.install","project":"p_9f2c"}
 {"v":1,"id":"c40","type":"project.clone","url":"https://github.com/me/mug-shop","parent":"/Users/me/Projects"}
 {"v":1,"id":"c41","type":"diagram.ask","project":"p_9f2c","question":"Why did this break?","problem":{"kind":"line","file":"src/App.tsx","line":5,"message":"x is not defined"}}
+{"v":1,"id":"c42","type":"walk.list","project":"p_9f2c"}
+{"v":1,"id":"c43","type":"walk.start","project":"p_9f2c","lesson":"companion-permissions","fresh":true}
+{"v":1,"id":"c44","type":"walk.acted","walk":"c43","how":"clicked"}
+{"v":1,"id":"c45","type":"walk.answer","walk":"c43","worked":true}
+{"v":1,"id":"c46","type":"walk.skip","walk":"c43"}
+{"v":1,"id":"c47","type":"walk.stop","walk":"c43"}

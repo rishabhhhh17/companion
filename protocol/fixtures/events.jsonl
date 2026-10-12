@@ -45,3 +45,9 @@
 {"v":1,"id":"e58","type":"project.cloned","url":"https://github.com/me/mug-shop.git","ok":true,"path":"/Users/me/Projects/mug-shop","detail":"Copied."}
 {"v":1,"id":"e59","type":"diagram.ready","project":"p_9f2c","made":true,"diagram":{"nodes":[{"id":"page","label":"Signup page"},{"id":"api","label":"API route"}],"edges":[{"from":"page","to":"api","label":"sends the form"}],"broken":{"edge":["page","api"],"reason":"The page calls a route that does not exist."},"caption":"The button points at a route that was renamed."},"usdEstimate":0.001}
 {"v":1,"id":"e60","type":"diagram.ready","project":"p_9f2c","made":false,"reason":"Not enough to draw."}
+{"v":1,"id":"e61","type":"walk.lessons","project":"p_9f2c","lessons":[{"id":"companion-permissions","title":"Allow Companion on your Mac","app":"System Settings","goal":"Give Companion the permissions it asks for","steps":4,"saved":false}],"problems":0}
+{"v":1,"id":"e62","type":"walk.step","walk":"c43","project":"p_9f2c","lesson":"companion-permissions","title":"Allow Companion on your Mac","index":0,"total":4,"variant":"main","say":"Open Privacy and Security.","find":"Privacy and Security in the sidebar","ask":true}
+{"v":1,"id":"e63","type":"walk.ask","walk":"c43","index":0}
+{"v":1,"id":"e64","type":"walk.help","walk":"c43","say":"I could not tell that this worked. What to look for: the Save button."}
+{"v":1,"id":"e65","type":"walk.done","walk":"c43","project":"p_9f2c","lesson":"companion-permissions","title":"Allow Companion on your Mac","steps":4}
+{"v":1,"id":"e66","type":"walk.stopped","walk":"c43","reason":"Stopped. Your place is saved."}

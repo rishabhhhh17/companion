@@ -61,7 +61,7 @@ export function parseDiagram(raw: string): Diagram | null {
 
 const SKIP = new Set(["node_modules", ".git", "dist", "build", ".next", ".vercel", ".companion", "coverage", "venv", "env", "vendor", "target", "__pycache__", "site-packages"]);
 // Settings, key and credential files are never sent, whatever their name looks like.
-export const isEnvFile = (p: string) => /(^|\/)\.env/.test(p) || /(^|\/)[^/]*\.env$/.test(p)
+export const isEnvFile = (p: string) => /(^|\/)\.env/i.test(p) || /(^|\/)[^/]*\.env$/i.test(p)
   || /(^|\/)(id_(rsa|dsa|ecdsa|ed25519)|\.npmrc|\.netrc|\.pgpass|\.pypirc|credentials(\.[a-z]+)?|secrets?(\.[a-z]+)?|[^/]*\.(pem|key|p12|pfx|jks|keystore)|[^/]*\.tfstate(\.backup)?|[^/]*\.tfvars)$/i.test(p);
 
 // The lines around the failing line, from a file that is really inside the project and is not a settings or key file.

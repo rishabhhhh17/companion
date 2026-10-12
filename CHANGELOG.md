@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Guided lessons: 12 Oct 2026
+
+- **A Lessons button.** A lesson is a plain data file (up to 15 steps), not code: for each step, what to say, what to look for on the screen, and how to prove it worked. The first three ship with the app and cover Companion's own permissions: Screen Recording, Accessibility and the Microphone, each told only when you use the feature that needs it. New lessons can be added as files, with no new release.
+- **One ring per step.** Companion looks at your screen once for each step, with the light on first, points at the place, and waits for your own click (or "Do it for me" where that is safe). Only the mouse position and whether a button is down are read; never keys.
+- **It checks, and it does not nag.** After a step the project itself is checked when it can be (a setting name exists, a file exists or contains something; setting values and key files are never read). When only you can tell, it asks "Did that work?". A step that did not work is never shown again as the same ring: you get the lesson's other way if it has one, then plain words and an "I did it myself" button.
+- **Pauses are fine.** Your place is saved after every move (step names and outcomes only, never anything from your screen). Come back later and it checks again: steps you finished while away are skipped, and a finished step that came undone is shown again. Start over any time.
+- **A ring stays in its window.** A ring is drawn only inside the window it was confirmed in. If that window moves, closes, is covered, or you switch to another app, the ring goes away and says why. This applies to every ring, not just lessons.
+- Stop everything ends every lesson. **Not tried by a person yet:** a full lesson on a real Mac with real System Settings.
+
 ## Draw it for me: 12 Oct 2026
 
 - **"Why? Draw it"** on the What's wrong card, and **Draw it** next to Show me in the ask box (type or speak the question, or leave it as "Why did this break?"). Companion draws a small hand drawn sketch on your screen: the parts of your project that matter as boxes, arrows for each hand over, the one place that goes wrong ringed in red with a "!" and its reason in one plain sentence, and a line of caption underneath. Strokes draw themselves on (all at once if your Mac is set to reduce motion) and the sketch fades by itself after about fifteen seconds. Stop everything, Close, or pointing at something else removes it at once.
