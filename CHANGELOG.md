@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## "Walk me through it" for permissions: 12 Oct 2026
+
+- In Settings, each permission that is not allowed yet now has a **Walk me through it** button next to Open System Settings. It starts the matching guided lesson (Screen Recording, Accessibility or Microphone). For Screen Recording the lesson is words only until the permission is given, because pointing needs it.
+
 ## Anywhere mode asks "did that work?": 12 Oct 2026
 
 - **Show me, step by step, in any app.** After you click the ring, Companion asks "Did that work?" before the next step. Yes goes on. No writes that step down as not working and asks for another way, so the same step is never suggested again. It stops at 15 steps and hands back in words. A guess still gets the soft "around here" ring, and rings stay inside their window.

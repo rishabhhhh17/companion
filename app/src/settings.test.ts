@@ -47,3 +47,12 @@ describe("beta numbers in words", () => {
     expect(l.at(-1)).toBe("Times you corrected a guess: 2");
   });
 });
+
+import { permissionLesson } from "./settings.ts";
+import { readdirSync } from "node:fs";
+describe("permission lessons", () => {
+  test("each permission names a lesson that ships with the app", () => {
+    const shipped = readdirSync(new URL("../../lessons", import.meta.url).pathname).map((f) => f.replace(/\.json$/, ""));
+    for (const k of ["screen_recording", "accessibility", "microphone"] as const) expect(shipped).toContain(permissionLesson(k));
+  });
+});

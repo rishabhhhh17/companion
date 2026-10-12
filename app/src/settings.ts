@@ -44,3 +44,6 @@ export function numbersLines(s: NumbersSummary): string[] {
     `Times you corrected a guess: ${s.rates.softRingCorrections ?? 0}`,
   ];
 }
+
+/** The shipped lesson that walks a person through allowing this permission (see lessons/). */
+export const permissionLesson = (kind: PermissionKind): string => `companion-${kind.replace(/_/g, "-")}`;
