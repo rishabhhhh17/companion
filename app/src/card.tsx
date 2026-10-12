@@ -241,20 +241,24 @@ function Card() {
   }, []);
   // Draw it for me: ask why it broke; when the diagram comes back it is laid out here and drawn on the screen.
   const asked = useRef(false);
+  const askedId = useRef("");
   useEffect(() => { if (!m.diagram) asked.current = false; }, [m.diagram]);
   const drawIt = (question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }) => {
     if (!projectRef.current || asked.current) return;
-    asked.current = true; dispatch({ type: "ui.diagramAsked" });
-    void send(askDiagram(projectRef.current, question, problem));
+    const cmd = askDiagram(projectRef.current, question, problem);
+    asked.current = true; askedId.current = (cmd as { id: string }).id; dispatch({ type: "ui.diagramAsked", ask: (cmd as { id: string }).id, project: projectRef.current });
+    void send(cmd);
   };
   useEffect(() => {
     const off = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; made?: boolean; project?: string; diagram?: any };
+      const ev = e.payload as { type?: string; made?: boolean; project?: string; ask?: string; diagram?: any };
       if (ev.type !== "diagram.ready" || !asked.current) return;
+      // An answer to an earlier ask (before Stop, or before the project changed) is not this ask's answer.
+      if (ev.ask && ev.ask !== askedId.current) return;
       asked.current = false;
       if (ev.made && ev.diagram && ev.project === projectRef.current) {
         const laid = layoutDiagram(ev.diagram, 720);
-        void invoke("show_diagram", { diagram: { ...laid, caption: ev.diagram.caption, reason: ev.diagram.broken.reason } }).catch(() => {});
+        void invoke("show_diagram", { diagram: { ...laid, caption: ev.diagram.caption, reason: ev.diagram.broken.reason } }).catch((err) => dispatch({ type: "ui.diagramFailed", reason: String(err) === "busy" ? "Something else is pointing at the screen right now. Try again in a moment." : "I could not show that on your screen. Try again." }));
       }
     });
     return () => { off.then((f) => f()); };

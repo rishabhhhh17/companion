@@ -42,3 +42,21 @@ export function layoutDiagram(d: Diagram, maxWidth: number): Laid {
   });
   return { nodes: placed, edges, width: layers * w + (layers - 1) * gapX, height: tallest * H + (tallest - 1) * GAP_Y };
 }
+
+/** A label cut to fit inside a box `w` wide at font size `size` (bold hand writing is about 0.55 of the size per letter). */
+export function fitLabel(label: string, w: number, size: number): string {
+  const max = Math.max(4, Math.floor((w - 14) / (size * 0.55)));
+  return label.length <= max ? label : label.slice(0, max - 1).trimEnd() + "…";
+}
+
+/** Words wrapped into lines of at most `max` letters; anything past `lines` is cut with an ellipsis. */
+export function wrapLines(text: string, max: number, lines: number): string[] {
+  const out: string[] = []; let cur = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const w = word.length > max ? word.slice(0, max - 1) + "…" : word;
+    if (cur && (cur + " " + w).length > max) { out.push(cur); cur = w; } else cur = cur ? cur + " " + w : w;
+  }
+  if (cur) out.push(cur);
+  if (out.length > lines) { const kept = out.slice(0, lines); kept[lines - 1] = kept[lines - 1].replace(/…?$/, "") + "…"; return kept; }
+  return out;
+}

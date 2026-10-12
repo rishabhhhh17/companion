@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Draw it for me: 12 Oct 2026
+
+- **"Why? Draw it"** on the What's wrong card, and **Draw it** next to Show me in the ask box (type or speak the question, or leave it as "Why did this break?"). Companion draws a small hand drawn sketch on your screen: the parts of your project that matter as boxes, arrows for each hand over, the one place that goes wrong ringed in red with a "!" and its reason in one plain sentence, and a line of caption underneath. Strokes draw themselves on (all at once if your Mac is set to reduce motion) and the sketch fades by itself after about fifteen seconds. Stop everything, Close, or pointing at something else removes it at once.
+- **Built only from your project**, never your screen: the failing line and the code around it, what the project is built with, and a short list of what the project serves and what its pages ask for (so a mismatch between a page and its server can be seen). Nothing is captured for this.
+- **Real checks** (test login, a few cents): on the signup project, the sketch named the real cause every time (the page asks for /api/signup, the server only has /api/register), 3 of 3, about 4.5 seconds each. Before this, the same request returned no diagram at all, because of the fast lane fault fixed earlier today.
+- Checks on the model's answer before anything is drawn: at most six boxes and eight arrows, short plain words, secrets covered, the broken place always named and real. The shapes are deterministic maths (the same every time), tested to stay within a few pixels of the true shape.
+- **Not tried by a person yet:** how the sketch looks on a real screen next to a real app. The "draw or circle it yourself to ask" half was cut for the friends preview.
+
 ## A practice run at the end of the first run: 12 Oct 2026
 
 - **Try the practice project.** The first run now ends with a small signup page that ships inside Companion and has one thing wrong on purpose (the Join button sends to an address the server does not have). It is copied into a new folder, Companion practice, in your home folder (never over anything), and Companion walks you through it: **Find what is wrong** (the same as pressing Control, Option, Command and F), which runs the project's own checks and points at the failing check; **Fix it with me**, a short fixed request on a 60 cent cap; and the proof, with the before and after picture and the celebration. So someone who is not stuck this week still sees the whole loop in the first minutes. You can skip it, and Settings has "Try the practice project again".

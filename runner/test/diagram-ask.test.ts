@@ -47,3 +47,19 @@ describe("asking for a diagram", () => {
     await s.ask(); expect(out(s.events)[0].made).toBe(false);
   });
 });
+
+describe("asking for a diagram: late and stuck answers", () => {
+  test("the answer carries the id of the ask it belongs to", async () => {
+    const s = setup(async () => ({ text: good, costUsd: 0 }));
+    await s.ask();
+    expect(out(s.events)[0].ask).toBe("d1");
+  });
+  test("an explainer that ignores Stop still ends with Stopped", async () => {
+    const s = setup(() => new Promise(() => {}));   // never answers, never looks at the signal
+    const p = s.ask();
+    await new Promise((r) => setTimeout(r, 20));
+    await s.runner.handle({ v: 1, id: "x", type: "agent.interruptAll", reason: "stop" });
+    await p;
+    expect(out(s.events)[0]).toMatchObject({ made: false, reason: "Stopped." });
+  });
+});

@@ -856,19 +856,22 @@ export class AgentRunner {
   // Draw it for me: ask the fast model (no tools, one turn) for a small diagram of why something broke, built only from
   // the project and the failing place. Nothing is captured from the screen. Stop everything ends it.
   private async diagramAsk(cmd: Extract<Command, { type: "diagram.ask" }>): Promise<void> {
-    const done = (made: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "diagram.ready", project: cmd.project, made, ...extra } as never);
+    const done = (made: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "diagram.ready", project: cmd.project, ask: cmd.id, made, ...extra } as never);
     if (!this.o.explainer) { done(false, { reason: "Drawing is not available in this mode." }); return; }
     if (!existsSync(cmd.project)) { done(false, { reason: "That project folder is not there any more." }); return; }
     const ac = new AbortController();
     this.picturing.add(ac);
-    const timer = setTimeout(() => ac.abort(), 45_000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 45_000);
+    const slow = "That took too long. Try again.";
     try {
-      const r = await this.o.explainer(diagramRequest(diagramContext(cmd.project, { question: cmd.question, problem: cmd.problem })), ac.signal);
-      if (ac.signal.aborted) { done(false, { reason: "Stopped." }); return; }
+      const gone = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
+      const r = await Promise.race([this.o.explainer(diagramRequest(diagramContext(cmd.project, { question: cmd.question, problem: cmd.problem })), ac.signal), gone]);
+      if (ac.signal.aborted) { done(false, { reason: timedOut ? slow : "Stopped." }); return; }
       const d = parseDiagram(r.text);
       if (!d) { done(false, { reason: "I could not draw a clear picture of that. Try asking in different words, or press the key when the problem is on screen." }); return; }
       done(true, { diagram: d, usdEstimate: r.costUsd });
-    } catch { done(false, { reason: ac.signal.aborted ? "Stopped." : "I could not draw that just now. Try again." }); }
+    } catch { done(false, { reason: ac.signal.aborted ? (timedOut ? slow : "Stopped.") : "I could not draw that just now. Try again." }); }
     finally { clearTimeout(timer); this.picturing.delete(ac); }
   }
 

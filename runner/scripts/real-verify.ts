@@ -153,6 +153,8 @@ await scenario("practice", only, async (note) => {
   note(`receipt proof = ${rec.proof}; changed = ${JSON.stringify(rec.changed.map((c: any) => c.file))}; fixed the page = ${fixedPage}; the server answers the page's address = ${fixedServer}; test untouched = ${testBefore === testAfter}; cost ${rec.usdEstimate}`);
   r.stop();
   return rec.proof === "passed" && (fixedPage || fixedServer) && testBefore === testAfter;
+});
+
 await scenario("diagram", only, async (note) => {
   const dir = tmp("dg"); put(dir, {
     "package.json": JSON.stringify({ name: "signup-demo", dependencies: { react: "18", express: "4" } }),

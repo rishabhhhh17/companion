@@ -790,22 +790,29 @@ fn wipe_helper_mode() -> bool {
 fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
     use std::sync::atomic::Ordering::SeqCst;
     diagram::validate(&diagram)?;
-    point_cancel();   // a diagram replaces any pointer or ring that was up
+    // Never over a ring the person is meant to click, never over a pointer in use, and never while the dock is hidden
+    // (a full screen app is in front, or the person hid it): the sketch would land on top of what they chose not to share.
+    if TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || overlay_busy() { return Err("busy".into()); }
+    if HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return Err("hidden".into()); }
+    point_cancel();
     let gen = POINT_GEN.load(SeqCst);
     OVERLAY_BUSY_UNTIL.store(now() as u64 + 16_500, SeqCst);
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let screens = NSScreen::screens(mtm);
         let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-        let Some(dock) = with_panels(|dock, _| dock.frame()) else { return };
+        let Some(dock) = with_panels(|dock, _| dock.frame()) else { let _ = tx.send(false); return };
         let (cx, cy) = (dock.origin.x + dock.size.width / 2.0, dock.origin.y + dock.size.height / 2.0);
-        let Some(scr) = screens.iter().map(|s| s.frame()).find(|f| cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) else { return };
+        let Some(scr) = screens.iter().map(|s| s.frame()).find(|f| cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) else { let _ = tx.send(false); return };
         let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x }));
+        let _ = tx.send(true);
     });
+    if !rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false) { OVERLAY_BUSY_UNTIL.store(0, SeqCst); return Err("no_screen".into()); }
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(16_000));
         if POINT_GEN.load(SeqCst) == gen { hide_overlay(&app); }

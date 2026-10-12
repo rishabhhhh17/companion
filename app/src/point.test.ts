@@ -112,6 +112,21 @@ describe("draw it for me on the card", () => {
   test("no diagram says why in plain words", () => {
     expect(run([...asked, ev({ type: "diagram.ready", project: "p", made: false, reason: "I could not draw that." })]).diagram).toEqual({ stage: "none", reason: "I could not draw that." });
   });
+  test("a late answer to an earlier ask does not answer a newer one", () => {
+    const m = run([ev({ type: "ui.diagramAsked", ask: "b", project: "p" }), ev({ type: "diagram.ready", project: "p", ask: "a", made: false, reason: "Stopped." })]);
+    expect(m.diagram?.stage).toBe("asking");
+    expect(run([ev({ type: "ui.diagramAsked", ask: "b", project: "p" }), ev({ type: "diagram.ready", project: "p", ask: "b", made: false, reason: "no" })]).diagram?.stage).toBe("none");
+  });
+  test("an answer for another project does not answer this ask", () => {
+    expect(run([ev({ type: "ui.diagramAsked", ask: "b", project: "p" }), ev({ type: "diagram.ready", project: "other", made: true, diagram: { caption: "x", broken: { node: "a", reason: "r" } } })]).diagram?.stage).toBe("asking");
+  });
+  test("a restarted engine does not leave it on Drawing it", () => {
+    expect(run([...asked, ev({ type: "app.runner_restarted" })]).diagram).toBeNull();
+  });
+  test("when the screen cannot show it the card says so instead of saying shown", () => {
+    const m = run([...asked, ev({ type: "diagram.ready", project: "p", made: true, diagram: { caption: "x", broken: { node: "a", reason: "r" } } }), ev({ type: "ui.diagramFailed", reason: "nope" })]);
+    expect(m.diagram).toEqual({ stage: "none", reason: "nope" });
+  });
   test("an answer after Stop or a folder change is ignored", () => {
     for (const end of ["app.stop_everything", "ui.projectChanged"]) expect(run([...asked, ev({ type: end }), ev({ type: "diagram.ready", project: "p", made: true, diagram: { caption: "x", broken: { node: "a", reason: "r" } } })]).diagram).toBeNull();
   });

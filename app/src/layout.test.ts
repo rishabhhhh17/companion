@@ -32,3 +32,20 @@ describe("laying out a diagram", () => {
     expect(layoutDiagram(x, 800)).toEqual(layoutDiagram(x, 800));
   });
 });
+
+import { fitLabel, wrapLines } from "./layout.ts";
+describe("text that fits", () => {
+  test("a label is cut to the box it sits in", () => {
+    expect(fitLabel("Signup page", 170, 18)).toBe("Signup page");
+    const cut = fitLabel("A very long label for a tiny box", 80, 18);
+    expect(cut.length).toBeLessThan(10); expect(cut.endsWith("…")).toBe(true);
+  });
+  test("long sentences wrap and never run past the box", () => {
+    const l = wrapLines("The page asks for /api/signup but the server only has /api/register and nothing else", 30, 3);
+    expect(l.length).toBeLessThanOrEqual(3);
+    for (const x of l) expect(x.length).toBeLessThanOrEqual(31);
+    expect(wrapLines("short", 30, 3)).toEqual(["short"]);
+    expect(wrapLines("x".repeat(100), 20, 2)[0].length).toBeLessThanOrEqual(20);
+    const many = wrapLines(Array(40).fill("word").join(" "), 20, 2); expect(many.length).toBe(2); expect(many[1].endsWith("…")).toBe(true);
+  });
+});

@@ -2,6 +2,8 @@
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
 import { at, burst, confetti, CONFETTI_S, flightMs } from "./pointer.ts";
+import { fitLabel, wrapLines } from "./layout.ts";
+import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 
 type Point = { rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
 const svg = document.getElementById("s")!;
@@ -100,50 +102,72 @@ function party(o: { x: number; y: number }) {
 void listen("overlay-party", (e) => party(e.payload as { x: number; y: number }));
 
 
-// Draw it for me: the diagram as plain boxes and arrows on a soft dark card, the broken place in red with a short reason,
-// a one line caption under it. Boxes appear in order, then the arrows (none of that with reduced motion). It leaves by itself.
+// Draw it for me: the diagram as a hand drawn sketch on a soft dark card. Boxes and arrows are drawn as a pen would make
+// them (the same every time), the broken place is circled and marked in red with its reason, and one line of caption sits
+// underneath. Strokes draw themselves on, box by box and then arrow by arrow (all at once with reduced motion), and the
+// whole thing fades by itself.
 type Laid = { nodes: { id: string; label: string; x: number; y: number; w: number; h: number; broken: boolean }[]; edges: { from: string; to: string; label?: string; points: [number, number][]; broken: boolean }[]; width: number; height: number; caption: string; reason: string };
-const RED = "#e5484d";
+const RED = "#ff6b6b", INKC = "#f2efe6";
+const HAND = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
 function drawDiagram(d: Laid, dockX: number) {
   clear();
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const pad = 22, titleH = 0, below = 74;
-  const W = d.width + pad * 2, H = d.height + pad * 2 + below + titleH;
+  const pad = 26;
+  const W = Math.max(d.width + pad * 2, 380);
+  const perLine = Math.floor((W - pad * 2) / 8.6);   // letters that fit a line at the sizes used below
+  const reasonLines = wrapLines(d.reason, perLine, 3), captionLines = wrapLines(d.caption, Math.floor(perLine * 1.1), 3);
+  const below = 20 + reasonLines.length * 24 + 8 + captionLines.length * 21 + 14;
+  const H = d.height + pad * 2 + below;
   const away = dockX > innerWidth / 2 ? -1 : 1;
   const left = Math.max(12, Math.min(innerWidth - W - 12, innerWidth / 2 - W / 2 + away * 60)), top = Math.max(12, Math.min(innerHeight - H - 12, innerHeight * 0.28));
   const g = el("g", { transform: `translate(${left} ${top})` });
   svg.appendChild(g);
-  g.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, rx: 16, fill: "#14161b", opacity: 0.94, stroke: "#2c2f36", "stroke-width": 1 }));
-  const body = el("g", { transform: `translate(${pad} ${pad})` });
+  g.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, rx: 18, fill: "#17181d", opacity: 0.95 }));
+  g.appendChild(el("path", { d: sketchRect(9, 9, W - 18, H - 18, "frame"), fill: "none", stroke: "#3a3d46", "stroke-width": 1.6, "stroke-linecap": "round" }));
+  const body = el("g", { transform: `translate(${pad + (W - pad * 2 - d.width) / 2} ${pad})` });
   g.appendChild(body);
-  const stage: SVGElement[][] = [[], []];
-  for (const e of d.edges) {
-    const [a, b] = e.points, col = e.broken ? RED : "#8e8e93";
-    const line = el("g", {});
-    line.appendChild(el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: col, "stroke-width": e.broken ? 4 : 2.5, "stroke-linecap": "round", ...(e.broken ? { "stroke-dasharray": "7 5" } : {}) }));
-    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-    line.appendChild(el("path", { d: "M0 0 L-11 -6 L-11 6 Z", fill: col, transform: `translate(${b[0]} ${b[1]}) rotate(${(ang * 180) / Math.PI})` }));
-    if (e.broken) { line.appendChild(el("circle", { cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, r: 11, fill: RED })); const x = el("text", { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 + 5, "text-anchor": "middle", fill: "#fff", "font-size": 15, "font-weight": 800, "font-family": "-apple-system,sans-serif" }); x.textContent = "!"; line.appendChild(x); }
-    if (e.label) {
-      // The words sit above the arrow and are cut to fit the gap between the two boxes, so they are never hidden behind one.
-      const fit = Math.max(6, Math.floor(Math.abs(b[0] - a[0]) / 6.6));
-      const t = el("text", { x: (a[0] + b[0]) / 2, y: Math.min(a[1], b[1]) - 12, "text-anchor": "middle", fill: "#b4b4b9", "font-size": 11.5, "font-family": "-apple-system,sans-serif" });
-      t.textContent = e.label.length > fit ? e.label.slice(0, fit - 1) + "…" : e.label; line.appendChild(t);
-    }
-    body.appendChild(line); stage[1].push(line);
-  }
+  const stroke = (dpath: string, color: string, width: number): SVGElement => el("path", { d: dpath, fill: "none", stroke: color, "stroke-width": width, "stroke-linecap": "round", "stroke-linejoin": "round" });
+  const text = (x: number, y: number, t: string, size: number, color: string, anchor = "start", weight = 600): SVGElement => { const e = el("text", { x, y, "text-anchor": anchor, fill: color, "font-size": size, "font-weight": weight, "font-family": HAND }); e.textContent = t; return e; };
+  const steps: SVGElement[][] = [[], []];
   for (const n of d.nodes) {
     const box = el("g", {});
-    box.appendChild(el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10, fill: n.broken ? "#3a1a1c" : "#1f232a", stroke: n.broken ? RED : "#3a3f48", "stroke-width": n.broken ? 3 : 1.5 }));
-    const t = el("text", { x: n.x + n.w / 2, y: n.y + n.h / 2 + 5, "text-anchor": "middle", fill: "#f2f2f2", "font-size": 14, "font-weight": 600, "font-family": "-apple-system,sans-serif" });
-    t.textContent = n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label; box.appendChild(t);
-    body.appendChild(box); stage[0].push(box);
+    box.appendChild(stroke(sketchRect(n.x, n.y, n.w, n.h, `box:${n.id}`), n.broken ? RED : INKC, n.broken ? 3 : 2.2));
+    box.appendChild(text(n.x + n.w / 2, n.y + n.h / 2 + 6, fitLabel(n.label, n.w, 18), 18, n.broken ? RED : INKC, "middle"));
+    body.appendChild(box); steps[0].push(box);
   }
-  const reason = el("text", { x: pad, y: d.height + pad * 2 + 16, fill: "#ff8a8d", "font-size": 14, "font-weight": 700, "font-family": "-apple-system,sans-serif" }); reason.textContent = d.reason; g.appendChild(reason);
-  const cap = el("text", { x: pad, y: d.height + pad * 2 + 40, fill: "#d6d6da", "font-size": 13, "font-family": "-apple-system,sans-serif" }); cap.textContent = d.caption; g.appendChild(cap);
+  for (const e of d.edges) {
+    const [a, b] = e.points, col = e.broken ? RED : "#b8b5aa", line = el("g", {});
+    line.appendChild(stroke(sketchLine(a[0], a[1], b[0], b[1], `edge:${e.from}>${e.to}`), col, e.broken ? 3.2 : 2.2));
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    line.appendChild(stroke(`M${b[0] - 13 * Math.cos(ang - 0.45)} ${b[1] - 13 * Math.sin(ang - 0.45)} L${b[0]} ${b[1]} L${b[0] - 13 * Math.cos(ang + 0.45)} ${b[1] - 13 * Math.sin(ang + 0.45)}`, col, e.broken ? 3.2 : 2.2));
+    if (e.broken) {
+      const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      line.appendChild(stroke(sketchEllipse(mx, my, 17, 17, `ring:${e.from}>${e.to}`), RED, 2.6));
+      line.appendChild(text(mx, my + 9, "!", 28, RED, "middle", 900));
+    }
+    if (e.label) {
+      // The words sit above the arrow, cut to fit the gap between the boxes, so they are never hidden behind one.
+      const fit = Math.max(6, Math.floor(Math.abs(b[0] - a[0]) / 7));
+      line.appendChild(text((a[0] + b[0]) / 2, Math.min(a[1], b[1]) - (e.broken ? 26 : 14), e.label.length > fit ? e.label.slice(0, fit - 1) + "…" : e.label, 15, "#c9c6ba", "middle", 500));
+    }
+    body.appendChild(line); steps[1].push(line);
+  }
+  let ty = d.height + pad * 2 + 20;
+  for (const l of reasonLines) { g.appendChild(text(pad, ty, l, 17, RED, "start", 700)); ty += 24; }
+  ty += 8;
+  for (const l of captionLines) { g.appendChild(text(pad, ty, l, 15, "#d8d5ca", "start", 500)); ty += 21; }
   if (!reduced) {
-    for (const [i, group] of stage.entries()) group.forEach((x, k) => { x.setAttribute("opacity", "0"); x.style.transition = "opacity .35s"; setTimeout(() => x.setAttribute("opacity", "1"), 120 + i * 450 + k * 160); });
+    // Each stroke draws itself on, one group after another.
+    steps.forEach((group, gi) => group.forEach((x, k) => {
+      const paths = Array.from(x.querySelectorAll("path")) as SVGPathElement[];
+      x.setAttribute("opacity", "0");
+      const t0 = 150 + gi * 700 + k * 220;
+      setTimeout(() => {
+        x.setAttribute("opacity", "1");
+        for (const p of paths) { const len = p.getTotalLength?.() ?? 0; if (!len) continue; p.style.strokeDasharray = `${len}`; p.style.strokeDashoffset = `${len}`; p.getBoundingClientRect(); p.style.transition = "stroke-dashoffset .55s ease-out"; p.style.strokeDashoffset = "0"; }
+      }, t0);
+    }));
   }
-  timer = setTimeout(() => { g.style.transition = "opacity .5s"; g.style.opacity = "0"; setTimeout(clear, 600); }, 15_000);
+  timer = setTimeout(() => { g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, 15_000);
 }
 void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number }; drawDiagram(p.diagram, p.dockX); });
