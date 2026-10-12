@@ -52,6 +52,8 @@ export function buildFastOptions(c: Common & { model: string; system?: string })
     systemPrompt: c.system ?? FAST_SYSTEM,
     maxTurns: 1,
     model: c.model,
+    // Short text jobs do not need to think first; this took the vision lane from about 8 s to about 2.6 s.
+    thinking: { type: "disabled" as const },
     includePartialMessages: true,
     canUseTool: deny,
     abortController: abortFrom(c.signal),
@@ -60,20 +62,39 @@ export function buildFastOptions(c: Common & { model: string; system?: string })
 
 export class FastLane {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; model?: string; queryFn?: QueryFn }) {}
-  async run(req: { text: string; system?: string; extra?: string }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> {
-    const options = buildFastOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? "claude-haiku-4-5-20251001", signal, system: req.system });
-    const q = (this.o.queryFn ?? realQuery)({ prompt: wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : ""), options: options as never });
+  // `raw`: the request is sent exactly as given, with only its own instructions (Explain, Draw it for me). Without it the
+  // text is wrapped as a prompt to improve, which is what Prompt help wants and nothing else does.
+  async run(req: { text: string; system?: string; extra?: string; raw?: boolean }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> {
+    // Our own stop switch, so a raw request can end the engine process the moment its answer is complete.
+    const ac = new AbortController();
+    const link = () => ac.abort();
+    if (signal.aborted) ac.abort(); else signal.addEventListener("abort", link, { once: true });
+    const options = buildFastOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? "claude-haiku-4-5-20251001", signal: ac.signal, system: req.system });
+    // A leading "/" would run as a Claude Code command, so such text is introduced first.
+    const prompt = req.raw ? (req.text.startsWith("/") ? `Input:\n${req.text}` : req.text) : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
+    const q = (this.o.queryFn ?? realQuery)({ prompt, options: options as never });
     let streamed = "", full = "", cost = 0;
-    for await (const m of q as AsyncIterable<any>) {
-      if (m.type === "stream_event" && m.event?.type === "content_block_delta" && m.event.delta?.type === "text_delta") {
-        streamed += m.event.delta.text; onDelta(m.event.delta.text);
-      } else if (m.type === "assistant") {
-        full = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
-      } else if (m.type === "result") {
-        if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
-        cost = Number(m.total_cost_usd ?? 0);
+    try {
+      for await (const m of q as AsyncIterable<any>) {
+        if (m.type === "stream_event" && m.event?.type === "content_block_delta" && m.event.delta?.type === "text_delta") {
+          streamed += m.event.delta.text; onDelta(m.event.delta.text);
+        } else if (m.type === "assistant") {
+          full = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+          if (req.raw && full) {
+            // The answer is complete: hand it back now and let the engine process end in the background. The cost is
+            // estimated from the tokens used (Haiku prices), because the run is not waited on.
+            const u = m.message?.usage;
+            cost = u ? ((u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) * 1.25) * 1e-6 + (u.cache_read_input_tokens ?? 0) * 1e-7 + (u.output_tokens ?? 0) * 5e-6 : 0.002;
+            onDelta(full);
+            setTimeout(() => ac.abort(), 0);
+            return { text: full, costUsd: round(cost) };
+          }
+        } else if (m.type === "result") {
+          if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+          cost = Number(m.total_cost_usd ?? 0);
+        }
       }
-    }
+    } finally { signal.removeEventListener("abort", link); }
     if (!streamed && full) onDelta(full);
     return { text: full || streamed, costUsd: round(cost) };
   }
@@ -215,7 +236,7 @@ function validPoint(i: any, img: Image): Point | null {
 
 // ---------- commands in, events out ----------
 
-export interface FastLike { run(req: { text: string; system?: string; extra?: string }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
+export interface FastLike { run(req: { text: string; system?: string; extra?: string; raw?: boolean }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
 export interface VisionLike { locate(req: { image: Image; question: string; ocr: Ocr[] }, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> }
 
 export class AssistService {

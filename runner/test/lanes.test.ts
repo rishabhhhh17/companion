@@ -244,3 +244,39 @@ describe("the free test stand in for Prompt help (never used unless switched on)
     expect(readSettings({ COMPANION_ASSIST_STUB: "yes" }).assistStub).toBe(false);
   });
 });
+
+describe("the fast lane, raw requests (Explain, Draw it for me)", () => {
+  const spy = (msgs: any[]) => { const seen: any[] = []; const fn = ((p: any) => { seen.push(p); return (async function* () { for (const m of msgs) yield m; })(); }) as any; return { seen, fn }; };
+  test("a raw request reaches the model exactly as given, with only its own instructions", async () => {
+    const { seen, fn } = spy([assistant('{"why":["x"]}'), result(0.001)]);
+    await new FastLane({ ...cfg, queryFn: fn }).run({ text: "The task was: Add a footer", system: "You explain what a task did.", raw: true }, () => {}, cfg.signal);
+    expect(seen[0].prompt).toBe("The task was: Add a footer");
+    expect(seen[0].prompt).not.toMatch(/improve the prompt|user_prompt/i);
+    expect(seen[0].options.systemPrompt).toBe("You explain what a task did.");
+  });
+  test("Prompt help is untouched: its text is still wrapped as plain text to improve", async () => {
+    const { seen, fn } = spy([assistant("Better"), result(0)]);
+    await new FastLane({ ...cfg, queryFn: fn }).run({ text: "make a gallery thing" }, () => {}, cfg.signal);
+    expect(seen[0].prompt).toContain("Improve the prompt inside the tags");
+    expect(seen[0].prompt).toContain("<user_prompt>");
+  });
+  test("a raw request keeps text that starts with a slash from running as a command", async () => {
+    const { seen, fn } = spy([assistant("x"), result(0)]);
+    await new FastLane({ ...cfg, queryFn: fn }).run({ text: "/clear the cache", system: "s", raw: true }, () => {}, cfg.signal);
+    expect(seen[0].prompt.startsWith("/")).toBe(false);
+  });
+  test("thinking is off, and the answer comes back the moment it is complete (not after the engine winds down)", async () => {
+    let released = false;
+    const fn = ((_p: any) => (async function* () { yield assistant("done"); await new Promise((r) => setTimeout(r, 400)); released = true; yield result(0.001); })()) as any;
+    const t0 = Date.now();
+    const r = await new FastLane({ ...cfg, queryFn: fn }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal);
+    expect(r.text).toBe("done");
+    expect(Date.now() - t0).toBeLessThan(300);
+    expect(released).toBe(false);
+    const o: any = buildFastOptions({ ...cfg, model: "m" });
+    expect(o.thinking).toEqual({ type: "disabled" });
+  });
+  test("an error that arrives before any answer is still an error", async () => {
+    await expect(new FastLane({ ...cfg, queryFn: fake([{ type: "result", subtype: "error_max_turns", total_cost_usd: 0 }]) }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal)).rejects.toThrow(/error_max_turns/);
+  });
+});
