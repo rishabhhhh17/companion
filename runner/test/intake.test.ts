@@ -98,11 +98,12 @@ describe("a package manager the Mac does not have", () => {
 });
 
 describe("review fixes", () => {
-  test("a lock file for a manager the Mac does not have falls back to npm", () => {
-    const fake = "pnpm" as const;   // tested through the real tool path: pick a lock whose tool is surely missing
+  test("a lock file for a manager the Mac does not have falls back to npm, and the one it has is used", () => {
     const d = project({ "package.json": pkg({}), "pnpm-lock.yaml": "x" });
-    const pm = detectProject(d).packageManager;
-    expect(pm === fake ? installed(fake) : pm === "npm").toBe(true);
+    expect(detectProject(d, () => false).packageManager).toBe("npm");
+    expect(detectProject(d, (m) => m === "pnpm").packageManager).toBe("pnpm");
+    const both = project({ "package.json": pkg({}), "yarn.lock": "x", "pnpm-lock.yaml": "x" });
+    expect(detectProject(both, (m) => m === "yarn").packageManager).toBe("yarn");
   });
   test("a link inside the project leading outside is never walked for setting names", () => {
     const outside = project({ "secret.js": "process.env.OUTSIDE_SECRET_NAME" });

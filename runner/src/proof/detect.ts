@@ -21,7 +21,7 @@ function readJson(path: string): Record<string, any> | null {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-export function detectProject(dir: string): Detected {
+export function detectProject(dir: string, has: (m: PackageManager) => boolean = (m) => installed(m)): Detected {
   const pkgPath = join(dir, "package.json");
   const hasPkg = existsSync(pkgPath);
   const pkg = hasPkg ? readJson(pkgPath) ?? {} : {};
@@ -29,13 +29,13 @@ export function detectProject(dir: string): Detected {
   const locks = LOCKS.filter(([f]) => existsSync(join(dir, f)));
   // Lovable keeps a stale bun.lockb next to package-lock.json: with both, npm is the one that is up to date. And a
   // manager this Mac does not have is no use when another lock file names one it does.
-  const usable = locks.filter(([, m]) => installed(m));
+  const usable = locks.filter(([, m]) => has(m));
   const lock = (locks.length > 1 && locks.some(([, m]) => m === "npm") && locks.some(([, m]) => m === "bun") ? locks.find(([, m]) => m === "npm") : undefined)
-    ?? (locks[0] && !installed(locks[0][1]) ? usable[0] : undefined) ?? locks[0];
+    ?? (locks[0] && !has(locks[0][1]) ? usable[0] : undefined) ?? locks[0];
   const declared = typeof pkg.packageManager === "string" ? (/^(npm|pnpm|yarn|bun)@/.exec(pkg.packageManager)?.[1] as PackageManager | undefined) : undefined;
   const wanted = lock?.[1] ?? declared ?? "npm";
   // A manager this Mac does not have would only fail: npm comes with Node, so it is the fallback.
-  const pm: PackageManager | null = hasPkg ? (installed(wanted) ? wanted : "npm") : null;
+  const pm: PackageManager | null = hasPkg ? (has(wanted) ? wanted : "npm") : null;
   const run = (name: string) => `${pm} run ${name}`;
 
   const checks: Check[] = [];
@@ -62,8 +62,10 @@ export function detectProject(dir: string): Detected {
 
 // Is this package manager on the Mac's tool path (the same path Companion runs commands with)?
 let cachedPath: string[] | null = null;
-export function installed(m: PackageManager, path: string[] = (cachedPath ??= (minimalEnv().PATH ?? "").split(":"))): boolean {
-  return path.some((d) => d && existsSync(join(d, m)));
+// Tests set COMPANION_TEST_ASSUME_TOOLS (test/setup.ts), so their results never depend on which tools the Mac running them has.
+export function installed(m: PackageManager, path?: string[]): boolean {
+  if (!path && process.env.COMPANION_TEST_ASSUME_TOOLS === "1") return true;
+  return (path ?? (cachedPath ??= (minimalEnv().PATH ?? "").split(":"))).some((d) => d && existsSync(join(d, m)));
 }
 
 /** The `run` line of a .replit file: a string or a list of words (possibly over several lines), never the one under
