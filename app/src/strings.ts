@@ -161,6 +161,7 @@ export const S = {
   settingsPermissions: "What Companion may do on this Mac",
   settingsPermissionsHelp: "Each one is asked only the first time you use the feature that needs it, never before.",
   settingsOpenSystem: "Open System Settings",
+  settingsWalkMe: "Walk me through it",
   settingsChoices: "Your choices",
   numbersTitle: "Beta numbers",
   numbersHelp: "Off by default. When on, Companion counts how often things happen (never words, names, files or anything from your screen), keeps the counts only on this Mac, and sends nothing. You can read them, copy them to send to the person running the beta, and erase them.",
