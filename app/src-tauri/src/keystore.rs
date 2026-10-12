@@ -5,6 +5,10 @@
 pub const SERVICE: &str = "companion";
 pub const ACCOUNT: &str = "anthropic";
 
+/// The Keychain item Companion uses. Tests may point it at an item of their own, but only one whose name starts with
+/// "companion-test-", so this can never be turned toward anything real.
+pub fn service() -> String { match std::env::var("COMPANION_KEYCHAIN_SERVICE") { Ok(v) if v.starts_with("companion-test-") => v, _ => SERVICE.to_string() } }
+
 /// A key as Anthropic issues them: starts "sk-ant-", letters, digits, dashes and underscores, no spaces.
 pub fn check(raw: &str) -> Result<String, String> {
     let k = raw.trim();
@@ -17,6 +21,16 @@ pub fn check(raw: &str) -> Result<String, String> {
 
 /// The one line fed to the Keychain tool. Only a checked key can get here, so nothing in it needs quoting.
 pub fn script(key: &str) -> String { format!("add-generic-password -U -s {SERVICE} -a {ACCOUNT} -w {key}\n") }
+
+/// Whether an item exists (never reads the secret: no -w or -g, so nothing is prompted).
+pub fn exists(service: &str, account: &str) -> bool {
+    std::process::Command::new("/usr/bin/security").args(["find-generic-password", "-s", service, "-a", account]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success())
+}
+
+/// Removes one Keychain item by exact service and account. Only ever called with Companion's own.
+pub fn delete_item(service: &str, account: &str) -> bool {
+    std::process::Command::new("/usr/bin/security").args(["delete-generic-password", "-s", service, "-a", account]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success())
+}
 
 pub fn save(raw: &str) -> Result<(), String> {
     use std::io::Write;
@@ -33,6 +47,19 @@ pub fn save(raw: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Real Keychain, a throwaway item of its own (a dummy value, never Companion's real key): the delete reaches only
+    /// the item it is told to, and a second delete is a harmless no. Run with --ignored.
+    #[test]
+    #[ignore]
+    fn deleting_removes_only_the_named_item() {
+        let (svc, other) = (format!("companion-test-{}", std::process::id()), format!("companion-test-other-{}", std::process::id()));
+        for s in [&svc, &other] { assert!(std::process::Command::new("/usr/bin/security").args(["add-generic-password", "-U", "-s", s, "-a", "anthropic", "-w", "dummy-value-not-a-key"]).status().unwrap().success()); }
+        assert!(exists(&svc, "anthropic") && exists(&other, "anthropic"));
+        assert!(delete_item(&svc, "anthropic"));
+        assert!(!exists(&svc, "anthropic")); assert!(exists(&other, "anthropic"));
+        assert!(!delete_item(&svc, "anthropic"));
+        assert!(delete_item(&other, "anthropic"));
+    }
     const GOOD: &str = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcdefgh";
     #[test]
     fn a_real_looking_key_passes_and_surrounding_spaces_are_ignored() { assert_eq!(check(&format!("  {GOOD}\n")).unwrap(), GOOD); }
