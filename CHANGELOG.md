@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Explain now explains the work: 12 Oct 2026
+
+- **Fixed:** the small model Explain uses was told to "improve the prompt", so one explanation in four was about your prompt ("the original prompt was vague") instead of why the work was done. Explain now sends its own request as is. Same four requests again: all four about the work, answers in 5 to 7 seconds instead of 11 to 37, because the model no longer thinks first and the answer is handed over the moment it is complete. Prompt help is unchanged.
+
 ## The plan changes: teaching on any app: 12 Oct 2026
 
 - **Decided (F17):** Draw it for me is back in the friends preview, and Companion gets a guided teaching engine (up to 15 steps, click detection, a progress log, resume after pauses, a proof check after each step) that works on any app on screen, with ready made lessons for Lovable, Vercel and Supabase and guidance for settings, env vars and keys. A solid ring goes only where Companion has confirmed the target; a guess gets a soft ring and is called a guess; low confidence is words only. The plan and the new friends preview date are in the M10 plan, waiting for approval.

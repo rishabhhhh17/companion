@@ -228,7 +228,10 @@ await scenario("explain", only, async (note) => {
   const rc = await r.until((e) => e.type === "recap.ready", 5000);
   note(`recap: ${JSON.stringify(rc?.lines)}`);
   r.stop();
-  return ex.bullets.length >= 1 && ex.bullets.length <= 3 && (rc?.lines?.length ?? 0) === 3;
+  // The "why" must be about the work, never about the prompt (the fast lane once wrapped Explain in "improve the prompt").
+  const aboutPrompt = ex.bullets.some((b: string) => /\b(original |the )?prompt\b|vague|too short/i.test(b));
+  if (aboutPrompt) note("EXPLAIN WAS ABOUT THE PROMPT, NOT THE WORK");
+  return ex.bullets.length >= 1 && ex.bullets.length <= 3 && (rc?.lines?.length ?? 0) === 3 && !aboutPrompt;
 });
 
 await scenario("research", only, async (note) => {
