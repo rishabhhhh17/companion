@@ -32,6 +32,7 @@ import { captureBefore, sweepWork } from "./proof/before.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
 import { aboutLine, inspectProject } from "./proof/intake.ts";
 import { cloneTarget } from "./proof/clone.ts";
+import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
 import { detectProject } from "./proof/detect.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
@@ -307,6 +308,7 @@ export class AgentRunner {
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "problem.find": return this.problemFind(cmd);
+      case "diagram.ask": return this.diagramAsk(cmd);
       case "project.inspect": return this.projectInspect(cmd.project);
       case "project.install": return this.projectInstall(cmd.project);
       case "project.clone": return this.projectClone(cmd);
@@ -849,6 +851,25 @@ export class AgentRunner {
       found("cancelled");
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
+  }
+
+  // Draw it for me: ask the fast model (no tools, one turn) for a small diagram of why something broke, built only from
+  // the project and the failing place. Nothing is captured from the screen. Stop everything ends it.
+  private async diagramAsk(cmd: Extract<Command, { type: "diagram.ask" }>): Promise<void> {
+    const done = (made: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "diagram.ready", project: cmd.project, made, ...extra } as never);
+    if (!this.o.explainer) { done(false, { reason: "Drawing is not available in this mode." }); return; }
+    if (!existsSync(cmd.project)) { done(false, { reason: "That project folder is not there any more." }); return; }
+    const ac = new AbortController();
+    this.picturing.add(ac);
+    const timer = setTimeout(() => ac.abort(), 45_000);
+    try {
+      const r = await this.o.explainer(diagramRequest(diagramContext(cmd.project, { question: cmd.question, problem: cmd.problem })), ac.signal);
+      if (ac.signal.aborted) { done(false, { reason: "Stopped." }); return; }
+      const d = parseDiagram(r.text);
+      if (!d) { done(false, { reason: "I could not draw a clear picture of that. Try asking in different words, or press the key when the problem is on screen." }); return; }
+      done(true, { diagram: d, usdEstimate: r.costUsd });
+    } catch { done(false, { reason: ac.signal.aborted ? "Stopped." : "I could not draw that just now. Try again." }); }
+    finally { clearTimeout(timer); this.picturing.delete(ac); }
   }
 
   // About this project: where it came from, what it is built with, what it still needs. Reads files only.

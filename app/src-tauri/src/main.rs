@@ -23,6 +23,7 @@ mod showme;
 mod pointat;
 mod share;
 mod yourturn;
+mod diagram;
 mod snap;
 mod prompthelp;
 #[allow(dead_code)]
@@ -641,6 +642,37 @@ fn do_it_for_me(app: AppHandle) {
     });
 }
 
+// ---------- Draw it for me ----------
+
+/// Draws a diagram the page laid out, beside the dock's screen edge, for a short while. It replaces any pointer and
+/// leaves with Stop everything or the Close button. Nothing here looks at the screen.
+#[tauri::command]
+fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
+    use std::sync::atomic::Ordering::SeqCst;
+    diagram::validate(&diagram)?;
+    point_cancel();   // a diagram replaces any pointer or ring that was up
+    let gen = POINT_GEN.load(SeqCst);
+    OVERLAY_BUSY_UNTIL.store(now() as u64 + 16_500, SeqCst);
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let mtm = MainThreadMarker::new().unwrap();
+        let screens = NSScreen::screens(mtm);
+        let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        let Some(dock) = with_panels(|dock, _| dock.frame()) else { return };
+        let (cx, cy) = (dock.origin.x + dock.size.width / 2.0, dock.origin.y + dock.size.height / 2.0);
+        let Some(scr) = screens.iter().map(|s| s.frame()).find(|f| cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) else { return };
+        let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
+        let ak = coords::rect_to_appkit(d, primary_h);
+        OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x }));
+    });
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(16_000));
+        if POINT_GEN.load(SeqCst) == gen { hide_overlay(&app); }
+    });
+    Ok(())
+}
+
 // ---------- Celebration ----------
 
 /// Confetti from the character for the big moments (proof passed, it went live). Never over a ring that is waiting
@@ -1053,7 +1085,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

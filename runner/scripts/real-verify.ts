@@ -128,6 +128,26 @@ await scenario("visual-receipt", only, async (note) => {
   return rec.proof === "passed" && !!pic && pic.circles >= 1 && /works now/.test(pic.caption) && !!pic.file && existsSync(pic.file);
 });
 
+await scenario("diagram", only, async (note) => {
+  const dir = tmp("dg"); put(dir, {
+    "package.json": JSON.stringify({ name: "signup-demo", dependencies: { react: "18", express: "4" } }),
+    "src/Signup.jsx": "export function Signup() {\n  async function submit(email) {\n    const res = await fetch('/api/signup', { method: 'POST', body: JSON.stringify({ email }) });\n    return res.json();\n  }\n  return <button onClick={() => submit('a@b.c')}>Sign up</button>;\n}\n",
+    "server/routes.js": "const express = require('express');\nconst app = express();\napp.post('/api/register', (req, res) => { saveUser(req.body.email); res.json({ ok: true }); });\n",
+  });
+  const r = new Real(dir); if (!await r.ready()) return false;
+  await Bun.sleep(200);
+  const t0 = Date.now();
+  r.send({ v: 1, id: "d", type: "diagram.ask", project: dir, question: "Why did this break?", problem: { kind: "line", file: "src/Signup.jsx", line: 3, message: "POST /api/signup 404 (Not Found)" } });
+  const out = await r.until((e) => e.type === "diagram.ready", 90_000);
+  if (!out) { note("no answer"); r.stop(); return false; }
+  const d = out.diagram;
+  note(`${Math.round((Date.now() - t0) / 100) / 10} s; made=${out.made}; ${d ? JSON.stringify({ nodes: d.nodes.map((n: any) => n.label), broken: d.broken, caption: d.caption }) : out.reason}`);
+  totalUsd += out.usdEstimate ?? 0;
+  r.stop();
+  const words = JSON.stringify(d ?? {}).toLowerCase();
+  return out.made === true && d.nodes.length >= 2 && d.nodes.length <= 6 && /signup|register|route|api/.test(words) && /signup|register|route|exist|match|name/.test(d.broken.reason.toLowerCase());
+});
+
 await scenario("take-the-wheel", only, async (note) => {
   const dir = tmp("wheel"); put(dir, { "index.html": "<!doctype html><html><body><h1>Hi</h1></body></html>", "mine.txt": "my notes" });
   const r = new Real(dir); if (!await r.ready()) return false;

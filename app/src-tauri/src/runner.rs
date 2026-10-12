@@ -16,7 +16,7 @@ pub const PROTOCOL_VERSION: i64 = 1;
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
     "assist.prompt", "assist.locate", "assist.image", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
-    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install",
+    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
 ];
 
 /// Checks a command from a web page. Returns the reason in plain words when refused.
@@ -36,7 +36,7 @@ pub fn check_command(v: &Value) -> Result<(), String> {
 }
 
 /// Commands that run or read things in a project folder: from a page they may name only the folder the person chose.
-pub const PROJECT_BOUND: &[&str] = &["project.inspect", "project.install", "problem.find"];
+pub const PROJECT_BOUND: &[&str] = &["project.inspect", "project.install", "problem.find", "diagram.ask"];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
     if !PROJECT_BOUND.contains(&t) { return Ok(()); }

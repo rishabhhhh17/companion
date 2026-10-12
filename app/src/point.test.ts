@@ -99,3 +99,20 @@ describe("the it's live card on the card", () => {
     expect(run([live, ev({ type: "ship.status", project: "p", stage: "rolled_back", detail: "back" }), card]).shipFlow?.card).toBeUndefined();
   });
 });
+
+describe("draw it for me on the card", () => {
+  const asked = [ev({ type: "ui.diagramAsked" })];
+  test("asking shows the character thinking", () => {
+    const m = run(asked); expect(m.diagram?.stage).toBe("asking"); expect(visualState(m)).toBe("thinking"); expect(characterWords(m)).toBe("Drawing it");
+  });
+  test("a diagram answer shows the reason and the caption", () => {
+    const m = run([...asked, ev({ type: "diagram.ready", project: "p", made: true, diagram: { caption: "Renamed route.", broken: { node: "db", reason: "The route does not exist" } } })]);
+    expect(m.diagram).toEqual({ stage: "shown", caption: "Renamed route.", brokenReason: "The route does not exist" });
+  });
+  test("no diagram says why in plain words", () => {
+    expect(run([...asked, ev({ type: "diagram.ready", project: "p", made: false, reason: "I could not draw that." })]).diagram).toEqual({ stage: "none", reason: "I could not draw that." });
+  });
+  test("an answer after Stop or a folder change is ignored", () => {
+    for (const end of ["app.stop_everything", "ui.projectChanged"]) expect(run([...asked, ev({ type: end }), ev({ type: "diagram.ready", project: "p", made: true, diagram: { caption: "x", broken: { node: "a", reason: "r" } } })]).diagram).toBeNull();
+  });
+});

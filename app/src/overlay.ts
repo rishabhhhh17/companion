@@ -98,3 +98,52 @@ function party(o: { x: number; y: number }) {
   requestAnimationFrame(step);
 }
 void listen("overlay-party", (e) => party(e.payload as { x: number; y: number }));
+
+
+// Draw it for me: the diagram as plain boxes and arrows on a soft dark card, the broken place in red with a short reason,
+// a one line caption under it. Boxes appear in order, then the arrows (none of that with reduced motion). It leaves by itself.
+type Laid = { nodes: { id: string; label: string; x: number; y: number; w: number; h: number; broken: boolean }[]; edges: { from: string; to: string; label?: string; points: [number, number][]; broken: boolean }[]; width: number; height: number; caption: string; reason: string };
+const RED = "#e5484d";
+function drawDiagram(d: Laid, dockX: number) {
+  clear();
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const pad = 22, titleH = 0, below = 74;
+  const W = d.width + pad * 2, H = d.height + pad * 2 + below + titleH;
+  const away = dockX > innerWidth / 2 ? -1 : 1;
+  const left = Math.max(12, Math.min(innerWidth - W - 12, innerWidth / 2 - W / 2 + away * 60)), top = Math.max(12, Math.min(innerHeight - H - 12, innerHeight * 0.28));
+  const g = el("g", { transform: `translate(${left} ${top})` });
+  svg.appendChild(g);
+  g.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, rx: 16, fill: "#14161b", opacity: 0.94, stroke: "#2c2f36", "stroke-width": 1 }));
+  const body = el("g", { transform: `translate(${pad} ${pad})` });
+  g.appendChild(body);
+  const stage: SVGElement[][] = [[], []];
+  for (const e of d.edges) {
+    const [a, b] = e.points, col = e.broken ? RED : "#8e8e93";
+    const line = el("g", {});
+    line.appendChild(el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: col, "stroke-width": e.broken ? 4 : 2.5, "stroke-linecap": "round", ...(e.broken ? { "stroke-dasharray": "7 5" } : {}) }));
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    line.appendChild(el("path", { d: "M0 0 L-11 -6 L-11 6 Z", fill: col, transform: `translate(${b[0]} ${b[1]}) rotate(${(ang * 180) / Math.PI})` }));
+    if (e.broken) { line.appendChild(el("circle", { cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, r: 11, fill: RED })); const x = el("text", { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 + 5, "text-anchor": "middle", fill: "#fff", "font-size": 15, "font-weight": 800, "font-family": "-apple-system,sans-serif" }); x.textContent = "!"; line.appendChild(x); }
+    if (e.label) {
+      // The words sit above the arrow and are cut to fit the gap between the two boxes, so they are never hidden behind one.
+      const fit = Math.max(6, Math.floor(Math.abs(b[0] - a[0]) / 6.6));
+      const t = el("text", { x: (a[0] + b[0]) / 2, y: Math.min(a[1], b[1]) - 12, "text-anchor": "middle", fill: "#b4b4b9", "font-size": 11.5, "font-family": "-apple-system,sans-serif" });
+      t.textContent = e.label.length > fit ? e.label.slice(0, fit - 1) + "…" : e.label; line.appendChild(t);
+    }
+    body.appendChild(line); stage[1].push(line);
+  }
+  for (const n of d.nodes) {
+    const box = el("g", {});
+    box.appendChild(el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10, fill: n.broken ? "#3a1a1c" : "#1f232a", stroke: n.broken ? RED : "#3a3f48", "stroke-width": n.broken ? 3 : 1.5 }));
+    const t = el("text", { x: n.x + n.w / 2, y: n.y + n.h / 2 + 5, "text-anchor": "middle", fill: "#f2f2f2", "font-size": 14, "font-weight": 600, "font-family": "-apple-system,sans-serif" });
+    t.textContent = n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label; box.appendChild(t);
+    body.appendChild(box); stage[0].push(box);
+  }
+  const reason = el("text", { x: pad, y: d.height + pad * 2 + 16, fill: "#ff8a8d", "font-size": 14, "font-weight": 700, "font-family": "-apple-system,sans-serif" }); reason.textContent = d.reason; g.appendChild(reason);
+  const cap = el("text", { x: pad, y: d.height + pad * 2 + 40, fill: "#d6d6da", "font-size": 13, "font-family": "-apple-system,sans-serif" }); cap.textContent = d.caption; g.appendChild(cap);
+  if (!reduced) {
+    for (const [i, group] of stage.entries()) group.forEach((x, k) => { x.setAttribute("opacity", "0"); x.style.transition = "opacity .35s"; setTimeout(() => x.setAttribute("opacity", "1"), 120 + i * 450 + k * 160); });
+  }
+  timer = setTimeout(() => { g.style.transition = "opacity .5s"; g.style.opacity = "0"; setTimeout(clear, 600); }, 15_000);
+}
+void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number }; drawDiagram(p.diagram, p.dockX); });

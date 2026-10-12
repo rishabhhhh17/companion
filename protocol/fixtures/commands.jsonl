@@ -38,3 +38,4 @@
 {"v":1,"id":"c38","type":"project.inspect","project":"p_9f2c"}
 {"v":1,"id":"c39","type":"project.install","project":"p_9f2c"}
 {"v":1,"id":"c40","type":"project.clone","url":"https://github.com/me/mug-shop","parent":"/Users/me/Projects"}
+{"v":1,"id":"c41","type":"diagram.ask","project":"p_9f2c","question":"Why did this break?","problem":{"kind":"line","file":"src/App.tsx","line":5,"message":"x is not defined"}}

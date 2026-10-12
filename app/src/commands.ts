@@ -51,3 +51,6 @@ export const findProblem = (project: string): Command => ({ v: 1, id: id(), type
 // About this project, and installing its packages when the person presses the button.
 export const inspectProject = (project: string): Command => ({ v: 1, id: id(), type: "project.inspect", project });
 export const installPackages = (project: string): Command => ({ v: 1, id: id(), type: "project.install", project });
+// Draw it for me: why did this break, as a small diagram (from the project and the failing place, never the screen).
+export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
+  ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
