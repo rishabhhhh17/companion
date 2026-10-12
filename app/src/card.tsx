@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { DELETE_PHRASE, deletableLines, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
-import { startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -354,6 +354,36 @@ function Card() {
     return () => clearTimeout(t);
   }, [stage]);
   showMeRef.current = showMe;
+  // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
+  const [lessonsOpen, setLessonsOpen] = useState(false);
+  const openLessons = () => { if (!projectRef.current) return; setLessonsOpen((v) => !v); void send(walkList(projectRef.current)); };
+  const beginLesson = (lesson: string, fresh: boolean) => {
+    if (!projectRef.current) return;
+    const c = walkStart(projectRef.current, lesson, fresh);
+    noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
+    dispatch({ type: "ui.walkRequested", walk: (c as { id: string }).id }); setLessonsOpen(false); void send(c);
+  };
+  const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false);
+  const wk = m.walk;
+  const wkKey = wk ? `${wk.id}:${wk.index}:${wk.variant}` : "";
+  useEffect(() => {
+    if (!wk || wk.stage !== "step") { if (aimed.current) { aimed.current = ""; void invoke("showme_clear"); } return; }
+    if (aimed.current === wkKey) return;
+    aimed.current = wkKey; staleReq.current = m.showme?.req;
+    if (noAim.current) return;   // the screen permission was not given: words only, and it is not asked for again at every step
+    void invoke("showme_start", { question: `Where do I click for this: ${wk.find}` });
+  }, [wkKey, wk?.stage]);
+  useEffect(() => { if (wk && m.showme?.stage === "needs_permission") noAim.current = true; }, [m.showme?.stage, wkKey]);
+  useEffect(() => { if (!wk) { clearTimeout(actTimer.current); } }, [wk]);
+  useEffect(() => {
+    // Only this step's own ring counts: a ring left over from the step before has the old request id.
+    const r = m.showme?.req;
+    if (!wk || wk.stage !== "step" || !r?.startsWith("sm_") || r === staleReq.current) return;
+    if ((m.showme?.stage !== "your_turn_done" && m.showme?.stage !== "done_for_you") || acted.current === wkKey) return;
+    acted.current = wkKey;
+    clearTimeout(actTimer.current);
+    actTimer.current = setTimeout(() => void send(walkActed(wk.id, m.showme?.stage === "done_for_you" ? "done_for_you" : "clicked", wk.index)), 700);
+  }, [m.showme?.stage, m.showme?.req, wkKey]);
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
@@ -464,6 +494,48 @@ function Card() {
           </>}
         </section>
       )}
+      {lessonsOpen && !m.walk && (
+        <section className="panel" role="status" aria-label={S.lessonsTitle}>
+          <h2>{S.lessonsTitle}</h2>
+          {(m.lessons ?? []).length === 0 && <div className="line">{S.lessonsNone}</div>}
+          {(m.lessons ?? []).map((l) => (
+            <div className="line" key={l.id}>
+              <b>{l.title}</b> <span className="muted">{l.app}</span>
+              <div className="row">
+                <button className="btn primary" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
+                {l.saved && <button className="btn" type="button" onClick={() => beginLesson(l.id, true)}>{S.lessonStartOver}</button>}
+              </div>
+            </div>
+          ))}
+          <div className="line muted">{S.lessonLooking}</div>
+          <div className="row"><button className="btn" type="button" onClick={() => setLessonsOpen(false)}>{S.pointClose}</button></div>
+        </section>
+      )}
+      {m.walk && (
+        <section className={`panel ${m.walk.stage === "help" ? "amber" : ""}`} role="status" aria-label={S.lessonsTitle}>
+          <h2>{m.walk.title}</h2>
+          {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
+          {(m.walk.stage === "step" || m.walk.stage === "asking") && <>
+            <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
+            <div className="line"><b>{m.walk.say}</b></div>
+          </>}
+          {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
+          <div className="row">
+            {m.walk.stage === "step" && <>
+              <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}` }); }}>{S.lessonPoint}</button>
+              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "clicked", m.walk!.index)); }}>{S.lessonDid}</button>
+            </>}
+            {m.walk.stage === "asking" && <>
+              <div className="line">{S.lessonWorked}</div>
+              <button className="btn primary" type="button" onClick={() => void send(walkAnswer(m.walk!.id, true, m.walk!.index))}>{S.lessonYes}</button>
+              <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonNo}</button>
+            </>}
+            {m.walk.stage === "help" && <button className="btn primary" type="button" onClick={() => void send(walkSkip(m.walk!.id, m.walk!.index))}>{S.lessonSkip}</button>}
+            {["step", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
+            {["done", "stopped"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.walkClosed" })}>{S.pointClose}</button>}
+          </div>
+        </section>
+      )}
       {m.diagram && (
         <section className={`panel ${m.diagram.stage === "none" ? "amber" : ""}`} role="status" aria-label={S.drawTitle}>
           <h2>{S.drawTitle}</h2>
@@ -507,6 +579,7 @@ function Card() {
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
           <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
           <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
+          <button className="btn" type="button" aria-expanded={lessonsOpen} onClick={openLessons}>{S.lessonsButton}</button>
           <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
           <button className="btn" type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((v) => !v)}>{S.settingsButton}</button>
         </div>
@@ -752,7 +825,7 @@ function Card() {
       )}
 
       {m.showme && (
-        <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" ? "amber" : ""}`} role="status" aria-label={S.showMe}>
+        <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" || m.showme.stage === "window_changed" ? "amber" : ""}`} role="status" aria-label={S.showMe}>
           <h2>{S.showMe}</h2>
           <div className="line">{m.showme.message}</div>
           {["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && (walk || m.showme.turn) && (
@@ -763,7 +836,7 @@ function Card() {
             </div>
           )}
           {["your_turn_done", "done_for_you"].includes(m.showme.stage) && !walk && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); }}>{S.onlineClose}</button></div>}
-          {(["error", "needs_permission", "opened"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
+          {(["error", "needs_permission", "opened", "window_changed"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
         </section>
       )}
 

@@ -5,7 +5,7 @@ import { at, burst, confetti, CONFETTI_S, flightMs } from "./pointer.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 
-type Point = { rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
+type Point = { clip?: { x: number; y: number; w: number; h: number } | null; rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
 const svg = document.getElementById("s")!;
 const cap = document.getElementById("cap") as HTMLElement;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -21,17 +21,27 @@ function show(p: Point) {
   const cx = p.rect.x + p.rect.w / 2, cy = p.rect.y + p.rect.h / 2;
   const rx = Math.max(p.rect.w / 2 + 10, 26), ry = Math.max(p.rect.h / 2 + 10, 26);
   const color = p.exact ? "#ff9a2e" : "#ffb020";
+  // The ring and arrow are drawn only inside the window they were confirmed in (nothing lands on a different app).
+  let layer: Element = svg;
+  if (p.clip) {
+    const id = "winclip", cp = el("clipPath", { id });
+    cp.appendChild(el("rect", { x: p.clip.x, y: p.clip.y, width: p.clip.w, height: p.clip.h }));
+    svg.appendChild(cp);
+    layer = el("g", { "clip-path": `url(#${id})` });
+    svg.appendChild(layer);
+  }
   const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": p.exact ? 4 : 3, "stroke-dasharray": p.exact ? "" : "8 6", class: "ring", opacity: reduced ? 1 : 0 });
-  svg.appendChild(ring);
+  layer.appendChild(ring);
   const arrow = el("path", { d: "M0 0 L-14 -26 L0 -18 L14 -26 Z", fill: color, stroke: "#111", "stroke-width": 2, "stroke-linejoin": "round" });
   const place = (x: number, y: number, angle: number) => arrow.setAttribute("transform", `translate(${x} ${y}) rotate(${angle})`);
-  svg.appendChild(arrow);
+  layer.appendChild(arrow);
   const land = () => {
     ring.setAttribute("opacity", "1"); place(cx, cy - ry - 4, 0);
     const side = cx > innerWidth / 2 ? -1 : 1;
     cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
-    cap.style.left = `${Math.max(8, Math.min(innerWidth - 320, side > 0 ? cx + rx + 12 : cx - rx - 12 - 300))}px`;
-    cap.style.top = `${Math.max(8, Math.min(innerHeight - 60, cy - 18))}px`;
+    const box = p.clip ?? { x: 0, y: 0, w: innerWidth, h: innerHeight };   // the words stay inside the window too
+    cap.style.left = `${Math.max(box.x + 8, Math.min(box.x + box.w - 320, side > 0 ? cx + rx + 12 : cx - rx - 12 - 300))}px`;
+    cap.style.top = `${Math.max(box.y + 8, Math.min(box.y + box.h - 60, cy - 18))}px`;
     cap.classList.add("on");
     // A ring that waits for the person's click stays until they click, press Do it for me, or close it.
     if (!p.hold) timer = setTimeout(clear, 10_000);

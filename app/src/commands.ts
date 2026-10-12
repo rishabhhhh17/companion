@@ -60,3 +60,11 @@ export const startPractice = (project: string): Command =>
 // Draw it for me: why did this break, as a small diagram (from the project and the failing place, never the screen).
 export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
   ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
+
+// Guided lessons: the runner keeps the place and checks each step; the app draws the ring and notices the click.
+export const walkList = (project: string): Command => ({ v: 1, id: id(), type: "walk.list", project });
+export const walkStart = (project: string, lesson: string, fresh = false): Command => ({ v: 1, id: id(), type: "walk.start", project, lesson, ...(fresh ? { fresh: true } : {}) });
+export const walkActed = (walk: string, how: "clicked" | "done_for_you", index?: number): Command => ({ v: 1, id: id(), type: "walk.acted", walk, how, ...(index !== undefined ? { index } : {}) });
+export const walkAnswer = (walk: string, worked: boolean, index?: number): Command => ({ v: 1, id: id(), type: "walk.answer", walk, worked, ...(index !== undefined ? { index } : {}) });
+export const walkSkip = (walk: string, index?: number): Command => ({ v: 1, id: id(), type: "walk.skip", walk, ...(index !== undefined ? { index } : {}) });
+export const walkStop = (walk: string): Command => ({ v: 1, id: id(), type: "walk.stop", walk });

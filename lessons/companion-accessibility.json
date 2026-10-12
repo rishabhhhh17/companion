@@ -1,0 +1,44 @@
+{
+  "id": "companion-accessibility",
+  "title": "Let Companion press buttons for you",
+  "app": "System Settings",
+  "goal": "Turn on Accessibility for Companion (only used for Do it for me)",
+  "steps": [
+    {
+      "id": "open-settings",
+      "say": "Open System Settings from the Apple menu.",
+      "find": "the Apple menu at the top left of the screen",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "privacy",
+      "say": "Choose Privacy & Security in the list on the left.",
+      "find": "Privacy & Security in the sidebar",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "pane",
+      "say": "Open Accessibility.",
+      "find": "Accessibility in the list",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "switch",
+      "say": "Turn on the switch next to Companion.",
+      "find": "the switch next to Companion",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If Companion is not in the list, press the plus button under the list and pick Companion from Applications.",
+        "find": "the plus button under the list"
+      }
+    }
+  ]
+}

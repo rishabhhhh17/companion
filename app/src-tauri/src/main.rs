@@ -5,6 +5,7 @@
 
 mod docking;
 mod fullscreen;
+mod anchor;
 mod logfile;
 mod permissions;
 mod ax;
@@ -529,17 +530,30 @@ fn showme_start(app: AppHandle, question: String) {
     });
 }
 
+/// The window a ring at this spot belongs to (rule 22: a ring is drawn inside it and goes away if it changes).
+fn front_pid() -> i32 { NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier()).unwrap_or(0) }
+fn anchor_for(target: coords::R) -> Option<anchor::Anchor> {
+    let c = target.center();
+    anchor::anchor_at(&fullscreen::sys::on_screen_windows(), std::process::id() as i32, front_pid(), c.x, c.y)
+}
+
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
+/// The ring is clipped to the window under it.
 fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) {
     OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + 10_500 }, std::sync::atomic::Ordering::SeqCst);
     let a = app.clone();
     let caption2 = caption.to_string();
+    let anchored = anchor_for(rect);
+    // Rule 22: a solid ring only where the window it sits in is confirmed. Over a menu, a dialog or anything that is not
+    // an ordinary window the ring is soft and says it is a guess.
+    let exact = exact && anchored.is_some();
+    let clip = anchored.map(|an| json!({ "x": an.bounds[0] - d.x, "y": an.bounds[1] - d.y, "w": an.bounds[2], "h": an.bounds[3] }));
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
         // The flight starts at the character, wherever it is docked.
         let from = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold });
+        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip });
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
@@ -591,8 +605,23 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
         };
         let t0 = std::time::Instant::now();
         log("your_turn", json!({}));
+        let anchor = anchor_for(target);
+        let (mut polls, tc) = (0u32, target.center());
         while alive() && t0.elapsed().as_millis() < yourturn::WAIT_MS as u128 {
             std::thread::sleep(Duration::from_millis(yourturn::POLL_MS));
+            polls += 1;
+            // Four times a second: is the ring still on the window it was confirmed in? If not, it goes away.
+            if polls % 15 == 0 {
+                if let Some(an) = &anchor {
+                    let v = anchor::check(&fullscreen::sys::on_screen_windows(), std::process::id() as i32, an, front_pid(), tc.x, tc.y);
+                    if v != anchor::Verdict::Fine && alive() {
+                        log("your_turn_window_changed", json!({ "why": format!("{v:?}") }));
+                        turn_cancel(); hide_overlay(&app);
+                        say_showme(&app, "window_changed", "The window changed, so I took the ring away. Press Show me where to point again.", json!({}));
+                        return;
+                    }
+                }
+            }
             match w.sample(down(), macos_see::pointer(), &ours) {
                 Some(yourturn::Heard::Hit) => {
                     if !alive() { return; }

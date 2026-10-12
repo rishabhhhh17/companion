@@ -18,6 +18,7 @@ cp -L "$BUN" "$OUT/bin/bun"; chmod 755 "$OUT/bin/bun"
 cp -R runner/src "$OUT/runner/src"
 cp runner/package.json runner/bun.lock "$OUT/runner/"
 cp protocol/index.ts protocol/package.json "$OUT/protocol/"
+cp -R lessons "$OUT/lessons"
 # Only what the runner needs to run, exactly as locked.
 (cd "$OUT/runner" && bun install --production --frozen-lockfile --ignore-scripts >/dev/null)
 CLAUDE="$OUT/runner/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"
