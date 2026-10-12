@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor, visualState } from "./model.ts";
+import { Face } from "./character.tsx";
+import { settled, SETTLE_MS } from "./face.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
@@ -37,6 +39,15 @@ function Dock() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Settling: after a while with nothing happening the character goes completely still (light on battery).
+  const state = visualState(m);
+  const [since, setSince] = useState(() => Date.now());
+  const [still, setStill] = useState(false);
+  useEffect(() => { setSince(Date.now()); setStill(false); }, [state]);
+  useEffect(() => {
+    const t = setTimeout(() => setStill(settled(state, Date.now() - since)), SETTLE_MS + 50);
+    return () => clearTimeout(t);
+  }, [state, since]);
   const label = characterWords(m);
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
@@ -57,10 +68,11 @@ function Dock() {
   };
   return (
     <main className="dock">
-      <button className="character" type="button" data-state={visualState(m)} data-motion={motionFor(visualState(m), reduced)} data-react={react?.r}
+      <button className="character" type="button" data-state={state} data-motion={still ? "none" : motionFor(state, reduced)} data-still={still || reduced ? "" : undefined} data-react={react?.r}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
+        <Face state={state} />
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
       <div className="muted" role="status" aria-live="polite">{label}</div>

@@ -80,3 +80,20 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
 @keyframes party { 20% { transform: translateY(-14px) rotate(-10deg) scale(1.08); } 45% { transform: translateY(0) rotate(8deg); } 65% { transform: translateY(-6px) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) { .character[data-react] { animation: none; } }
+
+/* The face (drawn in code on top of the body). Blinks now and then; eyes sweep while looking; dots orbit while thinking;
+   sound rings pulse while listening. A settled or reduced motion character does none of it. */
+.character .face { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.character .face .eyes { transform-box: fill-box; transform-origin: center; }
+.character .face .blink { animation: blink 5.5s infinite; }
+.character .face .scan { animation: look 1.8s ease-in-out infinite; }
+.character .face .dots circle { animation: think 1.2s ease-in-out infinite; }
+.character .face .dots circle:nth-child(2) { animation-delay: .2s; }
+.character .face .dots circle:nth-child(3) { animation-delay: .4s; }
+.character .face .rings path { animation: hear 1.1s ease-out infinite; }
+.character[data-still] .face * { animation: none !important; }
+@keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@keyframes look { 0%, 100% { transform: translateX(-5px); } 50% { transform: translateX(5px); } }
+@keyframes think { 0%, 100% { transform: translateY(0); opacity: .4; } 50% { transform: translateY(-4px); opacity: 1; } }
+@keyframes hear { 0% { opacity: 1; } 100% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .character .face * { animation: none !important; } }
