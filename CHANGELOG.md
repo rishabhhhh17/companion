@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The source files now say what the product is: 12 Oct 2026
+
+- The project's rules file (`AGENTS.md`) described the first idea (five characters helping with everything). It now states the launch hero, "stuck while building with AI? press the key", and what is out for now. A new decision record (F16) holds that choice and the parked list. The rules about the screen and your clicks now describe exactly what the new features do. A refreshed launch readiness table (12 Oct) shows what is built, what is still to do (six items) and, honestly, that none of the new features has been tried by a person yet.
+
 ## Open your Lovable, Bolt or Replit project: 12 Oct 2026
 
 - **About this project.** When you open a folder, Companion says in one line where it came from and what it is, for example "A Lovable project: Vite + React, with Supabase and Tailwind." It knows Lovable, Bolt and Replit exports, Next.js, Angular, Vue, Node servers, Python and plain pages.

@@ -4,15 +4,15 @@ Rules and map for every coding agent working in this repo (Claude Code, Codex, C
 
 ## The product in one paragraph
 
-Companion (working name; every name will change) is a Mac first, Windows next desktop app for non engineers who start projects with AI and get stuck. Abstract characters with their own personalities live on the side edges of the screen, and through them you get one companion that helps you finish what you start. Users bring their own Claude: their own API key or cloud credential, or (once Anthropic confirms it in writing) their Claude subscription signed in through Anthropic's own flow. We never pay for, resell or route model usage. We are building the **Curious path**. The **Geeked (Pro) path is parked**: build nothing for it, block nothing for it.
+Companion (working name; every name will change) is a Mac first, Windows next desktop app for non engineers who build with AI (Lovable, Bolt, Replit, Cursor, Claude Code) and get stuck. **The hero (F16, 10 Oct 2026): "Stuck while building with AI? Press the key. It finds the problem on your screen, fixes it with you, and shows you why."** It points at the real failing line, error or button in the person's own project, fixes it safely with proof, and teaches as it goes. A character on the screen edge carries it (the founder is supplying the character designs; until then the plain dot stays). Users bring their own Claude: their own API key or cloud credential, or (once Anthropic confirms it in writing) their Claude subscription signed in through Anthropic's own flow. We never pay for, resell or route model usage. We are building the **Curious path**. The **Geeked (Pro) path is parked**: build nothing for it, block nothing for it. Out for now: shared memory across other AI tools, generic app tutorials, dictation everywhere, proactive popups, agents, routines and referral programs.
 
 ## Presence plus four jobs, on one shared core
 
 | | What | Alpha examples |
 |---|---|---|
 | **Presence** | Characters docked on a screen edge, clear states, cards with proof, Stop, Undo, Receipt; ask box (type or hold to talk); stop everything hotkey | Dock, ask box, voice, questionnaire |
-| **1. Help you use AI better** | Prompt help (rewrite the prompt in any app, show a diff, paste back on accept); Show me how (one capture, point at where to click) | Both |
-| **2. Do the work** | Build mode: Drive, Rescue, Ship, Research, Proof, undo, receipts, house rules, fix loop breaker | All of it |
+| **1. Help you use AI better** | Point at the problem (the failing line, error or button, then your turn to click, or Do it for me); Show me how (one capture, point at where to click); Prompt help (rewrite the prompt, show a diff, paste back on accept) | All three |
+| **2. Do the work** | Build mode: Drive, Rescue, Ship, Research, Proof, undo, receipts with a before and after picture, the it's live card, house rules, fix loop breaker; open a Lovable, Bolt or Replit project | All of it |
 | **3. Notice for you** | Where was I; from v1.1 Loop Closer, Pattern Catcher, recaps | Where was I |
 | **4. Grow with you** | Explain, memory you can read and edit; Tutor later | Explain, memory |
 
@@ -27,10 +27,10 @@ The shared core is four parts: **characters**, **agent engine**, **memory**, **t
 4. Ship Anthropic's Claude binary unmodified and never re-sign it: it is staged in `vendor/` (never committed) and goes into the app through `bundle.macOS.files`, never as an `externalBin` (Tauri re-signs those). "Powered by Claude" is fine; never call or style anything as Claude Code.
 
 **Never watch passively**
-5. The user's screen, other apps' text boxes and the microphone are touched only on a user hotkey, with a visible indicator lit first. Never in the background, never stored. Captures of the user's screen are never written to disk. A Show me how walkthrough the user started may capture again at each step while it is visibly on. (Proof screenshots of the app being built, in a headless browser, are stored with receipts.) Whether Claude Code itself keeps received images off disk is checked in M0 spike (e); no Show me how code until that is settled.
+5. The user's screen, other apps' text boxes and the microphone are touched only on a user hotkey, with a visible indicator lit first. Never in the background, never stored. Captures of the user's screen are never written to disk. A Show me how walkthrough the user started may capture again at each step while it is visibly on. (Pictures of the app being built, taken in the headless browser for proof and the visual receipt, are stored with receipts; they are never pictures of the screen.) While a pointer waits for the person's click (your turn), and only then, Companion reads the mouse position and whether a button is down (no permission needed, verified 11 Oct 2026); never keys, never screen content. Whether Claude Code itself keeps received images off disk is checked in M0 spike (e); no Show me how code until that is settled.
 6. Only exception: a source the user explicitly connected for Loop Closer or Pattern Catcher. Read on the user's schedule or request, indexed on the device only, deleted on disconnect.
 7. Presentation mode may check whether a call app is in front and whether the camera or microphone is in use. Never content. It can be turned off.
-8. Each permission (Accessibility, Screen Recording, Microphone) is asked the first time its feature is used, never at install. Nothing ever asks for Input Monitoring or reads key events.
+8. Each permission (Accessibility, Screen Recording, Microphone) is asked the first time its feature is used, never at install. Nothing ever asks for Input Monitoring or reads key events. Do it for me presses only a plain labelled button, link or tab, never one that sends, pays, deletes, publishes or answers a question (rule 13).
 
 **Hands off the user's things**
 9. Never steal keyboard focus. Panels are non activating.
