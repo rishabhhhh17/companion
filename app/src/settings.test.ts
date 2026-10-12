@@ -36,3 +36,14 @@ describe("what Companion keeps, and deleting it", () => {
   test("with no key saved there is no key line", () => expect(deletableLines({ ...inv, keySaved: false }).some((l) => /key/i.test(l))).toBe(false));
   test("the confirmation is exact words, so a stray call cannot delete anything", () => expect(DELETE_PHRASE).toBe("delete everything"));
 });
+
+import { numbersLines } from "./settings.ts";
+describe("beta numbers in words", () => {
+  test("counts and rates are shown plainly, and a missing rate says so", () => {
+    const l = numbersLines({ enabled: true, totals: { session: 5, walk_started: 4, walk_done: 3 }, rates: { walkCompletion: 0.75, stepSuccess: null, proofPass: 0.5, anywhereShare: null, softRingCorrections: 2 } });
+    expect(l[0]).toBe("Times you used Companion: 5");
+    expect(l[2]).toBe("Lessons started: 4, finished: 3 (75%)");
+    expect(l[3]).toContain("not enough yet");
+    expect(l.at(-1)).toBe("Times you corrected a guess: 2");
+  });
+});

@@ -27,3 +27,20 @@ export function permissionRow(kind: PermissionKind, s: PermissionState): { label
 export function deletableLines(inv: Inventory): string[] {
   return [...inv.items.map((i) => `${i.label}: ${formatBytes(i.bytes)}`), ...(inv.keySaved ? ["Your saved Claude key (in your Keychain)"] : [])];
 }
+
+export type NumbersSummary = { enabled: boolean; totals: Record<string, number>; rates: Record<string, number | null> };
+const pct = (r: number | null | undefined) => (typeof r === "number" ? `${Math.round(r * 100)}%` : "not enough yet");
+
+/** The numbers in plain words, to read here or copy and send by hand. Counts only. */
+export function numbersLines(s: NumbersSummary): string[] {
+  const t = (k: string) => s.totals[k] ?? 0;
+  return [
+    `Times you used Companion: ${t("session")}`,
+    `Times you pressed the key for a problem: ${t("hero_press")}`,
+    `Lessons started: ${t("walk_started")}, finished: ${t("walk_done")} (${pct(s.rates.walkCompletion)})`,
+    `Lesson steps that worked the first way: ${pct(s.rates.stepSuccess)}`,
+    `Checks that passed: ${pct(s.rates.proofPass)}`,
+    `Pointing in other apps compared with builder tools: ${pct(s.rates.anywhereShare)}`,
+    `Times you corrected a guess: ${s.rates.softRingCorrections ?? 0}`,
+  ];
+}

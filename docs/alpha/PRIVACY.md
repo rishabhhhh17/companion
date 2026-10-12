@@ -14,11 +14,14 @@
 | You press **S** (ask about your screen) | One picture of the display you are on. Card numbers, bank numbers, keys and tokens that the text reader finds are blacked out first. Your password manager's windows and Companion's own are left out. | The picture (in memory only, never written to disk by Companion) is sent to Claude with your question, under your key. Claude Code itself keeps a copy of any picture it receives in its temporary folder; Companion points that folder at a drive in memory and erases it after each answer. |
 | You hold **V** (talk) | Your voice, only while you hold the keys. | Turned into words on your Mac by a speech model. The audio is never saved or sent; the words go in the box and are sent only if you send them. |
 | You ask for a task, a fix or a plan | The files of the project you chose, as Claude needs them. | Sent to Claude under your key, like any use of Claude Code. Companion's safety rules limit what it may change, and every change is snapshotted first so you can undo it. |
+| You start a **lesson** (Lessons button) | For each step, one picture of your screen like **S** (light on first, same covering of private text), to find the place to point at. The project's own files are checked to prove a step worked (a setting's name, whether a file exists; setting values and key files are never read). Where you are in a lesson is saved as step names and outcomes only. | The picture goes to Claude under your key, like **S**. The saved place stays on your Mac. |
 | After a fix passes its checks | Opens your page in a hidden browser on your Mac and takes a picture of **your app** (never your screen), before and after. | Stays on your Mac. |
 | You go live | Your project's files go to Vercel through **your own Vercel login**, after safety checks and your yes. | To Vercel, by their tool. |
 | Always on | The last few things you did, as short notes (what is in `.companion/project.md` in your project, and a small profile in Companion's own folder). You can read, edit and forget every line in **What I know**. | Stays on your Mac. Never health, money, relationships, moods or secrets. |
 
 ## What Companion keeps on your Mac
+**Beta numbers** are off until you turn them on in Settings. When on, Companion keeps counts per day on your Mac (how often a thing happened; never words, names, files or anything from your screen). It sends nothing. You can read them, copy them to send to the founder, and erase them.
+
 Task history and spending, undo snapshots of your projects, receipt pictures, memory notes, the speech model, a hidden browser, settings and a small activity log (what happened, never what was typed, said or on screen). **Settings** lists them with sizes. **Delete everything** removes them and your saved key.
 
 ## If you send a log

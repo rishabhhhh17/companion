@@ -45,3 +45,7 @@
 {"v":1,"id":"c45","type":"walk.answer","walk":"c43","worked":true}
 {"v":1,"id":"c46","type":"walk.skip","walk":"c43"}
 {"v":1,"id":"c47","type":"walk.stop","walk":"c43"}
+{"v":1,"id":"c48","type":"metrics.set","enabled":true}
+{"v":1,"id":"c49","type":"metrics.note","name":"session"}
+{"v":1,"id":"c50","type":"metrics.show"}
+{"v":1,"id":"c51","type":"metrics.erase"}

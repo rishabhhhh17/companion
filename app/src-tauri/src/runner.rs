@@ -18,6 +18,7 @@ const ALLOWED: &[&str] = &[
     "assist.prompt", "assist.locate", "assist.image", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
     "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop",
+    "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
 ];
 
 /// Checks a command from a web page. Returns the reason in plain words when refused.
