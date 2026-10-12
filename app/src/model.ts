@@ -31,6 +31,7 @@ export type ShowMe = { stage: string; message: string; req?: string; turn?: bool
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
 export type PointCard = { stage: "checking" | "found" | "clear" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
+export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 export type Model = {
   doctor: DoctorItem[] | null;
@@ -40,6 +41,10 @@ export type Model = {
   point: PointCard | null;
   // The place the last failed check pointed to, for "Show me where".
   where: Problem | null;
+  // About this project (shown when a folder is opened), the package install the person started, and opening from a link.
+  about: About | null;
+  install: { project: string; stage: string; detail: string } | null;
+  cloneNote: string | null;
   shipFlow: ShipFlow | null;
   currentCheckpoint?: string;
   explain: Explain | null;
@@ -70,7 +75,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -110,7 +115,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "explain.state": return { ...m, explainOn: !!e.enabled };
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -148,6 +153,11 @@ export function reduce(m: Model, e: Ev): Model {
       const at = base.steps.findIndex((s) => s.rung === line.rung);
       return { ...m, task: { ...m.task, proof: { ...base, steps: at >= 0 ? base.steps.map((s, i) => (i === at ? line : s)) : [...base.steps, line] } } };
     }
+    case "project.report": return { ...m, about: { project: String(e.project), about: String(e.about), origin: String(e.origin), needsInstall: !!e.needsInstall, installCommand: e.installCommand ?? null, missing: Array.isArray(e.missing) ? e.missing.map(String) : [], missingCount: Number(e.missingCount ?? 0), example: e.example ?? null, notes: Array.isArray(e.notes) ? e.notes.map(String) : [] } };
+    case "project.install": return { ...m, install: { project: String(e.project), stage: String(e.stage), detail: String(e.detail ?? "") } };
+    case "project.cloned": return { ...m, cloneNote: e.ok ? null : String(e.detail ?? "") };
+    case "ui.cloneNoteClosed": return { ...m, cloneNote: null };
+    case "ui.aboutClosed": return { ...m, about: null, install: null };
     case "ui.findProblem": return { ...m, point: { stage: "checking" } };
     // Closing puts the character back to rest; the check is over.
     case "ui.pointClosed": return m.point?.agent && m.agents[m.point.agent] === "needsYou" ? withAgents({ ...m, point: null }, { ...m.agents, [m.point.agent]: "idle" }) : { ...m, point: null };
