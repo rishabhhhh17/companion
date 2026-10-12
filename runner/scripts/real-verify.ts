@@ -17,7 +17,9 @@ const put = (dir: string, files: Record<string, string>) => { for (const [p, c] 
 class Real {
   data = tmp("data"); events: Ev[] = []; proc: ReturnType<typeof Bun.spawn>; private buf = ""; t0 = Date.now(); unexpectedApprovals = 0;
   constructor(public project: string, env: Record<string, string> = {}) {
-    this.proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts")], {
+    // COMPANION_ENGINE_DIR points at an engine staged for the installed app (bin/bun and runner/src/main.ts), to check that one.
+    const eng = process.env.COMPANION_ENGINE_DIR;
+    this.proc = Bun.spawn(eng ? [join(eng, "bin/bun"), join(eng, "runner/src/main.ts")] : ["bun", join(import.meta.dir, "../src/main.ts")], {
       stdin: "pipe", stdout: "pipe", stderr: "inherit",
       env: { ...process.env, COMPANION_DATA: (this.data = tmp("data")), COMPANION_ROUTE: "plan", COMPANION_MODEL: MODEL, CLAUDE_CONFIG_DIR: CONFIG, ...env },
     });

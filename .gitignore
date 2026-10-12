@@ -109,3 +109,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 *.swp
+
+# Disk images made by app/scripts/make-dmg.sh
+app/installer/

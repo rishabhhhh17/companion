@@ -1099,13 +1099,14 @@ fn tick(app: &AppHandle) {
 fn start_runner(app: &AppHandle) {
     let data = PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app");
     let dev = std::fs::read_to_string(data.join("dev.json")).ok();
-    let project = dev.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
-        .and_then(|v| v.get("project").and_then(|p| p.as_str().map(String::from)))
-        .unwrap_or_else(|| format!("{}/Developer/companion-playground", std::env::var("HOME").unwrap_or_default()));
+    // Only a developer's settings file names a first folder; on anyone else's Mac the person chooses one.
+    let first = dev.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+        .and_then(|v| v.get("project").and_then(|p| p.as_str().map(String::from)));
     // The folder the person chose last wins; the development settings file only supplies the first one.
     let saved = projects::load(&projects_path()).current.filter(|c| std::path::Path::new(c).is_dir());
-    *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = Some(saved.unwrap_or(project));
-    let result = runner::locations(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"))
+    *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = saved.or(first);
+    let bundle = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e));
+    let result = runner::locations_with_bundle(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"), bundle)
         .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, |t| {
             log("runner_event", json!({ "kind": t }));
             WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_runner_event(t);

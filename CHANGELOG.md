@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## An installer a friend can use: 12 Oct 2026
+
+- **Companion now carries its own engine.** Before this, the app found its engine only through the developer's settings file, so a copy on anyone else's Mac would not have started. The app now contains Bun, the runner and its packages, including Anthropic's own Claude binary, which is copied as is and never re-signed (its checksum is compared before and after signing).
+- **`app/scripts/build-app.sh`** stages the engine, builds, signs and verifies; **`make-dmg.sh`** makes `Companion-0.1.0.dmg` (155 MB) with a shortcut to Applications; **`release.sh`** is the whole notarized release for when Apple approves the developer account (written, not run). A short install note for friends is in `docs/alpha/INSTALL.md`.
+- **Checked for real:** the disk image verifies, an app copied out of it still verifies and carries the identical Claude binary, and run from a copy in an empty home folder it started its own engine and logged it. Two real Claude checks (Explain, and the before and after receipt picture) passed through that installed engine.
+- On a Mac with no developer settings, Companion no longer invents a default project folder: you choose one.
+- The app now says it needs macOS 14 (screen capture). **Only tried on macOS 27, on Apple Silicon.** Not notarized yet, so the first open needs "Open Anyway" in System Settings, which the install note explains.
+
 ## A log you can send when something goes wrong: 12 Oct 2026
 
 - **Save a log for support** in Settings writes one text file to your Downloads folder and shows it in Finder. It holds Companion's version and your Mac's, which permissions are allowed, what Companion keeps (sizes only), Companion's own activity log with times (what happened, never what was typed, said or on screen) and the newest crash report from the last two weeks if there is one.

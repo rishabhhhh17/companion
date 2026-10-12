@@ -76,12 +76,32 @@ pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     }).unwrap_or_default()
 }
 
-pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf) -> Result<Locations, String> {
+pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf) -> Result<Locations, String> { locations_with_bundle(dev_json, env, data, None) }
+
+/// Where the engine is inside the installed app: `Contents/Resources/engine` holds `bin/bun` and `runner/src/main.ts`
+/// (staged by app/scripts/stage-engine.sh). None when not running from an installed app (a development run).
+pub fn bundled_engine(exe: &std::path::Path) -> Option<PathBuf> {
+    exe.ancestors().find(|a| a.file_name().is_some_and(|n| n == "Contents")).map(|c| c.join("Resources/engine"))
+}
+
+/// The developer file first, then the environment, then the engine that came with the app.
+pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf, bundle: Option<PathBuf>) -> Result<Locations, String> {
     let dev: Value = dev_json.and_then(|s| serde_json::from_str(s).ok()).unwrap_or(Value::Null);
     let pick = |key: &str, var: &str| dev.get(key).and_then(Value::as_str).map(str::to_string).or_else(|| env(var));
-    let bun = pick("bun", "COMPANION_BUN").ok_or("Companion cannot find Bun. Run app/scripts/dev-setup.sh")?;
-    let runner = pick("runner", "COMPANION_RUNNER").ok_or("Companion cannot find the runner. Run app/scripts/dev-setup.sh")?;
-    Ok(Locations { bun: bun.into(), runner: runner.into(), data, env: allowed_env(&dev) })
+    let in_bundle = |rel: &str| bundle.as_ref().map(|b| b.join(rel)).filter(|p| p.is_file());
+    let (dev_bun, dev_runner) = (pick("bun", "COMPANION_BUN"), pick("runner", "COMPANION_RUNNER"));
+    // Both from the developer's setup or both from the installed app, never a mix of two different engines.
+    let (bun, runner) = match (dev_bun, dev_runner) {
+        (Some(b), Some(r)) => (PathBuf::from(b), PathBuf::from(r)),
+        (Some(_), None) => return Err("Companion cannot find the runner. Run app/scripts/dev-setup.sh".into()),
+        (None, Some(_)) => return Err("Companion cannot find Bun. Run app/scripts/dev-setup.sh".into()),
+        (None, None) => match (in_bundle("bin/bun"), in_bundle("runner/src/main.ts")) {
+            (Some(b), Some(r)) => (b, r),
+            _ if bundle.is_some() => return Err("Companion's engine is missing from this copy of the app. Download Companion again and replace this one.".into()),
+            _ => return Err("Companion cannot find Bun. Run app/scripts/dev-setup.sh".into()),
+        },
+    };
+    Ok(Locations { bun, runner, data, env: allowed_env(&dev) })
 }
 
 /// Status messages a page that loads late still needs (who is connected, is the engine up).
@@ -331,6 +351,25 @@ mod tests {
         assert!(allowed_env(&json!({})).is_empty());
         assert!(allowed_env(&json!({"env": "x"})).is_empty());
         assert!(allowed_env(&json!({"env": {"COMPANION_ROUTE": 5}})).is_empty());
+    }
+    #[test]
+    fn an_installed_app_uses_the_engine_that_came_with_it_and_the_developer_file_still_wins() {
+        let root = std::env::temp_dir().join(format!("companion-engine-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
+        let eng = root.join("Companion.app/Contents/Resources/engine");
+        std::fs::create_dir_all(eng.join("bin")).unwrap(); std::fs::create_dir_all(eng.join("runner/src")).unwrap();
+        std::fs::write(eng.join("bin/bun"), "x").unwrap(); std::fs::write(eng.join("runner/src/main.ts"), "x").unwrap();
+        let none = |_: &str| None;
+        let l = locations_with_bundle(None, &none, "/d".into(), Some(eng.clone())).unwrap();
+        assert_eq!((l.bun, l.runner), (eng.join("bin/bun"), eng.join("runner/src/main.ts")));
+        let l = locations_with_bundle(Some(r#"{"bun":"/dev/bun","runner":"/dev/r"}"#), &none, "/d".into(), Some(eng.clone())).unwrap();
+        assert_eq!((l.bun, l.runner), (PathBuf::from("/dev/bun"), PathBuf::from("/dev/r")));
+        // the app's own executable leads to the engine folder
+        assert_eq!(bundled_engine(&root.join("Companion.app/Contents/MacOS/companion-app")), Some(root.join("Companion.app/Contents/Resources/engine")));
+        assert_eq!(bundled_engine(std::path::Path::new("/repo/app/src-tauri/target/debug/companion-app")), None);
+        std::fs::remove_file(eng.join("bin/bun")).unwrap();
+        let e = locations_with_bundle(None, &none, "/d".into(), Some(eng)).unwrap_err();
+        assert!(e.contains("missing from this copy") && e.ends_with('.'));
+        let _ = std::fs::remove_dir_all(&root);
     }
     #[test]
     fn locations_carry_the_safe_settings() {
