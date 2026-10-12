@@ -6,9 +6,9 @@ import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyL
 import { invoke } from "./tauri.ts";
 import { S } from "./strings.ts";
 
-type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; onDone: () => void };
+type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; startPractice: () => void; onDone: () => void };
 
-export function Onboarding({ doctor, connected, project, send, pickFolder, setAutoSend, useTask, onDone }: Props) {
+export function Onboarding({ doctor, connected, project, send, pickFolder, setAutoSend, useTask, startPractice, onDone }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   const [key, setKey] = useState("");
@@ -75,6 +75,9 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, setAu
       </>)}
       {step === "first" && (<>
         <h2>{S.obFirstTitle}</h2>
+        <div className="line">{S.obPracticeHelp}</div>
+        <div className="row"><button className="btn primary" type="button" onClick={() => { finish(); startPractice(); }}>{S.obPractice}</button></div>
+        <div className="line muted">{S.obOrOwn}</div>
         <div className="row">{FIRST_TASKS.map((t) => <button key={t.label} className="btn" type="button" onClick={() => { finish(); useTask(t.prompt); }}>{t.label}</button>)}</div>
       </>)}
       <div className="row">

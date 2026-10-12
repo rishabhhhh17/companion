@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CONFIG = join(homedir(), "Library/Application Support/Companion-test-claude");
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = process.env.COMPANION_REAL_MODEL || "claude-haiku-4-5-20251001";
 type Ev = Record<string, any>;
 const results: { name: string; pass: boolean; notes: string[] }[] = [];
 let totalUsd = 0;
@@ -128,6 +128,31 @@ await scenario("visual-receipt", only, async (note) => {
   if (pic?.file && process.env.COMPANION_KEEP_PICTURE) writeFileSync(process.env.COMPANION_KEEP_PICTURE, readFileSync(pic.file));
   r.stop();
   return rec.proof === "passed" && !!pic && pic.circles >= 1 && /works now/.test(pic.caption) && !!pic.file && existsSync(pic.file);
+});
+
+await scenario("practice", only, async (note) => {
+  // The first run's practice project, exactly as the card does it: find the failing check (no Claude), then the fixed request.
+  const dir = tmp("practice"); const { cpSync } = await import("node:fs");
+  cpSync(join(import.meta.dir, "../../app/sample/stuck-signup"), dir, { recursive: true });
+  const testBefore = readFileSync(join(dir, "test/signup.test.js"), "utf8");
+  const r = new Real(dir); if (!await r.ready()) return false;
+  await Bun.sleep(200);
+  r.send({ v: 1, id: "f", type: "problem.find", project: dir, agent: "builder-1" });
+  const found = await r.until((e) => e.type === "problem.found", 90_000);
+  note(`found: ${found ? JSON.stringify({ verdict: found.verdict, label: found.label, file: found.problem?.file, line: found.problem?.line, message: found.problem?.message }) : "nothing"}`);
+  if (!found || found.verdict !== "failed" || found.problem?.file !== "test/signup.test.js") { r.stop(); return false; }
+  r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "builder-1", mode: "drive", prompt: "The tests in this project fail. Find the cause and fix it with the smallest change. Do not change the tests.", model: MODEL, budgetUsd: 0.6 });
+  const rec = await r.until((e) => e.type === "receipt", 240_000);
+  if (!rec) { note("no receipt"); r.stop(); return false; }
+  totalUsd += rec.usdEstimate ?? 0;
+  const code = readFileSync(join(dir, "public/signup.js"), "utf8");
+  const testAfter = readFileSync(join(dir, "test/signup.test.js"), "utf8");
+  const server = readFileSync(join(dir, "server.js"), "utf8");
+  // Either side of the mismatch is a fair fix: the page now asks for /api/register, or the server now answers /api/signup too.
+  const fixedPage = /\/api\/register/.test(code), fixedServer = /\/api\/signup/.test(server);
+  note(`receipt proof = ${rec.proof}; changed = ${JSON.stringify(rec.changed.map((c: any) => c.file))}; fixed the page = ${fixedPage}; the server answers the page's address = ${fixedServer}; test untouched = ${testBefore === testAfter}; cost ${rec.usdEstimate}`);
+  r.stop();
+  return rec.proof === "passed" && (fixedPage || fixedServer) && testBefore === testAfter;
 });
 
 await scenario("take-the-wheel", only, async (note) => {

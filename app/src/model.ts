@@ -1,5 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
+import { PRACTICE_LABEL } from "./commands.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 export type ToolLine = { id: string; text: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
@@ -32,6 +33,7 @@ export type Voice = { stage: string; message: string; percent?: number; text?: s
 export type Problem = import("../../protocol/index.ts").Problem;
 export type PointCard = { stage: "checking" | "found" | "clear" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
+export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 export type Model = {
   doctor: DoctorItem[] | null;
@@ -43,6 +45,8 @@ export type Model = {
   where: Problem | null;
   // About this project (shown when a folder is opened), the package install the person started, and opening from a link.
   about: About | null;
+  // The first run's practice project: find it, fix it, prove it.
+  practice: Practice | null;
   install: { project: string; stage: string; detail: string } | null;
   cloneNote: string | null;
   shipFlow: ShipFlow | null;
@@ -75,7 +79,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ practice: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -104,9 +108,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, practice: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -115,7 +119,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "explain.state": return { ...m, explainOn: !!e.enabled };
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, practice: m.practice && e.project === m.practice.project ? m.practice : null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -157,11 +161,23 @@ export function reduce(m: Model, e: Ev): Model {
     case "project.install": return { ...m, install: { project: String(e.project), stage: String(e.stage), detail: String(e.detail ?? "") } };
     case "project.cloned": return { ...m, cloneNote: e.ok ? null : String(e.detail ?? "") };
     case "ui.cloneNoteClosed": return { ...m, cloneNote: null };
+    case "ui.practiceStarted": return { ...m, practice: { stage: "start", project: String(e.project) } };
+    case "ui.practiceFixing": return m.practice ? { ...m, practice: { ...m.practice, stage: "fixing", why: undefined } } : m;
+    case "ui.practiceClosed": return { ...m, practice: null };
     case "ui.aboutClosed": return { ...m, about: null, install: null };
     case "ui.findProblem": return { ...m, point: { stage: "checking" } };
     // Closing puts the character back to rest; the check is over.
     case "ui.pointClosed": return m.point?.agent && m.agents[m.point.agent] === "needsYou" ? withAgents({ ...m, point: null }, { ...m.agents, [m.point.agent]: "idle" }) : { ...m, point: null };
     case "problem.found": {
+      // The practice project: the first failure found in it moves the practice on to "fix it".
+      if (m.practice?.stage === "start" && e.project === m.practice.project && e.verdict === "failed" && e.problem) {
+        const pr = e.problem;
+        // Only the practice's own bug counts. A check that could not run at all (no Node on this Mac, say) is told as that.
+        const ours = pr.kind === "line" && typeof pr.file === "string" && pr.file.endsWith("test/signup.test.js");
+        m = ours
+          ? { ...m, practice: { ...m.practice, stage: "found", label: String(e.label ?? ""), where: { file: pr.file, line: pr.line, message: pr.message } } }
+          : { ...m, practice: { ...m.practice, stage: "blocked", why: String(pr.message ?? e.detail ?? "") } };
+      }
       // Only an answer to a press that is still waiting counts; one that arrives after Stop or a folder change is old news.
       if (m.point?.stage !== "checking") return m;
       if (e.verdict === "cancelled") return { ...m, point: null };
@@ -203,7 +219,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
     case "receipt.visual": return m.receipt && m.receipt.checkpoint === e.checkpoint ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
-    case "receipt": return { ...m, receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}) } };
+    case "receipt": return { ...m, ...(m.practice?.stage === "fixing" && (m.task?.label ?? "").includes(PRACTICE_LABEL) ? { practice: { ...m.practice, stage: e.proof === "passed" ? ("done" as const) : ("failed" as const) } } : {}), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}) } };
     case "memory.state": return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
     case "memory.refused": return { ...m, memoryNote: String(e.reason) };
     case "memory.exported": return { ...m, exported: String(e.text ?? "") };
@@ -216,7 +232,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.agentsAnswered": return { ...m, agentsAsk: null };
     case "memory.agents_written": return { ...m, notice: `Companion updated ${(e.files ?? []).join(" and ")} with the facts about this project.` };
     case "ui.memoryClosed": return { ...m, memory: null, memoryNote: null, exported: null };
-    case "protocol.error": return { ...m, error: plainError(String(e.reason)) };
+    // An error while the practice fix runs (busy, daily limit, a failure) must not leave it waiting forever.
+    case "protocol.error": return { ...m, ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : {}), error: plainError(String(e.reason)) };
     default: return m;
   }
 }
