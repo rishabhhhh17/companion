@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## "Do it for me" can no longer be fooled by how a button is spelled: 14 Oct 2026
+
+- **Do it for me never presses a button that sends, pays, deletes, publishes or signs out.** That check only knew English words, so it missed: lookalike letters from another alphabet ("Dеlete" with a Russian е), a hidden zero width character, extra spaces ("D e l e t e"), digits and signs standing in for letters ("D3lete", "P@y", "Pub1ish"), accents, and the same words in Spanish, French, German, Portuguese, Italian, Japanese, Chinese and Korean. Labels are now cleaned of those tricks before they are compared, and a bare "OK" or "Yes" is refused in any spelling or language. About 100 disguised labels are tested, plus ordinary ones that must stay pressable (Settings, Save changes, Environment variables, Privacy & Security, Screen Recording, and the word for Settings in French, German, Spanish, Japanese and Chinese).
+- Strict wins: a few harmless labels are now refused too (Deployments, the Italian word for Settings contains "post"); for those you click yourself.
+
 ## Attacks on the safety rules, and four holes closed: 14 Oct 2026
 
 - **150 disguised commands were thrown at the rules that decide what a task may run** (quotes inside the command name, a backslash, a full path, `env`/`nice`/`command` wrappers, `sh -c`, `eval`, `$(...)`, chained commands, `cd` out first, `~` and `$HOME`, encoded scripts piped to a shell). All the destructive ones, and every attempt to write outside the project, were already stopped. Ordinary building commands (tests, builds, installs inside the project, git status/diff/log) are confirmed not blocked.
