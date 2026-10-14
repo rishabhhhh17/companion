@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Speak to me (spoken replies), off by default: 14 Oct 2026
+
+- **Settings > Speak to me.** When you turn it on, Companion says short lines out loud with your Mac's own built in voice: the lesson step you are on, what a ring points at (a guess says "I think it is here"), and plain words when it is not sure or something needs your attention. Nothing is sent anywhere, there is no voice service, and a new install is silent.
+- **Safe by rules, with tests:** only from the card; markup and web addresses are not read out ("a link"); anything that looks like a key, card or token is never said; long text is cut at a sentence; the same line is not said twice in a row; holding the talk keys, closing the card, or Stop everything silences it at once.
+- **Not heard by a person yet.** The tests never make a sound; the voice itself, its speed and whether it sounds good are for the hands on session.
+
 ## Show me now follows the targeting rule exactly: 14 Oct 2026
 
 Checked against F17 section 4.2 and found two places where Show me was bolder than the rule:
