@@ -7,6 +7,7 @@ mod docking;
 mod fullscreen;
 mod anchor;
 mod updates;
+mod speak;
 mod logfile;
 mod permissions;
 mod ax;
@@ -451,6 +452,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
 
 #[tauri::command]
 fn close_card(app: AppHandle) {
+    speech_off(&app);   // closing the card silences it
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         with_panels(|_, c| c.orderOut(None));
@@ -484,7 +486,7 @@ fn hide_overlay(app: &AppHandle) {
 }
 
 /// Stop everything also takes the pointer away and forgets what was seen.
-fn showme_stop(app: &AppHandle) { point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+fn showme_stop(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 #[tauri::command]
@@ -713,6 +715,28 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     log("update_installed", json!({}));
     app.restart();
 }
+
+// ---------- Spoken replies ----------
+
+static LAST_SAID: Mutex<Option<speak::Last>> = Mutex::new(None);
+
+/// Says one short line with the Mac's built in voice. The page only calls this when the person turned "Speak to me" on.
+/// Only from the card, only plain text of a sensible length, nothing secret looking, and never over the person's own voice.
+#[tauri::command]
+fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String) -> Result<(), String> {
+    if window.label() != "card" { return Err("Speaking can only be started from the card.".into()); }
+    let Some(line) = speak::prepare(&text) else { return Ok(()) };
+    let ok = LAST_SAID.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).should_say(&line, now() as u64);
+    if !ok { return Ok(()); }
+    log("speak", json!({ "chars": line.chars().count() }));   // how long, never what
+    let _ = app.run_on_main_thread(move || speak::mac::say(&line));
+    Ok(())
+}
+
+/// Silence, at once. Also part of Stop everything.
+#[tauri::command]
+fn speak_stop(app: AppHandle) { speech_off(&app); }
+fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); }
 
 // ---------- Settings, and delete everything ----------
 
@@ -1262,6 +1286,7 @@ fn main() {
                     // Hold to talk needs to know when the keys come up as well as down.
                     if s == &sc_voice() {
                         log("hotkey", json!({ "id": "V", "down": e.state == ShortcutState::Pressed }));
+                        if e.state == ShortcutState::Pressed { speech_off(app); }   // never talk over the person
                         voice_send(app, if e.state == ShortcutState::Pressed { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
                         return;
                     }
@@ -1305,7 +1330,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

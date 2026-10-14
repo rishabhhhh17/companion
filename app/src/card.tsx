@@ -5,6 +5,7 @@ import { DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permi
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
+import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -55,6 +56,7 @@ function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, set
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
+  const [speak, setSpeak] = useState(speechOn);
   const [up, setUp] = useState<UpdateState>(foundUpdate ?? { stage: "idle" });
   const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
   const [upAuto, setUpAuto] = useState(() => { try { return localStorage.getItem("companion.updateAuto") !== "0"; } catch { return true; } });
@@ -111,6 +113,9 @@ function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, set
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      <h3>{S.speakTitle}</h3>
+      <div className="line muted">{S.speakHelp}</div>
+      <div className="row"><button className="btn" type="button" aria-pressed={speak} onClick={() => { const v = !speak; setSpeak(v); setSpeech(v); if (!v) void invoke("speak_stop"); }}>{S.speakSetting}: {speak ? "on" : "off"}</button></div>
       <h3>{S.updatesTitle}</h3>
       <div className="line muted">{S.updatesHelp}</div>
       <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
@@ -288,6 +293,14 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Spoken replies: only if turned on, one line per thing shown, and never for anything the person did not ask for.
+  const saidKey = useRef("");
+  const spoken = lineFor({ walk: m.walk, showme: m.showme });
+  useEffect(() => {
+    if (!spoken || spoken.key === saidKey.current || !speechOn()) return;
+    saidKey.current = spoken.key;
+    void invoke("speak", { text: spoken.text }).catch(() => {});
+  }, [spoken?.key]);
   // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
   useEffect(() => {
     let last: number | null = null, enabled = true;
