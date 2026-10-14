@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Show me now follows the targeting rule exactly: 14 Oct 2026
+
+Checked against F17 section 4.2 and found two places where Show me was bolder than the rule:
+- **A guess is no longer drawn.** The model says how sure it is with every answer, and the app ignored that. Now, below 40 percent sure, nothing is drawn: Companion says in words what to look for ("I am not sure where that is, so I will not point at the wrong thing. Look for ...").
+- **A solid ring now needs the app's own structure.** Before, text matched in the picture got a solid ring. Now that is a guess: it gets the soft dashed "around here" ring, unless a real button or link (as the Mac reports it) surrounds that text. Pointing at the failing line from your project, and clicks on real buttons the Mac reports, keep the solid ring.
+- Expect more soft rings than before in apps whose buttons the Mac cannot see (some web apps in some browsers). That is the rule working, not a fault. Not yet measured on real screens: how often each kind appears.
+
 ## A lesson's saved place no longer holds your folder path: 14 Oct 2026
 
 - Where you are in a guided lesson is saved as step names, outcomes and times, plus a short fingerprint of the project instead of its folder path. A new end to end test runs a lesson through the real engine process (listing, a click, a proof from the project, Stop everything, picking up again, beta numbers off until turned on) and is what found that the path had been written down.

@@ -1,6 +1,7 @@
 //! The model's pointer is approximate. Before drawing, the answer is "snapped" to something real on the screen:
 //! the text box it named, the button the Mac says is there, or a close text match. Only if none of those fit does the
-//! pointer fall back to the raw point, drawn as a wide "around here" ring so it never pretends to be exact.
+//! pointer fall back to the raw point, drawn as a wide "around here" ring so it never pretends to be exact. Only the
+//! Mac's own structure (a real button around the spot) makes a ring solid; text matched in the picture is a guess.
 use crate::coords::{Pt, R};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -56,10 +57,16 @@ pub fn similarity(a: &str, b: &str) -> f64 {
     1.0 - prev[b.len()] as f64 / a.len().max(b.len()) as f64
 }
 
+/// Text read from a picture is only a guess. It is confirmed (a solid ring) when the app's own structure, as the Mac
+/// reports it at the model's point, is a real element that surrounds that text (F17 section 4.2, rule 22).
+fn confirmed(a: &Ask, text: &R) -> bool {
+    a.ax.is_some_and(|e| sane_element(&e, text.center(), &a.display))
+}
+
 pub fn snap(a: &Ask) -> Snapped {
     if let Some(id) = a.ocr_id {
         if let Some(b) = a.ocr.iter().find(|b| b.id == id) {
-            if dist_to(&b.rect, a.point) <= OCR_ID_REACH { return Snapped { rect: b.rect, how: How::OcrId, exact: true }; }
+            if dist_to(&b.rect, a.point) <= OCR_ID_REACH { return Snapped { rect: b.rect, how: How::OcrId, exact: confirmed(a, &b.rect) }; }
         }
     }
     if let Some(r) = a.ax {
@@ -73,7 +80,7 @@ pub fn snap(a: &Ask) -> Snapped {
         if sim < FUZZY_MIN { continue; }
         if best.map_or(true, |(_, s, bd)| sim > s || (sim == s && d < bd)) { best = Some((b, sim, d)); }
     }
-    if let Some((b, _, _)) = best { return Snapped { rect: b.rect, how: How::FuzzyText, exact: true }; }
+    if let Some((b, _, _)) = best { return Snapped { rect: b.rect, how: How::FuzzyText, exact: confirmed(a, &b.rect) }; }
     // Nothing real to hold on to: a wide ring, kept inside the display.
     let x = (a.point.x - RING / 2.0).clamp(a.display.x, (a.display.x + a.display.w - RING).max(a.display.x));
     let y = (a.point.y - RING / 2.0).clamp(a.display.y, (a.display.y + a.display.h - RING).max(a.display.y));
@@ -91,7 +98,28 @@ mod tests {
     fn the_named_text_box_wins() {
         let o = [ocr("t1", "Deploy", 500.0, 400.0), ocr("t2", "Cancel", 700.0, 400.0)];
         let s = snap(&ask(Pt { x: 520.0, y: 405.0 }, Some("t1"), "Deploy", &o, Some(R { x: 100.0, y: 100.0, w: 50.0, h: 20.0 })));
-        assert_eq!(s.how, How::OcrId); assert_eq!(s.rect, o[0].rect); assert!(s.exact);
+        assert_eq!(s.how, How::OcrId); assert_eq!(s.rect, o[0].rect);
+        // The Mac reports some other element there, so nothing confirms this text: it is a guess from the picture.
+        assert!(!s.exact);
+    }
+    #[test]
+    fn text_read_from_the_picture_is_a_guess_unless_the_apps_own_structure_confirms_it() {
+        let o = [ocr("t1", "Deploy", 500.0, 400.0)];
+        let around = R { x: 490.0, y: 392.0, w: 110.0, h: 36.0 };   // the real button around that text
+        let s = snap(&ask(Pt { x: 520.0, y: 405.0 }, Some("t1"), "Deploy", &o, Some(around)));
+        assert!(s.exact && s.how == How::OcrId);
+        let none = snap(&ask(Pt { x: 520.0, y: 405.0 }, Some("t1"), "Deploy", &o, None));
+        assert!(!none.exact && none.how == How::OcrId && none.rect == o[0].rect);
+    }
+    #[test]
+    fn a_close_spelling_with_no_structure_behind_it_is_only_a_guess() {
+        let o = [ocr("a", "Deplov", 400.0, 300.0)];
+        let around = R { x: 390.0, y: 292.0, w: 110.0, h: 36.0 };
+        // With a real button there, the button itself is what is pointed at, and that is confirmed.
+        let with = snap(&ask(Pt { x: 430.0, y: 310.0 }, None, "Deploy", &o, Some(around)));
+        assert!(with.exact && with.how == How::Accessibility && with.rect == around);
+        let guess = snap(&ask(Pt { x: 430.0, y: 310.0 }, None, "Deploy", &o, None));
+        assert!(guess.how == How::FuzzyText && !guess.exact);
     }
     #[test]
     fn a_named_text_box_far_from_the_point_is_a_mix_up_and_is_ignored() {

@@ -4,6 +4,7 @@ import { reactionsOn, setReactions } from "./reactions.ts";
 import { DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
+import { aimDecision, notSureWords } from "./pointer.ts";
 import { metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -354,7 +355,12 @@ function Card() {
   const [walk, setWalk] = useState<{ goal: string; steps: string[] } | null>(null);
   useEffect(() => {
     const off = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; req?: string; x?: number; y?: number; ocrId?: string; targetText?: string; caption?: string };
+      const ev = e.payload as { type?: string; req?: string; x?: number; y?: number; ocrId?: string; targetText?: string; caption?: string; confidence?: number };
+      if (ev.type === "assist.point" && ev.req?.startsWith("sm_") && aimDecision(ev.confidence) === "words") {
+        // A guess is not drawn: say in words where to look, and clear what was waiting for an answer.
+        void invoke("showme_clear").then(() => dispatch({ type: "app.showme", stage: "not_sure", message: notSureWords(ev.targetText ?? "", ev.caption ?? "") }));
+        return;
+      }
       if (ev.type === "assist.point" && ev.req?.startsWith("sm_")) {
         void invoke("showme_aim", { req: ev.req, x: ev.x, y: ev.y, ocrId: ev.ocrId ?? null, targetText: ev.targetText ?? "", caption: ev.caption ?? "" });
         setWalk((w) => (w ? { ...w, steps: [...w.steps, ev.caption ?? ""] } : w));
@@ -916,7 +922,7 @@ function Card() {
             </div>
           )}
           {["your_turn_done", "done_for_you"].includes(m.showme.stage) && !walk && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); }}>{S.onlineClose}</button></div>}
-          {(["error", "needs_permission", "opened", "window_changed"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
+          {(["error", "needs_permission", "opened", "window_changed", "not_sure"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
         </section>
       )}
 

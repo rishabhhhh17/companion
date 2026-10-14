@@ -28,3 +28,14 @@ export function confetti(n: number, dockedRight: boolean): Piece[] {
 }
 /** Where a piece is after t seconds (gravity pulls it down). */
 export function at(p: Piece, t: number): { dx: number; dy: number } { return { dx: p.vx * t, dy: p.vy * t + 520 * t * t }; }
+
+/** F17 4.2: below this the model is guessing, so nothing is drawn and Companion says in words where to look. */
+export const LOW_CONFIDENCE = 0.4;
+export function aimDecision(confidence: unknown): "draw" | "words" {
+  return typeof confidence === "number" && Number.isFinite(confidence) && confidence >= LOW_CONFIDENCE ? "draw" : "words";
+}
+/** The words used instead of a ring. Plain, and says what to look for. */
+export function notSureWords(targetText: string, caption: string): string {
+  const look = targetText.trim().replace(/\s+/g, " ").slice(0, 80);
+  return `I am not sure where that is, so I will not point at the wrong thing.${look ? ` Look for "${look}".` : ""}${caption.trim() ? ` ${caption.trim().slice(0, 160)}` : ""}`;
+}
