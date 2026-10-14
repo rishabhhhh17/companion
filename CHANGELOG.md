@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Pointing through Computer Use, built but off: 14 Oct 2026
+
+- **The one technique worth taking from Clicky's open source code.** It asks Anthropic's Computer Use tool where to click, declaring the picture's own size, instead of a free form coordinate. Built as an optional lane (`runner/src/aim.ts`), written fresh, with the idea credited in `THIRD_PARTY_NOTICES.md`.
+- **Off, on purpose.** It works only on the API key route, only when `COMPANION_AIM=computer_use` is set, and any failure falls back to the current lane. Nothing makes a real call until you run the aim eval with it on (`COMPANION_ROUTE=api_key COMPANION_AIM=computer_use bun run scripts/eval-aim.ts`, a few cents). It becomes the default only if it clearly beats the current lane. Not yet measured, and not yet tried against the live API (the tool version and model pairing may need a change; the fallback covers that).
+- The picture goes straight from memory to Anthropic with your own key; nothing is written to disk, and the key is never in an error message.
+- Its confidence is worked out by us (higher when on screen text sits right at the point), not reported by the model, and the targeting rule still applies: a guess gets a soft ring, and low confidence draws nothing.
+
 ## Point at the problem works across several monitors: 14 Oct 2026
 
 - Idea taken from reading Clicky's open source code (it lets its model point at another screen). Before, pressing the key looked only at the display your mouse was on, so a failing line in an editor on your second monitor was never found. Now, if the line is not on that display, Companion looks at your other displays one after another (up to four), all under the same light, and points on the one where it finds the line. Nothing is saved or sent; a hit on the first display never looks at the others. Tested with a fake two display Mac; **not yet tried on real monitors**.

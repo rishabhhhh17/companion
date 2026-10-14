@@ -8,8 +8,10 @@ import { chromium } from "playwright-core";
 import { browserExecutable } from "../src/proof/browser.ts";
 import { createLanes, readSettings } from "../src/engines.ts";
 
-process.env.COMPANION_ROUTE = "plan"; process.env.COMPANION_MODEL = "claude-haiku-4-5-20251001";
-process.env.CLAUDE_CONFIG_DIR = join(homedir(), "Library/Application Support/Companion-test-claude");
+// Default: the test plan login with a small model. To score the Computer Use lane instead (needs an API key in the
+// Keychain, costs a few cents), start it as:  COMPANION_ROUTE=api_key COMPANION_AIM=computer_use bun run scripts/eval-aim.ts
+process.env.COMPANION_ROUTE ??= "plan"; process.env.COMPANION_MODEL ??= "claude-haiku-4-5-20251001";
+if (process.env.COMPANION_ROUTE === "plan") process.env.CLAUDE_CONFIG_DIR = join(homedir(), "Library/Application Support/Companion-test-claude");
 const lanes = createLanes(readSettings(process.env as never));
 
 const css = (dark: boolean, dense: boolean) => `*{box-sizing:border-box}body{margin:0;font:${dense ? 12 : 15}px -apple-system,Helvetica,sans-serif;background:${dark ? "#111418" : "#f6f7f9"};color:${dark ? "#e7e9ec" : "#1b1f24"}}
