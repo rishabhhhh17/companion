@@ -4,12 +4,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "./engine.ts";
 import { DEFAULT_REF, resolveAuth, type KeychainRef } from "./keychain.ts";
+import { ComputerUseVision, withFallback } from "./aim.ts";
 import { FastLane, StubFast, VisionLane, type FastLike, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 
 export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
+  // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
+  aim: "default" | "computer_use"; aimModel?: string;
 };
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
@@ -24,6 +27,8 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     model: env.COMPANION_MODEL || undefined,
     script,
     assistStub: env.COMPANION_ASSIST_STUB === "1",
+    aim: env.COMPANION_AIM === "computer_use" ? "computer_use" : "default",
+    aimModel: env.COMPANION_AIM_MODEL || undefined,
   };
 }
 
@@ -62,8 +67,13 @@ export function createLanes(s: Settings): { fast: FastLike; vision: VisionLike }
     if (a.method === "none") throw new Error(NOT_CONNECTED);
     return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: childEnv(a) };
   };
+  const classic: VisionLike = { locate: async (req, signal) => new VisionLane(await lane()).locate(req, signal) };
+  // The Computer Use lane needs the person's own API key, so it is never used on a plan sign in; any failure falls back.
+  const vision = s.aim === "computer_use" && s.route === "api_key"
+    ? withFallback(new ComputerUseVision({ apiKey: async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; }, model: s.aimModel }), classic)
+    : classic;
   return {
     fast: { run: async (req, onDelta, signal) => new FastLane(await lane()).run(req, onDelta, signal) },
-    vision: { locate: async (req, signal) => new VisionLane(await lane()).locate(req, signal) },
+    vision,
   };
 }

@@ -74,7 +74,7 @@ pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf,
 
 /// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
-const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB"];
+const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL"];
 
 pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     dev.get("env").and_then(Value::as_object).map(|o| {
