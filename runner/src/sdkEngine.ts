@@ -26,6 +26,8 @@ export function resolveClaudeBinary(override?: string): string {
 export type SdkConfig = {
   project: string; model: string; budgetUsd: number; claudeBinary: string; env: Record<string, string>;
   authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string; planOnly?: boolean; toolDone?: (toolUseId?: string) => void;
+  // What Companion remembers about this person and project, added to the instructions as background.
+  memory?: string;
 };
 
 export function buildSdkOptions(c: SdkConfig) {

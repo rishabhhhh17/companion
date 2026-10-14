@@ -53,3 +53,17 @@ describe("plain wording", () => {
     expect(plainError("engine error: boom")).toMatch(/try again/i);
   });
 });
+
+describe("reduced motion (rule 13)", () => {
+  test("every looping or one off animation on the character is switched off when the Mac asks for less motion", async () => {
+    const css = await Bun.file(new URL("./style.css", import.meta.url)).text();
+    const block = /@media \(prefers-reduced-motion: reduce\)\s*\{([^}]*\{[^}]*\}[^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(block).toContain("[data-react]");
+    expect(block).toContain("[data-motion]");
+    expect(block).toContain("animation: none");
+  });
+  test("the page that draws rings and sketches also turns its pulse off", async () => {
+    const html = await Bun.file(new URL("../overlay.html", import.meta.url)).text();
+    expect(html).toMatch(/prefers-reduced-motion:reduce\)\{\.ring\{animation:none\}/);
+  });
+});

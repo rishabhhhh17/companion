@@ -116,7 +116,7 @@ describe("making it live", () => {
   });
   test("a failed promote says so and records nothing as live", async () => {
     const t = setup(); await t.cmd({ type: "ship.preview" });
-    t.deployer.promote = async () => ({ ok: false as const, reason: "Vercel said no: nope" });
+    (t.deployer as Deployer).promote = async () => ({ ok: false as const, reason: "Vercel said no: nope" });
     await t.cmd({ type: "ship.live", url: UP, confirm: true });
     expect(t.last().stage).toBe("failed"); expect(readShips(t.project).some((r) => r.action === "live")).toBe(false);
   });

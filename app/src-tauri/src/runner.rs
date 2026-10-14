@@ -78,6 +78,7 @@ pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     }).unwrap_or_default()
 }
 
+#[cfg(test)]
 pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf) -> Result<Locations, String> { locations_with_bundle(dev_json, env, data, None) }
 
 /// Where the engine is inside the installed app: `Contents/Resources/engine` holds `bin/bun` and `runner/src/main.ts`

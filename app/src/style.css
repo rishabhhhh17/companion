@@ -79,4 +79,4 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 @keyframes wince { 25% { transform: scale(.9) rotate(-4deg); } 55% { transform: scale(.95) rotate(3deg); } }
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
 @keyframes party { 20% { transform: translateY(-14px) rotate(-10deg) scale(1.08); } 45% { transform: translateY(0) rotate(8deg); } 65% { transform: translateY(-6px) rotate(-4deg); } }
-@media (prefers-reduced-motion: reduce) { .character[data-react] { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion] { animation: none; } }
