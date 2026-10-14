@@ -45,8 +45,14 @@ export function resolveLinks(input: string, depth = 0): string {
 const PROTECTED = new Set([".git", ".claude", ".companion"]);
 
 type Where = { inside: boolean; segments: string[]; protectedPart: string | null; abs: string };
+// A file tool may be handed "~/.aws/credentials" or "$HOME/.ssh/id_rsa": those are the home folder, not a name inside the project.
+const homeSpelling = (file: string): string => {
+  const m = /^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/.exec(file);
+  return m ? homedir() + file.slice(m[0].length) : file;
+};
 function whereIs(project: string, file: string, cwd?: string): Where {
   const root = resolveLinks(project);
+  file = homeSpelling(file);
   const abs = resolveLinks(isAbsolute(file) ? file : join(cwd ?? project, file));
   const rel = relative(root, abs);
   const inside = rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
@@ -86,7 +92,13 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
   if (tool === "WebFetch") {
     const url = String(input.url ?? "");
     if (!isSafeUrl(url)) return deny("network", "only public web pages may be opened, never this computer or a private network");
-    try { if (new URL(url).search.length > 1) return ask("network", "this web address carries data in it", false); } catch { return deny("network", "that is not a web address"); }
+    try {
+      const u = new URL(url);
+      if (u.search.length > 1) return ask("network", "this web address carries data in it", false);
+      // Data can ride in the path as well ("/aGVsbG8gc2VjcmV0"): an unusually long address, or a long run of code-like
+      // letters in one part of it, is not how a documentation page is named.
+      if (url.length > 300 || u.pathname.split("/").some((part) => part.length >= 40 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part))) return ask("network", "this web address looks like it carries data in it", false);
+    } catch { return deny("network", "that is not a web address"); }
     return allow();
   }
   if (SAFE_TOOLS.has(tool)) return allow();
@@ -105,8 +117,10 @@ const INLINE_CODE: Record<string, RegExp> = {
   python: /^-[A-Za-z]*c/, python2: /^-[A-Za-z]*c/, python3: /^-[A-Za-z]*c/, node: /^(-e|-p|--eval|--print|-pe)$/, nodejs: /^(-e|-p|--eval)$/, deno: /^(eval)$/, bun: /^(-e|--eval)$/,
   ruby: /^-[A-Za-z]*e/, perl: /^-[A-Za-z]*[eE]/, php: /^-r$/, osascript: /^-e$/, lua: /^-e$/, Rscript: /^-e$/, swift: /^-e$/, awk: /^$never/,
 };
-const SYSTEM_TOOLS = new Set(["security", "launchctl", "csrutil", "spctl", "tccutil", "dscl", "sysadminctl", "systemsetup", "networksetup", "pmset", "nvram", "diskutil", "kextload", "kextunload", "dseditgroup"]);
-const ACCOUNT_AND_NETWORK_TOOLS = new Set(["aws", "gcloud", "gsutil", "az", "terraform", "tofu", "pulumi", "kubectl", "helm", "doctl", "stripe", "eas", "ibmcloud", "oci", "ansible", "vagrant", "mysql", "mariadb", "mysqldump", "pg_dump", "pg_restore", "pg_dumpall", "redis-cli", "mongosh", "mongo", "mongodump", "mongorestore", "psql", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "tailscale", "ngrok", "open", "say", "pbpaste"]);
+// Also here: looking at the screen (rule 5: only on the person's own key press), searching the whole Mac, timers that run
+// later, disk tools. None of these is needed to build a project.
+const SYSTEM_TOOLS = new Set(["screencapture", "mdfind", "mdls", "tmutil", "crontab", "at", "atq", "atrm", "hdiutil", "dtrace", "fs_usage", "newfs_hfs", "newfs_apfs", "newfs_msdos", "security", "launchctl", "csrutil", "spctl", "tccutil", "dscl", "sysadminctl", "systemsetup", "networksetup", "pmset", "nvram", "diskutil", "kextload", "kextunload", "dseditgroup"]);
+const ACCOUNT_AND_NETWORK_TOOLS = new Set(["aws", "gcloud", "gsutil", "az", "terraform", "tofu", "pulumi", "kubectl", "helm", "doctl", "stripe", "eas", "ibmcloud", "oci", "ansible", "vagrant", "mysql", "mariadb", "mysqldump", "pg_dump", "pg_restore", "pg_dumpall", "redis-cli", "mongosh", "mongo", "mongodump", "mongorestore", "psql", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "tailscale", "ngrok", "open", "say", "pbpaste", "pbcopy", "afplay"]);
 const DOCKER_READ = new Set(["ps", "images", "logs", "inspect", "version", "info", "stats", "top", "port", "history", "search", "ls", "--version", "-v"]);
 // Words that make a command with dynamic parts (like $(...)) too risky to guess.
 const DANGEROUS_WORDS = new Set(["rm", "rmdir", "mv", "cp", "ln", "tee", "dd", "chmod", "chown", "chgrp", "truncate", "find", "xargs", "rsync", "git", "curl", "wget", "sh", "bash", "zsh", "dash", "ksh", "eval", "python", "python3", "node", "perl", "ruby", "php", "security", "osascript", "open", "npm", "npx", "pnpm", "yarn", "bun", "vercel", "wrangler", "gh", "docker", "kubectl", "aws", "gcloud", "terraform", "psql", "mysql", "ssh", "scp", "sudo", "su", "install", "touch", "mkdir", "tar", "unzip", "sed", "launchctl", "defaults"]);
@@ -164,6 +178,9 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
   const args = words.slice(1);
   if (words[0].includes("$") || words[0].startsWith("`")) return ask("irreversible", "the command is worked out while it runs, so I cannot check it");
   if (["sudo", "doas", "su"].includes(name)) return deny("install", "commands may not use administrator rights");
+  if (name === "screencapture") return deny("irreversible", "commands may not look at your screen; only your own key press does");
+  if (name.startsWith("mkfs")) return deny("irreversible", "this would erase a disk");
+  if (["kill", "killall", "pkill"].includes(name)) return ask("irreversible", "this stops programs running on your Mac", false);
   if (SYSTEM_TOOLS.has(name) || (name === "defaults" && ["write", "delete", "import", "rename"].includes(args[0] ?? ""))) return deny("irreversible", "this changes your Mac's settings or reads its secrets");
   if (SHELLS.has(name) || name === "source" || name === ".") return ask("irreversible", "a script I cannot read");
   if (words[0].endsWith(".sh") || words[0].endsWith(".bash") || words[0].endsWith(".zsh")) return ask("irreversible", "a script I cannot read");
