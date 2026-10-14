@@ -261,7 +261,8 @@ function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {
   if (o.v !== PROTOCOL_VERSION) return { ok: false, error: `unsupported protocol version ${String(o.v)}; this runner speaks version ${PROTOCOL_VERSION}` };
   if (typeof o.id !== "string" || o.id.length === 0) return { ok: false, error: "missing id" };
   if (typeof o.type !== "string") return { ok: false, error: "missing type" };
-  const checks = table[o.type];
+  // Own names only: "constructor", "toString" and "__proto__" are on every object and are not message types.
+  const checks = Object.hasOwn(table, o.type) ? table[o.type] : undefined;
   if (!checks) return { ok: false, error: `unknown type "${o.type}"` };
   for (const c of checks) {
     const e = c(o);

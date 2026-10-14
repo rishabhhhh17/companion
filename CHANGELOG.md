@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Garbage in, no crash: 14 Oct 2026
+
+- A new test feeds random junk (and deliberately huge or slow-looking input) to everything that reads text Companion does not control: a tool's output, the model's answers, lesson files, protocol lines, and the secret-covering code. None may crash or hang. It is seeded, so a failure can be repeated.
+- **It found a real bug.** A message whose type was a name every object has ("constructor", "toString") made the protocol reader throw instead of refusing it. The app already blocked those names from pages, so nothing could reach it, but the reader should not fall over, and one bad line must never stop the engine: both are fixed, with a test.
+
 ## A free check that the hero finds the real failing line: 14 Oct 2026
 
 - **Fifteen small broken projects**, each broken in a way beginners meet (a missing bracket, an undefined name, a missing file, reading a property of nothing, bad settings JSON, a missing setting, a wrong export name, a failing test, a rejected promise, a Python typo, and four TypeScript mistakes: wrong type, missing property, unknown import, wrong number of arguments; plus a Bun runtime error). For each, the project's own check is run for real and Companion's locator must turn the real output into the exact file and line. It runs in seconds with no model, and is now part of the main suite (`evals/rescue-projects`). All fifteen pass.
