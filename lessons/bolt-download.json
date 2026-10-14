@@ -1,0 +1,54 @@
+{
+  "id": "bolt-download",
+  "title": "Get your Bolt project onto your Mac",
+  "app": "Bolt",
+  "goal": "Download the project's code as a zip so Companion can open it",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open your project in Bolt.",
+      "find": "your project in the Bolt editor",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "export",
+      "say": "Look for Export, then Download. In some versions it is a Download button or a three dot menu at the top right. Guides disagree, so look in both places.",
+      "find": "Export in the project menu, or Download at the top right",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If you see a GitHub icon at the top, you can send the project to GitHub instead and open it from a link.",
+        "find": "the GitHub icon in the editor's top bar"
+      }
+    },
+    {
+      "id": "zip",
+      "say": "Your browser saves a zip file. Open your Downloads folder and double click the zip to unpack it.",
+      "find": "the downloaded zip file in Downloads",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "move",
+      "say": "Drag the unpacked folder to somewhere you will find it again, like Documents.",
+      "find": "the unpacked project folder",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "open-in-companion",
+      "say": "In Companion, press Change folder and choose that folder.",
+      "find": "the Change folder button in Companion's card",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

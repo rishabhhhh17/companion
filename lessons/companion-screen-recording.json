@@ -3,6 +3,8 @@
   "title": "Let Companion see your screen when you ask",
   "app": "System Settings",
   "goal": "Turn on Screen Recording for Companion (only used when you press the key)",
+  "status": "draft",
+  "needsProject": false,
   "steps": [
     {
       "id": "open-settings",
@@ -40,6 +42,5 @@
         "find": "the plus button under the list"
       }
     }
-  ],
-  "status": "draft"
+  ]
 }

@@ -4,6 +4,7 @@
   "app": "Vercel",
   "goal": "Open the build log of a failed deploy and find the line that says what went wrong",
   "status": "draft",
+  "needsProject": false,
   "steps": [
     {
       "id": "project",

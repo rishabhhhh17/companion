@@ -3,6 +3,8 @@
   "title": "Let Companion press buttons for you",
   "app": "System Settings",
   "goal": "Turn on Accessibility for Companion (only used for Do it for me)",
+  "status": "draft",
+  "needsProject": false,
   "steps": [
     {
       "id": "open-settings",
@@ -40,6 +42,5 @@
         "find": "the plus button under the list"
       }
     }
-  ],
-  "status": "draft"
+  ]
 }

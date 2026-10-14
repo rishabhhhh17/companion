@@ -4,6 +4,7 @@
   "app": "Lovable",
   "goal": "Publish the project so it has a public link",
   "status": "draft",
+  "needsProject": false,
   "steps": [
     {
       "id": "open",

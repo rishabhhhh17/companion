@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Three more lessons, and lessons that need no folder: 14 Oct 2026
+
+- **New drafts:** install Claude Code and start your first session (from the official quickstart), get your Bolt project onto your Mac, and get your Replit project onto your Mac (from Replit's help page). They are marked draft like the others; none has been tried by a person. Bolt's export button is described differently by different guides, so that lesson says to look in both places. No Cursor lesson: the Cursor docs gave no usable steps and I did not want to guess.
+- **Lessons no longer need a project folder to start**, when they do not read one. Before, a person with no folder (exactly who needs "install Claude Code" or "get my project out of Bolt") could not start any lesson, and the permission lessons in Settings were greyed out. Lessons that check files or settings in a project still need the chosen folder and say so.
+
 ## The lesson's progress list is visible: 14 Oct 2026
 
 - A lesson card now has a **What we have done** list you can open: each finished step, and whether it was proven or you did it yourself. It was already kept so a lesson could pick up where it left off; now you can see it too (F17 section 4.4, and the same idea as HeyClicky's progress log). A step that came undone while you were away leaves the list.
