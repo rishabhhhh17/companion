@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Updates: 14 Oct 2026
+
+- **Settings > Updates.** Companion can check for a newer version and install it, so friends get fixes without reinstalling. It asks one web address for the newest version (a plain request; that address sees your internet address like any website), checks the download against Companion's own update key, and installs **only when you press Install**, and never while something is running. A once a day check (on by default, with a switch) only looks; it shows a note when a new version is ready.
+- **Not live yet.** The update key and the public address are yours to set up (`docs/releasing.md`): until then the app says "Updates are not set up in this build yet" and checks nothing. The key is made on your Mac and kept in your Keychain; I never see it. Because the source repo is private, update files go in a separate public repo that holds only release files.
+- Tried: the signing tool with a throwaway key, and all the words and rules by tests. **Not tried:** a real update from a real address (needs the key and the public repo).
+
 ## Do it for me on the lesson card: 14 Oct 2026
 
 - While a lesson step's ring is waiting for your click, the lesson card now has **Do it for me** too (before, only the pointing card had it). It still never presses anything that sends, pays, deletes or publishes, or anything inside a dialog; for those it tells you to click yourself.

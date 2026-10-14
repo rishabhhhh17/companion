@@ -9,12 +9,15 @@ import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWord
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
+import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 // Beta numbers: a fixed name, counted only if the person turned numbers on.
+// An update the daily check found, kept so Settings can offer Install without asking again.
+let foundUpdate: UpdateState | null = null;
 const SESSION_GAP_MS = 30 * 60 * 1000;
 const count = (name: string) => { void send(metricsNote(name)); };
 // When the person last used the card. Kept only on this Mac, in this page's own storage.
@@ -43,7 +46,7 @@ function ExplainBox({ e }: { e: Explain }) {
   );
 }
 
-function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -51,6 +54,20 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
+  const [up, setUp] = useState<UpdateState>(foundUpdate ?? { stage: "idle" });
+  const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
+  const [upAuto, setUpAuto] = useState(() => { try { return localStorage.getItem("companion.updateAuto") !== "0"; } catch { return true; } });
+  useEffect(() => { void invoke("update_status").then((v) => setUpInfo(v as { configured: boolean; version: string })).catch(() => {}); }, []);
+  const checkNow = () => {
+    setUp({ stage: "checking" });
+    void invoke("check_update").then((v) => {
+      try { localStorage.setItem("companion.updateChecked", String(Date.now())); } catch { /* storage may be unavailable */ }
+      const r = v as { available: boolean; version?: string; notes?: string };
+      foundUpdate = r.available ? { stage: "found", version: r.version ?? "", notes: r.notes ?? "" } : null;
+      setUp(foundUpdate ?? { stage: "none" });
+    }).catch((e) => setUp({ stage: "failed", reason: String(e) }));
+  };
+  const installNow = () => { if (!canInstall(working)) return; setUp({ stage: "installing" }); foundUpdate = null; void invoke("install_update").catch((e) => setUp({ stage: "failed", reason: String(e) })); };
   const [nums, setNums] = useState<NumbersSummary | null>(null);
   const [showNums, setShowNums] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -93,6 +110,16 @@ function SettingsPanel({ explainOn, project, fun, setFun, autoSend, setAutoSend,
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      <h3>{S.updatesTitle}</h3>
+      <div className="line muted">{S.updatesHelp}</div>
+      <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
+      {up.stage === "found" && up.notes && <div className="line muted">{up.notes}</div>}
+      {upInfo.configured && <div className="row">
+        <button className="btn" type="button" disabled={up.stage === "checking" || up.stage === "installing"} onClick={checkNow}>{S.updatesCheck}</button>
+        {up.stage === "found" && <button className="btn primary" type="button" disabled={!canInstall(working)} onClick={installNow}>{S.updatesInstall}</button>}
+        <button className="btn" type="button" aria-pressed={upAuto} onClick={() => { const v = !upAuto; setUpAuto(v); try { localStorage.setItem("companion.updateAuto", v ? "1" : "0"); } catch { /* storage may be unavailable */ } }}>{S.updatesAuto}: {upAuto ? "on" : "off"}</button>
+      </div>}
+      {up.stage === "found" && !canInstall(working) && <div className="line muted">{S.updatesBusy}</div>}
       <h3>{S.numbersTitle}</h3>
       <div className="line muted">{S.numbersHelp}</div>
       <div className="row">
@@ -259,6 +286,19 @@ function Card() {
       if (ev.type === "project.cloned") { setCopying(false); if (ev.ok && ev.path) useFolder(ev.path); }
     });
     return () => { off.then((f) => f()); };
+  }, []);
+  // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
+  useEffect(() => {
+    let last: number | null = null, enabled = true;
+    try { const v = localStorage.getItem("companion.updateChecked"); last = v ? Number(v) : null; enabled = localStorage.getItem("companion.updateAuto") !== "0"; } catch { /* storage may be unavailable */ }
+    void invoke("update_status").then((v) => {
+      if (!autoCheckDue({ configured: !!(v as { configured?: boolean }).configured, enabled, lastMs: last, nowMs: Date.now() })) return;
+      return invoke("check_update").then((r) => {
+        try { localStorage.setItem("companion.updateChecked", String(Date.now())); } catch { /* storage may be unavailable */ }   // a failed or offline check is tried again next time
+        const f = r as { available?: boolean; version?: string; notes?: string };
+        if (f.available) { foundUpdate = { stage: "found", version: f.version ?? "", notes: f.notes ?? "" }; dispatch({ type: "app.notice", message: S.updatesReady }); }
+      });
+    }).catch(() => {});
   }, []);
   // Draw it for me: ask why it broke; when the diagram comes back it is laid out here and drawn on the screen.
   const asked = useRef(false);
@@ -478,7 +518,7 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel explainOn={m.explainOn} project={project} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
+      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
       {m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
