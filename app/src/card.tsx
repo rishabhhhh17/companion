@@ -6,7 +6,7 @@ import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
-import { metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine } from "./model.ts";
@@ -99,7 +99,7 @@ function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, set
         return (
           <div className="line" key={k}>
             <b>{r.label}:</b> {r.state}. <span className="muted">{r.why}</span>
-            {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button> <button className="btn" type="button" disabled={!project} onClick={() => onLesson(permissionLesson(k))}>{S.settingsWalkMe}</button></>}
+            {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button> <button className="btn" type="button" onClick={() => onLesson(permissionLesson(k))}>{S.settingsWalkMe}</button></>}
           </div>
         );
       })}
@@ -445,10 +445,11 @@ function Card() {
   showMeRef.current = showMe;
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
   const [lessonsOpen, setLessonsOpen] = useState(false);
-  const openLessons = () => { if (!projectRef.current) return; setLessonsOpen((v) => !v); void send(walkList(projectRef.current)); };
+  // Lessons that read the project need a chosen folder; the others (installing a tool, leaving a builder) do not.
+  const openLessons = () => { setLessonsOpen((v) => !v); void send(walkList(projectRef.current || NO_PROJECT)); };
   const beginLesson = (lesson: string, fresh: boolean) => {
-    if (!projectRef.current) return;
-    const c = walkStart(projectRef.current, lesson, fresh);
+    // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
+    const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
     noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
     dispatch({ type: "ui.walkRequested", walk: (c as { id: string }).id }); setLessonsOpen(false); void send(c);
   };

@@ -1,0 +1,62 @@
+{
+  "id": "replit-download",
+  "title": "Get your Replit project onto your Mac",
+  "app": "Replit",
+  "goal": "Download the project as a zip so Companion can open it",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open your project in Replit.",
+      "find": "your project in the Replit workspace",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "menu",
+      "say": "Press the three dot menu at the top of the file list (the Files panel).",
+      "find": "the three dot menu at the top of the file list",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "download",
+      "say": "Choose Download as zip. Big projects can take a moment.",
+      "find": "Download as zip in the menu",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If the download fails, open the Shell, type zip -r project.zip . and press Return, then download project.zip from the file list.",
+        "find": "the Shell tab"
+      }
+    },
+    {
+      "id": "unzip",
+      "say": "Open your Downloads folder and double click the zip to unpack it.",
+      "find": "the downloaded zip file in Downloads",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "move",
+      "say": "Drag the unpacked folder to somewhere you will find it again, like Documents.",
+      "find": "the unpacked project folder",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "open-in-companion",
+      "say": "In Companion, press Change folder and choose that folder.",
+      "find": "the Change folder button in Companion's card",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

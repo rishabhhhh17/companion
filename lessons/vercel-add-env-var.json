@@ -4,6 +4,7 @@
   "app": "Vercel",
   "goal": "Put a setting (like an API address) where your live site can read it, and make the site pick it up",
   "status": "draft",
+  "needsProject": false,
   "steps": [
     {
       "id": "project",

@@ -1,6 +1,6 @@
 // Runs walkthroughs for the app: commands in, events out. The place is saved after every move. The project is only read.
 import type { Command, Event } from "../../protocol/index.ts";
-import { FileWalkStore, loadLessons, Walkthrough, type Checker, type Lesson, type Settled } from "./walk.ts";
+import { FileWalkStore, loadLessons, NO_PROJECT, Walkthrough, type Checker, type Lesson, type Settled } from "./walk.ts";
 
 type Active = { walk: string; project: string; lesson: Lesson; w: Walkthrough; busy: boolean; asked: boolean };
 type WalkCmd = Extract<Command, { type: `walk.${string}` }>;
@@ -19,7 +19,7 @@ export class WalkService {
     switch (cmd.type) {
       case "walk.list": {
         const { lessons, problems } = loadLessons(this.o.lessonDirs);
-        this.emit({ type: "walk.lessons", project: cmd.project, problems: problems.length, lessons: lessons.map((l) => ({ id: l.id, title: l.title, app: l.app, goal: l.goal, status: l.status, steps: l.steps.length, saved: this.o.store.load(cmd.project, l.id) !== null })) });
+        this.emit({ type: "walk.lessons", project: cmd.project, problems: problems.length, lessons: lessons.map((l) => ({ id: l.id, title: l.title, app: l.app, goal: l.goal, status: l.status, needsProject: l.needsProject, steps: l.steps.length, saved: this.o.store.load(cmd.project, l.id) !== null })) });
         return;
       }
       case "walk.start": return this.start(cmd);
@@ -49,6 +49,8 @@ export class WalkService {
   private async start(cmd: Extract<WalkCmd, { type: "walk.start" }>) {
     const lesson = loadLessons(this.o.lessonDirs).lessons.find((l) => l.id === cmd.lesson);
     if (!lesson) { this.emit({ type: "walk.stopped", walk: cmd.id, reason: "I could not find that lesson." }); return; }
+    // A lesson that reads the project needs a real one; a lesson that needs none uses the stand in and nothing else.
+    if (lesson.needsProject && cmd.project === NO_PROJECT) { this.emit({ type: "walk.stopped", walk: cmd.id, reason: "Choose your project folder first, then start this lesson." }); return; }
     for (const a of [...this.active.values()]) if (a.project === cmd.project || a.walk === cmd.id) { a.w.stop(); this.save(a); this.active.delete(a.walk); }
     const saved = cmd.fresh ? null : this.o.store.load(cmd.project, lesson.id);
     const w = new Walkthrough(lesson, saved, { now: this.o.now, project: cmd.project });

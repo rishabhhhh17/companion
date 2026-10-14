@@ -1,0 +1,78 @@
+{
+  "id": "claude-code-install",
+  "title": "Install Claude Code and start your first session",
+  "app": "Terminal",
+  "goal": "Get Claude Code installed and running in a project folder",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "open-terminal",
+      "say": "Open the Terminal app: press Command and Space, type Terminal, press Return.",
+      "find": "the Terminal window or the Terminal app icon",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "paste",
+      "say": "Copy the install command from Claude Code's own page (code.claude.com) and paste it into Terminal. It runs a program from the internet, so only use that page.",
+      "find": "the Terminal window",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "run",
+      "say": "Press Return. It shows no progress while it downloads, so wait for the prompt to come back.",
+      "find": "the Terminal window prompt",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "new-window",
+      "say": "Open a new Terminal window (Command and N), type claude --version and press Return.",
+      "find": "the new Terminal window",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If it says command not found, close Terminal, open it again and retry. Claude's install page has a Fix your PATH section.",
+        "find": "the Terminal window"
+      }
+    },
+    {
+      "id": "cd",
+      "say": "Go to your project: type cd, a space, drag your project folder into the Terminal window, and press Return.",
+      "find": "the project folder you dragged into Terminal",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "start",
+      "say": "Type claude and press Return to start it.",
+      "find": "the Terminal window",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "login",
+      "say": "The first time, it asks you to log in. Follow the prompts in your browser.",
+      "find": "the browser window that opened to sign in",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "first-question",
+      "say": "Type what does this project do? and press Return. Claude reads your files and answers.",
+      "find": "the Terminal window",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

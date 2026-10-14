@@ -4,6 +4,7 @@
   "app": "Lovable",
   "goal": "Connect the project to GitHub and find its link, so Companion can open it from a link",
   "status": "draft",
+  "needsProject": false,
   "steps": [
     {
       "id": "open",

@@ -38,11 +38,15 @@ pub fn check_command(v: &Value) -> Result<(), String> {
 }
 
 /// Commands that run or read things in a project folder: from a page they may name only the folder the person chose.
+/// The stand in project for lessons that need none (see runner/src/walk.ts).
+pub const NO_PROJECT: &str = "no-project";
 pub const PROJECT_BOUND: &[&str] = &["project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start"];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
     if !PROJECT_BOUND.contains(&t) { return Ok(()); }
     match v.get("project").and_then(Value::as_str) {
+        // Lessons that need no project (installing a tool, leaving a builder) use this stand in name and read nothing.
+        Some(NO_PROJECT) if t.starts_with("walk.") => Ok(()),
         Some(p) if !current.is_empty() && p == current => Ok(()),
         _ => Err("that command may only name the project folder you chose".into()),
     }
@@ -297,6 +301,12 @@ mod tests {
         assert!(check_project(&c("problem.find", "/"), "/Users/me/site").is_err());
         assert!(check_project(&c("project.inspect", "/Users/me/site"), "").is_err());
         assert!(check_project(&c("memory.list", "/anything"), "/Users/me/site").is_ok());   // not a project bound command
+        // Lessons that need no project may use the stand in name, with no folder chosen; nothing else may.
+        assert!(check_project(&c("walk.start", "no-project"), "").is_ok());
+        assert!(check_project(&c("walk.list", "no-project"), "/Users/me/site").is_ok());
+        assert!(check_project(&c("project.install", "no-project"), "/Users/me/site").is_err());
+        assert!(check_project(&c("problem.find", "no-project"), "").is_err());
+        assert!(check_project(&c("walk.start", "/Users/me/other"), "/Users/me/site").is_err());
     }
     use serde_json::json;
 

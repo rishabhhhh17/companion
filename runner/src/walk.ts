@@ -9,6 +9,8 @@ import { isEnvFile } from "./diagram.ts";
 import { envNames } from "./proof/intake.ts";
 
 export const MAX_STEPS = 15;
+/** The stand in "project" for lessons that need none (installing a tool, leaving a builder): they only ask the person. */
+export const NO_PROJECT = "no-project";
 
 export type Check =
   | { kind: "ask" }
@@ -19,7 +21,7 @@ export type Way = { say: string; find: string };
 export type Step = Way & { id: string; check: Check; instead?: Way };
 // draft: written from the maker's own docs, not tried by a person yet. tried: someone walked it on a real screen.
 export type LessonStatus = "draft" | "tried";
-export type Lesson = { id: string; title: string; app: string; goal: string; status: LessonStatus; steps: Step[] };
+export type Lesson = { id: string; title: string; app: string; goal: string; status: LessonStatus; needsProject: boolean; steps: Step[] };
 export type Checker = (c: Check) => Promise<boolean>;
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,39}$/i;
@@ -76,7 +78,10 @@ export function parseLesson(raw: unknown): { ok: true; lesson: Lesson } | { ok: 
     steps.push({ id: s.id, ...way.way, check: check.check, ...(instead ? { instead } : {}) });
   }
   if (r.status !== undefined && r.status !== "draft" && r.status !== "tried") return { ok: false, error: 'the "status" is "draft" or "tried"' };
-  return { ok: true, lesson: { id, title, app, goal, status: r.status === "tried" ? "tried" : "draft", steps } };
+  if (r.needsProject !== undefined && typeof r.needsProject !== "boolean") return { ok: false, error: '"needsProject" is true or false' };
+  const needsProject = r.needsProject !== false;
+  if (!needsProject && steps.some((x) => x.check.kind !== "ask")) return { ok: false, error: 'a lesson with "needsProject": false can only use "ask" checks (there is no project to look in)' };
+  return { ok: true, lesson: { id, title, app, goal, status: r.status === "tried" ? "tried" : "draft", needsProject, steps } };
 }
 
 /** Every lesson file in these folders (the first folder wins when an id repeats). Bad files are named, never fatal. */

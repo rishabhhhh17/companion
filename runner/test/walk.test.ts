@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isEnvFile } from "../src/diagram.ts";
-import { FileWalkStore, loadLessons, MAX_STEPS, parseLesson, projectChecker, Walkthrough, type Lesson } from "../src/walk.ts";
+import { FileWalkStore, loadLessons, MAX_STEPS, NO_PROJECT, parseLesson, projectChecker, Walkthrough, type Lesson } from "../src/walk.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -44,6 +44,13 @@ describe("lesson files", () => {
     const d = parseLesson(raw([step("a")])); expect(d.ok && d.lesson.status).toBe("draft");
     const t = parseLesson(raw([step("a")], { status: "tried" })); expect(t.ok && t.lesson.status).toBe("tried");
     expect(parseLesson(raw([step("a")], { status: "great" })).ok).toBe(false);
+  });
+  test("a lesson that needs no project says so, and then may only use 'did that work?' checks", () => {
+    expect(parseLesson(raw([step("a")], { needsProject: false })).ok).toBe(true);
+    const d = parseLesson(raw([step("a")])); expect(d.ok && d.lesson.needsProject).toBe(true);
+    const n = parseLesson(raw([step("a")], { needsProject: false })); expect(n.ok && n.lesson.needsProject).toBe(false);
+    expect(parseLesson(raw([step("a", { check: { kind: "file_exists", path: "x" } })], { needsProject: false })).ok).toBe(false);
+    expect(parseLesson(raw([step("a")], { needsProject: "no" })).ok).toBe(false);
   });
   test("an 'instead' way must carry its own words", () => {
     expect(parseLesson(raw([step("a", { instead: { say: "Try the menu", find: "the menu" } })])).ok).toBe(true);
@@ -259,7 +266,7 @@ describe("the lessons that ship with the app", () => {
   test("every one is valid, has a unique id, and fits the step limit", () => {
     const r = loadLessons([join(import.meta.dir, "../../lessons")]);
     expect(r.problems).toEqual([]);
-    expect(r.lessons.length).toBeGreaterThanOrEqual(7);
+    expect(r.lessons.length).toBeGreaterThanOrEqual(10);
     // Nothing is called tried until a person has walked it on a real screen (written down in docs/lessons.md).
     for (const l of r.lessons) expect(l.status, l.id).toBe("draft");
     for (const l of r.lessons) expect(l.steps.length).toBeLessThanOrEqual(MAX_STEPS);

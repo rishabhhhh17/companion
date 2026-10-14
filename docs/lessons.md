@@ -30,8 +30,12 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 - The ring is a solid ring only where the place is confirmed; a guess gets a soft ring and says so (rule 22).
 - Progress is saved after every move and holds step ids and outcomes only.
 
+## Lessons that need no project
+
+`"needsProject": false` marks a lesson that reads nothing from a project folder (installing a tool, leaving a builder, allowing a permission). It can start with no folder chosen, and may use only `ask` checks, which the checker enforces. Any lesson that uses `env_name`, `file_exists` or `file_contains` needs a chosen folder and says so if there is none.
+
 ## Draft and tried
 
 A lesson has `"status": "draft"` (the default) or `"tried"`. **Draft** means it was written from the maker's own help pages and nobody has walked it on a real screen yet; the app says so on the Lessons list. Only change a lesson to `tried` after a person has done every step on a real screen and the steps matched. The test suite fails if a shipped lesson says `tried` without that being decided here: today none are.
 
-Sources used for the first drafts (checked 14 Oct 2026): Vercel docs "Managing environment variables", "Managing Deployments", "Troubleshooting Build Errors"; Lovable docs "GitHub integration" and "Publish / deploy". Button names in these products change often, which is why the hands on check matters.
+Sources used for the drafts (checked 14 Oct 2026): Claude Code quickstart (code.claude.com/docs/en/quickstart); Replit "Download as zip" help page; for Bolt, Vercel's Bolt guide and several write ups that disagree on where the export button sits, so that lesson says to look in both places; no usable Cursor steps were found, so there is no Cursor lesson yet. Earlier: Vercel docs "Managing environment variables", "Managing Deployments", "Troubleshooting Build Errors"; Lovable docs "GitHub integration" and "Publish / deploy". Button names in these products change often, which is why the hands on check matters.

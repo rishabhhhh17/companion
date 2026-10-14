@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileWalkStore, projectChecker } from "../src/walk.ts";
+import { FileWalkStore, NO_PROJECT, projectChecker } from "../src/walk.ts";
 import { WalkService } from "../src/walkservice.ts";
 import { parseCommand, parseEvent } from "../../protocol/index.ts";
 
@@ -19,12 +19,13 @@ const lessonFile = { id: "keys", title: "Add your keys", app: "Demo", goal: "Get
 function setup() {
   const project = tmp("p"), lessons = tmp("l"), data = tmp("d");
   writeFileSync(join(lessons, "keys.json"), JSON.stringify(lessonFile));
+  const lessonsDir = lessons;
   const events: any[] = [];
   const store = new FileWalkStore(join(data, "walks"));
   const svc = new WalkService({ emit: (e) => events.push(e), lessonDirs: [lessons], store, checker: projectChecker, now: () => "2026-10-12T10:00:00Z" });
   const cmd = (type: string, extra: Record<string, unknown> = {}) => svc.handle({ v: 1, id: "w1", type, ...extra } as never);
   const of = (t: string) => events.filter((e) => e.type === t);
-  return { project, svc, events, cmd, of, store };
+  return { project, svc, events, cmd, of, store, lessonsDir };
 }
 
 describe("walkthrough service", () => {
@@ -122,6 +123,28 @@ describe("walkthrough service", () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     await Promise.all([s.cmd("walk.acted", { walk: "w1", how: "clicked" }), s.cmd("walk.acted", { walk: "w1", how: "clicked" })]);
     expect(s.of("walk.ask")).toHaveLength(1);
+  });
+});
+
+describe("lessons that need no project", () => {
+  function plain() {
+    const s = setup();
+    writeFileSync(join(s.lessonsDir, "free.json"), JSON.stringify({ id: "free", title: "Free", app: "Demo", goal: "g", needsProject: false, steps: [{ id: "a", say: "Do a", find: "the a button", check: { kind: "ask" } }] }));
+    return s;
+  }
+  test("they start without a folder, and say so in the list", async () => {
+    const s = plain(); await s.cmd("walk.list", { project: NO_PROJECT });
+    expect(s.of("walk.lessons")[0].lessons.find((l: any) => l.id === "free").needsProject).toBe(false);
+    expect(s.of("walk.lessons")[0].lessons.find((l: any) => l.id === "keys").needsProject).toBe(true);
+    await s.cmd("walk.start", { project: NO_PROJECT, lesson: "free" });
+    expect(s.of("walk.step")[0]).toMatchObject({ say: "Do a", project: NO_PROJECT });
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.answer", { walk: "w1", worked: true });
+    expect(s.of("walk.done")).toHaveLength(1);
+  });
+  test("a lesson that reads the project will not start without one", async () => {
+    const s = plain(); await s.cmd("walk.start", { project: NO_PROJECT, lesson: "keys" });
+    expect(s.of("walk.stopped")[0].reason).toMatch(/folder/i);
+    expect(s.of("walk.step")).toHaveLength(0);
   });
 });
 
