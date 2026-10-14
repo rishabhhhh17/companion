@@ -106,37 +106,37 @@ README.md            for humans
 CHANGELOG.md         plain language, for building in public
 docs/
   research/          source of truth: product_research.md, technical_research.md
-  decisions/         one record per fixed decision (F = founder, T = technical)
+  decisions/         one record per fixed decision (F = founder, T = technical); F17 is the source of truth for scope and order
   architecture.md    every feature on the map -> the modules that own it
-  milestones/        one plan per milestone (M0-spikes.md first), plus the M0 desk research
+  milestones/        one plan per milestone (M0-spikes.md first, M10-friends-preview.md is current)
   outreach/          drafts the founder sends by hand
+  alpha/             INSTALL.md and PRIVACY.md, drafts the founder reviews before sending to friends
   status/            dated status snapshots, written so a reader with no context can follow the project
-spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS (a-panel exists)
-scripts/             (planned, M0) build helpers: copy and verify Anthropic's binary, signing checks
-protocol/            JSON lines protocol v1: types, parser, shared fixtures (M1, started)
-runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log (M1, done); proof (including locate, which turns a failed check into a file and line, and the visual receipt: before, visualdiff, picture), ship, Drive, Rescue, Research and memory (project memory, profile, shared AGENTS.md) live in it
-app/src-tauri/       Rust shell: windows, hotkeys, Prompt help (ax, phelp), Show me how (macos_see capture and text reading, showme flow, snap, redact, coords, frame), Point at the problem (pointat), your turn (yourturn), the it's live card buttons (share), hold to talk (voice rules, voice_mac microphone and speech model), project folder (projects), Keychain key saving (keystore), runner supervisor
-app/                 Tauri 2 + React shell: native panels, runner link, character, cards, ask box, docking, tray (M2, started); memory page later
-app/vendor/          (planned, M2) Anthropic's Claude binary, copied from the pinned SDK package at build time; never committed
-evals/               (planned, M3+) quality suites: Prompt help targets, Show me how screenshots, voice latency, rescue projects
+  lessons.md         how to write a lesson (data files in lessons/)
+  releasing.md       the founder's steps to release and to set up updates
+spikes/              M0 throwaway proofs, one folder per spike, each with README, TESTING and RESULTS
+scripts/             test-all.sh (every suite) and build helpers
+protocol/            JSON lines protocol v1: types, parser, shared fixtures
+lessons/             guided lessons as data files (status draft until a person has walked them); shipped inside the app
+runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log, proof (locate, visual receipt), ship, Drive, Rescue, Research, memory, Draw it for me data (diagram), walkthroughs (walk, walkservice), beta numbers (metrics)
+app/src-tauri/       Rust shell: windows, hotkeys, Prompt help, Show me how, Point at the problem (pointat), your turn (yourturn), anchor (a ring belongs to one window), diagram, share, practice, hold to talk, project folder, Keychain key saving, updates, settings helpers (wipe, logexport), runner supervisor
+app/                 Tauri 2 + React shell: native panels, runner link, cards, ask box, docking, tray, settings; scripts/ build the app, the engine inside it, the disk image and the release
+app/vendor/          Anthropic's Claude binary and the engine, staged at build time; never committed
+evals/               quality suites: prompt-help, show-me-how (voice latency, rescue projects still to come)
 relay/               (planned, Beta) Cloudflare Worker relay and the phone web app
 ```
 
 ## Running tests
 
-Product code arrives in M1; these are the planned commands, so update this section the day each one starts working. Spike (a) has its own working checks: see `spikes/a-panel/README.md`.
-
 | Suite | Command | Covers |
 |---|---|---|
-| Runner (headless) | `cd runner && bun test` (works since 8 Oct 2026: protocol, undo, safety, runner, Keychain, lanes; memory arrives in M8). `cd runner && bun run typecheck` checks types. Manual: `bun scripts/demo.ts` (free demo) and `bun scripts/real-run.ts` (a real run; needs the test login) | Protocol, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log |
-| Rust shell | `cd app/src-tauri && cargo test --release` (21 tests: runner link, docking maths, permissions) and `app/scripts/lint-permissions.sh` (no permission asking calls) | Paste back, redaction, image resize and coordinate mapping, permissions state |
-| UI | `cd app && bun test` and `bun run typecheck` (31 tests: character state, approvals, receipts, plain errors, command shapes) | Character state mapping, cards, protocol client |
-| Real Claude check of Build mode | `cd runner && bun run scripts/real-verify.ts [scenario]` (uses a little of the test plan login, small caps) | House rule and undo, Drive, take the wheel, Rescue, Research, daily limit and second model review with real Claude |
-| Prompt help eval | `cd evals/prompt-help && bun test` (free); `bun run run.ts --real` (asks real Claude, only when asked) | The scorer and the 30 cases; the real run measures rewrite quality |
-| Protocol fixtures | run by both runner and Rust suites | Rust and TypeScript agree on every event |
-| Everything | `scripts/test-all.sh` | All of the above; run before every merge |
-
-Feature suites (Prompt help targets, Show me how eval, voice latency) live in `evals/` and run before merging that feature.
+| Everything | `sh scripts/test-all.sh` (needs `cmake` on PATH for the Rust build; on this Mac it is in `~/Library/Python/3.9/bin`) | All of the below. Run before every merge; a merge is gated on its exit code being 0, not on reading the output |
+| Runner (headless) | `cd runner && bun test` | Protocol and fixtures, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log, proof, Draw it for me, walkthroughs, beta numbers |
+| Rust shell | `cd app/src-tauri && cargo test` | Paste back, redaction, image resize and coordinate mapping, permissions state, rings and windows (anchor), delete everything, updates |
+| Pages | `cd app && bun run typecheck && bun test ./src` | Character state mapping, cards, lessons, settings, command shapes (`./src` keeps the practice project's deliberately failing test out) |
+| Real Claude checks | `cd runner && bun run scripts/real-verify.ts [scenario]` (test login, small caps, only when asked) | House rule and undo, Drive, Rescue, Research, visual receipt, practice, diagram, explain |
+| Prompt help eval | `cd evals/prompt-help && bun test` (free); `bun run run.ts --real` (only when asked) | The scorer and the 30 cases |
+| After adding a Tauri plugin or changing `tauri.conf.json` | `sh app/scripts/build-app.sh`, open the app, check it stays running | A plugin that fails to start crashes the app at launch while every test passes |
 
 Installs that tasks run use Node 20 or newer; under Claude's sandbox, Node 18 cannot reach the registry (it tries IPv6 first). Say so in plain words if a task fails that way.
 
