@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Garbage in, no crash, in the Mac program too: 14 Oct 2026
+
+- The same junk test now runs on the Mac side (the card page's JSON, text read from a screenshot, log text, text matching, the spoken line). **It found a real gap in secret covering:** a key run into the letters before it ("tokensk-ant-...", which text read from a picture can produce) was missed, both when blacking out a screenshot before it is sent and when scrubbing a support log. Anthropic, GitHub, Slack, Stripe and webhook key prefixes are now caught anywhere in a word, and ordinary words that merely contain the letters ("task-management-service") are left readable.
+
 ## Garbage in, no crash: 14 Oct 2026
 
 - A new test feeds random junk (and deliberately huge or slow-looking input) to everything that reads text Companion does not control: a tool's output, the model's answers, lesson files, protocol lines, and the secret-covering code. None may crash or hang. It is seeded, so a failure can be repeated.

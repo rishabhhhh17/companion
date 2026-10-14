@@ -45,12 +45,17 @@ fn iban(text: &str) -> bool {
     false
 }
 
+const GLUED: &[&str] = &["sk-ant-", "ghp_", "gho_", "ghu_", "ghs_", "github_pat_", "xoxb-", "xoxp-", "xoxa-", "whsec_", "sk_live_", "sk_test_", "rk_live_"];
+
 fn token(text: &str) -> bool {
     const PREFIXES: &[&str] = &["sk-", "sk_live_", "sk_test_", "rk_live_", "ghp_", "gho_", "ghu_", "ghs_", "github_pat_", "AKIA", "xoxb-", "xoxp-", "xoxa-", "AIza", "npm_", "whsec_", "SG."];
     for w in text.split(|c: char| c.is_whitespace() || "\"'`=:,;()[]{}<>".contains(c)) {
         let w = w.trim_matches(|c: char| c == '.' || c == ',');
         if w.len() < 10 { continue; }
         if PREFIXES.iter().any(|p| w.starts_with(p)) && w.len() >= 16 { return true; }
+        // Text read from a picture can run a key into the word before it ("tokensk-ant-..."): these prefixes are
+        // specific enough to count anywhere in a word.
+        if GLUED.iter().any(|p| w.find(p).is_some_and(|i| w[i..].len() >= 20)) { return true; }
         if w.starts_with("eyJ") && w.matches('.').count() == 2 && w.len() >= 30 { return true; }
         let all_hex = w.len() >= 32 && w.chars().all(|c| c.is_ascii_hexdigit());
         if all_hex { return true; }

@@ -79,6 +79,8 @@ pub fn scrub(text: &str, home: &str, names: &[String], projects: &[String]) -> S
         let core = tok.trim_matches(|c: char| !(c.is_alphanumeric() || matches!(c, '@' | '.' | '-' | '_' | '+' | '%')));
         let secret = core.len() >= 12 && (SECRET_STARTS.iter().any(|s| core.starts_with(s)) || (core.len() >= 32 && core.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !is_uuid(core)));
         let email = (core.contains('@') || core.contains("%40")) && core.split(['@']).nth(1).or_else(|| core.split("%40").nth(1)).is_some_and(|d| d.contains('.') && !d.starts_with('.'));
+        // An Anthropic key glued onto the letters before it ("tokensk-ant-...") is still a key.
+        if let Some(i) = core.find("sk-ant-").filter(|&i| core.len() - i >= 20) { res.push_str(&tok.replacen(&core[i..], "[secret]", 1)); tok.clear(); return; }
         if is_uuid(core) { res.push_str(&tok.replacen(core, "[id]", 1)); }
         else if secret { res.push_str(&tok.replacen(core, "[secret]", 1)); }
         else if email { res.push_str(&tok.replacen(core, "[email]", 1)); }
@@ -203,6 +205,16 @@ mod tests {
     const HOME: &str = "/Users/sam";
     fn n(v: &[&str]) -> Vec<String> { v.iter().map(|s| s.to_string()).collect() }
 
+    #[test]
+    fn a_key_glued_onto_the_letters_before_it_is_still_covered() {
+        let k = "sk-ant-api03-AbCdEfGhIjKlMnOpQrSt";
+        for glued in [format!("token{k}"), format!("\u{e9}{k}"), format!("x{k}trailing"), format!("see:{k}")] {
+            let out = scrub(&glued, "/Users/sam", &[], &[]);
+            assert!(!out.contains("AbCdEfGhIjKl"), "{glued} -> {out}");
+        }
+        // Words that merely contain the letters are left alone.
+        assert_eq!(scrub("ask-another-question", "/Users/sam", &[], &[]), "ask-another-question");
+    }
     #[test]
     fn the_home_folder_the_user_name_and_every_project_are_scrubbed_and_projects_win_over_the_home() {
         let t = scrub("opened /Users/sam/Developer/shop/src/App.tsx and /Users/sam/Library/x and /Users/sam", HOME, &n(&["sam"]), &["/Users/sam/Developer/shop".into()]);

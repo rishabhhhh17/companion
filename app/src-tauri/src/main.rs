@@ -8,6 +8,7 @@ mod fullscreen;
 mod anchor;
 mod updates;
 mod speak;
+mod fuzz;
 mod logfile;
 mod permissions;
 mod ax;
