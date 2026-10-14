@@ -64,3 +64,14 @@ describe("protocol refuses what it does not understand", () => {
   });
   test("the version constant is 1", () => expect(PROTOCOL_VERSION).toBe(1));
 });
+
+describe("names that every object has are not message types", () => {
+  test("they are refused, never thrown on", () => {
+    for (const t of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
+      for (const parse of [parseCommand, parseEvent]) {
+        const r = parse(JSON.stringify({ v: 1, id: "a", type: t }));
+        expect(r.ok, t).toBe(false);
+      }
+    }
+  });
+});

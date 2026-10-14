@@ -80,7 +80,8 @@ async function main() {
       const line = buf.slice(0, i).trim();
       buf = buf.slice(i + 1);
       if (!line) continue;
-      const r = parseCommand(line);
+      let r: ReturnType<typeof parseCommand>;
+      try { r = parseCommand(line); } catch { say({ type: "protocol.error", reason: "a line could not be read", line: label(line, 200) }); continue; }   // never let one bad line stop the engine
       if (!r.ok) say({ type: "protocol.error", reason: r.error, line: label(line, 200) });
       else dispatch(r.msg);
     }
