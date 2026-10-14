@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Do it for me on the lesson card: 14 Oct 2026
+
+- While a lesson step's ring is waiting for your click, the lesson card now has **Do it for me** too (before, only the pointing card had it). It still never presses anything that sends, pays, deletes or publishes, or anything inside a dialog; for those it tells you to click yourself.
+
 ## Four more lessons, as drafts: 14 Oct 2026
 
 - **Vercel:** add a setting to your project (and redeploy so it takes effect), and find out why a deploy failed (open the build log, find the real cause). **Lovable:** connect your project to GitHub (so Companion can open it from a link), and publish your project.
