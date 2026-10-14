@@ -74,6 +74,16 @@ function sentence(text: string, last: boolean): string | null {
   // TAP (Node's test runner) gives the failure's own words: error: 'Pressing Join ... answered 404'
   const tap = /^(?:TAP version|not ok )/m.test(text) ? /^\s*(?:error|message):\s*'(.+)'\s*$/m.exec(text) : null;   // only in TAP output, never in a project's own log lines
   if (tap) return tap[1];
+  // The same report when the assertion has no words of its own: "error: |-" and the message on the lines under it.
+  if (/^(?:TAP version|not ok )/m.test(text)) {
+    const block = /^(\s*)(?:error|message):\s*[|>][+-]?[ \t]*\n((?:\1[ \t]+.*\n?)+)/m.exec(text);
+    if (block) {
+      const first = block[2].split("\n").map((l) => l.trim()).find(Boolean)?.replace(/:$/, "") ?? "";
+      const field = (name: string) => new RegExp(`^${block[1]}${name}:[ \\t]*(.+)$`, "m").exec(text)?.[1].trim();
+      const [got, want] = [field("actual"), field("expected")];
+      if (first) return got !== undefined && want !== undefined ? `${first}. Got ${got}, expected ${want}.` : first;
+    }
+  }
   const rows = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const errors = rows.filter((l) => ERROR_LINE.test(l) && !/^at\s/.test(l));
   if (errors.length) return last ? errors.at(-1)! : errors[0];

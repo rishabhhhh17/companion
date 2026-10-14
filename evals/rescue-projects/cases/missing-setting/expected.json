@@ -1,0 +1,9 @@
+{
+  "cmd": [
+    "node",
+    "app.js"
+  ],
+  "file": "config.js",
+  "line": 2,
+  "about": "SUPABASE_URL is not set"
+}
