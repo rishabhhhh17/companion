@@ -1,6 +1,6 @@
 # Launch readiness, 14 Oct 2026
 
-Refreshes `2026-10-12-launch-readiness.md`. Same columns. **Built** = code exists and the full suite passes (runner 1392, Rust shell 252 plus 4 ignored, pages 266, exit 0). **Real Claude** = also checked with a real Claude run on the test login. **Person tried** = the founder used it on a real Mac. **Nothing in this table has been tried by a person yet** (nothing since 9 Oct). Source of truth for scope: `docs/decisions/F17-teaching-engine-and-launch-scope.md`.
+Refreshes `2026-10-12-launch-readiness.md`. Same columns. **Built** = code exists and the full suite passes (runner 1395, Rust shell 265 plus 4 ignored, pages 278, exit 0). **Real Claude** = also checked with a real Claude run on the test login. **Person tried** = the founder used it on a real Mac. **Nothing in this table has been tried by a person yet** (nothing since 9 Oct). Source of truth for scope: `docs/decisions/F17-teaching-engine-and-launch-scope.md`.
 
 ## M10, the friends preview, against F17
 
@@ -18,6 +18,9 @@ Refreshes `2026-10-12-launch-readiness.md`. Same columns. **Built** = code exist
 | Beta numbers (local counts, opt in) | Yes | none | Retention and the Sean Ellis score come from the founder's own follow ups |
 | Settings, delete everything, log export, installer, privacy note | Yes | Delete everything run against a fake home with a throwaway Keychain | The button flow in the built app |
 | Updater | Yes, off until the founder makes the key and a public release repo | Signing tool with a throwaway key; app launched with the plugin | A real update from a real address |
+| Spoken replies (Speak to me) | Yes, off by default, Mac's built in voice | Rules and page logic tested without a sound; the build was made and the engine inside it checked | **Never heard by a person**: the voice, speed and wording | 
+| Visible progress list in lessons | Yes | none | A real lesson |
+| Targeting rule: low confidence draws nothing, screenshot text is a guess unless the app's structure confirms it | Yes (found by the 14 Oct read of the code) | tested | How often soft rings appear on real screens |
 | Character | **Parked** | n/a | Designs from the founder |
 | Notarized, signed release | Script written, never run | n/a | Apple approval |
 
@@ -30,6 +33,10 @@ Refreshes `2026-10-12-launch-readiness.md`. Same columns. **Built** = code exist
 | Ready to hand to a stranger | about 45% | about 50% | Installer, settings, updates plumbing and lessons exist; no notarized build, no hands on session |
 
 Judgement calls, not measurements. The second row moves only when the hands on session happens.
+
+## Checked on 14 Oct (a read of the whole code against the rules)
+
+Fixed: the character's endless motions ignored reduce motion; the runner's type check had 5 errors and was not in the suite (now it is); dead code and 18 compiler warnings removed; a spike probe that could read other apps' window titles removed from the shipped program; Show me broke the targeting rule in two places (see the changelog). Found nothing in: network calls, key event APIs, focus stealing, git use, `bypassPermissions`, secrets in the repo, the no em dash rule. Known and left: the product name is spread over about 58 files (`docs/rename.md`); the Show me aim is not yet compared with the Computer Use technique (needs an API key run); the built app was built and its engine checked but not **launched** since 14 Oct's updater fix (a launch shows a window, so it waits for you).
 
 ## What blocks launch (all the founder's)
 
