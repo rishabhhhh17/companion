@@ -266,7 +266,7 @@ describe("the lessons that ship with the app", () => {
   test("every one is valid, has a unique id, and fits the step limit", () => {
     const r = loadLessons([join(import.meta.dir, "../../lessons")]);
     expect(r.problems).toEqual([]);
-    expect(r.lessons.length).toBeGreaterThanOrEqual(10);
+    expect(r.lessons.length).toBeGreaterThanOrEqual(12);
     // Nothing is called tried until a person has walked it on a real screen (written down in docs/lessons.md).
     for (const l of r.lessons) expect(l.status, l.id).toBe("draft");
     for (const l of r.lessons) expect(l.steps.length).toBeLessThanOrEqual(MAX_STEPS);

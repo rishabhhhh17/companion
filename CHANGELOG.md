@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Two more draft lessons, and an up to date install note: 14 Oct 2026
+
+- **Install Cursor and open your project** (from Cursor's own help article) and **Make a place for your project on GitHub** (from GitHub's quickstart). Drafts, like the rest, and untried by a person. The earlier note that there was no Cursor lesson is now out of date.
+- The friends install note (`docs/alpha/INSTALL.md`) now lists every key, what each button on the card does, and the drafts caveat; before, it said there was no updater and did not mention lessons, drawing, spoken replies or the beta numbers.
+
 ## Pointing through Computer Use, built but off: 14 Oct 2026
 
 - **The one technique worth taking from Clicky's open source code.** It asks Anthropic's Computer Use tool where to click, declaring the picture's own size, instead of a free form coordinate. Built as an optional lane (`runner/src/aim.ts`), written fresh, with the idea credited in `THIRD_PARTY_NOTICES.md`.

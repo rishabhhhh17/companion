@@ -1,0 +1,50 @@
+{
+  "id": "github-new-repo",
+  "title": "Make a place for your project on GitHub",
+  "app": "GitHub",
+  "goal": "Create an empty GitHub repository for your project",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "signin",
+      "say": "Open github.com and sign in. You can make a free account there if you do not have one.",
+      "find": "the sign in button on github.com",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "plus",
+      "say": "Press the plus icon in the top right corner of any GitHub page and choose New repository.",
+      "find": "the plus icon in the top right corner",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "name",
+      "say": "Type a short name for the project in the Repository name box. Use letters, numbers and dashes.",
+      "find": "the Repository name box",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "visibility",
+      "say": "Choose who can see it. Private means only you (and people you invite); Public means anyone on the internet. If unsure, choose Private.",
+      "find": "the Private and Public choices",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "create",
+      "say": "Press Create repository. GitHub then shows what to do next; follow its steps in Terminal, inside your project folder.",
+      "find": "the Create repository button",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

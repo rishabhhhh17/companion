@@ -1,0 +1,62 @@
+{
+  "id": "cursor-install",
+  "title": "Install Cursor and open your project",
+  "app": "Cursor",
+  "goal": "Get the Cursor editor installed and your project folder open in it",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "download",
+      "say": "Go to cursor.com/download and press the download button for macOS.",
+      "find": "the macOS download button on cursor.com/download",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "drag",
+      "say": "Open the downloaded file and drag Cursor into your Applications folder.",
+      "find": "the Cursor icon and the Applications folder in the window",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "launch",
+      "say": "Open Cursor from Applications or Launchpad. macOS may ask you to confirm opening an app from the internet.",
+      "find": "Cursor in Applications or Launchpad",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If macOS blocks it, open System Settings, Privacy & Security, and press Open Anyway.",
+        "find": "Open Anyway in Privacy & Security"
+      }
+    },
+    {
+      "id": "signin",
+      "say": "Sign in with your Cursor account when it asks. You can make a free one at cursor.com.",
+      "find": "the sign in button in Cursor",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "open-folder",
+      "say": "In the menu bar choose File, then Open Folder, and pick your project's folder.",
+      "find": "File in the menu bar, then Open Folder",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "tell",
+      "say": "Back in Companion, press Change folder and choose the same folder, so Companion and Cursor look at the same project.",
+      "find": "the Change folder button in Companion's card",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}
