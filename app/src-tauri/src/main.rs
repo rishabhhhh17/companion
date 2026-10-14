@@ -6,6 +6,7 @@
 mod docking;
 mod fullscreen;
 mod anchor;
+mod updates;
 mod logfile;
 mod permissions;
 mod ax;
@@ -674,6 +675,45 @@ fn do_it_for_me(app: AppHandle) {
     });
 }
 
+// ---------- Updates ----------
+
+static PENDING_UPDATE: Mutex<Option<tauri_plugin_updater::Update>> = Mutex::new(None);
+
+/// Is the updater set up in this build, and which version is running.
+#[tauri::command]
+fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse_config(include_str!("../updater.json")).is_some(), "version": app.package_info().version.to_string() }) }
+
+/// Asks the update address whether a newer version exists. Only when the person asked (or turned on the daily check).
+#[tauri::command]
+async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    let cfg = updates::parse_config(include_str!("../updater.json")).ok_or("Updates are not set up in this build yet.")?;
+    let url = tauri::Url::parse(&cfg.endpoint).map_err(|_| "Updates are not set up in this build yet.".to_string())?;
+    let upd = app.updater_builder().pubkey(cfg.pubkey).timeout(Duration::from_secs(20)).endpoints(vec![url]).map_err(|e| updates::failure_words(&e.to_string()).to_string())?
+        .build().map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
+    match upd.check().await {
+        Ok(Some(u)) => {
+            let out = json!({ "available": true, "version": u.version, "notes": u.body.clone().unwrap_or_default().chars().take(600).collect::<String>() });
+            *PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(u);
+            log("update_found", json!({}));
+            Ok(out)
+        }
+        Ok(None) => { *PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()) = None; Ok(json!({ "available": false })) }
+        Err(e) => { log("update_check_failed", json!({})); Err(updates::failure_words(&e.to_string()).to_string()) }
+    }
+}
+
+/// Downloads the update found by check_update, checks its signature, installs it and restarts. Only on a press.
+#[tauri::command]
+async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or("Check for updates first.")?;
+    u.download_and_install(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
+    log("update_installed", json!({}));
+    app.restart();
+}
+
 // ---------- Settings, and delete everything ----------
 
 fn key_saved() -> bool { keystore::exists(&keystore::service(), keystore::ACCOUNT) }
@@ -1215,6 +1255,7 @@ fn main() {
     let app = tauri::Builder::default()
         .activate_ignoring_other_apps(false)
         .enable_macos_default_menu(false)
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
@@ -1264,7 +1305,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
