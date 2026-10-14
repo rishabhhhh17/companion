@@ -2,18 +2,21 @@
 
 *Working name. Every name here will change.*
 
-**Companion helps you finish what you start.** It's a desktop app for people who start projects with AI and get stuck: students, non technical founders, creators. Small abstract characters live on the edge of your screen. Through them you get one companion that:
+> **Stuck while building with AI? Press the key. Your companion finds the problem on your screen, fixes it with you, and shows you why.**
 
-- **does the work:** builds, rescues and ships your project, proving each step works, letting you undo almost all of it, and telling you clearly what can't be undone
-- **helps you use AI better:** turns a rough prompt into a clear one in any app, and points at the screen to show you where to click
-- **notices for you:** tells you where you left off when you come back
-- **grows with you:** explains what it did in plain words, and remembers how you like to work, in a page you can read and edit
+Companion is a Mac app for people who build with AI tools (Lovable, Bolt, Replit, Cursor, Claude Code) and get stuck. It lives on the edge of your screen as a small character. It:
 
-Mac first, Windows soon after. Downloaded from our website, not an app store.
+- **finds the problem in your own project** (the real failing line or error) and points at it,
+- **fixes it with you** in small steps, with a snapshot before each one so almost everything can be undone,
+- **proves the fix** (build, tests, a real browser check, a before and after picture) before it ever says done,
+- **shows you why** in plain words, a hand drawn sketch, or a guided lesson that waits for your own click,
+- **works in any app on screen**, best effort, and says plainly when it is only guessing.
+
+Mac first. Downloaded from our website, not an app store. The scope and order of work are in `docs/decisions/F17-teaching-engine-and-launch-scope.md`.
 
 ## Status
 
-**Day 1 (7 Oct 2026).** Nothing runs yet. The repo holds the research (fact checked on 7 Oct), the decisions and the plan. The first milestone, M0, is a set of small throwaway experiments that check the hardest technical risks before any real code is written. Its plan is proposed and waiting for approval: `docs/milestones/M0-spikes.md`.
+**14 Oct 2026.** Everything in the friends preview list is built and tested by machine except the character (waiting for the founder's designs). **Nothing has been tried by a person on a real Mac yet**, and there is no notarized build, so it is not ready to hand to a stranger. See `docs/status/2026-10-14-launch-readiness.md` for what is built, what is proven and what blocks launch.
 
 ## What we promise
 
@@ -35,6 +38,11 @@ A Tauri app (Rust plus React) for everything you see and everything that touches
 | `docs/research/technical_research.md` | How to build it |
 | `docs/decisions/` | Decisions already made, one short record each |
 | `docs/architecture.md` | Every feature and the part of the code that owns it |
+| `docs/status/` | Dated snapshots of what is built and what is proven |
+| `docs/lessons.md` | How guided lessons are written (data files in `lessons/`) |
+| `docs/releasing.md` | The founder's steps to release and set up updates |
+| `docs/rename.md` | Every place the product name lives, for when it changes |
+| `docs/alpha/` | The install note and privacy note for friends (drafts) |
 | `docs/milestones/` | The plan for each milestone |
 | `AGENTS.md` | Rules for coding agents working in this repo (humans should read it too) |
 | `CHANGELOG.md` | What changed, in plain words |
