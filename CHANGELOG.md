@@ -4,7 +4,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 
 ## A free check that the hero finds the real failing line: 14 Oct 2026
 
-- **Ten small broken projects**, each broken in a way beginners meet (a missing bracket, an undefined name, a missing file, reading a property of nothing, bad settings JSON, a missing setting, a wrong export name, a failing test, a rejected promise, a Python typo). For each, the project's own check is run for real and Companion's locator must turn the real output into the exact file and line. It runs in seconds with no model, and is now part of the main suite (`evals/rescue-projects`). All ten pass.
+- **Fifteen small broken projects**, each broken in a way beginners meet (a missing bracket, an undefined name, a missing file, reading a property of nothing, bad settings JSON, a missing setting, a wrong export name, a failing test, a rejected promise, a Python typo, and four TypeScript mistakes: wrong type, missing property, unknown import, wrong number of arguments; plus a Bun runtime error). For each, the project's own check is run for real and Companion's locator must turn the real output into the exact file and line. It runs in seconds with no model, and is now part of the main suite (`evals/rescue-projects`). All fifteen pass.
 - **It found a real bug:** when a test failed with Node's default assertion message, Companion pointed at the right line but showed the person `error: |-` instead of what was wrong. It now says, for example, "Expected values to be strictly equal. Got 110.00000000000001, expected 120."
 
 ## Two more draft lessons, and an up to date install note: 14 Oct 2026

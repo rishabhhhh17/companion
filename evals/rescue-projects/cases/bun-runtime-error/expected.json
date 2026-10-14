@@ -1,0 +1,9 @@
+{
+  "cmd": [
+    "bun",
+    "app.ts"
+  ],
+  "file": "app.ts",
+  "line": 3,
+  "about": "undefined"
+}
