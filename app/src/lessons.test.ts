@@ -25,6 +25,12 @@ describe("lessons on the card", () => {
     expect(run([...started, step(), { type: "walk.done", walk: "w1", project: "p", lesson: "keys", title: "T", steps: 3 }]).walk?.stage).toBe("done");
     expect(run([...started, step(), { type: "walk.stopped", walk: "w1", reason: "Stopped." }]).walk).toMatchObject({ stage: "stopped", note: "Stopped." });
   });
+  test("the finished steps travel with the step so the card can list them", () => {
+    const m = run([...started, step({ index: 2, log: [{ say: "Open settings", how: "done" }, { say: "Pick the pane", how: "skipped" }] })]);
+    expect(m.walk?.log).toEqual([{ say: "Open settings", how: "done" }, { say: "Pick the pane", how: "skipped" }]);
+    expect(run([...started, step()]).walk?.log).toEqual([]);
+    expect(run([...started, step({ log: "junk" })]).walk?.log).toEqual([]);
+  });
   test("a new step after asking goes back to showing the step", () => {
     const m = run([...started, step(), { type: "walk.ask", walk: "w1", index: 0 }, step({ index: 1, say: "Copy it", ask: false })]);
     expect(m.walk).toMatchObject({ stage: "step", index: 1, say: "Copy it", ask: false });

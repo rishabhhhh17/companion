@@ -120,6 +120,17 @@ export class Walkthrough {
   private get step(): Step | null { return this.stopped || this.p.done || this.p.blocked ? null : this.lesson.steps[this.p.index] ?? null; }
   private log(step: string, outcome: Outcome) { this.p.log.push({ step, outcome, at: this.o.now() }); if (this.p.log.length > 200) this.p.log.shift(); }
 
+  /** The steps already finished, in order, and how each ended: for the card's "what we have done" list. */
+  history(): { say: string; how: "done" | "skipped" }[] {
+    const out: { say: string; how: "done" | "skipped" }[] = [];
+    for (let i = 0; i < Math.min(this.p.index, this.lesson.steps.length); i++) {
+      const st = this.lesson.steps[i];
+      const ended = [...this.p.log].reverse().find((l) => l.step === st.id && ["passed", "asked_yes", "already_done", "skipped"].includes(l.outcome));
+      if (ended) out.push({ say: st.say, how: ended.outcome === "skipped" ? "skipped" : "done" });
+    }
+    return out;
+  }
+
   /** What to show now: the step's words and what to look for. Null when finished, stopped, or waiting for words from help. */
   current(): { index: number; total: number; variant: "main" | "instead"; step: { id: string; say: string; find: string; check: Check } } | null {
     const s = this.step; if (!s) return null;
