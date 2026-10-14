@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A lesson's saved place no longer holds your folder path: 14 Oct 2026
+
+- Where you are in a guided lesson is saved as step names, outcomes and times, plus a short fingerprint of the project instead of its folder path. A new end to end test runs a lesson through the real engine process (listing, a click, a proof from the project, Stop everything, picking up again, beta numbers off until turned on) and is what found that the path had been written down.
+
 ## Updates: 14 Oct 2026
 
 - **Settings > Updates.** Companion can check for a newer version and install it, so friends get fixes without reinstalling. It asks one web address for the newest version (a plain request; that address sees your internet address like any website), checks the download against Companion's own update key, and installs **only when you press Install**, and never while something is running. A once a day check (on by default, with a switch) only looks; it shows a note when a new version is ready.

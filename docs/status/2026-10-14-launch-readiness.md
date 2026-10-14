@@ -1,6 +1,6 @@
 # Launch readiness, 14 Oct 2026
 
-Refreshes `2026-10-12-launch-readiness.md`. Same columns. **Built** = code exists and the full suite passes (runner 1388, Rust shell 252 plus 4 ignored, pages 266, exit 0). **Real Claude** = also checked with a real Claude run on the test login. **Person tried** = the founder used it on a real Mac. **Nothing in this table has been tried by a person yet** (nothing since 9 Oct). Source of truth for scope: `docs/decisions/F17-teaching-engine-and-launch-scope.md`.
+Refreshes `2026-10-12-launch-readiness.md`. Same columns. **Built** = code exists and the full suite passes (runner 1392, Rust shell 252 plus 4 ignored, pages 266, exit 0). **Real Claude** = also checked with a real Claude run on the test login. **Person tried** = the founder used it on a real Mac. **Nothing in this table has been tried by a person yet** (nothing since 9 Oct). Source of truth for scope: `docs/decisions/F17-teaching-engine-and-launch-scope.md`.
 
 ## M10, the friends preview, against F17
 

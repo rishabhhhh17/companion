@@ -195,15 +195,17 @@ export class Walkthrough {
 export class FileWalkStore {
   constructor(private dir: string) {}
   private file(project: string, lesson: string) { return join(this.dir, createHash("sha256").update(`${project}\n${lesson}`).digest("hex").slice(0, 24) + ".json"); }
+  // The project's folder path is never written down: only a short fingerprint of it, to tell projects apart.
+  private tag(project: string) { return createHash("sha256").update(`project\n${project}`).digest("hex").slice(0, 16); }
   save(project: string, p: Progress) {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     const f = this.file(project, p.lesson), tmp = `${f}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(p), { mode: 0o600 }); renameSync(tmp, f);
+    writeFileSync(tmp, JSON.stringify({ ...p, project: this.tag(project) }), { mode: 0o600 }); renameSync(tmp, f);
   }
   load(project: string, lesson: string): Progress | null {
     try {
       const p = JSON.parse(readFileSync(this.file(project, lesson), "utf8"));
-      return p && p.version === 1 && p.lesson === lesson && p.project === project && Array.isArray(p.log) ? p as Progress : null;
+      return p && p.version === 1 && p.lesson === lesson && p.project === this.tag(project) && Array.isArray(p.log) ? { ...p, project } as Progress : null;
     } catch { return null; }
   }
   forget(project: string, lesson: string) { try { rmSync(this.file(project, lesson), { force: true }); } catch { /* nothing to forget */ } }

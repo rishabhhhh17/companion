@@ -194,6 +194,13 @@ describe("saving progress", () => {
     const text = readFileSync(join(d, readdirSync(d)[0]), "utf8");
     expect(Object.keys(JSON.parse(text)).sort()).toEqual(["blocked", "done", "failed", "index", "lesson", "log", "project", "shape", "usedInstead", "version"].sort());
   });
+  test("the project's folder path is never written, only a fingerprint", () => {
+    const d = tmp("s4"); const store = new FileWalkStore(d);
+    const w = new Walkthrough(lesson(), null, { now: T, project: "/Users/me/secret-project" });
+    store.save("/Users/me/secret-project", w.progress());
+    expect(readFileSync(join(d, readdirSync(d)[0]), "utf8")).not.toContain("secret-project");
+    expect(store.load("/Users/me/secret-project", "demo")?.project).toBe("/Users/me/secret-project");
+  });
   test("forgetting removes it", () => {
     const d = tmp("s3"); const store = new FileWalkStore(d);
     const w = new Walkthrough(lesson(), null, { now: T, project: "/proj" });
