@@ -8,6 +8,8 @@ use crate::snap::{snap, Ask, OcrBox, Snapped};
 
 pub const MAX_EDGE: u32 = 1280;
 const MAX_CANDIDATES: usize = 60;
+/// Most displays looked at for one press of the key.
+const MAX_DISPLAYS: usize = 4;
 
 pub struct Captured { pub frame: Frame, /// The display in global top-left points.
     pub display: R }
@@ -21,6 +23,8 @@ pub trait Platform {
     /// The visible "I am looking at your screen" light.
     fn indicator(&self, on: bool);
     fn capture(&self) -> Result<Captured, String>;
+    /// The next display not in `tried`, if there is one (a second monitor). None when every display has been looked at.
+    fn capture_other(&self, _tried: &[R]) -> Option<Result<Captured, String>> { None }
     /// Text on the picture, boxes in picture pixels (top left origin).
     fn read_text(&self, frame: &Frame) -> Vec<OcrBox>;
     /// A quicker, rougher read, tried first where speed matters. Defaults to the careful one.
@@ -70,20 +74,33 @@ pub fn start(p: &dyn Platform, question: &str) -> Result<Prepared, Refusal> {
     result
 }
 
-/// Point at the problem: light on, ONE capture, read the text (quickly first, carefully only if `find` came up empty),
+/// Point at the problem: light on, a capture of the display you are on (and, only if the place is not there, the other
+/// displays), read the text (quickly first, carefully only if `find` came up empty),
 /// light off. `find` gets the text boxes in global points. The picture is dropped right here: nothing is sent anywhere.
 pub fn look_for<T>(p: &dyn Platform, find: impl Fn(&[OcrBox]) -> Option<T>) -> Result<(R, Option<T>), Refusal> {
     if !p.screen_recording_granted() { return Err(Refusal::NeedsScreenRecording); }
     if p.secure_input_on() { return Err(Refusal::SecureInput); }
     p.indicator(true);
     let result = (|| {
-        let cap = p.capture().map_err(Refusal::CaptureFailed)?;
-        let shot = Shot { display: cap.display, img_w: cap.frame.w as f64, img_h: cap.frame.h as f64 };
-        let global = |boxes: Vec<OcrBox>| boxes.into_iter().map(|b| OcrBox { rect: shot.rect_to_global(b.rect), ..b }).collect::<Vec<_>>();
-        let mut hit = find(&global(p.read_text_fast(&cap.frame)));
-        if hit.is_none() { hit = find(&global(p.read_text(&cap.frame))); }
-        drop(cap.frame);
-        Ok((shot.display, hit))
+        // The display the mouse is on first; if the place is not there, the other displays, one after another, all under
+        // the same light. Each picture is dropped as soon as its text has been read.
+        let mut cap = p.capture().map_err(Refusal::CaptureFailed)?;
+        let first = cap.display;
+        let mut tried = vec![first];
+        loop {
+            let shot = Shot { display: cap.display, img_w: cap.frame.w as f64, img_h: cap.frame.h as f64 };
+            let global = |boxes: Vec<OcrBox>| boxes.into_iter().map(|b| OcrBox { rect: shot.rect_to_global(b.rect), ..b }).collect::<Vec<_>>();
+            let mut hit = find(&global(p.read_text_fast(&cap.frame)));
+            if hit.is_none() { hit = find(&global(p.read_text(&cap.frame))); }
+            let shown = shot.display;
+            drop(cap.frame);
+            if hit.is_some() { return Ok((shown, hit)); }
+            if tried.len() >= MAX_DISPLAYS { return Ok((first, None)); }
+            match p.capture_other(&tried) {
+                Some(Ok(next)) => { tried.push(next.display); cap = next; }
+                Some(Err(_)) | None => return Ok((first, None)),
+            }
+        }
     })();
     p.indicator(false);
     result
@@ -102,8 +119,8 @@ mod tests {
     use crate::snap::How;
     use std::cell::RefCell;
 
-    struct Fake { granted: bool, secure: bool, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool }
-    impl Fake { fn new() -> Fake { Fake { granted: true, secure: false, log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
+    struct Fake { granted: bool, secure: bool, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, second: Option<(R, Vec<OcrBox>)>, tried: RefCell<Vec<R>> }
+    impl Fake { fn new() -> Fake { Fake { granted: true, secure: false, log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, second: None, tried: RefCell::new(vec![]) } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
     impl Platform for Fake {
         fn screen_recording_granted(&self) -> bool { self.log.borrow_mut().push("permission".into()); self.granted }
         fn secure_input_on(&self) -> bool { self.secure }
@@ -113,7 +130,14 @@ mod tests {
             if self.fail_capture { return Err("no display".into()); }
             Ok(Captured { frame: Frame::new(2560, 1600, vec![255; 2560 * 1600 * 4]).unwrap(), display: R { x: 0.0, y: 0.0, w: 1280.0, h: 800.0 } })
         }
-        fn read_text(&self, _f: &Frame) -> Vec<OcrBox> { self.text.clone() }
+        fn read_text(&self, f: &Frame) -> Vec<OcrBox> { if f.w == 1920 { self.second.as_ref().map(|s| s.1.clone()).unwrap_or_default() } else { self.text.clone() } }
+        fn capture_other(&self, tried: &[R]) -> Option<Result<Captured, String>> {
+            let (d, _) = self.second.as_ref()?;
+            if tried.contains(d) { return None; }
+            self.tried.borrow_mut().push(*d);
+            self.log.borrow_mut().push("capture other".into());
+            Some(Ok(Captured { frame: Frame::new(1920, 1200, vec![255; 1920 * 1200 * 4]).unwrap(), display: *d }))
+        }
         fn element_at(&self, _p: Pt) -> Option<R> { self.ax }
         fn send_image(&self, jpeg: &[u8], w: u32, h: u32) { self.log.borrow_mut().push(format!("send {}x{} jpeg={}", w, h, jpeg.starts_with(&[0xFF, 0xD8]))); }
         fn ask(&self, q: &str, _w: u32, _h: u32, c: &[(String, String, R)]) { self.log.borrow_mut().push(format!("ask {q} [{}]", c.iter().map(|x| x.1.clone()).collect::<Vec<_>>().join("|"))); }
@@ -127,6 +151,39 @@ mod tests {
         assert_eq!(f.said(), vec!["permission", "light on", "capture", "light off"]);
         // full size picture pixels -> points on a half size display
         let r = hit.unwrap(); assert_eq!((r.x, r.y), (200.0, 100.0)); assert_eq!(d.w, 1280.0);
+    }
+    #[test]
+    fn when_the_line_is_not_on_this_display_the_other_displays_are_looked_at_too_under_the_same_light() {
+        let mut f = Fake::new();
+        f.text = vec![tb("a", "nothing useful here", 400.0, 200.0)];
+        let second = R { x: 1280.0, y: 0.0, w: 1920.0, h: 1200.0 };   // a second, larger display to the right
+        f.second = Some((second, vec![tb("b", "const total: number = \"three\";", 400.0, 300.0)]));
+        let (d, hit) = look_for(&f, |b| b.iter().find(|x| x.text.contains("const total")).map(|x| x.rect)).unwrap();
+        assert_eq!(d, second);
+        let r = hit.unwrap(); assert!(r.x >= 1280.0, "the place is on the second display, in global points: {r:?}");
+        let said = f.said();
+        assert_eq!(said.first().map(String::as_str), Some("permission"));
+        assert_eq!(said.iter().filter(|x| *x == "light on").count(), 1, "one light for the whole look: {said:?}");
+        assert_eq!(said.last().map(String::as_str), Some("light off"));
+        assert!(said.iter().position(|x| x == "capture other").unwrap() < said.iter().position(|x| x == "light off").unwrap());
+    }
+    #[test]
+    fn a_hit_on_the_first_display_never_looks_at_the_others() {
+        let mut f = Fake::new();
+        f.text = vec![tb("a", "const total = 1;", 400.0, 200.0)];
+        f.second = Some((R { x: 1280.0, y: 0.0, w: 1920.0, h: 1200.0 }, vec![tb("b", "const total = 1;", 400.0, 300.0)]));
+        let (d, hit) = look_for(&f, |b| b.first().map(|x| x.rect)).unwrap();
+        assert!(hit.is_some() && d.x == 0.0);
+        assert!(!f.said().iter().any(|x| x == "capture other"));
+    }
+    #[test]
+    fn nothing_found_anywhere_looks_at_each_display_once_and_says_nothing_found() {
+        let mut f = Fake::new();
+        f.text = vec![tb("a", "nope", 400.0, 200.0)];
+        f.second = Some((R { x: 1280.0, y: 0.0, w: 1920.0, h: 1200.0 }, vec![tb("b", "also nope", 400.0, 300.0)]));
+        let (_, hit) = look_for(&f, |_: &[OcrBox]| None::<R>).unwrap();
+        assert!(hit.is_none());
+        assert_eq!(f.said().iter().filter(|x| *x == "capture other").count(), 1);
     }
     #[test]
     fn when_the_quick_read_misses_the_same_picture_is_read_again_carefully() {
