@@ -531,6 +531,7 @@ function Card() {
           {(m.lessons ?? []).map((l) => (
             <div className="line" key={l.id}>
               <b>{l.title}</b> <span className="muted">{l.app}</span>
+              {l.status !== "tried" && <div className="line muted">{S.lessonDraft}</div>}
               <div className="row">
                 <button className="btn primary" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
                 {l.saved && <button className="btn" type="button" onClick={() => beginLesson(l.id, true)}>{S.lessonStartOver}</button>}

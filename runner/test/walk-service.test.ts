@@ -30,7 +30,7 @@ function setup() {
 describe("walkthrough service", () => {
   test("it lists the lessons it can teach", async () => {
     const s = setup(); await s.cmd("walk.list", { project: s.project });
-    expect(s.of("walk.lessons")[0]).toMatchObject({ lessons: [{ id: "keys", title: "Add your keys", steps: 3, saved: false }] });
+    expect(s.of("walk.lessons")[0]).toMatchObject({ lessons: [{ id: "keys", title: "Add your keys", status: "draft", steps: 3, saved: false }] });
   });
   test("starting shows step one, and an 'ask' step asks after the click", async () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });

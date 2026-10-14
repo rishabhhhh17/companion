@@ -40,6 +40,11 @@ describe("lesson files", () => {
     expect(parseLesson(raw([step("a", { check: { kind: "file_exists", path: "/etc/passwd" } })])).ok).toBe(false);
     expect(parseLesson(raw([step("a", { check: { kind: "file_contains", path: ".env", text: "KEY" } })])).ok).toBe(false);
   });
+  test("a lesson is a draft unless it says it was tried by a person", () => {
+    const d = parseLesson(raw([step("a")])); expect(d.ok && d.lesson.status).toBe("draft");
+    const t = parseLesson(raw([step("a")], { status: "tried" })); expect(t.ok && t.lesson.status).toBe("tried");
+    expect(parseLesson(raw([step("a")], { status: "great" })).ok).toBe(false);
+  });
   test("an 'instead' way must carry its own words", () => {
     expect(parseLesson(raw([step("a", { instead: { say: "Try the menu", find: "the menu" } })])).ok).toBe(true);
     expect(parseLesson(raw([step("a", { instead: { say: "" , find: "x" } })])).ok).toBe(false);
@@ -228,7 +233,9 @@ describe("the lessons that ship with the app", () => {
   test("every one is valid, has a unique id, and fits the step limit", () => {
     const r = loadLessons([join(import.meta.dir, "../../lessons")]);
     expect(r.problems).toEqual([]);
-    expect(r.lessons.length).toBeGreaterThanOrEqual(3);
+    expect(r.lessons.length).toBeGreaterThanOrEqual(7);
+    // Nothing is called tried until a person has walked it on a real screen (written down in docs/lessons.md).
+    for (const l of r.lessons) expect(l.status, l.id).toBe("draft");
     for (const l of r.lessons) expect(l.steps.length).toBeLessThanOrEqual(MAX_STEPS);
   });
 });

@@ -29,3 +29,9 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 - **`instead`** (optional) is the other way, shown once if the first did not work. After that the person gets words only and an "I did it myself" button. A step that failed is never shown as the same ring again.
 - The ring is a solid ring only where the place is confirmed; a guess gets a soft ring and says so (rule 22).
 - Progress is saved after every move and holds step ids and outcomes only.
+
+## Draft and tried
+
+A lesson has `"status": "draft"` (the default) or `"tried"`. **Draft** means it was written from the maker's own help pages and nobody has walked it on a real screen yet; the app says so on the Lessons list. Only change a lesson to `tried` after a person has done every step on a real screen and the steps matched. The test suite fails if a shipped lesson says `tried` without that being decided here: today none are.
+
+Sources used for the first drafts (checked 14 Oct 2026): Vercel docs "Managing environment variables", "Managing Deployments", "Troubleshooting Build Errors"; Lovable docs "GitHub integration" and "Publish / deploy". Button names in these products change often, which is why the hands on check matters.

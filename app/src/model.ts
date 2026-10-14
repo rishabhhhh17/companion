@@ -35,7 +35,7 @@ export type PointCard = { stage: "checking" | "found" | "clear" | "nothing"; lab
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
 export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
-export type LessonItem = { id: string; title: string; app: string; goal: string; steps: number; saved: boolean };
+export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; steps: number; saved: boolean };
 // A guided lesson on the card. stage: a step to do, waiting for "did that work?", words only after a step could not be
 // proven, finished, or stopped.
 export type WalkState = { stage: "step" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string };
