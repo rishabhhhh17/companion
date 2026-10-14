@@ -19,10 +19,13 @@ const BUILT_IN_NEVER: &[&str] = &[
 pub struct Denylist { user: BTreeSet<String> }
 impl Denylist {
     pub const fn empty() -> Denylist { Denylist { user: BTreeSet::new() } }
+    #[cfg(test)]
     pub fn add(&mut self, bundle_id: &str) { if !bundle_id.is_empty() { self.user.insert(bundle_id.to_string()); } }
+    #[cfg(test)]
     pub fn remove(&mut self, bundle_id: &str) { self.user.remove(bundle_id); }
     pub fn contains(&self, bundle_id: &str) -> bool { BUILT_IN_NEVER.contains(&bundle_id) || self.user.contains(bundle_id) }
     /// The built in apps cannot be removed from the list, only the ones the person added.
+    #[cfg(test)]
     pub fn user_apps(&self) -> Vec<String> { self.user.iter().cloned().collect() }
 }
 
@@ -47,6 +50,7 @@ impl Consent {
         }
     }
     pub fn record(&mut self, bundle_id: &str, c: Choice) { if !bundle_id.is_empty() { self.map.insert(bundle_id.to_string(), c); } }
+    #[cfg(test)]
     pub fn forget(&mut self, bundle_id: &str) { self.map.remove(bundle_id); }
     /// Only "always" and "never" are kept on disk. "Once" never survives a restart.
     pub fn to_json(&self) -> Value {
@@ -123,6 +127,9 @@ pub fn paste_plan(at_read: Focus, now: Focus, handback_copy: bool, card_is_key: 
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// What macOS 16 will report about a paste from another app. The rule for each answer is written and tested
+// (`clipboard_plan`); nothing reads the answer from the Mac yet, so the cases are not built outside tests.
+#[allow(dead_code)]
 pub enum AccessBehavior { Allowed, Ask, Denied, Unknown }
 
 #[derive(Debug, PartialEq, Eq)]

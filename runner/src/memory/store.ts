@@ -34,7 +34,7 @@ export class MemoryStore {
     const f = this.file(scope);
     if (!existsSync(f)) return { raw: [] };
     let text: string;
-    try { text = readFileSync(f, "utf8"); } catch (e) { return { raw: [], problem: `The memory file could not be read (${(e as Error).code ?? "error"}), so it was left alone.` }; }
+    try { text = readFileSync(f, "utf8"); } catch (e) { return { raw: [], problem: `The memory file could not be read (${(e as NodeJS.ErrnoException).code ?? "error"}), so it was left alone.` }; }
     const raw: Raw[] = text.split("\n").map((line): Raw => {
       const m = LINE.exec(line);
       if (m) return { kind: "entry", entry: { id: m[4] ?? idFor(m[1]), text: m[1], source: m[2], date: m[3] }, hand: false };

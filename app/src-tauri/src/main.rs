@@ -592,7 +592,7 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
     let alive = move || TURN_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
     let app = app.clone();
     std::thread::spawn(move || {
-        let down = || unsafe { NSEvent::pressedMouseButtons() } & 1 == 1;
+        let down = || NSEvent::pressedMouseButtons() & 1 == 1;
         let mut w = yourturn::Watch::new(target, down());
         // Companion's own character and card, read at the moment of a press (the card grows and moves while the ring is up).
         let a2 = app.clone();

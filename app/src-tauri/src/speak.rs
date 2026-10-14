@@ -63,7 +63,6 @@ pub mod mac {
     pub fn silence() {
         SYNTH.with(|s| { if let Some(synth) = s.borrow().as_ref() { unsafe { synth.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate); } } });
     }
-    pub fn speaking() -> bool { SYNTH.with(|s| s.borrow().as_ref().is_some_and(|x| unsafe { x.isSpeaking() })) }
 }
 
 #[cfg(test)]

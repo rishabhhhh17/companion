@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A careful read of the whole code: 14 Oct 2026
+
+Checked the code against the rules in `AGENTS.md` and the source file, one pattern at a time. Found and fixed:
+- **The character's endless motions ignored "reduce motion".** Only the one off reactions respected it. All of them now stop when your Mac asks for less motion, with a test.
+- **The runner's type check was never part of the suite**, and it had 5 real errors (a memory field the code used but the type did not know, an error code read the wrong way, and two test type mistakes). All fixed, and `scripts/test-all.sh` now runs it every time.
+- **Dead code removed:** a leftover spike probe that could read other apps' window titles is gone from the shipped program (its findings stay in the spike notes), plus unused helpers and the compiler's 18 warnings. The Rust shell now builds with none.
+- **Nothing found** in: network calls (only the speech model download with a checksum, the updater, and the local proof page on this Mac), key event APIs, focus stealing, git use (only the private snapshot folder), `bypassPermissions`, secrets in the repo, and the no em dash writing rule.
+- Added `docs/rename.md`: every place the product name lives, and which ones must not be changed by search and replace.
+
 ## Speak to me (spoken replies), off by default: 14 Oct 2026
 
 - **Settings > Speak to me.** When you turn it on, Companion says short lines out loud with your Mac's own built in voice: the lesson step you are on, what a ring points at (a guess says "I think it is here"), and plain words when it is not sure or something needs your attention. Nothing is sent anywhere, there is no voice service, and a new install is silent.

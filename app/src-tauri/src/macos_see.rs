@@ -63,7 +63,7 @@ fn shareable() -> Result<Retained<SCShareableContent>, String> {
 
 /// The pointer in global top-left points.
 pub fn pointer() -> Pt {
-    let p = unsafe { NSEvent::mouseLocation() };
+    let p = NSEvent::mouseLocation();
     let primary_h = objc2_app_kit::NSScreen::screens(objc2::MainThreadMarker::new().unwrap_or_else(|| unsafe { objc2::MainThreadMarker::new_unchecked() })).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
     Pt { x: p.x, y: primary_h - p.y }
 }
@@ -144,21 +144,21 @@ pub fn read_text_at(frame: &Frame, accurate: bool) -> Vec<OcrBox> {
     let Ok(jpeg) = frame.to_jpeg(90) else { return vec![] };
     let data = NSData::with_bytes(&jpeg);
     let opts = NSDictionary::<objc2_vision::VNImageOption, AnyObject>::new();
-    let handler = unsafe { VNImageRequestHandler::initWithData_options(VNImageRequestHandler::alloc(), &data, &opts) };
-    let req = unsafe { VNRecognizeTextRequest::new() };
-    unsafe { req.setRecognitionLevel(if accurate { VNRequestTextRecognitionLevel::Accurate } else { VNRequestTextRecognitionLevel::Fast }); req.setUsesLanguageCorrection(false); }
+    let handler = VNImageRequestHandler::initWithData_options(VNImageRequestHandler::alloc(), &data, &opts);
+    let req = VNRecognizeTextRequest::new();
+    req.setRecognitionLevel(if accurate { VNRequestTextRecognitionLevel::Accurate } else { VNRequestTextRecognitionLevel::Fast }); req.setUsesLanguageCorrection(false);
     let arr = NSArray::from_retained_slice(&[req.clone().into_super().into_super()]);
-    if unsafe { handler.performRequests_error(&arr) }.is_err() { return vec![]; }
-    let Some(results) = (unsafe { req.results() }) else { return vec![] };
+    if handler.performRequests_error(&arr).is_err() { return vec![]; }
+    let Some(results) = req.results() else { return vec![] };
     let (w, h) = (frame.w as f64, frame.h as f64);
     let mut out = Vec::new();
     for (i, o) in results.iter().enumerate() {
         let Some(obs) = o.downcast_ref::<VNRecognizedTextObservation>().map(|x| x.to_owned()) else { continue };
-        let cands = unsafe { obs.topCandidates(1) };
+        let cands = obs.topCandidates(1);
         let Some(c) = cands.iter().next() else { continue };
         let bb = unsafe { obs.boundingBox() };
         let r = crate::coords::vision_box_to_image(bb.origin.x, bb.origin.y, bb.size.width, bb.size.height, w, h);
-        out.push(OcrBox { id: format!("o{i}"), text: unsafe { c.string() }.to_string(), rect: r });
+        out.push(OcrBox { id: format!("o{i}"), text: c.string().to_string(), rect: r });
     }
     out
 }

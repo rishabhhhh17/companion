@@ -13,7 +13,7 @@ fn luhn(digits: &[u32]) -> bool {
 fn card_number(text: &str) -> bool {
     // Runs of digits that may be split by single spaces or dashes: 13 to 19 digits that pass the check sum.
     let mut run: Vec<u32> = Vec::new();
-    let mut flush = |run: &mut Vec<u32>| -> bool { let ok = (13..=19).contains(&run.len()) && luhn(run); run.clear(); ok };
+    let flush = |run: &mut Vec<u32>| -> bool { let ok = (13..=19).contains(&run.len()) && luhn(run); run.clear(); ok };
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
     while i < chars.len() {
