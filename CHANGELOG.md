@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Point at the problem works across several monitors: 14 Oct 2026
+
+- Idea taken from reading Clicky's open source code (it lets its model point at another screen). Before, pressing the key looked only at the display your mouse was on, so a failing line in an editor on your second monitor was never found. Now, if the line is not on that display, Companion looks at your other displays one after another (up to four), all under the same light, and points on the one where it finds the line. Nothing is saved or sent; a hit on the first display never looks at the others. Tested with a fake two display Mac; **not yet tried on real monitors**.
+
 ## Three more lessons, and lessons that need no folder: 14 Oct 2026
 
 - **New drafts:** install Claude Code and start your first session (from the official quickstart), get your Bolt project onto your Mac, and get your Replit project onto your Mac (from Replit's help page). They are marked draft like the others; none has been tried by a person. Bolt's export button is described differently by different guides, so that lesson says to look in both places. No Cursor lesson: the Cursor docs gave no usable steps and I did not want to guess.

@@ -79,12 +79,11 @@ fn cg_to_frame(img: &CGImage) -> Option<Frame> {
     Frame::new(w as u32, h as u32, data)
 }
 
-impl Platform for MacPlatform {
-    fn screen_recording_granted(&self) -> bool { CGPreflightScreenCaptureAccess() }
-    fn secure_input_on(&self) -> bool { crate::ax::secure_input_enabled() }
-    fn indicator(&self, on: bool) { (self.light)(on) }
+fn same_display(r: &R, f: &CGRect) -> bool { (r.x - f.origin.x).abs() < 1.0 && (r.y - f.origin.y).abs() < 1.0 && (r.w - f.size.width).abs() < 1.0 && (r.h - f.size.height).abs() < 1.0 }
 
-    fn capture(&self) -> Result<Captured, String> {
+impl MacPlatform {
+    /// The display under the mouse, or the first one left when some have been looked at already (`exclude`).
+    fn capture_excluding(&self, exclude: &[R]) -> Result<Captured, String> {
         let content = shareable()?;
         let me = std::process::id() as i32;
         let want = pointer();
@@ -92,6 +91,7 @@ impl Platform for MacPlatform {
         let mut chosen: Option<(Retained<SCDisplay>, CGRect)> = None;
         for d in displays.iter() {
             let f = unsafe { d.frame() };
+            if exclude.iter().any(|t| same_display(t, &f)) { continue; }
             if want.x >= f.origin.x && want.x < f.origin.x + f.size.width && want.y >= f.origin.y && want.y < f.origin.y + f.size.height { chosen = Some((d.clone(), f)); break; }
             if chosen.is_none() { chosen = Some((d.clone(), f)); }
         }
@@ -129,6 +129,21 @@ impl Platform for MacPlatform {
         *self.last_display.lock().unwrap_or_else(|e| e.into_inner()) = Some(rect);
         Ok(Captured { frame: fr, display: rect })
     }
+}
+
+impl Platform for MacPlatform {
+    fn screen_recording_granted(&self) -> bool { CGPreflightScreenCaptureAccess() }
+    fn secure_input_on(&self) -> bool { crate::ax::secure_input_enabled() }
+    fn indicator(&self, on: bool) { (self.light)(on) }
+
+    fn capture(&self) -> Result<Captured, String> { self.capture_excluding(&[]) }
+
+    fn capture_other(&self, tried: &[R]) -> Option<Result<Captured, String>> {
+        let content = shareable().ok()?;
+        let more = unsafe { content.displays() }.iter().any(|d| { let f = unsafe { d.frame() }; !tried.iter().any(|t| same_display(t, &f)) });
+        if more { Some(self.capture_excluding(tried)) } else { None }
+    }
+
 
     fn read_text(&self, frame: &Frame) -> Vec<OcrBox> { read_text_at(frame, true) }
     fn read_text_fast(&self, frame: &Frame) -> Vec<OcrBox> { read_text_at(frame, false) }
