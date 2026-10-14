@@ -1,0 +1,9 @@
+{
+  "cmd": [
+    "node",
+    "app.mjs"
+  ],
+  "file": "app.mjs",
+  "line": 1,
+  "about": "export named"
+}

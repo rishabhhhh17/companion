@@ -26,6 +26,17 @@ function project(): string {
 }
 const fixture = (name: string, root: string) => readFileSync(join(import.meta.dir, "fixtures", "errors", `${name}.txt`), "utf8").replaceAll("{{ROOT}}", root);
 
+describe("Node's test output when the assertion has no message of its own", () => {
+  test("the person reads what was wrong, not the formatting of the report ('error: |-')", () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-loc2-"))); made.push(d);
+    mkdirSync(join(d, "test")); writeFileSync(join(d, "test", "price.js"), "const test = require('node:test');\nconst assert = require('node:assert');\nconst { withTax } = require('../price');\n\ntest('adds 20 percent tax', () => {\n  assert.strictEqual(withTax(100), 120);\n});\n");
+    const p = locateProblem(fixture("node-test-tap-block", d), d, "tests");
+    expect(p).toMatchObject({ kind: "line", file: "test/price.js", line: 6 });
+    expect(p && p.message).toBe("Expected values to be strictly equal. Got 110.00000000000001, expected 120.");
+    expect(p && p.message).not.toMatch(/\|-|^error/);
+  });
+});
+
 describe("real tool output becomes a file and a line", () => {
   test("TypeScript (plain): the first error, with the line's own text", () => {
     const p = project();

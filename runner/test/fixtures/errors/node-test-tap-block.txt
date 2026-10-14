@@ -1,0 +1,25 @@
+TAP version 13
+# Subtest: adds 20 percent tax
+not ok 1 - adds 20 percent tax
+  ---
+  duration_ms: 0.6965
+  location: '{{ROOT}}/test/price.js:5:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 110.00000000000001
+    - 120
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 120
+  actual: 110.00000000000001
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> ({{ROOT}}/test/price.js:6:10)
+    Test.runInAsyncScope (node:async_hooks:203:9)
+  ...
+1..1
+# tests 1
+# fail 1

@@ -1,0 +1,6 @@
+{
+  "cmd": ["node", "--test"],
+  "file": "test/price.js",
+  "line": 6,
+  "about": "120"
+}

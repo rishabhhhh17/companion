@@ -1,0 +1,9 @@
+{
+  "cmd": [
+    "node",
+    "app.js"
+  ],
+  "file": "app.js",
+  "line": 3,
+  "about": "Cannot read properties of undefined"
+}
