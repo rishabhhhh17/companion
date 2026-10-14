@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Four more lessons, as drafts: 14 Oct 2026
+
+- **Vercel:** add a setting to your project (and redeploy so it takes effect), and find out why a deploy failed (open the build log, find the real cause). **Lovable:** connect your project to GitHub (so Companion can open it from a link), and publish your project.
+- **Every lesson now says if it was tried.** These four, and the three permission lessons, are marked **Draft: written from the maker's own help pages, not tried by a person yet**, and the Lessons list says so. I wrote them from the current Vercel and Lovable help pages, and corrected two steps I had first written from memory. Product screens change often, so they stay drafts until a person has walked each one on a real screen.
+- Supabase lessons are not included (after the beta, as decided).
+
 ## "Walk me through it" for permissions: 12 Oct 2026
 
 - In Settings, each permission that is not allowed yet now has a **Walk me through it** button next to Open System Settings. It starts the matching guided lesson (Screen Recording, Accessibility or Microphone). For Screen Recording the lesson is words only until the permission is given, because pointing needs it.

@@ -1,0 +1,85 @@
+{
+  "id": "vercel-add-env-var",
+  "title": "Add a setting to your Vercel project",
+  "app": "Vercel",
+  "goal": "Put a setting (like an API address) where your live site can read it, and make the site pick it up",
+  "status": "draft",
+  "steps": [
+    {
+      "id": "project",
+      "say": "Open your project in the Vercel dashboard.",
+      "find": "your project's name in the list of projects",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "settings",
+      "say": "Open the Settings tab of the project.",
+      "find": "Settings in the row of tabs at the top of the project",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "env",
+      "say": "Choose Environment Variables in the list on the left.",
+      "find": "Environment Variables in the left sidebar",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "name",
+      "say": "Type the setting's name in the Name box. It must match what your code reads, for example SUPABASE_URL.",
+      "find": "the Name box under Add New",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "value",
+      "say": "Paste the value in the Value box. If it is a password or secret key, make it a Secret so it cannot be read again after saving. Do not paste it anywhere else.",
+      "find": "the Value box next to Name",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "which",
+      "say": "Pick where it applies: Production, Preview and Development are the usual three.",
+      "find": "the environment choices (Production, Preview, Development)",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "save",
+      "say": "Press Save.",
+      "find": "the Save button",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "redeploy-tab",
+      "say": "Changes only reach new deployments. Open the Deployments tab.",
+      "find": "Deployments in the sidebar or tabs",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "redeploy",
+      "say": "Press the three dots on your latest deployment, choose Redeploy, then confirm in the window. If it is your Production deployment, this makes the new setting live on your public site.",
+      "find": "the three dots on the latest deployment",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "Open the latest deployment and use its menu to redeploy.",
+        "find": "the latest deployment in the list"
+      }
+    }
+  ]
+}

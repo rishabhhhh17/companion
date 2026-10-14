@@ -1,0 +1,61 @@
+{
+  "id": "vercel-failed-deploy",
+  "title": "Find out why a Vercel deploy failed",
+  "app": "Vercel",
+  "goal": "Open the build log of a failed deploy and find the line that says what went wrong",
+  "status": "draft",
+  "steps": [
+    {
+      "id": "project",
+      "say": "Open your project in the Vercel dashboard.",
+      "find": "your project's name in the list of projects",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "deployments",
+      "say": "Open Deployments in the sidebar.",
+      "find": "Deployments in the sidebar",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "failed",
+      "say": "Click the deployment marked Error (the red one).",
+      "find": "the deployment with the Error status",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "logs",
+      "say": "On that page, find Deployment Details and open the Building section to show the build logs.",
+      "find": "Building in the Deployment Details section",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If there is no Building section, the error is shown on the page itself. Read it there.",
+        "find": "the error message shown over the deployment page"
+      }
+    },
+    {
+      "id": "line",
+      "say": "Scroll to the red words that say Error. The last one often only says the build exited; the real cause is a few lines above it.",
+      "find": "the red Error lines in the build log",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "ask",
+      "say": "Press Control, Option, Command and F in Companion to find the same place in your project. If Provisioning Integrations failed, do not press Skip.",
+      "find": "Companion's character on the edge of the screen",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "id": "lovable-publish",
+  "title": "Publish your Lovable project",
+  "app": "Lovable",
+  "goal": "Publish the project so it has a public link",
+  "status": "draft",
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open your project in Lovable.",
+      "find": "your project in the Lovable editor",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "publish",
+      "say": "Press Publish in the top right of the editor, next to Share. Nothing goes live until you press Publish again in the window that opens.",
+      "find": "the Publish button next to Share, top right",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "check",
+      "say": "Check the Website URL it suggests (it ends in lovable.app) and Who can view your site: Public means anyone with the link can see it.",
+      "find": "the Website URL box and Who can view your site",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "confirm",
+      "say": "Look at the security check line, then press Publish in the window.",
+      "find": "the Publish button in the window",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If it says build errors need fixing, use Try to fix first and publish after.",
+        "find": "Try to fix in the Publish window"
+      }
+    },
+    {
+      "id": "open-link",
+      "say": "When it says Your website is live, use the copy link or visit site button, and check the page loads.",
+      "find": "the copy link or visit site button",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If the project is already live, the button says Publish changes instead.",
+        "find": "Publish changes"
+      }
+    }
+  ]
+}

@@ -19,7 +19,7 @@ export class WalkService {
     switch (cmd.type) {
       case "walk.list": {
         const { lessons, problems } = loadLessons(this.o.lessonDirs);
-        this.emit({ type: "walk.lessons", project: cmd.project, problems: problems.length, lessons: lessons.map((l) => ({ id: l.id, title: l.title, app: l.app, goal: l.goal, steps: l.steps.length, saved: this.o.store.load(cmd.project, l.id) !== null })) });
+        this.emit({ type: "walk.lessons", project: cmd.project, problems: problems.length, lessons: lessons.map((l) => ({ id: l.id, title: l.title, app: l.app, goal: l.goal, status: l.status, steps: l.steps.length, saved: this.o.store.load(cmd.project, l.id) !== null })) });
         return;
       }
       case "walk.start": return this.start(cmd);

@@ -133,6 +133,7 @@ export const S = {
   lessonsButton: "Lessons",
   lessonsTitle: "Guided lessons",
   lessonsNone: "No lessons yet.",
+  lessonDraft: "Draft: written from the maker's own help pages, not tried by a person yet. Tell me if a step is wrong.",
   lessonStart: "Start",
   lessonContinue: "Continue",
   lessonStartOver: "Start over",

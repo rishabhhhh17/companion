@@ -1,0 +1,61 @@
+{
+  "id": "lovable-github",
+  "title": "Connect your Lovable project to GitHub",
+  "app": "Lovable",
+  "goal": "Connect the project to GitHub and find its link, so Companion can open it from a link",
+  "status": "draft",
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open your project in Lovable.",
+      "find": "your project in the Lovable editor",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "settings",
+      "say": "Open Project settings.",
+      "find": "Project settings in the editor",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "git",
+      "say": "Choose Git, then GitHub.",
+      "find": "Git and then GitHub in the settings list",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "connect",
+      "say": "Under Accounts, press Connect next to your connection. This makes a new private GitHub repository and keeps it in sync.",
+      "find": "Connect next to your connection, under Accounts",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "No connection yet? Press Add connection. Only a workspace owner or admin can; ask them if you cannot.",
+        "find": "Add connection"
+      }
+    },
+    {
+      "id": "view",
+      "say": "Open the repository connection menu and choose View on GitHub. It opens in a new tab.",
+      "find": "the repository menu with View on GitHub",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "link",
+      "say": "Copy the page's web address. In Companion, choose Open from a link and paste it.",
+      "find": "the address bar of the GitHub page",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}
