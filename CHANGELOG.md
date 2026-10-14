@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Attacks on the safety rules, and four holes closed: 14 Oct 2026
+
+- **150 disguised commands were thrown at the rules that decide what a task may run** (quotes inside the command name, a backslash, a full path, `env`/`nice`/`command` wrappers, `sh -c`, `eval`, `$(...)`, chained commands, `cd` out first, `~` and `$HOME`, encoded scripts piped to a shell). All the destructive ones, and every attempt to write outside the project, were already stopped. Ordinary building commands (tests, builds, installs inside the project, git status/diff/log) are confirmed not blocked.
+- **Found and closed:** (1) a command could take a **screenshot of your screen** (`screencapture`), which broke the "only on your key press" rule: now refused outright. (2) A command could search your whole Mac (`mdfind`), schedule jobs for later (`crontab`, `at`), erase disks (`mkfs`) or back up and restore (`tmutil`): now refused. (3) Stopping programs (`kill`, `killall`, `pkill`) and the clipboard or sounds (`pbcopy`, `afplay`) now ask first. (4) The file tools treated `~/.aws/credentials` as a name inside the project; `~` and `$HOME` now count as the home folder, so reading or writing there asks or is refused.
+- **Web look ups:** secrets can no longer ride out in the path of a web address (an unusually long address, or a long code-like piece of one, asks first); normal documentation links are unaffected.
+- A second layer was already in place and still is: the Mac's own sandbox refuses reading your keys and shell history, writing outside the project, and all network except package registries.
+
 ## Garbage in, no crash, in the Mac program too: 14 Oct 2026
 
 - The same junk test now runs on the Mac side (the card page's JSON, text read from a screenshot, log text, text matching, the spoken line). **It found a real gap in secret covering:** a key run into the letters before it ("tokensk-ant-...", which text read from a picture can produce) was missed, both when blacking out a screenshot before it is sent and when scrubbing a support log. Anthropic, GitHub, Slack, Stripe and webhook key prefixes are now caught anywhere in a word, and ordinary words that merely contain the letters ("task-management-service") are left readable.
