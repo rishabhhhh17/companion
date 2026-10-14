@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The lesson's progress list is visible: 14 Oct 2026
+
+- A lesson card now has a **What we have done** list you can open: each finished step, and whether it was proven or you did it yourself. It was already kept so a lesson could pick up where it left off; now you can see it too (F17 section 4.4, and the same idea as HeyClicky's progress log). A step that came undone while you were away leaves the list.
+
 ## A careful read of the whole code: 14 Oct 2026
 
 Checked the code against the rules in `AGENTS.md` and the source file, one pattern at a time. Found and fixed:

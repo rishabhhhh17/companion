@@ -610,6 +610,12 @@ function Card() {
             <div className="line"><b>{m.walk.say}</b></div>
           </>}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
+          {m.walk.log.length > 0 && (
+            <details className="line muted">
+              <summary>{S.lessonLogTitle} ({m.walk.log.length})</summary>
+              <ol>{m.walk.log.map((h, i) => <li key={i}>{h.say} <span className="muted">({h.how === "skipped" ? S.lessonLogSkipped : S.lessonLogDone})</span></li>)}</ol>
+            </details>
+          )}
           <div className="row">
             {m.walk.stage === "step" && <>
               <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}` }); }}>{S.lessonPoint}</button>

@@ -40,6 +40,12 @@ describe("walkthrough service", () => {
     await s.cmd("walk.answer", { walk: "w1", worked: true });
     expect(s.of("walk.step")[1]).toMatchObject({ index: 1, say: "Copy the key name", ask: false });
   });
+  test("each step carries the list of what is already done, so the card can show it", async () => {
+    const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
+    expect(s.of("walk.step")[0].log).toEqual([]);
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.answer", { walk: "w1", worked: true });
+    expect(s.of("walk.step")[1].log).toEqual([{ say: "Open settings", how: "done" }]);
+  });
   test("a step the project can prove moves on by itself when it passes", async () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.answer", { walk: "w1", worked: true });

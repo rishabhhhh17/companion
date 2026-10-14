@@ -130,6 +130,25 @@ describe("walking through a lesson", () => {
   });
 });
 
+describe("the progress log you can read", () => {
+  test("it lists the steps already finished, in order, with how each ended", async () => {
+    const w = new Walkthrough(lesson([step("a"), step("b"), step("c"), step("d")]), null, { now: T, project: "/p" });
+    expect(w.history()).toEqual([]);
+    await w.settle("clicked", async () => true);
+    w.skip();
+    await w.answer(true);
+    expect(w.history()).toEqual([{ say: "Do a", how: "done" }, { say: "Do b", how: "skipped" }, { say: "Do c", how: "done" }]);
+  });
+  test("steps that came undone on resume leave the list, and the current step is never in it", async () => {
+    const auto = (id: string, name: string) => step(id, { check: { kind: "env_name", name } });
+    const w = new Walkthrough(lesson([auto("a", "ONE"), auto("b", "TWO")]), null, { now: T, project: "/p" });
+    await w.settle("clicked", async () => true);
+    expect(w.history().map((h) => h.say)).toEqual(["Do a"]);
+    await w.resume(async () => false);   // ONE has vanished
+    expect(w.history()).toEqual([]);
+  });
+});
+
 describe("picking up after a pause", () => {
   const auto = (id: string, name: string) => step(id, { check: { kind: "env_name", name } });
   const l = () => lesson([auto("a", "ONE"), auto("b", "TWO"), auto("c", "THREE")]);
