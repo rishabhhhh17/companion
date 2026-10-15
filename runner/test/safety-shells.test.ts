@@ -3,10 +3,10 @@
 // BashOutput and TaskOutput tools were removed). Stopping or reading a command this task started is safe; anything else
 // still asks, and a tool nobody knows still asks.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { evaluate, evaluateReadOnly } from "../src/safety.ts";
+import { claudeTempRoot, evaluate, evaluateReadOnly } from "../src/safety.ts";
 import { AgentRunner, type ToolExecutor } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { buildSdkOptions, SdkEngine } from "../src/sdkEngine.ts";
@@ -18,7 +18,11 @@ afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, for
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-shells-${l}-`))); made.push(d); return d; };
 
 const P = "/Users/me/site";
-const OUT = "/private/tmp/claude-501/-Users-me-site/0c3f9a1e-1111-2222-3333-444455556666/tasks/b7k2p9.output";
+// Claude Code keeps a background command's output in its own temp folder: "/tmp/claude-<uid>/<project>/<session>/tasks/<id>.output"
+// (or under CLAUDE_CODE_TMPDIR when that is set).
+const UID = process.getuid?.() ?? 0;
+const SESSION = "0c3f9a1e-1111-2222-3333-444455556666";
+const OUT = `/tmp/claude-${UID}/-Users-me-site/${SESSION}/tasks/b7k2p9.output`;
 const started = { shells: new Set(["b7k2p9"]) };
 const ctx = { project: P, started };
 const v = (tool: string, input: Record<string, unknown>, c: Parameters<typeof evaluate>[1] = ctx) => evaluate({ tool, input }, c);
@@ -53,11 +57,69 @@ describe("reading a background command's output", () => {
     expect(v("Read", { file_path: "../../tasks/b7k2p9.output" }).decision).toBe("ask");
   });
   test("without a record of what the task started, it asks as any outside read does", () => expect(v("Read", { file_path: OUT }, { project: P }).decision).toBe("ask"));
+  test("the same file spelled through /private/tmp is the same file", () => expect(v("Read", { file_path: OUT.replace(/^\/tmp\//, "/private/tmp/") }).decision).toBe("allow"));
+  test("a folder named tasks anywhere else on the Mac is not Claude's own folder", () => {
+    expect(v("Read", { file_path: `/Users/me/x/tasks/b7k2p9.output` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/private/var/tmp/a/b/tasks/b7k2p9.output` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/tmp/someone-else/-Users-me-site/${SESSION}/tasks/b7k2p9.output` }).decision).toBe("ask");
+  });
+  test("only the exact layout inside Claude's temp folder counts", () => {
+    expect(v("Read", { file_path: `/tmp/claude-${UID}/tasks/b7k2p9.output` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/tmp/claude-${UID}/${SESSION}/tasks/b7k2p9.output` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/tmp/claude-${UID}/a/b/c/tasks/b7k2p9.output` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/tmp/claude-${UID}/-Users-me-site/${SESSION}/notes/b7k2p9.output` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/tmp/claude-${UID}/-Users-me-site/${SESSION}/tasks/b7k2p9.output.txt` }).decision).toBe("ask");
+    expect(v("Read", { file_path: `/tmp/claude-${UID}/-Users-me-site/${SESSION}/tasks/xb7k2p9.output` }).decision).toBe("ask");
+  });
+  test("Claude's temp folder is where CLAUDE_CODE_TMPDIR says, when it is set", () => {
+    expect(claudeTempRoot({})).toBe(`/tmp/claude-${UID}`);
+    expect(claudeTempRoot({ CLAUDE_CODE_TMPDIR: "/Volumes/work/tmp" })).toBe(`/Volumes/work/tmp/claude-${UID}`);
+    const moved = { ...ctx, claudeTemp: claudeTempRoot({ CLAUDE_CODE_TMPDIR: "/Volumes/work/tmp" }) };
+    expect(v("Read", { file_path: `/Volumes/work/tmp/claude-${UID}/-Users-me-site/${SESSION}/tasks/b7k2p9.output` }, moved).decision).toBe("allow");
+    expect(v("Read", { file_path: OUT }, moved).decision).toBe("ask");
+  });
   test("the old BashOutput and TaskOutput tools follow the same rule", () => {
     expect(v("BashOutput", { bash_id: "b7k2p9" }).decision).toBe("allow");
     expect(v("TaskOutput", { task_id: "b7k2p9" }).decision).toBe("allow");
     expect(v("BashOutput", { bash_id: "nope" }).decision).toBe("ask");
     expect(v("BashOutput", {}).decision).toBe("ask");
+  });
+});
+
+// The agent can make links with a script it runs without asking. A link named like an output file must never open a door
+// to a file outside the project.
+describe("an output file that is really a link", () => {
+  const linkTo = (target: string, at: string) => { mkdirSync(join(at, ".."), { recursive: true }); symlinkSync(target, at); };
+  test("a link inside the project, named like an output file and pointing outside, asks", () => {
+    const project = tmp("proj");
+    const secret = join(tmp("outside"), "secret.txt");
+    writeFileSync(secret, "s");
+    linkTo(secret, join(project, "tasks/b7k2p9.output"));
+    const c = { project, started };
+    expect(v("Read", { file_path: join(project, "tasks/b7k2p9.output") }, c).decision).toBe("ask");
+    expect(v("Read", { file_path: "tasks/b7k2p9.output" }, c).decision).toBe("ask");
+    linkTo("/etc/hosts", join(project, "tasks/abc.output"));
+    expect(v("Read", { file_path: join(project, "tasks/abc.output") }, { project, started: { shells: new Set(["abc"]) } }).decision).toBe("ask");
+  });
+  test("a link inside Claude's own temp folder, pointing outside, asks; the real file there is allowed", () => {
+    const root = join(tmp("ctemp"), `claude-${UID}`);
+    const c = { project: P, started: { shells: new Set(["b7k2p9", "abc"]) }, claudeTemp: root };
+    const real = join(root, "-Users-me-site", SESSION, "tasks/b7k2p9.output");
+    mkdirSync(join(real, ".."), { recursive: true });
+    writeFileSync(real, "server started");
+    expect(v("Read", { file_path: real }, c).decision).toBe("allow");
+    linkTo("/etc/hosts", join(root, "-Users-me-site", SESSION, "tasks/abc.output"));
+    expect(v("Read", { file_path: join(root, "-Users-me-site", SESSION, "tasks/abc.output") }, c).decision).toBe("ask");
+  });
+  test("a linked folder on the way asks too", () => {
+    const root = join(tmp("ctemp"), `claude-${UID}`);
+    const elsewhere = tmp("elsewhere");
+    mkdirSync(join(elsewhere, SESSION, "tasks"), { recursive: true });
+    writeFileSync(join(elsewhere, SESSION, "tasks/b7k2p9.output"), "x");
+    mkdirSync(root, { recursive: true });
+    symlinkSync(elsewhere, join(root, "-Users-me-site"));
+    const c = { project: P, started, claudeTemp: root };
+    expect(v("Read", { file_path: join(root, "-Users-me-site", SESSION, "tasks/b7k2p9.output") }, c).decision).toBe("ask");
   });
 });
 
@@ -95,7 +157,7 @@ describe("in a real task", () => {
   test("with the real engine, the id comes from the command's result in the after-tool hook", async () => {
     const project = tmp("proj");
     const events: Event[] = [];
-    const outFile = `/private/tmp/claude-501/p/0c3f9a1e-1111-2222-3333-444455556666/tasks/b7k2p9.output`;
+    const outFile = `/tmp/claude-${UID}/p/${SESSION}/tasks/b7k2p9.output`;
     const queryFn = (params: any) => (async function* () {
       const pre = params.options.hooks.PreToolUse[0].hooks[0], post = params.options.hooks.PostToolUse[0].hooks[0];
       const sig = { signal: params.options.abortController.signal };

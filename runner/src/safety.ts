@@ -14,7 +14,8 @@ export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason:
 export type ToolCall = { tool: string; input: Record<string, unknown> };
 // started: the ids of the background commands this task's own shell commands reported starting.
 export type Started = { shells: ReadonlySet<string> };
-export type Context = { project: string; userAskedCommit?: boolean; started?: Started };
+export type Context = { project: string; userAskedCommit?: boolean; started?: Started; claudeTemp?: string };
+export const claudeTempRoot = (env: Record<string, string | undefined> = process.env): string => resolve(env.CLAUDE_CODE_TMPDIR || "/tmp", `claude-${process.getuid?.() ?? 0}`);
 
 const allow = (reason = "ok"): Verdict => ({ decision: "allow", reason, undoable: true });
 const ask = (risk: Risk, reason: string, undoable = true): Verdict => ({ decision: "ask", risk, reason, undoable });
@@ -80,12 +81,36 @@ const shellId = (input: Record<string, unknown>, keys: string[]): string | null 
   for (const k of keys) if (typeof input[k] === "string" && input[k]) return input[k] as string;
   return null;
 };
-/** Is this file the output file of a background command this task started ("…/tasks/<id>.output")? */
+/** Is this file the output file of a background command this task started? Claude Code keeps it in its own temp folder
+ *  (claudeTempRoot), exactly at "<project>/<session>/tasks/<id>.output". Nowhere else counts, and no part of the way from
+ *  that folder to the file may be a link: the agent can make links with a script it runs without asking, and a link
+ *  named like an output file must not reach a file outside the project. */
 function startedOutput(file: string, ctx: Context): boolean {
   const s = ctx.started;
   if (!s || !isAbsolute(file)) return false;
-  const n = resolve(file), name = basename(n);
-  return basename(dirname(n)) === "tasks" && name.endsWith(".output") && s.shells.has(name.slice(0, -".output".length));
+  const n = resolve(file);
+  const parts = n.split(sep).filter(Boolean);
+  if (parts.length < 5) return false;
+  const [slug, session, folder, name] = parts.slice(-4);
+  if (folder !== "tasks" || !name.endsWith(".output") || !slug || !session || !s.shells.has(name.slice(0, -".output".length))) return false;
+  const up = dirname(dirname(dirname(dirname(n))));
+  const root = resolveLinks(ctx.claudeTemp ?? claudeTempRoot());
+  // The folder above must be Claude's own (however it is spelled, "/tmp" or "/private/tmp"), and following every link
+  // must land on the very same file below it.
+  return resolveLinks(up) === root && resolveLinks(n) === join(root, slug, session, folder, name);
+}
+
+// What a yes "for the rest of this task" may cover: only asks whose repeat sends nothing, publishes nothing, runs nothing
+// new and changes nothing a snapshot cannot undo. That is a file tool reading outside the project, and a file edit or read
+// inside it that only a house rule asks about. Never a command (a script can change between runs, and git, installs and
+// deploys are not repeat safe), never a web fetch, never any other tool (some send or publish), never a refusal.
+const FILE_READ_TOOLS = new Set(Object.keys(READ_PATHS));
+const FILE_EDIT_TOOLS = new Set(Object.keys(WRITE_TOOLS));
+export function taskScopeCovers(call: ToolCall, v: Verdict, byHouseRule: boolean): boolean {
+  if (v.decision !== "ask" || !v.undoable) return false;
+  if (FILE_READ_TOOLS.has(call.tool)) return v.risk === "outside_project" || byHouseRule;
+  if (FILE_EDIT_TOOLS.has(call.tool)) return byHouseRule;
+  return false;
 }
 
 export function evaluate(call: ToolCall, ctx: Context): Verdict {
@@ -254,8 +279,9 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
   }
   if (["npm", "pnpm", "yarn", "bun"].includes(name)) return evaluatePackageManager(name, args);
   if (["brew", "port", "apt", "apt-get", "gem", "pip", "pip3", "cargo"].includes(name)) {
-    if (["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(args[0] ?? "") && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", `${name} ${args[0]} changes your Mac`);
-    if ((name === "pip" || name === "pip3") && args[0] === "install" && !args.includes("--target") && !process.env.VIRTUAL_ENV) return ask("install", "pip install may change your Mac");
+    // Outside the project, so Undo cannot take these back (technical_research section 6).
+    if (["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(args[0] ?? "") && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", `${name} ${args[0]} changes your Mac`, false);
+    if ((name === "pip" || name === "pip3") && args[0] === "install" && !args.includes("--target") && !process.env.VIRTUAL_ENV) return ask("install", "pip install may change your Mac", false);
     return allow();
   }
   if (["wrangler", "vercel", "netlify", "firebase", "fly", "flyctl", "railway", "heroku", "supabase", "prisma", "gh"].includes(name)) return evaluateService(name, args);
@@ -396,7 +422,7 @@ function evaluateRm(args: string[], ctx: Context, cwd: string): Verdict {
 function evaluatePackageManager(name: string, args: string[]): Verdict {
   const sub = args.find((a) => !a.startsWith("-")) ?? "";
   const global = args.some((a) => a === "-g" || a === "--global" || a === "--global=true" || a === "--location=global" || (a === "--location" && args[args.indexOf(a) + 1] === "global")) || (name === "yarn" && sub === "global");
-  if (global && !["list", "ls", "view", "info", "outdated", "bin", "root", "prefix"].includes(sub)) return ask("install", "a global install changes your Mac");
+  if (global && !["list", "ls", "view", "info", "outdated", "bin", "root", "prefix"].includes(sub)) return ask("install", "a global install changes your Mac", false);
   if (sub === "publish" || (name === "yarn" && sub === "npm" && args.includes("publish"))) return ask("irreversible", "publishing a package cannot be undone", false);
   if (["unpublish", "login", "adduser", "logout", "token", "owner", "access", "dist-tag", "deprecate", "profile", "team", "star", "unstar", "set", "trust"].includes(sub)) return ask("irreversible", `${name} ${sub} changes your account or your published packages`, false);
   if (sub === "config" && ["set", "delete", "edit"].includes(args.filter((a) => !a.startsWith("-"))[1] ?? "")) return ask("irreversible", "changes package manager settings");

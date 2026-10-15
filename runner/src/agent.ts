@@ -28,7 +28,7 @@ import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { captureBefore, sweepWork } from "./proof/before.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
@@ -85,11 +85,14 @@ function pruneOldest(dir: string, keep: number) {
   for (const x of files.slice(keep)) rmSync(join(dir, x.f), { force: true });
 }
 
-// One task of one agent. taskAllowed: actions the person allowed "for the rest of this task" (see approvalKey). shells: the
-// background commands this task started, which it may read and stop. Both end with the session, so never cross tasks.
+// One task of one agent. taskAllowed: actions the person allowed "for the rest of this task" (see approvalKey and
+// taskScopeCovers); it ends with the task, and a Drive plan, which the person sees as one task, hands the same one to every
+// step. shells: the background commands this conversation started, which it may read and stop. Neither crosses tasks.
 type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string> };
-const newSession = (agent: string, abort: AbortController): Session => ({ agent, abort, pending: new Map(), taskAllowed: new Set(), shells: new Set() });
+const newSession = (agent: string, abort: AbortController, taskAllowed: Set<string> = new Set()): Session => ({ agent, abort, pending: new Map(), taskAllowed, shells: new Set() });
 type StartCmd = Extract<Command, { type: "agent.start" }>;
+// resumeSession: carry on Claude's conversation. taskAllowed: what a Drive plan's steps share (see Session).
+type RunOpts = { resumeSession?: string; taskAllowed?: Set<string> };
 
 // What "the same action" means for a yes that covers the rest of a task: the same tool, the same thing it acts on (the exact
 // command, address, file, or for other tools the exact input), and the same reason Companion asked. Anything else asks again.
@@ -148,6 +151,7 @@ export class AgentRunner {
   private projectTurn = new Map<string, Promise<unknown>>();   // a proof check and a picture never run a server at the same time
   private finding = new Map<string, { abort: AbortController; agent: string }>();   // point at the problem: one check per project at a time
   private driveStop = new Set<string>();
+  private planAllowed = new Map<string, Set<string>>();   // agent -> what was allowed "for the rest of this task" in its running Drive plan
   private choices = new Map<string, (c: string) => void>();
   private watchers = new Map<string, ProjectWatcher>();
   private pauseReq = new Map<string, { reason: string; path?: string }>();
@@ -367,7 +371,7 @@ export class AgentRunner {
         this.choices.delete(cmd.agent); r(cmd.choice); return;
       }
       case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "spending.show": this.spendingState(cmd.project); return;
       case "spending.set": this.setDailyLimit(cmd); return;
       case "approval.resolve": {
@@ -401,6 +405,7 @@ export class AgentRunner {
 
   // Stop: every open question is a no, and nothing allowed "for the rest of this task" is allowed any more.
   private cancelPending(agent: string) {
+    this.planAllowed.get(agent)?.clear();
     const s = this.sessions.get(agent);
     if (!s) return;
     s.taskAllowed.clear();
@@ -425,7 +430,7 @@ export class AgentRunner {
   private touched = new Set<string>();               // agents whose task has started changing the project
 
   // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
-  private async run(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+  private async run(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
     const key = resolve(cmd.project);
     if (this.sessions.has(cmd.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
     const holder = this.projectBusy.get(key);
@@ -448,7 +453,7 @@ export class AgentRunner {
     }
   }
 
-  private async runInner(cmd: StartCmd, opts: { resumeSession?: string } = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+  private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
     const room = this.room(cmd.project);
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -456,7 +461,7 @@ export class AgentRunner {
     const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(cmd.prompt);
     const recalled = this.learnAndRecall(cmd.project, cmd.prompt, cmd.offTheRecord);
     const abort = new AbortController();
-    const session = newSession(cmd.agent, abort);
+    const session = newSession(cmd.agent, abort, opts.taskAllowed);
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
@@ -1029,6 +1034,9 @@ export class AgentRunner {
     if (!plan.offTheRecord && plan.goal) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
     this.driving.add(cmd.agent);
     this.driveStop.delete(cmd.agent);
+    // The whole plan is one task to the person: a yes "for the rest of this task" holds for every step, and ends with the plan.
+    const taskAllowed = new Set<string>();
+    this.planAllowed.set(cmd.agent, taskAllowed);
     const total = steps.length;
     let remaining = plan.budgetUsd - plan.usd, spent = plan.usd, completed = 0, status = "done", session = plan.sessionId;
     // Take the wheel: watch for changes the agent did not make, only while the plan is running.
@@ -1058,7 +1066,7 @@ export class AgentRunner {
         let prompt = stepPrompt(index, total, title);
         let r: Awaited<ReturnType<AgentRunner["run"]>>;
         for (;;) {
-          r = await this.run(stepCmd(prompt), { resumeSession: session });
+          r = await this.run(stepCmd(prompt), { resumeSession: session, taskAllowed });
           session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           // Paused in the middle of the step: wait, then carry on with the same step.
           if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
@@ -1073,7 +1081,7 @@ export class AgentRunner {
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));
           if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: session });
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: session, taskAllowed });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }
@@ -1085,6 +1093,7 @@ export class AgentRunner {
     } finally {
       watcher.stop(); this.watchers.delete(cmd.agent); this.pauseReq.delete(cmd.agent); this.resumers.delete(cmd.agent); this.resumeEarly.delete(cmd.agent);
       this.driving.delete(cmd.agent);
+      taskAllowed.clear(); if (this.planAllowed.get(cmd.agent) === taskAllowed) this.planAllowed.delete(cmd.agent);
     }
     this.emit({ type: "drive.done", agent: cmd.agent, status, completed, total, usdEstimate: Math.round(spent * 1e6) / 1e6 } as never);
   }
@@ -1122,9 +1131,10 @@ export class AgentRunner {
       tell("blocked");
       return { allow: false, reason: "Stopped: nothing more runs in this task." };
     }
-    // A yes "for the rest of this task" covers exactly this action again, never one that cannot be undone, and never a refusal
-    // (that was decided above).
-    const key = verdict.decision === "ask" && verdict.undoable ? approvalKey(tool, verdict) : null;
+    // A yes "for the rest of this task" covers exactly this action again, and only the few kinds of question whose repeat is
+    // harmless (taskScopeCovers): never a command, a send, a deploy or an unknown tool, and never a refusal (decided above).
+    const byHouseRule = !!ruled && verdict === ruled;
+    const key = taskScopeCovers({ tool: tool.name, input: tool.input }, verdict, byHouseRule) ? approvalKey(tool, verdict) : null;
     if (verdict.decision === "ask" && key && s.taskAllowed.has(key)) tell("ran");
     else if (verdict.decision === "ask") {
       tell("needs_approval");
