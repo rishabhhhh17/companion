@@ -30,7 +30,16 @@ pub fn sha256_of(path: &Path) -> std::io::Result<String> {
 /// A model that is there and is the file we expect.
 pub fn model_ready(data_dir: &Path) -> bool {
     let p = model_path(data_dir);
-    std::fs::metadata(&p).map(|m| m.len() == MODEL_BYTES).unwrap_or(false) && sha256_of(&p).map(|s| s == MODEL_SHA256).unwrap_or(false)
+    let Ok(m) = std::fs::metadata(&p) else { return false };
+    if m.len() != MODEL_BYTES { return false; }
+    // Reading 148 MB to check it takes a moment, and this runs on every press of the talk keys: remember the answer for as
+    // long as the file is the same file (same size and last change).
+    static CHECKED: std::sync::Mutex<Option<(std::path::PathBuf, std::time::SystemTime, bool)>> = std::sync::Mutex::new(None);
+    let stamp = m.modified().unwrap_or(std::time::UNIX_EPOCH);
+    if let Some((path, at, ok)) = CHECKED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
+    let ok = sha256_of(&p).map(|s| s == MODEL_SHA256).unwrap_or(false);
+    *CHECKED.lock().unwrap_or_else(|e| e.into_inner()) = Some((p, stamp, ok));
+    ok
 }
 
 /// Downloads the model once, into Companion's own folder, and only keeps it if it is exactly the expected file.
@@ -40,7 +49,7 @@ pub fn download_model(data_dir: &Path, progress: &dyn Fn(u64)) -> Result<(), Str
     std::fs::create_dir_all(&dir).map_err(|e| format!("Could not make the folder: {e}"))?;
     let tmp = dir.join(format!("{MODEL_NAME}.part"));
     let _ = std::fs::remove_file(&tmp);
-    let mut child = std::process::Command::new("curl")
+    let mut child = std::process::Command::new("/usr/bin/curl")
         .args(["-L", "--fail", "--silent", "--show-error", "--max-time", "1800", "-o"]).arg(&tmp).arg(MODEL_URL)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped())
         .spawn().map_err(|e| format!("Could not start the download: {e}"))?;

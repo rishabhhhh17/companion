@@ -11,7 +11,6 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::AnyThread;
-use objc2_app_kit::NSEvent;
 use objc2_core_graphics::{CGBitmapContextCreate, CGColorSpace, CGContext, CGImage, CGImageAlphaInfo, CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess, CGDisplayPixelsWide};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize, CFRetained};
 use objc2_foundation::{NSArray, NSData, NSDictionary, NSError};
@@ -61,11 +60,14 @@ fn shareable() -> Result<Retained<SCShareableContent>, String> {
     }
 }
 
-/// The pointer in global top-left points.
+/// The pointer in global top-left points. Read through Core Graphics (which already speaks in top-left points and may be asked
+/// from any thread), not through AppKit's screen list, which belongs to the main thread and is called here sixty times a second.
 pub fn pointer() -> Pt {
-    let p = NSEvent::mouseLocation();
-    let primary_h = objc2_app_kit::NSScreen::screens(objc2::MainThreadMarker::new().unwrap_or_else(|| unsafe { objc2::MainThreadMarker::new_unchecked() })).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-    Pt { x: p.x, y: primary_h - p.y }
+    use objc2_core_graphics::CGEvent;
+    match CGEvent::new(None) {
+        Some(ev) => { let p = CGEvent::location(Some(&ev)); Pt { x: p.x, y: p.y } }
+        None => Pt { x: -1.0, y: -1.0 },
+    }
 }
 
 fn cg_to_frame(img: &CGImage) -> Option<Frame> {
@@ -176,4 +178,14 @@ pub fn read_text_at(frame: &Frame, accurate: bool) -> Vec<OcrBox> {
         out.push(OcrBox { id: format!("o{i}"), text: c.string().to_string(), rect: r });
     }
     out
+}
+
+#[cfg(test)]
+mod pointer_tests {
+    #[test]
+    fn the_pointer_can_be_read_from_any_thread_without_touching_the_main_thread_only_parts_of_appkit() {
+        // Your turn reads it sixty times a second from its own thread. It used to ask AppKit's screen list from there.
+        let p = std::thread::spawn(super::pointer).join().expect("reading the pointer must not panic off the main thread");
+        assert!(p.x.is_finite() && p.y.is_finite());
+    }
 }

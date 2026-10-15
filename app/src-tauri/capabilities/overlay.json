@@ -1,0 +1,1 @@
+{ "identifier": "overlay", "description": "The overlay draws rings and sketches when told to. It may listen for events and nothing else.", "windows": ["overlay"], "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"] }

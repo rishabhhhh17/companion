@@ -37,7 +37,7 @@ pub fn items(home: &Path, data: &Path) -> Vec<Item> {
         Item { id: "lessons", label: "Where you are in each guided lesson", paths: vec![] },
         Item { id: "memory", label: "What Companion knows about you and your projects", paths: vec![] },
         Item { id: "speech", label: "The speech model for hold to talk", paths: vec![data.join("models")] },
-        Item { id: "browser", label: "The hidden browser Companion checks your pages with", paths: vec![home.join("Library/Application Support/Companion")] },
+        Item { id: "browser", label: "The hidden browser Companion checks your pages with", paths: vec![home.join("Library/Application Support/Companion/browsers")] },
         Item { id: "settings", label: "Settings, recent folders and the activity log", paths: vec![] },
     ];
     let mut add = |id: &str, p: PathBuf| { if let Some(g) = groups.iter_mut().find(|g| g.id == id) { g.paths.push(p); } };
@@ -67,7 +67,7 @@ pub fn size_of(p: &Path) -> u64 {
 
 /// A path may be removed only when it lies inside one of Companion's own places and is not one of those places' parents.
 pub fn safe_to_remove(p: &Path, home: &Path, data: &Path) -> bool {
-    let roots = [data.to_path_buf(), home.join("Library/Application Support/Companion"), home.join("Library/WebKit/dev.companion.app"), home.join("Library/Caches/dev.companion.app"), home.join("Library/HTTPStorages/dev.companion.app")];
+    let roots = [data.to_path_buf(), home.join("Library/Application Support/Companion/browsers"), home.join("Library/WebKit/dev.companion.app"), home.join("Library/Caches/dev.companion.app"), home.join("Library/HTTPStorages/dev.companion.app")];
     home.is_absolute() && data.is_absolute() && roots.iter().any(|r| p == r || p.starts_with(r)) && p != home && p != data.parent().unwrap_or(Path::new("/")) && !p.components().any(|c| c.as_os_str() == "..") && p.file_name().is_some_and(|n| n != "dev.json")
 }
 
@@ -96,6 +96,9 @@ pub fn erase(home: &Path, data: &Path) -> (Vec<String>, Vec<String>) {
             if !safe_to_remove(p, home, data) { ok = false; continue; }
             if remove_path(p).is_err() { ok = false; }
         }
+        // The folder above Companion's browsers is named like the product, and macOS ignores capital letters in names: it is
+        // only removed if nothing else is in it (another product with the same name keeps its data).
+        if item.id == "browser" { if let Some(parent) = home.join("Library/Application Support/Companion").canonicalize().ok().or_else(|| Some(home.join("Library/Application Support/Companion"))) { let _ = fs::remove_dir(parent); } }
         if ok { done.push(item.label.to_string()); } else { failed.push(item.label.to_string()); }
     }
     (done, failed)
@@ -181,7 +184,7 @@ pub fn clean_project(project: &Path) -> Vec<String> {
 /// nothing is holding or rewriting the files. Returns the groups that could not be removed (after three tries).
 pub struct Helper<'a> {
     pub parent_gone: &'a dyn Fn() -> bool,
-    pub delete_key: &'a dyn Fn(),
+    pub delete_key: &'a dyn Fn() -> bool,
     pub relaunch: &'a dyn Fn(),
     pub wait: &'a dyn Fn(),
 }
@@ -195,8 +198,14 @@ pub fn run_helper(home: &Path, data: &Path, projects: &[PathBuf], with_projects:
         (h.wait)();
     }
     // The key goes only when everything else did, so a half finished wipe never leaves the app without its key.
-    if failed.is_empty() { (h.delete_key)(); }
-    else {
+    if failed.is_empty() {
+        if !(h.delete_key)() {
+            // A key that could not be removed must not be reported as deleted.
+            let _ = fs::create_dir_all(data);
+            let _ = fs::write(data.join("wipe-note.txt"), "Everything else was deleted, but your saved Claude key could not be removed from the Keychain. Open Keychain Access, search for \"companion\", and delete it, or use Settings, Delete everything again.");
+            failed.push("your saved key".to_string());
+        }
+    } else {
         // Told to the person on the next start, because the data folder is where the note has to live.
         let _ = fs::create_dir_all(data);
         let _ = fs::write(data.join("wipe-note.txt"), format!("Some of what Companion keeps could not be deleted: {}. Quit Companion and use Settings, Delete everything again.", failed.join(", ")));
@@ -258,7 +267,7 @@ mod tests {
         let (done, failed) = erase(&m.home, &m.data);
         assert!(failed.is_empty(), "{failed:?}"); assert!(done.len() >= 6);
         assert!(!m.data.join("runner/tasks.db").exists() && !m.data.join("runner/shadow").exists() && !m.data.join("models").exists() && !m.data.join("dock.json").exists());
-        assert!(!m.home.join("Library/Application Support/Companion").exists());
+        assert!(!m.home.join("Library/Application Support/Companion/browsers").exists());
         assert!(m.data.join("dev.json").exists());
         assert!(m.home.exists());   // the home folder itself is never touched
     }
@@ -359,7 +368,7 @@ mod tests {
         let p = m.root.join("site6"); create_dir_all(p.join(".companion")).unwrap(); write(p.join(".companion/project.md"), "x").unwrap();
         let log = RefCell::new(Vec::<String>::new()); let polls = RefCell::new(0);
         let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
-            parent_gone: &|| { *polls.borrow_mut() += 1; *polls.borrow() > 3 }, delete_key: &|| log.borrow_mut().push("key".into()), relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {},
+            parent_gone: &|| { *polls.borrow_mut() += 1; *polls.borrow() > 3 }, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {},
         });
         assert!(failed.is_empty());
         assert_eq!(*polls.borrow(), 4);   // it kept waiting until the app had gone
@@ -374,7 +383,7 @@ mod tests {
         // A folder that cannot be emptied: no permission to remove things from it.
         let stuck = m.data.join("runner/shadow/x"); fs::set_permissions(&stuck, fs::Permissions::from_mode(0o500)).unwrap();
         let log = RefCell::new(Vec::<String>::new());
-        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| log.borrow_mut().push("key".into()), relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {} });
+        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {} });
         fs::set_permissions(&stuck, fs::Permissions::from_mode(0o700)).unwrap();
         assert!(!failed.is_empty());
         assert_eq!(*log.borrow(), vec!["relaunch"]);   // no key deletion, but the app opens
@@ -389,5 +398,23 @@ mod tests {
         assert!(!project_has_ours(&p));
         assert!(clean_project(&p).is_empty());
         assert!(elsewhere.join("keep.txt").exists());
+    }
+
+    #[test]
+    fn another_products_data_in_a_folder_with_the_same_name_survives() {
+        let m = mac("samename");
+        let other = m.home.join("Library/Application Support/Companion/their-data.db");
+        write(&other, "not ours").unwrap();
+        run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| true, relaunch: &|| {}, wait: &|| {} });
+        assert!(other.exists(), "only our own browsers folder may be removed from a folder named like the product");
+        assert!(!m.home.join("Library/Application Support/Companion/browsers").exists());
+    }
+    #[test]
+    fn a_key_that_could_not_be_removed_is_never_reported_as_deleted() {
+        let m = mac("keyfail");
+        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| false, relaunch: &|| {}, wait: &|| {} });
+        assert!(failed.iter().any(|f| f.contains("key")), "{failed:?}");
+        let note = fs::read_to_string(m.data.join("wipe-note.txt")).unwrap();
+        assert!(note.contains("Keychain Access"), "{note}");
     }
 }

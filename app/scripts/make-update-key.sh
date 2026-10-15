@@ -16,7 +16,8 @@ DIR="$(mktemp -d)"; trap 'rm -rf "$DIR"' EXIT
 printf "Choose a password for the update key (you will type it again when publishing): "; read -rs PW; echo
 [ -n "$PW" ] || { echo "FAIL: the password cannot be empty"; exit 1; }
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$PW" cargo tauri signer generate --ci -w "$DIR/key" >/dev/null   # the password goes in the environment, not on a command line
-security add-generic-password -a "$USER" -s "Companion update key" -w "$(cat "$DIR/key")" -U
+# Given to `security` on its standard input, not as an argument: arguments can be seen by other programs while it runs.
+printf 'add-generic-password -a "%s" -s "Companion update key" -w "%s" -U\n' "$USER" "$(cat "$DIR/key")" | security -i >/dev/null
 python3 - "$DIR/key.pub" "$ENDPOINT" <<'PY'
 import json, sys
 pub = open(sys.argv[1]).read().strip()

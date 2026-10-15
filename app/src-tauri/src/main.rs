@@ -412,6 +412,11 @@ fn list_projects() -> Vec<String> { projects::load(&projects_path()).still_there
 /// Switch to a folder from the list, or one just picked. Only folders that pass the checks are ever used.
 #[tauri::command]
 fn use_project(app: AppHandle, path: String) -> Result<String, String> {
+    // From a web page, only a folder that is already on the person's list of projects (new ones come from the folder chooser or a link).
+    if !projects::load(&projects_path()).recent.iter().any(|r| *r == path) { return Err("Pick a folder from your list, or choose a new one with the folder button.".into()); }
+    use_project_inner(app, path)
+}
+fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
     let ok = projects::validate(&path, &home_dir(), &data_dir())?;
     let folder = ok.to_string_lossy().to_string();
     let mut p = projects::load(&projects_path());
@@ -436,7 +441,7 @@ fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
 #[tauri::command]
 async fn pick_project(app: AppHandle) -> Result<String, String> {
     let chosen = tauri::async_runtime::spawn_blocking(projects::choose_folder).await.map_err(|_| "The folder chooser stopped.".to_string())?;
-    match chosen { Some(path) => use_project(app, path), None => Err(String::new()) }
+    match chosen { Some(path) => use_project_inner(app, path), None => Err(String::new()) }
 }
 
 /// Open a project from a link: the person picks where it goes, then the runner copies it into a new folder there.
@@ -454,6 +459,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
 #[tauri::command]
 fn close_card(app: AppHandle) {
     speech_off(&app);   // closing the card silences it
+    { let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false)); }   // and gives back Esc and Accept, which Prompt help borrows system wide while a result waits
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         with_panels(|_, c| c.orderOut(None));
@@ -487,7 +493,14 @@ fn hide_overlay(app: &AppHandle) {
 }
 
 /// Stop everything also takes the pointer away and forgets what was seen.
-fn showme_stop(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+fn showme_stop(app: &AppHandle) {
+    // Prompt help reading or waiting for a decision ends too, and the keys it borrowed (Accept, and Esc everywhere) are given back.
+    // Changing shortcuts from inside a shortcut handler can deadlock, so that part runs on its own thread.
+    phelp::dismiss(app);
+    let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false));
+    showme_stop_rest(app);
+}
+fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 #[tauri::command]
@@ -496,17 +509,22 @@ fn showme_start(app: AppHandle, question: String) {
     point_cancel(); hide_overlay(&app);
     let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
     if question.is_empty() { say_showme(&app, "error", "Type what you want to find, then press Show me.", json!({})); return; }
+    // Stop everything (or a newer press) moves this on: a look already under way must not send its picture afterwards.
+    let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    let current = move || POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
     std::thread::spawn(move || {
         use showme::Platform;
         let req = format!("sm_{}", now());
         let (a1, a2, a3, req1, req2) = (app.clone(), app.clone(), app.clone(), req.clone(), req.clone());
         let plat = macos_see::MacPlatform::new(
             Box::new(move |jpeg, w, h| {
+                if !current() { return; }
                 use base64::Engine;
                 let cmd = json!({ "v": 1, "id": format!("img{}", now()), "type": "assist.image", "ref": req1, "mediaType": "image/jpeg", "base64": base64::engine::general_purpose::STANDARD.encode(jpeg), "w": w, "h": h });
                 let _ = a1.state::<runner::Runner>().send(&cmd);
             }),
             Box::new(move |q, w, h, cands| {
+                if !current() { return; }
                 let ocr: Vec<Value> = cands.iter().map(|(id, text, r)| json!({ "id": id, "text": text, "box": [r.x, r.y, r.w, r.h] })).collect();
                 let cmd = json!({ "v": 1, "id": format!("loc{}", now()), "type": "assist.locate", "req": req2, "question": q, "image": { "ref": req2, "w": w, "h": h }, "ocr": ocr });
                 let _ = a2.state::<runner::Runner>().send(&cmd);
@@ -522,6 +540,7 @@ fn showme_start(app: AppHandle, question: String) {
         log("showme_start", json!({}));
         match showme::start(&plat, &question) {
             Ok(prep) => {
+                if !current() { return; }
                 let covered = prep.covered;
                 *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = Some((req.clone(), prep));
                 say_showme(&app, "thinking", if covered > 0 { "Finding it. I covered some private text first." } else { "Finding it" }, json!({ "req": req, "covered": covered }));
@@ -714,6 +733,8 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or("Check for updates first.")?;
     u.download_and_install(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
     log("update_installed", json!({}));
+    // `restart` goes round the normal exit path: end the engine (and what it runs) properly first, so nothing is left running.
+    app.state::<runner::Runner>().shut_down();
     app.restart();
 }
 
@@ -829,7 +850,7 @@ fn create_practice(app: AppHandle) -> Result<String, String> {
     let src = practice::source(&exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())?;
     let dst = practice::make(&src, std::path::Path::new(&home_dir()))?;
     log("practice_created", json!({}));
-    use_project(app, dst.to_string_lossy().to_string())
+    use_project_inner(app, dst.to_string_lossy().to_string())
 }
 
 static WIPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -878,7 +899,7 @@ fn wipe_helper_mode() -> bool {
     let bundle = std::env::current_exe().ok().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")).map(|p| p.to_path_buf()));
     wipe::run_helper(&home, &data, &projects, with_projects, &wipe::Helper {
         parent_gone: &|| !std::process::Command::new("/bin/kill").args(["-0", &pid]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success()),
-        delete_key: &|| { let _ = keystore::delete_item(&keystore::service(), keystore::ACCOUNT); },
+        delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || !keystore::exists(&keystore::service(), keystore::ACCOUNT) },
         relaunch: &|| { if let Some(b) = &bundle { let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(b).status(); } },   // not from a built app (a development run): nothing to open
         wait: &|| std::thread::sleep(Duration::from_millis(150)),
     });
@@ -1108,6 +1129,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let data = data_dir();
     // The speech model is loaded while the person talks and let go after five idle minutes.
     let mut speech: Option<voice_mac::Speech> = None;
+    // Loaded by a helper while the person talks, so a Stop or a let-go is never queued behind a 1 to 3 second load.
+    let preload: std::sync::Arc<Mutex<Option<voice_mac::Speech>>> = std::sync::Arc::new(Mutex::new(None));
     let mut last_used = std::time::Instant::now();
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
@@ -1128,12 +1151,21 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                     voice_mac::Mic::Refused => { hold.cancel(); say_voice(&app, "mic_refused", "The microphone is switched off for Companion. Turn it on in System Settings, Privacy and Security, Microphone. If it is not in the list, run this in Terminal and reopen Companion: tccutil reset Microphone dev.companion.app", json!({})); continue; }
                     voice_mac::Mic::Allowed => {}
                 }
+                // The light is the dock character (and the card). If the person cannot see it (a full screen app is in front, or they hid it) nothing is recorded (rule 5).
+                if HIDDEN_BY_US.load(std::sync::atomic::Ordering::SeqCst) || USER_HID.load(std::sync::atomic::Ordering::SeqCst) {
+                    hold.cancel();
+                    say_voice(&app, "error", "Companion is hidden right now, so I cannot show you that I am listening, and I will not record without that. Show Companion from the menu bar icon, then hold the keys again.", json!({}));
+                    continue;
+                }
                 say_voice(&app, "listening", "Listening. Let go of the keys when you are done.", json!({}));
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
                 match voice_mac::Recorder::start() {
                     Ok(r) => {
                         rec = Some(r); log("voice_listening", json!({}));
-                        if speech.is_none() { speech = voice_mac::load(&voice_mac::model_path(&data)).ok(); }   // while the person is talking
+                        if speech.is_none() {   // while the person is talking, on a helper thread
+                            let (slot, path) = (preload.clone(), voice_mac::model_path(&data));
+                            std::thread::spawn(move || { if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); } });
+                        }
                     }
                     Err(e) => { hold.cancel(); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
                 }
@@ -1155,6 +1187,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                             voice::Heard::Sound => {
                                 say_voice(&app, "transcribing", "Understanding what you said", json!({}));
                                 let t0 = now();
+                                if speech.is_none() { speech = preload.lock().unwrap_or_else(|e| e.into_inner()).take(); }
                                 if speech.is_none() { speech = voice_mac::load(&voice_mac::model_path(&data)).ok(); }
                                 let out = match speech.as_ref() { Some(c) => voice_mac::transcribe_with(c, &mono).map(|t| voice::clean_transcript(&t)), None => Err("The speech model could not be loaded.".to_string()) };
                                 last_used = std::time::Instant::now();

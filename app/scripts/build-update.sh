@@ -20,8 +20,11 @@ OUT="installer/update"; rm -rf "$OUT"; mkdir -p "$OUT"
 COPYFILE_DISABLE=1 tar -czf "$OUT/Companion.app.tar.gz" -C "$(dirname "$APP")" Companion.app
 KEY="$(security find-generic-password -s "Companion update key" -w)" || { echo "FAIL: no update key in your Keychain"; exit 1; }
 printf "Update key password: "; read -rs PW; echo
-TAURI_SIGNING_PRIVATE_KEY="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$PW" cargo tauri signer sign "$OUT/Companion.app.tar.gz" >/dev/null
+# The version is signed into the signature (the app refuses an update whose announced version differs, so a tampered
+# manifest cannot pair a new number with an older build).
+TAURI_SIGNING_PRIVATE_KEY="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$PW" cargo tauri signer sign --app-version "$VERSION" "$OUT/Companion.app.tar.gz" >/dev/null
 [ -f "$OUT/Companion.app.tar.gz.sig" ] || { echo "FAIL: the update was not signed"; exit 1; }
+base64 -d < "$OUT/Companion.app.tar.gz.sig" | grep -q "$VERSION" || { echo "FAIL: the signature does not carry version $VERSION, so the app would refuse it"; exit 1; }
 python3 - "$OUT" "$VERSION" "$NOTES" "$BASE" <<'PY'
 import json, sys, datetime
 out, version, notes, base = sys.argv[1:5]

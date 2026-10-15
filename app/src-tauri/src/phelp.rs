@@ -73,6 +73,7 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         crate::log("prompt_help_step", json!({ "step": "front", "app": front.bundle_id }));
         if front.bundle_id.is_empty() || front.bundle_id.starts_with("dev.companion") { say(&app, "error", json!({ "message": "Click into the text box you want help with first, then press the hotkey." })); return; }
         {   let mut s = st(); s.pending = None; s.awaiting = None; }
+        ax::let_apps_sleep();   // whatever an earlier read switched on in another app
         GEN.fetch_add(1, Ordering::SeqCst);
         // The light comes first, and gets a moment to draw, before anything is read (rule 5).
         let mut session = rules::ReadSession::default();
@@ -105,7 +106,11 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
 
 fn finish_read(app: &AppHandle, mut session: rules::ReadSession, pid: i32, bundle: String, name: String, t0: Instant) {
     if session.begin_read().is_err() { return; }
-    match ax::read_ladder(pid) {
+    let gen = GEN.load(Ordering::SeqCst);
+    let read = ax::read_ladder(pid);
+    // Stop everything (or a newer press) came while the text was being read: it is dropped here, never sent to the model.
+    if GEN.load(Ordering::SeqCst) != gen { session.finish(); return; }
+    match read {
         None => { say(app, "nothing_to_read", json!({ "app": name })); note("read", &bundle, t0.elapsed().as_millis() as u64, 0, "nothing"); }
         Some((el, r)) => {
             let chars = r.text.chars().count();
@@ -150,7 +155,7 @@ pub fn ready(improved: String, handback_copy: bool) {
     if let Some(p) = st().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
 }
 
-pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); st().pending = None; say(app, "dismissed", json!({})); }
+pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); st().pending = None; ax::let_apps_sleep(); say(app, "dismissed", json!({})); }
 
 /// Answer the one question and ask again, without asking another.
 pub fn answer(app: &AppHandle, answer: String) {
@@ -171,7 +176,7 @@ pub fn put_back(app: &AppHandle, restore: bool) {
     // Two clicks at once must not paste twice.
     if PASTING.swap(true, Ordering::SeqCst) { return; }
     let app = app.clone();
-    std::thread::spawn(move || { put_back_now(&app, restore); PASTING.store(false, Ordering::SeqCst); });
+    std::thread::spawn(move || { put_back_now(&app, restore); PASTING.store(false, Ordering::SeqCst); ax::let_apps_sleep(); });
 }
 
 fn put_back_now(app: &AppHandle, restore: bool) {
