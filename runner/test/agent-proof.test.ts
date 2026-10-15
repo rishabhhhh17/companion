@@ -33,6 +33,22 @@ const result = (verdict: LadderResult["verdict"], steps = [step("browser", "pass
 const proofResult = (events: Event[]) => events.find((e) => e.type === "proof.result") as any;
 const receipt = (events: Event[]) => events.find((e) => e.type === "receipt") as any;
 
+describe("proven means proven (found by the 15 Oct 2026 review)", () => {
+  test("a pass with a check that could not run is 'partial' on the receipt, never 'passed'", async () => {
+    const r = setup([bash("echo hi > new.txt")], async () => result("passed_with_gaps", [step("checks", "passed"), step("browser", "skipped", "Chrome was not found")]));
+    await r.runner.handle(start(r.project));
+    expect(receipt(r.events).proof).toBe("partial");
+    expect(r.log.list(r.project, 5)[0].proof).toBe("partial");
+  });
+  test("only a real check counts as evidence: packages installing alone does not", () => {
+    const { hasEvidence } = require("../src/proof/ladder.ts");
+    expect(hasEvidence([step("install", "passed")])).toBe(false);
+    expect(hasEvidence([step("install", "passed"), step("checks", "passed")])).toBe(true);
+    expect(hasEvidence([step("tests", "passed")])).toBe(true);
+    expect(hasEvidence([step("checks", "skipped"), step("install", "passed")])).toBe(false);
+  });
+});
+
 describe("checking before saying done", () => {
   test("a passing ladder: the character checks, then is done, and the receipt says proven", async () => {
     const r = setup([bash("echo hi > new.txt")], async (c) => { c.onStep(step("browser", "running")); c.onStep(step("browser", "passed")); return result("passed"); });
@@ -75,7 +91,7 @@ describe("checking before saying done", () => {
     await r.runner.handle(start(r.project));
     expect(states(r.events).at(-1)).toBe("done");
     expect(proofResult(r.events).verdict).toBe("passed_with_gaps");
-    expect(receipt(r.events).proof).toBe("passed");
+    expect(receipt(r.events).proof).toBe("partial");   // not "passed": a check could not run, so it is not called proven (rule 14)
   });
   test("nothing to check is done but is not called proven", async () => {
     const r = setup([bash("echo hi > new.txt")], async () => result("nothing_to_check", []));

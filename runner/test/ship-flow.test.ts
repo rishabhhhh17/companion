@@ -147,3 +147,17 @@ describe("secrets and the agent", () => {
     }
   });
 });
+
+describe("Stop everything reaches a deploy that is running (found by the 15 Oct 2026 review)", () => {
+  test("a preview deploy is stopped even though the checks before it have finished", async () => {
+    const t = setup();
+    let started = false, aborted = false;
+    (t.deployer as Deployer).preview = ((_p: string, signal?: AbortSignal) => new Promise((resolve) => { started = true; signal?.addEventListener("abort", () => { aborted = true; resolve({ ok: false, reason: "Stopped." }); }); })) as never;
+    const run = t.cmd({ type: "ship.preview" });
+    for (let i = 0; i < 200 && !started; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(started).toBe(true);
+    await t.cmd({ type: "agent.interruptAll", reason: "stop" });
+    await run;
+    expect(aborted).toBe(true);
+  });
+});

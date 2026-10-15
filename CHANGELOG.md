@@ -22,6 +22,15 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Web look ups:** secrets can no longer ride out in the path of a web address (an unusually long address, or a long code-like piece of one, asks first); normal documentation links are unaffected.
 - A second layer was already in place and still is: the Mac's own sandbox refuses reading your keys and shell history, writing outside the project, and all network except package registries.
 
+## Launch review, round two: secrets, safety and "proven": 15 Oct 2026
+
+- **Plan, Rescue and Research skipped the safety rules.** They could read any file on your Mac, settings and key files in your project, and Research could fetch a web address carrying a secret. They now use the same rules as a normal task, with every "ask" turned into "no" (there is nobody to ask): outside the project, settings and key files, and web addresses that carry data are all refused.
+- **Reading other people's files through the shell** (`cat ~/Documents/...`, `grep -r password ~`, `ls /`, `sqlite3 ~/x.db`) now asks first, like the Read tool always did. Also closed: a file search that climbs out (`../../**/.env`), `git -c core.fsmonitor=...` and `git diff --output=...` (run a program or write elsewhere), `reflog expire`, `awk` programs that run commands or write files, `tar` and `zip` writing an archive outside the project, `curl`/`wget` carrying data in the address, and lookups that carry data in a host name (`ping`, `dig`, `nslookup`).
+- **Settings with a telling name were not covered:** `DB_PASSWORD=...`, `STRIPE_WEBHOOK_SECRET=...`, `SUPABASE_SERVICE_ROLE_KEY=...`, `AUTH_TOKEN=...` and JSON `{"password":"..."}` went straight through. They are covered now (while ordinary text like "monkey=banana" is left alone). And what a failing test printed is covered before it reaches the card, the log or the next question to the model; an install failure too.
+- **Stop everything now reaches a preview deploy that is running** (the checks before it used the same internal name and hid it), a Explain that is writing, and a second Plan/Rescue/Research started on the same helper is refused instead of orphaning the first.
+- **"Proven" means proven.** A task whose browser check could not run was recorded as passed. It is now "partly checked" on the receipt and in the log. And installing packages alone no longer counts as evidence (a project with nothing to run is "nothing to check").
+- Rescue, Point at the problem and Ship checks no longer run their tests or build while a task is still writing to the project.
+
 ## A launch review found real problems; the data-loss ones are fixed first: 15 Oct 2026
 
 Three independent reviewers read the engine, the Mac program and the pages. They agreed it was **not launch ready as it stood**. The worst findings were about losing work, so those came first:

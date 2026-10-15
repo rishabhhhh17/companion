@@ -85,7 +85,7 @@ export type CostUpdate = Envelope & {
 };
 export type Receipt = Envelope & {
   type: "receipt"; agent: string; checkpoint: string; changed: { file: string; kind: "added" | "modified" | "deleted" }[];
-  commands: number; notUndoable: string[]; proof: "passed" | "failed" | "skipped"; usdEstimate: number;
+  commands: number; notUndoable: string[]; proof: "passed" | "partial" | "failed" | "skipped"; usdEstimate: number;
   picture?: boolean;   // a before and after picture is being made and will follow as receipt.visual
   inPlan?: boolean;    // one step of an approved plan (Drive); the plan as a whole ends with drive.done
 };
@@ -245,7 +245,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network"]), str("title"), str("expiresAt")],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "failed", "skipped"]), num("usdEstimate")],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate")],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\"")],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), num("tries")],

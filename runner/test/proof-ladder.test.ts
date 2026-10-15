@@ -176,3 +176,14 @@ describe("a failed rung says where it failed (point at the problem)", () => {
     expect(require("node:fs").existsSync(join(dir, "node_modules"))).toBe(false);
   }, 60000);
 });
+
+describe("what a failing check printed is covered before it reaches the card or the model (found by the 15 Oct 2026 review)", () => {
+  test("a connection string, a key and a named password in the output of a failing test", async () => {
+    const { result, updates } = await scenario({ "x.txt": "1" }, (d) => put(d, {
+      "package.json": pkg({ test: "sh -c 'echo DB_PASSWORD=hunter22; echo postgres://user:pa55word@db.example/x; echo STRIPE_WEBHOOK_SECRET=whsec_abcdefghijk; exit 1'" }),
+    }));
+    expect(result.verdict).toBe("failed");
+    const text = JSON.stringify(result.steps) + JSON.stringify(updates);
+    for (const secret of ["hunter22", "pa55word", "abcdefghijk"]) expect(text, secret).not.toContain(secret);
+  }, 60000);
+});

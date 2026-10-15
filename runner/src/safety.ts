@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { commandsOf, hasDynamic, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
+import { isEnvFile } from "./diagram.ts";
 
 export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network";
 export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason: string; undoable: boolean };
@@ -82,24 +83,22 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     // Reading outside the project asks, for every way of reading.
     const p = input[READ_PATHS[tool]];
     if (tool === "Read" && typeof p !== "string") return ask("outside_project", "no file path given");
-    const pattern = tool === "Glob" && typeof input.pattern === "string" && isAbsolute(input.pattern) ? input.pattern : undefined;
     const candidates: string[] = [];
     if (typeof p === "string" && p) candidates.push(p);
-    if (pattern) candidates.push(pattern.replace(/[*?[].*$/, "") || "/");
+    if (tool === "Glob" && typeof input.pattern === "string") {
+      // The fixed part of a pattern can climb out of the project too ("../../**/.env", "~/x/*").
+      const prefix = input.pattern.replace(/[*?[{].*$/, "");
+      if (isAbsolute(prefix) || prefix.startsWith("~") || /(^|\/)\.\.(\/|$)/.test(prefix)) candidates.push(isAbsolute(prefix) || prefix.startsWith("~") ? (prefix || "/") : join(typeof p === "string" && p ? p : ".", prefix));
+    }
     for (const q of candidates) { const w = whereIs(ctx.project, q); if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", "reading outside the project"); }
     return allow();
   }
   if (tool === "WebFetch") {
     const url = String(input.url ?? "");
     if (!isSafeUrl(url)) return deny("network", "only public web pages may be opened, never this computer or a private network");
-    try {
-      const u = new URL(url);
-      if (u.search.length > 1) return ask("network", "this web address carries data in it", false);
-      // Data can ride in the path as well ("/aGVsbG8gc2VjcmV0"): an unusually long address, or a long run of code-like
-      // letters in one part of it, is not how a documentation page is named.
-      if (url.length > 300 || u.pathname.split("/").some((part) => part.length >= 40 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part))) return ask("network", "this web address looks like it carries data in it", false);
-    } catch { return deny("network", "that is not a web address"); }
-    return allow();
+    const why = carriesData(url);
+    if (why === "invalid") return deny("network", "that is not a web address");
+    return why ? ask("network", why, false) : allow();
   }
   if (SAFE_TOOLS.has(tool)) return allow();
   if (tool === "Bash") {
@@ -110,17 +109,44 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
   return ask("irreversible", `unknown tool "${tool}"`);
 }
 
+/** Can data leave inside this web address? Returns the reason, "invalid", or null when it looks like an ordinary page. */
+export function carriesData(url: string): string | null {
+  let u: URL;
+  try { u = new URL(url); } catch { return "invalid"; }
+  if (u.search.length > 1) return "this web address carries data in it";
+  // Data can ride in the path as well ("/aGVsbG8gc2VjcmV0"): an unusually long address, or a long run of code-like letters in
+  // one part of it, is not how a documentation page is named.
+  if (url.length > 300 || u.pathname.split("/").some((part) => part.length >= 40 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part))) return "this web address looks like it carries data in it";
+  return null;
+}
+
+/** Plan, Rescue and Research only look. Whatever the normal rules would ask about, they refuse (there is nobody to ask), and
+ *  settings and key files inside the project are not read at all. */
+export function evaluateReadOnly(call: ToolCall, ctx: Context): Verdict {
+  const v = evaluate(call, ctx);
+  if (v.decision === "deny") return v;
+  if (v.decision === "ask") return deny(v.risk ?? "outside_project", `${v.reason}. This part of Companion only looks inside your project`);
+  const target = call.input.file_path ?? call.input.notebook_path;
+  if ((call.tool === "Read" || call.tool === "NotebookRead") && typeof target === "string") {
+    const w = whereIs(ctx.project, target);
+    if (isEnvFile(target) || isEnvFile(w.abs)) return deny("outside_project", "settings and key files are not read here");
+  }
+  return v;
+}
+
 // ---------- shell commands ----------
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
 const INLINE_CODE: Record<string, RegExp> = {
   python: /^-[A-Za-z]*c/, python2: /^-[A-Za-z]*c/, python3: /^-[A-Za-z]*c/, node: /^(-e|-p|--eval|--print|-pe)$/, nodejs: /^(-e|-p|--eval)$/, deno: /^(eval)$/, bun: /^(-e|--eval)$/,
-  ruby: /^-[A-Za-z]*e/, perl: /^-[A-Za-z]*[eE]/, php: /^-r$/, osascript: /^-e$/, lua: /^-e$/, Rscript: /^-e$/, swift: /^-e$/, awk: /^$never/,
+  ruby: /^-[A-Za-z]*e/, perl: /^-[A-Za-z]*[eE]/, php: /^-r$/, osascript: /^-e$/, lua: /^-e$/, Rscript: /^-e$/, swift: /^-e$/,
+  // awk programs can run commands and write files: `system("...")`, `"cmd" | getline`, `print > "file"`.
+  awk: /system\s*\(|\|\s*getline|getline\s*<|"\s*\|\s*"|\bprint[^;}]*>/, gawk: /system\s*\(|\|\s*getline|getline\s*<|\bprint[^;}]*>/,
 };
 // Also here: looking at the screen (rule 5: only on the person's own key press), searching the whole Mac, timers that run
 // later, disk tools. None of these is needed to build a project.
 const SYSTEM_TOOLS = new Set(["screencapture", "mdfind", "mdls", "tmutil", "crontab", "at", "atq", "atrm", "hdiutil", "dtrace", "fs_usage", "newfs_hfs", "newfs_apfs", "newfs_msdos", "security", "launchctl", "csrutil", "spctl", "tccutil", "dscl", "sysadminctl", "systemsetup", "networksetup", "pmset", "nvram", "diskutil", "kextload", "kextunload", "dseditgroup"]);
-const ACCOUNT_AND_NETWORK_TOOLS = new Set(["aws", "gcloud", "gsutil", "az", "terraform", "tofu", "pulumi", "kubectl", "helm", "doctl", "stripe", "eas", "ibmcloud", "oci", "ansible", "vagrant", "mysql", "mariadb", "mysqldump", "pg_dump", "pg_restore", "pg_dumpall", "redis-cli", "mongosh", "mongo", "mongodump", "mongorestore", "psql", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "tailscale", "ngrok", "open", "say", "pbpaste", "pbcopy", "afplay"]);
+const ACCOUNT_AND_NETWORK_TOOLS = new Set(["aws", "gcloud", "gsutil", "az", "terraform", "tofu", "pulumi", "kubectl", "helm", "doctl", "stripe", "eas", "ibmcloud", "oci", "ansible", "vagrant", "mysql", "mariadb", "mysqldump", "pg_dump", "pg_restore", "pg_dumpall", "redis-cli", "mongosh", "mongo", "mongodump", "mongorestore", "psql", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "tailscale", "ngrok", "open", "say", "pbpaste", "pbcopy", "afplay", "ping", "nslookup", "dig", "host", "traceroute", "whois"]);
 const DOCKER_READ = new Set(["ps", "images", "logs", "inspect", "version", "info", "stats", "top", "port", "history", "search", "ls", "--version", "-v"]);
 // Words that make a command with dynamic parts (like $(...)) too risky to guess.
 const DANGEROUS_WORDS = new Set(["rm", "rmdir", "mv", "cp", "ln", "tee", "dd", "chmod", "chown", "chgrp", "truncate", "find", "xargs", "rsync", "git", "curl", "wget", "sh", "bash", "zsh", "dash", "ksh", "eval", "python", "python3", "node", "perl", "ruby", "php", "security", "osascript", "open", "npm", "npx", "pnpm", "yarn", "bun", "vercel", "wrangler", "gh", "docker", "kubectl", "aws", "gcloud", "terraform", "psql", "mysql", "ssh", "scp", "sudo", "su", "install", "touch", "mkdir", "tar", "unzip", "sed", "launchctl", "defaults"]);
@@ -227,10 +253,50 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
     for (const p of paths) { const v = pathVerdict(p, ctx, cwd); if (v) out = worst(out, v); }
     void tarReads;
   }
+  // Programs that read files: any file outside the project asks first (the Read tool always did).
+  const reads = readerVerdict(name, args, ctx, cwd);
+  if (reads) out = worst(out, reads);
+  // Archives: where the archive is written is a write, wherever its contents come from.
+  const archive = archiveOutput(name, args);
+  if (archive) { const v = pathVerdict(archive, ctx, cwd); if (v) out = worst(out, v); }
   // A program that is handed code to run can do anything that code says.
   const inline = INLINE_CODE[name.replace(/\.[0-9]+$/, "")];
   if (inline && args.some((a) => inline.test(a))) out = worst(out, ask("irreversible", `${name} would run code I cannot check`));
   return out;
+}
+
+// Programs that print or search what is in files. Their file arguments are judged like the Read tool's.
+const READERS = new Set(["cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "ag", "ls", "wc", "sort", "uniq", "cut", "diff", "cmp", "file", "stat", "du", "tree", "xxd", "hexdump", "od", "strings", "nl", "tac", "rev", "fold", "column", "bat", "jq", "yq", "sed", "awk", "gawk", "mawk", "base64", "shasum", "md5", "md5sum", "sha256sum", "cksum", "sqlite3", "realpath", "readlink", "zcat", "gzcat", "bzcat", "nm", "otool"]);
+const PATTERN_FIRST = new Set(["grep", "egrep", "fgrep", "rg", "ag", "sed", "awk", "gawk", "mawk", "jq", "yq"]);   // their first argument is a pattern or a program, not a file
+const looksOutside = (a: string) => a.startsWith("/") || a.startsWith("~") || a.startsWith("$HOME") || a.startsWith("${HOME}") || a === ".." || a.startsWith("../") || a.includes("/../");
+function readerVerdict(name: string, args: string[], ctx: Context, cwd: string): Verdict | null {
+  if (!READERS.has(name)) return null;
+  const given = args.some((a) => a === "-e" || a === "-f" || a.startsWith("--regexp") || a.startsWith("--file"));
+  let skipped = !PATTERN_FIRST.has(name) || given;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (PATTERN_FIRST.has(name) && (a === "-e" || a === "--regexp" || a === "-f" || a === "--file")) { i++; continue; }   // the next word is the pattern
+    if (a.startsWith("-") && a !== "-") continue;
+    if (!skipped) { skipped = true; continue; }
+    if (!looksOutside(a) || /^\/dev\/(null|stdin|stdout|stderr|tty|zero|urandom)$/.test(a)) continue;
+    const w = whereIs(ctx.project, a, cwd);
+    if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${a} is outside the project`);
+  }
+  return null;
+}
+
+/** Where an archive command writes its archive (tar -f, zip's first name), when it makes one. */
+function archiveOutput(name: string, args: string[]): string | null {
+  if (name === "zip") return args.find((a) => !a.startsWith("-")) ?? null;
+  if (name !== "tar") return null;
+  const creating = args.some((a) => /^-?[A-Za-z]*[cru][A-Za-z]*$/.test(a) && !a.startsWith("--")) || args.includes("--create");
+  if (!creating) return null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith("--file=")) return a.slice(7);
+    if (a === "--file" || (/^-?[A-Za-z]*f[A-Za-z]*$/.test(a) && !a.startsWith("--"))) return args[i + 1] ?? null;
+  }
+  return null;
 }
 
 function evaluateFind(args: string[], ctx: Context, cwd: string): Verdict {
@@ -246,6 +312,8 @@ function evaluateGit(args: string[], ctx: Context): Verdict {
   let i = 0;
   while (i < args.length) {
     const a = args[i];
+    // Global options that make git run a program or behave differently for one command: -c core.fsmonitor=..., --exec-path=...
+    if (a === "-c" || a.startsWith("--config-env") || a.startsWith("--exec-path")) return ask("git", "this changes how git behaves for one command, which can run a program", false);
     if (GIT_VALUE_OPTS.has(a)) { i += 2; continue; }
     if (a.startsWith("-")) { i += 1; continue; }
     break;
@@ -254,6 +322,8 @@ function evaluateGit(args: string[], ctx: Context): Verdict {
   const rest = args.slice(i + 1);
   if (!sub) return allow();
   const flags = rest.filter((a) => a.startsWith("-"));
+  // Options that write to a file or run a program, whatever the command: --output=file, --upload-pack=..., --ext-diff.
+  if (flags.some((f) => f === "--output" || f.startsWith("--output=") || f.startsWith("--upload-pack") || f.startsWith("--receive-pack") || f === "--ext-diff" || f.startsWith("--exec"))) return ask("git", "this makes git write to a file or run a program", false);
   const positional = rest.filter((a) => !a.startsWith("-"));
   const mutates = (reason: string, undoable = true): Verdict => ask("git", reason, undoable);
 
@@ -261,8 +331,9 @@ function evaluateGit(args: string[], ctx: Context): Verdict {
   switch (sub) {
     case "push": return mutates("git push sends your work to a remote", false);
     case "status": case "diff": case "log": case "show": case "blame": case "grep": case "ls-files": case "ls-tree": case "rev-parse":
-    case "describe": case "shortlog": case "reflog": case "cat-file": case "fetch": case "whatchanged": case "show-ref": case "diff-tree": case "rev-list":
+    case "describe": case "shortlog": case "cat-file": case "fetch": case "whatchanged": case "show-ref": case "diff-tree": case "rev-list":
       return allow();
+    case "reflog": return rest.some((a) => ["expire", "delete"].includes(a)) ? mutates("deletes saved history", false) : allow();
     case "remote": return rest.some((a) => ["add", "remove", "rm", "rename", "set-url", "prune", "set-head"].includes(a)) ? mutates("changes remotes") : allow();
     case "branch": {
       const write = flags.some((f) => /^(-d|-D|-m|-M|-c|-C|-f|-u|--delete|--move|--copy|--force|--set-upstream-to|--unset-upstream|--edit-description)/.test(f));
@@ -327,7 +398,10 @@ function evaluateCurl(args: string[]): Verdict {
   const mutating = args.some((a, i) =>
     /^(-d|--data|--data-raw|--data-binary|--data-urlencode|-F|--form|-T|--upload-file|--json)(=|$)/.test(a) || /^-d./.test(a) ||
     ((a === "-X" || a === "--request") && /^(POST|PUT|DELETE|PATCH)$/i.test(args[i + 1] ?? "")) || /^(-X|--request=)(POST|PUT|DELETE|PATCH)$/i.test(a));
-  return mutating ? ask("network", "sends data to another computer", false) : allow();
+  if (mutating) return ask("network", "sends data to another computer", false);
+  // A plain GET can carry data out in its address, exactly like a web page fetch does.
+  for (const a of args) { if (/^https?:\/\//i.test(a)) { const why = carriesData(a); if (why) return ask("network", why === "invalid" ? "that is not a web address" : why, false); } }
+  return allow();
 }
 
 const GIT_VALUE_OPTS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--exec-path"]);
