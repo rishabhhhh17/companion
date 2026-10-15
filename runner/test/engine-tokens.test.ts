@@ -2,7 +2,7 @@
 // own main loop usage; the scripted engine plays them back. A real run is still owed.
 // Not from the per model totals: the SDK says those continue from the saved totals when a conversation is continued, and
 // Companion continues conversations all the time (the fix loop, every Drive step), so each round would count the ones
-// before it again. The cost has the same problem today (reported separately).
+// before it again. The cost carries on the same way; engine-cost.test.ts covers how only each round's own spend is booked.
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

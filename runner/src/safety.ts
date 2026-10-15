@@ -43,7 +43,8 @@ export function resolveLinks(input: string, depth = 0): string {
 }
 
 // Folders Companion and Claude keep their own settings in, and git's own. An agent never writes into them, in any spelling.
-const PROTECTED = new Set([".git", ".claude", ".companion"]);
+// (The project's notes never import from them either: sandbox.ts.)
+export const PROTECTED: ReadonlySet<string> = new Set([".git", ".claude", ".companion"]);
 
 type Where = { inside: boolean; segments: string[]; protectedPart: string | null; abs: string };
 // A file tool may be handed "~/.aws/credentials" or "$HOME/.ssh/id_rsa": those are the home folder, not a name inside the project.

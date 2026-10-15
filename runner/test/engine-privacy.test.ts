@@ -3,14 +3,15 @@
 // continue them) live in Companion's own data folder, which Delete everything removes. On the plan route Claude Code's
 // folder is never changed, because that folder decides which Keychain entry holds the person's login (CLAUDE.md, T03).
 // All with fake engines: free, and they prove our wiring, not Claude. A real run with a real API key is still owed.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSdkOptions, SdkEngine } from "../src/sdkEngine.ts";
 import { buildFastOptions, FastLane } from "../src/lanes.ts";
 import { buildChildEnv } from "../src/safety.ts";
-import { engineEnv } from "../src/engines.ts";
+import { createEngine, createLanes, engineEnv, readSettings, type Settings } from "../src/engines.ts";
+import { heldKey } from "../src/keychain.ts";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
@@ -123,6 +124,58 @@ describe("the environment the engine gets", () => {
   });
 });
 
+// The engine and the lanes exactly as the app makes them (createEngine, createLanes), so a change that went back to the
+// plain environment would be caught. The key is the one the app hands over on its pipe (held in memory here), so the
+// Keychain is never touched. The Claude binary named is a plain file that cannot run: if the fake were ever bypassed,
+// nothing real would start.
+describe("the engine and lanes the app makes", () => {
+  const saved = { cfg: process.env.CLAUDE_CONFIG_DIR, src: process.env.COMPANION_KEY_SOURCE };
+  beforeEach(() => { delete process.env.CLAUDE_CONFIG_DIR; process.env.COMPANION_KEY_SOURCE = "app"; heldKey.set("sk-test-not-a-real-key"); });
+  afterEach(() => {
+    heldKey.set(null);
+    if (saved.cfg === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved.cfg;
+    if (saved.src === undefined) delete process.env.COMPANION_KEY_SOURCE; else process.env.COMPANION_KEY_SOURCE = saved.src;
+  });
+  const settings = (route: "api_key" | "plan") => {
+    const data = tmp("data"), bin = join(tmp("bin"), "claude");
+    writeFileSync(bin, "not a program\n", { mode: 0o644 });
+    return { data, bin, s: readSettings({ COMPANION_DATA: data, COMPANION_CLAUDE_BIN: bin, ...(route === "plan" ? { COMPANION_ROUTE: "plan" } : {}) }) };
+  };
+  const signal = () => new AbortController().signal;
+  const viaEngine = async (s: Settings) => { const c = capture(); for await (const _ of createEngine(s, { queryFn: c.q }).start({ prompt: "p", project: tmp("p"), model: "m", signal: signal(), authorize: base.authorize, budgetUsd: 1 })) { /* drain */ } return c.seen[0]; };
+  const viaFast = async (s: Settings) => { const c = capture(); await createLanes(s, { queryFn: c.q }).fast.run({ text: "t" }, () => {}, signal()); return c.seen[0]; };
+  const viaVision = async (s: Settings) => {
+    const c = capture();
+    await createLanes(s, { queryFn: c.q, tmpDrive: { ensure: async () => tmp("shots"), wipe: async () => {} } }).vision.locate({ image: { base64: "AA==", mediaType: "image/png" }, question: "where", ocr: [] }, signal());
+    return c.seen[0];
+  };
+  for (const [name, via] of [["agent tasks", viaEngine], ["the fast lane", viaFast], ["the vision lane", viaVision]] as const) {
+    test(`${name}, API key route: Claude Code's folder is inside Companion's data folder`, async () => {
+      const { data, bin, s } = settings("api_key");
+      const o = await via(s);
+      expect(o.env.CLAUDE_CONFIG_DIR).toBe(join(data, "claude"));
+      expect(o.env.ANTHROPIC_API_KEY).toBe("sk-test-not-a-real-key");
+      expect(o.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
+      expect(o.pathToClaudeCodeExecutable).toBe(bin);
+      expect(statSync(join(data, "claude")).mode & 0o777).toBe(0o700);
+    });
+    test(`${name}, plan route: Claude Code's folder is never set, and nothing is made`, async () => {
+      const { data, s } = settings("plan");
+      const o = await via(s);
+      expect("CLAUDE_CONFIG_DIR" in o.env).toBe(false);
+      expect("ANTHROPIC_API_KEY" in o.env).toBe(false);
+      expect(existsSync(join(data, "claude"))).toBe(false);
+    });
+  }
+  test("not connected: nothing starts", async () => {
+    heldKey.set(null);
+    const { s } = settings("api_key");
+    const c = capture();
+    await expect((async () => { for await (const _ of createEngine(s, { queryFn: c.q }).start({ prompt: "p", project: tmp("p"), model: "m", signal: signal(), authorize: base.authorize, budgetUsd: 1 })) { /* drain */ } })()).rejects.toThrow(/Not connected/);
+    expect(c.seen.length).toBe(0);
+  });
+});
+
 // ---------- off the record tasks in the runner ----------
 
 const write = (file_path: string, content: string): Step => ({ tool: { name: "Write", input: { file_path, content } }, costUsd: 0.01 });
@@ -145,8 +198,11 @@ function setup(rounds: Step[][], proofs: LadderResult[] = [ok()], reviews?: Step
   const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "make the secret page", model: "m", budgetUsd: 3, ...extra } as never);
   const planDrive = async (extra: Record<string, unknown> = {}) => { await Bun.sleep(100); return runner.handle({ v: 1, id: "p1", type: "drive.plan", project, agent: "a1", goal: "build a booking page", model: "m", budgetUsd: 5, ...extra } as never); };
   const approve = (steps: string[]) => runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "a1", steps } as never);
-  return { project, events, engine, reviewer, start, planDrive, approve };
+  const cmd = (c: Record<string, unknown>) => runner.handle({ v: 1, id: "x", agent: "a1", ...c } as never);
+  return { project, events, engine, reviewer, start, planDrive, approve, cmd };
 }
+const of = (e: Event[], t: string) => e.filter((x) => x.type === t) as any[];
+const waitFor = async (fn: () => boolean, ms = 4000) => { for (let i = 0; i < ms / 10 && !fn(); i++) await Bun.sleep(10); };
 
 describe("an off the record task in the runner", () => {
   test("the engine is told, on every round", async () => {
@@ -211,5 +267,41 @@ describe("an off the record plan (Drive)", () => {
     await r.approve(["Make the page"]);
     expect(r.engine.calls[1].resumeSession).toBe("scripted-session");
     expect(r.engine.calls[1].offTheRecord).not.toBe(true);
+  });
+  test("carrying on after a pause starts afresh too, with the goal and the step", async () => {
+    const r = setup([[plan("Make the page")], [{ ...write("index.html", "<h1>hi</h1>"), delayMs: 1500 }], [write("index.html", "<h1>hi</h1>")]]);
+    await r.planDrive({ offTheRecord: true });
+    const run = r.approve(["Make the page"]);
+    await waitFor(() => of(r.events, "drive.step").length > 0);
+    await Bun.sleep(200);
+    await r.cmd({ type: "drive.pause", reason: "editor" });
+    await waitFor(() => of(r.events, "drive.paused").length > 0);
+    await r.cmd({ type: "drive.resume" });
+    await run;
+    expect(r.engine.calls.length).toBe(3);
+    const again = r.engine.calls[2];
+    expect(again.resumeSession).toBeUndefined();
+    expect(again.offTheRecord).toBe(true);
+    expect(again.prompt).toMatch(/paused/i);
+    expect(again.prompt).toContain("build a booking page");
+    expect(again.prompt).toContain("Make the page");
+    expect(of(r.events, "drive.done")[0]).toMatchObject({ status: "done", completed: 1, total: 1 });
+  });
+  test("'Try a different approach' after the same failure three times starts afresh too, with the goal and the step", async () => {
+    const same = bad("x is not defined");
+    const r = setup([[plan("Make the page", "Add a form")], [write("a.txt", "1")], [write("a.txt", "2")], [write("a.txt", "3")], [write("a.txt", "fixed")], [write("form.html", "<form></form>")]], [same, same, same, ok()]);
+    await r.planDrive({ offTheRecord: true });
+    const run = r.approve(["Make the page", "Add a form"]);
+    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await r.cmd({ type: "loop.choose", choice: "different" });
+    await run;
+    expect(r.engine.calls.length).toBe(6);
+    expect(r.engine.calls.every((c) => c.offTheRecord === true && c.resumeSession === undefined)).toBe(true);
+    const different = r.engine.calls[4];
+    expect(different.prompt).toMatch(/different approach/i);
+    expect(different.prompt).toContain("x is not defined");
+    expect(different.prompt).toContain("build a booking page");
+    expect(different.prompt).toContain("Make the page");
+    expect(of(r.events, "drive.done")[0]).toMatchObject({ status: "done", completed: 2, total: 2 });
   });
 });

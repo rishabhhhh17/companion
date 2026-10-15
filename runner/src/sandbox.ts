@@ -3,6 +3,8 @@
 // Here we add: the few places packages may be downloaded from, and the places no agent may ever read.
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { isEnvFile } from "./diagram.ts";
+import { PROTECTED } from "./safety.ts";
 
 export const REGISTRY_DOMAINS = [
   "registry.npmjs.org", "registry.yarnpkg.com", "pypi.org", "files.pythonhosted.org",
@@ -67,12 +69,17 @@ function readInside(root: string, path: string, max: number): string | null {
 // "@AGENTS.md" on a line of its own is an import (the way Claude Code reads a notes file). Not inside a code example.
 const IMPORT = /^\s*@(\S+)\s*$/;
 const FENCE = /^\s*(```|~~~)/;
+// Never imported, in any spelling: settings and key files (.env, id_rsa, credentials.json and the like), and anything in
+// Claude's, git's or Companion's own folders. The notes go into the instructions of every task, Plan, Rescue and Research
+// included, where reading these files is refused, so a cloned project's CLAUDE.md must not be a way around that.
+const privateFile = (rel: string) => isEnvFile(rel) || rel.split(sep).some((p) => PROTECTED.has(p.toLowerCase()));
 
 // The project's own notes file, given to Claude as plain text. Claude Code is not told to load the project's settings
 // (those can hold hooks and environment settings that run code), so this is how a project's instructions still arrive.
 // Import lines are followed one level deep, only to plain files inside the project and never through a link, so a
-// CLAUDE.md that is just "@AGENTS.md" (which Companion itself writes) gives Claude what AGENTS.md says. What cannot be
-// followed is left as the line it was. Everything together is held to the same size limit.
+// CLAUDE.md that is just "@AGENTS.md" (which Companion itself writes) gives Claude what AGENTS.md says. Settings and key
+// files are never followed. What is not followed is left as the line it was. Everything together is held to the same size
+// limit.
 export function projectNotes(project: string): string | null {
   const text = readInside(project, "CLAUDE.md", MAX_READ);
   if (text === null) return null;
@@ -87,7 +94,7 @@ export function projectNotes(project: string): string | null {
     if (m) {
       const target = m[1];
       const key = isAbsolute(target) ? relative(resolve(project), resolve(target)) : normalize(target);
-      const body = seen.has(key) ? null : readInside(project, target, MAX_READ);
+      const body = seen.has(key) || privateFile(key) ? null : readInside(project, target, MAX_READ);
       if (body !== null) { seen.add(key); piece = `[From ${key}]\n${body.replace(/\n+$/, "")}`; }
       else if (seen.has(key)) piece = "";
     }

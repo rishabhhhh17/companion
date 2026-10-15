@@ -167,6 +167,46 @@ describe("a notes file that imports another file", () => {
   });
 });
 
+// A cloned project's CLAUDE.md could import a settings or key file, and the notes go into the instructions of every task,
+// Plan, Rescue and Research included, where reading those files is refused. So they are never imported: the line stays.
+describe("an import of a settings or key file", () => {
+  const SECRET = "sk-live-NEVER-SENT";
+  const imports = (rel: string) => {
+    const d = tmp("secret");
+    mkdirSync(join(d, rel, ".."), { recursive: true });
+    writeFileSync(join(d, rel), SECRET);
+    writeFileSync(join(d, "CLAUDE.md"), `Notes.\n@${rel}\n`);
+    return projectNotes(d)!;
+  };
+  for (const rel of [".env", ".env.local", "config/.env.production", "id_rsa", "config/credentials.json", "secrets.yaml", "server.pem", ".npmrc"]) {
+    test(`${rel} is never read, and the line is left as it was`, () => {
+      const n = imports(rel);
+      expect(n).not.toContain(SECRET);
+      expect(n).toContain(`@${rel}`);
+      expect(n).toContain("Notes.");
+    });
+  }
+  for (const rel of [".claude/settings.local.json", ".claude/settings.json", ".git/config", ".companion/project.md", "sub/.git/config"]) {
+    test(`${rel} (Claude's, git's or Companion's own folder) is never read`, () => {
+      const n = imports(rel);
+      expect(n).not.toContain(SECRET);
+      expect(n).toContain(`@${rel}`);
+    });
+  }
+  test("however the path is spelled", () => {
+    const d = tmp("spell");
+    mkdirSync(join(d, ".git")); writeFileSync(join(d, ".git", "config"), SECRET); writeFileSync(join(d, ".env"), SECRET); mkdirSync(join(d, "docs"));
+    writeFileSync(join(d, "CLAUDE.md"), `@./.env\n@docs/../.env\n@${join(d, ".env")}\n@./.git/config\n@.GIT/config\n@${join(d, ".git", "config")}\n`);
+    expect(projectNotes(d)).not.toContain(SECRET);
+  });
+  test("an ordinary file next to them is still imported", () => {
+    const d = tmp("plain"); writeFileSync(join(d, ".env"), SECRET); writeFileSync(join(d, "AGENTS.md"), "Built with Vite.");
+    writeFileSync(join(d, "CLAUDE.md"), "@.env\n@AGENTS.md\n");
+    const n = projectNotes(d)!;
+    expect(n).toContain("Built with Vite."); expect(n).not.toContain(SECRET);
+  });
+});
+
 describe("the options handed to the SDK", () => {
   const d = tmp("opts"); writeFileSync(join(d, "CLAUDE.md"), "Project note: be careful.");
   const o: any = buildSdkOptions({ project: d, model: "m", budgetUsd: 1, claudeBinary: "/x/claude", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal });

@@ -9,6 +9,7 @@ import { ComputerUseVision, withFallback } from "./aim.ts";
 import { FastLane, StubFast, VisionLane, type FastLike, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
+import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 
 export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
@@ -55,29 +56,36 @@ export function engineEnv(a: Auth, data: string, parent: Record<string, string |
 }
 const NOT_CONNECTED = "Not connected: add your API key, or sign in with your Claude plan.";
 
+// How every Claude Code run starts, agent tasks and both lanes alike: the bundled binary, and the environment for the
+// current sign in. Looked up each time, so adding a key while the app is open just works.
+async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: Record<string, string> }> {
+  const a = await currentAuth(s);
+  if (a.method === "none") throw new Error(NOT_CONNECTED);
+  return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: engineEnv(a, s.data) };
+}
+
+// Tests only: a fake SDK in place of the real one (and a plain folder in place of the in memory drive), so the wiring
+// above can be checked without starting Claude.
+export type EngineDeps = { queryFn?: typeof realQuery; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> } };
+
 class LazySdkEngine implements Engine {
   readonly executesTools = true;
-  constructor(private s: Settings) {}
+  constructor(private s: Settings, private deps: EngineDeps = {}) {}
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    const a = await currentAuth(this.s);
-    if (a.method === "none") throw new Error(NOT_CONNECTED);
-    yield* new SdkEngine({ claudeBinary: resolveClaudeBinary(this.s.claudeBin), env: engineEnv(a, this.s.data) }).start({ ...opts, model: pickModel(opts.model, this.s.model) });
+    const launch = await claudeLaunch(this.s);
+    yield* new SdkEngine({ ...launch, ...(this.deps.queryFn ? { queryFn: this.deps.queryFn } : {}) }).start({ ...opts, model: pickModel(opts.model, this.s.model) });
   }
 }
 
-export function createEngine(s: Settings): Engine {
-  return s.engine === "scripted" ? new ScriptedEngine(s.script) : new LazySdkEngine(s);
+export function createEngine(s: Settings, deps: EngineDeps = {}): Engine {
+  return s.engine === "scripted" ? new ScriptedEngine(s.script) : new LazySdkEngine(s, deps);
 }
 
 // The two small lanes, created per request so they always use the current sign in.
-export function createLanes(s: Settings): { fast: FastLike; vision: VisionLike } {
+export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLike; vision: VisionLike } {
   if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) } };
-  const lane = async () => {
-    const a = await currentAuth(s);
-    if (a.method === "none") throw new Error(NOT_CONNECTED);
-    return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: engineEnv(a, s.data) };
-  };
-  const classic: VisionLike = { locate: async (req, signal) => new VisionLane(await lane()).locate(req, signal) };
+  const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });
+  const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
   // The Computer Use lane needs the person's own API key, so it is never used on a plan sign in; any failure falls back.
   const vision = s.aim === "computer_use" && s.route === "api_key"
     ? withFallback(new ComputerUseVision({ apiKey: async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; }, model: s.aimModel }), classic)
