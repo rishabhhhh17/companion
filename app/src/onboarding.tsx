@@ -3,6 +3,7 @@ import type { DoctorItem } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac, setExplain } from "./commands.ts";
 import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
+import { keyHints } from "./settings.ts";
 import { invoke } from "./tauri.ts";
 import { S } from "./strings.ts";
 
@@ -79,6 +80,9 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, setAu
         <div className="row"><button className="btn primary" type="button" onClick={() => { finish(); startPractice(); }}>{S.obPractice}</button></div>
         <div className="line muted">{S.obOrOwn}</div>
         <div className="row">{FIRST_TASKS.map((t) => <button key={t.label} className="btn" type="button" onClick={() => { finish(); useTask(t.prompt); }}>{t.label}</button>)}</div>
+        <h2>{S.keysTitle}</h2>
+        <div className="line muted">{S.keysHelp}</div>
+        {keyHints().map((l, i) => <div className="line" key={i}>{l}</div>)}
       </>)}
       <div className="row">
         {back(step) && <button className="btn" type="button" onClick={() => go(back(step))}>{S.obBack}</button>}

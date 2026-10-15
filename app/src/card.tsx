@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { DELETE_PHRASE, deletableLines, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, spendingLine, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
@@ -79,6 +79,56 @@ function SpendingRow({ project, spending }: { project: string; spending: Spendin
   );
 }
 
+/// The person's own key: replace it (same checks as the first run, the box emptied at once) or remove it (asked first).
+function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; working: boolean; onChanged: () => void }) {
+  const [step, setStep] = useState<"idle" | "replace" | "confirmRemove" | "working">("idle");
+  const [key, setKey] = useState("");
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const save = () => {
+    const r = submitKey(key);
+    setKey("");   // emptied at once, whatever happens next; nothing on the page keeps a copy
+    if (!r.send) { setProblem(r.problem ?? ""); return; }
+    setProblem(""); setStep("working");
+    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("replace"); });
+  };
+  const remove = () => {
+    setProblem(""); setStep("working");
+    void invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE }).then(() => { setNote(S.keyRemovedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("confirmRemove"); });
+  };
+  const cancel = () => { setKey(""); setProblem(""); setStep("idle"); };
+  return (
+    <>
+      <h3>{S.keyTitle}</h3>
+      <div className="line">{keyStatus(keySaved)}</div>
+      {note && <div className="line" role="status">{note}</div>}
+      {step === "idle" && <div className="row">
+        <button className="btn" type="button" onClick={() => { setNote(""); setStep("replace"); }}>{keySaved ? S.keyReplace : S.keyAdd}</button>
+        {keySaved && <button className="btn danger" type="button" disabled={working} onClick={() => { setNote(""); setStep("confirmRemove"); }}>{S.keyRemove}</button>}
+      </div>}
+      {step === "idle" && keySaved && working && <div className="line muted">{S.keyBusy}</div>}
+      {step === "replace" && (<>
+        <div className="line muted">{S.keyNewHelp}</div>
+        <div className="row">
+          <input type="password" autoComplete="off" spellCheck={false} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(); if (e.key === "Escape") { e.stopPropagation(); cancel(); } }} />
+          <button className="btn primary" type="button" onClick={save}>{S.keySaveNew}</button>
+          <button className="btn" type="button" onClick={cancel}>{S.planCancel}</button>
+        </div>
+      </>)}
+      {step === "confirmRemove" && (
+        <div className="line" role="alert">
+          <div className="line">{S.keyRemoveSure}</div>
+          <div className="row">
+            <button className="btn danger" type="button" disabled={working} onClick={remove}>{S.keyRemoveYes}</button>
+            <button className="btn" type="button" onClick={cancel}>{S.planCancel}</button>
+          </div>
+        </div>
+      )}
+      {problem && <div className="error" role="alert">{problem}</div>}
+    </>
+  );
+}
+
 function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
@@ -129,11 +179,15 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
         const r = permissionRow(k, perms[k]);
         return (
           <div className="line" key={k}>
-            <b>{r.label}:</b> {r.state}. <span className="muted">{r.why}</span>
+            <b>{r.label}:</b> {r.state}.{r.todo ? ` ${r.todo}` : ""} <span className="muted">{r.why}</span>
             {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button> <button className="btn" type="button" onClick={() => onLesson(permissionLesson(k))}>{S.settingsWalkMe}</button></>}
           </div>
         );
       })}
+      <h3>{S.keysTitle}</h3>
+      <div className="line muted">{S.keysHelp}</div>
+      {keyHints().map((l, i) => <div className="line" key={i}>{l}</div>)}
+      {inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
       <h3>{S.settingsChoices}</h3>
       <div className="row">
         <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
