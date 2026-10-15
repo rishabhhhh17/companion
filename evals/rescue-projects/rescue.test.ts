@@ -36,6 +36,6 @@ describe("the hero finds the real failing place in fifteen kinds of broken proje
           expect(p!.message.toLowerCase()).toContain(exp.about.toLowerCase());
         }
       } finally { rmSync(dir, { recursive: true, force: true }); }
-    });
+    }, 30_000);   // each case starts a real program; a busy Mac can take several seconds
   }
 });
