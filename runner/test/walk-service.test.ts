@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileWalkStore, NO_PROJECT, projectChecker } from "../src/walk.ts";
 import { WalkService } from "../src/walkservice.ts";
+import { lessonsFromProject, SETTINGS_LESSON, VERCEL_LESSON } from "../src/lessongen.ts";
 import { parseCommand, parseEvent } from "../../protocol/index.ts";
 
 const made: string[] = [];
@@ -148,6 +149,65 @@ describe("walkthrough service", () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     await Promise.all([s.cmd("walk.acted", { walk: "w1", how: "clicked" }), s.cmd("walk.acted", { walk: "w1", how: "clicked" })]);
     expect(s.of("walk.ask")).toHaveLength(1);
+  });
+});
+
+describe("lessons made from the project", () => {
+  function made() {
+    const s = setup();
+    const svc = new WalkService({ emit: (e) => s.events.push(e), lessonDirs: [s.lessonsDir], store: s.store, checker: projectChecker, now: () => "2026-10-12T10:00:00Z", fromProject: lessonsFromProject });
+    writeFileSync(join(s.project, "package.json"), JSON.stringify({ name: "x", dependencies: { vite: "5", react: "18" } }));
+    mkdirSync(join(s.project, "src")); writeFileSync(join(s.project, "src", "db.ts"), "createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)");
+    const cmd = (type: string, extra: Record<string, unknown> = {}, id = "w1") => svc.handle({ v: 1, id, type, ...extra } as never);
+    return { ...s, svc, cmd };
+  }
+  test("they come first in the list, marked as made from this project, for a real folder only", async () => {
+    const s = made(); await s.cmd("walk.list", { project: s.project });
+    const list = s.of("walk.lessons")[0].lessons;
+    expect(list.slice(0, 2).map((l: any) => l.id)).toEqual([SETTINGS_LESSON, VERCEL_LESSON]);
+    expect(list[0]).toMatchObject({ fromProject: true, needsProject: true, status: "draft", steps: 4, saved: false });
+    expect(list.find((l: any) => l.id === "keys")).not.toHaveProperty("fromProject");
+    await s.cmd("walk.list", { project: NO_PROJECT });
+    expect(s.of("walk.lessons")[1].lessons.map((l: any) => l.id)).not.toContain(SETTINGS_LESSON);
+  });
+  test("each setting step is proven from the project, and the name set is the proof", async () => {
+    const s = made(); await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
+    expect(s.of("walk.step")[0]).toMatchObject({ index: 0, total: 4, ask: false });
+    writeFileSync(join(s.project, ".env.local"), "");
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked" });
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 1, ask: false });
+    expect(s.of("walk.step").at(-1).say).toContain("VITE_SUPABASE_ANON_KEY");
+    writeFileSync(join(s.project, ".env.local"), "VITE_SUPABASE_ANON_KEY=eyJ-not-a-real-key\n");
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked" });
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 2 });
+    expect(JSON.stringify(s.events)).not.toContain("eyJ-not-a-real-key");
+  });
+  test("a pause keeps the lesson's names, so it carries on where it was instead of starting over", async () => {
+    const s = made(); await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
+    writeFileSync(join(s.project, ".env.local"), "VITE_SUPABASE_ANON_KEY=x\n");
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.acted", { walk: "w1", how: "clicked" });
+    await s.cmd("walk.stop", { walk: "w1" });
+    await s.cmd("walk.list", { project: s.project });
+    expect(s.of("walk.lessons").at(-1).lessons[0]).toMatchObject({ id: SETTINGS_LESSON, saved: true, steps: 4 });
+    await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON }, "w2");
+    expect(s.of("walk.step").at(-1)).toMatchObject({ walk: "w2", index: 2, total: 4 });
+    expect(s.of("walk.step").at(-1).say).toContain("VITE_SUPABASE_URL");
+  });
+  test("without a folder it says to choose one; with nothing left to set it says so", async () => {
+    const s = made(); await s.cmd("walk.start", { project: NO_PROJECT, lesson: SETTINGS_LESSON });
+    expect(s.of("walk.stopped")[0].reason).toMatch(/folder/i);
+    writeFileSync(join(s.project, ".env.local"), "VITE_SUPABASE_URL=x\nVITE_SUPABASE_ANON_KEY=y\n");
+    await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON }, "w2");
+    expect(s.of("walk.stopped")[1].reason).toMatch(/already set/i);
+  });
+  test("a lesson file cannot take the name of a lesson made from the project", async () => {
+    const s = made();
+    writeFileSync(join(s.lessonsDir, "fake.json"), JSON.stringify({ id: SETTINGS_LESSON, title: "Fake", app: "Demo", goal: "g", steps: [{ id: "a", say: "Do a", find: "the a button" }] }));
+    writeFileSync(join(s.project, ".env.local"), "VITE_SUPABASE_URL=x\nVITE_SUPABASE_ANON_KEY=y\n");   // nothing left, so no lesson is made
+    await s.cmd("walk.list", { project: s.project });
+    expect(s.of("walk.lessons")[0].lessons.map((l: any) => l.title)).not.toContain("Fake");
+    await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
+    expect(s.of("walk.step")).toHaveLength(0);
   });
 });
 

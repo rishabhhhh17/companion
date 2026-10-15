@@ -64,6 +64,8 @@ export const askDiagram = (project: string, question: string, problem?: { kind?:
   ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
 
 // Guided lessons: the runner keeps the place and checks each step; the app draws the ring and notices the click.
+/** The lesson the runner makes from the project's own missing settings (runner/src/lessongen.ts SETTINGS_LESSON). */
+export const SETTINGS_LESSON_ID = "from-project-settings";
 export const walkList = (project: string): Command => ({ v: 1, id: id(), type: "walk.list", project });
 export const walkStart = (project: string, lesson: string, fresh = false): Command => ({ v: 1, id: id(), type: "walk.start", project, lesson, ...(fresh ? { fresh: true } : {}) });
 export const walkActed = (walk: string, how: "clicked" | "done_for_you", index?: number): Command => ({ v: 1, id: id(), type: "walk.acted", walk, how, ...(index !== undefined ? { index } : {}) });

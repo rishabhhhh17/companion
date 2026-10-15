@@ -74,6 +74,20 @@ describe("a lesson through the real runner", () => {
     for (const line of r.lines) expect(parseEvent(line).ok, line).toBe(true);
   });
 
+  test("a project that reads settings it does not have gets lessons made from it, first in the list", async () => {
+    const project = tmp("proj"), r = launch(tmp("data"));
+    writeFileSync(join(project, "package.json"), JSON.stringify({ name: "x", dependencies: { vite: "5", react: "18" } }));
+    mkdirSync(join(project, "src")); writeFileSync(join(project, "src", "db.ts"), "createClient(import.meta.env.VITE_SUPABASE_URL)");
+    r.send({ type: "walk.list", project });
+    await r.waitFor(() => r.of("walk.lessons").length === 1);
+    expect(r.of("walk.lessons")[0].lessons.slice(0, 2)).toMatchObject([{ id: "from-project-settings", fromProject: true, steps: 3 }, { id: "from-project-vercel", fromProject: true }]);
+    r.send({ type: "walk.start", project, lesson: "from-project-settings" });
+    await r.waitFor(() => r.of("walk.step").length === 1);
+    expect(r.of("walk.step")[0]).toMatchObject({ lesson: "from-project-settings", index: 0, total: 3, ask: false });
+    await r.close();
+    for (const line of r.lines) expect(parseEvent(line).ok, line).toBe(true);
+  });
+
   test("beta numbers count nothing until turned on, then only counts", async () => {
     const project = tmp("proj"), data = tmp("data");
     const r = launch(data);

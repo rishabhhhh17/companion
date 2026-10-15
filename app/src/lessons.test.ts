@@ -1,7 +1,7 @@
 // Guided lessons on the card: the state follows the runner's walk events, and only the walk the person started.
 import { describe, expect, test } from "bun:test";
 import { initial, reduce, type Model } from "./model.ts";
-import { walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop } from "./commands.ts";
+import { SETTINGS_LESSON_ID, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop } from "./commands.ts";
 
 const run = (events: Record<string, unknown>[], m: Model = initial()): Model => events.reduce<Model>((x, e) => reduce(x, e as never), m);
 const step = (over: Record<string, unknown> = {}) => ({ type: "walk.step", walk: "w1", project: "p", lesson: "keys", title: "Add your keys", index: 0, total: 3, variant: "main", say: "Open settings", find: "the Settings link", ask: true, ...over });
@@ -11,6 +11,10 @@ describe("lessons on the card", () => {
   test("the list of lessons is kept", () => {
     const m = run([{ type: "walk.lessons", project: "p", lessons: [{ id: "keys", title: "Add your keys", app: "Demo", goal: "g", steps: 3, saved: true }] }]);
     expect(m.lessons?.[0]).toMatchObject({ id: "keys", saved: true });
+  });
+  test("a lesson made from the project keeps its mark, so the list can say so", () => {
+    const m = run([{ type: "walk.lessons", project: "p", lessons: [{ id: SETTINGS_LESSON_ID, title: "Set up the settings this project needs", app: "Your editor", goal: "g", steps: 3, saved: false, fromProject: true }] }]);
+    expect(m.lessons?.[0]).toMatchObject({ id: "from-project-settings", fromProject: true });
   });
   test("a step from the walk the person started is shown", () => {
     expect(run([...started, step()]).walk).toMatchObject({ stage: "step", id: "w1", index: 0, total: 3, say: "Open settings", ask: true });
@@ -71,5 +75,7 @@ describe("lesson commands", () => {
     expect(walkAnswer("w1", false)).toMatchObject({ type: "walk.answer", walk: "w1", worked: false });
     expect(walkSkip("w1")).toMatchObject({ type: "walk.skip", walk: "w1" });
     expect(walkStop("w1")).toMatchObject({ type: "walk.stop", walk: "w1" });
+    // About this project starts the lesson made from its own settings: the runner's name for it, bound to the project.
+    expect(walkStart("p", SETTINGS_LESSON_ID)).toMatchObject({ type: "walk.start", project: "p", lesson: "from-project-settings" });
   });
 });

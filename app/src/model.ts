@@ -38,7 +38,8 @@ export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed"
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
-export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; steps: number; saved: boolean };
+// fromProject: made by the runner from this project's own setting names, not a lesson file.
+export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
 // A guided lesson on the card. stage: a step to do, "did you already do this?" after a pause (nothing is pointed at
 // until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
 export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };

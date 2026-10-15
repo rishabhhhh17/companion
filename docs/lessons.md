@@ -35,6 +35,24 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 
 `"needsProject": false` marks a lesson that reads nothing from a project folder (installing a tool, leaving a builder, allowing a permission). It can start with no folder chosen, and may use only `ask` checks, which the checker enforces. Any lesson that uses `env_name`, `file_exists` or `file_contains` needs a chosen folder and says so if there is none.
 
+## Proving steps from the project
+
+A step is proven from the project whenever its result lands there: a setting name in a `.env` file, a file made, a line in a config file. `ask` stays only where the result is on another app's screen. Checked step by step on 16 Oct 2026 for the shipped lessons:
+
+- **GitHub (`github-new-repo`)**: the last step, linking the project, is proven: `.git/config` names `github.com` (only those words are looked for; nothing is run and git is never written). So this lesson now needs a chosen folder.
+- **The other eleven stay `ask`**, because nothing they do touches a project folder: the three Companion permission lessons (System Settings), Lovable publish and Lovable to GitHub (Lovable's site), the two Vercel lessons (Vercel's site; the generic one cannot name a setting, so the project's own names are proven by the lessons made from the project, below), Bolt and Replit downloads (before any project exists here), and installing Cursor or Claude Code (apps, not project files).
+
+## Lessons made from your project
+
+Two lessons are made from the chosen project each time the Lessons list opens, from the setting names its code reads (the same names as About this project). They are data like any other lesson, go through the same checks, are drafts, and have at most 15 steps.
+
+- **Set up the settings this project needs** (`from-project-settings`): for exactly the names the code reads that no `.env` file sets yet. First the settings file (`.env.local`, or `.env` for a plain Node server or Python), proven when it exists. Then one step per name: where to get the value (a small table of well known names: Supabase, Stripe, OpenAI, Resend, DATABASE_URL; otherwise it says it does not know and points to the README), and how to add it to the file. Each is proven by an `env_name` check. A value is never asked for, kept or shown (the check reads the file only for the names in it): the steps say to paste it only into the file. Last, restart the project (asked).
+- **Add this project's settings to Vercel** (`from-project-vercel`): every name the project needs, since the live site needs them all and Companion cannot see Vercel. Each name is added in the project's Vercel settings and confirmed by the person (asked), then a redeploy.
+- More than fits in 15 steps: the first ones are covered (names the page reads first) and the goal says how many are left. A paused lesson keeps its list of names, so it picks up where it was.
+- A name the page can read (it starts with `VITE_`, `NEXT_PUBLIC_` and the like) that looks like a secret key gets a plain warning instead of where to get it. A name a setting check cannot hold (lower case, one letter) is left out.
+- About this project shows "Show me how to set them" when settings are missing. Lesson files cannot use ids that start with `from-project-`.
+- Where the values come from was written from what those dashboards are known to show, not checked on a real screen yet: these lessons are drafts like the rest.
+
 ## Draft and tried
 
 A lesson has `"status": "draft"` (the default) or `"tried"`. **Draft** means it was written from the maker's own help pages and nobody has walked it on a real screen yet; the app says so on the Lessons list. Only change a lesson to `tried` after a person has done every step on a real screen and the steps matched. The test suite fails if a shipped lesson says `tried` without that being decided here: today none are.

@@ -1,14 +1,30 @@
 // Runs walkthroughs for the app: commands in, events out. The place is saved after every move. The project is only read.
 import type { Command, Event } from "../../protocol/index.ts";
 import { FileWalkStore, loadLessons, NO_PROJECT, Walkthrough, type Checker, type Lesson, type Settled } from "./walk.ts";
+import { MADE_PREFIX, VERCEL_LESSON } from "./lessongen.ts";
+
+// Lessons made from the project (lessongen.ts): given the folder and each lesson's saved list of step ids (so a paused one
+// keeps its names), the lessons this project gets now.
+export type FromProject = (project: string, saved: (lesson: string) => string | undefined) => Lesson[];
 
 type Active = { walk: string; project: string; lesson: Lesson; w: Walkthrough; busy: boolean; asked: boolean };
 type WalkCmd = Extract<Command, { type: `walk.${string}` }>;
 
 export class WalkService {
   private active = new Map<string, Active>();   // by walk id
-  constructor(private o: { emit: (e: Event) => void; lessonDirs: string[]; store: FileWalkStore; checker: (project: string) => Checker; now: () => string }) {}
+  constructor(private o: { emit: (e: Event) => void; lessonDirs: string[]; store: FileWalkStore; checker: (project: string) => Checker; now: () => string; fromProject?: FromProject }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: 1, id: `walk-${Date.now().toString(36)}`, ...e } as never); }
+
+  /** The lessons made from this project (none without a real folder), then the lesson files. A lesson file cannot take a
+   *  made lesson's name, even when that lesson is not made right now. */
+  private lessons(project: string, fresh = false): { made: Lesson[]; files: Lesson[]; problems: number } {
+    let made: Lesson[] = [];
+    if (project !== NO_PROJECT && this.o.fromProject) {
+      try { made = this.o.fromProject(project, (id) => (fresh ? undefined : this.o.store.load(project, id)?.shape)); } catch { made = []; }
+    }
+    const { lessons, problems } = loadLessons(this.o.lessonDirs);
+    return { made, files: lessons.filter((l) => !l.id.startsWith(MADE_PREFIX)), problems: problems.length };
+  }
 
   stopAll() {
     for (const a of [...this.active.values()]) { a.w.stop(); this.save(a); this.emit({ type: "walk.stopped", walk: a.walk, reason: "Stopped. Your place is saved." }); }
@@ -18,8 +34,9 @@ export class WalkService {
   async handle(cmd: WalkCmd): Promise<void> {
     switch (cmd.type) {
       case "walk.list": {
-        const { lessons, problems } = loadLessons(this.o.lessonDirs);
-        this.emit({ type: "walk.lessons", project: cmd.project, problems: problems.length, lessons: lessons.map((l) => ({ id: l.id, title: l.title, app: l.app, goal: l.goal, status: l.status, needsProject: l.needsProject, steps: l.steps.length, saved: this.o.store.load(cmd.project, l.id) !== null })) });
+        const { made, files, problems } = this.lessons(cmd.project);
+        const item = (l: Lesson, fromProject: boolean) => ({ id: l.id, title: l.title, app: l.app, goal: l.goal, status: l.status, needsProject: l.needsProject, steps: l.steps.length, saved: this.o.store.load(cmd.project, l.id) !== null, ...(fromProject ? { fromProject: true } : {}) });
+        this.emit({ type: "walk.lessons", project: cmd.project, problems, lessons: [...made.map((l) => item(l, true)), ...files.map((l) => item(l, false))] });
         return;
       }
       case "walk.start": return this.start(cmd);
@@ -54,8 +71,11 @@ export class WalkService {
   }
 
   private async start(cmd: Extract<WalkCmd, { type: "walk.start" }>) {
-    const lesson = loadLessons(this.o.lessonDirs).lessons.find((l) => l.id === cmd.lesson);
-    if (!lesson) { this.emit({ type: "walk.stopped", walk: cmd.id, reason: "I could not find that lesson." }); return; }
+    const madeHere = cmd.lesson.startsWith(MADE_PREFIX);
+    if (madeHere && cmd.project === NO_PROJECT) { this.emit({ type: "walk.stopped", walk: cmd.id, reason: "Choose your project folder first, then start this lesson." }); return; }
+    const { made, files } = this.lessons(cmd.project, cmd.fresh === true);
+    const lesson = [...made, ...files].find((l) => l.id === cmd.lesson);
+    if (!lesson) { this.emit({ type: "walk.stopped", walk: cmd.id, reason: !madeHere ? "I could not find that lesson." : cmd.lesson === VERCEL_LESSON ? "This project's code reads no settings, so there is nothing to add to Vercel." : "Every setting this project's code reads is already set, so there is nothing to walk through." }); return; }
     // A lesson that reads the project needs a real one; a lesson that needs none uses the stand in and nothing else.
     if (lesson.needsProject && cmd.project === NO_PROJECT) { this.emit({ type: "walk.stopped", walk: cmd.id, reason: "Choose your project folder first, then start this lesson." }); return; }
     for (const a of [...this.active.values()]) if (a.project === cmd.project || a.walk === cmd.id) { a.w.stop(); this.save(a); this.active.delete(a.walk); }
