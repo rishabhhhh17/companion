@@ -17,7 +17,9 @@ export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: s
 export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string };
 
 export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
-export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[] }[]; walkthrough?: boolean };
+// screens: when Show me looked at more than one screen (2 to 4), one picture each, the screen the mouse pointer is on first
+// (its ref is the same as image.ref). label is "Screen N of M"; the engine sends only that exact shape to the model.
+export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[] };
 export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaType: "image/jpeg" | "image/png"; base64: string; w: number; h: number };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
@@ -100,7 +102,11 @@ export type ProtocolError = Envelope & { type: "protocol.error"; reason: string;
 
 export type AssistPromptDelta = Envelope & { type: "assist.prompt.delta"; req: string; text: string };
 export type AssistPromptDone = Envelope & { type: "assist.prompt.done"; req: string; text: string; question?: string; options?: string[]; diff: [string, string][]; usdEstimate: number; handback: "paste" | "copy" };
-export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string };
+// One target, or (targets) up to five in the order to look at them, the first being the same as the top level fields.
+// mark: how it is drawn when confirmed (a guess only ever gets the soft ring). screen: 1 is the screen the pointer is on.
+export type PointMark = "ring" | "arrow" | "underline" | "box";
+export type PointTarget = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: PointMark; screen?: number };
+export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: PointMark; screen?: number; targets?: PointTarget[] };
 export type AssistError = Envelope & { type: "assist.error"; req: string; reason: string };
 
 // Where a check failed: a line in the project, a button in the app, or at least the error sentence.
@@ -163,6 +169,27 @@ const obj: (k: string) => Check = (k) => (m) => (typeof m[k] === "object" && m[k
 // An optional field: absent is fine, present must be valid.
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
 const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
+const MARKS = ["ring", "arrow", "underline", "box"];
+const screenNo = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 4;
+const isNum = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const targetOk = (t: unknown): boolean => {
+  if (typeof t !== "object" || t === null || Array.isArray(t)) return false;
+  const o = t as Record<string, unknown>;
+  return isNum(o.x) && isNum(o.y) && isNum(o.confidence) && (o.confidence as number) <= 1 && typeof o.targetText === "string" && typeof o.caption === "string"
+    && (o.ocrId === undefined || typeof o.ocrId === "string") && (o.mark === undefined || MARKS.includes(o.mark as string)) && (o.screen === undefined || screenNo(o.screen));
+};
+const pointExtrasOk: Check = (m) => {
+  if (m.mark !== undefined && !MARKS.includes(m.mark as string)) return `"mark" must be one of ${MARKS.join(", ")}`;
+  if (m.screen !== undefined && !screenNo(m.screen)) return '"screen" must be a whole number from 1 to 4';
+  if (m.targets !== undefined && !(Array.isArray(m.targets) && m.targets.length >= 1 && m.targets.length <= 5 && m.targets.every(targetOk))) return '"targets" must be a list of 1 to 5 targets';
+  return null;
+};
+const screensOk: Check = (m) => {
+  if (m.screens === undefined) return null;
+  const ok = Array.isArray(m.screens) && m.screens.length >= 1 && m.screens.length <= 4 && m.screens.every((s) => typeof s === "object" && s !== null
+    && typeof (s as any).ref === "string" && (s as any).ref.length > 0 && isNum((s as any).w) && isNum((s as any).h) && typeof (s as any).label === "string");
+  return ok ? null : '"screens" must be a list of 1 to 4 pictures, each with ref, w, h and label';
+};
 const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
 const COMMANDS: Record<string, Check[]> = {
@@ -217,7 +244,7 @@ const COMMANDS: Record<string, Check[]> = {
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
   "checkpoint.restore": [str("project"), str("checkpoint")],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
-  "assist.locate": [str("req"), str("question"), obj("image")],
+  "assist.locate": [str("req"), str("question"), obj("image"), screensOk],
   "assist.cancel": [str("req")],
   "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
 };
@@ -276,7 +303,7 @@ const EVENTS: Record<string, Check[]> = {
   "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"])],
   "assist.prompt.delta": [str("req"), str("text")],
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
-  "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption")],
+  "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption"), pointExtrasOk],
   "assist.error": [str("req"), str("reason")],
 };
 
