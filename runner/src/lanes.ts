@@ -191,11 +191,13 @@ export class VisionLane {
     const done = () => { signal.removeEventListener("abort", link); };
     // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that
     // happens in the background, where nobody is waiting for it.
-    let got!: (r: { point: Point | null; costUsd: number }) => void;
-    const answer = new Promise<{ point: Point | null; costUsd: number }>((res) => { got = res; });
+    let got!: (r: { point: Point | null; costUsd: number }) => void, fail!: (e: unknown) => void;
+    const answer = new Promise<{ point: Point | null; costUsd: number }>((res, rej) => { got = res; fail = rej; });
+    // An error after the answer has already been handed back (the engine complaining as it is ended) is not an error: `fail`
+    // does nothing once the answer is settled, where a stray rejected promise would crash the whole engine.
     const finished = this.read(q as AsyncIterable<any>, req, (p, c) => got({ point: p, costUsd: round(c) }), () => ac.abort())
-      .then(() => got({ point: null, costUsd: 0 }), (e) => { got(Promise.reject(e) as never); });
-    void finished.catch(() => {}).finally(() => { void drive.wipe(); });   // once the engine has closed, the copy is erased
+      .then(() => got({ point: null, costUsd: 0 }), (e) => { fail(e); });
+    void finished.catch(() => {}).finally(() => { drive.wipe().catch(() => {}); });   // once the engine has closed, the copy is erased
     try { return await answer; } finally { done(); }
   }
 

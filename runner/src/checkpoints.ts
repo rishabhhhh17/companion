@@ -5,15 +5,19 @@
 // index, so the user's .git, index, branches and history are never read for
 // writing. A project that is not a git project never gets a .git.
 
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomBytes } from "node:crypto";
 
 export type Skipped = { path: string; reason: string };
 export type Checkpoint = { id: string; commit: string; label: string; files: number; skipped: Skipped[]; createdAt: string; envFiles: string[] };
-export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[] };
+// recovered: big live files (over 2 MiB, which a checkpoint cannot hold) that undo replaced, copied to <shadow>/recovered/<safety id>/.
+// largeLeftAlone: big files undo did not touch (the checkpoint only holds an older small version, or there was no room to copy aside).
+export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[]; recovered: string[]; largeLeftAlone: string[] };
 
 const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
+const GIT_TIMEOUT_MS = 5 * 60_000;   // a snapshot that has not finished in five minutes is stuck, not slow
 const DEFAULT_EXCLUDES = [
   "node_modules/", ".next/", "dist/", "build/", ".turbo/", ".cache/", "__pycache__/", ".venv/", "venv/", "target/", "coverage/", ".DS_Store",
   ".claude/.cc-writes",   // Claude Code's own write tracking, not the user's work
@@ -21,6 +25,13 @@ const DEFAULT_EXCLUDES = [
 const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage"]);
 
 const stores = new Map<string, CheckpointStore>();
+
+// git is Apple's, and a new Mac asks to install it the first time it is used. Say what to do, in plain words.
+export const NEEDS_GIT = "Companion needs Apple's free developer tools to keep a safe copy of your project. Open Terminal, type  xcode-select --install  and press Return. When it finishes, try again.";
+const friendly = (e: unknown): Error => {
+  const m = String((e as Error)?.message ?? e);
+  return /xcode-select|developer tools|Executable not found|ENOENT|not found in \$PATH|spawn git/i.test(m) ? new Error(NEEDS_GIT) : (e as Error);
+};
 
 export class CheckpointStore {
   /** One store per project for the whole program, so two jobs can never take a snapshot at the same moment. */
@@ -34,9 +45,14 @@ export class CheckpointStore {
   readonly projectDir: string;
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(shadowDir: string, projectDir: string) {
+  private recoveryBudget: number;
+  private maxFiles: number;
+  constructor(shadowDir: string, projectDir: string, opts: { recoveryBudgetBytes?: number; maxFiles?: number } = {}) {
+    this.recoveryBudget = opts.recoveryBudgetBytes ?? 2 * 1024 * 1024 * 1024;
+    this.maxFiles = opts.maxFiles ?? 150_000;
     this.shadowDir = resolve(shadowDir);
     this.projectDir = resolve(projectDir);
+    this.assertSensible();
     const rel = relative(this.projectDir, this.shadowDir);
     if (rel === "" || (!rel.startsWith("..") && !rel.startsWith(sep))) {
       throw new Error("The shadow store must live outside the project folder");
@@ -50,8 +66,8 @@ export class CheckpointStore {
     return run;
   }
 
-  snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)); }
-  restore(id: string): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id)); }
+  snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)).catch((e) => { throw friendly(e); }); }
+  restore(id: string): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id)).catch((e) => { throw friendly(e); }); }
   readFiles(id: string, keep: (path: string) => boolean, maxBytes = 200_000): Promise<Record<string, string>> { return this.serial(() => this.readFilesNow(id, keep, maxBytes)); }
   diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
   /** Copy the project as it was at a checkpoint (its private .env copies too) into an empty folder outside the project,
@@ -75,7 +91,7 @@ export class CheckpointStore {
   }
 
   private async git(args: string[], opts: { index?: string; allowFail?: boolean } = {}): Promise<string> {
-    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe" });
+    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: GIT_TIMEOUT_MS });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     const code = await p.exited;
     if (code !== 0 && !opts.allowFail) throw new Error(`git ${args.join(" ")} failed: ${err.trim()}`);
@@ -83,7 +99,7 @@ export class CheckpointStore {
   }
 
   private async gitFull(args: string[], opts: { index?: string } = {}): Promise<{ out: string; err: string; code: number }> {
-    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe" });
+    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: GIT_TIMEOUT_MS });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     return { out, err, code: await p.exited };
   }
@@ -130,6 +146,21 @@ export class CheckpointStore {
   }
 
   // Companion's excludes, plus the project's own .git/info/exclude (read only).
+  // Undo must give back every byte: whatever the project's own .gitattributes asks for (line ending changes, filters) is switched off in the safe copy.
+  private writeAttributes() {
+    mkdirSync(join(this.shadowDir, "info"), { recursive: true });
+    writeFileSync(join(this.shadowDir, "info", "attributes"), "* -text -eol -ident -filter -working-tree-encoding\n");
+  }
+
+  private assertSensible() {
+    let real: string;
+    try { real = realpathSync(this.projectDir); } catch { throw new Error("That project folder is not there any more."); }
+    const home = (() => { try { return realpathSync(homedir()); } catch { return homedir(); } })();
+    if (real === "/" || real === home || ["/System", "/usr", "/bin", "/sbin", "/etc", "/private/etc", "/Library", "/Applications", "/Users"].includes(real)) {
+      throw new Error("That folder is too broad to keep a safe copy of. Choose the folder of one project.");
+    }
+  }
+
   private writeExcludes() {
     let extra = "";
     const own = join(this.projectDir, ".git", "info", "exclude");
@@ -154,8 +185,10 @@ export class CheckpointStore {
   // ---------- snapshot ----------
 
   private async snapshotNow(label: string): Promise<Checkpoint> {
+    this.assertSensible();
     this.ensureInit();
     this.writeExcludes();
+    this.writeAttributes();
     const idx = this.tmpIndex();
     try {
       const all = this.refs();
@@ -171,6 +204,7 @@ export class CheckpointStore {
         ...(await this.git(["ls-files", "-z", "--others", "--exclude-standard"], { index: idx })).split("\0"),
         ...(await this.git(["ls-files", "-z", "-m"], { index: idx })).split("\0"),
       ].filter(Boolean);
+      if (candidates.length > this.maxFiles) throw new Error(`This folder has too many files (${candidates.length.toLocaleString("en-US")}) to keep a safe copy of. Choose the folder of one project, not a folder that holds many.`);
       for (const rel of new Set(candidates)) {
         try {
           const st = lstatSync(join(this.projectDir, rel));
@@ -302,9 +336,36 @@ export class CheckpointStore {
     // Undo must itself be undoable: save the current state first.
     const safety = await this.snapshotNow(`Before undo to ${id}`);
 
+    // A file too big for a checkpoint is never destroyed by undo. Where the checkpoint only holds an older small copy of a file
+    // that was already too big when it was taken, the live file is left exactly as it is. Where undo really does mean to put
+    // the older version back over a big live file, that file is copied aside first (and left alone if there is no room).
+    const recovered: string[] = [], largeLeftAlone: string[] = [], keep: string[] = [];
+    const stale = new Set(targetMeta.skipped.filter((x) => !x.path.endsWith("/")).map((x) => x.path));
+    let budget = this.recoveryBudget;
+    for (const rel of (await this.git(["ls-tree", "-r", "--name-only", "-z", targetMeta.commit])).split("\0").filter(Boolean)) {
+      let abs: string, st;
+      try { abs = this.inProject(rel); st = lstatSync(abs); } catch { continue; }          // not there now: nothing to protect
+      if (!st.isFile()) continue;
+      if (stale.has(rel)) { keep.push(rel); largeLeftAlone.push(rel); continue; }
+      if (st.size <= MAX_NEW_FILE_BYTES || this.hasLinkOnTheWay(abs)) continue;
+      if (st.size <= budget) {
+        const copy = join(this.shadowDir, "recovered", safety.id, rel);
+        mkdirSync(dirname(copy), { recursive: true });
+        copyFileSync(abs, copy);
+        budget -= st.size; recovered.push(rel);
+      } else { keep.push(rel); largeLeftAlone.push(rel); }
+    }
+
     const idx = this.tmpIndex();
     try {
       await this.git(["read-tree", targetMeta.commit], { index: idx });
+      if (keep.length) {
+        const specFile = join(this.shadowDir, `keep-${process.pid}-${randomBytes(4).toString("hex")}`);
+        try {
+          writeFileSync(specFile, keep.map((p) => `:(literal)${p}`).join("\0") + "\0");
+          await this.git(["rm", "--cached", "-f", "-q", "--ignore-unmatch", `--pathspec-from-file=${specFile}`, "--pathspec-file-nul"], { index: idx });
+        } finally { rmSync(specFile, { force: true }); }
+      }
       await this.git(["checkout-index", "-a", "-f"], { index: idx });
     } finally {
       rmSync(idx, { force: true });
@@ -343,6 +404,6 @@ export class CheckpointStore {
       if (this.hasLinkOnTheWay(abs)) { leftAlone.push(rel); continue; }
       rmSync(abs, { force: true });
     }
-    return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone };
+    return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone, recovered, largeLeftAlone };
   }
 }

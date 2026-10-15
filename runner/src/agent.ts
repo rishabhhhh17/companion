@@ -38,6 +38,9 @@ import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
 
+/** The saved receipt picture's file name. Checkpoint numbers repeat from one project to the next, so the project is part of the name. */
+export const receiptPictureName = (project: string, checkpoint: string): string => `${createHash("sha1").update(resolve(project)).digest("hex").slice(0, 8)}-${checkpoint}.jpg`;
+
 export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
@@ -280,7 +283,7 @@ export class AgentRunner {
     this.projectTurn.set(key, run.catch(() => undefined));
     return run;
   }
-  private track(job: Promise<void>) { this.backgroundJobs.add(job); void job.finally(() => this.backgroundJobs.delete(job)); }
+  private track(job: Promise<void>) { this.backgroundJobs.add(job); const clear = () => { this.backgroundJobs.delete(job); }; void job.then(clear, clear); }   // a job that fails is cleared too, and its failure is not left unhandled
   /** Pictures and cards still being made. The runner awaits this before it exits, so their servers and copies are cleaned up. */
   background(): Promise<unknown> { return Promise.allSettled([...this.backgroundJobs]); }
 
@@ -341,7 +344,15 @@ export class AgentRunner {
         return;
       }
       case "checkpoint.restore": {
-        try { await this.store(cmd.project).restore(cmd.checkpoint); } catch (e) { this.fail((e as Error).message); }
+        // Undo while something is writing to the project would fight with it: wait, or stop it first.
+        if (this.projectInUse(cmd.project)) { this.fail("Something is still working on this project. Wait for it to finish, or press Stop, then undo."); return; }
+        try {
+          const r = await this.store(cmd.project).restore(cmd.checkpoint);
+          this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone } as never);
+        } catch (e) {
+          const m = String((e as Error).message ?? e);
+          this.fail(/^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : /^(That|This|Companion needs|Something)/.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`);
+        }
         return;
       }
       case "tasks.list": {
@@ -364,6 +375,11 @@ export class AgentRunner {
     return CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
   }
 
+  /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
+  private projectInUse(project: string): boolean {
+    const key = resolve(project);
+    return this.projectBusy.has(key) || this.shipping.has(key) || [...this.installing.keys()].some((k) => resolve(k) === key) || [...this.finding.keys()].some((k) => resolve(k) === key);
+  }
   private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
   private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
   private touched = new Set<string>();               // agents whose task has started changing the project
@@ -567,7 +583,7 @@ export class AgentRunner {
         : pic.how === "all_new" ? "This works now. Everything on this page is new."
         : pic.regions.length ? "This works now. What changed is circled." : "This works now. The page looks the same as before.";
       let saved = "";
-      try { mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 }); saved = join(pics.saveDir, `${beforeId}.jpg`); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); pruneOldest(pics.saveDir, KEEP_PICTURES); } catch { saved = ""; }
+      try { mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 }); saved = join(pics.saveDir, receiptPictureName(cmd.project, beforeId)); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); pruneOldest(pics.saveDir, KEEP_PICTURES); } catch { saved = ""; }
       this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: true, image: pic.jpeg, caption, circles: pic.regions.length, ...(saved ? { file: saved } : {}) } as never);
     } catch { none(); }   // a missing picture never spoils a finished task
     finally { this.picturing.delete(ac); }
