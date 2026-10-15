@@ -12,13 +12,18 @@ describe("reading the explanation Claude wrote", () => {
   test("it finds the answer inside other words or a code block", () => {
     expect(parseExplain('Here:\n```json\n{"why":["One reason."]}\n```')!.bullets).toEqual(["One reason."]);
   });
-  test("more than three bullets are cut to three, and long ones are shortened", () => {
+  test("more than two lines are cut to two (two short lines of why), and long ones are shortened", () => {
     const e = parseExplain(JSON.stringify({ why: ["a", "b", "c", "d", "x".repeat(500)] }))!;
-    expect(e.bullets.length).toBe(3);
+    expect(e.bullets).toEqual(["a", "b"]);
     expect(parseExplain(JSON.stringify({ why: ["x".repeat(500)] }))!.bullets[0].length).toBeLessThanOrEqual(241);
   });
+  test("the check question has two or three options with the right one marked", () => {
+    const three = parseExplain(JSON.stringify({ why: ["Reason."], question: { text: "Why?", options: ["One", "Two", "Three"], correct: 2 } }))!;
+    expect(three.question).toEqual({ text: "Why?", options: ["One", "Two", "Three"], correct: 2 });
+  });
   test("a broken question is dropped but the bullets stay", () => {
-    for (const q of [{ text: "Q?", options: ["only one"], correct: 0 }, { text: "Q?", options: ["a", "b"], correct: 5 }, { text: "", options: ["a", "b"], correct: 0 }]) {
+    for (const q of [{ text: "Q?", options: ["only one"], correct: 0 }, { text: "Q?", options: ["a", "b"], correct: 5 }, { text: "", options: ["a", "b"], correct: 0 },
+      { text: "Q?", options: ["a", "b", "c", "d"], correct: 0 }, { text: "Q?", options: ["Same", "same "], correct: 0 }, { text: "Q?", options: ["a", "b"], correct: 0.5 }, { text: "Q?", options: ["a", 7], correct: 0 }, { text: "Q?", options: "a,b", correct: 0 }]) {
       const e = parseExplain(JSON.stringify({ why: ["Reason."], question: q }))!;
       expect(e.bullets).toEqual(["Reason."]); expect(e.question).toBeUndefined();
     }
@@ -28,8 +33,20 @@ describe("reading the explanation Claude wrote", () => {
     expect(parseExplain('{"why":["I set the key to sk_live_abcdefghijklmnop1234 in the page."]}')!.bullets[0]).not.toContain("sk_live_abcdef");
   });
   test("the request holds what changed in plain form and never a whole file", () => {
-    const r = explainRequest({ label: "Add a contact page", changed: [{ file: "contact.html", kind: "added" }], said: "I added a form." });
+    const r = explainRequest({ label: "Add a contact page", changed: [{ file: "contact.html", kind: "added" }], said: "I added a form.", diff: "--- contact.html\n@@ line 1\n+ <form>" });
     expect(r.text).toContain("contact.html"); expect(r.text).toContain("Add a contact page"); expect(r.system).toMatch(/plain words/i);
+  });
+  test("the request carries the real change, and asks for the why from it, not from the assistant's own words", () => {
+    const r = explainRequest({ label: "Fix the total", changed: [{ file: "src/cart.js", kind: "modified" }], said: "I fixed it.", diff: "--- src/cart.js\n@@ line 4\n- return price;\n+ return price * qty;" });
+    expect(r.text).toContain("+ return price * qty;"); expect(r.text).toContain("- return price;");
+    expect(r.system).toMatch(/real change/i); expect(r.system).toMatch(/two short lines/i); expect(r.system).toMatch(/two or three/i);
+  });
+  test("settings and key files are named as settings only, never with what is in them", () => {
+    const r = explainRequest({ label: "Add the key", changed: [{ file: ".env", kind: "modified" }, { file: "certs/site.pem", kind: "added" }], said: "", diff: "" });
+    expect(r.text).toMatch(/\.env.*not shown/); expect(r.text).toMatch(/site\.pem.*not shown/);
+  });
+  test("a request with no readable change says so instead of pretending", () => {
+    expect(explainRequest({ label: "x", changed: [{ file: "a.bin", kind: "modified" }], said: "", diff: "" }).text).toMatch(/could not be shown/i);
   });
 });
 

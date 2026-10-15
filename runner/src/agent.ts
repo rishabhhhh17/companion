@@ -4,7 +4,7 @@
 
 import { runCommand, shq } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
@@ -24,6 +24,7 @@ import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
+import { changeTarget, diffForExplain, madeSameChange, repeatedChange, revertHunk, taskHunks, teachable, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
 import { browserCheck } from "./proof/browser.ts";
@@ -47,7 +48,8 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null> };
+// noInstall: check the project as it is, without installing its packages first (Point at the problem, your turn).
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -91,8 +93,23 @@ function pruneOldest(dir: string, keep: number) {
 type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string> };
 const newSession = (agent: string, abort: AbortController, taskAllowed: Set<string> = new Set()): Session => ({ agent, abort, pending: new Map(), taskAllowed, shells: new Set() });
 type StartCmd = Extract<Command, { type: "agent.start" }>;
-// resumeSession: carry on Claude's conversation. taskAllowed: what a Drive plan's steps share (see Session).
-type RunOpts = { resumeSession?: string; taskAllowed?: Set<string> };
+// resumeSession: carry on Claude's conversation. taskAllowed: what a Drive plan's steps share (see Session). step: which step
+// of a Drive plan this run is, so its explanation can say so.
+type RunOpts = { resumeSession?: string; taskAllowed?: Set<string>; step?: { index: number; title: string } };
+type Step1 = NonNullable<RunOpts["step"]>;
+
+// "Your turn": a proven fix that made the same small change in two places can be offered to the person (teach.ts). offer: the
+// task's receipt checkpoint, the snapshot just after it, and the two places. turn: what the person was given after a press.
+type TeachOffer = { checkpoint: string; afterId: string; repeat: Repeat };
+type TeachTurn = { checkpoint: string; start: string; restore: string; hunk: Hunk };
+// The place to ring for a hunk: its first line with words on it, as the file shows it now (side "after") or as it was ("before").
+// Either way the place starts at the same line: lines above it are the same before and after.
+const placeOf = (h: Hunk, side: "before" | "after"): ChangeAt => {
+  const rows = side === "after" ? h.after : h.before;
+  const i = Math.max(0, rows.findIndex((r) => /\S/.test(r)));
+  return { file: h.file, line: h.afterAt + i, lineText: makeLabel(rows[i] ?? "", 200) };
+};
+const shown = (rows: string[]) => makeLabel(rows.map((r) => r.trim()).join(" "), 160);
 
 // What "the same action" means for a yes that covers the rest of a task: the same tool, the same thing it acts on (the exact
 // command, address, file, or for other tools the exact input), and the same reason Companion asked. Anything else asks again.
@@ -160,6 +177,8 @@ export class AgentRunner {
   // The last proof result for each project, and which saved version it was for. Shipping needs a pass on the exact version.
   private rulesSaid = new Set<string>();
   private lastProof = new Map<string, { verdict: string; snapshot: string }>();   // "Carry on" pressed before the loop is waiting for it
+  private teachOffers = new Map<string, TeachOffer>();   // project -> the latest proven fix that made the same change twice
+  private teaching = new Map<string, TeachTurn>();       // project -> the place the person was asked to change
 
   // Take the wheel: stop the current step now; the plan waits for the person to resume.
   private requestPause(agent: string, reason: string, path?: string) {
@@ -244,20 +263,23 @@ export class AgentRunner {
     const rows = this.o.log.list(cmd.project, 100);
     this.emit({ type: "recap.ready", project: cmd.project, lines: recapLines(rows, new Date(cmd.since).toISOString(), pending) } as never);
   }
-  // Explain: asks the fast model why the task did what it did. A problem here is never a problem for the task.
-  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string }, checkpoint: string, signal: AbortSignal) {
+  // Explain: asks the fast model why the task did what it did, from the real change. A problem here is never a problem for
+  // the task. Its cost is the person's own, so it counts in today's spending, and it is not asked for once the day's limit is reached.
+  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1) {
     if (!this.o.explainer || input.changed.length === 0) return;
     try {
       const m = this.memoryFor(cmd.project);
       if (m && !m.explainEnabled()) return;
+      if (this.room(cmd.project) <= 0) return;
       const ac = new AbortController();
       const stop = () => ac.abort();
       signal.addEventListener("abort", stop, { once: true });
       const timer = setTimeout(stop, 45_000);
       try {
         const r = await this.o.explainer(explainRequest(input), ac.signal);
+        if (Number.isFinite(r.costUsd) && r.costUsd > 0) this.ledger.add(cmd.project, r.costUsd);
         const e = parseExplain(r.text);
-        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), usdEstimate: r.costUsd } as never);
+        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
@@ -350,6 +372,8 @@ export class AgentRunner {
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "problem.find": return this.problemFind(cmd);
+      case "teach.try": return this.teachTry(cmd);
+      case "teach.check": return this.teachCheck(cmd);
       case "diagram.ask": return this.diagramAsk(cmd);
       case "project.inspect": return this.projectInspect(cmd.project);
       case "project.install": return this.projectInstall(cmd.project);
@@ -389,6 +413,8 @@ export class AgentRunner {
         if (this.projectInUse(cmd.project)) { this.fail("Something is still working on this project. Wait for it to finish, or press Stop, then undo."); return; }
         try {
           const r = await this.store(cmd.project).restore(cmd.checkpoint);
+          // The files are not what any offer or turn was made for any more.
+          this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
           this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone } as never);
         } catch (e) {
           const m = String((e as Error).message ?? e);
@@ -538,9 +564,11 @@ export class AgentRunner {
     let lastFailure: { label: string; detail: string } | undefined;
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
+    let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
     let ok = await round(cmd.prompt, opts.resumeSession);
     for (let tries = 1; ; tries++) {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
+      lastAfter = after.id;
       changed = await store.diff(before.id, after.id);
       if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) break;
 
@@ -586,13 +614,21 @@ export class AgentRunner {
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.openTasks.delete(cmd.agent);
+    // The change itself, place by place: the first changed line for "Show me what changed", the diff for Explain, and the
+    // same small change made twice for "your turn" (only after a proven fix, outside a plan, and never off the record).
+    const hunks = changed.length ? await this.taskHunksOf(store, before.id, lastAfter, changed) : [];
+    const changedAt = changeTarget(hunks);
+    const projectKey = resolve(cmd.project);
+    const repeat = status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
+    if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat }); else if (changed.length) this.teachOffers.delete(projectKey);
     // Off the record work gets no saved picture (nothing about it is kept).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}) } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
-    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && !this.driving.has(cmd.agent)) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said }, before.id, ex.signal).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
+    // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     const stuck = proof === "failed" && sigs.length >= 3 && new Set(sigs.slice(-3)).size === 1 ? lastFailure : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
@@ -908,6 +944,86 @@ export class AgentRunner {
     } finally { this.shipping.delete(key); this.sessions.delete(sk); }
   }
 
+  // The places a task changed, from the two snapshots. Only files that may be taught from are read (teach.ts), at most 40 of
+  // them; a problem reading them only means there is nothing to show.
+  private async taskHunksOf(store: CheckpointStore, fromId: string, toId: string, changed: { file: string; kind: string }[]): Promise<Hunk[]> {
+    try {
+      const keep = new Set(changed.map((c) => c.file).filter(teachable).slice(0, 40));
+      if (keep.size === 0) return [];
+      const before = await store.readFiles(fromId, (p) => keep.has(p));
+      const after = await store.readFiles(toId, (p) => keep.has(p));
+      return taskHunks(changed.filter((c) => keep.has(c.file)), before, after);
+    } catch { return []; }
+  }
+
+  // The file a place is in, as it really is on disk: inside the project, reached through no link. Null when it is not.
+  private placeFile(project: string, file: string): string | null {
+    try {
+      const root = realpathSync(project), abs = join(root, file);
+      if (!teachable(file) || realpathSync(abs) !== abs || !statSync(abs).isFile()) return null;
+      return abs;
+    } catch { return null; }
+  }
+
+  // Your turn, on the person's press: put only the second of two identical changes back as it was (a snapshot first, so the
+  // whole fix can be put back), and say where it is, so the card can ring it. Nothing is done when anything is working on
+  // the project, when this is not the latest proven fix, or when the file changed since the fix.
+  private async teachTry(cmd: Extract<Command, { type: "teach.try" }>): Promise<void> {
+    const say = (made: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "teach.ready", project: cmd.project, checkpoint: cmd.checkpoint, made, ...extra } as never);
+    const key = resolve(cmd.project);
+    if (this.projectInUse(cmd.project)) { say(false, { reason: "Something is still working on this project. Wait for it to finish, or press Stop, then try again." }); return; }
+    const offer = this.teachOffers.get(key);
+    if (!offer || offer.checkpoint !== cmd.checkpoint) { say(false, { reason: "That fix is not the latest one any more, so there is nothing to try." }); return; }
+    const { first, second } = offer.repeat;
+    this.projectBusy.set(key, "teach");   // nothing else starts on this project while its file is rewritten
+    try {
+      const abs = this.placeFile(cmd.project, second.file);
+      const store = this.store(cmd.project);
+      const fixed = abs ? (await store.readFiles(offer.afterId, (p) => p === second.file))[second.file] : undefined;
+      const now = abs ? readFileSync(abs, "utf8") : undefined;
+      const back = now !== undefined && fixed !== undefined && now === fixed ? revertHunk(now, second) : null;
+      if (!abs || back === null) { say(false, { reason: "That file changed after my fix, so I left it alone." }); return; }
+      const restore = await store.snapshot("Before your turn: the whole fix");
+      this.ownWrite(() => writeFileSync(abs, back));
+      const start = await store.snapshot(`Your turn: ${second.file}`);
+      this.teachOffers.delete(key);
+      this.teaching.set(key, { checkpoint: cmd.checkpoint, start: start.id, restore: restore.id, hunk: second });
+      say(true, { target: placeOf(second, "before"), example: { file: first.file, line: placeOf(first, "after").line, was: shown(first.before), now: shown(first.after) }, change: { was: offer.repeat.was, now: offer.repeat.now }, restore: restore.id });
+    } catch (e) {
+      say(false, { reason: `Companion could not set that up (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
+    } finally { if (this.projectBusy.get(key) === "teach") this.projectBusy.delete(key); }
+  }
+
+  // Check my change: the project's own checks (the proof ladder, no install, no Claude) on the project as the person left it,
+  // compared with what they were given, so the tamper guard sees only their change. Stop everything ends it.
+  private async teachCheck(cmd: Extract<Command, { type: "teach.check" }>): Promise<void> {
+    const key = resolve(cmd.project);
+    const say = (verdict: string, same: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "teach.result", project: cmd.project, checkpoint: cmd.checkpoint, verdict, same, ...extra } as never);
+    const turn = this.teaching.get(key);
+    if (!turn || turn.checkpoint !== cmd.checkpoint) { say("cancelled", false, { reason: "There is nothing of yours waiting to be checked." }); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.projectInUse(cmd.project)) { say("cancelled", false, { reason: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
+    const abort = new AbortController();
+    this.finding.set(cmd.project, { abort, agent: cmd.agent });
+    try {
+      const store = this.store(cmd.project);
+      const snap = await store.snapshot("Your turn: your change");
+      this.state(cmd.agent, "checking");
+      let res: LadderResult = { verdict: "cancelled", steps: [] };
+      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep: this.stepTeller(cmd.agent), signal: abort.signal, noInstall: true }); }
+      catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
+      if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
+      const abs = this.placeFile(cmd.project, turn.hunk.file);
+      let same = false;
+      try { same = !!abs && madeSameChange(readFileSync(abs, "utf8"), turn.hunk); } catch { same = false; }
+      const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
+      say(res.verdict, same, { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
+      this.state(cmd.agent, res.verdict === "failed" ? "needsYou" : "idle");
+    } catch (e) {
+      say("cancelled", false, { reason: `Companion could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });
+      this.state(cmd.agent, "idle");
+    } finally { this.finding.delete(cmd.project); }
+  }
+
   // Point at the problem: check the project exactly as it is (no Claude, nothing changed) and say where it fails,
   // so the character can fly to that line, error or button.
   private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
@@ -1078,7 +1194,7 @@ export class AgentRunner {
         let prompt = stepPrompt(index, total, title);
         let r: Awaited<ReturnType<AgentRunner["run"]>>;
         for (;;) {
-          r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed });
+          r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, step: { index, title } });
           session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           // Paused in the middle of the step: wait, then carry on with the same step.
           if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
@@ -1093,7 +1209,7 @@ export class AgentRunner {
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));
           if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt(), taskAllowed });
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt(), taskAllowed, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }

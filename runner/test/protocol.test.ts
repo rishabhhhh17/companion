@@ -103,3 +103,36 @@ describe("the browser check's download", () => {
     expect(parseCommand('{"v":1,"id":"c","type":"browser.check"}').ok).toBe(true);
   });
 });
+
+describe("teaching from the change", () => {
+  const e = (o: Record<string, unknown>) => parseEvent(JSON.stringify({ v: 1, id: "e", ...o })).ok;
+  const c = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", ...o })).ok;
+  const receipt = { type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 };
+  const at = { file: "src/a.js", line: 2, lineText: "const n = user?.name;" };
+  test("a receipt may name the first changed line and the same change made twice, and must name them whole", () => {
+    expect(e({ ...receipt, changedAt: at, repeat: { first: at, second: { ...at, file: "src/b.js" }, was: "user", now: "user?" } })).toBe(true);
+    expect(e({ ...receipt, changedAt: { ...at, line: 0 } })).toBe(false);
+    expect(e({ ...receipt, changedAt: { file: "a.js", line: 2 } })).toBe(false);
+    expect(e({ ...receipt, changedAt: "src/a.js:2" })).toBe(false);
+    expect(e({ ...receipt, repeat: { first: at, was: "a", now: "b" } })).toBe(false);
+    expect(e({ ...receipt, repeat: { first: at, second: at, was: "a" } })).toBe(false);
+  });
+  test("an explanation for a Drive step names the step", () => {
+    const x = { type: "explain.ready", agent: "a", checkpoint: "cp_1", bullets: ["Why."], usdEstimate: 0.001 };
+    expect(e({ ...x, step: { index: 2, title: "Add the form" } })).toBe(true);
+    expect(e({ ...x, step: { index: 0, title: "x" } })).toBe(false);
+    expect(e({ ...x, step: "two" })).toBe(false);
+  });
+  test("your turn: try names the change, check names the agent too, and the answers say what happened", () => {
+    expect(c({ type: "teach.try", project: "/p", checkpoint: "cp_1" })).toBe(true);
+    expect(c({ type: "teach.try", project: "/p" })).toBe(false);
+    expect(c({ type: "teach.check", project: "/p", agent: "a", checkpoint: "cp_1" })).toBe(true);
+    expect(c({ type: "teach.check", project: "/p", checkpoint: "cp_1" })).toBe(false);
+    expect(e({ type: "teach.ready", project: "/p", checkpoint: "cp_1", made: true, target: at, restore: "cp_2" })).toBe(true);
+    expect(e({ type: "teach.ready", project: "/p", checkpoint: "cp_1", made: true })).toBe(false);
+    expect(e({ type: "teach.ready", project: "/p", checkpoint: "cp_1", made: false, reason: "That file changed." })).toBe(true);
+    expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "passed", same: true })).toBe(true);
+    expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "great", same: true })).toBe(false);
+    expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "passed" })).toBe(false);
+  });
+});

@@ -71,7 +71,11 @@ export type BrowserInstall = Envelope & { type: "browser.install" };
 // The daily spending limit (an estimate of the person's own Claude use, per project per day): shown and changed in Settings.
 export type SpendingShow = Envelope & { type: "spending.show"; project: string };
 export type SpendingSet = Envelope & { type: "spending.set"; project: string; limitUsd: number };
-export type Command = SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// Your turn (F16, F17): after a fix that made the same small change in two places, the person asks to make the second one
+// themselves (try), then asks for the proof ladder on their own change (check). Each names the task's receipt checkpoint.
+export type TeachTry = Envelope & { type: "teach.try"; project: string; checkpoint: string };
+export type TeachCheck = Envelope & { type: "teach.check"; project: string; agent: string; checkpoint: string };
+export type Command = TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -90,12 +94,24 @@ export type ApprovalRequest = Envelope & {
 export type CostUpdate = Envelope & {
   type: "cost.update"; agent: string; usdEstimate: number; basis: string; tokens: { in: number; cacheRead: number; out: number };
 };
+// A line in the project as it is now (1-based), with its text (secrets hidden), so the person's editor can show it and the
+// ring can find it on screen.
+export type ChangeAt = { file: string; line: number; lineText: string };
 export type Receipt = Envelope & {
   type: "receipt"; agent: string; checkpoint: string; changed: { file: string; kind: "added" | "modified" | "deleted" }[];
   commands: number; notUndoable: string[]; proof: "passed" | "partial" | "failed" | "skipped"; usdEstimate: number;
   picture?: boolean;   // a before and after picture is being made and will follow as receipt.visual
   inPlan?: boolean;    // one step of an approved plan (Drive); the plan as a whole ends with drive.done
+  changedAt?: ChangeAt;   // the first changed line, for "Show me what changed"
+  repeat?: { first: ChangeAt; second: ChangeAt; was: string; now: string };   // the same small change made in two places (was -> now)
 };
+// Explain: two short lines of why and one check question. step: which Drive step it explains.
+export type ExplainReady = Envelope & { type: "explain.ready"; agent: string; checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number }; step?: { index: number; title: string }; usdEstimate: number };
+// Your turn. made: false says why nothing was changed. target: the second place, now as it was before the fix. example: the
+// first place, as it was and as it is. change: the words that changed. restore: the checkpoint that puts the whole fix back.
+export type TeachReady = Envelope & { type: "teach.ready"; project: string; checkpoint: string; made: boolean; reason?: string; target?: ChangeAt; example?: { file: string; line: number; was: string; now: string }; change?: { was: string; now: string }; restore?: string };
+// same: the person's change matches the fix Companion made there. The verdict is the proof ladder's, on their change.
+export type TeachResult = Envelope & { type: "teach.result"; project: string; checkpoint: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; same: boolean; label?: string; detail?: string; problem?: Problem; reason?: string };
 export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string };
 
 export type AssistPromptDelta = Envelope & { type: "assist.prompt.delta"; req: string; text: string };
@@ -149,7 +165,7 @@ export type BrowserStatus = Envelope & { type: "browser.status"; installed: bool
 export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
 // problem: why a new limit was refused or not kept; the limit shown is the one still in force.
 export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
-export type Event = SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = ExplainReady | TeachReady | TeachResult | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -163,6 +179,11 @@ const obj: (k: string) => Check = (k) => (m) => (typeof m[k] === "object" && m[k
 // An optional field: absent is fine, present must be valid.
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
 const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
+// A line in the project: a file, a line number from 1, and the line's text.
+const isPlace = (c: unknown): boolean => { const o = c as Record<string, unknown> | null; return !!o && typeof o === "object" && !Array.isArray(o) && typeof o.file === "string" && o.file.length > 0 && Number.isInteger(o.line) && (o.line as number) >= 1 && typeof o.lineText === "string"; };
+const place: (k: string) => Check = (k) => (m) => (isPlace(m[k]) ? null : `"${k}" must be a place: file, line and lineText`);
+const repeatOk: Check = (m) => { const r = m.repeat as Record<string, unknown>; return r && typeof r === "object" && isPlace(r.first) && isPlace(r.second) && typeof r.was === "string" && typeof r.now === "string" ? null : '"repeat" needs first, second, was and now'; };
+const stepOk: Check = (m) => { const s = m.step as Record<string, unknown>; return s && typeof s === "object" && Number.isInteger(s.index) && (s.index as number) >= 1 && typeof s.title === "string" ? null : '"step" needs an index from 1 and a title'; };
 const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
 const COMMANDS: Record<string, Check[]> = {
@@ -186,6 +207,8 @@ const COMMANDS: Record<string, Check[]> = {
   "browser.install": [],
   "spending.show": [str("project")],
   "spending.set": [str("project"), num("limitUsd")],
+  "teach.try": [str("project"), str("checkpoint")],
+  "teach.check": [str("project"), str("agent"), str("checkpoint")],
   "walk.list": [str("project")],
   "walk.start": [str("project"), str("lesson")],
   "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
@@ -248,7 +271,9 @@ const EVENTS: Record<string, Check[]> = {
   "ship.card": [str("project"), str("url"), str("title"), str("image"), bool("withShot")],
   "receipt.visual": [str("agent"), str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || (typeof m.image === "string" && m.image.length > 0) ? null : "a made picture needs \"image\""), num("circles")],
   "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), needsOk],
-  "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate")],
+  "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate"), opt("step", stepOk)],
+  "teach.ready": [str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || isPlace(m.target) ? null : "a made turn needs a \"target\" place")],
+  "teach.result": [str("project"), str("checkpoint"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), bool("same")],
   "explain.state": [str("project"), bool("enabled")],
   "recap.ready": [str("project"), list("lines")],
   "memory.agents_ask": [str("project"), list("files")],
@@ -269,7 +294,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network"]), str("title"), str("expiresAt")],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate")],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk)],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],

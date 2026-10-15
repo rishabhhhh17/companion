@@ -271,6 +271,8 @@ await scenario("explain", only, async (note) => {
   const ex = await r.until((e) => e.type === "explain.ready", 60_000);
   if (!ex) { note("no explanation arrived"); r.stop(); return false; }
   note(`bullets: ${JSON.stringify(ex.bullets)}; question: ${JSON.stringify(ex.question ?? null)}; cost = ${ex.usdEstimate}`);
+  // Built from the real change: the receipt names the first changed line, and the explanation should be about opening at nine.
+  note(`first changed line: ${JSON.stringify(rec.changedAt ?? null)}; mentions the change: ${ex.bullets.some((b: string) => /nine|9|open/i.test(b))}`);
   r.send({ v: 1, id: "rc", type: "recap.ask", project: dir, since: new Date(Date.now() - 3600_000).toISOString() });
   const rc = await r.until((e) => e.type === "recap.ready", 5000);
   note(`recap: ${JSON.stringify(rc?.lines)}`);
@@ -278,7 +280,8 @@ await scenario("explain", only, async (note) => {
   // The "why" must be about the work, never about the prompt (the fast lane once wrapped Explain in "improve the prompt").
   const aboutPrompt = ex.bullets.some((b: string) => /\b(original |the )?prompt\b|vague|too short/i.test(b));
   if (aboutPrompt) note("EXPLAIN WAS ABOUT THE PROMPT, NOT THE WORK");
-  return ex.bullets.length >= 1 && ex.bullets.length <= 3 && (rc?.lines?.length ?? 0) === 3 && !aboutPrompt;
+  const questionOk = !ex.question || (ex.question.options.length >= 2 && ex.question.options.length <= 3);
+  return ex.bullets.length >= 1 && ex.bullets.length <= 2 && questionOk && rec.changedAt?.file === "index.html" && (rc?.lines?.length ?? 0) === 3 && !aboutPrompt;
 });
 
 await scenario("research", only, async (note) => {
