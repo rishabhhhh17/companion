@@ -13,12 +13,32 @@ describe("sizes in plain words", () => {
 });
 
 describe("permissions", () => {
-  test("allowed needs no button; not allowed gets one; not asked yet says when it will be asked", () => {
-    expect(permissionRow("screen_recording", "allowed")).toMatchObject({ state: "Allowed", button: false });
-    expect(permissionRow("screen_recording", "not_allowed")).toMatchObject({ state: "Not allowed", button: true });
+  test("allowed needs nothing; turned off says so and offers System Settings; not asked yet says when it will be asked", () => {
+    expect(permissionRow("screen_recording", "allowed")).toMatchObject({ state: "Allowed", todo: "", button: false });
     expect(permissionRow("microphone", "not_asked")).toMatchObject({ state: "Not asked yet", button: false });
-    expect(permissionRow("microphone", "not_allowed")).toMatchObject({ state: "Not allowed", button: true });
+    expect(permissionRow("microphone", "not_asked").todo).toMatch(/first time/);
+    expect(permissionRow("microphone", "not_allowed")).toMatchObject({ state: "Turned off", button: true });
+    expect(permissionRow("microphone", "not_allowed").todo).toMatch(/said no.*System Settings/);
     expect(permissionRow("accessibility", "unknown")).toMatchObject({ button: false });
+  });
+  test("where macOS cannot tell never asked from said no, one plain line covers both, with the way to turn it on", () => {
+    for (const k of ["screen_recording", "accessibility"] as const) {
+      const r = permissionRow(k, "off");
+      expect(r).toMatchObject({ state: "Not on", button: true });
+      expect(r.todo).toMatch(/first time/); expect(r.todo).toMatch(/said no/); expect(r.todo).toMatch(/System Settings/);
+    }
+  });
+  test("blocked by a Screen Time or management setting says who can change it, with no button that cannot help", () => {
+    const r = permissionRow("microphone", "restricted");
+    expect(r).toMatchObject({ state: "Blocked on this Mac", button: false });
+    expect(r.todo).toMatch(/manages this Mac/);
+  });
+  test("every word the app can send is understood", async () => {
+    const rs = await Bun.file(new URL("../src-tauri/src/permissions.rs", import.meta.url)).text();
+    const fn = rs.slice(rs.indexOf("pub fn page_word"), rs.indexOf("pub fn support_words"));
+    const words = [...fn.matchAll(/=> "([a-z_]+)"/g)].map((m) => m[1]);
+    expect(words.sort()).toEqual(["allowed", "not_allowed", "not_asked", "off", "restricted", "unknown"]);
+    for (const w of words.filter((w) => w !== "unknown")) expect(permissionRow("microphone", w as never).state, w).not.toBe("Not checked yet");
   });
   test("each says what it is for, in plain words", () => {
     for (const k of ["screen_recording", "accessibility", "microphone"] as const) {
@@ -35,6 +55,52 @@ describe("what Companion keeps, and deleting it", () => {
   });
   test("with no key saved there is no key line", () => expect(deletableLines({ ...inv, keySaved: false }).some((l) => /key/i.test(l))).toBe(false));
   test("the confirmation is exact words, so a stray call cannot delete anything", () => expect(DELETE_PHRASE).toBe("delete everything"));
+});
+
+import { keyStatus, REMOVE_KEY_PHRASE, submitKey } from "./settings.ts";
+import { readFileSync } from "node:fs";
+describe("replacing and removing the key in Settings", () => {
+  const good = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcdefgh";
+  test("a good key is sent once, trimmed, and the box is emptied right away", () => {
+    expect(submitKey(`  ${good}\n`)).toEqual({ clear: true, send: good, problem: null });
+  });
+  test("a key that does not look right is never sent, the box is emptied too, and the words never repeat it", () => {
+    for (const bad of ["", "hello", "sk-ant-short", `${good} extra`, "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789abcdef"]) {
+      const r = submitKey(bad);
+      expect(r.send).toBeNull(); expect(r.clear).toBe(true); expect(r.problem).toMatch(/\.$/);
+      if (bad.length > 6) expect(r.problem).not.toContain(bad);
+    }
+  });
+  test("the same checks as the first run", async () => {
+    const { keyLooksRight } = await import("./onboarding.ts");
+    for (const k of [good, "", "sk-ant-short", `${good} x`]) expect(submitKey(k).problem).toBe(keyLooksRight(k));
+  });
+  test("whether a key is saved is said in plain words", () => {
+    expect(keyStatus(true)).toMatch(/saved in your Mac's Keychain/);
+    expect(keyStatus(false)).toMatch(/No key is saved/);
+  });
+  test("removing needs the exact words the app checks, and the app tells the engine it has no key", () => {
+    const keystore = readFileSync(new URL("../src-tauri/src/keystore.rs", import.meta.url), "utf8");
+    expect(keystore).toContain(`pub const REMOVE_PHRASE: &str = "${REMOVE_KEY_PHRASE}";`);
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const remove = main.slice(main.indexOf("fn remove_api_key"), main.indexOf("\n}\n", main.indexOf("fn remove_api_key")));
+    expect(remove).toContain("keystore::delete_item(");
+    expect(remove).toContain("hand_key(None)");
+    // The gate is the tested one (keystore::remove_with: only the card, only the exact words, gone only after a fresh look),
+    // and the engine is told only after it says the key is gone.
+    expect(remove).toMatch(/keystore::remove_with\(window\.label\(\), &confirm, [^;]*\)\?;/);
+    expect(remove.indexOf("keystore::remove_with(")).toBeLessThan(remove.indexOf("hand_key(None)"));
+    expect(main).toMatch(/generate_handler!\[[^\]]*\bremove_api_key\b/);
+  });
+  test("the Settings key box is a password box that the page empties, and removing asks first", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const keys = card.slice(card.indexOf("function KeySection"), card.indexOf("\n}\n", card.indexOf("function KeySection")));
+    expect(keys).toMatch(/<input type="password" autoComplete="off"/);
+    expect(keys).toContain('invoke("save_api_key"');
+    expect(keys).toContain('invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE })');
+    expect(keys).toContain("S.keyRemoveSure");
+    expect(card.slice(card.indexOf("function SettingsPanel"))).toContain("<KeySection");
+  });
 });
 
 import { numbersLines } from "./settings.ts";
