@@ -453,10 +453,9 @@ fn hand_key_over(app: &AppHandle, key: Option<&str>) {
 /// that it has no key, so a removed key stops being used. Only from the card, only with the exact words.
 #[tauri::command]
 fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String) -> Result<(), String> {
-    if window.label() != "card" || confirm != keystore::REMOVE_PHRASE { return Err("Not confirmed.".into()); }
     let svc = keystore::service();
-    let _ = keystore::delete_item(&svc, keystore::ACCOUNT);
-    keystore::removal_result(keystore::exists(&svc, keystore::ACCOUNT))?;
+    // The tested gate: an unconfirmed call never reaches the Keychain, and the key counts as gone only once it is not there.
+    keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || keystore::exists(&svc, keystore::ACCOUNT))?;
     log("api_key_removed", json!({}));
     // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
     let _ = app.state::<runner::Runner>().hand_key(None);

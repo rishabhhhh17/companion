@@ -86,6 +86,10 @@ describe("replacing and removing the key in Settings", () => {
     const remove = main.slice(main.indexOf("fn remove_api_key"), main.indexOf("\n}\n", main.indexOf("fn remove_api_key")));
     expect(remove).toContain("keystore::delete_item(");
     expect(remove).toContain("hand_key(None)");
+    // The gate is the tested one (keystore::remove_with: only the card, only the exact words, gone only after a fresh look),
+    // and the engine is told only after it says the key is gone.
+    expect(remove).toMatch(/keystore::remove_with\(window\.label\(\), &confirm, [^;]*\)\?;/);
+    expect(remove.indexOf("keystore::remove_with(")).toBeLessThan(remove.indexOf("hand_key(None)"));
     expect(main).toMatch(/generate_handler!\[[^\]]*\bremove_api_key\b/);
   });
   test("the Settings key box is a password box that the page empties, and removing asks first", () => {
