@@ -19,6 +19,7 @@ const ALLOWED: &[&str] = &[
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
     "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop",
     "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
+    "spending.show", "spending.set",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -54,6 +55,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
     "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
+    "spending.show", "spending.set",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -88,7 +90,9 @@ pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf,
 
 /// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
-const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL"];
+/// COMPANION_FAST_MODEL and COMPANION_VISION_MODEL switch the two small lanes' models (defaults in runner/src/models.ts);
+/// COMPANION_REVIEW=1 turns on the second model review of risky changes (proof rung 7).
+const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL", "COMPANION_FAST_MODEL", "COMPANION_VISION_MODEL", "COMPANION_REVIEW"];
 
 pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     dev.get("env").and_then(Value::as_object).map(|o| {
@@ -339,8 +343,17 @@ mod tests {
 
     #[test]
     fn allows_the_commands_pages_need() {
-        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check"] {
+        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "spending.set"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
+        }
+    }
+    #[test]
+    fn the_spending_limit_row_may_only_name_the_chosen_project() {
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p, "limitUsd": 25 });
+        for t in ["spending.show", "spending.set"] {
+            assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t}");
         }
     }
     #[test]
@@ -385,6 +398,17 @@ mod tests {
         assert_eq!(e["COMPANION_ROUTE"], "plan");
         assert_eq!(allowed_env(&json!({"env": {"COMPANION_ASSIST_STUB":"1"}}))["COMPANION_ASSIST_STUB"], "1");
         for k in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "PATH", "COMPANION_ENGINE"] { assert!(!e.contains_key(k), "{k}"); }
+    }
+    #[test]
+    fn the_dev_file_may_switch_the_small_lanes_models_and_the_second_review() {
+        let e = allowed_env(&json!({"env": {"COMPANION_FAST_MODEL":"f","COMPANION_VISION_MODEL":"v","COMPANION_REVIEW":"1",
+            "COMPANION_DAILY_CEILING_USD":"0.01","COMPANION_SCRIPT":"[]","ANTHROPIC_MODEL":"x"}}));
+        assert_eq!(e.get("COMPANION_FAST_MODEL").map(String::as_str), Some("f"));
+        assert_eq!(e.get("COMPANION_VISION_MODEL").map(String::as_str), Some("v"));
+        assert_eq!(e.get("COMPANION_REVIEW").map(String::as_str), Some("1"));
+        // Still refused: the spending limit is the person's own choice in Settings, scripts are for tests, and Anthropic's own variables never pass.
+        for k in ["COMPANION_DAILY_CEILING_USD", "COMPANION_SCRIPT", "ANTHROPIC_MODEL"] { assert!(!e.contains_key(k), "{k}"); }
+        assert_eq!(e.len(), 3);
     }
     #[test]
     fn a_missing_or_odd_env_section_gives_nothing() {

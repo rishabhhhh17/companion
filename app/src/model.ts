@@ -42,7 +42,11 @@ export type LessonItem = { id: string; title: string; app: string; goal: string;
 // proven, finished, or stopped.
 export type WalkState = { stage: "step" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
+// The daily spending limit row in Settings, for one project: the limit, what it spent today (an estimate), the bounds, and why
+// a new limit was refused if it was.
+export type Spending = { project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
 export type Model = {
+  spending: Spending | null;
   doctor: DoctorItem[] | null;
   voice: Voice | null;
   showme: ShowMe | null;
@@ -93,7 +97,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ spending: null, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -145,9 +149,14 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "explain.ready": return (m.receipt?.checkpoint ?? m.currentCheckpoint) === e.checkpoint ? { ...m, explain: { checkpoint: e.checkpoint, bullets: e.bullets ?? [], question: e.question } } : m;
     case "explain.state": return { ...m, explainOn: !!e.enabled };
+    case "spending.state": {
+      const n = (x: unknown) => typeof x === "number" && Number.isFinite(x) && x >= 0;
+      if (typeof e.project !== "string" || !n(e.limitUsd) || !n(e.spentUsd) || !n(e.minUsd) || !n(e.maxUsd) || e.limitUsd <= 0) return m;
+      return { ...m, spending: { project: e.project, limitUsd: e.limitUsd, spentUsd: e.spentUsd, minUsd: e.minUsd, maxUsd: e.maxUsd, ...(typeof e.problem === "string" && e.problem ? { problem: e.problem } : {}) } };
+    }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, spending: null, undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);

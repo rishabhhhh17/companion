@@ -108,6 +108,8 @@ The folder starts in M1 with only `secrets` (the Keychain key) and `supervisor` 
 | `tasklog` | SQLite schema and migrations: tasks, events, decisions, rules, approvals, receipts, ledger, dismissals; later loop items, pattern candidates, saved tasks | M1 |
 | `receipts` | Receipt per task from the ledger and the snapshot diff; timeline queries | M3 |
 | `ledger` | Cost estimates, per card budget, per project daily ceiling, labelled as estimates | M1 |
+| `spending` | The daily spending limit the person chooses in Settings (1 to 500 dollars, default 10): checks it, keeps it in `spending.json` in the data folder, reads it at start (`spending.show`, `spending.set`) | M11 |
+| `models` | Every model id the runner uses, in one place (T10): agent sessions, Drive planning, Rescue, the reviewer, the fast, vision and pointing lanes. `COMPANION_FAST_MODEL` and `COMPANION_VISION_MODEL` switch the small lanes for testing | M11 |
 | `assist` | Prompt help (rubric, target adapters, context block, growth cap, light mode); Show me how orchestration (walkthrough state, short text history) | M5, M6 |
 | `notice` | Where was I; later recaps, Loop Closer, Pattern Catcher pipelines | M8, M12 |
 | `explain` | Explain output style file and the optional check question | M8 |
