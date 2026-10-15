@@ -19,6 +19,9 @@ struct Pending {
     pid: i32, bundle: String, name: String,
     element: Arc<ax::Cf>, element_id: u64,
     original: String, had_selection: bool,
+    /// Where the selection that was read starts (UTF-16 units). Updated to where the improved text really went just before
+    /// it is pasted, so putting the original back replaces only that.
+    sel_start: Option<usize>,
     improved: Option<String>, handback_copy: bool,
 }
 #[derive(Default)]
@@ -117,7 +120,7 @@ fn finish_read(app: &AppHandle, mut session: rules::ReadSession, pid: i32, bundl
             note("read", &bundle, t0.elapsed().as_millis() as u64, chars, r.rung);
             let element_id = el.id();
             let text = r.text.clone();
-            st().pending = Some(Pending { pid, bundle: bundle.clone(), name: name.clone(), element: Arc::new(el), element_id, original: r.text, had_selection: r.had_selection, improved: None, handback_copy: false });
+            st().pending = Some(Pending { pid, bundle: bundle.clone(), name: name.clone(), element: Arc::new(el), element_id, original: r.text, had_selection: r.had_selection, sel_start: r.sel_start, improved: None, handback_copy: false });
             say(app, "thinking", json!({ "app": name, "selection": r.had_selection }));
             send_prompt(app, &bundle, &text, None);
         }
@@ -182,53 +185,85 @@ pub fn put_back(app: &AppHandle, restore: bool) {
 fn put_back_now(app: &AppHandle, restore: bool) {
     let gen = GEN.load(Ordering::SeqCst);
     // Take what is needed out of the shared state and let go of it: the calls into the other app below can be slow.
-    let (text, handback_copy, at_read, name, had_selection, element) = {
+    let (text, improved, handback_copy, at_read, name, had_selection, sel_start, element) = {
         let s = st();
         let Some(p) = s.pending.as_ref() else { return };
         let text = if restore { p.original.clone() } else { match &p.improved { Some(t) => t.clone(), None => return } };
-        (text, p.handback_copy, rules::Focus { pid: p.pid, element: p.element_id }, p.name.clone(), p.had_selection, p.element.clone())
+        (text, p.improved.clone(), p.handback_copy, rules::Focus { pid: p.pid, element: p.element_id }, p.name.clone(), p.had_selection, p.sel_start, p.element.clone())
     };
     let moved_on = || GEN.load(Ordering::SeqCst) != gen;
     let focus_now = || current_focus(at_read.pid).map(|(pid, element)| rules::Focus { pid, element }).unwrap_or(rules::Focus { pid: -1, element: 0 });
     match rules::paste_plan(at_read, focus_now(), handback_copy && !restore, false) {
         rules::PasteVerdict::CopyOnly(msg) => { ax::write_clipboard(&text); say(app, "copied", json!({ "message": msg })); note("paste", &name, 0, text.chars().count(), "copied"); }
         rules::PasteVerdict::Paste => {
-            // The clipboard is put back only when macOS will not alert for reading it. Until that is checked on this Mac, it is not read.
-            let plan = rules::clipboard_plan(rules::AccessBehavior::Unknown);
-            let current_len = ax::value_of(&element).unwrap_or_default().encode_utf16().count();
-            ax::write_clipboard(&text);
-            // Replace the whole box, or only the selection if that is what was read.
-            if !(had_selection && !restore) { ax::select_all(&element, current_len); std::thread::sleep(Duration::from_millis(60)); }
+            // Where the text goes: the whole box, or only the selection if that is what was read. Putting the original back
+            // after a selection replaces only where the improved text went; if it is not there any more, the box is left
+            // alone and the original is only copied (the rule is tested in prompthelp.rs).
+            let box_now = ax::value_of(&element).unwrap_or_default();
+            let target = rules::paste_target(had_selection, restore, &box_now, sel_start, improved.as_deref());
+            let selected = match target {
+                rules::PasteTarget::WholeBox(len) => { ax::select_all(&element, len); true }
+                rules::PasteTarget::Range { start, len } => ax::select_range(&element, start, len),
+                rules::PasteTarget::Selection => true,
+                rules::PasteTarget::NotFound => false,
+            };
+            if !selected {
+                ax::write_clipboard(&text);
+                say(app, "copied", json!({ "message": rules::ORIGINAL_NOT_FOUND }));
+                note("paste", &name, 0, text.chars().count(), "not_found");
+                return;
+            }
+            if target != rules::PasteTarget::Selection { std::thread::sleep(Duration::from_millis(60)); }
+            // The person's own clipboard is saved first and put back after the paste, but only when macOS lets Companion read
+            // it without an alert (T11) and nothing on it is marked private (a password manager clears those by itself).
+            // Otherwise it is not read at all, and the card says the clipboard now holds the text.
+            let mut plan = rules::clipboard_plan_with(rules::access_behavior(ax::clipboard_access_raw()), ax::clipboard_types);
+            let saved = if plan == rules::ClipboardPlan::SaveAndRestore { ax::save_clipboard() } else { None };
+            if saved.is_none() { plan = rules::ClipboardPlan::skip(); }   // not saved, so the card must say what it holds now
+            let ours = ax::write_clipboard(&text);
+            let give_back = |outcome: rules::PasteOutcome| {
+                if let Some(s) = &saved { if rules::restore_after(&plan, outcome, ours, ax::clipboard_change_count()) { ax::restore_clipboard(s, ours); } }
+            };
             let fronted = ax::ensure_front(at_read.pid);
             std::thread::sleep(Duration::from_millis(250));
             if !fronted {
+                give_back(rules::PasteOutcome::CopiedInstead);   // the text stays on the clipboard for the person to paste
                 say(app, "copied", json!({ "message": "I could not return to your text box, so I copied the text instead. Press Cmd+V where you want it." }));
                 note("paste", &name, 0, text.chars().count(), "no_focus");
                 return;
             }
             // Just before pasting, make sure the person is still in the same box and has not moved on. If not, only copy.
-            if moved_on() { note("paste", &name, 0, text.chars().count(), "cancelled"); return; }
+            if moved_on() { give_back(rules::PasteOutcome::Cancelled); note("paste", &name, 0, text.chars().count(), "cancelled"); return; }
             if focus_now() != at_read {
+                give_back(rules::PasteOutcome::CopiedInstead);
                 say(app, "copied", json!({ "message": "You moved to another box, so I copied the text instead of pasting. Press Cmd+V where you want it." }));
                 note("paste", &name, 0, text.chars().count(), "moved");
                 return;
             }
+            // Using the improved text over a selection: remember where it goes, so putting the original back replaces only that.
+            if target == rules::PasteTarget::Selection {
+                if let Some(at) = ax::selection_start(&element) {
+                    if let Some(p) = st().pending.as_mut() { if p.element_id == at_read.element { p.sel_start = Some(at); } }
+                }
+            }
             // The app's own Edit > Paste first. Cmd+V only when that menu item could not be pressed at all: pressing both would paste twice.
             let probe: String = text.chars().take(24).collect();
+            // What the box holds right before the paste: it has landed only once the box changed from this and holds our text.
+            let before = ax::value_of(&element).unwrap_or_default();
             let check = |ms: u64| -> bool {
                 let started = Instant::now();
                 while started.elapsed() < Duration::from_millis(ms) {
                     std::thread::sleep(Duration::from_millis(100));
-                    if ax::value_of(&element).is_some_and(|v| v.contains(probe.as_str())) { return true; }
+                    if ax::value_of(&element).is_some_and(|v| rules::paste_seen(&before, &v, &probe)) { return true; }
                 }
                 false
             };
             let menu_pressed = ax::press_menu(at_read.pid, "Edit", "Paste");
             let (landed, how) = if menu_pressed { (check(1500), "menu") } else { ax::press_paste(); (check(1500), "keys") };
-            crate::log("prompt_help_step", json!({ "step": "pasted_by", "how": how, "landed": landed }));
-            let tell = match plan { rules::ClipboardPlan::SkipAndTell(_) if restore => "Your clipboard now holds your original text.", rules::ClipboardPlan::SkipAndTell(m) => m, rules::ClipboardPlan::SaveAndRestore => "" };
-            let msg = if landed { format!("{} {tell}", if restore { "Your original is back." } else { "Done." }) } else { format!("I pasted it, but could not confirm it landed. Please look at your text box. {tell}") };
-            say(app, if restore { "restored" } else { "pasted" }, json!({ "message": msg.trim(), "confirmed": landed }));
+            // The app has read the clipboard once the text shows in the box, so the person's own clipboard can come back now.
+            give_back(if landed { rules::PasteOutcome::Landed } else { rules::PasteOutcome::Unconfirmed });
+            crate::log("prompt_help_step", json!({ "step": "pasted_by", "how": how, "landed": landed, "clipboard_saved": saved.is_some() }));
+            say(app, if restore { "restored" } else { "pasted" }, json!({ "message": rules::paste_words(restore, landed, &plan), "confirmed": landed }));
             note("paste", &name, 0, text.chars().count(), if landed { "landed" } else { "unconfirmed" });
         }
     }

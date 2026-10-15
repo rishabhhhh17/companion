@@ -42,6 +42,7 @@ mod visibility;
 mod wheel;
 
 mod runner;
+mod instance;
 
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
@@ -444,8 +445,21 @@ fn hand_key_over(app: &AppHandle, key: Option<&str>) {
     let (a, key) = (app.clone(), key.map(str::to_string));
     std::thread::spawn(move || {
         let key = key.or_else(|| { let moved = keystore::move_old_item(&data_dir()); log("key_move", json!({ "moved": moved })); keystore::read() });
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&keystore::handoff_line(key.as_deref())) { let _ = a.state::<runner::Runner>().send(&v); }
+        let _ = a.state::<runner::Runner>().hand_key(key.as_deref());
     });
+}
+
+/// Settings: removes the person's key from the Keychain, after the page asked them first, and tells the engine at once
+/// that it has no key, so a removed key stops being used. Only from the card, only with the exact words.
+#[tauri::command]
+fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String) -> Result<(), String> {
+    let svc = keystore::service();
+    // The tested gate: an unconfirmed call never reaches the Keychain, and the key counts as gone only once it is not there.
+    keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || keystore::exists(&svc, keystore::ACCOUNT))?;
+    log("api_key_removed", json!({}));
+    // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
+    let _ = app.state::<runner::Runner>().hand_key(None);
+    Ok(())
 }
 
 /// Opens the Mac's own folder chooser (another process, so the keyboard is never taken), then uses the folder.
@@ -793,13 +807,12 @@ async fn data_inventory() -> Value {
     }).await.unwrap_or(Value::Null)
 }
 
-/// The three permissions as the settings page shows them: allowed, not allowed yet, or refused. Never prompts.
+/// The three permissions as the settings page shows them. Never prompts. The microphone says whether it was never asked,
+/// turned off or blocked; Accessibility and Screen Recording can only say on or off (see permissions.rs).
 #[tauri::command]
 fn permission_overview() -> Value {
     let p = permissions::current();
-    let st = |s: permissions::Status| match s { permissions::Status::Granted => "allowed", permissions::Status::NotGranted => "not_allowed", permissions::Status::Unknown => "unknown" };
-    let mic = match voice_mac::mic_status() { voice_mac::Mic::Allowed => "allowed", voice_mac::Mic::NotAsked => "not_asked", voice_mac::Mic::Refused => "not_allowed" };
-    json!({ "accessibility": st(p.accessibility), "screen_recording": st(p.screen_recording), "microphone": mic })
+    json!({ "accessibility": permissions::page_word(p.accessibility), "screen_recording": permissions::page_word(p.screen_recording), "microphone": permissions::page_word(p.microphone) })
 }
 
 /// Opens the right page of System Settings (opening a page changes nothing; the person decides there).
@@ -819,8 +832,8 @@ async fn export_logs() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let (home, data) = (home_dir(), data_dir());
         let cmd_out = |c: &str, a: &[&str]| std::process::Command::new(c).args(a).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-        let perms = permission_overview();
-        let word = |k: &str| match perms[k].as_str().unwrap_or("unknown") { "allowed" => "allowed", "not_allowed" => "not allowed", "not_asked" => "not asked yet", _ => "not checked" };
+        let perms = permissions::current();
+        let word = |k: &str| permissions::support_words(match k { "screen_recording" => perms.screen_recording, "accessibility" => perms.accessibility, _ => perms.microphone });
         let pj = projects::load(&projects_path());
         let mut projects: Vec<String> = pj.recent.clone();
         if let Some(c) = pj.current.clone() { if !projects.contains(&c) { projects.push(c); } }
@@ -1329,6 +1342,12 @@ fn main() {
     if wipe_helper_mode() { return; }
     let _ = T0.set(now());
     let _ = RUN.set(format!("{}-{}", now(), std::process::id()));
+    // One copy at a time: a second copy would own the same hotkeys and start a second engine. It leaves quietly before it
+    // shows anything. It waits a few seconds first, because an update starts the new copy just before the old one ends.
+    let instance = instance::take_waiting(&data_dir().join("instance.lock"), Duration::from_secs(5), Duration::from_millis(100));
+    if instance::should_leave(&instance) { log("second_copy_left", json!({})); return; }
+    if let instance::Taken::CouldNotCheck(why) = &instance { log("instance_not_checked", json!({ "why": why })); }
+    let _instance = instance;   // held until Companion quits; macOS lets the lock go when the program ends
     let mods = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
     let k = Shortcut::new(Some(mods), Code::KeyK);   // open the ask box
     let x = Shortcut::new(Some(mods), Code::KeyX);   // stop everything
@@ -1386,7 +1405,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

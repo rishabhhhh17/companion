@@ -63,3 +63,5 @@
 {"v":1,"id":"e76","type":"proof.result","agent":"builder-1","verdict":"passed_with_gaps","steps":[{"rung":"checks","label":"Building and checking the code","status":"passed","detail":"build passed.","ms":120},{"rung":"browser","label":"Opening it in a browser","status":"skipped","detail":"The hidden browser is not installed yet, so the page was not opened.","ms":0,"needs":"browser"}],"tries":1}
 {"v":1,"id":"e77","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"passed_with_gaps","needs":"browser"}
 {"v":1,"id":"e78","type":"ship.status","project":"p_9f2c","stage":"failed","detail":"The preview could not be checked: The hidden browser is not installed yet, so the page was not opened. It cannot go live until it has been checked.","previewUrl":"https://shop-abc.vercel.app","canGoLive":false,"needs":"browser"}
+{"v":1,"id":"e60","type":"spending.state","project":"p_9f2c","limitUsd":25,"spentUsd":0.42,"minUsd":1,"maxUsd":500}
+{"v":1,"id":"e61","type":"spending.state","project":"p_9f2c","limitUsd":10,"spentUsd":0,"minUsd":1,"maxUsd":500,"problem":"The daily limit must be between 1 and 500 dollars."}

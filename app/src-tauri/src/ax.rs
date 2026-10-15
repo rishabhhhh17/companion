@@ -27,6 +27,7 @@ extern "C" {
     fn AXUIElementCreateSystemWide() -> CFTypeRef;
     fn AXUIElementCopyElementAtPosition(el: CFTypeRef, x: f32, y: f32, out: *mut CFTypeRef) -> AXError;
     fn AXValueGetValue(v: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
+    fn AXValueGetTypeID() -> usize;
     fn AXUIElementGetPid(el: CFTypeRef, pid: *mut i32) -> AXError;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -151,7 +152,8 @@ pub fn let_apps_sleep() {
     for (pid, name) in woken { if let Some(app) = Cf::new(unsafe { AXUIElementCreateApplication(pid) }) { set_bool(&app, name, false); } }
 }
 
-pub struct Read { pub text: String, pub had_selection: bool, pub rung: &'static str }
+/// What was read. `sel_start` is where the selection that was read starts (UTF-16 units), when there was one and the box said.
+pub struct Read { pub text: String, pub had_selection: bool, pub sel_start: Option<usize>, pub rung: &'static str }
 
 fn read_field(el: &Cf) -> Option<(String, bool)> {
     // A selection wins; otherwise the whole box.
@@ -167,7 +169,8 @@ pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
     let attempt = |rung: &'static str| -> Option<(Cf, Read)> {
         let f = focused(pid)?;
         let (text, sel) = read_field(&f.element)?;
-        Some((f.element, Read { text, had_selection: sel, rung }))
+        let sel_start = if sel { selection_start(&f.element) } else { None };
+        Some((f.element, Read { text, had_selection: sel, sel_start, rung }))
     };
     if let Some(r) = attempt("plain") { return Some(r); }
     let _ = text_attr(&app, "AXRole");                       // asking for the role wakes the basic tree
@@ -179,13 +182,30 @@ pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
     None
 }
 
+#[repr(C)] #[derive(Default)] struct CfRange { location: isize, length: isize }
+
 /// Selects the whole box through Accessibility (not by sending Cmd+A, which the person's held keys could disturb).
-pub fn select_all(el: &Cf, text_len_utf16: usize) -> bool {
-    #[repr(C)] struct Range { location: isize, length: isize }
-    let r = Range { location: 0, length: text_len_utf16 as isize };
-    let v = match Cf::new(unsafe { AXValueCreate(AX_VALUE_CFRANGE, &r as *const Range as *const c_void) }) { Some(v) => v, None => return false };
+pub fn select_all(el: &Cf, text_len_utf16: usize) -> bool { select_range(el, 0, text_len_utf16) }
+
+/// Selects part of a box through Accessibility. `start` and `len` count UTF-16 units, the way the Mac counts text.
+/// True when the app accepted it.
+pub fn select_range(el: &Cf, start: usize, len: usize) -> bool {
+    let (Ok(location), Ok(length)) = (isize::try_from(start), isize::try_from(len)) else { return false };
+    let r = CfRange { location, length };
+    let v = match Cf::new(unsafe { AXValueCreate(AX_VALUE_CFRANGE, &r as *const CfRange as *const c_void) }) { Some(v) => v, None => return false };
     let n = cfstr("AXSelectedTextRange");
     unsafe { AXUIElementSetAttributeValue(el.0, as_ref(&n), v.0) == AX_OK }
+}
+
+/// Where the selection (or the text cursor) in a box starts, in UTF-16 units, or None when the box does not say.
+pub fn selection_start(el: &Cf) -> Option<usize> {
+    let v = attr(el, "AXSelectedTextRange")?;
+    let mut r = CfRange::default();
+    unsafe {
+        if CFGetTypeID(v.0) != AXValueGetTypeID() { return None; }
+        if !AXValueGetValue(v.0, AX_VALUE_CFRANGE, &mut r as *mut CfRange as *mut c_void) { return None; }
+    }
+    usize::try_from(r.location).ok()
 }
 
 /// The current text of a box, to check a paste landed.
@@ -238,16 +258,37 @@ pub fn press_select_all() { post_key(KEY_A, FLAG_COMMAND); }
 
 // ---------- the pasteboard ----------
 
-#[allow(dead_code)] // used once macOS clipboard alerts are checked on this Mac ([verify] in the M5b session)
+/// The person's clipboard as it was before Companion wrote to it, kept in memory only, until it is put back or dropped.
 pub struct SavedClipboard { items: Vec<Vec<(Retained<objc2_app_kit::NSPasteboardType>, Retained<NSData>)>>, count: isize }
 
-#[allow(dead_code)]
 pub fn clipboard_change_count() -> isize { NSPasteboard::generalPasteboard().changeCount() }
 
-/// Saves every item on the clipboard so it can be put back. Only call this when macOS will not show an alert for it.
-#[allow(dead_code)]
-pub fn save_clipboard() -> SavedClipboard {
+/// What macOS says about this app reading the clipboard (`accessBehavior`, macOS 15.4 and later) as its raw number, or None
+/// on an older macOS that has no such setting. Asking this reads nothing from the clipboard and never shows an alert.
+/// `prompthelp::access_behavior` decides what the number means.
+pub fn clipboard_access_raw() -> Option<isize> {
+    use objc2::runtime::NSObjectProtocol;
     let pb = NSPasteboard::generalPasteboard();
+    if pb.respondsToSelector(objc2::sel!(accessBehavior)) { Some(pb.accessBehavior().0) } else { None }
+}
+
+/// The names of what is on the clipboard, across every item (for example public.utf8-plain-text), never its contents.
+/// Only call this when macOS will not show an alert for reading the clipboard.
+pub fn clipboard_types() -> Vec<String> {
+    let pb = NSPasteboard::generalPasteboard();
+    let mut out: Vec<String> = pb.types().map(|l| l.iter().map(|t| t.to_string()).collect()).unwrap_or_default();
+    if let Some(list) = pb.pasteboardItems() { for item in list.iter() { out.extend(item.types().iter().map(|t| t.to_string())); } }
+    out
+}
+
+/// Saves every item on the clipboard so it can be put back. Only call this when macOS will not show an alert for it.
+/// The names are checked first (`prompthelp::may_save`): a clipboard marked private or short lived, such as a password
+/// a password manager will clear by itself, is never read at all, and None comes back. None also when the clipboard
+/// changed while it was being read.
+pub fn save_clipboard() -> Option<SavedClipboard> {
+    let pb = NSPasteboard::generalPasteboard();
+    let count = pb.changeCount();
+    if !crate::prompthelp::may_save(&clipboard_types()) { return None; }
     let mut items = Vec::new();
     if let Some(list) = pb.pasteboardItems() {
         for item in list.iter() {
@@ -256,11 +297,11 @@ pub fn save_clipboard() -> SavedClipboard {
             items.push(one);
         }
     }
-    SavedClipboard { items, count: pb.changeCount() }
+    if pb.changeCount() != count { return None; }
+    Some(SavedClipboard { items, count })
 }
 
 /// Puts the saved items back, but only if nobody else has changed the clipboard since we wrote ours.
-#[allow(dead_code)]
 pub fn restore_clipboard(saved: &SavedClipboard, ours: isize) -> bool {
     let pb = NSPasteboard::generalPasteboard();
     if pb.changeCount() != ours { return false; }

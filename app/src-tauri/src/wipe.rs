@@ -23,6 +23,7 @@ fn runner_group(name: &str) -> &'static str {
         "receipts" | "work" => "pictures",
         n if n.starts_with("metrics.json") => "numbers",
         "walks" => "lessons",
+        n if n.starts_with("spending.json") => "settings",   // the daily spending limit chosen in Settings
         _ => "memory",
     }
 }
@@ -240,6 +241,19 @@ mod tests {
         assert_eq!(runner_group("metrics.json.123.tmp"), "numbers");
         assert_eq!(runner_group("walks"), "lessons");
         assert_eq!(runner_group("memory-profile.json"), "memory");
+    }
+    #[test]
+    fn the_daily_spending_limit_is_listed_as_a_setting_and_removed_with_everything_else() {
+        assert_eq!(runner_group("spending.json"), "settings");
+        assert_eq!(runner_group("spending.json.123.tmp"), "settings");
+        let m = mac("spending");
+        write(m.data.join("runner/spending.json"), "{\"dailyLimitUsd\":25}").unwrap();
+        let g = items(&m.home, &m.data);
+        assert!(g.iter().find(|i| i.id == "settings").unwrap().paths.iter().any(|p| p.ends_with("runner/spending.json")));
+        assert!(!g.iter().find(|i| i.id == "memory").unwrap().paths.iter().any(|p| p.ends_with("spending.json")));
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(!m.data.join("runner/spending.json").exists());
     }
     #[test]
     fn everything_is_grouped_in_the_persons_words_and_dev_json_is_not_among_it() {

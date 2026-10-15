@@ -34,6 +34,9 @@ Details are in technical_research.md section 11. Rules a coding agent must never
 - The founder chose (9 Oct 2026) to write the shared `AGENTS.md` and a `CLAUDE.md` that imports it. Project facts and house rules only, never the profile. A person's existing files are never changed without a yes, and then only one marked block is added or removed.
 - Off the record tasks read and write no memory, and the task log and snapshot name hold only "Off the record task".
 
+## What the build settled (config and safety pass, 16 Oct 2026)
+- New stored data: `spending.json` in the runner's part of Companion's data folder (`runner/spending.json`, mode 0600). It holds one number, the daily spending limit the person chose in Settings (`{"dailyLimitUsd": 25}`), between 1 and 500 dollars. It is read at start; a missing, damaged or out of range file means the default of 10 dollars. Why: before this the limit could only be changed by an environment variable, so a person could not change it at all. It holds no spending history (that stays in `ledger.db`) and nothing about any task. Delete everything lists it under settings and removes it (`app/src-tauri/src/wipe.rs`). Code: `runner/src/spending.ts`.
+
 ## Open [verify] items
 - None.
 

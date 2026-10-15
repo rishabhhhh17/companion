@@ -35,7 +35,7 @@ Open it by clicking the character or pressing K. Buttons you will use:
 - **Show me**: type what you are trying to do on screen; it points at the next click and waits for your own click. **Do it for me** presses it only when that is safe (never anything that sends, pays, deletes or publishes).
 - **Draw it**: a hand drawn sketch of why something broke, from your project.
 - **Lessons**: guided step by step lessons (install Claude Code, get a project out of Bolt or Replit, add a setting on Vercel, connect Lovable to GitHub, allow Companion's permissions). **They are drafts written from the makers' help pages and nobody has tried them yet, so tell me when a step is wrong.**
-- **Settings**: permissions with a Walk me through it button, **Speak to me** (spoken replies with your Mac's own voice, off until you turn it on), Updates, Beta numbers (counts on your Mac only, off until you turn them on), Save a log for support, Delete everything.
+- **Settings**: permissions with a Walk me through it button, the keys to remember, **Your Claude key** (replace it or remove it; removing asks first), **Speak to me** (spoken replies with your Mac's own voice, off until you turn it on), Updates, Beta numbers (counts on your Mac only, off until you turn them on), Save a log for support, Delete everything.
 
 ## If something goes wrong
 - **Settings, Save a log for support** writes a text file in your Downloads folder. It holds no project content, nothing you typed or said and nothing from your screen. Send it to me.
