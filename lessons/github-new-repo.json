@@ -2,9 +2,9 @@
   "id": "github-new-repo",
   "title": "Make a place for your project on GitHub",
   "app": "GitHub",
-  "goal": "Create an empty GitHub repository for your project",
+  "goal": "Create a GitHub repository for your project and link your project to it",
   "status": "draft",
-  "needsProject": false,
+  "needsProject": true,
   "steps": [
     {
       "id": "signin",
@@ -40,10 +40,24 @@
     },
     {
       "id": "create",
-      "say": "Press Create repository. GitHub then shows what to do next; follow its steps in Terminal, inside your project folder.",
+      "say": "Press Create repository. GitHub then shows the next steps for your project.",
       "find": "the Create repository button",
       "check": {
         "kind": "ask"
+      }
+    },
+    {
+      "id": "link",
+      "say": "In Terminal, inside your project folder, follow the steps GitHub shows for a project you already have. Companion then checks that your project is linked to GitHub.",
+      "find": "the steps GitHub shows on the new repository page",
+      "check": {
+        "kind": "file_contains",
+        "path": ".git/config",
+        "text": "github.com"
+      },
+      "instead": {
+        "say": "If Terminal says this is not a git repository, follow GitHub's other set of steps, the one that starts a new repository on the command line.",
+        "find": "the other set of steps on the new repository page"
       }
     }
   ]

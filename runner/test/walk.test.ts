@@ -341,6 +341,22 @@ describe("the lessons that ship with the app", () => {
     for (const l of r.lessons) expect(l.status, l.id).toBe("draft");
     for (const l of r.lessons) expect(l.steps.length).toBeLessThanOrEqual(MAX_STEPS);
   });
+  test("a shipped lesson that needs a project proves at least one step from it (otherwise it would not need one)", () => {
+    const r = loadLessons([join(import.meta.dir, "../../lessons")]);
+    for (const l of r.lessons.filter((x) => x.needsProject)) expect(l.steps.some((s) => s.check.kind !== "ask"), l.id).toBe(true);
+  });
+  test("the GitHub lesson proves from the project that it is linked to GitHub, by reading only that one line's words", async () => {
+    const l = loadLessons([join(import.meta.dir, "../../lessons")]).lessons.find((x) => x.id === "github-new-repo")!;
+    expect(l.needsProject).toBe(true);
+    const linked = l.steps.find((s) => s.check.kind !== "ask")!;
+    expect(linked.check).toEqual({ kind: "file_contains", path: ".git/config", text: "github.com" });
+    // A plain text file standing in for what git writes (no git is run here).
+    const p = tmp("gh"); mkdirSync(join(p, ".git"));
+    writeFileSync(join(p, ".git", "config"), "[core]\n\tbare = false\n");
+    expect(await projectChecker(p)(linked.check)).toBe(false);
+    writeFileSync(join(p, ".git", "config"), '[core]\n\tbare = false\n[remote "origin"]\n\turl = https://github.com/sam/plants.git\n');
+    expect(await projectChecker(p)(linked.check)).toBe(true);
+  });
 });
 
 describe("damaged or outdated progress (review)", () => {
