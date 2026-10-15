@@ -1,8 +1,10 @@
 // What the operating system sandbox is told. Under Companion's own checks sits macOS's real sandbox: it was shown (with our
 // checks switched off) to refuse writing outside the project, writing in the home folder, and all network traffic.
 // Here we add: the few places packages may be downloaded from, and the places no agent may ever read.
-import { lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
+import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { isEnvFile } from "./diagram.ts";
+import { PROTECTED } from "./safety.ts";
 
 export const REGISTRY_DOMAINS = [
   "registry.npmjs.org", "registry.yarnpkg.com", "pypi.org", "files.pythonhosted.org",
@@ -33,16 +35,74 @@ export function sandboxSettings(home: string, platform: string = process.platfor
 }
 
 const MAX_NOTES = 20_000;
+// Enough bytes to fill the limit even when every character takes four.
+const MAX_READ = MAX_NOTES * 4;
+
+// A plain file inside `root`, read without ever passing through a link: not the file, not any folder on the way. At most
+// `max` bytes. Null for anything else (outside the project, a link, a folder, missing, unreadable).
+function readInside(root: string, path: string, max: number): string | null {
+  if (!path || path.startsWith("~")) return null;
+  const rel = isAbsolute(path) ? relative(resolve(root), resolve(path)) : normalize(path);
+  if (!rel || isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) return null;
+  const parts = rel.split(sep).filter((p) => p && p !== ".");
+  if (!parts.length) return null;
+  let p = root;
+  for (let i = 0; i < parts.length; i++) {
+    p = join(p, parts[i]);
+    let st;
+    try { st = lstatSync(p); } catch { return null; }
+    if (st.isSymbolicLink()) return null;
+    if (i < parts.length - 1 ? !st.isDirectory() : !st.isFile()) return null;
+  }
+  let fd: number | undefined;
+  try {
+    // No following a link put there since the check, and no waiting on a pipe put there instead of the file.
+    fd = openSync(p, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    if (!fstatSync(fd).isFile()) return null;
+    const buf = Buffer.alloc(max);
+    let n = 0;
+    for (;;) { const got = readSync(fd, buf, n, max - n, n); if (got <= 0) break; n += got; if (n >= max) break; }
+    return buf.subarray(0, n).toString("utf8");
+  } catch { return null; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* closed */ } }
+}
+
+// "@AGENTS.md" on a line of its own is an import (the way Claude Code reads a notes file). Not inside a code example.
+const IMPORT = /^\s*@(\S+)\s*$/;
+const FENCE = /^\s*(```|~~~)/;
+// Never imported, in any spelling: settings and key files (.env, id_rsa, credentials.json and the like), and anything in
+// Claude's, git's or Companion's own folders. The notes go into the instructions of every task, Plan, Rescue and Research
+// included, where reading these files is refused, so a cloned project's CLAUDE.md must not be a way around that.
+const privateFile = (rel: string) => isEnvFile(rel) || rel.split(sep).some((p) => PROTECTED.has(p.toLowerCase()));
+
 // The project's own notes file, given to Claude as plain text. Claude Code is not told to load the project's settings
 // (those can hold hooks and environment settings that run code), so this is how a project's instructions still arrive.
+// Import lines are followed one level deep, only to plain files inside the project and never through a link, so a
+// CLAUDE.md that is just "@AGENTS.md" (which Companion itself writes) gives Claude what AGENTS.md says. Settings and key
+// files are never followed. What is not followed is left as the line it was. Everything together is held to the same size
+// limit.
 export function projectNotes(project: string): string | null {
-  const f = join(project, "CLAUDE.md");
-  try {
-    const st = lstatSync(f);
-    if (!st.isFile() || st.isSymbolicLink()) return null;      // never read through a link
-    const text = readFileSync(f, "utf8");
-    return text.length > MAX_NOTES ? `${text.slice(0, MAX_NOTES)}\n[... cut: the notes file is longer than what is passed on ...]` : text;
-  } catch { return null; }
+  const text = readInside(project, "CLAUDE.md", MAX_READ);
+  if (text === null) return null;
+  const seen = new Set<string>(["CLAUDE.md"]);
+  const out: string[] = [];
+  let size = 0, inCode = false, stopped = false;
+  for (const line of text.split("\n")) {
+    if (size > MAX_NOTES) { stopped = true; break; }   // the rest would be cut anyway, so nothing more is read
+    if (FENCE.test(line)) inCode = !inCode;
+    const m = inCode ? null : IMPORT.exec(line);
+    let piece = line;
+    if (m) {
+      const target = m[1];
+      const key = isAbsolute(target) ? relative(resolve(project), resolve(target)) : normalize(target);
+      const body = seen.has(key) || privateFile(key) ? null : readInside(project, target, MAX_READ);
+      if (body !== null) { seen.add(key); piece = `[From ${key}]\n${body.replace(/\n+$/, "")}`; }
+      else if (seen.has(key)) piece = "";
+    }
+    out.push(piece);
+    size += piece.length + 1;
+  }
+  const all = out.join("\n");
+  return all.length > MAX_NOTES || stopped ? `${all.slice(0, MAX_NOTES)}\n[... cut: the notes file is longer than what is passed on ...]` : all;
 }
 
 // Claude's own file reading tools are not inside the operating system sandbox, so the same places are refused for them too.

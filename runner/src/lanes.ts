@@ -56,6 +56,7 @@ export function buildFastOptions(c: Common & { model: string; system?: string })
     // Short text jobs do not need to think first; this took the vision lane from about 8 s to about 2.6 s.
     thinking: { type: "disabled" as const },
     includePartialMessages: true,
+    persistSession: false,      // no saved conversation: text read from another app must not end up in a log
     canUseTool: deny,
     abortController: abortFrom(c.signal),
   };

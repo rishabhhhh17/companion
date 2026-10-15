@@ -46,7 +46,8 @@ export function resolveLinks(input: string, depth = 0): string {
 }
 
 // Folders Companion and Claude keep their own settings in, and git's own. An agent never writes into them, in any spelling.
-const PROTECTED = new Set([".git", ".claude", ".companion"]);
+// (The project's notes never import from them either: sandbox.ts.)
+export const PROTECTED: ReadonlySet<string> = new Set([".git", ".claude", ".companion"]);
 
 type Where = { inside: boolean; segments: string[]; protectedPart: string | null; abs: string };
 // A file tool may be handed "~/.aws/credentials" or "$HOME/.ssh/id_rsa": those are the home folder, not a name inside the project.
@@ -465,7 +466,9 @@ const STRIP_EXACT = new Set(["AWS_BEARER_TOKEN_BEDROCK", "NODE_OPTIONS", "BASH_E
 const STRIP_PREFIX = ["ANTHROPIC_", "CLAUDE_CODE_USE_", "CLAUDE_CODE_OAUTH", "CLAUDE_CODE_SKIP_", "CLAUDE_CODE_API_KEY", "DYLD_"];
 const stripped = (k: string) => STRIP_EXACT.has(k) || STRIP_PREFIX.some((p) => k.startsWith(p));
 
-export type Route = { route: "api_key"; apiKey?: string } | { route: "plan" };
+// `configDir` (API key route only): Claude Code's own folder, where it keeps saved conversations and file history.
+// The plan route takes none: there that folder decides which Keychain entry holds the person's login (T03).
+export type Route = { route: "api_key"; apiKey?: string; configDir?: string } | { route: "plan" };
 
 // The environment for Claude Code: the user's variables, minus anything that could
 // switch accounts, plus our own. The key comes only from the Keychain, never the shell.
@@ -475,6 +478,10 @@ export function buildChildEnv(parent: Record<string, string | undefined>, r: Rou
   if (r.route === "api_key") {
     if (!r.apiKey) throw new Error("The API key route needs a key from the Keychain");
     e.ANTHROPIC_API_KEY = r.apiKey;
+    // A folder set on purpose (a test, or the person's own shell) is kept. The default ~/.claude is never named
+    // explicitly, because naming it picks a different Keychain entry than leaving it unset.
+    const home = parent.HOME || homedir();
+    if (!e.CLAUDE_CONFIG_DIR && r.configDir && isAbsolute(r.configDir) && resolve(r.configDir) !== resolve(home, ".claude")) e.CLAUDE_CONFIG_DIR = r.configDir;
   }
   e.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1";   // commands Claude Code starts never see the key
   e.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";    // memory stays in files the user can read

@@ -34,6 +34,12 @@ export const shortenPrompt = (n: number) =>
   `That plan has ${n} steps. Please reply again with ONLY a JSON list of at most ${MAX_STEPS} steps, combining small ones.`;
 export const stepPrompt = (i: number, n: number, title: string) =>
   `Step ${i} of ${n}: ${title}\n\nDo only this step, keep the change small, and stop when it is done.`;
+// Off the record, no conversation is saved, so a step or a second try cannot continue the planning conversation. It
+// starts afresh and is told what the whole plan is for.
+export const freshStepPrompt = (goal: string, prompt: string) =>
+  `${goal ? `This is one step of a bigger goal: ${goal}\n` : ""}Earlier steps may already be done in the project's files, so look before you change anything.\n\n${prompt}`;
+export const freshShortenPrompt = (goal: string, n: number) =>
+  `${planPrompt(goal)}\n\nA first try gave ${n} steps, which is too many. Reply with ONLY a JSON list of at most ${MAX_STEPS} steps, combining small ones.`;
 // A rough, honest estimate to show before the person presses Start.
 // It is an upper limit ("up to"), because most steps cost far less.
 export const estimateUsd = (steps: number) => Math.round(steps * 0.25 * 100) / 100;

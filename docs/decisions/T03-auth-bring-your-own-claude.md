@@ -25,7 +25,7 @@ A fourth route: `claude auth login --console` in Terminal, billed by API usage t
 The full flow is in technical_research.md section 3. Rules a coding agent must never miss:
 - Detect at first run and routinely through a dedicated long lived streaming `query()` whose prompt has not yielded anything, reading `accountInfo()` or `initializationResult()` and `system/init`. No tokens are spent. This is not the warm fast lane handle: a `startup()` handle has only `query()` and `close()`, and `accountInfo()` lives on `Query`.
 - `auth status` runs only while waiting for the Terminal sign in (every 3 seconds, stopping when signed in or after 5 minutes), on "Check again", and in diagnostics. Never at first run or launch, never on a timer: it can spend the refresh token and sign the user out (open bug #95822).
-- Leave `CLAUDE_CONFIG_DIR` unset, never `~/.claude`; adopt the user's own value if their shell exports one.
+- Plan route: leave `CLAUDE_CONFIG_DIR` unset, never `~/.claude`; adopt the user's own value if their shell exports one. API key route: see the proposed change of 16 Oct 2026 below.
 - Never read `~/.claude/.credentials.json` or Claude Code's Keychain item.
 - API key: Rust keeps it in the Keychain and passes it only to the runner, which passes it only to Claude children with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`. The runner's own spawns get no `ANTHROPIC_*` keys (T02). The webview never sees the key.
 - Plan chosen: strip every credential that outranks the plan login, including any `apiKeyHelper` (list in section 3, step 4). One user was billed $447 on the API instead of their Max plan (pitfall 7). An M1 test checks this.
@@ -44,6 +44,14 @@ The full flow is in technical_research.md section 3. Rules a coding agent must n
 
 ## Settled by desk research (7 Oct 2026)
 - Keychain access: `keyring-core` 1.0.0 with the native Apple and Windows stores.
+
+## Change: Claude Code's folder on the API key route (16 Oct 2026, agreed by the founder)
+The founder said yes on 16 Oct 2026. This is a change of design, not research proven wrong. Still owed: one real run on the API key route to confirm Claude Code accepts a fresh folder.
+- What: on the API key route only, agent tasks and both lanes run with `CLAUDE_CONFIG_DIR` set to `runner/claude` inside Companion's data folder (`<data>/claude`, made private to the person). The plan route is unchanged: never set. A value the person's own shell already exports is kept on both routes, and the default `~/.claude` is never named.
+- Why: with it unset, Claude Code saves every task's conversation under the person's own `~/.claude/projects`, and Delete everything does not remove it. Inside Companion's data folder it does (the task history group of Delete everything). Prompt help text, captures and off the record tasks are saved nowhere at all (`persistSession: false`), whichever route.
+- Why the old rule does not apply here: it exists because the folder decides which Keychain entry holds the plan login (bug #92252). On the API key route the key comes from the environment and outranks any stored login (section 3, step 4), so which Keychain entry the folder points at does not decide how a task signs in.
+- Not proven: a real run on the API key route with the folder set (no key was available), including whether Claude Code with a fresh folder asks for anything on first use **[verify]**. A detection query on the API key route, when one is built, must use this same folder.
+- If the founder says no: keep `persistSession: false` for the fast lane and off the record tasks, and drop the folder change.
 
 ## Revisit if
 Anthropic answers. A yes turns the plan route on, and the switch stays. A no switches it off remotely while the API key and cloud routes keep working. Managed credits wait for written terms (section 20, question 2).
