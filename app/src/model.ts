@@ -369,7 +369,7 @@ export function phWords(m: Model): string | null {
   switch (p.stage) {
     case "reading": return `Reading your text in ${p.app ?? "this app"}`;
     case "thinking": return "Improving it";
-    case "needs_accessibility": return "Turn on Accessibility for Companion in System Settings, then press the hotkey again.";
+    case "needs_accessibility": return "Turn on Accessibility for Companion in System Settings, then press Control, Option, Command and R again.";
     case "nothing_to_read": return `I could not find text to read in ${p.app ?? "this app"}. Click into the text box first.`;
     case "consent": return `Allow Prompt help to read the text box in ${p.app ?? "this app"}?`;
     default: return p.message ?? null;

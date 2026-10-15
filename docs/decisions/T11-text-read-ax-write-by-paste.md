@@ -44,6 +44,12 @@ The read order, Electron and Chromium triggers, crates and pasteboard steps are 
 - **Dev builds must be signed with a stable certificate** (the developer's own Apple Development one), or macOS forgets the Accessibility permission on every rebuild. The build script does this and refuses to sign anything if Anthropic's Claude binary is inside the bundle.
 - The clipboard is not read or restored yet; after a paste it holds our text, and the card says so. Checking the clipboard alert is still open.
 
+## Changed 16 Oct 2026 (built and unit tested, not yet tried on a Mac)
+- The clipboard rule above is now wired to the Mac: before a paste, Companion asks `NSPasteboard.accessBehavior` (asking reads nothing). Only "always allow" (the person's own choice in System Settings), or a macOS older than 15.4 (no such setting and no alert), lets it save the person's clipboard and put it back. "Default" and "ask" both mean macOS would ask, so on macOS 15.4 and later with the usual setting the clipboard is still not read, and the card still says it holds the text.
+- It is put back only after a paste that landed, or when nothing was pasted because the person moved on, and only if nothing else wrote to the clipboard since (change count). After a copy instead of a paste, or a paste that could not be confirmed, the text stays on the clipboard so the person can press Cmd+V.
+- "Landed" now needs the box to change as well as to hold the text: putting the original back into a box whose improved text starts with the same words used to count as landed at once, which would have given the clipboard back before the app had pasted.
+- The rules are pure functions in `prompthelp.rs` (`access_behavior`, `restore_after`, `paste_seen`, `paste_words`) with tests; `ax.rs` only reads the setting and moves the items.
+
 ## Open [verify] items
 - **[verify]** pasteboard privacy prompt enforcement on macOS 26 and 27 (section 20, question 13). Apple removed the preview switch in the macOS 27.2 betas without saying why, so default enforcement may be close. Keep the test Mac off 27.2 until spike (d) runs.
 - Rich editors ignoring value writes is an inference to verify per app.

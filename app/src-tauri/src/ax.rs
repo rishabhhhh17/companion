@@ -238,14 +238,21 @@ pub fn press_select_all() { post_key(KEY_A, FLAG_COMMAND); }
 
 // ---------- the pasteboard ----------
 
-#[allow(dead_code)] // used once macOS clipboard alerts are checked on this Mac ([verify] in the M5b session)
+/// The person's clipboard as it was before Companion wrote to it, kept in memory only, until it is put back or dropped.
 pub struct SavedClipboard { items: Vec<Vec<(Retained<objc2_app_kit::NSPasteboardType>, Retained<NSData>)>>, count: isize }
 
-#[allow(dead_code)]
 pub fn clipboard_change_count() -> isize { NSPasteboard::generalPasteboard().changeCount() }
 
+/// What macOS says about this app reading the clipboard (`accessBehavior`, macOS 15.4 and later) as its raw number, or None
+/// on an older macOS that has no such setting. Asking this reads nothing from the clipboard and never shows an alert.
+/// `prompthelp::access_behavior` decides what the number means.
+pub fn clipboard_access_raw() -> Option<isize> {
+    use objc2::runtime::NSObjectProtocol;
+    let pb = NSPasteboard::generalPasteboard();
+    if pb.respondsToSelector(objc2::sel!(accessBehavior)) { Some(pb.accessBehavior().0) } else { None }
+}
+
 /// Saves every item on the clipboard so it can be put back. Only call this when macOS will not show an alert for it.
-#[allow(dead_code)]
 pub fn save_clipboard() -> SavedClipboard {
     let pb = NSPasteboard::generalPasteboard();
     let mut items = Vec::new();
@@ -260,7 +267,6 @@ pub fn save_clipboard() -> SavedClipboard {
 }
 
 /// Puts the saved items back, but only if nobody else has changed the clipboard since we wrote ours.
-#[allow(dead_code)]
 pub fn restore_clipboard(saved: &SavedClipboard, ours: isize) -> bool {
     let pb = NSPasteboard::generalPasteboard();
     if pb.changeCount() != ours { return false; }

@@ -126,10 +126,8 @@ pub fn paste_plan(at_read: Focus, now: Focus, handback_copy: bool, card_is_key: 
     PasteVerdict::Paste
 }
 
+/// Whether macOS lets Companion read the clipboard without showing an alert (read from the Mac by `access_behavior`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// What macOS 16 will report about a paste from another app. The rule for each answer is written and tested
-// (`clipboard_plan`); nothing reads the answer from the Mac yet, so the cases are not built outside tests.
-#[allow(dead_code)]
 pub enum AccessBehavior { Allowed, Ask, Denied, Unknown }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -141,6 +139,61 @@ pub fn clipboard_plan(b: AccessBehavior) -> ClipboardPlan {
         AccessBehavior::Allowed => ClipboardPlan::SaveAndRestore,
         _ => ClipboardPlan::SkipAndTell("Your clipboard now holds the improved prompt."),
     }
+}
+
+/// What macOS says about Companion reading the clipboard: `NSPasteboard.accessBehavior` as its raw number (0 default,
+/// 1 ask, 2 always allow, 3 always deny), or None on a macOS before 15.4, which has no such setting and no alert.
+/// "Default" asks when a program reads the clipboard, so only "always allow" (the person's own choice in System
+/// Settings) or an older macOS lets Companion save the clipboard and put it back.
+pub fn access_behavior(raw: Option<isize>) -> AccessBehavior {
+    match raw {
+        None | Some(2) => AccessBehavior::Allowed,
+        Some(0) | Some(1) => AccessBehavior::Ask,
+        Some(3) => AccessBehavior::Denied,
+        Some(_) => AccessBehavior::Unknown,
+    }
+}
+
+/// How a paste back ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasteOutcome {
+    /// The text showed up in the box.
+    Landed,
+    /// Pasted, but the text could not be seen in the box afterwards.
+    Unconfirmed,
+    /// Not pasted: the text was left on the clipboard for the person to paste (they moved, or the box could not be reached).
+    CopiedInstead,
+    /// Not pasted: the person moved on (Stop, Dismiss, a new press) before the paste.
+    Cancelled,
+}
+
+/// Put the person's own clipboard back? Only when it was saved (macOS lets Companion read it without an alert), only when
+/// Companion's text has no job left there (it landed, or nothing was pasted because the person moved on), and only when
+/// nothing else has written to the clipboard since Companion did (`ours` is its change number right after our write).
+pub fn restore_after(plan: &ClipboardPlan, outcome: PasteOutcome, ours: isize, now: isize) -> bool {
+    *plan == ClipboardPlan::SaveAndRestore && matches!(outcome, PasteOutcome::Landed | PasteOutcome::Cancelled) && ours == now
+}
+
+/// Whether a paste has really landed: the box now holds the text AND it changed from what it held before the paste. The
+/// person's clipboard is given back only after this, so it must never say yes before the app has read the clipboard
+/// (putting the original back into a box whose improved text starts with the same words would otherwise look done at once).
+pub fn paste_seen(before: &str, now: &str, probe: &str) -> bool { now != before && now.contains(probe) }
+
+/// What the card says after a paste. `restore` is true when the person's original text was put back into the box.
+/// The clipboard is mentioned only when it was not given back, so the person knows what Cmd+V would paste.
+pub fn paste_words(restore: bool, landed: bool, plan: &ClipboardPlan) -> String {
+    let head = match (landed, restore) {
+        (true, true) => "Your original is back.",
+        (true, false) => "Done.",
+        (false, _) => "I pasted it, but could not confirm it landed. Please look at your text box.",
+    };
+    let tell = match plan {
+        ClipboardPlan::SaveAndRestore if landed => "",
+        _ if restore => "Your clipboard now holds your original text.",
+        ClipboardPlan::SkipAndTell(m) => m,
+        ClipboardPlan::SaveAndRestore => "Your clipboard now holds the improved prompt.",
+    };
+    format!("{head} {tell}").trim().to_string()
 }
 
 // ---------- logs never hold text ----------
@@ -266,6 +319,59 @@ mod tests {
     #[test] fn the_clipboard_is_saved_and_restored_only_when_macos_will_not_alert() {
         assert_eq!(clipboard_plan(AccessBehavior::Allowed), ClipboardPlan::SaveAndRestore);
         for b in [AccessBehavior::Ask, AccessBehavior::Denied, AccessBehavior::Unknown] { assert!(matches!(clipboard_plan(b), ClipboardPlan::SkipAndTell(_)), "{b:?}"); }
+    }
+    #[test] fn what_macos_says_about_reading_the_clipboard_decides_whether_it_is_saved() {
+        // NSPasteboard.accessBehavior: 0 default (asks when a program reads it), 1 ask, 2 always allow, 3 always deny.
+        assert_eq!(access_behavior(Some(2)), AccessBehavior::Allowed);
+        assert_eq!(access_behavior(Some(0)), AccessBehavior::Ask);
+        assert_eq!(access_behavior(Some(1)), AccessBehavior::Ask);
+        assert_eq!(access_behavior(Some(3)), AccessBehavior::Denied);
+        assert_eq!(access_behavior(Some(9)), AccessBehavior::Unknown);
+        // Before macOS 15.4 there is no such setting and no clipboard alert at all.
+        assert_eq!(access_behavior(None), AccessBehavior::Allowed);
+        assert_eq!(clipboard_plan(access_behavior(Some(0))), ClipboardPlan::SkipAndTell("Your clipboard now holds the improved prompt."));
+        assert_eq!(clipboard_plan(access_behavior(Some(2))), ClipboardPlan::SaveAndRestore);
+    }
+    #[test] fn the_persons_clipboard_comes_back_after_a_paste_that_landed() {
+        let keep = ClipboardPlan::SaveAndRestore;
+        assert!(restore_after(&keep, PasteOutcome::Landed, 41, 41));
+        // Nothing was pasted because the person moved on first: their clipboard comes back too.
+        assert!(restore_after(&keep, PasteOutcome::Cancelled, 41, 41));
+    }
+    #[test] fn the_clipboard_is_left_alone_when_it_still_has_a_job_or_someone_else_changed_it() {
+        let keep = ClipboardPlan::SaveAndRestore;
+        // The text could not be pasted (or not confirmed): it stays on the clipboard so the person can press Cmd+V.
+        assert!(!restore_after(&keep, PasteOutcome::CopiedInstead, 41, 41));
+        assert!(!restore_after(&keep, PasteOutcome::Unconfirmed, 41, 41));
+        // Something else wrote to the clipboard after Companion did: that is never overwritten.
+        assert!(!restore_after(&keep, PasteOutcome::Landed, 41, 42));
+        // macOS would have asked to let Companion read it, so it was never saved and cannot be put back.
+        let skip = clipboard_plan(AccessBehavior::Ask);
+        for o in [PasteOutcome::Landed, PasteOutcome::Cancelled, PasteOutcome::Unconfirmed, PasteOutcome::CopiedInstead] { assert!(!restore_after(&skip, o, 41, 41), "{o:?}"); }
+    }
+    #[test] fn a_paste_counts_as_landed_only_when_the_box_really_changed() {
+        // Putting the original back: the box already holds the improved text, which starts with the original's words.
+        let (original, improved) = ("Fix the login bug", "Fix the login bug in auth.ts and add a test");
+        assert!(!paste_seen(improved, improved, original), "the box had not changed yet, so nothing has been pasted");
+        assert!(paste_seen(improved, original, original));
+        // Using the improved text: the box changes from the original to the improved one.
+        assert!(!paste_seen(original, original, &improved[..24]));
+        assert!(paste_seen(original, improved, &improved[..24]));
+        // The text did not show up at all.
+        assert!(!paste_seen(original, "something else", &improved[..24]));
+    }
+    #[test] fn the_card_says_what_the_clipboard_holds_only_when_it_was_not_given_back() {
+        let keep = ClipboardPlan::SaveAndRestore;
+        let skip = clipboard_plan(AccessBehavior::Ask);
+        assert_eq!(paste_words(false, true, &keep), "Done.");
+        assert_eq!(paste_words(true, true, &keep), "Your original is back.");
+        assert_eq!(paste_words(false, true, &skip), "Done. Your clipboard now holds the improved prompt.");
+        assert_eq!(paste_words(true, true, &skip), "Your original is back. Your clipboard now holds your original text.");
+        // Not confirmed: the text stays on the clipboard either way, and the card says so.
+        for plan in [&keep, &skip] {
+            assert_eq!(paste_words(false, false, plan), "I pasted it, but could not confirm it landed. Please look at your text box. Your clipboard now holds the improved prompt.");
+            assert_eq!(paste_words(true, false, plan), "I pasted it, but could not confirm it landed. Please look at your text box. Your clipboard now holds your original text.");
+        }
     }
 
     #[test] fn a_log_line_cannot_hold_the_text() {

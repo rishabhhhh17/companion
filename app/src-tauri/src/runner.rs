@@ -277,6 +277,11 @@ impl Runner {
     /// Write one command line to the engine. Never waits.
     pub fn send(&self, cmd: &Value) -> Result<(), String> { self.shared.send_line(cmd.to_string()) }
 
+    /// Hands the engine the key, or tells it there is none (after the key was removed). The line goes out exactly as
+    /// `handoff_line` wrote it: the engine takes it only when it starts `{"v":1,"type":"auth.key"`, and turning it into a
+    /// JSON value first would sort its fields ("key" first), so the engine would refuse it and stay without a key.
+    pub fn hand_key(&self, key: Option<&str>) -> Result<(), String> { self.shared.send_line(crate::keystore::handoff_line(key)) }
+
     /// The Stop key. It must work even when the engine is stuck, so if the stop cannot be delivered, or the engine does not
     /// answer a moment later, the engine is stopped by force and started again.
     pub fn stop_everything(&self, reason: &str) -> Result<(), String> {
@@ -478,6 +483,28 @@ mod tests {
         for _ in 0..8 { split_lines(&mut buf, &chunk); }
         assert!(buf.len() <= MAX_LINE + chunk.len());
         assert!(split_lines(&mut buf, b"{\"ok\":1}\n").iter().all(|l| !l.is_empty()));
+    }
+    #[test]
+    fn the_key_reaches_the_engine_in_the_exact_form_the_engine_takes_it() {
+        // The engine takes the key only from a line that starts exactly like this (runner/src/main.ts). Any other line is
+        // read as a page command and refused, and the engine would stay without a key.
+        let prefix = r#"{"v":1,"type":"auth.key""#;
+        assert!(include_str!("../../../runner/src/main.ts").contains(&format!("line.startsWith('{prefix}')")));
+        let out = std::env::temp_dir().join(format!("companion-handoff-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        let script: &'static str = Box::leak(format!("read -r a; read -r b; printf '%s\\n%s\\n' \"$a\" \"$b\" > '{}'; sleep 5", out.display()).into_boxed_str());
+        let r = rig(script, quick());
+        let runner = Runner::with_shared(r.shared.clone(), quick());
+        assert!(wait_for(|| runner.hand_key(Some("sk-ant-test-not-a-real-key")).is_ok(), 3000));
+        assert!(runner.hand_key(None).is_ok());
+        assert!(wait_for(|| std::fs::read_to_string(&out).is_ok_and(|t| t.lines().count() >= 2), 3000), "the engine never got two lines");
+        let got = std::fs::read_to_string(&out).unwrap();
+        let lines: Vec<&str> = got.lines().collect();
+        assert!(lines[0].starts_with(prefix), "{}", lines[0].replace("sk-ant-test-not-a-real-key", "<key>"));
+        assert!(lines[0].contains(r#""key":"sk-ant-test-not-a-real-key""#));
+        assert_eq!(lines[1], r#"{"v":1,"type":"auth.key","key":null}"#);
+        r.shared.quitting.store(true, Ordering::SeqCst); r.shared.kill();
+        let _ = std::fs::remove_file(&out);
     }
     #[test]
     fn events_from_the_engine_arrive_in_order_and_garbage_is_ignored() {
