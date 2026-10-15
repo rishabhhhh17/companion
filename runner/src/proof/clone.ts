@@ -5,6 +5,7 @@ export function cloneTarget(raw: string): { url: string; name: string } | null {
   const m = /^https:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/([A-Za-z0-9][A-Za-z0-9._-]{0,99})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?\/?$/.exec(s);
   if (!m) return null;
   const [, host, owner, repo] = m;
-  if (repo === "." || repo === ".." || owner.includes("..")) return null;
+  // A name that starts with a dot would make a hidden folder (".git" would turn the chosen folder into a git folder).
+  if (repo.startsWith(".") || owner.includes("..") || owner.endsWith(".")) return null;
   return { url: `https://${host}/${owner}/${repo}.git`, name: repo };
 }
