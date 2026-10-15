@@ -48,6 +48,15 @@ impl Shot {
     }
 }
 
+/// The label above each picture when Show me looked at more than one screen. Screen 1 is always the one the mouse pointer
+/// is on; the others follow in the order the Mac lists them. The model answers with that number.
+pub fn screen_label(n: usize, of: usize) -> String {
+    if n == 1 { format!("Screen 1 of {of} (the mouse pointer is on this one)") } else { format!("Screen {n} of {of}") }
+}
+
+/// The picture the model named by its screen number (1 based). None for a screen that was not shown.
+pub fn shot_for(shots: &[Shot], screen: usize) -> Option<&Shot> { screen.checked_sub(1).and_then(|i| shots.get(i)) }
+
 /// Global top-left space -> AppKit window space (origin bottom left of the primary display).
 pub fn to_appkit(p: Pt, primary_height: f64) -> Pt { Pt { x: p.x, y: primary_height - p.y } }
 pub fn rect_to_appkit(r: R, primary_height: f64) -> R { R { x: r.x, y: primary_height - r.y - r.h, w: r.w, h: r.h } }
@@ -109,6 +118,35 @@ mod tests {
         assert!(near(r.x, 100.0) && near(r.y, 0.0) && near(r.w, 200.0) && near(r.h, 50.0));
         let bottom = vision_box_to_image(0.0, 0.0, 0.5, 0.1, 1000.0, 500.0); assert!(near(bottom.y, 450.0));
     }
+    // ---- more than one screen in one Show me (M11) ----
+    #[test]
+    fn each_picture_is_labelled_screen_n_of_m_and_the_pointers_screen_says_so() {
+        assert_eq!(screen_label(1, 2), "Screen 1 of 2 (the mouse pointer is on this one)");
+        assert_eq!(screen_label(2, 2), "Screen 2 of 2");
+        assert_eq!(screen_label(3, 4), "Screen 3 of 4");
+    }
+    #[test]
+    fn the_model_names_a_screen_from_one_and_each_screen_maps_to_its_own_display() {
+        let main = Shot { display: R { x: 0.0, y: 0.0, w: 1512.0, h: 982.0 }, img_w: 1280.0, img_h: 831.0 };
+        let right = Shot { display: R { x: 1512.0, y: -200.0, w: 2560.0, h: 1440.0 }, img_w: 1280.0, img_h: 720.0 };
+        let left = Shot { display: R { x: -1920.0, y: 0.0, w: 1920.0, h: 1080.0 }, img_w: 1280.0, img_h: 720.0 };
+        let shots = [right, main, left];   // the pointer was on the right hand one, so it is screen 1
+        let s1 = shot_for(&shots, 1).unwrap().to_global(Pt { x: 640.0, y: 360.0 });
+        assert!(near(s1.x, 1512.0 + 1280.0) && near(s1.y, -200.0 + 720.0), "{s1:?}");
+        let s2 = shot_for(&shots, 2).unwrap().to_global(Pt { x: 0.0, y: 0.0 });
+        assert!(near(s2.x, 0.0) && near(s2.y, 0.0));
+        let s3 = shot_for(&shots, 3).unwrap().to_global(Pt { x: 1280.0, y: 720.0 });
+        assert!(near(s3.x, 0.0) && near(s3.y, 1080.0), "a screen to the left has negative x: {s3:?}");
+        let r = shot_for(&shots, 3).unwrap().rect_to_global(R { x: 640.0, y: 0.0, w: 64.0, h: 36.0 });
+        assert!(near(r.x, -960.0) && near(r.w, 96.0) && near(r.h, 54.0), "{r:?}");
+    }
+    #[test]
+    fn a_screen_that_was_not_shown_maps_to_nothing() {
+        let one = [Shot { display: R { x: 0.0, y: 0.0, w: 100.0, h: 100.0 }, img_w: 100.0, img_h: 100.0 }];
+        assert!(shot_for(&one, 0).is_none() && shot_for(&one, 2).is_none() && shot_for(&[], 1).is_none());
+        assert!(shot_for(&one, 1).is_some());
+    }
+
     #[test]
     fn contains_includes_the_edges() {
         let r = R { x: 0.0, y: 0.0, w: 10.0, h: 10.0 };

@@ -119,7 +119,7 @@ scripts/             test-all.sh (every suite) and build helpers
 protocol/            JSON lines protocol v1: types, parser, shared fixtures
 lessons/             guided lessons as data files (status draft until a person has walked them); shipped inside the app
 runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log, proof (locate, visual receipt), ship, Drive, Rescue, Research, memory, Draw it for me data (diagram), walkthroughs (walk, walkservice), beta numbers (metrics)
-app/src-tauri/       Rust shell: windows, hotkeys, Prompt help, Show me how, Point at the problem (pointat), your turn (yourturn), anchor (a ring belongs to one window), diagram, share, practice, hold to talk, project folder, Keychain key saving and removing, updates, settings helpers (wipe, logexport), one copy at a time (instance), runner supervisor
+app/src-tauri/       Rust shell: windows, hotkeys, Prompt help, Show me how, Point at the problem (pointat), your turn (yourturn), anchor (a ring belongs to one window), presentation (hide from screen sharing, quiet during calls), diagram, share, practice, hold to talk, project folder, Keychain key saving and removing, updates, settings helpers (wipe, logexport), one copy at a time (instance), runner supervisor
 app/                 Tauri 2 + React shell: native panels, runner link, cards, ask box, docking, tray, settings; scripts/ build the app, the engine inside it, the disk image and the release
 app/vendor/          Anthropic's Claude binary and the engine, staged at build time; never committed
 evals/               quality suites: prompt-help, show-me-how (voice latency, rescue projects still to come)

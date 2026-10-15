@@ -40,6 +40,7 @@ mod voice;
 mod voice_mac;
 mod visibility;
 mod wheel;
+mod presentation;
 
 mod runner;
 mod instance;
@@ -80,6 +81,8 @@ static PROJECT: Mutex<Option<String>> = Mutex::new(None);
 thread_local! { static OVERLAY: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) }; }
 /// What Show me how last saw, kept in memory until the model answers, then dropped.
 static SHOWME: Mutex<Option<(String, showme::Prepared)>> = Mutex::new(None);
+/// Where the last step of a multi step answer pointed (global points), so the next flight starts there.
+static SHOWME_LAST: Mutex<Option<coords::Pt>> = Mutex::new(None);
 /// Point at the problem: each run takes a number; Stop, Close or a newer run changes it, and an older run then stops before it looks or draws.
 static POINT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); turn_cancel(); }
@@ -525,13 +528,14 @@ fn showme_stop(app: &AppHandle) {
     let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false));
     showme_stop_rest(app);
 }
-fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
+/// `all_screens`: the person's setting to include every display, not only the one under the pointer (off unless turned on).
 #[tauri::command]
-fn showme_start(app: AppHandle, question: String) {
+fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>) {
     // A new question replaces whatever ring was up (and any pointing still on its way).
-    point_cancel(); hide_overlay(&app);
+    point_cancel(); hide_overlay(&app); *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
     if question.is_empty() { say_showme(&app, "error", "Type what you want to find, then press Show me.", json!({})); return; }
     // Stop everything (or a newer press) moves this on: a look already under way must not send its picture afterwards.
@@ -542,17 +546,16 @@ fn showme_start(app: AppHandle, question: String) {
         let req = format!("sm_{}", now());
         let (a1, a2, a3, req1, req2) = (app.clone(), app.clone(), app.clone(), req.clone(), req.clone());
         let plat = macos_see::MacPlatform::new(
-            Box::new(move |jpeg, w, h| {
+            // One picture per screen (the pointer's first), each under its own name; then one question about all of them.
+            Box::new(move |screen, jpeg, w, h| {
                 if !current() { return; }
                 use base64::Engine;
-                let cmd = json!({ "v": 1, "id": format!("img{}", now()), "type": "assist.image", "ref": req1, "mediaType": "image/jpeg", "base64": base64::engine::general_purpose::STANDARD.encode(jpeg), "w": w, "h": h });
+                let cmd = json!({ "v": 1, "id": format!("img{}-{screen}", now()), "type": "assist.image", "ref": showme::image_ref(&req1, screen), "mediaType": "image/jpeg", "base64": base64::engine::general_purpose::STANDARD.encode(jpeg), "w": w, "h": h });
                 let _ = a1.state::<runner::Runner>().send(&cmd);
             }),
-            Box::new(move |q, w, h, cands| {
+            Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let ocr: Vec<Value> = cands.iter().map(|(id, text, r)| json!({ "id": id, "text": text, "box": [r.x, r.y, r.w, r.h] })).collect();
-                let cmd = json!({ "v": 1, "id": format!("loc{}", now()), "type": "assist.locate", "req": req2, "question": q, "image": { "ref": req2, "w": w, "h": h }, "ocr": ocr });
-                let _ = a2.state::<runner::Runner>().send(&cmd);
+                let _ = a2.state::<runner::Runner>().send(&showme::locate_command(&req2, q, pics, cands));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
@@ -563,10 +566,11 @@ fn showme_start(app: AppHandle, question: String) {
             return;
         }
         log("showme_start", json!({}));
-        match showme::start(&plat, &question) {
+        match showme::start_on(&plat, &question, all_screens.unwrap_or(false)) {
             Ok(prep) => {
                 if !current() { return; }
                 let covered = prep.covered;
+                log("showme_screens", json!({ "screens": prep.shots.len() }));
                 *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = Some((req.clone(), prep));
                 say_showme(&app, "thinking", if covered > 0 { "Finding it. I covered some private text first." } else { "Finding it" }, json!({ "req": req, "covered": covered }));
             }
@@ -585,9 +589,16 @@ fn anchor_for(target: coords::R) -> Option<anchor::Anchor> {
     anchor::anchor_at(&fullscreen::sys::on_screen_windows(), std::process::id() as i32, front_pid(), c.x, c.y)
 }
 
+/// How a pointer is drawn beyond its place and words: a hand drawn mark for a confirmed target, how long the flight takes
+/// (a step of a multi step answer flies for its lead in), how long the mark stays, and where the flight starts (the last
+/// target of the same answer, or the character).
+#[derive(Clone, Copy, Default)]
+struct Look { mark: Option<&'static str>, fly_ms: Option<u64>, fade_ms: Option<u64>, from: Option<coords::Pt> }
+
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
 /// The ring is clipped to the window under it.
-fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) {
+fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) { draw_pointer_with(app, d, rect, caption, exact, hold, Look::default()); }
+fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look) {
     OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + 10_500 }, std::sync::atomic::Ordering::SeqCst);
     let a = app.clone();
     let caption2 = caption.to_string();
@@ -599,32 +610,64 @@ fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, e
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-        // The flight starts at the character, wherever it is docked.
-        let from = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip });
+        // The flight starts at the character, wherever it is docked, or at the last target of the same answer on this display.
+        let dock_at = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
+        let from = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y)).unwrap_or(dock_at);
+        let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
+            "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)) });
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
     });
 }
 
-/// The engine chose a point in the picture: snap it to something real, then draw the pointer.
+/// The engine chose a point in one screen's picture: snap it to something real, then draw the pointer. A multi step answer
+/// sends one step at a time (the page plays them in order, sequence.ts): every step but the last keeps what was seen for
+/// the next one and does not wait for a click; the last one takes it and waits. Nothing is drawn over a window that changed
+/// since the picture was taken (rule 22): then the answer is over and the page is told why.
 #[tauri::command]
-fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String>, target_text: String, caption: String) {
-    let taken = { let mut g = SHOWME.lock().unwrap_or_else(|e| e.into_inner()); if g.as_ref().is_some_and(|(r, _)| *r == req) { g.take() } else { None } };
-    let Some((_, prep)) = taken else { return };
-    let plat = macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}), Box::new(|_| {}));
-    let s = showme::aim(&plat, &prep, x, y, ocr_id.as_deref(), &target_text);
+#[allow(clippy::too_many_arguments)]
+fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String>, target_text: String, caption: String, mark: Option<String>, screen: Option<u32>, step: Option<u32>, of: Option<u32>, hold: Option<bool>, fly_ms: Option<u64>, fade_ms: Option<u64>) -> Value {
+    let last = showme::is_last(step, of);
+    let hold = hold.unwrap_or(true) && last;
+    let (prep, from) = {
+        let mut g = SHOWME.lock().unwrap_or_else(|e| e.into_inner());
+        if !g.as_ref().is_some_and(|(r, _)| *r == req) { return json!({ "ok": false, "why": "gone" }); }
+        let from = *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner());
+        let prep = if last { g.take().map(|(_, p)| p) } else { g.as_ref().map(|(_, p)| p.clone()) };
+        match prep { Some(p) => (p, from), None => return json!({ "ok": false, "why": "gone" }) }
+    };
+    let plat = macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}), Box::new(|_| {}));
+    let Some((s, display)) = showme::aim(&plat, &prep, screen.unwrap_or(1) as usize, x, y, ocr_id.as_deref(), &target_text) else {
+        if !last { *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+        return json!({ "ok": false, "why": "gone" });
+    };
+    // The window under the target must still be the one in the picture.
+    if !showme::unchanged(&prep, std::process::id() as i32, &fullscreen::sys::on_screen_windows(), front_pid(), s.rect) {
+        log("showme_window_changed", json!({}));
+        *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        point_cancel(); hide_overlay(&app);
+        return json!({ "ok": false, "why": "window_changed" });
+    }
     POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);   // a point_problem still on its way must not draw over this
-    log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact }));
-    draw_pointer(&app, prep.shot.display, s.rect, &caption, s.exact, true);
-    your_turn(&app, prep.shot.display, s.rect, &target_text);
-    say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, json!({ "turn": true }));
+    *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = if last { None } else { Some(s.rect.center()) };
+    log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact, "step": step, "of": of, "screen": screen.unwrap_or(1) }));
+    let look = Look { mark: showme::mark_name(mark.as_deref()), fly_ms, fade_ms, from: if step.unwrap_or(1) > 1 { from } else { None } };
+    draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look);
+    if hold { your_turn(&app, display, s.rect, &target_text); }
+    say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, showme::pointing_extra(&req, step.unwrap_or(1), of.unwrap_or(1), hold));
+    json!({ "ok": true })
 }
+
+/// A step of a multi step answer is said in words instead of drawn: the pointer goes away, what was seen is kept for the
+/// steps after it.
+#[tauri::command]
+fn showme_hide(app: AppHandle) { turn_cancel(); hide_overlay(&app); }
 
 /// The pointer goes away: a click, Esc, Stop everything, or the ten seconds running out.
 #[tauri::command]
-fn showme_clear(app: AppHandle) { point_cancel(); hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
+fn showme_clear(app: AppHandle) { point_cancel(); hide_overlay(&app); *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None; *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = None; say_showme(&app, "done", "", json!({})); }
 
 // ---------- Your turn ----------
 
@@ -763,6 +806,46 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     app.restart();
 }
 
+// ---------- Screen sharing and calls (rule 7) ----------
+
+fn presentation_path() -> PathBuf { data_dir().join("presentation.json") }
+static PRESENTATION: Mutex<Option<presentation::Settings>> = Mutex::new(None);
+fn presentation_now() -> presentation::Settings {
+    *PRESENTATION.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| presentation::parse(std::fs::read_to_string(presentation_path()).ok().as_deref()))
+}
+
+/// Asks macOS to leave the overlay and the card out of other apps' screen captures, or puts back the default. Main thread.
+/// Best effort (see presentation.rs). Companion's own capture leaves its own windows out by process either way.
+fn apply_sharing(s: &presentation::Settings) {
+    let t = objc2_app_kit::NSWindowSharingType(presentation::sharing_type(s));
+    with_panels(|_, card| card.setSharingType(t));
+    OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setSharingType(t); } });
+}
+
+/// Quiet during calls: a known call app is in front (and, once verified, a camera is in use). Only the front app's id (and
+/// whether a camera is on) is looked at, and only at the moment something would be said or a reaction would play.
+fn quiet() -> bool { presentation::quiet(&presentation_now(), &front_id(), || presentation::CAMERA_CHECK_ON && presentation::mac::camera_in_use()) }
+
+#[tauri::command]
+fn presentation_settings() -> Value { presentation::to_json(&presentation_now()) }
+
+/// Settings: both switches at once. Only from the card. Saved in Companion's own folder, applied at once.
+#[tauri::command]
+fn set_presentation(app: AppHandle, window: tauri::WebviewWindow, hide_from_sharing: bool, quiet_on_calls: bool) -> Result<Value, String> {
+    if window.label() != "card" { return Err("This can only be changed from the card.".into()); }
+    let s = presentation::Settings { hide_from_sharing, quiet_on_calls };
+    logfile::write_atomic(&presentation_path(), presentation::to_json(&s).to_string().as_bytes()).map_err(|_| "Could not save that setting.".to_string())?;
+    *PRESENTATION.lock().unwrap_or_else(|e| e.into_inner()) = Some(s);
+    let _ = app.run_on_main_thread(move || apply_sharing(&s));
+    log("presentation_set", json!({ "hide": hide_from_sharing, "quiet": quiet_on_calls }));
+    if s.quiet_on_calls && quiet() { speech_off(&app); }
+    Ok(presentation::to_json(&s))
+}
+
+/// For the character: should it hold back its reaction right now?
+#[tauri::command]
+fn quiet_now() -> bool { quiet() }
+
 // ---------- Spoken replies ----------
 
 static LAST_SAID: Mutex<Option<speak::Last>> = Mutex::new(None);
@@ -773,6 +856,8 @@ static LAST_SAID: Mutex<Option<speak::Last>> = Mutex::new(None);
 fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String) -> Result<(), String> {
     if window.label() != "card" { return Err("Speaking can only be started from the card.".into()); }
     let Some(line) = speak::prepare(&text) else { return Ok(()) };
+    // Quiet during calls (rule 7): nothing is said while a call app is in front (presentation.rs).
+    if quiet() { log("speak_quiet", json!({})); return Ok(()); }
     let ok = LAST_SAID.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).should_say(&line, now() as u64);
     if !ok { return Ok(()); }
     log("speak", json!({ "chars": line.chars().count() }));   // how long, never what
@@ -976,7 +1061,7 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
 fn celebrate(app: AppHandle) {
     use std::sync::atomic::Ordering::SeqCst;
     let free = || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none() && !overlay_busy();
-    if !free() { return; }
+    if !free() || quiet() { return; }
     let (gen, party) = (POINT_GEN.load(SeqCst), PARTY_GEN.fetch_add(1, SeqCst) + 1);
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -1046,7 +1131,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         if !alive() { return; }
         let said = opened.as_ref().map(|o| o.0.clone()).unwrap_or_default();
         let a3 = app.clone();
-        let plat = macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}),
+        let plat = macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); }));
         {
             use showme::Platform;
@@ -1405,7 +1490,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -1443,6 +1528,8 @@ fn main() {
             let overlay = make_overlay(mtm, overlay_ns);
             OVERLAY.with(|o| *o.borrow_mut() = Some(overlay));
             PANELS.with(|p| *p.borrow_mut() = Some((dock, card)));
+            // Hide from screen sharing (on unless turned off), set before anything is ever drawn.
+            apply_sharing(&presentation_now());
             apply_dock(mtm, "launch", false);
             *SIG.lock().unwrap() = signature(&screens_now(mtm));
             with_panels(|d, _| d.orderFrontRegardless());

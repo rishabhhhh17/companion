@@ -5,7 +5,7 @@
 
 use crate::coords::{Pt, R};
 use crate::frame::Frame;
-use crate::showme::{Captured, Platform};
+use crate::showme::{Cand, Captured, Pic, Platform};
 use crate::snap::OcrBox;
 use block2::RcBlock;
 use objc2::rc::Retained;
@@ -23,15 +23,17 @@ use std::time::Duration;
 /// Apps whose pixels must never exist in a picture we take.
 pub const NEVER_CAPTURE: &[&str] = &["com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.apple.keychainaccess", "com.apple.Passwords", "org.keepassxc.keepassxc", "com.lastpass.LastPass", "com.dashlane.dashlanephonefinal"];
 
+pub type SendImage = Box<dyn Fn(usize, &[u8], u32, u32) + Send + Sync>;
+pub type AskFn = Box<dyn Fn(&str, &[Pic], &[Cand]) + Send + Sync>;
 pub struct MacPlatform {
-    pub send_image: Box<dyn Fn(&[u8], u32, u32) + Send + Sync>,
-    pub ask: Box<dyn Fn(&str, u32, u32, &[(String, String, R)]) + Send + Sync>,
+    pub send_image: SendImage,
+    pub ask: AskFn,
     pub light: Box<dyn Fn(bool) + Send + Sync>,
     last_display: Mutex<Option<R>>,
 }
 
 impl MacPlatform {
-    pub fn new(send_image: Box<dyn Fn(&[u8], u32, u32) + Send + Sync>, ask: Box<dyn Fn(&str, u32, u32, &[(String, String, R)]) + Send + Sync>, light: Box<dyn Fn(bool) + Send + Sync>) -> MacPlatform {
+    pub fn new(send_image: SendImage, ask: AskFn, light: Box<dyn Fn(bool) + Send + Sync>) -> MacPlatform {
         MacPlatform { send_image, ask, light, last_display: Mutex::new(None) }
     }
 }
@@ -150,9 +152,14 @@ impl Platform for MacPlatform {
     fn read_text(&self, frame: &Frame) -> Vec<OcrBox> { read_text_at(frame, true) }
     fn read_text_fast(&self, frame: &Frame) -> Vec<OcrBox> { read_text_at(frame, false) }
 
+    /// Window owners and sizes (no permission needed) and the app in front, never titles or content.
+    fn windows(&self) -> (Vec<crate::fullscreen::Win>, i32) {
+        let front = objc2_app_kit::NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier()).unwrap_or(0);
+        (crate::fullscreen::sys::on_screen_windows(), front)
+    }
     fn element_at(&self, p: Pt) -> Option<R> { crate::ax::clickable_at(p.x, p.y).map(|(x, y, w, h)| R { x, y, w, h }) }
-    fn send_image(&self, jpeg: &[u8], w: u32, h: u32) { (self.send_image)(jpeg, w, h) }
-    fn ask(&self, question: &str, w: u32, h: u32, c: &[(String, String, R)]) { (self.ask)(question, w, h, c) }
+    fn send_image(&self, screen: usize, jpeg: &[u8], w: u32, h: u32) { (self.send_image)(screen, jpeg, w, h) }
+    fn ask(&self, question: &str, pics: &[Pic], c: &[Cand]) { (self.ask)(question, pics, c) }
 }
 
 /// The Mac's own text reader, on a compressed copy that stays in memory. `accurate` is slower and reads small or

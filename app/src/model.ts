@@ -29,7 +29,7 @@ export type Saved = { id: string; scope: "project" | "profile"; text: string };
 export type Explain = { checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number } };
 export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } };
 // turn: the ring is waiting for the person's own click (Do it for me is offered).
-export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean };
+export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean; step?: number; of?: number };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
 export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
@@ -175,7 +175,9 @@ export function reduce(m: Model, e: Ev): Model {
       const turn = e.turn === true || (stage === "your_turn_miss" && !!m.showme?.turn) ? true : undefined;
       // Only the answers to a ring (a miss, a hit, done for you) belong to the ring before them; anything else starts fresh.
       const req = e.req ?? (stage.startsWith("your_turn") || stage === "done_for_you" ? m.showme?.req : undefined);
-      return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}) } };
+      // A step of a multi step answer says which one it is (step of of), so each line is said once and in its turn.
+      const seq = Number.isInteger(e.step) && Number.isInteger(e.of) && (e.of as number) > 1 ? { step: e.step as number, of: e.of as number } : {};
+      return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}), ...seq } };
     }
     case "assist.error": return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } });
     case "app.voice": return e.stage === "idle" ? { ...m, voice: null } : { ...m, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
