@@ -108,3 +108,63 @@ fn a_key_glued_to_the_letters_before_it_is_still_covered_when_reading_the_screen
         assert!(!crate::redact::is_sensitive(t), "{t}");
     }
 }
+
+// ---------- text from the card page that becomes a file name or a path ----------
+
+fn scratch(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("companion-attack-{tag}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    std::fs::create_dir_all(&d).unwrap();
+    std::fs::canonicalize(&d).unwrap()
+}
+
+#[test]
+fn a_share_card_title_can_never_name_a_file_outside_the_downloads_folder() {
+    let dir = std::path::Path::new("/Users/me/Downloads");
+    let mut r = Rng(7);
+    let mut titles: Vec<String> = ["../../../etc/passwd", "/etc/passwd", "..", ".", "", "   ", "a/b/c", "a\\b", "x\0y", "\n", "con", "-rf", "~", "$HOME", "`id`", "../x.jpg", "my project\u{202e}gpj.sh", &"a".repeat(5000), "\u{1f600}\u{1f600}", "title; rm -rf ~"].iter().map(|s| s.to_string()).collect();
+    for _ in 0..300 { titles.push(junk(&mut r, 8)); }
+    for t in &titles {
+        let p = crate::share::card_path(dir, t, |_| false);
+        assert_eq!(p.parent(), Some(dir), "{t:?} -> {p:?}");
+        let name = p.file_name().unwrap().to_string_lossy().to_string();
+        assert!(name.ends_with("-is-live.jpg") && name.len() <= 80 && !name.starts_with('-') && !name.starts_with('.'), "{t:?} -> {name}");
+        assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.'), "{t:?} -> {name}");
+    }
+}
+
+#[test]
+fn a_problem_file_name_can_never_open_anything_outside_the_project() {
+    let outside = scratch("out");
+    std::fs::write(outside.join("secret.txt"), "s").unwrap();
+    let project = scratch("proj");
+    std::fs::create_dir_all(project.join("src")).unwrap();
+    std::fs::write(project.join("src/a.js"), "x").unwrap();
+    std::os::unix::fs::symlink(outside.join("secret.txt"), project.join("link.txt")).unwrap();
+    std::os::unix::fs::symlink(&outside, project.join("linkdir")).unwrap();
+    let o = outside.join("secret.txt").to_string_lossy().to_string();
+    for bad in ["../secret.txt", "../../etc/passwd", "src/../../x", &o, "/etc/passwd", "link.txt", "linkdir/secret.txt", "", ".", "src", "..", "src/a.js\0.png", "~/.ssh/id_rsa", "$HOME/x", "src//..//..//x"] {
+        assert!(crate::pointat::file_in_project(&project, bad).is_err(), "{bad:?} must not open");
+    }
+    assert!(crate::pointat::file_in_project(&project, "src/a.js").is_ok(), "the control file must open or this test proves nothing");
+    let _ = std::fs::remove_dir_all(&project); let _ = std::fs::remove_dir_all(&outside);
+}
+
+#[test]
+fn the_project_folder_check_refuses_places_that_are_not_one_project() {
+    let home = scratch("home");
+    let data = home.join("Library/Application Support/dev.companion.app");
+    std::fs::create_dir_all(&data).unwrap();
+    let ok = home.join("Desktop/site"); std::fs::create_dir_all(&ok).unwrap();
+    let file = home.join("Desktop/a.txt"); std::fs::write(&file, "x").unwrap();
+    let h = home.to_string_lossy().to_string();
+    let d = crate::projects::validate;
+    for bad in ["/", "", "relative/path", "~", "~/Desktop/site", "$HOME", &h, "/System", "/usr/bin", "/etc", "/private/etc", &data.to_string_lossy(), &home.join("Library").to_string_lossy(), &file.to_string_lossy(), "/nonexistent/place", "/Users/../", "\0"] {
+        assert!(d(bad, &h, &data).is_err(), "{bad:?} must be refused");
+    }
+    assert!(d(&ok.to_string_lossy(), &h, &data).is_ok(), "a real project folder must be accepted");
+    // A link from an ordinary place to a refused one is judged by where it really leads.
+    let sneaky = home.join("Desktop/lib-link");
+    std::os::unix::fs::symlink(home.join("Library"), &sneaky).unwrap();
+    assert!(d(&sneaky.to_string_lossy(), &h, &data).is_err(), "a link into Library must be refused");
+    let _ = std::fs::remove_dir_all(&home);
+}
