@@ -41,6 +41,7 @@ extern "C" {
     fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
     fn CFDictionaryCreate(alloc: CFTypeRef, keys: *const CFTypeRef, values: *const CFTypeRef, n: isize, kcb: CFTypeRef, vcb: CFTypeRef) -> CFTypeRef;
     static kCFBooleanTrue: CFTypeRef;
+    static kCFBooleanFalse: CFTypeRef;
     static kCFTypeDictionaryKeyCallBacks: c_void;
     static kCFTypeDictionaryValueCallBacks: c_void;
 }
@@ -93,6 +94,7 @@ fn text_attr(el: &Cf, name: &str) -> Option<String> {
     unsafe { if CFGetTypeID(v.0) != CFStringGetTypeID() { return None; } }
     Some(unsafe { &*(v.0 as *const NSString) }.to_string())
 }
+fn set_bool(el: &Cf, name: &str, on: bool) { let n = cfstr(name); unsafe { AXUIElementSetAttributeValue(el.0, as_ref(&n), if on { kCFBooleanTrue } else { kCFBooleanFalse }) }; }
 fn set_true(el: &Cf, name: &str) { let n = cfstr(name); unsafe { AXUIElementSetAttributeValue(el.0, as_ref(&n), kCFBooleanTrue) }; }
 
 /// Is this app allowed to use Accessibility? With `ask`, macOS shows its own prompt the first time.
@@ -138,6 +140,17 @@ pub fn focused(pid: i32) -> Option<Focused> {
     Some(Focused { element, role, subrole })
 }
 
+// Waking another app's accessibility tree (Chrome, Electron) changes how that app behaves until it is told to stop (Chrome's
+// "enhanced user interface" switches off window animations and confuses window snapping tools). What was switched on is
+// remembered here and switched off again when Prompt help is finished with the text, never left on.
+static WOKEN: std::sync::Mutex<Vec<(i32, &'static str)>> = std::sync::Mutex::new(Vec::new());
+fn wake(app: &Cf, pid: i32, name: &'static str) { set_true(app, name); WOKEN.lock().unwrap_or_else(|e| e.into_inner()).push((pid, name)); }
+/// Switches off whatever reading switched on in other apps.
+pub fn let_apps_sleep() {
+    let woken: Vec<(i32, &'static str)> = std::mem::take(&mut *WOKEN.lock().unwrap_or_else(|e| e.into_inner()));
+    for (pid, name) in woken { if let Some(app) = Cf::new(unsafe { AXUIElementCreateApplication(pid) }) { set_bool(&app, name, false); } }
+}
+
 pub struct Read { pub text: String, pub had_selection: bool, pub rung: &'static str }
 
 fn read_field(el: &Cf) -> Option<(String, bool)> {
@@ -159,9 +172,9 @@ pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
     if let Some(r) = attempt("plain") { return Some(r); }
     let _ = text_attr(&app, "AXRole");                       // asking for the role wakes the basic tree
     for _ in 0..3 { std::thread::sleep(Duration::from_millis(400)); if let Some(r) = attempt("role_retry") { return Some(r); } }
-    set_true(&app, "AXManualAccessibility");                 // Electron
+    wake(&app, pid, "AXManualAccessibility");                 // Electron
     for _ in 0..3 { std::thread::sleep(Duration::from_millis(700)); if let Some(r) = attempt("manual_accessibility") { return Some(r); } }
-    set_true(&app, "AXEnhancedUserInterface");               // Chrome
+    wake(&app, pid, "AXEnhancedUserInterface");               // Chrome
     for _ in 0..3 { std::thread::sleep(Duration::from_millis(700)); if let Some(r) = attempt("enhanced_ui") { return Some(r); } }
     None
 }

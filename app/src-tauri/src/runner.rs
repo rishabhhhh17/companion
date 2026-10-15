@@ -21,6 +21,13 @@ const ALLOWED: &[&str] = &[
     "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
 ];
 
+/// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
+fn kill_group(c: &mut Child) {
+    let pid = c.id() as i32;
+    if pid > 1 { unsafe { libc::killpg(pid, libc::SIGKILL); } }
+    let _ = c.kill();
+}
+
 /// Checks a command from a web page. Returns the reason in plain words when refused.
 pub fn check_command(v: &Value) -> Result<(), String> {
     let o = v.as_object().ok_or("a command must be an object")?;
@@ -40,7 +47,14 @@ pub fn check_command(v: &Value) -> Result<(), String> {
 /// Commands that run or read things in a project folder: from a page they may name only the folder the person chose.
 /// The stand in project for lessons that need none (see runner/src/walk.ts).
 pub const NO_PROJECT: &str = "no-project";
-pub const PROJECT_BOUND: &[&str] = &["project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start"];
+/// Every command that works on a project folder may name only the folder the person chose (a page could otherwise ask the
+/// engine to work on any folder on the Mac). Not here: commands that name no project, and the stand in for lessons that need none.
+pub const PROJECT_BOUND: &[&str] = &[
+    "project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start",
+    "agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
+    "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
+    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
+];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
     if !PROJECT_BOUND.contains(&t) { return Ok(()); }
@@ -170,7 +184,7 @@ impl Shared {
             Some(tx) => tx.try_send(line).map_err(|e| match e { TrySendError::Full(_) => "The engine is not answering.".to_string(), TrySendError::Disconnected(_) => "The engine is not running.".to_string() }),
         }
     }
-    pub fn kill(&self) { if let Some(c) = lock(&self.child).as_mut() { let _ = c.kill(); } }
+    pub fn kill(&self) { if let Some(c) = lock(&self.child).as_mut() { kill_group(c); } }
 }
 
 /// Runs the engine for as long as the app lives: start it, read its lines, and start it again when it stops.
@@ -209,7 +223,7 @@ pub fn supervise(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Child> +
                         }
                     }
                     *lock(&shared.tx) = None;                  // ends the writer thread
-                    if let Some(mut c) = lock(&shared.child).take() { let _ = c.kill(); let _ = c.wait(); }   // never leave a zombie behind
+                    if let Some(mut c) = lock(&shared.child).take() { kill_group(&mut c); let _ = c.wait(); }   // never leave a zombie behind
                     emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down" }));
                 }
             }
@@ -245,7 +259,9 @@ impl Runner {
         std::fs::create_dir_all(&loc.data).map_err(|e| e.to_string())?;
         let loc = loc.clone();
         let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
-            Command::new(&loc.bun).arg(&loc.runner).env("COMPANION_DATA", &loc.data).envs(&loc.env)
+            use std::os::unix::process::CommandExt;
+            // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
+            Command::new(&loc.bun).arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env)
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         });
         // Fail loudly now, not later, if the engine cannot be started at all.
@@ -300,7 +316,13 @@ mod tests {
         assert!(check_project(&c("project.install", "/Users/me/other"), "/Users/me/site").is_err());
         assert!(check_project(&c("problem.find", "/"), "/Users/me/site").is_err());
         assert!(check_project(&c("project.inspect", "/Users/me/site"), "").is_err());
-        assert!(check_project(&c("memory.list", "/anything"), "/Users/me/site").is_ok());   // not a project bound command
+        // Every command that works on a project is held to the chosen folder (found by the 15 Oct 2026 review).
+        for t in ["agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback", "checkpoint.restore", "tasks.list", "recap.ask", "explain.set", "memory.list", "memory.erase", "memory.add"] {
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t} must not accept another folder");
+            assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t} must accept the chosen folder");
+            assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t} must not work before a folder is chosen");
+        }
+        assert!(check_project(&c("runner.ping", "/anything"), "/Users/me/site").is_ok());   // not a project bound command
         // Lessons that need no project may use the stand in name, with no folder chosen; nothing else may.
         assert!(check_project(&c("walk.start", "no-project"), "").is_ok());
         assert!(check_project(&c("walk.list", "no-project"), "/Users/me/site").is_ok());

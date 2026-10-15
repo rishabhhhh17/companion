@@ -22,6 +22,18 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Web look ups:** secrets can no longer ride out in the path of a web address (an unusually long address, or a long code-like piece of one, asks first); normal documentation links are unaffected.
 - A second layer was already in place and still is: the Mac's own sandbox refuses reading your keys and shell history, writing outside the project, and all network except package registries.
 
+## Launch review, round three: the Mac program: 15 Oct 2026
+
+- **The overlay (the ring, the sketch, the confetti) probably could not receive its orders.** Tauri only lets a window listen for events if a permission file names it, and the overlay was not named; every test passed because the page code never runs in a test. It now has its own permission file that allows listening and nothing else, and a test checks that every window the app creates is named in one.
+- **Updates signed by the script would have been refused** (the version must be signed into the signature). Fixed, with a check in the script, and the error now says what really happened.
+- **Stop everything is more total.** A look at the screen that was already under way no longer sends its picture after Stop; a Prompt help read in progress is dropped (and its text is never sent); the system-wide Esc and Accept keys Prompt help borrows are given back when you Stop or close the card (Esc used to stay captured in every app for up to 90 seconds); the speech model loads on a helper so a Stop is never queued behind it; the engine is ended together with what it started; and an update now shuts the engine down properly before restarting.
+- **Hold to talk with the dock hidden** (a full screen app in front, or hidden from the menu bar) recorded with no light anyone could see. It now refuses and says why.
+- **Every command that works on a project is held to the folder you chose**, not only a few. And a folder can only be switched to from your list or the folder chooser.
+- **Delete everything** no longer removes the whole `Application Support/Companion` folder (another product with the same name would lose its data); only Companion's own `browsers` folder goes. And a saved key that could not be removed is no longer reported as deleted: a note tells you how to remove it.
+- **Prompt help no longer leaves Chrome's "enhanced interface" switched on** (it turns off window animations and confuses window snapping tools until Chrome restarts). What reading switched on in another app is switched off again when you are done with the text.
+- Smaller: your turn reads the pointer without calling the main-thread-only part of the Mac's screen list sixty times a second; the 148 MB speech model's checksum is remembered instead of re-read at every press; the speech download uses the system's own `curl`; the update key is handed to Keychain on standard input, not on a command line.
+- **Known and not fixed yet:** the saved Claude key can be read by any program the person runs (including a project's own install scripts) through the `security` command, because it was saved without limiting which programs may read it. See the launch verdict for the options.
+
 ## Launch review, round two: secrets, safety and "proven": 15 Oct 2026
 
 - **Plan, Rescue and Research skipped the safety rules.** They could read any file on your Mac, settings and key files in your project, and Research could fetch a web address carrying a secret. They now use the same rules as a normal task, with every "ask" turned into "no" (there is nobody to ask): outside the project, settings and key files, and web addresses that carry data are all refused.

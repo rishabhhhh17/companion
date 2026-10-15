@@ -19,7 +19,8 @@ pub fn parse_config(text: &str) -> Option<Config> {
 /// Words for the person, from what happened. Plain, no codes.
 pub fn failure_words(raw: &str) -> &'static str {
     let r = raw.to_lowercase();
-    if r.contains("signature") || r.contains("verif") { "That update did not check out against Companion's key, so it was not installed. Nothing changed." }
+    if r.contains("does not specify the version") || r.contains("signed version") || r.contains("missingsignedversion") { "This update was not signed for this version, so it was not installed. Nothing changed. Please get the newest version from the website." }
+    else if r.contains("signature") || r.contains("verif") { "That update did not check out against Companion's key, so it was not installed. Nothing changed." }
     else if r.contains("dns") || r.contains("connect") || r.contains("network") || r.contains("timed out") || r.contains("error sending request") { "I could not reach the update address. Check your internet and try again." }
     else { "I could not check for updates just now. Try again later." }
 }
@@ -52,6 +53,7 @@ mod tests {
     #[test]
     fn failures_are_said_in_plain_words() {
         assert!(failure_words("signature verification failed").contains("did not check out"));
+        assert!(failure_words("The update signature does not specify the version it was signed for").contains("not signed for this version"));
         assert!(failure_words("error sending request for url").contains("internet"));
         assert!(failure_words("weird").contains("later"));
     }
@@ -72,5 +74,37 @@ mod tests {
     fn the_shipped_file_parses_or_is_cleanly_empty() {
         let _ = parse_config(include_str!("../updater.json"));
         assert!(serde_json::from_str::<Config>(include_str!("../updater.json")).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod windows_and_permissions {
+    // Every window the app creates must be named in a capability, or Tauri refuses its page the core calls it needs (listening
+    // for events, for one) and the page silently does nothing. Found by the 15 Oct 2026 review: the overlay was missing, and
+    // no test noticed because the page code never ran in a test.
+    fn labels() -> Vec<String> {
+        let src = include_str!("main.rs");
+        let mut out = vec![];
+        for marker in ["mk(\"", "WebviewWindowBuilder::new(app, \""] {
+            let mut rest = src;
+            while let Some(i) = rest.find(marker) {
+                rest = &rest[i + marker.len()..];
+                if let Some(j) = rest.find('"') { let l = &rest[..j]; if l.chars().all(|c| c.is_ascii_lowercase()) && !l.is_empty() { out.push(l.to_string()); } }
+            }
+        }
+        out.sort(); out.dedup(); out
+    }
+    #[test]
+    fn every_window_is_in_a_capability_and_the_overlay_may_only_listen() {
+        let caps: Vec<serde_json::Value> = [include_str!("../capabilities/default.json"), include_str!("../capabilities/overlay.json")].iter().map(|t| serde_json::from_str(t).unwrap()).collect();
+        let named: Vec<String> = caps.iter().flat_map(|c| c["windows"].as_array().unwrap().iter().map(|w| w.as_str().unwrap().to_string())).collect();
+        let found = labels();
+        assert!(found.len() >= 3, "the scan found {found:?}; it must at least see dock, card and overlay");
+        for l in &found { assert!(named.contains(l), "the window \"{l}\" is not named in any capability"); }
+        let overlay = caps.iter().find(|c| c["identifier"] == "overlay").unwrap();
+        let perms: Vec<&str> = overlay["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap()).collect();
+        assert!(perms.iter().all(|p| p.starts_with("core:event:allow-")), "the overlay may only listen: {perms:?}");
+        let dflt = caps.iter().find(|c| c["identifier"] == "default").unwrap();
+        assert!(!dflt["windows"].as_array().unwrap().iter().any(|w| w == "overlay"), "the overlay gets its own narrow capability, not the full one");
     }
 }
