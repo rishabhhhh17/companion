@@ -93,6 +93,18 @@ describe("checking before saying done", () => {
     expect(proofResult(r.events).verdict).toBe("passed_with_gaps");
     expect(receipt(r.events).proof).toBe("partial");   // not "passed": a check could not run, so it is not called proven (rule 14)
   });
+  test("a missing browser is named on the step and on the result, so the card can offer the download", async () => {
+    const missing = { ...step("browser", "skipped", "The hidden browser is not installed yet"), needs: "browser" as const };
+    const r = setup([bash("echo hi > new.txt")], async (c) => { c.onStep(missing); return result("passed_with_gaps", [step("checks", "passed"), missing]); });
+    await r.runner.handle(start(r.project));
+    expect(r.events.find((e) => e.type === "proof.step")).toMatchObject({ rung: "browser", status: "skipped", needs: "browser" });
+    expect(proofResult(r.events).steps.find((s: any) => s.rung === "browser")).toMatchObject({ needs: "browser" });
+  });
+  test("a step with no reason to offer anything carries no such field", async () => {
+    const r = setup([bash("echo hi > new.txt")], async (c) => { c.onStep(step("browser", "passed")); return result("passed"); });
+    await r.runner.handle(start(r.project));
+    expect("needs" in (r.events.find((e) => e.type === "proof.step") as object)).toBe(false);
+  });
   test("nothing to check is done but is not called proven", async () => {
     const r = setup([bash("echo hi > new.txt")], async () => result("nothing_to_check", []));
     await r.runner.handle(start(r.project));

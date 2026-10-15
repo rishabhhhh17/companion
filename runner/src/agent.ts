@@ -325,6 +325,8 @@ export class AgentRunner {
   background(): Promise<unknown> { return Promise.allSettled([...this.backgroundJobs]); }
 
   private state(agent: string, state: string) { this.emit({ type: "agent.state", agent, state } as never); }
+  // Each rung of a check as it runs. A rung skipped only for want of the hidden browser says so, so the card can offer it.
+  private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never); }
   private fail(reason: string, agent?: string) { this.emit({ type: "protocol.error", reason, ...(agent ? { agent } : {}) } as never); }
 
   async handle(cmd: Command): Promise<void> {
@@ -538,7 +540,7 @@ export class AgentRunner {
       if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) break;
 
       this.state(cmd.agent, "checking");
-      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
       this.watchers.get(cmd.agent)?.begin("ladder");
       const paths = new Set(changed.map((c) => c.file));
@@ -777,7 +779,7 @@ export class AgentRunner {
       // Check the project exactly as it is now, with no model involved.
       const ac = new AbortController();
       const sk = this.openShipSession(ac);
-      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: "ship", rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      const onStep = this.stepTeller("ship");
       try {
         const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
@@ -835,7 +837,7 @@ export class AgentRunner {
       this.shipSay(cmd.project, "checking_preview", "Opening the preview in a hidden browser to make sure it works.", { previewUrl: r.url });
       const b = await (this.o.browser ?? browserCheck)(r.url, {});
       if (ac.signal.aborted) return;
-      if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false }); return; }
+      if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false, ...(b.notInstalled ? { needs: "browser" } : {}) }); return; }
       if (!b.ok) {
         const blocked = b.problems.some((p) => /\((401|403)\)/.test(p));
         this.shipSay(cmd.project, "failed", blocked ? "The preview is behind Vercel's own login, so I could not open it. Turn off protection for previews in your Vercel project settings, then try again." : `The preview has a problem: ${b.problems.slice(0, 2).join(". ")}`, { previewUrl: r.url, canGoLive: false });
@@ -902,7 +904,7 @@ export class AgentRunner {
   // so the character can fly to that line, error or button.
   private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
     // Every press ends with problem.found, so the card never stays on "Checking".
-    const found = (verdict: string, fl?: Step) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) } as never);
+    const found = (verdict: string, fl?: Step, needs?: "browser") => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}) } as never);
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectBusy.has(resolve(cmd.project))) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });
@@ -910,13 +912,13 @@ export class AgentRunner {
       const store = this.store(cmd.project);
       const snap = await store.snapshot("Point at the problem: the project as it was found");
       this.state(cmd.agent, "checking");
-      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
       try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      found(res.verdict, fl);
+      found(res.verdict, fl, res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined);
       this.state(cmd.agent, fl ? "needsYou" : "idle");
     } catch (e) {
       this.fail(`Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
@@ -1006,7 +1008,7 @@ export class AgentRunner {
       const store = this.store(cmd.project);
       const snap = await store.snapshot("Rescue: the project as it was found");
       this.state(cmd.agent, "checking");
-      const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: cmd.agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
+      const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
       try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }

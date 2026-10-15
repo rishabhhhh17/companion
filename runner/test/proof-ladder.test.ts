@@ -107,6 +107,19 @@ describe("being honest about what could not be checked", () => {
     expect(result.steps.find((s) => s.rung === "browser")).toMatchObject({ status: "skipped" });
     expect(result.steps.find((s) => s.rung === "browser")?.detail).toContain("not installed");
   }, 60000);
+  test("a browser that is not installed is named as the reason on the step and on its update, so the page can offer it", async () => {
+    const notThere = async () => ({ ok: false, skipped: "The hidden browser is not installed yet, so the page was not opened.", notInstalled: true as const, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 });
+    const { result, updates } = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": GOOD_PAGE }), {}, { browser: notThere });
+    expect(result.verdict).toBe("passed_with_gaps");
+    expect(result.steps.find((s) => s.rung === "browser")).toMatchObject({ status: "skipped", needs: "browser" });
+    expect(updates.find((u) => u.rung === "browser" && u.status === "skipped")).toMatchObject({ needs: "browser" });
+  }, 60000);
+  test("a browser skipped for another reason (it would not start) does not offer a download", async () => {
+    const wontStart = async () => ({ ok: false, skipped: "The hidden browser could not be started (boom), so the page was not opened.", problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 });
+    const { result, updates } = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": GOOD_PAGE }), {}, { browser: wontStart });
+    expect(result.steps.find((s) => s.rung === "browser")?.needs).toBeUndefined();
+    expect(updates.some((u) => "needs" in u)).toBe(false);
+  }, 60000);
 });
 
 describe("the install rung", () => {

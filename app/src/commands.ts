@@ -77,6 +77,9 @@ export const metricsNote = (name: string): Command => ({ v: 1, id: id(), type: "
 export const metricsShow = (): Command => ({ v: 1, id: id(), type: "metrics.show" });
 export const metricsErase = (): Command => ({ v: 1, id: id(), type: "metrics.erase" });
 
+// The browser check (F14): ask whether it is set up, and download it once when the person presses the button.
+export const checkBrowser = (): Command => ({ v: 1, id: id(), type: "browser.check" });
+export const getBrowser = (): Command => ({ v: 1, id: id(), type: "browser.install" });
 // The daily spending limit in Settings: today's spend for this project against the limit, and changing the limit.
 export const showSpending = (project: string): Command => ({ v: 1, id: id(), type: "spending.show", project });
 export const setSpendingLimit = (project: string, limitUsd: number): Command => ({ v: 1, id: id(), type: "spending.set", project, limitUsd });

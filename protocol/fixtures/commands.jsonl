@@ -49,6 +49,8 @@
 {"v":1,"id":"c49","type":"metrics.note","name":"session"}
 {"v":1,"id":"c50","type":"metrics.show"}
 {"v":1,"id":"c51","type":"metrics.erase"}
+{"v":1,"id":"c52","type":"browser.check"}
+{"v":1,"id":"c53","type":"browser.install"}
 {"v":1,"id":"c60","type":"spending.show","project":"p_9f2c"}
 {"v":1,"id":"c61","type":"spending.set","project":"p_9f2c","limitUsd":25}
 {"v":1,"id":"c62","type":"approval.resolve","approval":"ap_72","decision":"allow","scope":"task"}

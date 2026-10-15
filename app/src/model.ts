@@ -1,6 +1,7 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
 import { PRACTICE_LABEL } from "./commands.ts";
+import { S } from "./strings.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 export type ToolLine = { id: string; text: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
@@ -42,10 +43,15 @@ export type LessonItem = { id: string; title: string; app: string; goal: string;
 // proven, finished, or stopped.
 export type WalkState = { stage: "step" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
+// The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
+// engine says so with needs: "browser", never guessed from its words). installed: what the engine last said. stage: the
+// person pressed the button (asked), the download is running, or it ended.
+export type BrowserSetupState = { needed: boolean; installed?: boolean; stage: "idle" | "asked" | "downloading" | "done" | "failed" | "cancelled"; percent?: number; mb?: number; detail?: string };
 // The daily spending limit row in Settings, for one project: the limit, what it spent today (an estimate), the bounds, and why
 // a new limit was refused if it was.
 export type Spending = { project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
 export type Model = {
+  browser: BrowserSetupState;
   spending: Spending | null;
   doctor: DoctorItem[] | null;
   voice: Voice | null;
@@ -97,7 +103,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ spending: null, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -107,6 +113,11 @@ function top(agents: Record<string, CharacterState>): CharacterState {
   return best;
 }
 const withAgents = (m: Model, agents: Record<string, CharacterState>): Model => ({ ...m, agents, character: m.runnerUp ? top(agents) : "off" });
+
+const browserBusy = (b: BrowserSetupState) => b.stage === "asked" || b.stage === "downloading";
+// A new task or another folder: an old offer or an old result goes; a download that is running stays on the card.
+const browserFresh = (b: BrowserSetupState): BrowserSetupState => (browserBusy(b) ? b : { needed: false, stage: "idle", ...(b.installed !== undefined ? { installed: b.installed } : {}) });
+const browserRung = (steps: unknown, test: (s: any) => boolean) => Array.isArray(steps) && steps.some((s: any) => !!s && s.rung === "browser" && test(s));
 
 // Most sentences the engine sends were written for a person ("Something is still working on this project. Wait for it to finish,
 // or press Stop."). Those are shown as they are. A technical message (an error name, a path, a code) is wrapped and never shown raw.
@@ -140,9 +151,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -156,7 +167,7 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, spending: null, undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -171,7 +182,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.voiceClosed": return { ...m, voice: null };
     case "doctor.report": return { ...m, doctor: Array.isArray(e.items) ? e.items : [] };
     case "ui.recapClosed": return { ...m, recap: null };
-    case "checkpoint.created": return { ...m, explain: null, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
+    case "checkpoint.created": return { ...m, browser: browserFresh(m.browser), explain: null, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, error: null, notice: null, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
     case "agent.tool": {
       const t = m.task ?? { agent: e.agent, label: "", lines: [], costUsd: 0 };
@@ -222,6 +233,7 @@ export function reduce(m: Model, e: Ev): Model {
     // Closing puts the character back to rest; the check is over.
     case "ui.pointClosed": return m.point?.agent && m.agents[m.point.agent] === "needsYou" ? withAgents({ ...m, point: null }, { ...m.agents, [m.point.agent]: "idle" }) : { ...m, point: null };
     case "problem.found": {
+      if (e.needs === "browser") m = { ...m, browser: { ...m.browser, needed: true } };
       // The practice project: the first failure found in it moves the practice on to "fix it".
       if (m.practice?.stage === "start" && e.project === m.practice.project && e.verdict === "failed" && e.problem) {
         const pr = e.problem;
@@ -238,6 +250,8 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear" }, where: null };
     }
     case "proof.result": {
+      if (browserRung(e.steps, (s) => s.status === "skipped" && s.needs === "browser")) m = { ...m, browser: { ...m.browser, needed: true } };
+      else if (browserRung(e.steps, (s) => s.status === "passed")) m = { ...m, browser: { ...m.browser, needed: false, installed: true } };
       const failed = e.verdict === "failed" ? (e.steps ?? []).find((s: any) => s.status === "failed") : undefined;
       if (e.verdict !== "cancelled") m = { ...m, where: failed?.problem ?? null };
       if (!m.task) return m;
@@ -256,7 +270,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "assist.prompt.delta": return m.ph ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
     case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
     case "ship.gates": return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
-    case "ship.status": return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };
+    case "ship.status": if (e.needs === "browser") m = { ...m, browser: { ...m.browser, needed: true } };
+      return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };
     // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.
     case "ship.card": return m.shipFlow?.stage === "live" && typeof e.image === "string" ? { ...m, shipFlow: { ...m.shipFlow, card: { image: e.image, url: String(e.url ?? ""), title: String(e.title ?? "") } } } : m;
     case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
@@ -288,7 +303,40 @@ export function reduce(m: Model, e: Ev): Model {
     // An error while the practice fix runs (busy, daily limit, a failure) must not leave it waiting forever.
     case "protocol.error": if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };
       return { ...m, ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : {}), error: plainError(String(e.reason)) };
+    // The browser check's download. A second press while it runs changes nothing.
+    case "ui.browserInstallAsked": return browserBusy(m.browser) ? m : { ...m, browser: { ...m.browser, stage: "asked", percent: undefined, mb: undefined, detail: undefined } };
+    case "ui.browserClosed": return browserBusy(m.browser) ? m : { ...m, browser: { needed: false, stage: "idle", ...(m.browser.installed !== undefined ? { installed: m.browser.installed } : {}) } };
+    case "browser.install": {
+      const detail = String(e.detail ?? "");
+      if (e.stage === "downloading") return { ...m, browser: { ...m.browser, stage: "downloading", detail, percent: typeof e.percent === "number" ? e.percent : m.browser.stage === "downloading" ? m.browser.percent : undefined, mb: typeof e.mb === "number" ? e.mb : m.browser.mb } };
+      if (e.stage === "done") return { ...m, browser: { ...m.browser, stage: "done", installed: true, percent: undefined, detail } };
+      if (e.stage === "failed" || e.stage === "cancelled") return { ...m, browser: { ...m.browser, stage: e.stage, percent: undefined, detail } };
+      return m;
+    }
+    case "browser.status": {
+      const installed = e.installed === true;
+      if (e.installing === true) return { ...m, browser: { ...m.browser, installed, stage: "downloading", ...(m.browser.stage === "downloading" ? {} : { percent: undefined }) } };
+      // Nothing is running any more: a download whose end this page missed is shown as ended.
+      if (browserBusy(m.browser)) return { ...m, browser: { ...m.browser, installed, stage: installed ? "done" : "idle", percent: undefined } };
+      return { ...m, browser: { ...m.browser, installed } };
+    }
     default: return m;
+  }
+}
+
+// The browser check's one line and button on the card, for every stage. Null when there is nothing to say.
+export type BrowserView = { line: string; button?: string; busy: boolean; percent?: number; closable: boolean };
+export function browserView(m: Model): BrowserView | null {
+  const b = m.browser;
+  switch (b.stage) {
+    case "asked": return { line: S.browserStarting, busy: true, closable: false };
+    case "downloading":
+      if (typeof b.percent !== "number") return { line: S.browserStarting, busy: true, closable: false };
+      return { line: b.percent >= 100 ? S.browserSettingUp : S.browserProgress(b.percent, b.mb), busy: true, percent: b.percent, closable: false };
+    case "done": return { line: S.browserReady, busy: false, closable: true };
+    case "failed": return { line: b.detail || S.browserFailed, button: S.browserTryAgain, busy: false, closable: true };
+    case "cancelled": return { line: S.browserStopped, button: S.browserGet, busy: false, closable: true };
+    default: return b.needed && !b.installed ? { line: S.browserNeeded, button: S.browserGet, busy: false, closable: true } : null;
   }
 }
 

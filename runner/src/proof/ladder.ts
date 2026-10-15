@@ -14,7 +14,8 @@ import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
-export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number };
+// needs: "browser" when the browser rung was skipped only because the hidden browser is not installed (the page offers it).
+export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number; needs?: "browser" };
 // A failed step may carry the place it failed: a line in the project, a button, or at least the error sentence.
 export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem };
 export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled";
@@ -88,10 +89,10 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const det: Detected = detectProject(o.project);
   const cancelled = () => o.signal?.aborted === true;
 
-  const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0) => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms });
-  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null): Step => {
-    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}) };
-    steps.push(s); emit(rung, status, detail, s.ms);
+  const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0, needs?: "browser") => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms, ...(needs ? { needs } : {}) });
+  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser"): Step => {
+    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}) };
+    steps.push(s); emit(rung, status, detail, s.ms, needs);
     return s;
   };
   const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}) });
@@ -161,7 +162,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (cancelled()) return result("cancelled", undefined, srv.url);
     t0 = Date.now(); emit("browser", "running");
     const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs, shot: true });
-    if (b.skipped) { finish("browser", "skipped", b.skipped, t0); return result("passed_with_gaps", undefined, srv.url); }
+    if (b.skipped) { finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
     if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
     finish("browser", "passed", "The page opened with no errors.", t0);
     return { ...result("passed", undefined, srv.url), ...(b.shot ? { shot: b.shot } : {}) };

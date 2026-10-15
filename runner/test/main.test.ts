@@ -1,7 +1,7 @@
 // The runner as a real program: the app starts it, writes commands to its stdin and reads
 // events from its stdout, one JSON line each. Tested by starting the real process.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEvent } from "../../protocol/index.ts";
@@ -183,4 +183,114 @@ describe("the runner program", () => {
       expect(parseCommand(JSON.stringify({ v: 1, id: "x", type: "auth.key", key: FAKE })).ok).toBe(false);
     });
   });
+});
+
+// The browser check's one time download, through the real program. COMPANION_BROWSER_STUB swaps in a pretend download
+// (only with the scripted engine), so no test ever reaches the internet.
+describe("the browser check's download, over the pipe", () => {
+  const bev = (r: ReturnType<typeof launch>, type: string) => r.events().filter((e: any) => e.type === type);
+  test("asking says it is not installed and nothing is running, and nothing is downloaded without the command", async () => {
+    const r = launch([], { PLAYWRIGHT_BROWSERS_PATH: tmp("browsers") });
+    r.send({ v: 1, id: "b1", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installed: false, installing: false });
+    await new Promise((res) => setTimeout(res, 150));
+    expect(bev(r, "browser.install")).toHaveLength(0);
+    await r.close();
+  });
+  test("a press downloads it, with progress, ends in Ready, and the next question says installed", async () => {
+    const r = launch([], { COMPANION_BROWSER_STUB: "5" });
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage === "done"));
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "downloading" && e.percent === 40)).toBe(true);
+    for (const l of r.lines) expect(parseEvent(l).ok, l).toBe(true);
+    r.send({ v: 1, id: "b2", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installed: true, installing: false });
+    await r.close();
+  });
+  test("a second press while it downloads starts nothing new, and Stop everything ends it", async () => {
+    const r = launch([], { COMPANION_BROWSER_STUB: "400" });
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").length >= 1);
+    r.send({ v: 1, id: "b2", type: "browser.install" });
+    r.send({ v: 1, id: "b3", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installing: true });
+    expect(bev(r, "browser.install").filter((e: any) => /starting/i.test(e.detail))).toHaveLength(1);
+    r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "kill switch" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage === "cancelled"), 3000);
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "done")).toBe(false);
+    await r.close();
+  });
+  test("closing the app ends a download that is running", async () => {
+    const r = launch([], { COMPANION_BROWSER_STUB: "400" });
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").length >= 1);
+    const t0 = Date.now();
+    await r.close();
+    expect(Date.now() - t0).toBeLessThan(1500);
+    // It was stopped and waited for (a real download runs in its own process group and would outlive the engine otherwise).
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "cancelled")).toBe(true);
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "done")).toBe(false);
+  });
+  test("the pretend download is never used by the real engine", async () => {
+    const { readSettings } = await import("../src/engines.ts");
+    expect(readSettings({ COMPANION_BROWSER_STUB: "5" }).browserStubMs).toBeUndefined();
+    expect(readSettings({ COMPANION_BROWSER_STUB: "5", COMPANION_ENGINE: "scripted" }).browserStubMs).toBe(5);
+    expect(readSettings({ COMPANION_BROWSER_STUB_INSTALLER: "/x.ts" }).browserStubInstaller).toBeUndefined();
+    expect(readSettings({ COMPANION_BROWSER_STUB_INSTALLER: "/x.ts", COMPANION_ENGINE: "scripted" }).browserStubInstaller).toBe("/x.ts");
+  });
+});
+
+// The same download through the real downloader and a real installer process: a stand in for Playwright's installer that
+// prints what Playwright prints (the browser, then FFmpeg) into a temporary browsers folder, with no network.
+describe("the browser check's download, with a real installer process", () => {
+  const bev = (r: ReturnType<typeof launch>, type: string) => r.events().filter((e: any) => e.type === type);
+  const installer = join(import.meta.dir, "fixtures", "fake-playwright-installer.ts");
+  // A dead proxy on this Mac, so that even if the stand in were not used, Playwright's real installer could not reach the
+  // internet (it reads these settings, and the runner passes them on). This happened once while these tests were written.
+  const noNetwork = { HTTPS_PROXY: "http://127.0.0.1:9", https_proxy: "http://127.0.0.1:9", HTTP_PROXY: "http://127.0.0.1:9", http_proxy: "http://127.0.0.1:9", ALL_PROXY: "http://127.0.0.1:9", all_proxy: "http://127.0.0.1:9", NO_PROXY: "", no_proxy: "" };
+  const withInstaller = (mode = "") => {
+    const browsers = tmp("browsers");
+    if (mode) writeFileSync(join(browsers, ".stub-mode"), mode);
+    return { browsers, r: launch([], { ...noNetwork, PLAYWRIGHT_BROWSERS_PATH: browsers, COMPANION_BROWSER_STUB_INSTALLER: installer }) };
+  };
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  test("FFmpeg's download after the browser's never moves the bar back or changes the size, and it ends in Ready", async () => {
+    const { r } = withInstaller();
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage !== "downloading"));
+    const progress = bev(r, "browser.install").filter((e: any) => typeof e.percent === "number");
+    expect(progress.length).toBeGreaterThan(3);
+    for (let i = 1; i < progress.length; i++) expect(progress[i].percent).toBeGreaterThanOrEqual(progress[i - 1].percent);
+    expect(progress.every((e: any) => e.mb === 94)).toBe(true);
+    expect(bev(r, "browser.install").at(-1)).toMatchObject({ stage: "done", detail: "Ready. The next check will use it." });
+    r.send({ v: 1, id: "b2", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installed: true, installing: false });
+    await r.close();
+  }, 20000);
+  test("when FFmpeg fails after the browser is in place, the card says Ready, because the browser check works", async () => {
+    const { r } = withInstaller("ffmpeg-fails");
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage !== "downloading"));
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "failed")).toBe(false);
+    expect(bev(r, "browser.install").at(-1)).toMatchObject({ stage: "done" });
+    await r.close();
+  }, 20000);
+  test("when the engine is killed by force during the download, the installer ends with it", async () => {
+    const { browsers, r } = withInstaller("slow");
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => typeof e.percent === "number"));
+    const pid = Number(readFileSync(join(browsers, ".stub-pid"), "utf8"));
+    try {
+      expect(alive(pid)).toBe(true);
+      r.proc.kill("SIGKILL");
+      await r.proc.exited;
+      const end = Date.now() + 3000;
+      while (alive(pid) && Date.now() < end) await new Promise((res) => setTimeout(res, 50));
+      expect(alive(pid), "the installer outlived the engine").toBe(false);
+    } finally { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+  }, 20000);
 });

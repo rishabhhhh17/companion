@@ -19,6 +19,9 @@ const ALLOWED: &[&str] = &[
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
     "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop",
     "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
+    // The browser check's one time download, on the person's press, and asking whether it is set up. They name no folder
+    // or address (the engine always downloads Playwright's own browser into Companion's own folder), so not project bound.
+    "browser.check", "browser.install",
     "spending.show", "spending.set",
 ];
 
@@ -345,6 +348,15 @@ mod tests {
     fn allows_the_commands_pages_need() {
         for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "spending.set"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
+        }
+    }
+    #[test]
+    fn the_browser_check_download_may_be_asked_for_by_a_page_and_names_no_folder() {
+        // The card's button and its question: allowed, and not tied to a project (they name no folder and no address).
+        for t in ["browser.install", "browser.check"] {
+            assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
+            assert!(!PROJECT_BOUND.contains(&t), "{t}");
+            assert!(check_project(&json!({"v":1,"id":"c","type":t}), "").is_ok(), "{t} works before a folder is chosen");
         }
     }
     #[test]

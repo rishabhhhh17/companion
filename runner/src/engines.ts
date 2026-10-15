@@ -17,6 +17,10 @@ export type Settings = {
   fastModel?: string; visionModel?: string;
   // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
   aim: "default" | "computer_use"; aimModel?: string;
+  // The runner's own process tests only: a pretend browser download of this many milliseconds a step. Never with the real engine.
+  browserStubMs?: number;
+  // The runner's own process tests only: a stand in program for Playwright's installer, run through the real downloader.
+  browserStubInstaller?: string;
 };
 
 const setting = (v: string | undefined): string | undefined => (v && v.trim() ? v.trim() : undefined);
@@ -37,6 +41,8 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     assistStub: env.COMPANION_ASSIST_STUB === "1",
     aim: env.COMPANION_AIM === "computer_use" ? "computer_use" : "default",
     aimModel: env.COMPANION_AIM_MODEL || undefined,
+    ...(env.COMPANION_ENGINE === "scripted" && Number(env.COMPANION_BROWSER_STUB) > 0 ? { browserStubMs: Number(env.COMPANION_BROWSER_STUB) } : {}),
+    ...(env.COMPANION_ENGINE === "scripted" && env.COMPANION_BROWSER_STUB_INSTALLER ? { browserStubInstaller: env.COMPANION_BROWSER_STUB_INSTALLER } : {}),
   };
 }
 

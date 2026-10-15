@@ -54,5 +54,14 @@
 {"v":1,"id":"e67","type":"metrics.summary","enabled":true,"days":{"2026-10-12":{"walk_started":4,"walk_done":3}},"totals":{"walk_started":4,"walk_done":3},"rates":{"walkCompletion":0.75,"stepSuccess":null,"anywhereShare":null,"proofPass":null,"softRingCorrections":0}}
 {"v":1,"id":"e68","type":"walk.step","walk":"c43","project":"p_9f2c","lesson":"companion-permissions","title":"Allow Companion on your Mac","index":2,"total":4,"variant":"main","say":"Open Screen Recording.","find":"Screen Recording in the list","ask":true,"log":[{"say":"Open System Settings.","how":"done"},{"say":"Choose Privacy & Security.","how":"skipped"}]}
 {"v":1,"id":"e69","type":"checkpoint.restored","project":"p_9f2c","checkpoint":"cp_0003","safety":"cp_0007","recovered":["data.csv"],"largeLeftAlone":[],"leftAlone":[]}
+{"v":1,"id":"e70","type":"browser.status","installed":false,"installing":false}
+{"v":1,"id":"e71","type":"browser.install","stage":"downloading","detail":"Downloading the browser check: 40% of about 94 MB.","percent":40,"mb":94}
+{"v":1,"id":"e72","type":"browser.install","stage":"done","detail":"Ready. The next check will use it."}
+{"v":1,"id":"e73","type":"browser.install","stage":"failed","detail":"Companion could not reach the download server. Check your internet connection, then try again."}
+{"v":1,"id":"e74","type":"browser.install","stage":"cancelled","detail":"Stopped. Nothing was set up. Press the button to start again."}
+{"v":1,"id":"e75","type":"proof.step","agent":"builder-1","rung":"browser","label":"Opening it in a browser","status":"skipped","detail":"The hidden browser is not installed yet, so the page was not opened.","ms":0,"needs":"browser"}
+{"v":1,"id":"e76","type":"proof.result","agent":"builder-1","verdict":"passed_with_gaps","steps":[{"rung":"checks","label":"Building and checking the code","status":"passed","detail":"build passed.","ms":120},{"rung":"browser","label":"Opening it in a browser","status":"skipped","detail":"The hidden browser is not installed yet, so the page was not opened.","ms":0,"needs":"browser"}],"tries":1}
+{"v":1,"id":"e77","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"passed_with_gaps","needs":"browser"}
+{"v":1,"id":"e78","type":"ship.status","project":"p_9f2c","stage":"failed","detail":"The preview could not be checked: The hidden browser is not installed yet, so the page was not opened. It cannot go live until it has been checked.","previewUrl":"https://shop-abc.vercel.app","canGoLive":false,"needs":"browser"}
 {"v":1,"id":"e60","type":"spending.state","project":"p_9f2c","limitUsd":25,"spentUsd":0.42,"minUsd":1,"maxUsd":500}
 {"v":1,"id":"e61","type":"spending.state","project":"p_9f2c","limitUsd":10,"spentUsd":0,"minUsd":1,"maxUsd":500,"problem":"The daily limit must be between 1 and 500 dollars."}

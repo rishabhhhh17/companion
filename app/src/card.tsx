@@ -7,8 +7,8 @@ import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { NO_PROJECT, setSpendingLimit, showSpending, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
-import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
+import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine, Spending } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -346,6 +346,14 @@ function Card() {
   }, [m.toast?.lines.length]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
   const undone = m.undo?.stage === "done";
+  // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
+  const bv = browserView(m);
+  useEffect(() => { if (m.runnerUp) void send(checkBrowser()).catch(() => {}); }, [m.runnerUp]);
+  const getTheBrowser = () => {
+    if (bv?.busy) return;   // a second press while it downloads does nothing
+    dispatch({ type: "ui.browserInstallAsked" });
+    void send(getBrowser()).catch(() => dispatch({ type: "browser.install", stage: "failed", detail: S.browserFailed }));
+  };
   useEffect(() => { dispatch({ type: "ui.undoClosed" }); }, [m.receipt?.checkpoint]);
   // A question that was not answered in time is dropped from the card, because the engine has already refused it.
   useEffect(() => {
@@ -994,6 +1002,20 @@ function Card() {
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
+        </section>
+      )}
+
+      {bv && (
+        <section className={`panel ${m.browser.stage === "failed" ? "amber" : ""}`} role="status" aria-label={S.browserTitle}>
+          <h2>{S.browserTitle}</h2>
+          <div className="line">{bv.line}</div>
+          {typeof bv.percent === "number" && <progress max={100} value={bv.percent} aria-label={S.browserProgressLabel} />}
+          {(bv.button || bv.closable) && (
+            <div className="row">
+              {bv.button && <button className="btn primary" type="button" disabled={bv.busy} onClick={getTheBrowser}>{bv.button}</button>}
+              {bv.closable && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.browserClosed" })}>{S.closeFinished}</button>}
+            </div>
+          )}
         </section>
       )}
 
