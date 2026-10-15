@@ -262,3 +262,58 @@ describe("the user's own git is never written (F13, rule 10)", () => {
     expect(existsSync(join(p, ".git/refs/heads/feature"))).toBe(false);
   });
 });
+
+describe("undo never destroys a file it cannot save (found by the 15 Oct 2026 review)", () => {
+  const MIB = 1024 * 1024;
+  const big = (d: string, name: string, mib: number, fill = "B") => writeFileSync(join(d, name), fill.repeat(mib * MIB));
+
+  test("a file that grew past 2 MiB is copied aside before undo puts its older small version back", async () => {
+    const d = project({ "data.csv": "a,b\n1,2\n", "src/a.js": "1" });
+    const store = new CheckpointStore(tmp("shadow"), d);
+    const cp1 = await store.snapshot("before");
+    big(d, "data.csv", 3);
+    await store.snapshot("after: the task grew the file");
+    const r = await store.restore(cp1.id);
+    expect(read(d, "data.csv")).toBe("a,b\n1,2\n");                       // the undo did what undo means
+    expect(r.recovered).toEqual(["data.csv"]);                              // and the big version is not lost
+    const copy = join(store.shadowDir, "recovered", r.safetyCheckpoint, "data.csv");
+    expect(existsSync(copy)).toBe(true);
+    expect(statSync(copy).size).toBe(3 * MIB);
+  });
+
+  test("a file that was already too big when the checkpoint was taken is left exactly as it is", async () => {
+    const d = project({ "data.csv": "tiny\n", "src/a.js": "1" });
+    const store = new CheckpointStore(tmp("shadow"), d);
+    await store.snapshot("start");
+    big(d, "data.csv", 3);                               // grows, and is skipped from now on
+    const cp2 = await store.snapshot("grown");
+    expect(cp2.skipped.some((s) => s.path === "data.csv")).toBe(true);
+    writeFileSync(join(d, "src/a.js"), "2");
+    const r = await store.restore(cp2.id);
+    expect(statSync(join(d, "data.csv")).size).toBe(3 * MIB);   // the stale 5 byte copy in the checkpoint was not written over it
+    expect(r.largeLeftAlone).toEqual(["data.csv"]);
+    expect(read(d, "src/a.js")).toBe("1");                      // everything else was undone as usual
+  });
+
+  test("a big file created after the checkpoint is never deleted by undo", async () => {
+    const d = project({ "src/a.js": "1" });
+    const store = new CheckpointStore(tmp("shadow"), d);
+    const cp1 = await store.snapshot("start");
+    big(d, "export.sqlite", 4);
+    await store.restore(cp1.id);
+    expect(statSync(join(d, "export.sqlite")).size).toBe(4 * MIB);
+  });
+
+  test("if there is too much big data to copy aside, those files are left alone instead of overwritten", async () => {
+    const d = project({ "a.bin": "s", "b.bin": "s" });
+    const store = new CheckpointStore(tmp("shadow"), d, { recoveryBudgetBytes: 4 * MIB });
+    const cp1 = await store.snapshot("start");
+    big(d, "a.bin", 3, "A"); big(d, "b.bin", 3, "B");
+    await store.snapshot("grown");
+    const r = await store.restore(cp1.id);
+    const sizes = [statSync(join(d, "a.bin")).size, statSync(join(d, "b.bin")).size].sort();
+    expect(sizes).toEqual([1, 3 * MIB]);                                   // one fit in the budget and was restored; the other was kept
+    expect(r.recovered.length + r.largeLeftAlone.length).toBe(2);
+    expect(r.largeLeftAlone.length).toBe(1);
+  });
+});

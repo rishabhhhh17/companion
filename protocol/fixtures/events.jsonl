@@ -53,3 +53,4 @@
 {"v":1,"id":"e66","type":"walk.stopped","walk":"c43","reason":"Stopped. Your place is saved."}
 {"v":1,"id":"e67","type":"metrics.summary","enabled":true,"days":{"2026-10-12":{"walk_started":4,"walk_done":3}},"totals":{"walk_started":4,"walk_done":3},"rates":{"walkCompletion":0.75,"stepSuccess":null,"anywhereShare":null,"proofPass":null,"softRingCorrections":0}}
 {"v":1,"id":"e68","type":"walk.step","walk":"c43","project":"p_9f2c","lesson":"companion-permissions","title":"Allow Companion on your Mac","index":2,"total":4,"variant":"main","say":"Open Screen Recording.","find":"Screen Recording in the list","ask":true,"log":[{"say":"Open System Settings.","how":"done"},{"say":"Choose Privacy & Security.","how":"skipped"}]}
+{"v":1,"id":"e69","type":"checkpoint.restored","project":"p_9f2c","checkpoint":"cp_0003","safety":"cp_0007","recovered":["data.csv"],"largeLeftAlone":[],"leftAlone":[]}

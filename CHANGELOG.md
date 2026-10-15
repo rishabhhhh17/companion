@@ -22,6 +22,18 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Web look ups:** secrets can no longer ride out in the path of a web address (an unusually long address, or a long code-like piece of one, asks first); normal documentation links are unaffected.
 - A second layer was already in place and still is: the Mac's own sandbox refuses reading your keys and shell history, writing outside the project, and all network except package registries.
 
+## A launch review found real problems; the data-loss ones are fixed first: 15 Oct 2026
+
+Three independent reviewers read the engine, the Mac program and the pages. They agreed it was **not launch ready as it stood**. The worst findings were about losing work, so those came first:
+- **Undo could destroy a file it could not save.** A file that grew past 2 MiB (a dataset, a database export) cannot be kept in the safe copy; Undo then wrote the older small version over it, and undoing the undo could not bring it back. Now: where the safe copy only holds a stale small copy, the live file is left exactly as it is; where Undo really does put an older version back over a big file, the big one is copied aside first (to the safe-copy folder, up to 2 GB) and reported; with no room, it is left alone. Big files created after the undo point are never deleted. Tested with the reviewer's exact case.
+- **Undo while a task is running** fought with the task. Undo is now refused (in plain words) while anything is working in the project.
+- **The card said "Undone" without being told.** The engine now answers with what happened (which undo point, what was copied aside, what was left alone); the card change comes next.
+- **A folder that is not a project** (your whole home folder, "/", a system folder) is refused with a plain sentence, as is a folder with more than 150,000 files, instead of hanging while it tries to copy everything. Each git step has a 5 minute limit.
+- **A new Mac without Apple's developer tools** got a raw git error on the first task. It now says: open Terminal and run `xcode-select --install`.
+- **Line endings:** a project that asks git to change line endings no longer changes the bytes Undo gives back (a Windows-style file now comes back byte for byte).
+- **Two projects could overwrite each other's receipt picture** (checkpoint numbers repeat). The project is now part of the name.
+- **One background error could stop the whole engine** (and with it Stop and every task). A stray failure after an answer was handed back is now swallowed, and a last-resort handler keeps the engine running and says so.
+
 ## Garbage in, no crash, in the Mac program too: 14 Oct 2026
 
 - The same junk test now runs on the Mac side (the card page's JSON, text read from a screenshot, log text, text matching, the spoken line). **It found a real gap in secret covering:** a key run into the letters before it ("tokensk-ant-...", which text read from a picture can produce) was missed, both when blacking out a screenshot before it is sent and when scrubbing a support log. Anthropic, GitHub, Slack, Stripe and webhook key prefixes are now caught anywhere in a word, and ordinary words that merely contain the letters ("task-management-service") are left readable.

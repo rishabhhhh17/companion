@@ -280,3 +280,23 @@ describe("the fast lane, raw requests (Explain, Draw it for me)", () => {
     await expect(new FastLane({ ...cfg, queryFn: fake([{ type: "result", subtype: "error_max_turns", total_cost_usd: 0 }]) }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal)).rejects.toThrow(/error_max_turns/);
   });
 });
+
+describe("an error after the answer is not a crash (found by the 15 Oct 2026 review)", () => {
+  test("the vision lane hands back its answer and the engine's later complaint is swallowed", async () => {
+    const seen: unknown[] = [];
+    const on = (e: unknown) => seen.push(e);
+    process.on("unhandledRejection", on);
+    try {
+      // The lane ends the engine the moment the answer arrives; an engine that complains while being ended is the case.
+      async function* q() {
+        try { yield { type: "assistant", message: { content: [{ type: "text", text: '{"x":1,"y":2,"targetText":"a","confidence":0.9,"caption":"Click a"}' }], usage: {} } }; await new Promise((r) => setTimeout(r, 20)); }
+        finally { throw new Error("the engine complained while being ended"); }
+      }
+      const lane = new VisionLane({ claudeBinary: "x", env: {}, queryFn: (() => q()) as never, tmpDrive: { ensure: async () => "/tmp", wipe: async () => {} } });
+      const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/jpeg", w: 10, h: 10 }, question: "q", ocr: [] }, new AbortController().signal);
+      expect(r.point).toMatchObject({ x: 1, y: 2 });
+      await new Promise((res) => setTimeout(res, 100));
+      expect(seen).toEqual([]);
+    } finally { process.off("unhandledRejection", on); }
+  });
+});

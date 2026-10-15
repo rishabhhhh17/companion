@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AgentRunner } from "../src/agent.ts";
+import { AgentRunner, receiptPictureName } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
@@ -56,7 +56,7 @@ describe("the visual receipt in a task", () => {
     await s.go(); await settle();
     const left = require("node:fs").readdirSync(s.saveDir) as string[];
     expect(left).toHaveLength(200);
-    expect(left).toContain(`${of(s.events, "receipt")[0].checkpoint}.jpg`);
+    expect(left).toContain(receiptPictureName(s.project, of(s.events, "receipt")[0].checkpoint));
     expect(left).not.toContain("old0.jpg");
   });
   test("nothing is drawn for a failed check", async () => {

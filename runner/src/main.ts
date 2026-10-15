@@ -45,7 +45,12 @@ async function announceAuth() {
   const a = await currentAuth(settings);
   say({ type: "auth.status", method: a.method, ...(a.method === "api_key" ? { source: "keychain" } : {}) });
 }
-await announceAuth();
+try { await announceAuth(); } catch { say({ type: "auth.status", method: "unknown" }); }   // a failed look-up must not stop the engine starting
+
+// One thing going wrong in the background must never take the whole engine (and with it Stop, approvals and every task) down.
+const survive = (what: string) => (e: unknown) => { try { say({ type: "protocol.error", reason: `something went wrong in the background (${label(String((e as Error)?.message ?? e), 120)}); the engine kept running`, line: what }); } catch { /* nowhere to say it */ } };
+process.on("unhandledRejection", survive("unhandledRejection"));
+process.on("uncaughtException", survive("uncaughtException"));
 
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
