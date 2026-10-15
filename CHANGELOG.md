@@ -418,3 +418,11 @@ Checked against F17 section 4.2 and found two places where Show me was bolder th
 - Set the rules that never bend. You bring your own Claude, so we never pay for or resell AI usage. It never watches your screen in the background. It never steals your keyboard. It never changes your git history on its own: undo uses its own snapshots, and an agent asks before any git change. One key stops everything. "Done" means proven, not claimed.
 - Recorded 27 decisions that are already made (12 from the founder, 15 technical) so we don't argue with ourselves later.
 - Mapped every planned feature, from the first alpha to "someday", to the part of the code that will own it. Features that ship later should plug in without anything being rebuilt.
+
+## Launch review, round four (pages)
+- Undo now asks first, with a plain warning, and says "Undone" only after the engine confirms it finished. A failed undo says so.
+- Questions that ran out of time disappear from the card instead of sitting there dead.
+- If a check could not run all the way, pressing the key no longer says everything passes.
+- "Fixed after N tries" is no longer shown for a stopped task. Receipts say "partly checked" when some checks were skipped.
+- Engine messages written for people are shown as they are; technical ones are wrapped in plain words.
+- The card no longer grabs the keyboard while you are typing.
