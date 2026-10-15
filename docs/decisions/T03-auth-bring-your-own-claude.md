@@ -45,8 +45,8 @@ The full flow is in technical_research.md section 3. Rules a coding agent must n
 ## Settled by desk research (7 Oct 2026)
 - Keychain access: `keyring-core` 1.0.0 with the native Apple and Windows stores.
 
-## Proposed change: Claude Code's folder on the API key route (16 Oct 2026, waiting for the founder)
-Not to be merged until the founder says yes (branch `m11/engine-privacy`). This is a change of design, not research proven wrong.
+## Change: Claude Code's folder on the API key route (16 Oct 2026, agreed by the founder)
+The founder said yes on 16 Oct 2026. This is a change of design, not research proven wrong. Still owed: one real run on the API key route to confirm Claude Code accepts a fresh folder.
 - What: on the API key route only, agent tasks and both lanes run with `CLAUDE_CONFIG_DIR` set to `runner/claude` inside Companion's data folder (`<data>/claude`, made private to the person). The plan route is unchanged: never set. A value the person's own shell already exports is kept on both routes, and the default `~/.claude` is never named.
 - Why: with it unset, Claude Code saves every task's conversation under the person's own `~/.claude/projects`, and Delete everything does not remove it. Inside Companion's data folder it does (the task history group of Delete everything). Prompt help text, captures and off the record tasks are saved nowhere at all (`persistSession: false`), whichever route.
 - Why the old rule does not apply here: it exists because the folder decides which Keychain entry holds the plan login (bug #92252). On the API key route the key comes from the environment and outranks any stored login (section 3, step 4), so which Keychain entry the folder points at does not decide how a task signs in.
