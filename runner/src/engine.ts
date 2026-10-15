@@ -2,7 +2,10 @@
 // SDK (later in M1). The scripted one plays back a fixed script, for free, fast tests.
 
 export type ToolUse = { name: string; input: Record<string, unknown> };
-export type Turn = { text?: string; tool?: ToolUse; costUsd: number; sessionId?: string };
+// Tokens used since the engine's last turn that reported any. `in` is input not read from the cache (cache writes count
+// here), `cacheRead` is input read from the cache, `out` is output. Absent when the engine did not say.
+export type Usage = { in: number; cacheRead: number; out: number };
+export type Turn = { text?: string; tool?: ToolUse; costUsd: number; sessionId?: string; usage?: Usage };
 export type ToolResult = { ok: boolean; output: string };
 export type Authorization = { allow: boolean; reason: string };
 // `authorize` is how an engine that runs tools itself (the real SDK) asks Companion before each one.
@@ -17,6 +20,8 @@ export type EngineOptions = {
   toolDone?: (toolUseId?: string) => void;
   // What Companion remembers about this person and project (plain lines they can read and change). Empty when off the record.
   memory?: string;
+  // Off the record: the engine saves no conversation, so there is nothing to continue later (never pass resumeSession).
+  offTheRecord?: boolean;
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

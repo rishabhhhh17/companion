@@ -1,5 +1,6 @@
 // Which engine the runner program uses. The real one looks up how to sign in every time a
 // task starts, so adding a key while the app is open just works.
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "./engine.ts";
@@ -42,7 +43,16 @@ export async function currentAuth(s: Settings): Promise<Auth> {
   return a.method === "api_key" ? { method: "api_key", apiKey: a.apiKey } : { method: "none" };
 }
 
-const childEnv = (a: Auth) => buildChildEnv(process.env, a.method === "api_key" ? { route: "api_key", apiKey: a.apiKey } : { route: "plan" });
+// The environment every Claude Code run gets. On the API key route Claude Code keeps its saved conversations (needed to
+// continue a task) and its other files in a folder inside Companion's data folder, so Delete everything removes them,
+// not in the person's own ~/.claude. On the plan route its folder is never changed: that folder decides which Keychain
+// entry holds the person's login (T03). A folder set on purpose before Companion started (tests) is kept on both.
+export function engineEnv(a: Auth, data: string, parent: Record<string, string | undefined> = process.env): Record<string, string> {
+  const own = join(data, "claude");
+  const env = buildChildEnv(parent, a.method === "api_key" ? { route: "api_key", apiKey: a.apiKey, configDir: own } : { route: "plan" });
+  if (env.CLAUDE_CONFIG_DIR === own) { mkdirSync(own, { recursive: true, mode: 0o700 }); chmodSync(own, 0o700); }
+  return env;
+}
 const NOT_CONNECTED = "Not connected: add your API key, or sign in with your Claude plan.";
 
 class LazySdkEngine implements Engine {
@@ -51,7 +61,7 @@ class LazySdkEngine implements Engine {
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
     const a = await currentAuth(this.s);
     if (a.method === "none") throw new Error(NOT_CONNECTED);
-    yield* new SdkEngine({ claudeBinary: resolveClaudeBinary(this.s.claudeBin), env: childEnv(a) }).start({ ...opts, model: pickModel(opts.model, this.s.model) });
+    yield* new SdkEngine({ claudeBinary: resolveClaudeBinary(this.s.claudeBin), env: engineEnv(a, this.s.data) }).start({ ...opts, model: pickModel(opts.model, this.s.model) });
   }
 }
 
@@ -65,7 +75,7 @@ export function createLanes(s: Settings): { fast: FastLike; vision: VisionLike }
   const lane = async () => {
     const a = await currentAuth(s);
     if (a.method === "none") throw new Error(NOT_CONNECTED);
-    return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: childEnv(a) };
+    return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: engineEnv(a, s.data) };
   };
   const classic: VisionLike = { locate: async (req, signal) => new VisionLane(await lane()).locate(req, signal) };
   // The Computer Use lane needs the person's own API key, so it is never used on a plan sign in; any failure falls back.

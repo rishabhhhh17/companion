@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
 import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
-import { EngineStop, type Authorization, type Engine, type EngineOptions, type ToolUse, type Turn, type ToolResult } from "./engine.ts";
+import { EngineStop, type Authorization, type Engine, type EngineOptions, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
 
 const COMPANION_APPEND = "You are working inside a user's project folder for a Companion task. Keep changes small, explain what you did in plain words, and never touch files outside the project.";
 
@@ -28,6 +28,8 @@ export type SdkConfig = {
   authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string; planOnly?: boolean; toolDone?: (toolUseId?: string) => void;
   // What Companion remembers about this person and project, added to the instructions as background.
   memory?: string;
+  // Off the record: no saved conversation (Claude Code writes none to disk). Such a session cannot be continued later.
+  offTheRecord?: boolean;
 };
 
 export function buildSdkOptions(c: SdkConfig) {
@@ -70,23 +72,36 @@ export function buildSdkOptions(c: SdkConfig) {
     enableFileCheckpointing: true,
     includePartialMessages: false,
     abortController: controller,
+    ...(c.offTheRecord ? { persistSession: false } : {}),
     ...(c.resumeSession ? { resume: c.resumeSession } : {}),
   };
 }
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
+const count = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
+
+// The tokens of one result: its own main loop usage, which the SDK keeps per round. Not the per model totals
+// (`modelUsage`): those continue from the saved totals when a conversation is continued, which Companion does in the fix
+// loop and in every Drive step, so each round would count the rounds before it again. The main loop usage leaves out
+// helper and sub agent calls, so it can read a little low. Null when the result has none.
+export function turnTokens(u: any): Usage | null {
+  if (!u || typeof u !== "object") return null;
+  return { in: count(u.input_tokens) + count(u.cache_creation_input_tokens), cacheRead: count(u.cache_read_input_tokens), out: count(u.output_tokens) };
+}
 
 export class SdkEngine implements Engine {
   readonly executesTools = true;
   constructor(private o: { claudeBinary: string; env: Record<string, string>; queryFn?: typeof realQuery }) {}
 
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone });
+    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone, memory: opts.memory, offTheRecord: opts.offTheRecord });
     const q = (this.o.queryFn ?? realQuery)({ prompt: opts.prompt, options: options as never });
     let lastTotal = 0, sessionId: string | undefined;
     for await (const m of q as AsyncIterable<any>) {
       if (m.session_id) sessionId = String(m.session_id);
       if (m.type === "assistant") {
+        // An assistant message's own usage is not counted: the result already holds it, and one reply can arrive as
+        // several messages that each repeat the same usage.
         const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
         if (text) yield { text, costUsd: 0, sessionId };
       } else if (m.type === "result") {
@@ -94,7 +109,8 @@ export class SdkEngine implements Engine {
         const delta = round(Math.max(0, total - lastTotal));
         lastTotal = total;
         if (m.subtype && m.subtype !== "success") throw new EngineStop(`${m.subtype}: the run stopped`, delta);
-        yield { costUsd: delta, sessionId };
+        const usage = turnTokens(m.usage);
+        yield { costUsd: delta, sessionId, ...(usage ? { usage } : {}) };
       }
     }
   }

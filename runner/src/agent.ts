@@ -11,7 +11,7 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
-import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
+import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
 import { clip, label as makeLabel, redact } from "./redact.ts";
@@ -427,7 +427,10 @@ export class AgentRunner {
     this.state(cmd.agent, "thinking");
 
     let usd = 0, booked = 0, commands = 0, status = "done";
+    const tokens = { in: 0, cacheRead: 0, out: 0 };
     const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; };
+    // Off the record, the engine saves no conversation, so nothing can be continued later: each round starts afresh.
+    const offRecord = !!cmd.offTheRecord;
     const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
@@ -436,7 +439,8 @@ export class AgentRunner {
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       const gen = this.o.engine.start({
-        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession, memory: recalled,
+        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled,
+        ...(offRecord ? { offTheRecord: true } : {}),
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
         toolDone: (id) => { if (id) this.watchers.get(cmd.agent)?.end(id); },
       });
@@ -447,7 +451,8 @@ export class AgentRunner {
           const turn = next.value;
           if (turn.sessionId) sessionId = turn.sessionId;
           usd += turn.costUsd; book();
-          this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { in: 0, cacheRead: 0, out: 0 } } as never);
+          if (turn.usage) { tokens.in += turn.usage.in; tokens.cacheRead += turn.usage.cacheRead; tokens.out += turn.usage.out; }
+          this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { ...tokens } } as never);
           if (usd > budget) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
 
           let result: ToolResult | undefined;
@@ -499,7 +504,7 @@ export class AgentRunner {
       const afterFiles = this.o.reviewer ? await store.readFiles(after.id, (p) => paths.has(p)) : {};
       const review = this.o.reviewer && needsReview(changed, afterFiles) ? async () => {
         const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), afterFiles];
-        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; book(); });
+        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; book(); }, offRecord);
         return parseReview(text);
       } : undefined;
       try {
@@ -519,7 +524,9 @@ export class AgentRunner {
       const f = res.failedAt ?? res.steps.at(-1);
       this.state(cmd.agent, "working");
       status = "done";
-      ok = await round(`The checks on your work failed. Please fix this and keep the change small.\n\nFailed check: ${f?.label ?? "unknown"}\nWhat happened: ${f?.detail ?? "no details"}`, sessionId);
+      const failedText = `The checks on your work failed. Please fix this and keep the change small.\n\nFailed check: ${f?.label ?? "unknown"}\nWhat happened: ${f?.detail ?? "no details"}`;
+      // Off the record there is no saved conversation to continue, so the request is said again.
+      ok = await round(offRecord ? `You were asked to do this in the project:\n${cmd.prompt}\n\nYou have already changed some of the project's files for it. ${failedText}` : failedText, sessionId);
       if (ok && status === "done") {
         const probe = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
         if ((await store.diff(after.id, probe.id)).length === 0) { status = "not_done"; break; } // the fix changed nothing
@@ -592,10 +599,10 @@ export class AgentRunner {
   // --- Drive: plan first (read only), then one approved step at a time ---
 
   // The second reviewer sees only the text it is given. Every tool is refused.
-  private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void): Promise<string> {
+  private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void, offTheRecord = false): Promise<string> {
     let text = "";
     const gen = this.o.reviewer!.start({
-      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? "claude-opus-5-5", signal, budgetUsd, planOnly: true,
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? "claude-opus-5-5", signal, budgetUsd, planOnly: true, ...(offTheRecord ? { offTheRecord: true } : {}),
       authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
     });
     try {
@@ -643,7 +650,8 @@ export class AgentRunner {
     };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
-      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: resume, planOnly: true, authorize, memory: recalled });
+      // Off the record there is no saved conversation, so nothing is ever continued.
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, authorize, memory: recalled, ...(spec.offTheRecord ? { offTheRecord: true } : {}) });
       try {
         let next = await gen.next();
         while (!next.done) {
@@ -682,7 +690,7 @@ export class AgentRunner {
     await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal)));
       if (steps.length > MAX_STEPS && !st.abort.signal.aborted) {
-        const again = parsePlan(await ask(shortenPrompt(steps.length), st.sessionId));
+        const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length)) : ask(shortenPrompt(steps.length), st.sessionId)));
         if (again.length) steps = again;
       }
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
@@ -1013,11 +1021,13 @@ export class AgentRunner {
         if (this.room(plan.project) <= 0) { status = "daily_limit"; this.dailyLimit(cmd.agent); this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
-        const stepCmd = (prompt: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt, model: plan.model, budgetUsd: remaining, ...(plan.offTheRecord ? { offTheRecord: true } : {}) });
+        // Off the record nothing of the planning conversation was saved, so each step starts afresh and is told the goal again.
+        const stepCmd = (p: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt: plan.offTheRecord ? freshStepPrompt(plan.goal ?? "", p) : p, model: plan.model, budgetUsd: remaining, ...(plan.offTheRecord ? { offTheRecord: true } : {}) });
+        const resumeAt = () => (plan.offTheRecord ? undefined : session);
         let prompt = stepPrompt(index, total, title);
         let r: Awaited<ReturnType<AgentRunner["run"]>>;
         for (;;) {
-          r = await this.run(stepCmd(prompt), { resumeSession: session });
+          r = await this.run(stepCmd(prompt), { resumeSession: resumeAt() });
           session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           // Paused in the middle of the step: wait, then carry on with the same step.
           if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
@@ -1032,7 +1042,7 @@ export class AgentRunner {
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));
           if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: session });
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt() });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }

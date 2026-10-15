@@ -86,6 +86,87 @@ describe("what Claude is given from the project", () => {
   test("a folder named like the file is not read", () => { const d = tmp("dir"); mkdirSync(join(d, "CLAUDE.md")); expect(projectNotes(d)).toBeNull(); });
 });
 
+// Companion itself writes a CLAUDE.md that is only "@AGENTS.md" (memory/agentsmd.ts), so an import line is followed, one
+// level deep, only to a plain file inside the project, never through a link, and with the same size limit.
+describe("a notes file that imports another file", () => {
+  test("Companion's own one line CLAUDE.md gives Claude what AGENTS.md says, not the words '@AGENTS.md'", () => {
+    const d = tmp("imp"); writeFileSync(join(d, "CLAUDE.md"), "@AGENTS.md\n"); writeFileSync(join(d, "AGENTS.md"), "# AGENTS.md\n\n- Built with Vite\n");
+    const n = projectNotes(d)!;
+    expect(n).toContain("Built with Vite");
+    expect(n).not.toMatch(/^@AGENTS\.md$/m);
+  });
+  test("the person's own words around the import stay, in order", () => {
+    const d = tmp("imp2"); writeFileSync(join(d, "CLAUDE.md"), "Use tabs.\n@docs/style.md\nNever touch pricing.\n");
+    mkdirSync(join(d, "docs")); writeFileSync(join(d, "docs", "style.md"), "Short sentences.");
+    const n = projectNotes(d)!;
+    expect(n.indexOf("Use tabs.")).toBeLessThan(n.indexOf("Short sentences."));
+    expect(n.indexOf("Short sentences.")).toBeLessThan(n.indexOf("Never touch pricing."));
+  });
+  test("Companion's marked block holding the import is followed too", () => {
+    const d = tmp("imp3");
+    writeFileSync(join(d, "CLAUDE.md"), "Mine.\n\n<!-- companion:begin (kept up to date by Companion; delete this whole block to stop) -->\n@AGENTS.md\n<!-- companion:end -->\n");
+    writeFileSync(join(d, "AGENTS.md"), "- Uses Postgres");
+    expect(projectNotes(d)).toContain("Uses Postgres");
+  });
+  test("only one level deep: an import inside the imported file is left as text", () => {
+    const d = tmp("deep"); writeFileSync(join(d, "CLAUDE.md"), "@AGENTS.md"); writeFileSync(join(d, "AGENTS.md"), "top\n@more.md"); writeFileSync(join(d, "more.md"), "SECOND LEVEL");
+    const n = projectNotes(d)!;
+    expect(n).toContain("top"); expect(n).not.toContain("SECOND LEVEL");
+  });
+  test("a file outside the project is never read, however the path is written", () => {
+    const out = tmp("out"); writeFileSync(join(out, "secret.md"), "TOP SECRET OUTSIDE");
+    const d = tmp("esc");
+    writeFileSync(join(d, "CLAUDE.md"), [`@../${out.split("/").pop()}/secret.md`, `@${join(out, "secret.md")}`, "@~/secret.md", "@sub/../../secret.md"].join("\n"));
+    expect(projectNotes(d)).not.toContain("TOP SECRET OUTSIDE");
+  });
+  test("an absolute path that is inside the project is fine", () => {
+    const d = tmp("abs"); writeFileSync(join(d, "notes.md"), "INSIDE NOTE"); writeFileSync(join(d, "CLAUDE.md"), `@${join(d, "notes.md")}`);
+    expect(projectNotes(d)).toContain("INSIDE NOTE");
+  });
+  test("never through a link: not a linked file, and not a file inside a linked folder", () => {
+    const out = tmp("lo"); writeFileSync(join(out, "secret.md"), "TOP SECRET OUTSIDE");
+    const d = tmp("ln");
+    symlinkSync(join(out, "secret.md"), join(d, "AGENTS.md"));
+    symlinkSync(out, join(d, "docs"));
+    writeFileSync(join(d, "CLAUDE.md"), "@AGENTS.md\n@docs/secret.md\n");
+    const n = projectNotes(d)!;
+    expect(n).not.toContain("TOP SECRET OUTSIDE");
+    expect(n).toContain("@AGENTS.md");   // what could not be followed is left as it was
+  });
+  test("a link inside the project that points inside the project is not followed either", () => {
+    const d = tmp("lin"); writeFileSync(join(d, "real.md"), "LINKED CONTENT"); symlinkSync(join(d, "real.md"), join(d, "AGENTS.md"));
+    writeFileSync(join(d, "CLAUDE.md"), "@AGENTS.md");
+    expect(projectNotes(d)).not.toContain("LINKED CONTENT");
+  });
+  test("a missing file or a folder is left as the line it was", () => {
+    const d = tmp("miss"); mkdirSync(join(d, "folder")); writeFileSync(join(d, "CLAUDE.md"), "@nothing.md\n@folder\n");
+    const n = projectNotes(d)!;
+    expect(n).toContain("@nothing.md"); expect(n).toContain("@folder");
+  });
+  test("the notes file importing itself, or the same file twice, gives it once", () => {
+    const d = tmp("twice"); writeFileSync(join(d, "CLAUDE.md"), "@CLAUDE.md\n@AGENTS.md\n@./AGENTS.md\n"); writeFileSync(join(d, "AGENTS.md"), "ONCE ONLY");
+    const n = projectNotes(d)!;
+    expect(n.split("ONCE ONLY").length - 1).toBe(1);
+  });
+  test("an import inside a code example is not followed", () => {
+    const d = tmp("code"); writeFileSync(join(d, "AGENTS.md"), "SHOULD NOT APPEAR"); writeFileSync(join(d, "CLAUDE.md"), "Example:\n```\n@AGENTS.md\n```\n");
+    expect(projectNotes(d)).not.toContain("SHOULD NOT APPEAR");
+  });
+  test("an @ inside a sentence is not an import", () => {
+    const d = tmp("mention"); writeFileSync(join(d, "AGENTS.md"), "SHOULD NOT APPEAR"); writeFileSync(join(d, "CLAUDE.md"), "Ask @AGENTS.md first, or mail me@example.com.\n");
+    expect(projectNotes(d)).not.toContain("SHOULD NOT APPEAR");
+  });
+  test("the same size limit holds for everything put together, and says so", () => {
+    const d = tmp("bigimp"); writeFileSync(join(d, "CLAUDE.md"), "Start.\n@AGENTS.md\n@more.md\n"); writeFileSync(join(d, "AGENTS.md"), "y".repeat(100_000)); writeFileSync(join(d, "more.md"), "z".repeat(100_000));
+    const n = projectNotes(d)!;
+    expect(n.length).toBeLessThan(25_000); expect(n).toMatch(/cut/i); expect(n).toContain("Start.");
+  });
+  test("a CLAUDE.md that is only an import of a missing file is still passed on as it is", () => {
+    const d = tmp("only"); writeFileSync(join(d, "CLAUDE.md"), "@AGENTS.md\n");
+    expect(projectNotes(d)).toContain("@AGENTS.md");
+  });
+});
+
 describe("the options handed to the SDK", () => {
   const d = tmp("opts"); writeFileSync(join(d, "CLAUDE.md"), "Project note: be careful.");
   const o: any = buildSdkOptions({ project: d, model: "m", budgetUsd: 1, claudeBinary: "/x/claude", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal });

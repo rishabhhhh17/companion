@@ -18,7 +18,8 @@ pub struct Item { pub id: &'static str, pub label: &'static str, pub paths: Vec<
 /// Which group a file or folder directly inside the runner's data folder belongs to.
 fn runner_group(name: &str) -> &'static str {
     match name {
-        n if n.starts_with("tasks.db") || n.starts_with("ledger.db") => "history",
+        // "claude": Claude Code's own folder on the API key route (saved task conversations), see runner/src/engines.ts.
+        n if n.starts_with("tasks.db") || n.starts_with("ledger.db") || n == "claude" => "history",
         "shadow" => "undo",
         "receipts" | "work" => "pictures",
         n if n.starts_with("metrics.json") => "numbers",
@@ -234,6 +235,20 @@ mod tests {
         Mac { root, home, data }
     }
 
+    #[test]
+    fn claude_codes_saved_conversations_are_task_history_and_are_removed() {
+        // On the API key route the runner points Claude Code's own folder at runner/claude (runner/src/engines.ts).
+        assert_eq!(runner_group("claude"), "history");
+        let m = mac("claude");
+        create_dir_all(m.data.join("runner/claude/projects/-Users-x-site")).unwrap();
+        write(m.data.join("runner/claude/projects/-Users-x-site/s1.jsonl"), "{\"prompt\":\"make the page\"}\n").unwrap();
+        write(m.data.join("runner/claude/.claude.json"), "{}").unwrap();
+        let g = items(&m.home, &m.data);
+        assert!(g.iter().find(|i| i.id == "history").unwrap().paths.iter().any(|p| p.ends_with("runner/claude")));
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(!m.data.join("runner/claude").exists());
+    }
     #[test]
     fn beta_numbers_and_lesson_places_are_listed_and_removed_with_everything_else() {
         assert_eq!(runner_group("metrics.json"), "numbers");
