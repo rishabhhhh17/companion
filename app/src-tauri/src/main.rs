@@ -13,6 +13,7 @@ mod logfile;
 mod permissions;
 mod ax;
 mod phelp;
+mod errhelp;
 #[allow(dead_code)] // wired to the hotkey in M5b
 mod coords;
 mod frame;
@@ -33,6 +34,7 @@ mod practice;
 mod diagram;
 mod snap;
 mod prompthelp;
+mod errorsel;
 #[allow(dead_code)]
 mod voice;
 #[cfg(target_os = "macos")]
@@ -287,6 +289,7 @@ fn sc_problem() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyF) }
 fn sc_voice() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyV) }
 fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
 fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
+fn sc_explain() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyE) }
 fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }
 static ARMED: AtomicU64 = AtomicU64::new(0);
 
@@ -311,6 +314,9 @@ fn arm_result_keys(app: &AppHandle, on: bool) {
 #[tauri::command] fn ph_restore(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, true); }
 #[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
 #[tauri::command] fn ph_answer(app: AppHandle, answer: String) { arm_result_keys(&app, false); phelp::answer(&app, answer); }
+// The error explainer's card: the answer about reading in this app (shared with Prompt help), and Close.
+#[tauri::command] fn eh_consent(app: AppHandle, choice: String) { errhelp::consent_answer(&app, &choice); }
+#[tauri::command] fn eh_dismiss(app: AppHandle) { errhelp::dismiss(&app); }
 
 #[tauri::command]
 fn permissions_status() -> permissions::Permissions { permissions::current() }
@@ -522,6 +528,7 @@ fn showme_stop(app: &AppHandle) {
     // Prompt help reading or waiting for a decision ends too, and the keys it borrowed (Accept, and Esc everywhere) are given back.
     // Changing shortcuts from inside a shortcut handler can deadlock, so that part runs on its own thread.
     phelp::dismiss(app);
+    errhelp::dismiss(app);   // an error being read is dropped unsent
     let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false));
     showme_stop_rest(app);
 }
@@ -1388,6 +1395,10 @@ fn main() {
                         log("hotkey", json!({ "id": "R" }));
                         let a = app.clone();
                         std::thread::spawn(move || { arm_result_keys(&a, false); phelp::on_hotkey(&a, open_card); });
+                    } else if s == &sc_explain() {
+                        // Explain the error the person selected in another app. The light comes on before anything is read.
+                        log("hotkey", json!({ "id": "E" }));
+                        errhelp::on_hotkey(app, open_card);
                     } else if s == &sc_accept() {
                         log("hotkey", json!({ "id": "A" }));
                         let a = app.clone();
@@ -1405,7 +1416,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -1456,7 +1467,7 @@ fn main() {
             });
             // Another app may already own one of our hotkeys. That must never stop Companion from opening.
             let mut taken: Vec<&str> = Vec::new();
-            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk"), (sc_showme(), "Show me how"), (sc_problem(), "point at the problem")] {
+            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk"), (sc_showme(), "Show me how"), (sc_problem(), "point at the problem"), (sc_explain(), "explain an error")] {
                 if app.global_shortcut().register(sc).is_err() { taken.push(what); }
             }
             if !taken.is_empty() {

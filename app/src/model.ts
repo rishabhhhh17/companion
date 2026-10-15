@@ -50,7 +50,20 @@ export type BrowserSetupState = { needed: boolean; installed?: boolean; stage: "
 // The daily spending limit row in Settings, for one project: the limit, what it spent today (an estimate), the bounds, and why
 // a new limit was refused if it was.
 export type Spending = { project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
+// Which task broke it: asked and running (with its progress), then done with the answer; undoing just that task asks first.
+export type BisectTask = { label: string; at: string };
+export type BisectState = {
+  stage: "running" | "done"; run?: number; maxRuns?: number; what?: string; label?: string;
+  outcome?: string; step?: { rung: string; label: string }; task?: BisectTask & { checkpoint: string }; earlier?: BisectTask; later?: BisectTask;
+  changed?: { file: string; kind: string }[]; changedCount?: number; undo?: "safe" | "show_only"; why?: string; diff?: string; detail?: string;
+  undoStage?: "confirm" | "working" | "done" | "failed"; note?: string; reverted?: number;
+};
+// The error explainer: the stage the app is in (reading, consent, thinking...), then the answer for this press (req).
+// where is only ever a line confirmed in the project.
+export type ErrorHelp = { stage: string; app?: string; req?: string; why?: string; project?: string; sentences?: string[]; where?: Problem; excerpt?: string; evidence?: string; reason?: string };
 export type Model = {
+  bisect: BisectState | null;
+  eh: ErrorHelp | null;
   browser: BrowserSetupState;
   spending: Spending | null;
   doctor: DoctorItem[] | null;
@@ -103,7 +116,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -139,6 +152,45 @@ type Ev = Record<string, any> & { type?: string };
 export function reduce(m: Model, e: Ev): Model {
   switch (e.type) {
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
+    // ---- which task broke it ----
+    case "ui.bisectAsked": return { ...m, bisect: { stage: "running" } };
+    case "ui.bisectClosed": return { ...m, bisect: null };
+    case "bisect.progress": return m.bisect?.stage === "running" ? { ...m, bisect: { ...m.bisect, run: Number(e.run) || undefined, maxRuns: Number(e.maxRuns) || undefined, what: String(e.what ?? ""), label: typeof e.label === "string" ? e.label : undefined } } : m;
+    case "bisect.result": {
+      // Only the answer to a search this page asked for and is still waiting on; a stopped one simply goes.
+      if (m.bisect?.stage !== "running") return m;
+      if (e.outcome === "cancelled") return { ...m, bisect: null };
+      const t = (x: any): BisectTask | undefined => (x && typeof x.label === "string" ? { label: x.label, at: String(x.at ?? "") } : undefined);
+      const task = e.task && typeof e.task.label === "string" && typeof e.task.checkpoint === "string" ? { label: e.task.label, at: String(e.task.at ?? ""), checkpoint: e.task.checkpoint } : undefined;
+      return { ...m, bisect: { stage: "done", outcome: String(e.outcome), run: Number(e.runs) || undefined, maxRuns: Number(e.maxRuns) || undefined,
+        ...(e.step && typeof e.step.label === "string" ? { step: { rung: String(e.step.rung ?? ""), label: e.step.label } } : {}),
+        ...(task ? { task } : {}), ...(t(e.earlier) ? { earlier: t(e.earlier) } : {}), ...(t(e.later) ? { later: t(e.later) } : {}),
+        ...(Array.isArray(e.changed) ? { changed: e.changed.filter((c: any) => c && typeof c.file === "string").map((c: any) => ({ file: c.file, kind: String(c.kind) })) } : {}),
+        ...(typeof e.changedCount === "number" ? { changedCount: e.changedCount } : {}),
+        ...(e.undo === "safe" || e.undo === "show_only" ? { undo: e.undo } : {}),
+        ...(typeof e.why === "string" ? { why: e.why } : {}), ...(typeof e.diff === "string" ? { diff: e.diff } : {}), ...(typeof e.detail === "string" ? { detail: e.detail } : {}) } };
+    }
+    case "ui.bisectUndoAsked": return m.bisect?.stage === "done" && m.bisect.undo === "safe" && m.bisect.task ? { ...m, bisect: { ...m.bisect, undoStage: "confirm" } } : m;
+    case "ui.bisectUndoCancelled": return m.bisect ? { ...m, bisect: { ...m.bisect, undoStage: undefined } } : m;
+    case "ui.bisectUndoSent": return m.bisect?.undoStage === "confirm" ? { ...m, bisect: { ...m.bisect, undoStage: "working" } } : m;
+    case "bisect.undone": {
+      if (m.bisect?.undoStage !== "working" || m.bisect.task?.checkpoint !== e.checkpoint) return m;
+      return e.ok === true ? { ...m, bisect: { ...m.bisect, undoStage: "done", reverted: Array.isArray(e.reverted) ? e.reverted.length : 0 } } : { ...m, bisect: { ...m.bisect, undoStage: "failed", note: String(e.reason ?? "") } };
+    }
+    // ---- the error explainer ----
+    case "app.explain_error": {
+      if (e.stage === "dismissed") return { ...m, eh: null };
+      return { ...m, eh: { stage: String(e.stage ?? ""), app: typeof e.app === "string" ? e.app : m.eh?.app, ...(typeof e.req === "string" ? { req: e.req } : {}), ...(typeof e.why === "string" ? { why: e.why } : {}) } };
+    }
+    case "error.explained": {
+      if (!m.eh?.req || m.eh.req !== e.req) return m;   // only the answer to this press
+      const w = e.where;
+      const where = w && w.kind === "line" && typeof w.file === "string" && Number.isInteger(w.line) && w.line > 0 ? w as Problem : undefined;
+      const sentences = Array.isArray(e.sentences) ? e.sentences.filter((x: unknown): x is string => typeof x === "string" && x.length > 0) : [];
+      return { ...m, eh: { ...m.eh, stage: e.ok === true && sentences.length ? "ready" : "unexplained", sentences, ...(where ? { where } : {}), ...(typeof e.project === "string" ? { project: e.project } : {}),
+        excerpt: String(e.excerpt ?? ""), evidence: String(e.evidence ?? ""), ...(typeof e.reason === "string" ? { reason: e.reason } : {}) } };
+    }
+    case "ui.ehClosed": return { ...m, eh: null };
     case "ui.undoCancelled": case "ui.undoClosed": return { ...m, undo: null };
     case "ui.undoSent": return m.undo ? { ...m, undo: { ...m.undo, stage: "working" } } : m;
     case "checkpoint.restored": return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0 } } : m;
@@ -151,9 +203,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -167,7 +219,7 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -430,6 +482,78 @@ export function phWords(m: Model): string | null {
     case "nothing_to_read": return `I could not find text to read in ${p.app ?? "this app"}. Click into the text box first.`;
     case "consent": return `Allow Prompt help to read the text box in ${p.app ?? "this app"}?`;
     default: return p.message ?? null;
+  }
+}
+
+// ---- which task broke it ----
+
+/** A date and time in plain words ("14 October at 13:30"), in the person's own time zone. */
+export function whenWords(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+}
+
+/** The button shows when a check failed (the key found a problem, or a task's checks failed and it stopped trying) and there
+ *  are at least two earlier tasks that changed the project to compare. Never while a search is running. */
+export function canBisect(m: Model): boolean {
+  if (m.bisect?.stage === "running") return false;
+  const failed = m.point?.stage === "found" || (m.task?.proof?.verdict === "failed" && !isFixing(m));
+  return failed && m.history.filter((h) => !!h.checkpoint && h.changed !== 0).length >= 2;
+}
+
+const sentence = (s: string | undefined) => (s && /[.!?]$/.test(s.trim()) ? s.trim() : "");
+
+/** The search and its answer, one plain sentence per line. */
+export function bisectLines(m: Model): string[] {
+  const b = m.bisect;
+  if (!b) return [];
+  if (b.stage === "running") {
+    if (!b.run || !b.maxRuns) return [S.bisectStarting];
+    if (b.what === "after" && b.label) return [S.bisectAfter(b.label, b.run, b.maxRuns)];
+    if (b.what === "before" && b.label) return [S.bisectBefore(b.label, b.run, b.maxRuns)];
+    return [S.bisectNow(b.run, b.maxRuns)];
+  }
+  const step = b.step ? [S.bisectStep(b.step.label)] : [];
+  switch (b.outcome) {
+    case "found": {
+      if (!b.task) return [S.bisectFailed];
+      const lines = [S.bisectFound(b.task.label, whenWords(b.task.at)), ...step];
+      if (b.undo === "show_only") lines.push(...[sentence(b.why), S.bisectShowOnly].filter(Boolean));
+      if (b.undoStage === "working") lines.push(S.bisectUndoWorking);
+      if (b.undoStage === "done") lines.push(S.bisectUndone);
+      if (b.undoStage === "failed") lines.push(sentence(b.note) || S.bisectFailed);
+      return lines;
+    }
+    case "not_failing": return [S.bisectNotFailing];
+    case "already_failing": return [b.earlier ? S.bisectAlready(b.earlier.label, whenWords(b.earlier.at)) : S.bisectUnsure, ...step];
+    case "after_last_task": return [b.earlier ? S.bisectAfterLast(b.earlier.label) : S.bisectUnsure, ...step];
+    case "outside_change": return [b.earlier && b.later ? S.bisectOutside(b.earlier.label, b.later.label) : S.bisectUnsure, ...step];
+    case "unsure": return [b.earlier && b.later && b.earlier.label !== b.later.label ? S.bisectUnsureRange(b.earlier.label, b.later.label) : S.bisectUnsure, ...step];
+    case "too_few": return [S.bisectTooFew];
+    case "cannot_check": return [sentence(b.detail) || S.bisectCannot];
+    case "busy": return [sentence(b.detail) || S.bisectFailed];
+    default: return [sentence(b.detail) || S.bisectFailed];
+  }
+}
+
+// ---- the error explainer ----
+
+/** Each stage of the error explainer, then its answer, one plain sentence per line. */
+export function ehLines(m: Model): string[] {
+  const h = m.eh;
+  if (!h) return [];
+  const app = h.app || S.thisApp;
+  const where = h.where && h.where.kind === "line" ? [S.ehWhere(h.where.file, h.where.line)] : [];
+  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: S.ehOwnApp, no_engine: S.ehNoEngine };
+  switch (h.stage) {
+    case "reading": return [S.ehReading(app)];
+    case "thinking": return [S.ehThinking];
+    case "consent": return [S.ehConsent(app)];
+    case "needs_accessibility": return [S.ehNeedsAccess];
+    case "nothing_selected": return [S.ehNothing(app)];
+    case "ready": return [...(h.sentences ?? []), ...where];
+    case "unexplained": return [sentence(h.reason) || S.ehError, ...where];
+    default: return [refused[h.why ?? ""] ?? S.ehError];
   }
 }
 

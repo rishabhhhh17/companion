@@ -165,13 +165,26 @@ fn read_field(el: &Cf) -> Option<(String, bool)> {
 /// Reads the focused box. Chromium and Electron apps build their Accessibility tree late, so this wakes it and retries
 /// a few times. It never touches the clipboard. Returns None when the app exposes nothing readable.
 pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
-    let app = Cf::new(unsafe { AXUIElementCreateApplication(pid) })?;
-    let attempt = |rung: &'static str| -> Option<(Cf, Read)> {
+    ladder(pid, |rung| {
         let f = focused(pid)?;
         let (text, sel) = read_field(&f.element)?;
         let sel_start = if sel { selection_start(&f.element) } else { None };
         Some((f.element, Read { text, had_selection: sel, sel_start, rung }))
-    };
+    })
+}
+
+/// The error explainer: only the text selected in the focused element (a terminal, a console, a chat), never the whole
+/// box. The same wake up steps as `read_ladder`. None when nothing is selected or the app exposes nothing readable.
+pub fn read_selection(pid: i32) -> Option<(String, &'static str)> {
+    ladder(pid, |rung| {
+        let f = focused(pid)?;
+        text_attr(&f.element, "AXSelectedText").filter(|s| !s.trim().is_empty()).map(|s| (s, rung))
+    })
+}
+
+/// Tries `attempt`, then wakes the app's Accessibility tree step by step (Chromium and Electron build it late) and tries again.
+fn ladder<T>(pid: i32, attempt: impl Fn(&'static str) -> Option<T>) -> Option<T> {
+    let app = Cf::new(unsafe { AXUIElementCreateApplication(pid) })?;
     if let Some(r) = attempt("plain") { return Some(r); }
     let _ = text_attr(&app, "AXRole");                       // asking for the role wakes the basic tree
     for _ in 0..3 { std::thread::sleep(Duration::from_millis(400)); if let Some(r) = attempt("role_retry") { return Some(r); } }

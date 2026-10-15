@@ -78,7 +78,7 @@ export function limitFromText(text: string, min: number, max: number): number | 
 
 /** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings). The keys
  * named here are checked against the ones the app registers (hotkeys.test.ts). */
-export const keyHints = (): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.voiceHint, S.stopHint];
+export const keyHints = (): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.errKeyHint, S.voiceHint, S.stopHint];
 
 /** The exact words Settings sends to remove the key (the app checks the same words, keystore::REMOVE_PHRASE). */
 export const REMOVE_KEY_PHRASE = "remove the key";

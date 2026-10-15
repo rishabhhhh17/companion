@@ -59,6 +59,7 @@ ins.added, del.removed { text-decoration-thickness: 2px; }
 
 .check { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0 8px; }
 .check input { width: 16px; height: 16px; }
+pre.diff { white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; margin: 6px 0 0; padding: 6px; user-select: text; }
 textarea.export { width: 100%; box-sizing: border-box; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; margin-top: 6px; user-select: text; }
 details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; font-size: 12px; } details.explain ul { margin: 4px 0 4px 18px; padding: 0; }
 .character[data-state="listening"] { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 40%, transparent); }

@@ -84,6 +84,17 @@ impl ReadVerdict {
             ReadVerdict::RefusedByYou => "You told me not to read in this app.",
         }
     }
+    /// The same answer as a short code, for a page that has its own words for it (the error explainer).
+    pub fn code(&self) -> &'static str {
+        match self {
+            ReadVerdict::Ok => "ok",
+            ReadVerdict::NeedConsent => "consent",
+            ReadVerdict::RefuseSecureField => "secure_field",
+            ReadVerdict::RefuseSecureInput => "secure_input",
+            ReadVerdict::RefuseNeverApp => "never_app",
+            ReadVerdict::RefusedByYou => "refused_by_you",
+        }
+    }
 }
 
 /// `role` and `subrole` are the Accessibility names of the focused field.
@@ -349,6 +360,12 @@ mod tests {
     }
     #[test] fn every_refusal_has_a_plain_sentence() {
         for v in [ReadVerdict::NeedConsent, ReadVerdict::RefuseSecureField, ReadVerdict::RefuseSecureInput, ReadVerdict::RefuseNeverApp, ReadVerdict::RefusedByYou] { assert!(!v.plain().is_empty()); }
+    }
+    #[test] fn every_refusal_has_its_own_code_for_the_page() {
+        // The error explainer's card words live in the page's strings file; it is told which refusal by this code.
+        let all = [ReadVerdict::Ok, ReadVerdict::NeedConsent, ReadVerdict::RefuseSecureField, ReadVerdict::RefuseSecureInput, ReadVerdict::RefuseNeverApp, ReadVerdict::RefusedByYou];
+        let codes: Vec<&str> = all.iter().map(|v| v.code()).collect();
+        assert_eq!(codes, vec!["ok", "consent", "secure_field", "secure_input", "never_app", "refused_by_you"]);
     }
 
     #[test] fn nothing_is_read_before_the_indicator_is_lit() {

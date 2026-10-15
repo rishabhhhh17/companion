@@ -17,6 +17,9 @@
 ## Alternatives considered
 - A vision judge as pass or fail: rejected; screenshots are evidence only (section 1, row 7).
 
+## Added 16 Oct 2026: the ladder on earlier versions (M11)
+Which task broke it (T06) runs the same ladder, with its own time limits and no installs, on private copies of earlier saved versions, at most 6 times in one search. A version is judged against the step that fails now: that step failing is "bad", passing or not there yet is "good", and failing earlier says nothing.
+
 ## Founder decision (7 Oct 2026, F14)
 Every user, Free or Plus, gets rungs 1 to 5, including the real browser check, so "done" means the same thing on every plan. Plus adds rungs 6 and 7 (screenshot evidence and the second model review). The pricing table in product_research.md section 15 now says so.
 

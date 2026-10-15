@@ -103,3 +103,37 @@ describe("the browser check's download", () => {
     expect(parseCommand('{"v":1,"id":"c","type":"browser.check"}').ok).toBe(true);
   });
 });
+
+describe("which task broke it, and the error explainer", () => {
+  const c = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", ...o })).ok;
+  const e = (o: Record<string, unknown>) => parseEvent(JSON.stringify({ v: 1, id: "e", ...o })).ok;
+  test("undoing one task needs a yes and the task's checkpoint", () => {
+    expect(c({ type: "bisect.undo", project: "p", checkpoint: "cp_0001", confirm: true })).toBe(true);
+    expect(c({ type: "bisect.undo", project: "p", checkpoint: "cp_0001" })).toBe(false);
+    expect(c({ type: "bisect.undo", project: "p", checkpoint: "cp_0001", confirm: "yes" })).toBe(false);
+    expect(c({ type: "bisect.undo", project: "p", confirm: true })).toBe(false);
+  });
+  test("a search names the project and the agent", () => {
+    expect(c({ type: "bisect.start", project: "p", agent: "a" })).toBe(true);
+    expect(c({ type: "bisect.start", project: "p" })).toBe(false);
+  });
+  test("a found task must say which saved version it starts from, and undo is safe or show only", () => {
+    const base = { type: "bisect.result", project: "p", agent: "a", runs: 3, maxRuns: 6 };
+    expect(e({ ...base, outcome: "found", task: { label: "x", at: "t", checkpoint: "cp_0002" }, undo: "safe" })).toBe(true);
+    expect(e({ ...base, outcome: "found", task: { label: "x", at: "t" } })).toBe(false);
+    expect(e({ ...base, outcome: "found", task: { label: "x", at: "t", checkpoint: "cp_0002" }, undo: "maybe" })).toBe(false);
+    expect(e({ ...base, outcome: "guessed" })).toBe(false);
+    expect(e({ ...base, outcome: "unsure" })).toBe(true);
+  });
+  test("progress says which version is being checked", () => {
+    expect(e({ type: "bisect.progress", project: "p", agent: "a", run: 1, maxRuns: 6, what: "now" })).toBe(true);
+    expect(e({ type: "bisect.progress", project: "p", agent: "a", run: 1, maxRuns: 6, what: "somewhere" })).toBe(false);
+  });
+  test("an explanation always carries its excerpt and evidence, even when it has no sentences", () => {
+    expect(e({ type: "error.explained", req: "r", ok: false, sentences: [], excerpt: "", evidence: "", usdEstimate: 0 })).toBe(true);
+    expect(e({ type: "error.explained", req: "r", ok: true, sentences: ["a", "b"], usdEstimate: 0 })).toBe(false);
+    expect(c({ type: "error.explain", req: "r", app: "com.apple.Terminal", text: "boom" })).toBe(true);
+    expect(c({ type: "error.explain", req: "r", app: "com.apple.Terminal", text: "" })).toBe(false);
+    expect(c({ type: "error.explain", req: "r", app: "x", text: "boom", project: 5 })).toBe(false);
+  });
+});

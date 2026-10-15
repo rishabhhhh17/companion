@@ -2,8 +2,8 @@
 // fly to it. Only files inside the project that the person (or their AI) wrote count: never node_modules, build output
 // or anything a link leads to outside the folder. When no place can be trusted, the error sentence is kept instead, so
 // it can still be found on the person's screen. Nothing here guesses a line.
-import { readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { label, redact } from "../redact.ts";
 import type { Problem } from "../../../protocol/index.ts";
 
@@ -55,9 +55,49 @@ function places(text: string): { list: Place[]; python: boolean } {
   return { list, python: false };
 }
 
-function lineIn(project: string, root: string, p: Place): { file: string; lineText: string } | null {
+// Folders that are never a person's own code when a path is matched loosely: installed packages and built files.
+const NEVER_LOOSE = new Set([...NOT_THEIRS, "_next", "site-packages", "dist-packages", "@fs"]);
+
+/** Every ordinary file in the project (paths relative to it), skipping folders the person did not write. Bounded. */
+function projectFiles(root: string): string[] {
+  const out: string[] = [];
+  let seen = 0;
+  const walk = (dir: string, depth: number) => {
+    if (depth > 8 || seen > 20_000) return;
+    let names: string[];
+    try { names = readdirSync(dir); } catch { return; }
+    for (const n of names) {
+      if (++seen > 20_000) return;
+      if (NEVER_LOOSE.has(n)) continue;
+      const p = join(dir, n);
+      let st; try { st = lstatSync(p); } catch { continue; }   // a link is never followed
+      if (st.isDirectory()) walk(p, depth + 1);
+      else if (st.isFile()) out.push(relative(root, p).split(sep).join("/"));
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+/** A path that is not in the project as written, matched to one file that is. A path that exists somewhere else on this Mac
+ *  is another folder's, never this project's. A path from elsewhere (a build machine, a page address) counts when its end,
+ *  at least the folder and the file, names a file here; a path from a terminal opened in a folder inside the project counts
+ *  when exactly one file here ends with it. Anything less certain is not matched. */
+function looseFile(root: string, path: string, files: () => string[]): string | null {
+  if (isAbsolute(path) && existsSync(path)) return null;
+  const parts = path.split(/[\\/]+/).filter((x) => x && x !== "." && x !== "..");
+  if (parts.length === 0 || parts.some((x) => NEVER_LOOSE.has(x))) return null;
+  const isFile = (rel: string) => { try { return statSync(join(root, rel)).isFile(); } catch { return false; } };
+  if (isAbsolute(path)) for (let k = parts.length - 1; k >= Math.min(2, parts.length); k--) { const rel = parts.slice(-k).join("/"); if (isFile(rel)) return join(root, rel); }
+  const tail = parts.join("/");
+  const hits = files().filter((f) => f === tail || f.endsWith("/" + tail));
+  return hits.length === 1 ? join(root, hits[0]) : null;
+}
+
+function lineIn(project: string, root: string, p: Place, loose?: () => string[]): { file: string; lineText: string } | null {
   if (!Number.isInteger(p.line) || p.line < 1) return null;
-  const abs = isAbsolute(p.path) ? p.path : resolve(project, p.path);
+  let abs = isAbsolute(p.path) ? p.path : resolve(project, p.path);
+  if (loose && !existsSync(abs)) { const f = looseFile(root, p.path, loose); if (!f) return null; abs = f; }
   let real: string;
   try { real = realpathSync(abs); } catch { return null; }
   if (!real.startsWith(root + sep)) return null;
@@ -92,16 +132,33 @@ function sentence(text: string, last: boolean): string | null {
 
 const tidy = (s: string) => label(redact(s), MESSAGE_MAX);
 
-/** One place in the project for this failure, or the error sentence, or nothing at all. */
-export function locateProblem(output: string, project: string, from: string): Problem | null {
+// "Failed to resolve import "./Header" from "src/App.tsx"" (Vite) names the file but not the line: the line is the one that
+// imports exactly that, if there is exactly one.
+const FAILED_IMPORT = /Failed to resolve import ["']([^"'\n]+)["'] from ["']([^"'\n]+)["']/;
+
+/** One place in the project for this failure, or the error sentence, or nothing at all. With `loose` (text a person selected,
+ *  not a check Companion ran) a path that is not in the project as written may still be matched to one file that is (see
+ *  looseFile), and a failed import is found by the line that imports it. */
+export function locateProblem(output: string, project: string, from: string, opts: { loose?: boolean } = {}): Problem | null {
   const text = output.replace(ANSI, "").replace(/\r/g, "");
   let root: string;
   try { root = realpathSync(project); } catch { return null; }
   const { list, python } = places(text);
   const ordered = (python ? [...list].reverse() : list).sort((a, b) => Number(!!a.declared) - Number(!!b.declared));   // Python prints the deepest frame last; a test's declaration only if nothing better
   const general = sentence(text, python);
+  let files: string[] | null = null;
+  const loose = opts.loose ? () => (files ??= projectFiles(root)) : undefined;
+  const imp = loose ? FAILED_IMPORT.exec(text) : null;
+  if (imp) {
+    const [said, wants, path] = imp;
+    const file = lineIn(project, root, { path, line: 1, at: imp.index }, loose);   // the file, checked like any other place
+    let rows: string[] = [];
+    try { if (file) rows = readFileSync(join(root, file.file), "utf8").split("\n"); } catch { rows = []; }
+    const at = rows.flatMap((r, i) => (r.includes(`"${wants}"`) || r.includes(`'${wants}'`) ? [i + 1] : []));
+    if (file && at.length === 1) return { kind: "line", file: file.file, line: at[0], lineText: label(rows[at[0] - 1], LINE_MAX), message: tidy(said), from };
+  }
   for (const p of ordered) {
-    const hit = lineIn(project, root, p);
+    const hit = lineIn(project, root, p, loose);
     if (!hit) continue;
     const message = p.message ?? general ?? "";
     return { kind: "line", file: hit.file, line: p.line, ...(p.column !== undefined ? { column: p.column } : {}), lineText: hit.lineText, message: tidy(message), from };

@@ -54,3 +54,6 @@
 {"v":1,"id":"c60","type":"spending.show","project":"p_9f2c"}
 {"v":1,"id":"c61","type":"spending.set","project":"p_9f2c","limitUsd":25}
 {"v":1,"id":"c62","type":"approval.resolve","approval":"ap_72","decision":"allow","scope":"task"}
+{"v":1,"id":"c63","type":"bisect.start","project":"p_9f2c","agent":"builder-1"}
+{"v":1,"id":"c64","type":"bisect.undo","project":"p_9f2c","checkpoint":"cp_0031","confirm":true}
+{"v":1,"id":"c65","type":"error.explain","req":"eh_1760600000000","app":"com.apple.Terminal","text":"src/App.tsx(5,9): error TS2322: Type 'string' is not assignable to type 'number'.","project":"p_9f2c"}

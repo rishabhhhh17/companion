@@ -39,5 +39,8 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - For testing, settings switch them: `COMPANION_MODEL` (agent sessions), `COMPANION_FAST_MODEL` and `COMPANION_VISION_MODEL` (the two small lanes), `COMPANION_AIM_MODEL` (the experimental pointing lane). The app's developer file may pass all four.
 - Open: Drive's planning runs on Sonnet 5.5, not Opus 5.5 as this record says. It was left as it was; the founder decides.
 
+## Added 16 Oct 2026 (M11)
+- The error explainer uses the fast lane too: one turn, no tools, no saved conversation, the person's own key. It is sent the selected error with secrets already hidden and, when one was confirmed, the file and line it points at, and its answer is kept only as two plain sentences. Not yet run against real Claude (no key in this build session).
+
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).

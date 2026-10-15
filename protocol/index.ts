@@ -71,7 +71,14 @@ export type BrowserInstall = Envelope & { type: "browser.install" };
 // The daily spending limit (an estimate of the person's own Claude use, per project per day): shown and changed in Settings.
 export type SpendingShow = Envelope & { type: "spending.show"; project: string };
 export type SpendingSet = Envelope & { type: "spending.set"; project: string; limitUsd: number };
-export type Command = SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// Which task broke it: check earlier saved versions of the project in a private copy (never the project itself) and name the
+// first task after which the failing check fails. Undoing just that task needs "confirm": true and the task that was found.
+export type BisectStart = Envelope & { type: "bisect.start"; project: string; agent: string };
+export type BisectUndo = Envelope & { type: "bisect.undo"; project: string; checkpoint: string; confirm: true };
+// The error explainer: text the person selected in another app, read on the hotkey (Rust sends it, never a page). The runner
+// hides secrets in it before it goes anywhere.
+export type ErrorExplain = Envelope & { type: "error.explain"; req: string; app: string; text: string; project?: string };
+export type Command = BisectStart | BisectUndo | ErrorExplain | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -149,7 +156,26 @@ export type BrowserStatus = Envelope & { type: "browser.status"; installed: bool
 export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
 // problem: why a new limit was refused or not kept; the limit shown is the one still in force.
 export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
-export type Event = SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// Which task broke it. Each check of a version is one run (at most maxRuns); "now" is the project as it is, "after" and
+// "before" a version saved after or before the task named in label.
+export type BisectProgress = Envelope & { type: "bisect.progress"; project: string; agent: string; run: number; maxRuns: number; what: "now" | "after" | "before"; label?: string };
+export type BisectTask = { label: string; at: string };
+// outcome: found (task names it; undo says whether it can be undone on its own or only shown), not_failing, already_failing
+// (before the oldest task checked), after_last_task (changes made since the last task), outside_change (between two tasks),
+// unsure (within earlier and later), too_few, cannot_check, busy, failed or cancelled.
+export type BisectResult = Envelope & {
+  type: "bisect.result"; project: string; agent: string;
+  outcome: "found" | "not_failing" | "already_failing" | "after_last_task" | "outside_change" | "unsure" | "too_few" | "cannot_check" | "busy" | "failed" | "cancelled";
+  runs: number; maxRuns: number; step?: { rung: string; label: string };
+  task?: BisectTask & { checkpoint: string }; earlier?: BisectTask; later?: BisectTask;
+  changed?: { file: string; kind: "added" | "modified" | "deleted" }[]; changedCount?: number; undo?: "safe" | "show_only"; why?: string; diff?: string; detail?: string;
+};
+// safety: the saved version from just before the undo (Undo can go back to it).
+export type BisectUndone = Envelope & { type: "bisect.undone"; project: string; checkpoint: string; ok: boolean; reverted: string[]; safety?: string; reason?: string };
+// The error explainer's answer: two plain sentences (none when it could not be explained, with reason), where it lives in the
+// project when that could be confirmed, the first error line, and the selection with secrets hidden (the evidence for Fix it).
+export type ErrorExplained = Envelope & { type: "error.explained"; req: string; project?: string; ok: boolean; sentences: string[]; where?: Problem; excerpt: string; evidence: string; reason?: string; usdEstimate: number };
+export type Event = BisectProgress | BisectResult | BisectUndone | ErrorExplained | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -186,6 +212,9 @@ const COMMANDS: Record<string, Check[]> = {
   "browser.install": [],
   "spending.show": [str("project")],
   "spending.set": [str("project"), num("limitUsd")],
+  "bisect.start": [str("project"), str("agent")],
+  "bisect.undo": [str("project"), str("checkpoint"), (m) => (m.confirm === true ? null : 'undoing a task needs "confirm": true')],
+  "error.explain": [str("req"), str("app"), str("text"), opt("project", str("project"))],
   "walk.list": [str("project")],
   "walk.start": [str("project"), str("lesson")],
   "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
@@ -236,6 +265,11 @@ const EVENTS: Record<string, Check[]> = {
   "browser.status": [bool("installed"), bool("installing")],
   "browser.install": [oneOf("stage", ["downloading", "done", "failed", "cancelled"]), str("detail"), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("mb", num("mb"))],
   "spending.state": [str("project"), num("limitUsd"), num("spentUsd"), num("minUsd"), num("maxUsd")],
+  "bisect.progress": [str("project"), str("agent"), num("run"), num("maxRuns"), oneOf("what", ["now", "after", "before"])],
+  "bisect.result": [str("project"), str("agent"), oneOf("outcome", ["found", "not_failing", "already_failing", "after_last_task", "outside_change", "unsure", "too_few", "cannot_check", "busy", "failed", "cancelled"]), num("runs"), num("maxRuns"),
+    opt("undo", oneOf("undo", ["safe", "show_only"])), (m) => (m.outcome !== "found" || (typeof m.task === "object" && m.task !== null && typeof (m.task as Record<string, unknown>).checkpoint === "string") ? null : 'a found task needs "task" with its "checkpoint"')],
+  "bisect.undone": [str("project"), str("checkpoint"), bool("ok"), list("reverted")],
+  "error.explained": [str("req"), bool("ok"), list("sentences"), (m) => (typeof m.excerpt === "string" && typeof m.evidence === "string" ? null : 'missing text fields "excerpt" and "evidence"'), num("usdEstimate")],
   "walk.lessons": [str("project"), list("lessons")],
   "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
   "walk.ask": [str("walk"), num("index")],

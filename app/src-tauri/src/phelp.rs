@@ -153,6 +153,25 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
     });
 }
 
+/// The error explainer reads in other apps too, under the same rules and the same answer per app (asked once for both):
+/// never a password box, secure typing or a never-read app, and only where the person said always or just this once.
+pub fn shared_verdict(role: &str, subrole: &str, bundle: &str) -> rules::ReadVerdict {
+    let mut st = st();
+    if st.consent.is_none() { st.consent = Some(load_consent()); }
+    let State { consent, deny, .. } = &mut *st;
+    rules::read_verdict(role, subrole, ax::secure_input_enabled(), bundle, deny, consent.as_mut().unwrap())
+}
+/// The person answered for this app from the error explainer's card. True when it may be read right now ("once" is used up).
+pub fn shared_answer(bundle: &str, choice: &str) -> bool {
+    let choice = match choice { "once" => rules::Choice::Once, "always" => rules::Choice::Always, _ => rules::Choice::Never };
+    let mut st = st();
+    if st.consent.is_none() { st.consent = Some(load_consent()); }
+    let c = st.consent.as_mut().unwrap();
+    c.record(bundle, choice);
+    save_consent(c);
+    choice != rules::Choice::Never && c.decide(bundle) == rules::Decision::Allow
+}
+
 /// The page has shown the improved text; remember it so accept can paste it. Nothing is stored on disk.
 pub fn ready(improved: String, handback_copy: bool) {
     if let Some(p) = st().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }

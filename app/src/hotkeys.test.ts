@@ -28,7 +28,7 @@ describe("the hotkeys main.rs registers", () => {
     expect(main).toContain(`let mods = ${MODS};`);
     expect(main).toContain(`fn sc_mods() -> Modifiers { ${MODS} }`);
     const jobs = registered();
-    for (const j of ["open the ask box", "stop everything", "Prompt help", "hold to talk", "Show me how", "point at the problem", "accept"]) expect(jobs[j], j).toMatch(/^[A-Z]$/);
+    for (const j of ["open the ask box", "stop everything", "Prompt help", "hold to talk", "Show me how", "point at the problem", "explain an error", "accept"]) expect(jobs[j], j).toMatch(/^[A-Z]$/);
     expect(new Set(Object.values(jobs)).size).toBe(Object.keys(jobs).length);
   });
   test("Esc dismisses a Prompt help result while it shows", () => {
@@ -45,6 +45,7 @@ describe("every hint names the right key", () => {
     ["practiceKeys", ["point at the problem"]],
     ["showMeKeyHint", ["Show me how"]],
     ["phKeyHint", ["Prompt help"]],
+    ["errKeyHint", ["explain an error"]],
     ["voiceHint", ["hold to talk"]],
     ["stopHint", ["stop everything"]],
     ["phHotkeys", ["accept"]],
@@ -75,7 +76,7 @@ describe("the hints are shown where a person looks", () => {
   test("the list covers every hotkey a person can press any time", () => {
     const jobs = registered();
     const shown = new Set(keyHints().flatMap(named));
-    for (const j of ["open the ask box", "stop everything", "Prompt help", "hold to talk", "Show me how", "point at the problem"]) expect(shown.has(jobs[j]), j).toBe(true);
+    for (const j of ["open the ask box", "stop everything", "Prompt help", "hold to talk", "Show me how", "point at the problem", "explain an error"]) expect(shown.has(jobs[j]), j).toBe(true);
   });
   test("at the end of the first run and in Settings", () => {
     const onboarding = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");

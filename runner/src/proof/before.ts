@@ -1,7 +1,8 @@
 // The "before" picture for a visual receipt: the project as it was before the task, copied into a private folder in
 // Companion's own data (never the project), started on its own port, opened once in the hidden browser, then deleted.
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { runCommand, shq } from "./exec.ts";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
 import { detectProject } from "./detect.ts";
@@ -50,6 +51,22 @@ export function borrowPackages(from: string, to: string) {
     if (n === ".vite" || n === ".cache" || n === ".vite-temp" || existsSync(join(to, n))) continue;
     try { symlinkSync(join(from, n), join(to, n)); } catch { /* one package that cannot be linked is not worth stopping for */ }
   }
+}
+
+/** The installed packages as a copy of their own, for a check that runs builds and tests on an earlier version: whatever it
+ *  writes inside them (generated code, a cache) stays in the copy and never reaches the person's own packages. On the Mac's
+ *  usual disk the copy is a clone (`cp -c`): about a second, and no extra space until something is written. Across disks it
+ *  is a plain copy. "none" when there are no installed packages to copy; "failed" when no copy could be made. */
+export async function ownPackages(from: string, to: string, signal?: AbortSignal): Promise<"none" | "cloned" | "copied" | "failed" | "cancelled"> {
+  try { if (!lstatSync(from).isDirectory()) return "none"; } catch { return "none"; }
+  for (const [how, flags] of [["cloned", "-cR"], ["copied", "-R"]] as const) {
+    rmSync(to, { recursive: true, force: true });
+    const r = await runCommand(`/bin/cp ${flags} ${shq(from)} ${shq(to)}`, { cwd: dirname(to), timeoutMs: 3 * 60_000, signal });
+    if (r.aborted || signal?.aborted) { rmSync(to, { recursive: true, force: true }); return "cancelled"; }
+    if (r.code === 0 && !r.timedOut) return how;
+  }
+  rmSync(to, { recursive: true, force: true });
+  return "failed";
 }
 
 /** Anything left from a run that was cut off (the app quit mid picture): emptied when the runner starts. */
