@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## "Open from a link" tried with 60 hostile links: 15 Oct 2026
+
+- Links with a password in them, a look-alike host (`github.com.evil.example`, a Cyrillic i), a port, a query, extra path, `ext::` or `file://` tricks, an option disguised as a link (`--upload-pack=...`), shell characters, newlines, percent codes, and over long names are all refused; only a plain https repository address on GitHub, GitLab or Bitbucket gets through, and the address handed to git is rebuilt from its checked parts. One oddity closed: a repository named `.git` (or any name starting with a dot) would have made a hidden folder, and is now refused.
+
 ## "Do it for me" can no longer be fooled by how a button is spelled: 14 Oct 2026
 
 - **Do it for me never presses a button that sends, pays, deletes, publishes or signs out.** That check only knew English words, so it missed: lookalike letters from another alphabet ("Dеlete" with a Russian е), a hidden zero width character, extra spaces ("D e l e t e"), digits and signs standing in for letters ("D3lete", "P@y", "Pub1ish"), accents, and the same words in Spanish, French, German, Portuguese, Italian, Japanese, Chinese and Korean. Labels are now cleaned of those tricks before they are compared, and a bare "OK" or "Yes" is refused in any spelling or language. About 100 disguised labels are tested, plus ordinary ones that must stay pressable (Settings, Save changes, Environment variables, Privacy & Security, Screen Recording, and the word for Settings in French, German, Spanish, Japanese and Chinese).
