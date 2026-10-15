@@ -6,6 +6,7 @@ import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
+import { shouldTakeFocus } from "./cardlogic.ts";
 import { NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -245,7 +246,6 @@ function Card() {
   const root = useRef<HTMLElement>(null);
   const box = useRef<HTMLInputElement>(null);
   const [project, setProject] = useState("");
-  const [undone, setUndone] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
   // The first run: shown until finished, remembered only on this Mac.
@@ -260,12 +260,21 @@ function Card() {
     return () => clearTimeout(t);
   }, [m.toast?.lines.length]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
-  useEffect(() => { setUndone(false); }, [m.receipt?.checkpoint]);
+  const undone = m.undo?.stage === "done";
+  useEffect(() => { dispatch({ type: "ui.undoClosed" }); }, [m.receipt?.checkpoint]);
+  // A question that was not answered in time is dropped from the card, because the engine has already refused it.
+  useEffect(() => {
+    if (!m.approvals.length) return;
+    const t = setInterval(() => dispatch({ type: "ui.approvalsExpire", now: Date.now() }), 5000);
+    return () => clearInterval(t);
+  }, [m.approvals.length]);
   // A question that needs the person moves keyboard focus to its first button, but only when this card already has the keyboard.
   const urgent = useRef<HTMLDivElement>(null);
   const urgentKey = m.approvals[0]?.id ?? (m.agentsAsk ? "agents" : m.stuck ? "stuck" : m.paused ? "paused" : m.plan ? "plan" : "");
   useEffect(() => {
-    if (!urgentKey || !document.hasFocus()) return;
+    if (!urgentKey) return;
+    const a = document.activeElement as HTMLElement | null;
+    if (!shouldTakeFocus(a ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus())) return;
     urgent.current?.querySelector<HTMLElement>("button, input")?.focus();
   }, [urgentKey]);
 
@@ -481,14 +490,14 @@ function Card() {
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
-    setUndone(false);
+    dispatch({ type: "ui.undoClosed" });
     void send(startTask(project, prompt, off)); setOff(false);
     if (box.current) box.current.value = "";
   };
 
   const rescue = () => {
     if (!project) return;
-    setUndone(false);
+    dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(diagnose(project));
   };
@@ -507,7 +516,7 @@ function Card() {
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
     if (!goal || !project) return;
-    setUndone(false);
+    dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(planDrive(project, goal, off)); setOff(false);
     if (box.current) box.current.value = "";
@@ -877,7 +886,7 @@ function Card() {
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
           {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
-          {m.receipt.visual?.image && !undone && (
+          {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
               <figcaption>{m.receipt.visual.caption}</figcaption>
@@ -886,10 +895,19 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
-          {m.receipt.changed.length > 0 && !undone && project && (
-            <div className="row"><button className="btn danger" type="button" onClick={() => { void send(undo(project, m.receipt!.checkpoint)); setUndone(true); }}>{S.undo}</button></div>
+          {m.receipt.changed.length > 0 && !m.undo && project && (
+            <div className="row"><button className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
           )}
-          {undone && <div className="line">{S.undone}</div>}
+          {m.undo?.stage === "confirm" && project && (
+            <div className="line"><div>{S.undoSure}</div>
+              <div className="row">
+                <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.undoYes}</button>
+                <button className="btn" type="button" onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
+              </div></div>
+          )}
+          {m.undo?.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+          {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
+          {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
         </section>
       )}
@@ -909,6 +927,7 @@ function Card() {
           <h2>{S.pointTitle}</h2>
           {m.point.stage === "checking" && <div className="line">{S.pointChecking}</div>}
           {m.point.stage === "clear" && <div className="line">{S.pointClear}</div>}
+          {m.point.stage === "gaps" && <div className="line">{S.pointGaps}</div>}
           {m.point.stage === "nothing" && <div className="line">{S.pointNothing}</div>}
           {m.point.stage === "found" && <>
             <div className="line"><b>{m.point.label}</b></div>

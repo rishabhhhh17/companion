@@ -31,9 +31,11 @@ export type ShipFlow = { stage: string; detail: string; previewUrl?: string; pro
 export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
-export type PointCard = { stage: "checking" | "found" | "clear" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
+export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
 export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
+// Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
+export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
 export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; steps: number; saved: boolean };
 // A guided lesson on the card. stage: a step to do, waiting for "did that work?", words only after a step could not be
@@ -54,6 +56,7 @@ export type Model = {
   practice: Practice | null;
   // Draw it for me: asked, shown on the screen, or none could be made.
   diagram: DiagramState | null;
+  undo: UndoState | null;
   lessons: LessonItem[] | null;
   // The walk the person started (so a late event from an older one is ignored), and where it is now.
   walkWant: string | null;
@@ -90,7 +93,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -101,12 +104,18 @@ function top(agents: Record<string, CharacterState>): CharacterState {
 }
 const withAgents = (m: Model, agents: Record<string, CharacterState>): Model => ({ ...m, agents, character: m.runnerUp ? top(agents) : "off" });
 
+// Most sentences the engine sends were written for a person ("Something is still working on this project. Wait for it to finish,
+// or press Stop."). Those are shown as they are. A technical message (an error name, a path, a code) is wrapped and never shown raw.
+const LOOKS_TECHNICAL = /(\b[A-Z][A-Za-z]*(Error|Exception)\b|\bE[A-Z]{3,}\b|\bat \/|\.(ts|js|tsx|rs):\d|\bundefined\b|\bnull\b|\bNaN\b|\[object|\bstack\b|\bgit [a-z-]+ failed|\bexit(ed)? (code|with)\b|\bunknown approval\b|\bstderr\b)/;
+const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.test(r.trim()) && !LOOKS_TECHNICAL.test(r);
 export function plainError(reason: string): string {
   if (/error_max_budget_usd/.test(reason)) return "Stopped: the spending limit for this task was reached. Nothing more was run.";
   if (/^daily_limit/.test(reason)) return "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.";
+  if (/unknown approval/i.test(reason)) return "That question is not waiting for an answer any more.";
   const nc = /Not connected:.*$/.exec(reason);
   if (nc) return nc[0];
   const r = reason.replace(/^engine error:\s*/i, "");
+  if (WRITTEN_FOR_A_PERSON(r)) return r.trim();
   return `Something went wrong: ${r.replace(/[.\s]+$/, "")}. Try again, and if it keeps happening, press Stop and start a new task.`;
 }
 
@@ -114,14 +123,22 @@ type Ev = Record<string, any> & { type?: string };
 
 export function reduce(m: Model, e: Ev): Model {
   switch (e.type) {
+    case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
+    case "ui.undoCancelled": case "ui.undoClosed": return { ...m, undo: null };
+    case "ui.undoSent": return m.undo ? { ...m, undo: { ...m.undo, stage: "working" } } : m;
+    case "checkpoint.restored": return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0 } } : m;
+    case "ui.approvalsExpire": {
+      const left = m.approvals.filter((a) => !a.expiresAt || Date.parse(a.expiresAt) > Number(e.now));
+      return left.length === m.approvals.length ? m : { ...m, approvals: left, notice: "A question ran out of time and was not allowed. Ask again if you still want it." };
+    }
     case "ui.settle": return withAgents(m, Object.fromEntries(Object.entries(m.agents).map(([a, s]) => [a, s === "done" ? "idle" : s])) as Record<string, CharacterState>);
     case "ui.approvalAnswered": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -130,7 +147,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "explain.state": return { ...m, explainOn: !!e.enabled };
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -209,7 +226,7 @@ export function reduce(m: Model, e: Ev): Model {
       if (m.point?.stage !== "checking") return m;
       if (e.verdict === "cancelled") return { ...m, point: null };
       if (e.verdict === "failed") return { ...m, point: { stage: "found", label: String(e.label ?? ""), message: String(e.detail ?? ""), agent: e.agent, ...(e.problem ? { problem: e.problem } : {}) }, where: e.problem ?? null };
-      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : "clear" }, where: null };
+      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear" }, where: null };
     }
     case "proof.result": {
       const failed = e.verdict === "failed" ? (e.steps ?? []).find((s: any) => s.status === "failed") : undefined;
@@ -260,7 +277,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "memory.agents_written": return { ...m, notice: `Companion updated ${(e.files ?? []).join(" and ")} with the facts about this project.` };
     case "ui.memoryClosed": return { ...m, memory: null, memoryNote: null, exported: null };
     // An error while the practice fix runs (busy, daily limit, a failure) must not leave it waiting forever.
-    case "protocol.error": return { ...m, ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : {}), error: plainError(String(e.reason)) };
+    case "protocol.error": if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };
+      return { ...m, ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : {}), error: plainError(String(e.reason)) };
     default: return m;
   }
 }
@@ -275,7 +293,7 @@ export function savedWords(m: Model): string | null {
 // How a past task ended, in plain words.
 export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
   switch (t.status) {
-    case "done": return t.proof === "passed" ? "Done, checked" : "Done, not checked";
+    case "done": return t.proof === "passed" ? "Done, checked" : t.proof === "partial" ? "Done, partly checked" : "Done, not checked";
     case "not_done": return "Not done";
     case "interrupted": return "Stopped";
     case "error_max_budget_usd": return "Stopped at the spending limit";
@@ -293,7 +311,8 @@ export function isFixing(m: Model): boolean {
 export function triesNote(m: Model): string | null {
   const p = m.task?.proof;
   if (!p?.verdict || p.tries <= 1) return null;
-  return p.verdict === "failed" ? `Still failing after ${p.tries} tries` : `Fixed after ${p.tries} tries`;
+  if (p.verdict === "cancelled" || p.verdict === "nothing_to_check") return null;   // nothing was fixed, so nothing is claimed
+  return p.verdict === "failed" ? `Still failing after ${p.tries} tries` : p.verdict === "passed_with_gaps" ? `Passed after ${p.tries} tries, with some checks skipped` : `Fixed after ${p.tries} tries`;
 }
 
 // Why the task is not done, in one plain line. Null when nothing failed.
