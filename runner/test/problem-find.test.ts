@@ -83,6 +83,16 @@ describe("point at the problem: finding it", () => {
     expect(of(s.events, "problem.found").map((x) => x.verdict)).toEqual(["cancelled"]);
     expect(of(s.events, "protocol.error")).toHaveLength(1);
   });
+  test("checks that passed except for a missing browser say so, so the card can offer the download", async () => {
+    const s = setup(async () => ({ verdict: "passed_with_gaps", steps: [{ rung: "checks", label: "Building and checking the code", status: "passed", detail: "ok", ms: 1 }, { rung: "browser", label: "Opening it in a browser", status: "skipped", detail: "The hidden browser is not installed yet, so the page was not opened.", ms: 0, needs: "browser" }] }));
+    await s.find();
+    expect(of(s.events, "problem.found")[0]).toMatchObject({ verdict: "passed_with_gaps", needs: "browser" });
+  });
+  test("gaps for another reason do not offer it", async () => {
+    const s = setup(async () => ({ verdict: "passed_with_gaps", steps: [{ rung: "browser", label: "Opening it in a browser", status: "skipped", detail: "The hidden browser could not be started.", ms: 0 }] }));
+    await s.find();
+    expect(of(s.events, "problem.found")[0].needs).toBeUndefined();
+  });
   test("it asks the checker never to install anything", async () => {
     let seen: any;
     const project = tmp("p2"); writeFileSync(join(project, "index.html"), "x");

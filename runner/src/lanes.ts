@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { adapterFor, buildContext, grewTooMuch, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
+import { MODELS } from "./models.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -70,7 +71,7 @@ export class FastLane {
     const ac = new AbortController();
     const link = () => ac.abort();
     if (signal.aborted) ac.abort(); else signal.addEventListener("abort", link, { once: true });
-    const options = buildFastOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? "claude-haiku-4-5-20251001", signal: ac.signal, system: req.system });
+    const options = buildFastOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? MODELS.fast, signal: ac.signal, system: req.system });
     // A leading "/" would run as a Claude Code command, so such text is introduced first.
     const prompt = req.raw ? (req.text.startsWith("/") ? `Input:\n${req.text}` : req.text) : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
     const q = (this.o.queryFn ?? realQuery)({ prompt, options: options as never });
@@ -187,7 +188,7 @@ export class VisionLane {
     let tmp: string;
     try { tmp = await drive.ensure(); } catch (e) { done0(); throw e; }
     function done0() { signal.removeEventListener("abort", link); }
-    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model: this.o.model ?? "claude-sonnet-5-5", signal: ac.signal });
+    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model: this.o.model ?? MODELS.vision, signal: ac.signal });
     const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr) as never, options: options as never });
     const done = () => { signal.removeEventListener("abort", link); };
     // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that

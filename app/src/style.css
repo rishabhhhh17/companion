@@ -67,6 +67,8 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 .receipt-shot { margin: 8px 0 4px; }
 .receipt-shot img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line, rgba(127,127,127,.3)); }
 .receipt-shot figcaption { margin-top: 6px; font-weight: 600; }
+/* The browser check's one time download: how far along it is. */
+.panel progress { display: block; width: 100%; height: 6px; margin: 6px 0 4px; accent-color: var(--accent); }
 
 /* Reactions: one off moves that play over the state's own motion, then stop. */
 .character[data-react="nod"] { animation: nod .6s ease-out 1; }

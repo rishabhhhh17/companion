@@ -64,7 +64,14 @@ export type MetricsSet = Envelope & { type: "metrics.set"; enabled: boolean };
 export type MetricsNote = Envelope & { type: "metrics.note"; name: string };
 export type MetricsShow = Envelope & { type: "metrics.show" };
 export type MetricsErase = Envelope & { type: "metrics.erase" };
-export type Command = MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// The browser check (F14): ask whether the hidden browser is set up, and download it once when the person presses the button.
+// Neither names a folder or an address: the engine always downloads Playwright's own browser into Companion's own folder.
+export type BrowserCheck = Envelope & { type: "browser.check" };
+export type BrowserInstall = Envelope & { type: "browser.install" };
+// The daily spending limit (an estimate of the person's own Claude use, per project per day): shown and changed in Settings.
+export type SpendingShow = Envelope & { type: "spending.show"; project: string };
+export type SpendingSet = Envelope & { type: "spending.set"; project: string; limitUsd: number };
+export type Command = SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -101,8 +108,9 @@ export type Problem =
   | { kind: "line"; file: string; line: number; column?: number; lineText: string; message: string; from: string }
   | { kind: "button"; label: string; message: string; from: "browser" }
   | { kind: "message"; message: string; from: string };
-export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem };
-export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem };
+// needs: "browser" means this step was skipped only because the hidden browser is not installed, so the page can offer it.
+export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser" };
+export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser" };
 export type ProofStepEvent = Envelope & { type: "proof.step"; agent: string } & ProofStep;
 export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number };
 
@@ -136,7 +144,12 @@ export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reaso
 export type MetricsSummary = Envelope & { type: "metrics.summary"; enabled: boolean; days: Record<string, Record<string, number>>; totals: Record<string, number>; rates: Record<string, number | null> };
 // Undo finished. recovered: big files replaced by their older small version, copied aside first. largeLeftAlone: big files not touched.
 export type CheckpointRestored = Envelope & { type: "checkpoint.restored"; project: string; checkpoint: string; safety: string; recovered: string[]; largeLeftAlone: string[]; leftAlone: string[] };
-export type Event = CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type BrowserStatus = Envelope & { type: "browser.status"; installed: boolean; installing: boolean };
+// The download's progress (percent 0 to 100 and its real size, once known), then done, failed or cancelled (Stop everything).
+export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
+// problem: why a new limit was refused or not kept; the limit shown is the one still in force.
+export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
+export type Event = SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -147,6 +160,10 @@ const bool: (k: string) => Check = (k) => (m) => (typeof m[k] === "boolean" ? nu
 const oneOf: (k: string, vals: string[]) => Check = (k, vals) => (m) => (vals.includes(m[k] as string) ? null : `"${k}" must be one of ${vals.join(", ")}`);
 const list: (k: string) => Check = (k) => (m) => (Array.isArray(m[k]) ? null : `"${k}" must be a list`);
 const obj: (k: string) => Check = (k) => (m) => (typeof m[k] === "object" && m[k] !== null && !Array.isArray(m[k]) ? null : `"${k}" must be an object`);
+// An optional field: absent is fine, present must be valid.
+const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
+const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
+const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
 const COMMANDS: Record<string, Check[]> = {
   "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd")],
@@ -165,6 +182,10 @@ const COMMANDS: Record<string, Check[]> = {
   "metrics.note": [str("name")],
   "metrics.show": [],
   "metrics.erase": [],
+  "browser.check": [],
+  "browser.install": [],
+  "spending.show": [str("project")],
+  "spending.set": [str("project"), num("limitUsd")],
   "walk.list": [str("project")],
   "walk.start": [str("project"), str("lesson")],
   "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
@@ -207,11 +228,14 @@ const EVENTS: Record<string, Check[]> = {
   "runner.pong": [],
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
-  "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail")],
+  "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail"), needsOk],
   "doctor.report": [list("items")],
   "diagram.ready": [str("project"), bool("made")],
   "checkpoint.restored": [str("project"), str("checkpoint"), str("safety"), list("recovered"), list("largeLeftAlone"), list("leftAlone")],
   "metrics.summary": [bool("enabled"), obj("days"), obj("totals"), obj("rates")],
+  "browser.status": [bool("installed"), bool("installing")],
+  "browser.install": [oneOf("stage", ["downloading", "done", "failed", "cancelled"]), str("detail"), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("mb", num("mb"))],
+  "spending.state": [str("project"), num("limitUsd"), num("spentUsd"), num("minUsd"), num("maxUsd")],
   "walk.lessons": [str("project"), list("lessons")],
   "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
   "walk.ask": [str("walk"), num("index")],
@@ -223,7 +247,7 @@ const EVENTS: Record<string, Check[]> = {
   "project.cloned": [str("url"), bool("ok"), str("detail")],
   "ship.card": [str("project"), str("url"), str("title"), str("image"), bool("withShot")],
   "receipt.visual": [str("agent"), str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || (typeof m.image === "string" && m.image.length > 0) ? null : "a made picture needs \"image\""), num("circles")],
-  "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"])],
+  "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), needsOk],
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate")],
   "explain.state": [str("project"), bool("enabled")],
   "recap.ready": [str("project"), list("lines")],
@@ -247,8 +271,8 @@ const EVENTS: Record<string, Check[]> = {
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
   "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate")],
   "protocol.error": [str("reason")],
-  "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\"")],
-  "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), num("tries")],
+  "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
+  "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],
   "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"])],
   "assist.prompt.delta": [str("req"), str("text")],
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],

@@ -9,13 +9,22 @@ import { ComputerUseVision, withFallback } from "./aim.ts";
 import { FastLane, StubFast, VisionLane, type FastLike, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
+import { MODELS } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 
 export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
+  // For testing, the two small lanes' models can be switched too (the defaults are in models.ts).
+  fastModel?: string; visionModel?: string;
   // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
   aim: "default" | "computer_use"; aimModel?: string;
+  // The runner's own process tests only: a pretend browser download of this many milliseconds a step. Never with the real engine.
+  browserStubMs?: number;
+  // The runner's own process tests only: a stand in program for Playwright's installer, run through the real downloader.
+  browserStubInstaller?: string;
 };
+
+const setting = (v: string | undefined): string | undefined => (v && v.trim() ? v.trim() : undefined);
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
   let script: Step[] = [];
@@ -27,10 +36,14 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     ref: { service: env.COMPANION_KEYCHAIN_SERVICE ?? DEFAULT_REF.service, account: env.COMPANION_KEYCHAIN_ACCOUNT ?? DEFAULT_REF.account },
     claudeBin: env.COMPANION_CLAUDE_BIN,
     model: env.COMPANION_MODEL || undefined,
+    fastModel: setting(env.COMPANION_FAST_MODEL),
+    visionModel: setting(env.COMPANION_VISION_MODEL),
     script,
     assistStub: env.COMPANION_ASSIST_STUB === "1",
     aim: env.COMPANION_AIM === "computer_use" ? "computer_use" : "default",
     aimModel: env.COMPANION_AIM_MODEL || undefined,
+    ...(env.COMPANION_ENGINE === "scripted" && Number(env.COMPANION_BROWSER_STUB) > 0 ? { browserStubMs: Number(env.COMPANION_BROWSER_STUB) } : {}),
+    ...(env.COMPANION_ENGINE === "scripted" && env.COMPANION_BROWSER_STUB_INSTALLER ? { browserStubInstaller: env.COMPANION_BROWSER_STUB_INSTALLER } : {}),
   };
 }
 
@@ -85,13 +98,13 @@ export function createEngine(s: Settings, deps: EngineDeps = {}): Engine {
 export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLike; vision: VisionLike } {
   if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) } };
   const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });
-  const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
+  const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
   // The Computer Use lane needs the person's own API key, so it is never used on a plan sign in; any failure falls back.
   const vision = s.aim === "computer_use" && s.route === "api_key"
     ? withFallback(new ComputerUseVision({ apiKey: async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; }, model: s.aimModel }), classic)
     : classic;
   return {
-    fast: { run: async (req, onDelta, signal) => new FastLane(await lane()).run(req, onDelta, signal) },
+    fast: { run: async (req, onDelta, signal) => new FastLane({ ...(await lane()), model: s.fastModel ?? MODELS.fast }).run(req, onDelta, signal) },
     vision,
   };
 }

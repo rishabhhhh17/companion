@@ -1,7 +1,13 @@
 // Settings page helpers: plain words only, so they can be tested without a screen.
+import { keyLooksRight } from "./onboarding.ts";
+import { S } from "./strings.ts";
+import type { Spending } from "./model.ts";
+
 export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number };
 export type PermissionKind = "screen_recording" | "accessibility" | "microphone";
-export type PermissionState = "allowed" | "not_allowed" | "not_asked" | "unknown";
+/** What the app reports (permissions.rs, page_word). "off" is for Accessibility and Screen Recording, where macOS cannot
+ * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */
+export type PermissionState = "allowed" | "off" | "not_allowed" | "not_asked" | "restricted" | "unknown";
 
 /** The exact words the app is given to delete everything. A different string deletes nothing. */
 export const DELETE_PHRASE = "delete everything";
@@ -19,9 +25,13 @@ const ROWS: Record<PermissionKind, { label: string; why: string }> = {
   accessibility: { label: "Accessibility", why: "Lets Companion find the exact button or line you need and, if you ask, click it for you. Asked the first time you use that." },
   microphone: { label: "Microphone", why: "Lets you hold the talk keys and speak. It listens only while you hold them. Asked the first time you use that." },
 };
-export function permissionRow(kind: PermissionKind, s: PermissionState): { label: string; why: string; state: string; button: boolean } {
-  const state = s === "allowed" ? "Allowed" : s === "not_allowed" ? "Not allowed" : s === "not_asked" ? "Not asked yet" : "Not checked yet";
-  return { ...ROWS[kind], state, button: s === "not_allowed" };
+/** One permission in words: its state, what to do about it (empty when nothing), and whether System Settings can help. */
+export function permissionRow(kind: PermissionKind, s: PermissionState): { label: string; why: string; state: string; todo: string; button: boolean } {
+  const [state, todo] = ({
+    allowed: [S.permAllowed, ""], off: [S.permOff, S.permOffTodo], not_asked: [S.permNotAsked, S.permNotAskedTodo],
+    not_allowed: [S.permRefused, S.permRefusedTodo], restricted: [S.permRestricted, S.permRestrictedTodo], unknown: [S.permUnknown, ""],
+  } as Record<PermissionState, [string, string]>)[s] ?? [S.permUnknown, ""];
+  return { ...ROWS[kind], state, todo, button: s === "not_allowed" || s === "off" };
 }
 
 export function deletableLines(inv: Inventory): string[] {
@@ -47,3 +57,37 @@ export function numbersLines(s: NumbersSummary): string[] {
 
 /** The shipped lesson that walks a person through allowing this permission (see lessons/). */
 export const permissionLesson = (kind: PermissionKind): string => `companion-${kind.replace(/_/g, "-")}`;
+
+// ---- the daily spending limit ----
+const dollars = (n: number, cents: boolean) => `$${cents || !Number.isInteger(n) ? n.toFixed(2) : String(n)}`;
+
+/** Today's spend for this project against its limit, in plain words. Always "about": it is Companion's own estimate. */
+export function spendingLine(s: Spending): string {
+  const line = S.spendingToday.replace("{spent}", dollars(s.spentUsd, true)).replace("{limit}", dollars(s.limitUsd, false));
+  return s.spentUsd >= s.limitUsd ? `${line} ${S.spendingOver}` : line;
+}
+
+/** What the person typed as a new limit: dollars (a "$" in front is fine, at most two places after the point) within the
+ *  bounds. Anything else is not an amount, and nothing is sent. */
+export function limitFromText(text: string, min: number, max: number): number | null {
+  const t = text.trim().replace(/^\$\s*/, "");
+  if (!/^\d{1,4}(\.\d{1,2})?$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+
+/** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings). The keys
+ * named here are checked against the ones the app registers (hotkeys.test.ts). */
+export const keyHints = (): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.voiceHint, S.stopHint];
+
+/** The exact words Settings sends to remove the key (the app checks the same words, keystore::REMOVE_PHRASE). */
+export const REMOVE_KEY_PHRASE = "remove the key";
+
+export const keyStatus = (saved: boolean): string => (saved ? S.keySaved : S.keyNone);
+
+/** Pressing Save on a new key in Settings: the box is emptied at once whatever happens, and the key is sent only when it
+ * passes the same checks as the first run (the app checks it again before it goes into the Keychain). */
+export function submitKey(raw: string): { clear: true; send: string | null; problem: string | null } {
+  const problem = keyLooksRight(raw);
+  return { clear: true, send: problem ? null : raw.trim(), problem };
+}

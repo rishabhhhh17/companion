@@ -19,6 +19,10 @@ const ALLOWED: &[&str] = &[
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
     "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop",
     "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
+    // The browser check's one time download, on the person's press, and asking whether it is set up. They name no folder
+    // or address (the engine always downloads Playwright's own browser into Companion's own folder), so not project bound.
+    "browser.check", "browser.install",
+    "spending.show", "spending.set",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -54,6 +58,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
     "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
+    "spending.show", "spending.set",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -88,7 +93,9 @@ pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf,
 
 /// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
-const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL"];
+/// COMPANION_FAST_MODEL and COMPANION_VISION_MODEL switch the two small lanes' models (defaults in runner/src/models.ts);
+/// COMPANION_REVIEW=1 turns on the second model review of risky changes (proof rung 7).
+const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL", "COMPANION_FAST_MODEL", "COMPANION_VISION_MODEL", "COMPANION_REVIEW"];
 
 pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     dev.get("env").and_then(Value::as_object).map(|o| {
@@ -277,6 +284,11 @@ impl Runner {
     /// Write one command line to the engine. Never waits.
     pub fn send(&self, cmd: &Value) -> Result<(), String> { self.shared.send_line(cmd.to_string()) }
 
+    /// Hands the engine the key, or tells it there is none (after the key was removed). The line goes out exactly as
+    /// `handoff_line` wrote it: the engine takes it only when it starts `{"v":1,"type":"auth.key"`, and turning it into a
+    /// JSON value first would sort its fields ("key" first), so the engine would refuse it and stay without a key.
+    pub fn hand_key(&self, key: Option<&str>) -> Result<(), String> { self.shared.send_line(crate::keystore::handoff_line(key)) }
+
     /// The Stop key. It must work even when the engine is stuck, so if the stop cannot be delivered, or the engine does not
     /// answer a moment later, the engine is stopped by force and started again.
     pub fn stop_everything(&self, reason: &str) -> Result<(), String> {
@@ -334,8 +346,26 @@ mod tests {
 
     #[test]
     fn allows_the_commands_pages_need() {
-        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check"] {
+        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "spending.set"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
+        }
+    }
+    #[test]
+    fn the_browser_check_download_may_be_asked_for_by_a_page_and_names_no_folder() {
+        // The card's button and its question: allowed, and not tied to a project (they name no folder and no address).
+        for t in ["browser.install", "browser.check"] {
+            assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
+            assert!(!PROJECT_BOUND.contains(&t), "{t}");
+            assert!(check_project(&json!({"v":1,"id":"c","type":t}), "").is_ok(), "{t} works before a folder is chosen");
+        }
+    }
+    #[test]
+    fn the_spending_limit_row_may_only_name_the_chosen_project() {
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p, "limitUsd": 25 });
+        for t in ["spending.show", "spending.set"] {
+            assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t}");
         }
     }
     #[test]
@@ -380,6 +410,17 @@ mod tests {
         assert_eq!(e["COMPANION_ROUTE"], "plan");
         assert_eq!(allowed_env(&json!({"env": {"COMPANION_ASSIST_STUB":"1"}}))["COMPANION_ASSIST_STUB"], "1");
         for k in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "PATH", "COMPANION_ENGINE"] { assert!(!e.contains_key(k), "{k}"); }
+    }
+    #[test]
+    fn the_dev_file_may_switch_the_small_lanes_models_and_the_second_review() {
+        let e = allowed_env(&json!({"env": {"COMPANION_FAST_MODEL":"f","COMPANION_VISION_MODEL":"v","COMPANION_REVIEW":"1",
+            "COMPANION_DAILY_CEILING_USD":"0.01","COMPANION_SCRIPT":"[]","ANTHROPIC_MODEL":"x"}}));
+        assert_eq!(e.get("COMPANION_FAST_MODEL").map(String::as_str), Some("f"));
+        assert_eq!(e.get("COMPANION_VISION_MODEL").map(String::as_str), Some("v"));
+        assert_eq!(e.get("COMPANION_REVIEW").map(String::as_str), Some("1"));
+        // Still refused: the spending limit is the person's own choice in Settings, scripts are for tests, and Anthropic's own variables never pass.
+        for k in ["COMPANION_DAILY_CEILING_USD", "COMPANION_SCRIPT", "ANTHROPIC_MODEL"] { assert!(!e.contains_key(k), "{k}"); }
+        assert_eq!(e.len(), 3);
     }
     #[test]
     fn a_missing_or_odd_env_section_gives_nothing() {
@@ -478,6 +519,28 @@ mod tests {
         for _ in 0..8 { split_lines(&mut buf, &chunk); }
         assert!(buf.len() <= MAX_LINE + chunk.len());
         assert!(split_lines(&mut buf, b"{\"ok\":1}\n").iter().all(|l| !l.is_empty()));
+    }
+    #[test]
+    fn the_key_reaches_the_engine_in_the_exact_form_the_engine_takes_it() {
+        // The engine takes the key only from a line that starts exactly like this (runner/src/main.ts). Any other line is
+        // read as a page command and refused, and the engine would stay without a key.
+        let prefix = r#"{"v":1,"type":"auth.key""#;
+        assert!(include_str!("../../../runner/src/main.ts").contains(&format!("line.startsWith('{prefix}')")));
+        let out = std::env::temp_dir().join(format!("companion-handoff-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        let script: &'static str = Box::leak(format!("read -r a; read -r b; printf '%s\\n%s\\n' \"$a\" \"$b\" > '{}'; sleep 5", out.display()).into_boxed_str());
+        let r = rig(script, quick());
+        let runner = Runner::with_shared(r.shared.clone(), quick());
+        assert!(wait_for(|| runner.hand_key(Some("sk-ant-test-not-a-real-key")).is_ok(), 3000));
+        assert!(runner.hand_key(None).is_ok());
+        assert!(wait_for(|| std::fs::read_to_string(&out).is_ok_and(|t| t.lines().count() >= 2), 3000), "the engine never got two lines");
+        let got = std::fs::read_to_string(&out).unwrap();
+        let lines: Vec<&str> = got.lines().collect();
+        assert!(lines[0].starts_with(prefix), "{}", lines[0].replace("sk-ant-test-not-a-real-key", "<key>"));
+        assert!(lines[0].contains(r#""key":"sk-ant-test-not-a-real-key""#));
+        assert_eq!(lines[1], r#"{"v":1,"type":"auth.key","key":null}"#);
+        r.shared.quitting.store(true, Ordering::SeqCst); r.shared.kill();
+        let _ = std::fs::remove_file(&out);
     }
     #[test]
     fn events_from_the_engine_arrive_in_order_and_garbage_is_ignored() {

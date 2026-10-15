@@ -124,6 +124,21 @@ describe("other dangerous commands", () => {
     expect(bash(proj(), "brew install ffmpeg").risk).toBe("install");
     expect(bash(proj(), "npm install -g pnpm").decision).toBe("ask");
   });
+  // technical_research section 6: an install on the Mac is outside the project, so Undo cannot take it back.
+  for (const c of ["npm i -g typescript", "npm install --global pnpm", "pnpm add -g x", "yarn global add pnpm", "brew install ffmpeg", "brew upgrade", "brew uninstall wget", "gem install rails", "port install x", "apt-get install x"]) {
+    test(`an install on the Mac is marked not undoable: ${c}`, () => {
+      const v = bash(proj(), c);
+      expect(v.decision, c).toBe("ask");
+      expect(v.risk, c).toBe("install");
+      expect(v.undoable, c).toBe(false);
+    });
+  }
+  test("pip install outside a project environment is marked not undoable", () => {
+    const was = process.env.VIRTUAL_ENV;
+    delete process.env.VIRTUAL_ENV;
+    try { expect(bash(proj(), "pip install requests")).toMatchObject({ decision: "ask", risk: "install", undoable: false }); }
+    finally { if (was !== undefined) process.env.VIRTUAL_ENV = was; }
+  });
   test("ordinary project commands are allowed", () => {
     const p = proj();
     for (const c of ["npm install", "npm run build", "bun test", "ls -la", "cat package.json", "node script.js", "curl https://example.com/data.json", "mkdir -p src && touch src/a.ts"]) {

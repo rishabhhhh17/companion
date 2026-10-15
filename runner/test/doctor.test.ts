@@ -23,6 +23,18 @@ describe("your Mac check", () => {
     expect(by("node")).toMatchObject({ ok: false }); expect(by("node").detail).toMatch(/20 or newer/); expect(by("node").fix).toMatch(/nodejs\.org/);
     expect(by("git").fix).toMatch(/xcode-select/); expect(by("vercel").fix).toMatch(/npm install -g vercel/); expect(by("browser").ok).toBe(false);
   });
+  test("the browser line tells the truth: nothing downloads on its own, and it says how to get it", async () => {
+    const items = await doctor(run({}), () => false);
+    const b = items.find((i) => i.id === "browser")!;
+    expect(b.ok).toBe(false);
+    expect(`${b.detail} ${b.fix ?? ""}`).not.toMatch(/downloads it the first time|automatically|on its own when/i);
+    expect(b.detail).toMatch(/skip/i);
+    expect(b.fix).toMatch(/Get the browser check/);
+    expect(b.fix).toMatch(/200 MB/);
+    const ok = (await doctor(run({}), () => true)).find((i) => i.id === "browser")!;
+    expect(ok.ok).toBe(true);
+    expect(ok.fix).toBeUndefined();
+  });
   test("a tool that crashes or hangs is reported as missing, not as a crash", async () => {
     const items = await doctor(async () => { throw new Error("boom"); }, () => true);
     expect(items.find((i) => i.id === "node")!.ok).toBe(false);

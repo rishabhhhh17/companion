@@ -74,6 +74,27 @@ pub fn move_old_item(_: &std::path::Path) -> Option<bool> { None }
 /// The one line the engine is sent: the key itself (or null for none). It is written to the engine's pipe and nowhere else.
 pub fn handoff_line(key: Option<&str>) -> String { format!(r#"{{"v":1,"type":"auth.key","key":{}}}"#, serde_json::to_string(&key).unwrap_or_else(|_| "null".into())) }
 
+/// The exact words the settings page sends to remove the key, so a stray call removes nothing.
+pub const REMOVE_PHRASE: &str = "remove the key";
+
+/// After a removal, looked up again: the key counts as gone only when the Keychain no longer has it (the delete's own
+/// answer is not enough, and a "no" from it is fine when there was nothing to delete). Otherwise plain words.
+pub fn removal_result(still_there: bool) -> Result<(), String> {
+    if still_there { Err("The Keychain did not let me remove the key. Try again, or remove it in the Keychain Access app.".into()) } else { Ok(()) }
+}
+
+/// May this call remove the key? Only from the card (where Settings lives), and only with the exact words, so a stray
+/// call from another window or a slip of the page removes nothing.
+pub fn may_remove(window_label: &str, confirm: &str) -> bool { window_label == "card" && confirm == REMOVE_PHRASE }
+
+/// The whole removal: the gate first (an unconfirmed call never reaches the Keychain), then `delete`, then `still_there`
+/// looks again, and the key counts as gone only when the Keychain no longer has it.
+pub fn remove_with(window_label: &str, confirm: &str, delete: impl FnOnce() -> bool, still_there: impl FnOnce() -> bool) -> Result<(), String> {
+    if !may_remove(window_label, confirm) { return Err("Not confirmed.".into()); }
+    let _ = delete();   // its "no" is fine when there was nothing to delete; the look below decides
+    removal_result(still_there())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +129,41 @@ mod tests {
     fn the_handoff_line_is_one_line_and_a_missing_key_is_null() {
         let l = handoff_line(Some("sk-ant-x")); assert!(!l.contains('\n')); assert!(l.starts_with(r#"{"v":1,"type":"auth.key""#));
         assert!(handoff_line(None).contains(r#""key":null"#));
+    }
+    #[test]
+    fn removing_the_key_needs_the_exact_words_and_is_done_only_when_it_is_really_gone() {
+        assert_eq!(REMOVE_PHRASE, "remove the key");
+        assert!(removal_result(false).is_ok());          // gone, whether the delete removed it or there was nothing there
+        let e = removal_result(true).unwrap_err();
+        assert!(e.ends_with('.') && e.contains("Keychain") && !e.contains("sk-ant"), "{e}");
+    }
+    #[test]
+    fn only_the_card_with_the_exact_words_may_remove_the_key() {
+        assert!(may_remove("card", REMOVE_PHRASE));
+        for (window, words) in [("dock", REMOVE_PHRASE), ("card", "remove the key "), ("card", "Remove the key"), ("card", ""), ("", REMOVE_PHRASE), ("cardx", REMOVE_PHRASE)] {
+            assert!(!may_remove(window, words), "{window:?} {words:?}");
+        }
+    }
+    #[test]
+    fn a_call_that_is_not_confirmed_never_reaches_the_keychain() {
+        use std::cell::Cell;
+        for (window, words) in [("dock", REMOVE_PHRASE), ("card", "yes")] {
+            let (deleted, looked) = (Cell::new(false), Cell::new(false));
+            let r = remove_with(window, words, || { deleted.set(true); true }, || { looked.set(true); false });
+            assert_eq!(r, Err("Not confirmed.".to_string()), "{window:?} {words:?}");
+            assert!(!deleted.get() && !looked.get(), "{window:?} {words:?}: the Keychain was touched");
+        }
+    }
+    #[test]
+    fn the_key_counts_as_removed_only_when_the_keychain_no_longer_has_it() {
+        use std::cell::Cell;
+        let deleted = Cell::new(false);
+        assert_eq!(remove_with("card", REMOVE_PHRASE, || { deleted.set(true); true }, || false), Ok(()));
+        assert!(deleted.get());
+        // Nothing was there to delete: the delete says no, but the key is gone, so that is fine.
+        assert_eq!(remove_with("card", REMOVE_PHRASE, || false, || false), Ok(()));
+        // The delete said yes, but the Keychain still has it: not removed.
+        assert!(remove_with("card", REMOVE_PHRASE, || true, || true).unwrap_err().contains("Keychain"));
     }
     const GOOD: &str = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcdefgh";
     #[test]

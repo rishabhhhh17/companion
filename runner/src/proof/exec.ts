@@ -7,18 +7,31 @@ export type RunResult = { code: number | null; signal: string | null; stdout: st
 const TAIL = 8000;   // the end of the output is where the error usually is
 const GRACE_MS = 1000;   // after the command itself ends, how long to wait for its output to finish before giving up on the pipes
 
-export function runCommand(command: string, o: { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal; stopWhen?: RegExp }): Promise<RunResult> {
+// A command runs in its own process group, so when the app has to end the engine by force (a stuck engine after Stop
+// everything, or a crash), killing the engine's group does not reach it. With endWithUs, a helper in the command's own group
+// waits on a pipe that only this program holds open and never writes to; when this program ends, however it ends, the pipe
+// closes and the helper ends the whole group. The command itself still gets empty input, as without it.
+const LIFELINE = 'exec 3<&0 </dev/null; ( while read x <&3; do :; done; kill -s KILL 0 ) >/dev/null 2>&1 & exec 3<&-; c=$1; shift; eval "$c"';
+
+// onOutput: each piece of output as it arrives (both streams), for a command whose progress is shown while it runs.
+// endWithUs: the command ends the moment this program ends (see LIFELINE). For a long download that must obey rule 11.
+export type RunOptions = { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal; stopWhen?: RegExp; onOutput?: (text: string) => void; endWithUs?: boolean };
+export function runCommand(command: string, o: RunOptions): Promise<RunResult> {
   return new Promise((resolve) => {
     const t0 = Date.now();
     if (o.signal?.aborted) return resolve({ code: null, signal: "SIGTERM", stdout: "", stderr: "", timedOut: false, ms: 0, aborted: true });
     const env = { ...minimalEnv(), FORCE_COLOR: "0", NO_COLOR: "1", ...(o.env ?? {}) };
-    const child = spawn("sh", ["-c", command], { cwd: o.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = o.endWithUs
+      ? spawn("sh", ["-c", LIFELINE, "sh", command], { cwd: o.cwd, env, detached: true, stdio: ["pipe", "pipe", "pipe"] })
+      : spawn("sh", ["-c", command], { cwd: o.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    child.stdin?.on("error", () => { /* the command's side closed first; nothing is ever written */ });
     let out = "", err = "", timedOut = false, aborted = false, settled = false, matched = false;
     let graceTimer: ReturnType<typeof setTimeout> | undefined;
     const keep = (s: string, chunk: Buffer) => { const n = s + chunk.toString("utf8"); return n.length > TAIL * 2 ? n.slice(-TAIL) : n; };
     const watch = () => { if (o.stopWhen && !matched && (o.stopWhen.test(out) || o.stopWhen.test(err))) { matched = true; stopEverything(); } };
-    child.stdout!.on("data", (c: Buffer) => { out = keep(out, c); watch(); });
-    child.stderr!.on("data", (c: Buffer) => { err = keep(err, c); watch(); });
+    const tell = (c: Buffer) => { if (o.onOutput) try { o.onOutput(c.toString("utf8")); } catch { /* a listener that breaks must not break the command */ } };
+    child.stdout!.on("data", (c: Buffer) => { out = keep(out, c); watch(); tell(c); });
+    child.stderr!.on("data", (c: Buffer) => { err = keep(err, c); watch(); tell(c); });
     const killGroup = (sig: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, sig); } catch { /* already gone */ } };
     const stopEverything = () => { killGroup("SIGTERM"); setTimeout(() => killGroup("SIGKILL"), 300); };
     const timer = setTimeout(() => { timedOut = true; stopEverything(); }, o.timeoutMs);
@@ -31,6 +44,7 @@ export function runCommand(command: string, o: { cwd: string; timeoutMs: number;
       o.signal?.removeEventListener("abort", onAbort);
       child.stdout?.destroy(); child.stderr?.destroy();
       killGroup("SIGKILL");   // everything in the command's group goes with it (a program that starts its own session is out of reach)
+      child.stdin?.destroy();   // the lifeline, if any, has nothing left to guard
       resolve({ code, signal, stdout: out.slice(-TAIL), stderr: err.slice(-TAIL), timedOut, ms: Date.now() - t0, ...(aborted ? { aborted } : {}), ...(matched ? { matched } : {}) });
     };
     child.on("exit", (code, signal) => { graceTimer = setTimeout(() => done(code, signal), GRACE_MS); });   // a child that kept the pipe open must not hang us
