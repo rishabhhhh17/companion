@@ -4,7 +4,7 @@
 
 import { lstatSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { commandsOf, hasDynamic, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
 import { isEnvFile } from "./diagram.ts";
@@ -12,7 +12,9 @@ import { isEnvFile } from "./diagram.ts";
 export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network";
 export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason: string; undoable: boolean };
 export type ToolCall = { tool: string; input: Record<string, unknown> };
-export type Context = { project: string; userAskedCommit?: boolean };
+// started: the ids of the background commands this task's own shell commands reported starting.
+export type Started = { shells: ReadonlySet<string> };
+export type Context = { project: string; userAskedCommit?: boolean; started?: Started };
 
 const allow = (reason = "ok"): Verdict => ({ decision: "allow", reason, undoable: true });
 const ask = (risk: Risk, reason: string, undoable = true): Verdict => ({ decision: "ask", risk, reason, undoable });
@@ -69,8 +71,32 @@ const SAFE_TOOLS = new Set(["TodoWrite", "Task", "WebSearch", "Agent", "ExitPlan
 
 const protectedWhy = (part: string): string => part.startsWith(".git") ? "agents never write the project's .git folder or git settings" : "Companion's and Claude's own settings are not for the agent to change";
 
+// Background commands, as the pinned SDK (0.3.293) names them. TaskStop stops one (KillShell and KillBash are its old names,
+// which the SDK maps to it). Its output is read with the Read tool from Claude Code's own file, "<session>/tasks/<id>.output";
+// the BashOutput and TaskOutput tools were removed, and are judged here the same way in case an older or newer Claude has them.
+const STOP_SHELL = new Set(["TaskStop", "KillShell", "KillBash"]);
+const READ_SHELL = new Set(["BashOutput", "TaskOutput"]);
+const shellId = (input: Record<string, unknown>, keys: string[]): string | null => {
+  for (const k of keys) if (typeof input[k] === "string" && input[k]) return input[k] as string;
+  return null;
+};
+/** Is this file the output file of a background command this task started ("…/tasks/<id>.output")? */
+function startedOutput(file: string, ctx: Context): boolean {
+  const s = ctx.started;
+  if (!s || !isAbsolute(file)) return false;
+  const n = resolve(file), name = basename(n);
+  return basename(dirname(n)) === "tasks" && name.endsWith(".output") && s.shells.has(name.slice(0, -".output".length));
+}
+
 export function evaluate(call: ToolCall, ctx: Context): Verdict {
   const { tool, input } = call;
+  if (STOP_SHELL.has(tool) || READ_SHELL.has(tool)) {
+    const id = shellId(input, STOP_SHELL.has(tool) ? ["task_id", "shell_id"] : ["bash_id", "task_id", "shell_id"]);
+    const stopping = STOP_SHELL.has(tool);
+    if (id && ctx.started?.shells.has(id)) return allow(stopping ? "stops a command this task started" : "reads a command this task started");
+    return ask("irreversible", stopping ? "this stops something this task did not start" : "this reads something this task did not start");
+  }
+  if (tool === "Read" && typeof input.file_path === "string" && startedOutput(input.file_path, ctx)) return allow("reads the output of a command this task started");
   if (tool in WRITE_TOOLS) {
     const p = input[WRITE_TOOLS[tool]] ?? input.file_path ?? input.path;
     if (typeof p !== "string" || !p) return deny("outside_project", "no file path given");

@@ -4,10 +4,25 @@
 
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
 import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
-import { EngineStop, type Authorization, type Engine, type EngineOptions, type ToolUse, type Turn, type ToolResult } from "./engine.ts";
+import { APPROVAL_TIMEOUT_MS, EngineStop, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult } from "./engine.ts";
+
+// The safety hook waits while an approval card is open. Its own time limit (in seconds, the SDK's unit) is set longer than a
+// card lives, so the SDK never gives up on the hook first and lets the tool fall through to its normal permission flow
+// without our answer: an unanswered card ends as a no, and that no is what the SDK gets.
+export const HOOK_TIMEOUT_SECONDS = Math.ceil(APPROVAL_TIMEOUT_MS / 1000) + 120;
+
+// From a finished shell command's result, only the one fact the safety rules use: the id of a command it left running in
+// the background (BashOutput.backgroundTaskId in the SDK's types). Anything odd is dropped. UNPROVEN until a real run shows
+// the after-tool hook carries it.
+export function shellFacts(input: any): ShellFacts | undefined {
+  if (input?.hook_event_name !== "PostToolUse" || input?.tool_name !== "Bash") return undefined;
+  const r = input.tool_response;
+  const id = r && typeof r === "object" && typeof r.backgroundTaskId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(r.backgroundTaskId) ? r.backgroundTaskId : undefined;
+  return id ? { backgroundId: id } : undefined;
+}
 
 const COMPANION_APPEND = "You are working inside a user's project folder for a Companion task. Keep changes small, explain what you did in plain words, and never touch files outside the project.";
 
@@ -25,7 +40,7 @@ export function resolveClaudeBinary(override?: string): string {
 
 export type SdkConfig = {
   project: string; model: string; budgetUsd: number; claudeBinary: string; env: Record<string, string>;
-  authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string; planOnly?: boolean; toolDone?: (toolUseId?: string) => void;
+  authorize: (tool: ToolUse, toolUseId?: string) => Promise<Authorization>; signal: AbortSignal; resumeSession?: string; planOnly?: boolean; toolDone?: (toolUseId?: string, shell?: ShellFacts) => void;
   // What Companion remembers about this person and project, added to the instructions as background.
   memory?: string;
 };
@@ -43,7 +58,8 @@ export function buildSdkOptions(c: SdkConfig) {
       return out("deny", `Companion could not check this safely: ${(e as Error).message}`);
     }
   };
-  const post = async (input: any, toolUseId: string | undefined) => { try { c.toolDone?.(toolUseId ?? input?.tool_use_id); } catch { /* never break the run */ } return {}; };
+  const post = async (input: any, toolUseId: string | undefined) => { try { c.toolDone?.(toolUseId ?? input?.tool_use_id, shellFacts(input)); } catch { /* never break the run */ } return {}; };
+  const gate: HookCallbackMatcher = { hooks: [hook], timeout: HOOK_TIMEOUT_SECONDS };
   return {
     cwd: c.project,
     pathToClaudeCodeExecutable: c.claudeBinary,
@@ -61,7 +77,7 @@ export function buildSdkOptions(c: SdkConfig) {
     })() },
     permissionMode: (c.planOnly ? "plan" : "acceptEdits") as "plan" | "acceptEdits",
     disallowedTools: ["Bash(sudo *)", "Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)", ...readDenyRules()],
-    hooks: { PreToolUse: [{ hooks: [hook] }], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
+    hooks: { PreToolUse: [gate], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
     canUseTool: async () => ({ behavior: "deny" as const, message: "Companion decides in its safety hook, not here." }),
     sandbox: sandboxSettings(homedir()),
     maxBudgetUsd: c.budgetUsd,

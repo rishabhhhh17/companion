@@ -1,9 +1,11 @@
 // Builds the commands the pages send. Rust checks each one again before it reaches the runner.
 import type { Command } from "../../protocol/index.ts";
+// Model ids live in one place, with the runner's (T10).
+import { MODELS } from "../../runner/src/models.ts";
 
 let n = 0;
 const id = () => `ui${Date.now().toString(36)}${++n}`;
-export const DEFAULT_MODEL = "claude-sonnet-5-5";
+export const DEFAULT_MODEL = MODELS.agent;
 export const DEFAULT_BUDGET_USD = 3;
 export const DRIVE_BUDGET_USD = 5;
 export const AGENT = "builder-1";
@@ -22,7 +24,7 @@ export const approvePlan = (steps: string[]): Command => ({ v: 1, id: id(), type
 export const chooseLoop = (choice: "different" | "stop"): Command => ({ v: 1, id: id(), type: "loop.choose", agent: AGENT, choice });
 export const pauseDrive = (): Command => ({ v: 1, id: id(), type: "drive.pause", agent: AGENT, reason: "you" });
 export const resumeDrive = (): Command => ({ v: 1, id: id(), type: "drive.resume", agent: AGENT });
-export const DIAGNOSE_MODEL = "claude-opus-5-5";
+export const DIAGNOSE_MODEL = MODELS.diagnose;
 export const diagnose = (project: string): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: DIAGNOSE_MODEL, budgetUsd: DRIVE_BUDGET_USD });
 export const askResearch = (project: string, question: string): Command | null => {
   const q = question.replace(/\s+/g, " ").trim();
@@ -74,6 +76,10 @@ export const metricsSet = (enabled: boolean): Command => ({ v: 1, id: id(), type
 export const metricsNote = (name: string): Command => ({ v: 1, id: id(), type: "metrics.note", name });
 export const metricsShow = (): Command => ({ v: 1, id: id(), type: "metrics.show" });
 export const metricsErase = (): Command => ({ v: 1, id: id(), type: "metrics.erase" });
+
+// The daily spending limit in Settings: today's spend for this project against the limit, and changing the limit.
+export const showSpending = (project: string): Command => ({ v: 1, id: id(), type: "spending.show", project });
+export const setSpendingLimit = (project: string, limitUsd: number): Command => ({ v: 1, id: id(), type: "spending.set", project, limitUsd });
 
 /** The stand in project for lessons that need none (see runner/src/walk.ts). */
 export const NO_PROJECT = "no-project";

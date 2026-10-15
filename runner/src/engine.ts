@@ -3,8 +3,13 @@
 
 export type ToolUse = { name: string; input: Record<string, unknown> };
 export type Turn = { text?: string; tool?: ToolUse; costUsd: number; sessionId?: string };
-export type ToolResult = { ok: boolean; output: string };
+// What a shell command reported about itself: the id of a command it left running in the background. Only this is kept,
+// so the task may read the output of, or stop, what it started itself.
+export type ShellFacts = { backgroundId?: string };
+export type ToolResult = { ok: boolean; output: string; shell?: ShellFacts };
 export type Authorization = { allow: boolean; reason: string };
+// How long an approval card waits for the person. No answer in that time counts as no.
+export const APPROVAL_TIMEOUT_MS = 30 * 60_000;
 // `authorize` is how an engine that runs tools itself (the real SDK) asks Companion before each one.
 export type EngineOptions = {
   prompt: string; project: string; model: string; signal: AbortSignal; budgetUsd: number;
@@ -13,8 +18,9 @@ export type EngineOptions = {
   resumeSession?: string;
   // Planning: the engine may read the project but must not change anything.
   planOnly?: boolean;
-  // The engine tells us when a tool it ran has finished (so we know which file changes were the agent's own).
-  toolDone?: (toolUseId?: string) => void;
+  // The engine tells us when a tool it ran has finished (so we know which file changes were the agent's own), and what a
+  // shell command said about itself.
+  toolDone?: (toolUseId?: string, shell?: ShellFacts) => void;
   // What Companion remembers about this person and project (plain lines they can read and change). Empty when off the record.
   memory?: string;
 };

@@ -1,16 +1,16 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { DELETE_PHRASE, deletableLines, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, spendingLine, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
+import { NO_PROJECT, setSpendingLimit, showSpending, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, MemoryLine } from "./model.ts";
+import type { Explain, MemoryLine, Spending } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
@@ -49,7 +49,37 @@ function ExplainBox({ e }: { e: Explain }) {
   );
 }
 
-function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+// The daily spending limit: today's spend for this project against the limit, and a way to change it within the bounds.
+function SpendingRow({ project, spending }: { project: string; spending: Spending | null }) {
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState<number | null>(null);
+  useEffect(() => { if (project) void send(showSpending(project)); }, [project]);
+  const s = spending && spending.project === project ? spending : null;
+  const min = s?.minUsd ?? 1, max = s?.maxUsd ?? 500;
+  const value = limitFromText(text, min, max);
+  const save = () => { if (!project || value === null) return; setSent(value); void send(setSpendingLimit(project, value)); };
+  return (
+    <>
+      <h3>{S.spendingTitle}</h3>
+      <div className="line muted">{S.spendingHelp}</div>
+      {!project && <div className="line muted">{S.spendingNoProject}</div>}
+      {s && <div className="line" role="status">{spendingLine(s)}</div>}
+      {project && (
+        <div className="row">
+          <input type="text" inputMode="decimal" autoComplete="off" value={text} placeholder={s ? String(s.limitUsd) : ""} aria-label={S.spendingLabel}
+            onChange={(e) => { setText(e.target.value); setSent(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); save(); } }} />
+          <button className="btn" type="button" disabled={value === null} onClick={save}>{S.spendingSave}</button>
+        </div>
+      )}
+      {project && text.trim() !== "" && value === null && <div className="line muted">{S.spendingRange.replace("{min}", String(min)).replace("{max}", String(max))}</div>}
+      {s && sent !== null && !s.problem && s.limitUsd === sent && <div className="line muted" role="status">{S.spendingSaved}</div>}
+      {s?.problem && <div className="error" role="alert">{s.problem}</div>}
+    </>
+  );
+}
+
+function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -111,6 +141,7 @@ function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, set
         <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
       </div>
       <div className="row"><button className="btn" type="button" onClick={onPractice}>{S.practiceAgainFromSettings}</button></div>
+      <SpendingRow project={project} spending={spending} />
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
@@ -550,7 +581,7 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
+      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
       {m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>

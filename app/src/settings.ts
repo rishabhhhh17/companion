@@ -1,4 +1,6 @@
 // Settings page helpers: plain words only, so they can be tested without a screen.
+import { S } from "./strings.ts";
+import type { Spending } from "./model.ts";
 export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number };
 export type PermissionKind = "screen_recording" | "accessibility" | "microphone";
 export type PermissionState = "allowed" | "not_allowed" | "not_asked" | "unknown";
@@ -47,3 +49,21 @@ export function numbersLines(s: NumbersSummary): string[] {
 
 /** The shipped lesson that walks a person through allowing this permission (see lessons/). */
 export const permissionLesson = (kind: PermissionKind): string => `companion-${kind.replace(/_/g, "-")}`;
+
+// ---- the daily spending limit ----
+const dollars = (n: number, cents: boolean) => `$${cents || !Number.isInteger(n) ? n.toFixed(2) : String(n)}`;
+
+/** Today's spend for this project against its limit, in plain words. Always "about": it is Companion's own estimate. */
+export function spendingLine(s: Spending): string {
+  const line = S.spendingToday.replace("{spent}", dollars(s.spentUsd, true)).replace("{limit}", dollars(s.limitUsd, false));
+  return s.spentUsd >= s.limitUsd ? `${line} ${S.spendingOver}` : line;
+}
+
+/** What the person typed as a new limit: dollars (a "$" in front is fine, at most two places after the point) within the
+ *  bounds. Anything else is not an amount, and nothing is sent. */
+export function limitFromText(text: string, min: number, max: number): number | null {
+  const t = text.trim().replace(/^\$\s*/, "");
+  if (!/^\d{1,4}(\.\d{1,2})?$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}

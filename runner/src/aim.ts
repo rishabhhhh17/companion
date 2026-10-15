@@ -4,6 +4,7 @@
 // route and only when switched on (COMPANION_AIM=computer_use); it is NOT the default until the aim eval shows it is
 // better. The picture is sent straight from memory with the person's own key; nothing is written to disk.
 import type { Image, Ocr, Point, VisionLike } from "./lanes.ts";
+import { MODELS } from "./models.ts";
 
 export const API_URL = "https://api.anthropic.com/v1/messages";
 const BETA = "computer-use-2025-11-24";
@@ -64,7 +65,7 @@ export class ComputerUseVision implements VisionLike {
       const res = await (this.o.fetchFn ?? fetch)(API_URL, {
         method: "POST", signal: ac.signal,
         headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-beta": BETA },
-        body: JSON.stringify(buildRequest({ model: this.o.model ?? "claude-sonnet-5-5", image: req.image, question: plain(req.question, 300), ocr: req.ocr })),
+        body: JSON.stringify(buildRequest({ model: this.o.model ?? MODELS.aim, image: req.image, question: plain(req.question, 300), ocr: req.ocr })),
       });
       if (!res.ok) throw new Error(`the pointing request was refused (${res.status})`);   // the body is never repeated: it could echo the key
       const json = await res.json();

@@ -13,7 +13,9 @@ import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt }
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
 import { CheckpointStore } from "./checkpoints.ts";
-import { EngineStop, type Engine, type ToolResult, type ToolUse } from "./engine.ts";
+import { APPROVAL_TIMEOUT_MS, EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
+import { MODELS } from "./models.ts";
+import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
@@ -56,7 +58,10 @@ export type RunnerOptions = {
   executor?: ToolExecutor;
   proof?: ProofRunner;
   ledger?: Ledger;
+  // What each project may spend in a day (an estimate), and where a new limit chosen in Settings is kept. Without a place to
+  // keep it, the limit cannot be changed.
   dailyCeilingUsd?: number;
+  saveDailyLimit?: (usd: number) => void;
   // Proof rung 7: a second model that reads risky changes. Off unless one is given.
   reviewer?: Engine;
   reviewModel?: string;
@@ -80,8 +85,20 @@ function pruneOldest(dir: string, keep: number) {
   for (const x of files.slice(keep)) rmSync(join(dir, x.f), { force: true });
 }
 
-type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean) => void> };
+// One task of one agent. taskAllowed: actions the person allowed "for the rest of this task" (see approvalKey). shells: the
+// background commands this task started, which it may read and stop. Both end with the session, so never cross tasks.
+type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string> };
+const newSession = (agent: string, abort: AbortController): Session => ({ agent, abort, pending: new Map(), taskAllowed: new Set(), shells: new Set() });
 type StartCmd = Extract<Command, { type: "agent.start" }>;
+
+// What "the same action" means for a yes that covers the rest of a task: the same tool, the same thing it acts on (the exact
+// command, address, file, or for other tools the exact input), and the same reason Companion asked. Anything else asks again.
+const stableJson = (x: unknown): string => JSON.stringify(x, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, (v as Record<string, unknown>)[k]])) : v));
+export function approvalKey(tool: ToolUse, v: Verdict): string {
+  const i = tool.input;
+  const what = tool.name === "Bash" ? String(i.command ?? "") : tool.name === "WebFetch" ? String(i.url ?? "") : tool.name === "Read" || tool.name === "NotebookRead" ? String(i.file_path ?? i.notebook_path ?? "") : stableJson(i);
+  return JSON.stringify([tool.name, what, v.risk ?? "", v.reason]);
+}
 
 // The default executor really does the work: file edits through the file system, commands
 // through a shell with the account switching variables removed.
@@ -152,7 +169,8 @@ export class AgentRunner {
   }
   private counter = 0;
   private ledger: Ledger;
-  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); if (o.pictures) sweepWork(o.pictures.workDir); }
+  private dailyLimitUsd: number;
+  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); this.dailyLimitUsd = o.dailyCeilingUsd ?? DEFAULT_DAILY_LIMIT_USD; if (o.pictures) sweepWork(o.pictures.workDir); }
 
   // Companion's own notes are not the person taking the wheel: the watchers treat these writes as the agent's own.
   private ownWrite<T>(fn: () => T): T {
@@ -269,7 +287,22 @@ export class AgentRunner {
   }
 
   // What this project may still spend today.
-  private room(project: string): number { return (this.o.dailyCeilingUsd ?? 10) - this.ledger.spentToday(project); }
+  private room(project: string): number { return this.dailyLimitUsd - this.ledger.spentToday(project); }
+  // The Settings row: the daily limit against what this project spent today. A new limit is used only once it is kept.
+  private spendingState(project: string, problem?: string) {
+    const spent = Math.round(this.ledger.spentToday(project) * 1e6) / 1e6;
+    this.emit({ type: "spending.state", project, limitUsd: this.dailyLimitUsd, spentUsd: spent, minUsd: MIN_DAILY_LIMIT_USD, maxUsd: MAX_DAILY_LIMIT_USD, ...(problem ? { problem } : {}) } as never);
+  }
+  private setDailyLimit(cmd: Extract<Command, { type: "spending.set" }>) {
+    const c = checkDailyLimit(cmd.limitUsd);
+    if (!c.ok) { this.spendingState(cmd.project, c.reason); return; }
+    try {
+      if (!this.o.saveDailyLimit) throw new Error("nowhere to keep it");
+      this.o.saveDailyLimit(c.usd);
+    } catch { this.spendingState(cmd.project, "The new limit could not be saved, so it was not changed. Try again."); return; }
+    this.dailyLimitUsd = c.usd;
+    this.spendingState(cmd.project);
+  }
   private dailyLimit(agent: string) { this.fail("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.", agent); }
 
   private now() { return (this.o.now ?? (() => new Date()))(); }
@@ -335,10 +368,12 @@ export class AgentRunner {
       }
       case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
       case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "spending.show": this.spendingState(cmd.project); return;
+      case "spending.set": this.setDailyLimit(cmd); return;
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
-          if (r) { s.pending.delete(cmd.approval); r(cmd.decision === "allow"); return; }
+          if (r) { s.pending.delete(cmd.approval); r(cmd.decision === "allow", cmd.scope === "task" ? "task" : "once"); return; }
         }
         this.fail(`unknown approval ${cmd.approval}`);
         return;
@@ -364,10 +399,15 @@ export class AgentRunner {
     }
   }
 
+  // Stop: every open question is a no, and nothing allowed "for the rest of this task" is allowed any more.
   private cancelPending(agent: string) {
     const s = this.sessions.get(agent);
     if (!s) return;
+    s.taskAllowed.clear();
     for (const [id, r] of s.pending) { s.pending.delete(id); r(false); }
+  }
+  private noteShell(s: Session, shell?: ShellFacts) {
+    if (shell?.backgroundId && s.shells.size < 500) s.shells.add(shell.backgroundId);
   }
 
   private store(project: string): CheckpointStore {
@@ -416,7 +456,7 @@ export class AgentRunner {
     const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(cmd.prompt);
     const recalled = this.learnAndRecall(cmd.project, cmd.prompt, cmd.offTheRecord);
     const abort = new AbortController();
-    const session: Session = { agent: cmd.agent, abort, pending: new Map() };
+    const session = newSession(cmd.agent, abort);
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
@@ -438,7 +478,7 @@ export class AgentRunner {
       const gen = this.o.engine.start({
         prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession, memory: recalled,
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
-        toolDone: (id) => { if (id) this.watchers.get(cmd.agent)?.end(id); },
+        toolDone: (id, shell) => { if (id) this.watchers.get(cmd.agent)?.end(id); this.noteShell(session, shell); },
       });
       try {
         let next = await gen.next();
@@ -455,6 +495,7 @@ export class AgentRunner {
             const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
             try { result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason }; }
             finally { if (a.wid) this.watchers.get(cmd.agent)?.end(a.wid); }
+            if (a.allow && turn.tool.name === "Bash") this.noteShell(session, result?.shell);
             if (abort.signal.aborted) { status = "interrupted"; return false; }
           } else if (turn.text) {
             said = (said + " " + turn.text).slice(-1500);
@@ -595,7 +636,7 @@ export class AgentRunner {
   private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void): Promise<string> {
     let text = "";
     const gen = this.o.reviewer!.start({
-      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? "claude-opus-5-5", signal, budgetUsd, planOnly: true,
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true,
       authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
     });
     try {
@@ -623,7 +664,7 @@ export class AgentRunner {
     const budget = Math.min(spec.budgetUsd, room);
     const abort = new AbortController();
     const recalled = this.learnAndRecall(spec.project, spec.said ?? "", spec.offTheRecord, false);
-    this.sessions.set(spec.agent, { agent: spec.agent, abort, pending: new Map() });
+    this.sessions.set(spec.agent, newSession(spec.agent, abort));
     this.driving.add(spec.agent);
     this.driveStop.delete(spec.agent);
     this.plans.delete(spec.agent);
@@ -756,7 +797,7 @@ export class AgentRunner {
   private shipping = new Set<string>();
   private shipSessions = 0;
   // Each ship step is its own session under its own key, so one finishing never hides another from Stop everything (the checks inside a preview, then the deploy).
-  private openShipSession(ac: AbortController): string { const k = `ship:${++this.shipSessions}`; this.sessions.set(k, { agent: "ship", abort: ac, pending: new Map() }); return k; }
+  private openShipSession(ac: AbortController): string { const k = `ship:${++this.shipSessions}`; this.sessions.set(k, newSession("ship", ac)); return k; }
   private shipSay(project: string, stage: string, detail: string, extra: Record<string, unknown> = {}) {
     this.emit({ type: "ship.status", project, stage, detail: clip(redact(detail), 400), ...extra } as never);
   }
@@ -1052,7 +1093,7 @@ export class AgentRunner {
   // and by the real engine's PreToolUse hook; either way the safety rules are the same.
   private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
-    const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project });
+    const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project, started: { shells: s.shells } });
     // House rules can only make a call stricter, never looser.
     const loaded = loadRules(cmd.project);
     const said = `${cmd.project}\n${loaded.problems.join("\n")}`;
@@ -1075,23 +1116,35 @@ export class AgentRunner {
       tell("blocked");
       return { allow: false, reason: `Blocked by Companion: ${verdict.reason}` };
     }
-    if (verdict.decision === "ask") {
+    // After Stop (or a pause) nothing more runs in this task, and nothing more is asked: the real engine can still ask once
+    // while it winds down.
+    if (s.abort.signal.aborted) {
+      tell("blocked");
+      return { allow: false, reason: "Stopped: nothing more runs in this task." };
+    }
+    // A yes "for the rest of this task" covers exactly this action again, never one that cannot be undone, and never a refusal
+    // (that was decided above).
+    const key = verdict.decision === "ask" && verdict.undoable ? approvalKey(tool, verdict) : null;
+    if (verdict.decision === "ask" && key && s.taskAllowed.has(key)) tell("ran");
+    else if (verdict.decision === "ask") {
       tell("needs_approval");
       const approval = `ap_${randomBytes(4).toString("hex")}`;
-      const timeout = this.o.approvalTimeoutMs ?? 30 * 60_000;
+      const timeout = this.o.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
       this.emit({
         type: "approval.request", approval, agent: cmd.agent, checkpoint, toolUseId, risk: verdict.risk ?? "irreversible",
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),
       } as never);
       this.state(cmd.agent, "needsYou");
       let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
+      let forTask = false;
       const allowed = await new Promise<boolean>((res) => {
         const t = setTimeout(() => { s.pending.delete(approval); how = "expired"; res(false); }, timeout);
-        s.pending.set(approval, (ok) => { clearTimeout(t); how = ok ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; res(ok); });
+        s.pending.set(approval, (ok, scope) => { clearTimeout(t); how = ok ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; forTask = ok && scope === "task"; res(ok); });
       });
       // Tell every page, so none keeps a stale card or badge.
       this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
       if (!allowed) { tell("denied"); return { allow: false, reason: "The user did not allow this command." }; }
+      if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);
       tell("ran");
     }
     if (tool.name === "Bash") countCommand();

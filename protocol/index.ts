@@ -64,7 +64,10 @@ export type MetricsSet = Envelope & { type: "metrics.set"; enabled: boolean };
 export type MetricsNote = Envelope & { type: "metrics.note"; name: string };
 export type MetricsShow = Envelope & { type: "metrics.show" };
 export type MetricsErase = Envelope & { type: "metrics.erase" };
-export type Command = MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// The daily spending limit (an estimate of the person's own Claude use, per project per day): shown and changed in Settings.
+export type SpendingShow = Envelope & { type: "spending.show"; project: string };
+export type SpendingSet = Envelope & { type: "spending.set"; project: string; limitUsd: number };
+export type Command = SpendingShow | SpendingSet | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -136,7 +139,9 @@ export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reaso
 export type MetricsSummary = Envelope & { type: "metrics.summary"; enabled: boolean; days: Record<string, Record<string, number>>; totals: Record<string, number>; rates: Record<string, number | null> };
 // Undo finished. recovered: big files replaced by their older small version, copied aside first. largeLeftAlone: big files not touched.
 export type CheckpointRestored = Envelope & { type: "checkpoint.restored"; project: string; checkpoint: string; safety: string; recovered: string[]; largeLeftAlone: string[]; leftAlone: string[] };
-export type Event = CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// problem: why a new limit was refused or not kept; the limit shown is the one still in force.
+export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
+export type Event = SpendingState | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -165,6 +170,8 @@ const COMMANDS: Record<string, Check[]> = {
   "metrics.note": [str("name")],
   "metrics.show": [],
   "metrics.erase": [],
+  "spending.show": [str("project")],
+  "spending.set": [str("project"), num("limitUsd")],
   "walk.list": [str("project")],
   "walk.start": [str("project"), str("lesson")],
   "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
@@ -212,6 +219,7 @@ const EVENTS: Record<string, Check[]> = {
   "diagram.ready": [str("project"), bool("made")],
   "checkpoint.restored": [str("project"), str("checkpoint"), str("safety"), list("recovered"), list("largeLeftAlone"), list("leftAlone")],
   "metrics.summary": [bool("enabled"), obj("days"), obj("totals"), obj("rates")],
+  "spending.state": [str("project"), num("limitUsd"), num("spentUsd"), num("minUsd"), num("maxUsd")],
   "walk.lessons": [str("project"), list("lessons")],
   "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
   "walk.ask": [str("walk"), num("index")],

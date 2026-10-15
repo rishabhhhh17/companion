@@ -34,5 +34,10 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - Warm process memory and latency on both auth routes, and the cost of one spare (section 20, question 16). Spike (g) target: first streamed token within about one second warm.
 - Whether fast lane and vision sessions may run on a plan login: part of the written question to Anthropic (T03).
 
+## What the build settled (16 Oct 2026)
+- Model ids live in one module, `runner/src/models.ts`; the app's pages take the agent ones from it. The ids did not change when they moved.
+- For testing, settings switch them: `COMPANION_MODEL` (agent sessions), `COMPANION_FAST_MODEL` and `COMPANION_VISION_MODEL` (the two small lanes), `COMPANION_AIM_MODEL` (the experimental pointing lane). The app's developer file may pass all four.
+- Open: Drive's planning runs on Sonnet 5.5, not Opus 5.5 as this record says. It was left as it was; the founder decides.
+
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).

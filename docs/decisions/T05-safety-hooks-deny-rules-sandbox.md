@@ -46,5 +46,10 @@ The layers are in technical_research.md section 8. Rules a coding agent must nev
 - `ToolSearch` is allowed (research needs it to reach web search).
 - Known limit: installs inside the sandbox need Node 20 or newer, because Node 18 cannot reach the sandbox proxy.
 
+## What the build settled (config and safety pass, 16 Oct 2026)
+- The `PreToolUse` hook has its own time limit set (`HOOK_TIMEOUT_SECONDS` in `runner/src/sdkEngine.ts`, 32 minutes), longer than an approval card lives (30 minutes, `APPROVAL_TIMEOUT_MS`). An unanswered card ends as a no, and that no reaches the SDK before it could give up on the hook. Not yet seen on a real run: what the SDK does when a hook does time out.
+- Background commands, read from the pinned SDK (0.3.293): a background command is stopped with `TaskStop` (`KillShell` and `KillBash` are its old names, mapped to it). `BashOutput` and `TaskOutput` were removed; output is read with `Read` from Claude Code's own file, `<temp>/<session>/tasks/<id>.output`. Stopping or reading a command the same task started is allowed; anything else asks, and unknown tools still ask. The task learns the id from the shell result's `backgroundTaskId` in the `PostToolUse` hook. **[verify]** on a real run that the hook carries it; if it does not, these calls ask, as before.
+- "Allow for the rest of this task" (`approval.resolve` with `scope: "task"`) remembers that exact action (the tool, the exact command, file, address or input, and the reason Companion asked) for that task and agent only. It never covers an action that cannot be undone (a push, a deploy, a send: those ask every time, rule 13), never overrides a refusal, and is cleared by Stop. After Stop nothing more runs or is asked in that task. The app does not offer this answer yet; it still sends "once".
+
 ## Revisit if
 An SDK upgrade changes the permission order or hook precedence and the M1 hook tests fail. Upgrades happen only on a branch with the full suite (pitfall 28).
