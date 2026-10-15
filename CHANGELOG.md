@@ -431,3 +431,15 @@ Checked against F17 section 4.2 and found two places where Show me was bolder th
 - Companion saves and reads your Claude key in the Mac's Keychain itself, so another program asking for it gets the Mac's own "allow?" question instead of the key.
 - A key saved by an earlier version is moved the first time Companion starts. The Mac may ask once to allow that. If you say no, paste your key again.
 - Not yet tried by hand on a real Mac (the move and the refusal of another program). Tests cover saving, reading, replacing, deleting and that the key never appears in anything the engine writes.
+
+## M11 wave 1: fixes found by checking every feature against HeyClicky (16 Oct 2026)
+- **Your key reaches Companion's engine again.** Yesterday's Keychain change had a bug: the key was saved safely but never handed to the engine, so Companion would have said "not connected". Fixed, with a test that runs the real handoff.
+- **Private text is no longer saved by Claude Code.** Prompt help text read from other apps and off the record tasks used to end up in Claude Code's own conversation files in your home folder. Now those runs save nothing, and on the API key route ordinary task conversations live inside Companion's folder, so Delete everything removes them. (Conversations saved before this change are still in ~/.claude/projects; delete them there if you want them gone.)
+- **The browser check works on a new Mac.** It needs a one time download (about 104 MB, about 200 MB on disk) from Playwright's servers. It starts only when you press the button, shows progress, and Stop everything ends it.
+- **What Companion remembers about your project now reaches Claude.** Before, it was dropped on the way. A CLAUDE.md that points to AGENTS.md is now followed, but never to settings or key files.
+- **Settings:** replace or remove your Claude key (removing asks first), see today's spending against a daily limit you can change (1 to 500 dollars), see every hotkey, and see whether the microphone was never asked, turned off or blocked.
+- **Paste back puts your clipboard back** afterwards, and never touches a clipboard marked private (password managers).
+- **Only one copy of Companion runs at a time.**
+- **Safer approvals:** "yes for the rest of this task" covers only harmless asks; commands, installs and anything that cannot be undone still ask every time. Reading the output of a command the task started no longer needs a yes.
+- Spending is counted correctly when a fix continues a conversation (it was counted twice), and token counts are real.
+- One test run reached the internet by mistake while these were built: it downloaded the browser three times into temporary test folders, which were deleted. Nothing else was sent. The tests now cannot reach the network.
