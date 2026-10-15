@@ -127,7 +127,7 @@ Commands (stdin):
 
 ```json
 {"v":1,"id":"c1","type":"agent.start","project":"p_9f2c","agent":"builder-1","mode":"drive","prompt":"Add a contact form that emails me","model":"claude-sonnet-5-5","budgetUsd":3}
-{"v":1,"id":"c2","type":"agent.send","agent":"builder-1","text":"Make the button blue too"}
+{"v":1,"id":"c2","type":"agent.send","agent":"builder-1","project":"p_9f2c","text":"Make the button blue too"}
 {"v":1,"id":"c3","type":"agent.interrupt","agent":"builder-1"}
 {"v":1,"id":"c3b","type":"agent.interruptAll","reason":"kill switch"}
 {"v":1,"id":"c4","type":"approval.resolve","approval":"ap_71","decision":"allow","scope":"once","sig":"base64..."}

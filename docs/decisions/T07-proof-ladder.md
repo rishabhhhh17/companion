@@ -52,5 +52,10 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 - The installer runs in its own process group, which the app's force stop of the engine (a stuck engine after Stop everything, a crash, quitting) does not reach. It ends with the engine instead: a helper in the installer's group waits on a pipe that only the engine holds open, and when the engine ends, however it ends, the helper ends the whole group (tested by killing the engine with SIGKILL during a download). This replaces the reviewer's idea of a saved process number killed on the next start: it acts at once, not at the next start, and can never hit an unrelated program that reused the number. Proof rung commands (tests, builds, dev servers) still run without this, so a force stop of the engine can leave one running until it ends by itself; that was not changed here.
 - The installer keeps its archive in `browsers/.download`, not the Mac's shared temporary folder, and that folder is cleared before and after every run. A stopped download used to leave its archive (about 104 MB) in the shared temporary folder, because Playwright cannot clean up when it is stopped.
 
+## What the build settled (single tasks and Try again, 16 Oct 2026)
+- The fix loop breaker also covers a single task, not only a Drive step. When one task's last three checks fail the same way (same rung, same words once numbers are ignored), the task stops and shows the same card (Try a different approach, Stop here) instead of ending as Not done. A different approach runs inside the same task (one undo point, one receipt) with up to three more tries, and it is offered once per task. Stop and Stop everything answer the card. A Drive plan still asks once per step, after the step's task ends.
+- Try again re-runs the last request as a new checked task, giving Claude the failing check redacted and cut to 1,500 characters.
+- Not yet proven with real Claude: how often a different approach rescues a real task (M11 plan, step 7).
+
 ## Revisit if
 The false "done" rate does not stay near zero, its target in product_research.md section 17.
