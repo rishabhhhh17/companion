@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { join, resolve, sep } from "node:path";
 import { minimalEnv } from "../env.ts";
 import type { Start } from "./detect.ts";
+import type { PythonServer } from "./python.ts";
 
 export type Running = { ok: true; url: string; port: number; stop: () => Promise<void> };
 export type Failed = { ok: false; reason: string; notAServer?: boolean; aborted?: boolean; output?: string };
@@ -29,6 +30,15 @@ export function portArgs(scriptText: string, port: number): string {
   if (/\bvite\b/.test(scriptText)) return ` -- --port ${port} --strictPort --host 127.0.0.1`;
   if (/\bnext\b/.test(scriptText)) return ` -- -p ${port} -H 127.0.0.1`;
   return "";
+}
+
+// Python dev servers are told the host and port on the command line: only this Mac, on the port Companion chose.
+export function pythonPortArgs(kind: PythonServer, port: number): string {
+  switch (kind) {
+    case "flask": case "uvicorn": return ` --host 127.0.0.1 --port ${port}`;
+    case "django": return ` 127.0.0.1:${port}`;
+    case "streamlit": return ` --server.address 127.0.0.1 --server.port ${port}`;
+  }
 }
 
 // Where the server says it is listening ("Local: http://localhost:5173/"), for servers that ignore the port we gave them.
@@ -57,10 +67,10 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
   const hinted = start.port && start.autoPort === false && !(await portBusy(start.port));
   const port = hinted ? start.port! : await freePort();
   const url = `http://127.0.0.1:${port}/`;
-  const command = start.command + portArgs(o.scriptText ?? "", port);
+  const command = start.command + (start.python ? pythonPortArgs(start.python, port) : portArgs(o.scriptText ?? "", port));
   const child = spawn("sh", ["-c", command], {
     cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...minimalEnv(), PORT: String(port), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" },
+    env: { ...minimalEnv(), ...(start.env ?? {}), PORT: String(port), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" },
   });
   let output = "", exited = false, exitCode: number | null = null;
   const grab = (c: Buffer) => { output = (output + c.toString("utf8")).slice(-4000); };

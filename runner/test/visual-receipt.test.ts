@@ -1,12 +1,12 @@
 // The visual receipt on real small projects: the earlier version is copied out of the snapshot store into a private
 // folder, both versions are opened in the hidden browser, and the change is circled. The project is never touched.
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CheckpointStore } from "../src/checkpoints.ts";
 import { browserCheck, browserInstalled } from "../src/proof/browser.ts";
-import { borrowPackages, captureBefore, sweepWork } from "../src/proof/before.ts";
+import { borrowPackages, borrowVenv, captureBefore, sweepWork } from "../src/proof/before.ts";
 import { drawReceipt } from "../src/proof/picture.ts";
 
 const made: string[] = [];
@@ -53,6 +53,26 @@ describe("borrowing packages and cleaning up", () => {
     rmSync(join(copy, "node_modules"), { recursive: true, force: true });
     expect(readFileSync(join(p, "node_modules", "react", "index.js"), "utf8")).toBe("x");   // removing the copy never follows the links
   });
+  test("a Python project's virtual environment is borrowed by one link; removing the copy leaves the project's own alone", () => {
+    const p = tmp("p"), copy = tmp("c");
+    mkdirSync(join(p, ".venv", "bin"), { recursive: true }); writeFileSync(join(p, ".venv", "bin", "python"), "#!/bin/sh\n"); writeFileSync(join(p, ".venv", "pyvenv.cfg"), "home = /x\n");
+    borrowVenv(p, copy);
+    expect(readFileSync(join(copy, ".venv", "pyvenv.cfg"), "utf8")).toBe("home = /x\n");
+    rmSync(copy, { recursive: true, force: true });
+    expect(readFileSync(join(p, ".venv", "pyvenv.cfg"), "utf8")).toBe("home = /x\n");
+  });
+  test("an earlier Python version that cannot start only because a package is missing is 'not pictured', never 'crashed'", async () => {
+    const p = tmp("p"), shadow = tmp("s"), work = tmp("w");
+    writeFileSync(join(p, "requirements.txt"), "flask\n");
+    writeFileSync(join(p, "main.py"), "from flask import Flask\napp = Flask(__name__)\n");
+    mkdirSync(join(p, ".venv", "bin"), { recursive: true }); writeFileSync(join(p, ".venv", "pyvenv.cfg"), "home = /x\n");
+    writeFileSync(join(p, ".venv", "bin", "python"), `#!${process.execPath}\nconsole.error(".venv/bin/python: No module named flask"); process.exit(1);\n`); chmodSync(join(p, ".venv", "bin", "python"), 0o755);
+    const store = new CheckpointStore(shadow, p);
+    const before = await store.snapshot("before");
+    expect(await captureBefore({ store, beforeId: before.id, project: p, workDir: work, startMs: 10000 })).toEqual({ none: "not_pictured" });
+    expect(readdirSync(work)).toEqual([]);
+    expect(existsSync(join(p, ".venv", "bin", "python"))).toBe(true);
+  }, 30000);
   test("leftovers from a run that was cut off are swept, and nothing else", () => {
     const w = tmp("w");
     mkdirSync(join(w, "before-abc")); writeFileSync(join(w, "before-abc", ".env"), "KEY=1"); writeFileSync(join(w, "other.txt"), "keep");
