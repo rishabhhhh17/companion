@@ -1,18 +1,31 @@
-//! The practice project: a small broken signup page that ships inside the app. The first run offers it, so a person who is
-//! not stuck this week still sees the whole loop (find it, fix it, prove it). It is copied into a new folder in the home
-//! folder, never over anything, and then it is simply a project like any other.
+//! The practice projects: small projects broken on purpose that ship inside the app. The first run offers the signup page,
+//! so a person who is not stuck this week still sees the whole loop (find it, fix it, prove it); Settings also offers a
+//! missing setting. Each is copied into a new folder in the home folder, never over anything, and then it is simply a
+//! project like any other. Only names on the list can be asked for.
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// The first run's practice: a signup page whose Join button sends to the wrong address.
 pub const NAME: &str = "stuck-signup";
+/// The practice projects a page may ask for, by name: the first run's, and a missing setting (taught with the lesson made
+/// from the project). The other stuck moments in app/sample are eval cases for now, not offered here.
+pub const NAMES: &[&str] = &[NAME, "stuck-setting"];
 
-/// Where the practice project is: inside the installed app, else a development override, else next to the source.
-pub fn source(exe: &Path, env: Option<&str>) -> Option<PathBuf> {
+/// The practice a page asked for, only if it is on the list (none means the first run's).
+pub fn pick(which: Option<&str>) -> Result<&'static str, String> {
+    match which {
+        None => Ok(NAME),
+        Some(w) => NAMES.iter().copied().find(|n| *n == w).ok_or_else(|| "That practice project is not in this copy of the app.".to_string()),
+    }
+}
+
+/// Where a practice project is: inside the installed app, else a development override, else next to the source.
+pub fn source_of(name: &str, exe: &Path, env: Option<&str>) -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = vec![];
-    if let Some(c) = exe.ancestors().find(|a| a.file_name().is_some_and(|n| n == "Contents")) { candidates.push(c.join("Resources/sample").join(NAME)); }
-    if let Some(e) = env { candidates.push(PathBuf::from(e).join(NAME)); }
+    if let Some(c) = exe.ancestors().find(|a| a.file_name().is_some_and(|n| n == "Contents")) { candidates.push(c.join("Resources/sample").join(name)); }
+    if let Some(e) = env { candidates.push(PathBuf::from(e).join(name)); }
     // A development build: app/src-tauri/target/<profile>/companion-app, and the sample is app/sample.
-    if let Some(app) = exe.ancestors().nth(4) { candidates.push(app.join("sample").join(NAME)); }
+    if let Some(app) = exe.ancestors().nth(4) { candidates.push(app.join("sample").join(name)); }
     candidates.into_iter().find(|p| p.join("package.json").is_file())
 }
 
@@ -59,6 +72,7 @@ mod tests {
 
     #[test]
     fn the_source_is_found_in_the_app_then_the_override_then_next_to_the_source() {
+        let source = |exe: &Path, env: Option<&str>| source_of(NAME, exe, env);
         let root = tmp("src");
         let app = root.join("Companion.app/Contents"); fs::create_dir_all(app.join("Resources/sample/stuck-signup")).unwrap(); fs::write(app.join("Resources/sample/stuck-signup/package.json"), "{}").unwrap();
         assert_eq!(source(&app.join("MacOS/companion-app"), None), Some(app.join("Resources/sample/stuck-signup")));
@@ -108,5 +122,22 @@ mod tests {
         let _ = exe;
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample").join(NAME);
         for f in ["package.json", "server.js", "index.html", "public/signup.js", "test/signup.test.js"] { assert!(repo.join(f).is_file(), "{f}"); }
+        let setting = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-setting");
+        for f in ["package.json", "server.js", "settings.js", "README.md", "test/page.test.js"] { assert!(setting.join(f).is_file(), "{f}"); }
+    }
+    #[test]
+    fn a_page_may_choose_only_a_practice_on_the_list() {
+        assert_eq!(pick(None), Ok(NAME));
+        assert_eq!(pick(Some("stuck-signup")), Ok("stuck-signup"));
+        assert_eq!(pick(Some("stuck-setting")), Ok("stuck-setting"));
+        for bad in ["../stuck-signup", "/etc", "stuck-signup/../../x", "", "stuck-open-table", "Stuck-Setting"] { assert!(pick(Some(bad)).is_err(), "{bad}"); }
+    }
+    #[test]
+    fn each_practice_on_the_list_is_found_the_same_way() {
+        let root = tmp("names");
+        let env = root.join("env");
+        for n in NAMES { fs::create_dir_all(env.join(n)).unwrap(); fs::write(env.join(n).join("package.json"), "{}").unwrap(); }
+        for n in NAMES { assert_eq!(source_of(n, Path::new("/x/y/companion-app"), Some(env.to_str().unwrap())), Some(env.join(n))); }
+        let _ = fs::remove_dir_all(&root);
     }
 }
