@@ -1,6 +1,7 @@
 // The proof ladder. After a task changed files, check the work instead of believing it:
 // install, build and checks, tests (and that they were not weakened), start the project, open it in a
 // hidden browser. Stops at the first rung that fails and says why in plain words.
+import { redact } from "../redact.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
@@ -51,6 +52,10 @@ export function needsInstall(before: Record<string, string>, after: Record<strin
   return wantsDeps && !hasNodeModules;
 }
 
+/** Only a check of the work counts as proof. Packages installing without a problem proves nothing about the project. */
+export const EVIDENCE_RUNGS = new Set<Rung>(["checks", "tests", "start", "browser", "review"]);
+export const hasEvidence = (steps: { rung: Rung; status: string }[]) => steps.some((s) => s.status === "passed" && EVIDENCE_RUNGS.has(s.rung));
+
 const gist = (r: RunResult, limitMs: number) =>
   r.timedOut ? `It took too long (over ${Math.round(limitMs / 1000)} seconds) and was stopped.` : (r.stderr + "\n" + r.stdout).trim().split("\n").slice(-14).join("\n").slice(-900) || `It stopped with exit code ${r.code}.`;
 
@@ -68,7 +73,7 @@ export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   o.onStep?.({ rung: "review", label: LABELS.review, status: "running", detail: "", ms: 0 });
   let review: Review | null = null;
   try { review = await o.review(); } catch { review = null; }
-  const done = (status: Step["status"], detail: string): Step => { const s: Step = { rung: "review", label: LABELS.review, status, detail, ms: Date.now() - t0 }; o.onStep?.(s); return s; };
+  const done = (status: Step["status"], detail: string): Step => { const s: Step = { rung: "review", label: LABELS.review, status, detail: redact(detail), ms: Date.now() - t0 }; o.onStep?.(s); return s; };
   if (!review) return { ...r, verdict: "passed_with_gaps", steps: [...r.steps, done("skipped", "The second review could not be completed, so this change was not double checked.")] };
   if (review.verdict === "approve") return { ...r, steps: [...r.steps, done("passed", "The second model found no problems.")] };
   const failed = done("failed", `The second model raised: ${review.concerns.slice(0, 3).join(" ")}`);
@@ -83,9 +88,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const det: Detected = detectProject(o.project);
   const cancelled = () => o.signal?.aborted === true;
 
-  const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0) => o.onStep?.({ rung, label: LABELS[rung], status, detail, ms });
+  const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0) => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms });
   const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null): Step => {
-    const s: Step = { rung, label: LABELS[rung], status, detail, ms: Date.now() - t0, ...(problem ? { problem } : {}) };
+    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}) };
     steps.push(s); emit(rung, status, detail, s.ms);
     return s;
   };
@@ -137,7 +142,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (!det.start) {
     finish("start", "skipped", "There is nothing to open in a browser.", Date.now());
     finish("browser", "skipped", "There is nothing to open in a browser.", Date.now());
-    const checked = steps.some((s) => s.status === "passed");
+    const checked = hasEvidence(steps);
     return result(checked ? "passed" : "nothing_to_check");
   }
   t0 = Date.now(); emit("start", "running");
@@ -148,7 +153,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (!srv.ok && srv.notAServer) {
     finish("start", "skipped", "This project's start command is a tool, not a website, so there is no page to open.", t0);
     finish("browser", "skipped", "There is no page to open.", Date.now());
-    return result(steps.some((s) => s.status === "passed") ? "passed" : "nothing_to_check");
+    return result(hasEvidence(steps) ? "passed" : "nothing_to_check");
   }
   if (!srv.ok) return result("failed", finish("start", "failed", srv.reason, t0, srv.output ? locateProblem(srv.output, o.project, "start") : null));
   finish("start", "passed", "It started.", t0);

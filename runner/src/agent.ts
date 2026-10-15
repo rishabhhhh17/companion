@@ -26,7 +26,7 @@ import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
-import { buildChildEnv, evaluate, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { captureBefore, sweepWork } from "./proof/before.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
@@ -480,7 +480,7 @@ export class AgentRunner {
     // Receipt: compare the state before with the state now. Proof: "done" has to be earned, so a task
     // that changed files is checked, and a failed check goes back to Claude (twice at most).
     const MAX_TRIES = 3;
-    let proof: "passed" | "failed" | "skipped" = "skipped";
+    let proof: "passed" | "partial" | "failed" | "skipped" = "skipped";
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
@@ -510,7 +510,7 @@ export class AgentRunner {
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries } as never);
       this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
       if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
-      if (res.verdict !== "failed") { if (res.verdict !== "nothing_to_check") proof = "passed"; shot = res.shot; break; }
+      if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
       proof = "failed"; status = "not_done";
       { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail }; } }
@@ -537,7 +537,7 @@ export class AgentRunner {
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
-    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && !this.driving.has(cmd.agent)) void this.explain(cmd, { label: lbl, changed, said }, before.id, abort.signal);
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && !this.driving.has(cmd.agent)) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said }, before.id, ex.signal).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     const stuck = proof === "failed" && sigs.length >= 3 && new Set(sigs.slice(-3)).size === 1 ? lastFailure : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
@@ -616,6 +616,8 @@ export class AgentRunner {
   // `body` gets a way to ask Claude and finishes by setting the right state itself.
   private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; offTheRecord?: boolean; said?: string; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null },
     body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
+    if (this.sessions.has(spec.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", spec.agent); return; }
+    if (this.projectBusy.has(resolve(spec.project))) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", spec.agent); return; }
     const room = this.room(spec.project);
     if (room <= 0) { this.dailyLimit(spec.agent); return; }
     const budget = Math.min(spec.budgetUsd, room);
@@ -632,7 +634,9 @@ export class AgentRunner {
     const exec = this.o.executor ?? defaultExecutor;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
     const authorize = async (tool: ToolUse) => {
-      const refusal = allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      let refusal = allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
+      if (!refusal && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refusal = `Blocked by Companion: ${v.reason}.`; }
       const ok = allowed.has(tool.name) && !refusal;
       this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
       return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? "Blocked by Companion: this can only look at the project, not change it." };
@@ -726,13 +730,13 @@ export class AgentRunner {
     if (runChecks && (await stale())) {
       // Check the project exactly as it is now, with no model involved.
       const ac = new AbortController();
-      this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+      const sk = this.openShipSession(ac);
       const onStep = (u: StepUpdate) => this.emit({ type: "proof.step", agent: "ship", rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms } as never);
       try {
         const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
         if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
-      } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete("ship"); }
+      } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
     }
     const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await stale()) } : undefined;
     const report = await runGates({ project, proof, confirmed: confirm });
@@ -740,6 +744,8 @@ export class AgentRunner {
   }
 
   private async shipCheck(cmd: Extract<Command, { type: "ship.check" }>): Promise<void> {
+    // Running the project's checks while a task is still writing to it would test a half-finished project.
+    if (cmd.runChecks && this.projectBusy.has(resolve(cmd.project))) { this.fail("A task is still working on this project. Wait for it to finish, or press Stop, then check it."); return; }
     const { report } = await this.gateReport(cmd.project, !!cmd.runChecks, cmd.confirm);
     this.emit({ type: "ship.gates", project: cmd.project, ...report } as never);
   }
@@ -748,12 +754,16 @@ export class AgentRunner {
 
   private previews = new Map<string, { url: string; snapshot: string; gates: { id: string; status: string }[]; proof: string }>();
   private shipping = new Set<string>();
+  private shipSessions = 0;
+  // Each ship step is its own session under its own key, so one finishing never hides another from Stop everything (the checks inside a preview, then the deploy).
+  private openShipSession(ac: AbortController): string { const k = `ship:${++this.shipSessions}`; this.sessions.set(k, { agent: "ship", abort: ac, pending: new Map() }); return k; }
   private shipSay(project: string, stage: string, detail: string, extra: Record<string, unknown> = {}) {
     this.emit({ type: "ship.status", project, stage, detail: clip(redact(detail), 400), ...extra } as never);
   }
   private shipTools(project: string): Deployer | null {
     if (!this.o.deployer) { this.shipSay(project, "failed", "Putting a site on the internet is not set up on this Mac yet."); return null; }
     if (this.shipping.has(resolve(project))) { this.shipSay(project, "refused", "Another ship step is already running. Wait for it to finish."); return null; }
+    if (this.projectBusy.has(resolve(project))) { this.shipSay(project, "refused", "A task is still working on this project. Wait for it to finish, or press Stop, then put it online."); return null; }
     return this.o.deployer;
   }
 
@@ -762,7 +772,7 @@ export class AgentRunner {
     if (!d) return;
     const key = resolve(cmd.project), ac = new AbortController();
     this.shipping.add(key);
-    this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+    const sk = this.openShipSession(ac);
     try {
       this.previews.delete(key);
       this.shipSay(cmd.project, "checking_gates", "Checking the project first.");
@@ -791,7 +801,7 @@ export class AgentRunner {
       this.shipSay(cmd.project, "ready", "The preview works. Making it live puts it on the internet for everyone.", { previewUrl: r.url, canGoLive: true });
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong while putting up the preview (${clip(String((e as Error).message ?? e), 120)}). Nothing went live.`);
-    } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
+    } finally { this.shipping.delete(key); this.sessions.delete(sk); }
   }
 
   private async shipLive(cmd: Extract<Command, { type: "ship.live" }>): Promise<void> {
@@ -799,7 +809,7 @@ export class AgentRunner {
     if (!d) return;
     const key = resolve(cmd.project), ac = new AbortController();
     this.shipping.add(key);
-    this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+    const sk = this.openShipSession(ac);
     try {
       if ((cmd as { confirm?: unknown }).confirm !== true) { this.shipSay(cmd.project, "refused", "Going live needs your yes."); return; }
       const p = this.previews.get(key);
@@ -819,7 +829,7 @@ export class AgentRunner {
       if (this.o.pictures) this.track(this.shareCard(cmd.project, r.productionUrl ?? p.url));
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong (${clip(String((e as Error).message ?? e), 120)}).`);
-    } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
+    } finally { this.shipping.delete(key); this.sessions.delete(sk); }
   }
 
   private async shipRollback(cmd: Extract<Command, { type: "ship.rollback" }>): Promise<void> {
@@ -827,7 +837,7 @@ export class AgentRunner {
     if (!d) return;
     const key = resolve(cmd.project), ac = new AbortController();
     this.shipping.add(key);
-    this.sessions.set("ship", { agent: "ship", abort: ac, pending: new Map() });
+    const sk = this.openShipSession(ac);
     try {
       if ((cmd as { confirm?: unknown }).confirm !== true) { this.shipSay(cmd.project, "refused", "A rollback needs your yes."); return; }
       const ships = readShips(cmd.project), lastLive = [...ships].reverse().find((s) => s.action === "live"), lastBack = [...ships].reverse().find((s) => s.action === "rollback");
@@ -839,7 +849,7 @@ export class AgentRunner {
       this.shipSay(cmd.project, "rolled_back", "The live site is back to the version before.");
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong (${clip(String((e as Error).message ?? e), 120)}). The live site was not changed.`);
-    } finally { this.shipping.delete(key); this.sessions.delete("ship"); }
+    } finally { this.shipping.delete(key); this.sessions.delete(sk); }
   }
 
   // Point at the problem: check the project exactly as it is (no Claude, nothing changed) and say where it fails,
@@ -847,7 +857,7 @@ export class AgentRunner {
   private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
     // Every press ends with problem.found, so the card never stays on "Checking".
     const found = (verdict: string, fl?: Step) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) } as never);
-    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent)) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectBusy.has(resolve(cmd.project))) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });
     try {
@@ -915,7 +925,7 @@ export class AgentRunner {
       // Not in CI mode: pnpm then refuses a lock file that an export left out of date, and a person installing wants it to work.
       const r = await this.inTurn(project, () => runCommand(`${det.packageManager} install${det.packageManager === "pnpm" ? " --no-frozen-lockfile" : ""}`, { cwd: project, timeoutMs: 10 * 60_000, signal: ac.signal }));
       if (r.aborted) { say("cancelled", "Stopped. Some packages may be half installed; press Install again to finish."); return; }
-      if (r.code !== 0 || r.timedOut) { say("failed", `The install did not finish. ${(r.stderr || r.stdout).trim().split("\n").slice(-6).join(" ").slice(-400)}`); return; }
+      if (r.code !== 0 || r.timedOut) { say("failed", `The install did not finish. ${redact((r.stderr || r.stdout).trim().split("\n").slice(-6).join(" ").slice(-400))}`); return; }
       say("done", "Installed.");
       await this.projectInspect(project);
     } finally { this.installing.delete(key); }

@@ -14,7 +14,8 @@ const PATTERNS: RegExp[] = [
   /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/]+:[^\s@\/]+@/gi,         // passwords inside addresses (postgres://user:pass@host)
 ];
 // "password: hunter2", "API_KEY=abc123": the name tells us the value is a secret.
-const NAMED = /\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key)(\s*[:=]\s*)["']?[^\s"']{6,}/gi;
+// The name may carry more words around the telling one (DB_PASSWORD, STRIPE_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY, auth_token).
+const NAMED = /(?<![A-Za-z0-9])([A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|service[_-]?role|credential|[_-]key)[A-Za-z0-9_.-]*)(["']?\s*[:=]\s*)["']?[^\s"']{4,}/gi;
 export function redact(text: string): string {
   let out = text;
   for (const p of PATTERNS) out = out.replace(p, "[secret]");
