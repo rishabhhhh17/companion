@@ -135,6 +135,9 @@ function SettingsPanel({ working, explainOn, project, fun, setFun, autoSend, set
         <button className="btn" type="button" onClick={() => { setShowNums(false); void send(metricsErase()); }}>{S.numbersErase}</button>
       </div>
       {nums && showNums && numbersLines(nums).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      <h3>{S.acknowledgements}</h3>
+      <div className="line muted">{S.acknowledgementsHelp}</div>
+      <div className="row"><button className="btn" type="button" onClick={() => void invoke("open_acknowledgements").catch(() => {})}>{S.acknowledgements}</button></div>
       <h3>{S.exportLogsTitle}</h3>
       <div className="line muted">{S.exportLogsHelp}</div>
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>

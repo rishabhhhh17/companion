@@ -739,6 +739,15 @@ fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String) -> Result<(
 fn speak_stop(app: AppHandle) { speech_off(&app); }
 fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); }
 
+/// Opens the licence notices that ship inside the app, in the person's default text app. Fixed file, no input.
+#[tauri::command]
+fn open_acknowledgements() -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|_| "Could not find the notices.".to_string())?;
+    let bundled = exe.ancestors().find(|a| a.file_name().is_some_and(|n| n == "Contents")).map(|c| c.join("Resources/ACKNOWLEDGEMENTS.txt"));
+    let file = bundled.filter(|p| p.is_file()).ok_or("The notices are only in the installed app.".to_string())?;
+    std::process::Command::new("/usr/bin/open").arg("-t").arg(file).status().map(|_| ()).map_err(|_| "Could not open the notices.".to_string())
+}
+
 // ---------- Settings, and delete everything ----------
 
 fn key_saved() -> bool { keystore::exists(&keystore::service(), keystore::ACCOUNT) }
@@ -1331,7 +1340,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

@@ -167,6 +167,8 @@ export const S = {
   settingsOpenSystem: "Open System Settings",
   settingsWalkMe: "Walk me through it",
   settingsChoices: "Your choices",
+  acknowledgements: "Acknowledgements",
+  acknowledgementsHelp: "The open source software Companion is built from, and the licences that let us use it.",
   speakTitle: "Speak to me",
   speakHelp: "Off until you turn it on. When on, Companion says short lines out loud (the step you are on, what a ring points at) with your Mac's own voice. Nothing is sent anywhere. Stop everything, closing the card, or holding the talk keys silences it.",
   speakSetting: "Speak to me",

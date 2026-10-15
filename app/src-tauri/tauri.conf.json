@@ -38,7 +38,8 @@
       "entitlements": "Entitlements.plist",
       "files": {
         "Resources/engine": "../vendor/engine",
-        "Resources/sample": "../sample"
+        "Resources/sample": "../sample",
+        "Resources/ACKNOWLEDGEMENTS.txt": "../ACKNOWLEDGEMENTS.txt"
       },
       "minimumSystemVersion": "14.0"
     }
