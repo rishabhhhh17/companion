@@ -1,0 +1,80 @@
+// What a follow up, a Try again and a different approach say to Claude. Plain, testable text.
+import { describe, expect, test } from "bun:test";
+import { differentTaskPrompt, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt } from "../src/followup.ts";
+
+const secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+const fail = { label: "Running the tests", detail: `1 failed: expected blue, got grey (API_KEY=${secret})` };
+
+describe("the evidence of a failed check", () => {
+  test("is redacted", () => {
+    const e = evidence(fail);
+    expect(e.detail).not.toContain(secret);
+    expect(e.detail).toContain("expected blue, got grey");
+    expect(e.label).toBe("Running the tests");
+  });
+  test("is clipped, by whole characters", () => {
+    const e = evidence({ label: "x".repeat(500), detail: "😀".repeat(5000) });
+    expect(Array.from(e.label).length).toBeLessThanOrEqual(120);
+    expect(Array.from(e.detail).length).toBeLessThanOrEqual(1500);
+    expect(e.detail).not.toMatch(/[\ud800-\udbff]$/);
+  });
+});
+
+describe("a follow up", () => {
+  test("in the same conversation, says what the person said", () => {
+    const p = followUpPrompt("the button is still grey");
+    expect(p).toContain("the button is still grey");
+    expect(p).toMatch(/small/i);
+  });
+  test("off the record, starts afresh: the request is said again, and Claude is told to look first", () => {
+    const p = freshFollowUpPrompt("Add a signup button", "the button is still grey");
+    expect(p).toContain("Add a signup button");
+    expect(p).toContain("the button is still grey");
+    expect(p).toMatch(/look/i);
+  });
+  test("a very long follow up is cut", () => {
+    expect(followUpPrompt("a".repeat(MAX_FOLLOW_UP_CHARS * 3)).length).toBeLessThan(MAX_FOLLOW_UP_CHARS + 400);
+  });
+});
+
+describe("Try again", () => {
+  test("gives the request and what failed, redacted", () => {
+    const p = retryPrompt("Add a signup button", fail);
+    expect(p).toContain("Add a signup button");
+    expect(p).toContain("Running the tests");
+    expect(p).toContain("expected blue, got grey");
+    expect(p).not.toContain(secret);
+    expect(p).toMatch(/do not change or weaken the tests/i);
+  });
+  test("with nothing failed on record, gives the request alone", () => {
+    const p = retryPrompt("Add a signup button");
+    expect(p).toContain("Add a signup button");
+    expect(p).not.toMatch(/failed check/i);
+  });
+  test("off the record, also says earlier work may already be in the files", () => {
+    const p = freshRetryPrompt("Add a signup button", "Add a signup button", fail);
+    expect(p).toContain("Add a signup button");
+    expect(p).toContain("expected blue, got grey");
+    expect(p).toMatch(/look/i);
+  });
+  test("off the record after a follow up, both the first request and the follow up are said", () => {
+    const p = freshRetryPrompt("Add a signup button", "make it blue", fail);
+    expect(p).toContain("Add a signup button");
+    expect(p).toContain("make it blue");
+  });
+});
+
+describe("a different approach in a single task", () => {
+  test("says the same check failed three times and asks for a clearly different way", () => {
+    const p = differentTaskPrompt(fail);
+    expect(p).toMatch(/three times/i);
+    expect(p).toMatch(/different approach/i);
+    expect(p).toContain("expected blue, got grey");
+    expect(p).not.toContain(secret);
+  });
+  test("off the record, the request is said again", () => {
+    const p = freshDifferentTaskPrompt("Fix the signup page", fail);
+    expect(p).toContain("Fix the signup page");
+    expect(p).toMatch(/different approach/i);
+  });
+});

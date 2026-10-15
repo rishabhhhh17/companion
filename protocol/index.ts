@@ -10,7 +10,10 @@ export type AgentStart = Envelope & {
   type: "agent.start"; project: string; agent: string; mode: "drive" | "rescue" | "research" | "ship";
   prompt: string; model: string; budgetUsd: number; offTheRecord?: boolean;
 };
-export type AgentSend = Envelope & { type: "agent.send"; agent: string; text: string };
+// A follow up on the agent's last task (text: what is still wrong), or Try again (retry: the same request again, with
+// what failed). Either runs as a new checked task that carries on the last task's conversation. It names the project, so the
+// app holds it to the folder the person chose; the runner refuses it for any other project.
+export type AgentSend = Envelope & { type: "agent.send"; agent: string; project: string; text?: string; retry?: boolean };
 export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string };
 export type AgentInterruptAll = Envelope & { type: "agent.interruptAll"; reason: string };
 export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" };
@@ -124,6 +127,7 @@ export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShi
 export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file: string };
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
 export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reason: "files_changed" | "editor" | "terminal" | "you"; path?: string };
+// index: the Drive step (from 1); 0 for a single task, whose title is the task's label.
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[] };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
@@ -211,7 +215,7 @@ const COMMANDS: Record<string, Check[]> = {
   "drive.pause": [str("agent"), oneOf("reason", ["editor", "terminal", "you"])],
   "drive.resume": [str("agent")],
   "loop.choose": [str("agent"), oneOf("choice", ["different", "stop"])],
-  "agent.send": [str("agent"), str("text")],
+  "agent.send": [str("agent"), str("project"), opt("retry", bool("retry")), (m) => (m.retry === true ? opt("text", (x) => (typeof x.text === "string" ? null : '"text" must be text'))(m) : str("text")(m))],
   "agent.interrupt": [str("agent")],
   "agent.interruptAll": [str("reason")],
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
