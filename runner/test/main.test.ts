@@ -142,4 +142,45 @@ describe("the runner program", () => {
     await r.waitFor(() => r.events().some((e) => e.type === "protocol.error" && /not connected/i.test(e.reason)));
     await r.close();
   });
+
+  describe("the key handed over by the app", () => {
+    const FAKE = "sk-ant-api03-HANDEDOVERFAKEKEY0123456789abcdefghij";
+    const appRun = () => launch([], { COMPANION_ENGINE: "sdk", COMPANION_KEY_SOURCE: "app", COMPANION_KEYCHAIN_SERVICE: "companion-test-nonexistent-" + Math.random().toString(36).slice(2), CLAUDE_CONFIG_DIR: tmp("cfg") });
+    const statuses = (r: ReturnType<typeof launch>) => r.events().filter((e) => e.type === "auth.status");
+
+    test("it never asks the Keychain tool: without a handoff it is not signed in, and a handoff signs it in", async () => {
+      const r = appRun();
+      await r.waitFor(() => statuses(r).length >= 1);
+      expect(statuses(r)[0].method).toBe("none");
+      r.proc.stdin.write(JSON.stringify({ v: 1, type: "auth.key", key: FAKE }) + "\n");
+      r.proc.stdin.flush?.();
+      await r.waitFor(() => statuses(r).some((e) => e.method === "api_key"));
+      await r.close();
+    });
+
+    test("the key is never repeated in anything the runner writes, and a null key signs it out again", async () => {
+      const r = appRun();
+      await r.waitFor(() => statuses(r).length >= 1);
+      r.proc.stdin.write(JSON.stringify({ v: 1, type: "auth.key", key: FAKE }) + "\n");
+      await r.waitFor(() => statuses(r).some((e) => e.method === "api_key"));
+      r.proc.stdin.write(JSON.stringify({ v: 1, type: "auth.key", key: null }) + "\n");
+      await r.waitFor(() => statuses(r).filter((e) => e.method === "none").length >= 2);
+      expect(r.lines.join("\n")).not.toContain("HANDEDOVER");
+      await r.close();
+    });
+
+    test("a damaged handoff is dropped without repeating what was in it", async () => {
+      const r = appRun();
+      await r.waitFor(() => statuses(r).length >= 1);
+      r.proc.stdin.write('{"v":1,"type":"auth.key","key":"' + FAKE + '\n');
+      await r.waitFor(() => r.events().some((e) => e.type === "protocol.error"));
+      expect(r.lines.join("\n")).not.toContain("HANDEDOVER");
+      await r.close();
+    });
+
+    test("a page cannot sign the engine in with a handoff of its own", async () => {
+      const { parseCommand } = await import("../../protocol/index.ts");
+      expect(parseCommand(JSON.stringify({ v: 1, id: "x", type: "auth.key", key: FAKE })).ok).toBe(false);
+    });
+  });
 });

@@ -261,7 +261,7 @@ impl Runner {
         let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
             use std::os::unix::process::CommandExt;
             // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
-            Command::new(&loc.bun).arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env)
+            Command::new(&loc.bun).arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app")
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         });
         // Fail loudly now, not later, if the engine cannot be started at all.

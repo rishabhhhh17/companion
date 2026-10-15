@@ -433,8 +433,19 @@ fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
 fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
     keystore::save(&key)?;
     log("api_key_saved", json!({}));
-    let _ = app.state::<runner::Runner>().send(&json!({ "v": 1, "id": format!("auth{}", now()), "type": "auth.check" }));
+    hand_key_over(&app, Some(&key));
     Ok(())
+}
+
+/// Gives the engine the key on its own pipe (never logged, never shown to a page). With None it reads the Keychain first,
+/// which for a key saved by an older version also moves it to this app's own trust; that can show the Mac's one "allow?"
+/// dialog, so it runs off the thread that reads the engine's output.
+fn hand_key_over(app: &AppHandle, key: Option<&str>) {
+    let (a, key) = (app.clone(), key.map(str::to_string));
+    std::thread::spawn(move || {
+        let key = key.or_else(|| { let moved = keystore::move_old_item(&data_dir()); log("key_move", json!({ "moved": moved })); keystore::read() });
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&keystore::handoff_line(key.as_deref())) { let _ = a.state::<runner::Runner>().send(&v); }
+    });
 }
 
 /// Opens the Mac's own folder chooser (another process, so the keyboard is never taken), then uses the folder.
@@ -1294,10 +1305,12 @@ fn start_runner(app: &AppHandle) {
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = saved.or(first);
     let bundle = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e));
     let result = runner::locations_with_bundle(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"), bundle)
-        .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, |t| {
+        .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, { let handle = app.clone(); move |t| {
             log("runner_event", json!({ "kind": t }));
+            // Each time the engine (re)starts it has no key yet; it is handed one as soon as it says hello.
+            if t == "runner.hello" { hand_key_over(&handle, None); }
             WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_runner_event(t);
-        }));
+        } }));
     match result {
         Ok(()) => log("runner_started", json!({})),
         Err(e) => {

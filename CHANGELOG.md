@@ -426,3 +426,8 @@ Checked against F17 section 4.2 and found two places where Show me was bolder th
 - "Fixed after N tries" is no longer shown for a stopped task. Receipts say "partly checked" when some checks were skipped.
 - Engine messages written for people are shown as they are; technical ones are wrapped in plain words.
 - The card no longer grabs the keyboard while you are typing.
+
+## Your key is now readable only by Companion
+- Companion saves and reads your Claude key in the Mac's Keychain itself, so another program asking for it gets the Mac's own "allow?" question instead of the key.
+- A key saved by an earlier version is moved the first time Companion starts. The Mac may ask once to allow that. If you say no, paste your key again.
+- Not yet tried by hand on a real Mac (the move and the refusal of another program). Tests cover saving, reading, replacing, deleting and that the key never appears in anything the engine writes.

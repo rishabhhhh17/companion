@@ -25,3 +25,7 @@ Only Companion (and the engine it starts) can read the key without a prompt. Any
 
 ## Not doing
 No change to how the key reaches Claude Code (still only the engine's own process, scrubbed from every child).
+
+## Status (15 Oct 2026)
+Built, on branch: steps 1 to 4. The handoff is simpler than first planned: the app pushes `auth.key` to the engine's pipe after every `runner.hello` and after a key is saved, so no request message is needed. The engine takes it before parsing, keeps it in memory only, and a page cannot send it (it is not in the page protocol).
+Step 5, the hands-on check, is still open: fresh install, a key saved by the old version (one Mac dialog), another program refused, replacing the key, Delete everything.
