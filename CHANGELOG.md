@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Text from the card page that becomes a file name or a path, tried hostile: 15 Oct 2026
+
+- Share card titles (about 320 including random junk, `../`, slashes, null bytes, right to left tricks, 5,000 characters), the file named in a problem (`../`, links that lead out of the project, absolute paths, `~`), and the project folder check (the whole disk, your home folder, Library, system folders, Companion's own folder, a link into Library, a file instead of a folder) were all attacked. Nothing got through: the checks were already sound, and are now locked in by tests. One compiler warning from the recent label change was also cleaned up.
+
 ## "Open from a link" tried with 60 hostile links: 15 Oct 2026
 
 - Links with a password in them, a look-alike host (`github.com.evil.example`, a Cyrillic i), a port, a query, extra path, `ext::` or `file://` tricks, an option disguised as a link (`--upload-pack=...`), shell characters, newlines, percent codes, and over long names are all refused; only a plain https repository address on GitHub, GitLab or Bitbucket gets through, and the address handed to git is rebuilt from its checked parts. One oddity closed: a repository named `.git` (or any name starting with a dot) would have made a hidden folder, and is now refused.
