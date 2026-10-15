@@ -1,7 +1,7 @@
 // The browser check: open the page in a hidden browser (Playwright's own, never the user's Chrome),
 // watch for errors, check the words and click through the part that changed. It only ever looks at
 // the address it was given; it never sees the user's screen.
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
@@ -32,26 +32,66 @@ export function parseInstallProgress(line: string): { percent: number; mb: numbe
 }
 
 export type InstallProgress = { percent: number; mb?: number };
+// ok: the browser is in place after the run, whatever else the installer said (see installBrowser).
 export type InstallOutcome = { ok: boolean; detail: string; aborted?: boolean; timedOut?: boolean };
 type Run = (command: string, o: RunOptions) => Promise<RunResult>;
+
+// Playwright's installer adds FFmpeg (a video tool, about 1 MB, from the same servers) to every browser install, and prints
+// its own "Downloading ..." line and progress bar for it after the browser's. Companion never uses it. Only the browser's
+// own bar is progress; FFmpeg is part of "setting it up". The bar never goes back, even when Playwright tries a download again.
+const BROWSER_DOWNLOAD = /\(playwright chromium-headless-shell v\d+\)|^Chrome Headless Shell\b/;
+export function installProgressReader(onProgress: (p: InstallProgress) => void): (text: string) => void {
+  let pending = "", current: "browser" | "other" | null = null, last = -1, mb: number | undefined;
+  const say = (p: InstallProgress) => { if (p.percent <= last) return; last = p.percent; onProgress(p); };
+  return (text: string) => {
+    pending += text;
+    const lines = pending.split(/\r?\n|\r/);
+    pending = lines.pop() ?? "";
+    if (pending.length > 4000) pending = pending.slice(-4000);
+    for (const raw of lines) {
+      const l = raw.replace(/\x1b\[[0-9;]*m/g, "").trim();
+      const head = /^Downloading (.+)$/.exec(l);
+      if (head) {
+        const browser = BROWSER_DOWNLOAD.test(head[1]!);
+        // Downloads run one after another, so when another one starts after the browser's, the browser is downloaded.
+        if (!browser && current === "browser" && last >= 0) say({ percent: 100, ...(mb ? { mb } : {}) });
+        current = browser ? "browser" : "other";
+        continue;
+      }
+      if (current === "other") continue;
+      const p = parseInstallProgress(l);
+      if (!p) continue;
+      mb = p.mb;
+      say(p);
+    }
+  };
+}
+
+// Where the installer keeps its archive while it downloads: inside Companion's own browsers folder, not the Mac's shared
+// temporary folder, so a download that was stopped (its archive is not cleaned up then) leaves nothing behind once this
+// folder is cleared after the run. Playwright's own clean up only touches folders with browser names.
+export const downloadScratch = (root: string = browsersPath()) => join(root, ".download");
 
 // Download the hidden browser (about 200 MB on disk) into Companion's own folder, only when the person asked for it
 // (see browsersetup.ts). Playwright's own installer does the download: from Playwright's own servers over https, tried again
 // on failure, and thrown away if fewer bytes arrive than the server announced. The short environment means no setting of the
-// person's can point it at another server. Stop everything ends it through the signal.
-export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run } = {}): Promise<InstallOutcome> {
-  const cli = join(dirname(Bun.resolveSync("playwright-core/package.json", import.meta.dir)), "cli.js");
+// person's can point it at another server. Stop everything ends it through the signal, and if the engine itself is ended by
+// force, the installer ends with it (endWithUs). installer: the runner's own process tests only, a stand in for Playwright's.
+export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run; installer?: string } = {}): Promise<InstallOutcome> {
+  const cli = o.installer ?? join(dirname(Bun.resolveSync("playwright-core/package.json", import.meta.dir)), "cli.js");
   if (!existsSync(cli)) return { ok: false, detail: "The browser installer was not found" };
-  let pending = "";
-  const onOutput = (text: string) => {
-    pending += text;
-    const lines = pending.split(/\r?\n|\r/);
-    pending = lines.pop() ?? "";
-    for (const l of lines) { const p = parseInstallProgress(l); if (p) o.onProgress?.(p); }
-    if (pending.length > 4000) pending = pending.slice(-4000);
-  };
-  const r = await (o.run ?? runCommand)(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install chromium-headless-shell`, { cwd: homedir(), timeoutMs: 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: browsersPath() }, signal: o.signal, onOutput });
-  return { ok: r.code === 0 && !r.aborted && browserInstalled(), detail: (r.stderr || r.stdout).slice(-300), ...(r.aborted ? { aborted: true } : {}), ...(r.timedOut ? { timedOut: true } : {}) };
+  const root = browsersPath(), scratch = downloadScratch(root);
+  const clear = () => { try { rmSync(scratch, { recursive: true, force: true }); } catch { /* nothing to clear */ } };
+  clear();
+  try { mkdirSync(scratch, { recursive: true }); } catch { /* the installer says why if it cannot write here */ }
+  try {
+    const r = await (o.run ?? runCommand)(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install chromium-headless-shell`, {
+      cwd: homedir(), timeoutMs: 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: root, TMPDIR: scratch }, signal: o.signal, endWithUs: true,
+      onOutput: installProgressReader((p) => o.onProgress?.(p)),
+    });
+    // A failure after the browser is in place (FFmpeg not downloading, or a stop while it did) still leaves a browser that works.
+    return { ok: browserInstalled(), detail: (r.stderr || r.stdout).slice(-300), ...(r.aborted ? { aborted: true } : {}), ...(r.timedOut ? { timedOut: true } : {}) };
+  } finally { clear(); }
 }
 
 // A picture of the page as it first appears (before any button is pressed), and what is on it, for the visual receipt.

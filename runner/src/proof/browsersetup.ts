@@ -1,6 +1,7 @@
 // The browser check's one time download (F14: every user gets the browser check). It runs only when the person presses
 // the button on the card (the browser.install command), one download at a time, with its progress said in plain words.
-// A second press while it runs does nothing, and Stop everything (or the app closing) ends it.
+// A second press while it runs does nothing, and Stop everything (or the app closing) ends it. If the app has to end the
+// engine by force, the installer ends with it (see endWithUs in exec.ts).
 import { browserInstalled, installBrowser, type InstallOutcome, type InstallProgress } from "./browser.ts";
 
 export type InstallFn = (o: { signal: AbortSignal; onProgress: (p: InstallProgress) => void }) => Promise<InstallOutcome>;
@@ -25,8 +26,9 @@ export class BrowserSetup {
   private job: Promise<void> | null = null;
   private download: InstallFn;
   private installed: () => boolean;
-  constructor(private o: { emit: Emit; install?: InstallFn; installed?: () => boolean }) {
-    this.download = o.install ?? ((x) => installBrowser(x));
+  // installer: the runner's own process tests only, a stand in for Playwright's installer program (see engines.ts).
+  constructor(private o: { emit: Emit; install?: InstallFn; installed?: () => boolean; installer?: string }) {
+    this.download = o.install ?? ((x) => installBrowser({ ...x, ...(o.installer ? { installer: o.installer } : {}) }));
     this.installed = o.installed ?? browserInstalled;
   }
 
@@ -44,19 +46,22 @@ export class BrowserSetup {
       let last = -1;
       try {
         say("downloading", "Starting the download. This happens once.");
-        const r = await this.download({
-          signal: ac.signal,
-          onProgress: (p) => {
-            if (ac.signal.aborted || p.percent === last) return;
-            last = p.percent;
-            say("downloading", progressWords(p), { percent: p.percent, ...(p.mb ? { mb: p.mb } : {}) });
-          },
-        });
-        if (ac.signal.aborted || r.aborted) say("cancelled", "Stopped. Nothing was set up. Press the button to start again.");
-        else if (r.ok && this.installed()) say("done", "Ready. The next check will use it.");
-        else say("failed", failureWords(r.ok ? { ...r, detail: "" } : r));
-      } catch {
-        say(ac.signal.aborted ? "cancelled" : "failed", ac.signal.aborted ? "Stopped. Nothing was set up. Press the button to start again." : "The download did not finish. Try again in a moment.");
+        let r: InstallOutcome | null = null;
+        try {
+          r = await this.download({
+            signal: ac.signal,
+            onProgress: (p) => {
+              if (ac.signal.aborted || p.percent === last) return;
+              last = p.percent;
+              say("downloading", progressWords(p), { percent: p.percent, ...(p.mb ? { mb: p.mb } : {}) });
+            },
+          });
+        } catch { r = null; }
+        // What counts is whether the browser is in place. Playwright sets up FFmpeg (which the check never uses) after it,
+        // so a failure or a stop at that point still leaves a check that works, and "nothing was set up" would be untrue.
+        if (this.installed()) say("done", "Ready. The next check will use it.");
+        else if (ac.signal.aborted || r?.aborted) say("cancelled", "Stopped. Nothing was set up. Press the button to start again.");
+        else say("failed", r ? failureWords(r.ok ? { ...r, detail: "" } : r) : "The download did not finish. Try again in a moment.");
       } finally { if (this.running === ac) this.running = null; }
     })();
     this.job = run;

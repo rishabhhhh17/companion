@@ -37,8 +37,9 @@ const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engi
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
 const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString() });
 const inflight = new Set<Promise<unknown>>();
-// The browser check's one time download: only on the person's press, ended by Stop everything and by the app closing.
-const browser = new BrowserSetup({ emit: say, ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}) });
+// The browser check's one time download: only on the person's press, ended by Stop everything, by the app closing, and by
+// this engine being ended by force (the installer ends with it).
+const browser = new BrowserSetup({ emit: say, ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}), ...(settings.browserStubInstaller ? { installer: settings.browserStubInstaller } : {}) });
 
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
 process.stdout.on("error", () => process.exit(0));

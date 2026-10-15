@@ -15,6 +15,8 @@ export type Settings = {
   aim: "default" | "computer_use"; aimModel?: string;
   // The runner's own process tests only: a pretend browser download of this many milliseconds a step. Never with the real engine.
   browserStubMs?: number;
+  // The runner's own process tests only: a stand in program for Playwright's installer, run through the real downloader.
+  browserStubInstaller?: string;
 };
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
@@ -32,6 +34,7 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     aim: env.COMPANION_AIM === "computer_use" ? "computer_use" : "default",
     aimModel: env.COMPANION_AIM_MODEL || undefined,
     ...(env.COMPANION_ENGINE === "scripted" && Number(env.COMPANION_BROWSER_STUB) > 0 ? { browserStubMs: Number(env.COMPANION_BROWSER_STUB) } : {}),
+    ...(env.COMPANION_ENGINE === "scripted" && env.COMPANION_BROWSER_STUB_INSTALLER ? { browserStubInstaller: env.COMPANION_BROWSER_STUB_INSTALLER } : {}),
   };
 }
 

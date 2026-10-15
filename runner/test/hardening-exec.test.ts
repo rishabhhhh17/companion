@@ -151,3 +151,61 @@ describe("following a command's output as it runs", () => {
     expect(r.code).toBe(0); expect(r.stdout).toContain("fine");
   });
 });
+
+// A command in its own process group is out of reach when the app has to end the engine by force (a stuck engine after
+// Stop everything, or a crash): killing the engine's group does not reach it. With endWithUs it ends the moment the
+// program that started it ends, however that happens.
+describe("a command that must end with the program that started it", () => {
+  const leftovers: number[] = [];
+  afterEach(() => { while (leftovers.length) { try { process.kill(leftovers.pop()!, "SIGKILL"); } catch { /* gone */ } } });
+  const standIn = (d: string, endWithUs: boolean) => {
+    writeFileSync(join(d, "engine.ts"), `
+      import { spawn } from "node:child_process";
+      import { runCommand } from ${JSON.stringify(join(import.meta.dir, "../src/proof/exec.ts"))};
+      void runCommand("sleep 30 & echo JOB:$!; wait", { cwd: ${JSON.stringify(d)}, timeoutMs: 60000, endWithUs: ${endWithUs}, onOutput: (t) => process.stdout.write(t) });
+      // Something the program starts afterwards (as the engine does) must not keep the command alive.
+      setTimeout(() => { const o = spawn("sleep", ["30"], { detached: true, stdio: "ignore" }); o.unref(); process.stdout.write("OTHER:" + o.pid + "\\n"); }, 200);
+      setInterval(() => {}, 1000);
+    `);
+    return Bun.spawn(["bun", join(d, "engine.ts")], { cwd: d, stdout: "pipe", stderr: "ignore" });
+  };
+  const readPids = async (p: ReturnType<typeof Bun.spawn>) => {
+    let text = "";
+    const reader = (p.stdout as ReadableStream<Uint8Array>).getReader();
+    const dec = new TextDecoder();
+    const end = Date.now() + 8000;
+    while (!(/JOB:\d+/.test(text) && /OTHER:\d+/.test(text)) && Date.now() < end) { const { value, done } = await reader.read(); if (done) break; text += dec.decode(value); }
+    reader.releaseLock();
+    return { job: Number(/JOB:(\d+)/.exec(text)?.[1]), other: Number(/OTHER:(\d+)/.exec(text)?.[1]) };
+  };
+  test("when the program is killed by force (SIGKILL), the command and everything in its group end at once", async () => {
+    const d = tmp();
+    const engine = standIn(d, true);
+    const { job, other } = await readPids(engine);
+    leftovers.push(job, other);
+    expect(alive(job)).toBe(true);
+    engine.kill("SIGKILL");
+    await engine.exited;
+    const end = Date.now() + 3000;
+    while (alive(job) && Date.now() < end) await sleep(50);
+    expect(alive(job), "the command outlived the program that started it").toBe(false);
+  }, 20000);
+  test("its exit code, output and empty input are the command's own", async () => {
+    const r = await runCommand(`echo "a b" 'c$d'; echo err >&2; read x; echo "read:$?"; exit 3`, { cwd: tmp(), timeoutMs: 5000, endWithUs: true });
+    expect(r.timedOut).toBe(false);
+    expect(r.code).toBe(3);
+    expect(r.stdout).toContain("a b c$d");
+    expect(r.stdout).toContain("read:1");
+    expect(r.stderr).toContain("err");
+  });
+  test("Stop still ends it and everything it started", async () => {
+    const d = tmp(); const ac = new AbortController();
+    setTimeout(() => ac.abort(), 300);
+    const t0 = Date.now();
+    const r = await runCommand(`sleep 30 & echo $! > '${join(d, "pid")}'; wait`, { cwd: d, timeoutMs: 20000, signal: ac.signal, endWithUs: true });
+    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(r.aborted).toBe(true);
+    await sleep(400);
+    expect(alive(Number(await Bun.file(join(d, "pid")).text()))).toBe(false);
+  }, 15000);
+});

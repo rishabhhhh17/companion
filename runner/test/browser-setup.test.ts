@@ -1,7 +1,7 @@
 // The browser check's one time download (F14: every user gets the browser check). It happens only when the person
 // presses the button, it says how far along it is in plain words, a second press does nothing, and Stop everything ends it.
 // Nothing here reaches the internet: the downloader is a stand in.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,8 +9,14 @@ import { BrowserSetup, pretendInstaller, type InstallFn } from "../src/proof/bro
 import { browserCheck, browserExecutable, installBrowser, parseInstallProgress } from "../src/proof/browser.ts";
 
 const made: string[] = [];
-afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = () => { const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-bs-"))); made.push(d); return d; };
+// No test here may read or write Companion's real browsers folder on this Mac: each one gets its own empty folder.
+const realBrowsers = process.env.PLAYWRIGHT_BROWSERS_PATH;
+beforeEach(() => { process.env.PLAYWRIGHT_BROWSERS_PATH = tmp(); });
+afterEach(() => {
+  if (realBrowsers === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH; else process.env.PLAYWRIGHT_BROWSERS_PATH = realBrowsers;
+  while (made.length) rmSync(made.pop()!, { recursive: true, force: true });
+});
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Ev = Record<string, any>;
@@ -127,6 +133,21 @@ describe("when the download goes wrong, the words say what to do", () => {
     const f = await failWith({ ok: false, detail: "Error: Download failure, code=1\n    at ChildProcess.<anonymous> (/x/coreBundle.js:33774:23)" });
     expect(f.detail).toBe("The download did not finish. Try again in a moment.");
   });
+  test("an installer that failed after the browser was in place (FFmpeg, which the check never uses) ends in Ready, not a failure", async () => {
+    let have = false;
+    const r = setup(async () => { have = true; return { ok: false, detail: "Error: Failed to download FFmpeg (playwright ffmpeg v1013), caused by" }; }, () => have);
+    await r.s.install();
+    expect(r.of("failed")).toHaveLength(0);
+    expect(r.of("done")).toEqual([{ type: "browser.install", stage: "done", detail: "Ready. The next check will use it." }]);
+  });
+  test("Stop everything after the browser was already in place says Ready, never that nothing was set up", async () => {
+    let have = false;
+    const r = setup(({ signal }) => new Promise((res) => { have = true; signal.addEventListener("abort", () => res({ ok: true, detail: "", aborted: true }), { once: true }); }), () => have);
+    const p = r.s.install();
+    r.s.stop(); await p;
+    expect(r.of("cancelled")).toHaveLength(0);
+    expect(r.of("done")).toHaveLength(1);
+  });
   test("a download that says it worked but left no browser is a failure, not Ready", async () => {
     const f = await failWith({ ok: true, detail: "" }, () => false);
     expect(f).toBeDefined();
@@ -160,6 +181,69 @@ describe("the real downloader's progress", () => {
     expect(seen.map((p) => p.percent)).toEqual([10, 20]);
     expect(gotSignal).toBe(ac.signal);
     expect(r.ok).toBe(false);
+  });
+  // What Playwright 1.64 really prints for `install chromium-headless-shell`: the browser, then FFmpeg, which it adds to
+  // every browser install (Companion never uses it). Read from its installer's source, 16 Oct 2026.
+  const bar = (p: number, size: string) => { const row = Math.floor(p / 10); return `|${"■".repeat(row * 8)}${" ".repeat((10 - row) * 8)}| ${String(p).padStart(3)}% of ${size}`; };
+  const browserHead = "Downloading Chrome Headless Shell 156.0.8078.4 (playwright chromium-headless-shell v1248) from https://cdn.playwright.dev/builds/cft/156.0.8078.4/mac-arm64/chrome-headless-shell-mac-arm64.zip";
+  const ffmpegHead = "Downloading FFmpeg (playwright ffmpeg v1013) from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1013/ffmpeg-mac-arm64.zip";
+  const tens = (to = 100) => Array.from({ length: to / 10 + 1 }, (_, i) => i * 10);
+  const feed = async (pieces: string[], code = 0) => {
+    const seen: { percent: number; mb?: number }[] = [];
+    const run = async (_c: string, o: { onOutput?: (t: string) => void }) => { for (const p of pieces) o.onOutput?.(p); return { code, signal: null, stdout: "", stderr: "", timedOut: false, ms: 1 }; };
+    const r = await installBrowser({ onProgress: (p) => seen.push(p), run });
+    return { seen, r };
+  };
+  test("FFmpeg's download after the browser's is not read as the browser's: the bar never goes back and the size stays the browser's", async () => {
+    const out = [browserHead, ...tens().map((p) => bar(p, "89.6 MiB")), "Chrome Headless Shell 156.0.8078.4 (playwright chromium-headless-shell v1248) downloaded to /x/chromium_headless_shell-1248",
+      ffmpegHead, ...tens().map((p) => bar(p, "1.1 MiB")), "FFmpeg (playwright ffmpeg v1013) downloaded to /x/ffmpeg-1013"].map((l) => l + "\n");
+    const { seen } = await feed(out);
+    const ps = seen.map((p) => p.percent);
+    for (let i = 1; i < ps.length; i++) expect(ps[i]).toBeGreaterThanOrEqual(ps[i - 1]!);
+    expect(seen.every((p) => p.mb === 94)).toBe(true);
+    expect(ps.at(-1)).toBe(100);
+  });
+  test("when FFmpeg starts before the browser's last line was read, the browser is said to be downloaded (FFmpeg is part of setting it up)", async () => {
+    const { seen } = await feed([browserHead, bar(0, "89.6 MiB"), bar(90, "89.6 MiB"), ffmpegHead, bar(0, "1.1 MiB"), bar(50, "1.1 MiB")].map((l) => l + "\n"));
+    expect(seen.map((p) => p.percent)).toEqual([0, 90, 100]);
+    expect(seen.at(-1)!.mb).toBe(94);
+  });
+  test("a browser download that Playwright tries again does not move the bar back", async () => {
+    const { seen } = await feed([browserHead, bar(0, "89.6 MiB"), bar(60, "89.6 MiB"), browserHead, bar(0, "89.6 MiB"), bar(30, "89.6 MiB"), bar(70, "89.6 MiB")].map((l) => l + "\n"));
+    expect(seen.map((p) => p.percent)).toEqual([0, 60, 70]);
+  });
+  test("the installer failing after the browser is in place (FFmpeg did not download) still counts: the browser check works", async () => {
+    const prev = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const root = tmp();
+    const dir = join(root, "chromium_headless_shell-1248");
+    mkdirSync(join(dir, "chrome-headless-shell-mac-arm64"), { recursive: true });
+    writeFileSync(join(dir, "chrome-headless-shell-mac-arm64", "chrome-headless-shell"), "");
+    writeFileSync(join(dir, "INSTALLATION_COMPLETE"), "");
+    process.env.PLAYWRIGHT_BROWSERS_PATH = root;
+    try {
+      const { r } = await feed([browserHead + "\n", ffmpegHead + "\n", "Error: Failed to download FFmpeg (playwright ffmpeg v1013), caused by\n"], 1);
+      expect(r.ok).toBe(true);
+    } finally { if (prev === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH; else process.env.PLAYWRIGHT_BROWSERS_PATH = prev; }
+  });
+  test("the installer keeps its archive in Companion's own folder, and a stopped download leaves nothing there", async () => {
+    // Seen 16 Oct 2026: a stopped download left Playwright's 104 MB archive in the Mac's shared temporary folder.
+    const prev = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const root = tmp();
+    process.env.PLAYWRIGHT_BROWSERS_PATH = root;
+    let scratch = "";
+    try {
+      const run = async (_c: string, o: { env?: Record<string, string> }) => {
+        scratch = o.env?.TMPDIR ?? "";
+        if (!scratch.startsWith(root + "/")) throw new Error(`the installer's temporary folder is outside Companion's: ${scratch}`);
+        mkdirSync(join(scratch, "playwright-download-x"), { recursive: true });
+        writeFileSync(join(scratch, "playwright-download-x", "chromium-headless-shell.zip"), "half an archive");
+        return { code: null, signal: "SIGKILL", stdout: "", stderr: "", timedOut: false, ms: 1, aborted: true };
+      };
+      const r = await installBrowser({ run });
+      expect(r.aborted).toBe(true);
+      expect(scratch.startsWith(root + "/")).toBe(true);
+      expect(readdirSync(root)).toEqual([]);
+    } finally { if (prev === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH; else process.env.PLAYWRIGHT_BROWSERS_PATH = prev; }
   });
   test("it installs into Companion's own browsers folder, with Playwright's own installer and nothing else", async () => {
     let cmd = "", env: Record<string, string> | undefined;
