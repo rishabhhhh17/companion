@@ -34,8 +34,15 @@ export class WalkService {
         a.busy = true;
         try {
           if (cmd.type === "walk.skip") { a.w.skip(); this.after(a, a.w.progress().done ? "done" : "advance"); return; }
-          if (cmd.type === "walk.answer") { if (a.w.needs() !== "ask") return; const r = await a.w.answer(cmd.worked); if (this.active.get(a.walk) === a) this.after(a, r); return; }
+          if (cmd.type === "walk.answer") {
+            const need = a.w.needs();
+            // After a pause the same Yes and No answer "Did you already do this?" (asked before anything is pointed at).
+            if (need === "already") { const r = await a.w.confirm(cmd.worked, this.o.checker(a.project)); if (this.active.get(a.walk) === a) this.after(a, r); return; }
+            if (need !== "ask") return;
+            const r = await a.w.answer(cmd.worked); if (this.active.get(a.walk) === a) this.after(a, r); return;
+          }
           if (cmd.type === "walk.acted") {
+            if (a.w.needs() === "already") return;   // nothing is pointed at while that question waits, so a click means nothing
             if (a.w.needs() === "ask") { if (a.asked) return; a.asked = true; this.emit({ type: "walk.ask", walk: a.walk, index: a.w.current()!.index }); return; }
             if (!a.w.current()) return;   // nothing is shown, so a click means nothing
             const r = await a.w.settle(cmd.how, this.o.checker(a.project));
@@ -81,6 +88,6 @@ export class WalkService {
       return;
     }
     const c = a.w.current(); if (!c) return;
-    this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", log: a.w.history() });
+    this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", ...(c.already ? { already: true } : {}), log: a.w.history() });
   }
 }

@@ -31,6 +31,13 @@ describe("lessons on the card", () => {
     expect(run([...started, step()]).walk?.log).toEqual([]);
     expect(run([...started, step({ log: "junk" })]).walk?.log).toEqual([]);
   });
+  test("after a pause, 'did you already do this?' is its own stage, and the next step leaves it", () => {
+    const m = run([...started, step({ index: 1, already: true })]);
+    expect(m.walk).toMatchObject({ stage: "already", index: 1, say: "Open settings" });
+    expect(run([...started, step({ already: "yes" })]).walk?.stage).toBe("step");   // only a real true counts
+    expect(run([...started, step({ index: 1, already: true }), step({ index: 2 })]).walk).toMatchObject({ stage: "step", index: 2 });
+    expect(run([...started, step({ index: 1, already: true }), step({ index: 1 })]).walk).toMatchObject({ stage: "step", index: 1 });   // "No": the same step, to do
+  });
   test("a new step after asking goes back to showing the step", () => {
     const m = run([...started, step(), { type: "walk.ask", walk: "w1", index: 0 }, step({ index: 1, say: "Copy it", ask: false })]);
     expect(m.walk).toMatchObject({ stage: "step", index: 1, say: "Copy it", ask: false });

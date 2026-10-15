@@ -110,6 +110,9 @@ export type Settled = "advance" | "done" | "instead" | "help" | "stopped";
 export class Walkthrough {
   private p: Progress;
   private stopped = false;
+  // After a pause, on a step only the person can confirm: "Did you already do this?" is asked before anything is pointed
+  // at. Never saved: it is worked out again at every resume.
+  private confirming = false;
   constructor(private lesson: Lesson, saved: Progress | null, private o: { now: () => string; project: string }) {
     const shape = lesson.steps.map((x) => x.id).join(",");
     const goodLog = (l: unknown) => !!l && typeof l === "object" && typeof (l as LogEntry).step === "string" && typeof (l as LogEntry).outcome === "string" && typeof (l as LogEntry).at === "string";
@@ -136,14 +139,16 @@ export class Walkthrough {
     return out;
   }
 
-  /** What to show now: the step's words and what to look for. Null when finished, stopped, or waiting for words from help. */
-  current(): { index: number; total: number; variant: "main" | "instead"; step: { id: string; say: string; find: string; check: Check } } | null {
+  /** What to show now: the step's words and what to look for. Null when finished, stopped, or waiting for words from help.
+   *  already: the person is first asked whether they did this step while away (nothing is pointed at until they answer). */
+  current(): { index: number; total: number; variant: "main" | "instead"; already: boolean; step: { id: string; say: string; find: string; check: Check } } | null {
     const s = this.step; if (!s) return null;
     const instead = this.p.usedInstead.includes(s.id) && s.instead;
-    return { index: this.p.index, total: this.lesson.steps.length, variant: instead ? "instead" : "main", step: { id: s.id, say: instead ? s.instead!.say : s.say, find: instead ? s.instead!.find : s.find, check: s.check } };
+    return { index: this.p.index, total: this.lesson.steps.length, variant: instead ? "instead" : "main", already: this.confirming, step: { id: s.id, say: instead ? s.instead!.say : s.say, find: instead ? s.instead!.find : s.find, check: s.check } };
   }
-  /** "ask" when only the person can say whether the step worked; "verify" when the project can prove it. */
-  needs(): "ask" | "verify" | null { const s = this.step; return s ? (s.check.kind === "ask" ? "ask" : "verify") : null; }
+  /** "ask" when only the person can say whether the step worked; "verify" when the project can prove it; "already" while
+   *  asking, after a pause, whether the person already did it. */
+  needs(): "ask" | "verify" | "already" | null { const s = this.step; return s ? (this.confirming ? "already" : s.check.kind === "ask" ? "ask" : "verify") : null; }
 
   private advance(): Settled {
     this.p.index++;
@@ -184,26 +189,53 @@ export class Walkthrough {
     if (this.stopped || this.p.done) return;
     const s = this.p.blocked ? this.lesson.steps[this.p.index] : this.step;   // after words only, the person says they did it themselves
     if (!s) return;
+    this.confirming = false;
     this.p.blocked = null; this.log(s.id, "skipped"); this.advance();
   }
   stop() { this.stopped = true; }
 
-  /** After a pause: steps the project can prove are looked at again. A finished step that has come undone is shown
-   *  again (not a failure); steps done while away are skipped; a step that failed before stays blocked. */
-  async resume(check: Checker): Promise<void> {
-    if (this.stopped || this.p.blocked || this.p.done) return;
-    const prove = async (s: Step) => { if (s.check.kind === "ask") return null; try { return (await check(s.check)) === true; } catch { return false; } };
-    for (let i = 0; i < this.p.index; i++) {
-      const s = this.lesson.steps[i];
-      if (!this.p.log.some((l) => l.step === s.id && (l.outcome === "passed" || l.outcome === "already_done"))) continue;
-      if ((await prove(s)) === false) { this.p.index = i; this.p.usedInstead = this.p.usedInstead.filter((x) => x !== s.id); return; }
-    }
-    while (this.p.index < this.lesson.steps.length) {
+  private async prove(s: Step, check: Checker): Promise<boolean | null> {
+    if (s.check.kind === "ask") return null;
+    try { return (await check(s.check)) === true; } catch { return false; }
+  }
+  /** From the current step on: a step the project proves is passed by; the first step only the person can confirm waits
+   *  for "Did you already do this?"; the first step that cannot be proven yet is where the lesson carries on. */
+  private async passDone(check: Checker): Promise<void> {
+    while (!this.stopped && this.p.index < this.lesson.steps.length) {
       const s = this.lesson.steps[this.p.index];
-      if ((await prove(s)) !== true) break;
+      if (s.check.kind === "ask") { this.confirming = true; return; }
+      if ((await this.prove(s, check)) !== true || this.stopped) return;
       this.log(s.id, "already_done");
       this.advance();
     }
+  }
+
+  /** After a pause: steps the project can prove are looked at again. A finished step that has come undone is shown
+   *  again (not a failure); steps done while away are passed by (the project proves them, or the person says so); a
+   *  step that failed before stays blocked. */
+  async resume(check: Checker): Promise<void> {
+    if (this.stopped || this.p.blocked || this.p.done) return;
+    this.confirming = false;
+    for (let i = 0; i < this.p.index; i++) {
+      const s = this.lesson.steps[i];
+      if (!this.p.log.some((l) => l.step === s.id && (l.outcome === "passed" || l.outcome === "already_done"))) continue;
+      if ((await this.prove(s, check)) === false) { this.p.index = i; this.p.usedInstead = this.p.usedInstead.filter((x) => x !== s.id); return; }
+    }
+    await this.passDone(check);
+  }
+
+  /** The person's answer to "Did you already do this?". Yes: the step counts as done and the lesson carries on to the
+   *  first step not proven done. No: the step itself is shown, the normal way. A question nobody asked changes nothing. */
+  async confirm(already: boolean, check: Checker): Promise<Settled> {
+    const s = this.step; if (!s) return this.p.blocked ? "help" : "stopped";
+    if (!this.confirming) return "advance";
+    this.confirming = false;
+    if (!already) return "advance";
+    this.log(s.id, "already_done");
+    if (this.advance() === "done") return "done";
+    await this.passDone(check);
+    if (this.stopped) return "stopped";
+    return this.p.done ? "done" : "advance";
   }
 }
 

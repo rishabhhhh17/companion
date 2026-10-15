@@ -39,9 +39,9 @@ export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed"
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
 export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; steps: number; saved: boolean };
-// A guided lesson on the card. stage: a step to do, waiting for "did that work?", words only after a step could not be
-// proven, finished, or stopped.
-export type WalkState = { stage: "step" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
+// A guided lesson on the card. stage: a step to do, "did you already do this?" after a pause (nothing is pointed at
+// until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
+export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 // The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
 // engine says so with needs: "browser", never guessed from its words). installed: what the engine last said. stage: the
@@ -218,7 +218,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.walkRequested": return { ...m, walkWant: String(e.walk), walk: null };
     case "ui.walkClosed": return { ...m, walk: null, walkWant: null };
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
-    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
+    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
     case "walk.done": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "done" } } : m;

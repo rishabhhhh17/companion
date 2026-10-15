@@ -64,10 +64,12 @@ describe("a lesson through the real runner", () => {
     r.send({ type: "runner.ping" });
     await r.waitFor(() => r.of("runner.pong").length === 1);
     expect(r.events().length).toBe(before + 1);   // only the pong
-    // Starting again picks up where it left off.
+    // Starting again picks up where it left off: step two is one only the person can confirm, so it asks first.
     r.send({ type: "walk.start", project, lesson: "mine" });
     await r.waitFor(() => r.of("walk.step").length === 3);
-    expect(r.of("walk.step")[2]).toMatchObject({ index: 1, say: "Do two" });
+    expect(r.of("walk.step")[2]).toMatchObject({ index: 1, say: "Do two", already: true });
+    r.send({ type: "walk.answer", walk: r.of("walk.step")[2].walk, index: 1, worked: true });
+    await r.waitFor(() => r.of("walk.done").length === 1);
     await r.close();
     for (const line of r.lines) expect(parseEvent(line).ok, line).toBe(true);
   });

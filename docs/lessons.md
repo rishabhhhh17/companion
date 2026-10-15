@@ -29,6 +29,7 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 - **`instead`** (optional) is the other way, shown once if the first did not work. After that the person gets words only and an "I did it myself" button. A step that failed is never shown as the same ring again.
 - The ring is a solid ring only where the place is confirmed; a guess gets a soft ring and says so (rule 22).
 - Progress is saved after every move and holds step ids and outcomes only.
+- **After a pause** the lesson carries on at the first step not proven done. Finished steps the project can prove are checked again (one that came undone is shown again, not as a failure). From the saved place on, steps the project proves are passed by; at a step only the person can confirm (`ask`), it asks "Did you already do this?" before pointing at anything. Yes counts it as done and moves on; No shows the step. A step that failed before stays words only.
 
 ## Lessons that need no project
 

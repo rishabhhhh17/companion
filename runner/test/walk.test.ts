@@ -192,6 +192,76 @@ describe("picking up after a pause", () => {
     await w2.resume(has());
     expect(w2.current()).toBeNull();
   });
+  test("a pause on a step only the person can confirm asks 'did you already do this?' instead of stopping, and points at nothing yet", async () => {
+    const lp = lesson([step("a"), step("b"), auto("c", "THREE")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);   // a is done, b is next
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(w2.needs()).toBe("already");
+    expect(w2.current()).toMatchObject({ index: 1, already: true, step: { id: "b" } });
+  });
+  test("'yes, I did it' moves past it, proves what the project can prove, and asks again at the next step only the person knows", async () => {
+    const lp = lesson([step("a"), step("b"), auto("c", "THREE"), step("d"), step("e")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has("THREE"));
+    expect(w2.current()).toMatchObject({ index: 1, already: true });
+    expect(await w2.confirm(true, has("THREE"))).toBe("advance");
+    expect(w2.current()).toMatchObject({ index: 3, already: true, step: { id: "d" } });   // c was proven from the project on the way
+    expect(w2.progress().log.slice(-2).map((l) => [l.step, l.outcome])).toEqual([["b", "already_done"], ["c", "already_done"]]);
+    expect(w2.history().map((h) => h.how)).toEqual(["done", "done", "done"]);
+  });
+  test("'no' shows the step itself, the normal way", async () => {
+    const lp = lesson([step("a"), step("b"), step("c")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(await w2.confirm(false, has())).toBe("advance");
+    expect(w2.needs()).toBe("ask");
+    expect(w2.current()).toMatchObject({ index: 1, already: false, step: { id: "b" } });
+    expect(w2.progress().failed).toEqual([]);   // not having done it yet is not a failure
+  });
+  test("a step the project cannot prove yet stops the skipping there, without asking", async () => {
+    const lp = lesson([step("a"), step("b"), auto("c", "THREE"), step("d")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    await w2.confirm(true, has());   // THREE is not set
+    expect(w2.needs()).toBe("verify");
+    expect(w2.current()).toMatchObject({ index: 2, already: false });
+  });
+  test("'yes' on the last step finishes the lesson", async () => {
+    const lp = lesson([step("a"), step("b")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(await w2.confirm(true, has())).toBe("done");
+    expect(w2.progress().done).toBe(true);
+  });
+  test("an answer to a question nobody asked changes nothing, and Stop while asking ends it", async () => {
+    const w = new Walkthrough(lesson(), null, { now: T, project: "/p" });
+    expect(await w.confirm(true, has())).toBe("advance");
+    expect(w.current()).toMatchObject({ index: 0, already: false });
+    expect(w.progress().log).toEqual([]);
+    const lp = lesson([step("a"), step("b")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" }); await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has()); w2.stop();
+    expect(await w2.confirm(true, has())).toBe("stopped");
+    expect(w2.current()).toBeNull();
+  });
+  test("'I did it myself' while asking moves on and stops asking", async () => {
+    const lp = lesson([step("a"), step("b"), step("c")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" }); await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has()); w2.skip();
+    expect(w2.current()).toMatchObject({ index: 2, already: false });
+  });
   test("progress from a different lesson or an older version is ignored", () => {
     const stale = { lesson: "other", project: "/p", index: 2, log: [], failed: [], done: false, version: 1, shape: "a,b,c" };
     const w = new Walkthrough(l(), stale as never, { now: T, project: "/p" });

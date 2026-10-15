@@ -711,7 +711,7 @@ function Card() {
         <section className={`panel ${m.walk.stage === "help" ? "amber" : ""}`} role="status" aria-label={S.lessonsTitle}>
           <h2>{m.walk.title}</h2>
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
-          {(m.walk.stage === "step" || m.walk.stage === "asking") && <>
+          {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
             <div className="line"><b>{m.walk.say}</b></div>
           </>}
@@ -728,13 +728,18 @@ function Card() {
               {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>}
               <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "clicked", m.walk!.index)); }}>{S.lessonDid}</button>
             </>}
+            {m.walk.stage === "already" && <>
+              <div className="line">{S.lessonAlready}</div>
+              <button className="btn primary" type="button" onClick={() => void send(walkAnswer(m.walk!.id, true, m.walk!.index))}>{S.lessonAlreadyYes}</button>
+              <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonAlreadyNo}</button>
+            </>}
             {m.walk.stage === "asking" && <>
               <div className="line">{S.lessonWorked}</div>
               <button className="btn primary" type="button" onClick={() => void send(walkAnswer(m.walk!.id, true, m.walk!.index))}>{S.lessonYes}</button>
               <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonNo}</button>
             </>}
             {m.walk.stage === "help" && <button className="btn primary" type="button" onClick={() => void send(walkSkip(m.walk!.id, m.walk!.index))}>{S.lessonSkip}</button>}
-            {["step", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
+            {["step", "already", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
             {["done", "stopped"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.walkClosed" })}>{S.pointClose}</button>}
           </div>
         </section>

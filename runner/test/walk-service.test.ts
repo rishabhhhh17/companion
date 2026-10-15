@@ -93,6 +93,31 @@ describe("walkthrough service", () => {
     await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     expect(s.of("walk.step").at(-1)).toMatchObject({ index: 2, say: "Save" });
   });
+  test("a lesson paused on a step only the person knows asks 'did you already do this?' first, without pointing", async () => {
+    const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
+    expect(s.of("walk.step")[0]).not.toHaveProperty("already");   // a fresh start asks nothing
+    await s.cmd("walk.stop", { walk: "w1" });                        // paused on step 1, an 'ask' step
+    await s.svc.handle({ v: 1, id: "w2", type: "walk.start", project: s.project, lesson: "keys" } as never);
+    expect(s.of("walk.step").at(-1)).toMatchObject({ walk: "w2", index: 0, say: "Open settings", already: true });
+    // A click while asking means nothing: there is no ring to click.
+    const n = s.events.length;
+    await s.svc.handle({ v: 1, id: "x", type: "walk.acted", walk: "w2", how: "clicked", index: 0 } as never);
+    expect(s.events.length).toBe(n);
+    // "Yes" moves on; the next step is one the project proves, so it is shown the normal way.
+    await s.svc.handle({ v: 1, id: "y", type: "walk.answer", walk: "w2", worked: true, index: 0 } as never);
+    expect(s.of("walk.step").at(-1)).toMatchObject({ walk: "w2", index: 1, say: "Copy the key name" });
+    expect(s.of("walk.step").at(-1)).not.toHaveProperty("already");
+    expect(s.of("walk.step").at(-1).log).toEqual([{ say: "Open settings", how: "done" }]);
+  });
+  test("'no' to 'did you already do this?' shows that same step to do", async () => {
+    const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
+    await s.cmd("walk.stop", { walk: "w1" });
+    await s.svc.handle({ v: 1, id: "w2", type: "walk.start", project: s.project, lesson: "keys" } as never);
+    await s.svc.handle({ v: 1, id: "y", type: "walk.answer", walk: "w2", worked: false, index: 0 } as never);
+    expect(s.of("walk.step").at(-1)).toMatchObject({ walk: "w2", index: 0, say: "Open settings", ask: true });
+    expect(s.of("walk.step").at(-1)).not.toHaveProperty("already");
+    expect(s.of("walk.help")).toHaveLength(0);
+  });
   test("'start over' ignores the saved place", async () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     await s.cmd("walk.skip", { walk: "w1" }); await s.cmd("walk.stop", { walk: "w1" });
