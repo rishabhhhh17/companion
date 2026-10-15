@@ -13,6 +13,7 @@ import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
 import { label } from "./redact.ts";
+import { heldKey } from "./keychain.ts";
 import { TaskLog } from "./tasklog.ts";
 import { FileWalkStore, projectChecker } from "./walk.ts";
 import { WalkService } from "./walkservice.ts";
@@ -75,6 +76,16 @@ function dispatch(cmd: Command) {
   inflight.add(p);
 }
 
+function takeKey(line: string): boolean {
+  try {
+    const j = JSON.parse(line) as { type?: string; key?: unknown };
+    if (j.type !== "auth.key") return false;
+    heldKey.set(typeof j.key === "string" ? j.key : null);
+  } catch { say({ type: "protocol.error", reason: "the key from the app could not be read" }); return false; }
+  void announceAuth();
+  return true;
+}
+
 async function main() {
   let buf = "";
   const dec = new TextDecoder();
@@ -85,6 +96,9 @@ async function main() {
       const line = buf.slice(0, i).trim();
       buf = buf.slice(i + 1);
       if (!line) continue;
+      // The key handoff from the app is not part of the page protocol: it is taken here, before anything is parsed, logged
+      // or echoed, and a damaged one is dropped without its text ever being repeated.
+      if (line.startsWith('{"v":1,"type":"auth.key"')) { takeKey(line); continue; }
       let r: ReturnType<typeof parseCommand>;
       try { r = parseCommand(line); } catch { say({ type: "protocol.error", reason: "a line could not be read", line: label(line, 200) }); continue; }   // never let one bad line stop the engine
       if (!r.ok) say({ type: "protocol.error", reason: r.error, line: label(line, 200) });

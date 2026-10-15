@@ -6,6 +6,12 @@ export type KeychainRef = { service: string; account: string; keychain?: string 
 
 export const DEFAULT_REF: KeychainRef = { service: "companion", account: "anthropic" };
 
+// Inside the app, the Mac app itself reads the Keychain (so only Companion is trusted to) and hands the key over on the
+// pipe it started us with. Here it is held in memory only. Headless runs and tests still use the `security` tool.
+let held: string | null = null;
+export const heldKey = { set: (k: string | null) => { held = k && k.trim() ? k.trim() : null; }, has: () => held !== null };
+const appOwnsKey = (env: Record<string, string | undefined> = process.env) => env.COMPANION_KEY_SOURCE === "app";
+
 async function run(args: string[]): Promise<{ code: number; out: string }> {
   const p = Bun.spawn(["security", ...args], { stdout: "pipe", stderr: "pipe" });
   const [out] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
@@ -17,6 +23,7 @@ const refArgs = (r: KeychainRef, extra: string[]) =>
 
 // True when an item exists. Does not read the secret (no -w), so no password prompt.
 export async function hasApiKey(r: KeychainRef = DEFAULT_REF): Promise<boolean> {
+  if (appOwnsKey()) return held !== null;
   const { code } = await run(refArgs(r, []));
   return code === 0;
 }
@@ -37,6 +44,7 @@ function decodeIfHex(out: string): string {
 
 // The key, trimmed, or null when there is none (or it is blank).
 export async function getApiKey(r: KeychainRef = DEFAULT_REF): Promise<string | null> {
+  if (appOwnsKey()) return held;
   const { code, out } = await run(refArgs(r, ["-w"]));
   if (code !== 0) return null;
   const key = decodeIfHex(out).trim();

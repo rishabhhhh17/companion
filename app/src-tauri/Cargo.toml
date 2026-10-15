@@ -33,6 +33,7 @@ objc2-vision = "0.3.2"
 objc2-core-foundation = "0.3"
 objc2-av-foundation = "0.3.2"
 objc2-avf-audio = "0.3.2"
+security-framework = "3"
 
 [profile.release]
 debug = false
