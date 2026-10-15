@@ -13,6 +13,8 @@ export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
   // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
   aim: "default" | "computer_use"; aimModel?: string;
+  // The runner's own process tests only: a pretend browser download of this many milliseconds a step. Never with the real engine.
+  browserStubMs?: number;
 };
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
@@ -29,6 +31,7 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     assistStub: env.COMPANION_ASSIST_STUB === "1",
     aim: env.COMPANION_AIM === "computer_use" ? "computer_use" : "default",
     aimModel: env.COMPANION_AIM_MODEL || undefined,
+    ...(env.COMPANION_ENGINE === "scripted" && Number(env.COMPANION_BROWSER_STUB) > 0 ? { browserStubMs: Number(env.COMPANION_BROWSER_STUB) } : {}),
   };
 }
 

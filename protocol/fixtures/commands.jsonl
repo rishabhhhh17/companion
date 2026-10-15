@@ -49,3 +49,5 @@
 {"v":1,"id":"c49","type":"metrics.note","name":"session"}
 {"v":1,"id":"c50","type":"metrics.show"}
 {"v":1,"id":"c51","type":"metrics.erase"}
+{"v":1,"id":"c52","type":"browser.check"}
+{"v":1,"id":"c53","type":"browser.install"}

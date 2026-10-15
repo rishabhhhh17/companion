@@ -135,3 +135,19 @@ describe("stopping a command when its output says so", () => {
     expect(r.matched).toBeUndefined(); expect(r.code).toBe(0);
   });
 });
+
+describe("following a command's output as it runs", () => {
+  test("each piece of output is passed on while the command is still running, from both streams", async () => {
+    const seen: string[] = [];
+    let atFirst = 0;
+    const t0 = Date.now();
+    const r = await runCommand("echo one; echo two >&2; sleep 0.3; echo three", { cwd: tmp(), timeoutMs: 5000, onOutput: (t) => { if (!seen.length) atFirst = Date.now() - t0; seen.push(t); } });
+    expect(seen.join("")).toContain("one"); expect(seen.join("")).toContain("two"); expect(seen.join("")).toContain("three");
+    expect(atFirst).toBeLessThan(r.ms);
+    expect(r.code).toBe(0);
+  });
+  test("a listener that throws does not break the command", async () => {
+    const r = await runCommand("echo fine", { cwd: tmp(), timeoutMs: 5000, onOutput: () => { throw new Error("listener broke"); } });
+    expect(r.code).toBe(0); expect(r.stdout).toContain("fine");
+  });
+});

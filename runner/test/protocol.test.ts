@@ -75,3 +75,31 @@ describe("names that every object has are not message types", () => {
     }
   });
 });
+
+describe("the browser check's download", () => {
+  const e = (o: Record<string, unknown>) => parseEvent(JSON.stringify({ v: 1, id: "e", ...o })).ok;
+  test("the progress, done, failed and stopped events need a known stage and words", () => {
+    expect(e({ type: "browser.install", stage: "downloading", detail: "Downloading.", percent: 40, mb: 94 })).toBe(true);
+    expect(e({ type: "browser.install", stage: "exploded", detail: "x" })).toBe(false);
+    expect(e({ type: "browser.install", stage: "done" })).toBe(false);
+  });
+  test("a percent outside 0 to 100 is refused, not shown", () => {
+    expect(e({ type: "browser.install", stage: "downloading", detail: "x", percent: 140 })).toBe(false);
+    expect(e({ type: "browser.install", stage: "downloading", detail: "x", percent: "40" })).toBe(false);
+  });
+  test("the status says both whether it is installed and whether a download is running", () => {
+    expect(e({ type: "browser.status", installed: true, installing: false })).toBe(true);
+    expect(e({ type: "browser.status", installed: true })).toBe(false);
+  });
+  test("a check that names what it needs may only name the browser", () => {
+    const step = { type: "proof.step", agent: "a", rung: "browser", label: "Opening it in a browser", status: "skipped", detail: "x" };
+    expect(e({ ...step, needs: "browser" })).toBe(true);
+    expect(e({ ...step, needs: "chrome" })).toBe(false);
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed_with_gaps", needs: "something" })).toBe(false);
+    expect(e({ type: "proof.result", agent: "a", verdict: "passed_with_gaps", steps: [{ rung: "browser", status: "skipped", needs: "nope" }], tries: 1 })).toBe(false);
+  });
+  test("the commands carry nothing a page could point elsewhere: no address, no folder", () => {
+    expect(parseCommand('{"v":1,"id":"c","type":"browser.install"}').ok).toBe(true);
+    expect(parseCommand('{"v":1,"id":"c","type":"browser.check"}').ok).toBe(true);
+  });
+});

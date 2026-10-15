@@ -292,4 +292,16 @@ export const S = {
   planCostNone: "Rough cost: very little",
   engineStopped: "The engine stopped",
   closeFinished: "Close",
+  // The browser check's one time download. The size is what it takes on the Mac; the bar shows the real download size.
+  browserTitle: "Browser check",
+  browserNeeded: "The page was not opened in a browser, because the browser check is not set up on this Mac yet.",
+  browserGet: "Get the browser check (about 200 MB, once)",
+  browserStarting: "Starting the download…",
+  browserProgress: (percent: number, mb?: number) => `Downloading the browser check: ${percent}%${mb ? ` of about ${mb} MB` : ""}`,
+  browserProgressLabel: "Download progress",
+  browserSettingUp: "Downloaded. Setting it up…",
+  browserReady: "Ready. The next check will use it.",
+  browserStopped: "Stopped. Nothing was set up. Press the button to start again.",
+  browserFailed: "The download did not finish. Try again in a moment.",
+  browserTryAgain: "Try again",
 } as const;

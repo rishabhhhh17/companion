@@ -184,3 +184,59 @@ describe("the runner program", () => {
     });
   });
 });
+
+// The browser check's one time download, through the real program. COMPANION_BROWSER_STUB swaps in a pretend download
+// (only with the scripted engine), so no test ever reaches the internet.
+describe("the browser check's download, over the pipe", () => {
+  const bev = (r: ReturnType<typeof launch>, type: string) => r.events().filter((e: any) => e.type === type);
+  test("asking says it is not installed and nothing is running, and nothing is downloaded without the command", async () => {
+    const r = launch([], { PLAYWRIGHT_BROWSERS_PATH: tmp("browsers") });
+    r.send({ v: 1, id: "b1", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installed: false, installing: false });
+    await new Promise((res) => setTimeout(res, 150));
+    expect(bev(r, "browser.install")).toHaveLength(0);
+    await r.close();
+  });
+  test("a press downloads it, with progress, ends in Ready, and the next question says installed", async () => {
+    const r = launch([], { COMPANION_BROWSER_STUB: "5" });
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage === "done"));
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "downloading" && e.percent === 40)).toBe(true);
+    for (const l of r.lines) expect(parseEvent(l).ok, l).toBe(true);
+    r.send({ v: 1, id: "b2", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installed: true, installing: false });
+    await r.close();
+  });
+  test("a second press while it downloads starts nothing new, and Stop everything ends it", async () => {
+    const r = launch([], { COMPANION_BROWSER_STUB: "400" });
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").length >= 1);
+    r.send({ v: 1, id: "b2", type: "browser.install" });
+    r.send({ v: 1, id: "b3", type: "browser.check" });
+    await r.waitFor(() => bev(r, "browser.status").length >= 1);
+    expect(bev(r, "browser.status")[0]).toMatchObject({ installing: true });
+    expect(bev(r, "browser.install").filter((e: any) => /starting/i.test(e.detail))).toHaveLength(1);
+    r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "kill switch" });
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage === "cancelled"), 3000);
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "done")).toBe(false);
+    await r.close();
+  });
+  test("closing the app ends a download that is running", async () => {
+    const r = launch([], { COMPANION_BROWSER_STUB: "400" });
+    r.send({ v: 1, id: "b1", type: "browser.install" });
+    await r.waitFor(() => bev(r, "browser.install").length >= 1);
+    const t0 = Date.now();
+    await r.close();
+    expect(Date.now() - t0).toBeLessThan(1500);
+    // It was stopped and waited for (a real download runs in its own process group and would outlive the engine otherwise).
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "cancelled")).toBe(true);
+    expect(bev(r, "browser.install").some((e: any) => e.stage === "done")).toBe(false);
+  });
+  test("the pretend download is never used by the real engine", async () => {
+    const { readSettings } = await import("../src/engines.ts");
+    expect(readSettings({ COMPANION_BROWSER_STUB: "5" }).browserStubMs).toBeUndefined();
+    expect(readSettings({ COMPANION_BROWSER_STUB: "5", COMPANION_ENGINE: "scripted" }).browserStubMs).toBe(5);
+  });
+});

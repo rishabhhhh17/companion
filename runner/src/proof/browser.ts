@@ -5,33 +5,59 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
-import { runCommand } from "./exec.ts";
+import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 
 export const browsersPath = () => process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), "Library", "Application Support", "Companion", "browsers");
 
-// The exact program to launch, found in our own private folder (never the user's Chrome).
-export function browserExecutable(): string | null {
+// The exact program to launch, found in our own private folder (never the user's Chrome). Only a finished download counts:
+// Playwright writes INSTALLATION_COMPLETE last, so a download that was stopped while it unpacked is not mistaken for a browser.
+export function browserExecutable(root: string = browsersPath()): string | null {
   try {
-    const dir = readdirSync(browsersPath()).filter((d) => d.startsWith("chromium_headless_shell")).sort().pop();
+    const dir = readdirSync(root).filter((d) => d.startsWith("chromium_headless_shell") && existsSync(join(root, d, "INSTALLATION_COMPLETE"))).sort().pop();
     if (!dir) return null;
-    const inner = readdirSync(join(browsersPath(), dir)).find((d) => d.startsWith("chrome-headless-shell"));
-    const exe = inner ? join(browsersPath(), dir, inner, "chrome-headless-shell") : "";
+    const inner = readdirSync(join(root, dir)).find((d) => d.startsWith("chrome-headless-shell"));
+    const exe = inner ? join(root, dir, inner, "chrome-headless-shell") : "";
     return exe && existsSync(exe) ? exe : null;
   } catch { return null; }
 }
 export const browserInstalled = () => browserExecutable() !== null;
 
-// First use only: download the hidden browser (about 200 MB) into a private folder.
-export async function installBrowser(): Promise<{ ok: boolean; detail: string }> {
+/** One line of Playwright's own download progress ("|■■■■   |  40% of 89.6 MiB"), as a percent and a size in MB. */
+export function parseInstallProgress(line: string): { percent: number; mb: number } | null {
+  const m = /\|\s*(\d{1,3})% of ([\d.]+) MiB\s*$/.exec(line.trim());
+  if (!m) return null;
+  const percent = Number(m[1]), mib = Number(m[2]);
+  if (!(percent >= 0 && percent <= 100) || !Number.isFinite(mib)) return null;
+  return { percent, mb: Math.round(mib * 1.048576) };
+}
+
+export type InstallProgress = { percent: number; mb?: number };
+export type InstallOutcome = { ok: boolean; detail: string; aborted?: boolean; timedOut?: boolean };
+type Run = (command: string, o: RunOptions) => Promise<RunResult>;
+
+// Download the hidden browser (about 200 MB on disk) into Companion's own folder, only when the person asked for it
+// (see browsersetup.ts). Playwright's own installer does the download: from Playwright's own servers over https, tried again
+// on failure, and thrown away if fewer bytes arrive than the server announced. The short environment means no setting of the
+// person's can point it at another server. Stop everything ends it through the signal.
+export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run } = {}): Promise<InstallOutcome> {
   const cli = join(dirname(Bun.resolveSync("playwright-core/package.json", import.meta.dir)), "cli.js");
   if (!existsSync(cli)) return { ok: false, detail: "The browser installer was not found" };
-  const r = await runCommand(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install chromium-headless-shell`, { cwd: homedir(), timeoutMs: 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: browsersPath() } });
-  return { ok: r.code === 0 && browserInstalled(), detail: (r.stderr || r.stdout).slice(-300) };
+  let pending = "";
+  const onOutput = (text: string) => {
+    pending += text;
+    const lines = pending.split(/\r?\n|\r/);
+    pending = lines.pop() ?? "";
+    for (const l of lines) { const p = parseInstallProgress(l); if (p) o.onProgress?.(p); }
+    if (pending.length > 4000) pending = pending.slice(-4000);
+  };
+  const r = await (o.run ?? runCommand)(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install chromium-headless-shell`, { cwd: homedir(), timeoutMs: 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: browsersPath() }, signal: o.signal, onOutput });
+  return { ok: r.code === 0 && !r.aborted && browserInstalled(), detail: (r.stderr || r.stdout).slice(-300), ...(r.aborted ? { aborted: true } : {}), ...(r.timedOut ? { timedOut: true } : {}) };
 }
 
 // A picture of the page as it first appears (before any button is pressed), and what is on it, for the visual receipt.
 export type PageShot = { jpeg: string; w: number; h: number; items: import("./visualdiff.ts").PageItem[] };
-export type BrowserResult = { ok: boolean; skipped?: string; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number; shot?: PageShot };
+// notInstalled: skipped only because the hidden browser is not on this Mac yet (the page then offers the download).
+export type BrowserResult = { ok: boolean; skipped?: string; notInstalled?: true; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number; shot?: PageShot };
 export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal };
 
 // Buttons that sound like they send, pay, delete or publish are never pressed by a check.
@@ -44,7 +70,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
   const t0 = Date.now();
   const blockedByUs = new Set<string>();   // per check, so two checks at once never mix up their lists
   const result: BrowserResult = { ok: false, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 };
-  if (!browserInstalled()) return { ...result, skipped: "The hidden browser is not installed yet, so the page was not opened.", ms: 0 };
+  if (!browserInstalled()) return { ...result, skipped: "The hidden browser is not installed yet, so the page was not opened.", notInstalled: true, ms: 0 };
   if (o.signal?.aborted) return { ...result, skipped: "Stopped.", ms: 0 };
   const timeout = o.timeoutMs ?? 15000;
   let browser: import("playwright-core").Browser;

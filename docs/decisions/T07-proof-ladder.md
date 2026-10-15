@@ -34,7 +34,7 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 - M3 builds rungs 1 to 5, the retry loop, receipts and the timeline; rung 7 lands in M4. Rung 6 has no milestone in technical doc section 18 yet; the M3 plan assigns it. M3 passes when five seeded broken projects (Vite, Next.js, static HTML, Express API, Supabase app) never reach `done` while a rung fails, a deleted test is flagged, and the receipt diff matches the snapshot diff exactly.
 
 ## Open [verify] items
-- None marked [verify]. The Chromium download size was not found in sources; measure it in M3, when Playwright is first downloaded (section 7).
+- None marked [verify]. The Chromium download size was not found in sources; measure it in M3, when Playwright is first downloaded (section 7). Size on disk measured 16 Oct 2026 (203 MB, see below); the network download size is still to be read from a real first download.
 
 ## What the build settled (hardening pass, 9 Oct 2026)
 - Proof commands run with a short allow-list environment (no keys), `CI=1` only for install and tests, and a stop signal that ends everything they started.
@@ -42,6 +42,12 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 - The browser check answers any write request with "no content" while it presses buttons, so a button can never change a server, and a hard deadline always closes the browser.
 - The test guard also catches `|| true`, `; exit 0`, `--passWithNoTests`, commented out tests, and counts Python and Go tests. A moved test file is fine when no test is lost.
 - A second model answer of "approve, but with concerns" counts as changes needed.
+
+## What the build settled (the browser download, 16 Oct 2026)
+- "Downloaded on first proof" is done as a visible, one time download the person starts. Until the browser is there, rung 5 is skipped, the result is "passed with gaps" (never "passed"), and the skipped step carries `needs: "browser"` (so do Point at the problem's answer and a Put it online preview that could not be opened), which is the only signal the card uses to offer "Get the browser check (about 200 MB, once)". Why a press and not on its own: a 200 MB download is never a surprise (AGENTS.md bar rules 7 and 12).
+- The press runs Playwright's own installer into `~/Library/Application Support/Companion/browsers` (removed by Delete everything). One download at a time; a second press does nothing; Stop everything and closing the app end it. Only a download with Playwright's finished marker counts as installed, so a download stopped while it unpacked is never used.
+- Integrity is Playwright's own: https from Playwright's servers, retried, and thrown away if fewer bytes arrive than announced. There is no checksum of the archive. The person's environment cannot change the download host (the installer gets the short allow-list environment).
+- Measured: Chrome Headless Shell 156 (Playwright 1.64, build 1248) is 203 MB on disk on an Apple silicon Mac. The network download size is shown in the progress; it was not measured here because no test downloads it.
 
 ## Revisit if
 The false "done" rate does not stay near zero, its target in product_research.md section 17.

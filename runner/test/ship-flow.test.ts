@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseCommand, serialize } from "../../protocol/index.ts";
+import { parseCommand, parseEvent, serialize } from "../../protocol/index.ts";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
@@ -71,6 +71,13 @@ describe("a preview", () => {
     const t = setup({ browser: async () => ({ ok: false, skipped: "The hidden browser is not installed yet.", problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 }) });
     await t.cmd({ type: "ship.preview" });
     expect(t.last().canGoLive).toBeFalsy(); expect(t.last().detail).toMatch(/could not be checked/i);
+    expect(t.last().needs).toBeUndefined();   // not said to be missing, so no download is offered
+  });
+  test("a preview that could not be opened because the browser is missing says so, so the card can offer it", async () => {
+    const t = setup({ browser: async () => ({ ok: false, skipped: "The hidden browser is not installed yet, so the page was not opened.", notInstalled: true, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 0 }) });
+    await t.cmd({ type: "ship.preview" });
+    expect(t.last()).toMatchObject({ stage: "failed", canGoLive: false, needs: "browser" });
+    for (const e of t.events) expect(parseEvent(serialize(e as never)).ok, JSON.stringify(e)).toBe(true);
   });
   test("an unsafe preview link from the deploy tool is never opened", async () => {
     const t = setup(); t.deployer.previewResult = { ok: true, url: "http://169.254.169.254/" }; await t.cmd({ type: "ship.preview" });

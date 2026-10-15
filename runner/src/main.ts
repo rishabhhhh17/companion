@@ -18,6 +18,7 @@ import { TaskLog } from "./tasklog.ts";
 import { FileWalkStore, projectChecker } from "./walk.ts";
 import { WalkService } from "./walkservice.ts";
 import { Metrics } from "./metrics.ts";
+import { BrowserSetup, pretendInstaller } from "./proof/browsersetup.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -36,6 +37,8 @@ const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engi
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
 const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString() });
 const inflight = new Set<Promise<unknown>>();
+// The browser check's one time download: only on the person's press, ended by Stop everything and by the app closing.
+const browser = new BrowserSetup({ emit: say, ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}) });
 
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
 process.stdout.on("error", () => process.exit(0));
@@ -58,6 +61,8 @@ function dispatch(cmd: Command) {
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
+  if (cmd.type === "browser.check") { browser.status(); return; }
+  if (cmd.type === "browser.install") { const p = browser.install().finally(() => inflight.delete(p)); inflight.add(p); return; }
   if (cmd.type === "doctor.check") { void doctor().then((items) => say({ type: "doctor.report", items })).catch((e: Error) => say({ type: "protocol.error", reason: `could not check this Mac: ${e.message}` })); return; }
   if (cmd.type.startsWith("metrics.")) {
     if (cmd.type === "metrics.set") metrics.setEnabled(cmd.enabled);
@@ -67,7 +72,7 @@ function dispatch(cmd: Command) {
     return;
   }
   metrics.observeCommand(cmd);
-  if (cmd.type === "agent.interruptAll") walks.stopAll();
+  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); }
   const work = cmd.type.startsWith("walk.") ? walks.handle(cmd as never) : cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);
@@ -107,6 +112,7 @@ async function main() {
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
   void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
+  void browser.stop();   // a real download runs in its own process group, so it is ended and waited for, never left behind
   void releaseShotDrive();
   await Promise.allSettled([...inflight]);
   await runner.background();   // pictures being made stop their servers and delete their private copies first
