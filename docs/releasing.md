@@ -11,6 +11,8 @@ Nothing here is published by an agent. Each step that goes public is yours to ru
 
 ## Every release
 
+0. `sh scripts/audit.sh` (known problems in Rust, runner and page dependencies) and `python3 scripts/make-acknowledgements.py --check` (licence notices up to date). Both must be clean.
+
 1. Raise `version` in `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml`.
 2. `COMPANION_SIGN_ID="Developer ID Application: ..." sh app/scripts/release.sh` (build, sign, notarize, staple, disk image).
 3. `sh app/scripts/build-update.sh "what changed, in plain words"` makes the update files from the finished app and prints the one command that publishes them. Check them, then run it.

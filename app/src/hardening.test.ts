@@ -67,3 +67,13 @@ describe("reduced motion (rule 13)", () => {
     expect(html).toMatch(/prefers-reduced-motion:reduce\)\{\.ring\{animation:none\}/);
   });
 });
+
+describe("the licence notices ship with the app", () => {
+  test("they are in the bundle mapping, name the programs we ship, and are not empty", async () => {
+    const conf = JSON.parse(await Bun.file(new URL("../src-tauri/tauri.conf.json", import.meta.url)).text());
+    expect(conf.bundle.macOS.files["Resources/ACKNOWLEDGEMENTS.txt"]).toBe("../ACKNOWLEDGEMENTS.txt");
+    const text = await Bun.file(new URL("../ACKNOWLEDGEMENTS.txt", import.meta.url)).text();
+    for (const must of ["Claude Code", "Bun", "Whisper", "Clicky", "react", "tauri"]) expect(text, must).toContain(must);
+    expect(text.length).toBeGreaterThan(500_000);
+  });
+});
