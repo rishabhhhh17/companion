@@ -44,7 +44,8 @@ describe("pressing the key", () => {
     expect(pointsOnScreen(null)).toBe(false);
     expect(pointsOnScreen(undefined)).toBe(false);
     // Every way the card asks to point (as soon as it is found, and each Show me where button) goes through it.
-    const calls = readFileSync(new URL("./card.tsx", import.meta.url), "utf8").split("\n").filter((l) => l.includes('invoke("point_problem"'));
+    // (they call pointProblem, which hushes a Show me answer first and then asks the app to point; it is defined once)
+    const calls = readFileSync(new URL("./card.tsx", import.meta.url), "utf8").split("\n").filter((l) => l.includes("pointProblem(") && !l.includes("const pointProblem"));
     expect(calls.length).toBeGreaterThanOrEqual(4);
     for (const l of calls) expect(l).toContain("pointsOnScreen(");
   });
