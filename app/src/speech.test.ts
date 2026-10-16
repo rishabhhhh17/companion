@@ -13,6 +13,9 @@ describe("what is said", () => {
   test("asking 'did that work' keeps the step's key, so the step is not said twice", () => {
     expect(lineFor({ walk: walk({ stage: "asking" }), showme: null })?.key).toBe("walk:w1:0:main");
   });
+  test("after a pause, the step is said with the question, under its own key", () => {
+    expect(lineFor({ walk: walk({ stage: "already" }), showme: null })).toEqual({ key: "walk:w1:0:already", text: "Open settings. Did you already do this?" });
+  });
   test("help, done say something; stopped is silent", () => {
     expect(lineFor({ walk: walk({ stage: "help", note: "I could not tell." }), showme: null })?.text).toBe("I could not tell.");
     expect(lineFor({ walk: walk({ stage: "done" }), showme: null })?.text).toContain("All done");

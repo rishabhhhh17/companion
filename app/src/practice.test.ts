@@ -1,8 +1,10 @@
 // The first run's practice project, as the card follows it: find it, fix it, prove it.
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { PRACTICE_PROMPT, startPractice } from "./commands.ts";
-import { initial, reduce, type Model } from "./model.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { PRACTICE_PROMPT, SETTINGS_LESSON_ID, startPractice } from "./commands.ts";
+import { initial, PRACTICES, reduce, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -59,5 +61,77 @@ describe("the practice", () => {
       expect(run([start, found, ev({ type: "ui.practiceFixing" }), bad]).practice?.stage).toBe("failed");
     }
     expect(run([start, ev({ type: "protocol.error", reason: "x" })]).practice?.stage).toBe("start");   // an error elsewhere changes nothing here
+  });
+});
+
+describe("the missing setting practice", () => {
+  const SP = "/Users/sam/Companion practice 2";
+  const begin = ev({ type: "ui.practiceStarted", project: SP, kind: "setting" });
+  const foundSetting = ev({ type: "problem.found", project: SP, agent: "a", verdict: "failed", label: "Running the tests", detail: "x", problem: { kind: "line", file: "settings.js", line: 16, lineText: "throw", message: "Error: SHOP_NAME is not set. Add it to .env.local in this folder.", from: "tests" } });
+  const lessonDone = ev({ type: "walk.done", walk: "w1", project: SP, lesson: SETTINGS_LESSON_ID, title: "T", steps: 3 });
+  test("each practice is a folder the shell knows, and the first run's stays the default", () => {
+    expect(PRACTICES.signup.folder).toBe("stuck-signup");
+    expect(PRACTICES.setting.folder).toBe("stuck-setting");
+    const rust = readFileSync(join(import.meta.dir, "../src-tauri/src/practice.rs"), "utf8");
+    for (const p of Object.values(PRACTICES)) expect(rust).toContain(`"${p.folder}"`);
+    expect(run([start]).practice).toMatchObject({ kind: "signup" });
+  });
+  test("it finds the line that stops the page, and only that line counts", () => {
+    expect(run([begin, foundSetting]).practice).toMatchObject({ kind: "setting", stage: "found", where: { file: "settings.js", line: 16 } });
+    expect(run([begin, ev({ ...found, project: SP })]).practice?.stage).toBe("blocked");   // a failure in some other file is not this practice's
+  });
+  test("the fix is the lesson made from the project, then the checks run again: a pass is done, a failure is said", () => {
+    let m = run([begin, foundSetting, ev({ type: "ui.practiceLesson" })]);
+    expect(m.practice?.stage).toBe("lesson");
+    m = run([lessonDone], m); expect(m.practice?.stage).toBe("proving");
+    expect(run([ev({ type: "problem.found", project: SP, agent: "a", verdict: "passed" })], m).practice?.stage).toBe("done");
+    expect(run([ev({ type: "problem.found", project: SP, agent: "a", verdict: "passed_with_gaps" })], m).practice?.stage).toBe("done");
+    expect(run([foundSetting], m).practice?.stage).toBe("failed");
+  });
+  test("only that lesson finishing in that project moves it on; stopping the lesson goes back to the start of the fix", () => {
+    const m = run([begin, foundSetting, ev({ type: "ui.practiceLesson" })]);
+    expect(run([ev({ ...lessonDone, project: "/other" })], m).practice?.stage).toBe("lesson");
+    expect(run([ev({ ...lessonDone, lesson: "vercel-add-env-var" })], m).practice?.stage).toBe("lesson");
+    const walking = run([ev({ type: "ui.walkRequested", walk: "w1" }), ev({ type: "walk.step", walk: "w1", project: SP, lesson: SETTINGS_LESSON_ID, title: "T", index: 0, total: 3, variant: "main", say: "s", find: "f", ask: false })], m);
+    expect(run([ev({ type: "walk.stopped", walk: "w1", reason: "Stopped." })], walking).practice?.stage).toBe("found");
+  });
+  test("the engine restarting during the lesson or the second check goes back to the start of the fix, never waits forever", () => {
+    for (const at of [[ev({ type: "ui.practiceLesson" })], [ev({ type: "ui.practiceLesson" }), lessonDone]]) {
+      expect(run([begin, foundSetting, ...at, ev({ type: "app.runner_restarted" })]).practice?.stage).toBe("found");
+    }
+  });
+  test("a lesson that cannot even start (the name is already in the file) does not leave it waiting: the checks run again", () => {
+    // The person saved "SHOP_NAME=" with no value: the name is there, so no lesson is made, but the page still fails.
+    const tryLesson = [ev({ type: "ui.walkRequested", walk: "w7" }), ev({ type: "ui.practiceLesson", walk: "w7" })];
+    let m = run([begin, foundSetting, ...tryLesson]);
+    expect(m.practice?.stage).toBe("lesson");
+    m = run([ev({ type: "walk.stopped", walk: "w7", reason: "Every setting this project's code reads is already set, so there is nothing to walk through." })], m);
+    expect(m.practice).toMatchObject({ stage: "proving", nameSet: true });
+    expect(m.walk).toBeNull();   // the practice says what happened; no second panel
+    // Still failing: it says the value looks empty or wrong, and can run the checks again instead of a lesson.
+    m = run([foundSetting], m);
+    expect(m.practice).toMatchObject({ stage: "failed", nameSet: true });
+    m = run([ev({ type: "ui.practiceProving" })], m);
+    expect(m.practice?.stage).toBe("proving");
+    expect(run([ev({ type: "problem.found", project: SP, agent: "a", verdict: "passed" })], m).practice?.stage).toBe("done");
+    // From "Try again" after a failure, the same.
+    const again = run([foundSetting, ev({ type: "ui.walkRequested", walk: "w8" }), ev({ type: "ui.practiceLesson", walk: "w8" }), ev({ type: "walk.stopped", walk: "w8", reason: "x" })], run([begin, foundSetting, ev({ type: "ui.practiceLesson" }), lessonDone]));
+    expect(again.practice).toMatchObject({ stage: "proving", nameSet: true });
+  });
+  test("only the practice's own lesson not starting moves it; opening the lesson again clears what was said", () => {
+    const m = run([begin, foundSetting, ev({ type: "ui.walkRequested", walk: "w7" }), ev({ type: "ui.practiceLesson", walk: "w7" })]);
+    // Some other lesson the person started meanwhile could not start: the practice keeps waiting on its own.
+    const other = run([ev({ type: "ui.walkRequested", walk: "w9" }), ev({ type: "walk.stopped", walk: "w9", reason: "I could not find that lesson." })], m);
+    expect(other.practice?.stage).toBe("lesson");
+    expect(other.walk).toMatchObject({ stage: "stopped" });
+    const failed = run([ev({ type: "walk.stopped", walk: "w7", reason: "x" }), foundSetting], m);
+    expect(failed.practice?.nameSet).toBe(true);
+    expect(run([ev({ type: "ui.practiceLesson", walk: "w10" })], failed).practice).toMatchObject({ stage: "lesson", nameSet: undefined });
+    // Running the checks again is only for the setting practice after a failure.
+    expect(run([ev({ type: "ui.practiceProving" })], m).practice?.stage).toBe("lesson");
+    expect(run([start, found, ev({ type: "ui.practiceProving" })]).practice?.stage).toBe("found");
+  });
+  test("the signup practice never waits on a lesson", () => {
+    expect(run([start, found, ev({ type: "ui.practiceLesson" })]).practice?.stage).toBe("found");
   });
 });

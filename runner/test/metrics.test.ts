@@ -31,6 +31,12 @@ describe("beta numbers", () => {
     m.observe(ev({ type: "diagram.ready", project: "p", made: true }));
     expect(m.summary().days["2026-10-12"]).toEqual({ walk_step: 2, walk_other_way: 1, walk_help: 1, walk_done: 1, walk_stopped: 1, proof_passed: 1, proof_failed: 1, diagram_made: 1 });
   });
+  test("'did you already do this?' after a pause is not counted as a step shown (the step comes again if the answer is no)", () => {
+    const { m } = mk(); m.setEnabled(true);
+    m.observe(ev({ type: "walk.step", walk: "w", project: "p", lesson: "k", title: "T", index: 1, total: 3, variant: "main", say: "s", find: "f", ask: true, already: true }));
+    m.observe(ev({ type: "walk.step", walk: "w", project: "p", lesson: "k", title: "T", index: 1, total: 3, variant: "main", say: "s", find: "f", ask: true }));
+    expect(m.summary().days["2026-10-12"]).toEqual({ walk_step: 1 });
+  });
   test("a command counts the start of a lesson", () => {
     const { m } = mk(); m.setEnabled(true);
     m.observeCommand(ev({ type: "walk.start", project: "/p", lesson: "k" }));

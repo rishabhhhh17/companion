@@ -1,7 +1,7 @@
 // Spoken replies, page side: the switch (off unless turned on) and which line, if any, goes with what the card shows.
 // The Mac side says it with the built in voice and refuses anything unsafe; nothing here makes a sound.
 import { LEAD_MS } from "./sequence.ts";
-
+import { S } from "./strings.ts";
 export const SPEECH_KEY = "companion.speak";
 
 export function speechOn(): boolean { try { return localStorage.getItem(SPEECH_KEY) === "1"; } catch { return false; } }
@@ -17,6 +17,8 @@ export function lineFor(m: { walk: Walk; showme: ShowMe }): { key: string; text:
   if (w) {
     // While a lesson is on, only the lesson speaks (its ring's caption says nearly the same thing).
     if (w.stage === "step" || w.stage === "asking") return w.say ? { key: `walk:${w.id}:${w.index}:${w.variant}`, text: w.say } : null;
+    // After a pause: the step, then the question. Its own key, so "No, show me" says the step again as a step to do.
+    if (w.stage === "already") return w.say ? { key: `walk:${w.id}:${w.index}:already`, text: `${w.say} ${S.lessonAlready}` } : null;
     if (w.stage === "help" && w.note) return { key: `walk:${w.id}:${w.index}:help`, text: w.note };
     if (w.stage === "done") return { key: `walk:${w.id}:done`, text: "All done. Every step is finished." };
     return null;
