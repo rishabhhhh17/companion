@@ -41,10 +41,11 @@ function places(text: string): { list: Place[]; python: boolean } {
   for (const m of text.matchAll(AT)) {
     const line = Number(m[2] ?? m[4]), column = m[3] ?? m[5];
     const rest = text.slice(m.index! + m[0].length).split("\n", 1)[0];
-    // TAP output also says where a test was declared ("location: '...:9:1'"): a fallback, never the first choice (the check
-    // that failed is in the stack, and is better to point at).
+    // Node's test runner also says where a test was declared (TAP: "location: '...:9:1'"; the spec report from Node 24:
+    // "test at test/x.test.js:9:1"): a fallback, never the first choice (the check that failed is in the stack, and is
+    // better to point at).
     const lineStart = text.lastIndexOf("\n", m.index!) + 1;
-    const declared = /^\s*location:/.test(text.slice(lineStart, m.index!));
+    const declared = /^\s*(?:location:|(?:test|suite) at\s*$)/.test(text.slice(lineStart, m.index!));
     let said = AFTER.exec(rest)?.[1]?.trim() ?? LINT_AFTER.exec(rest)?.[1]?.trim();
     if (!said && /^\s*-->\s*$/.test(text.slice(lineStart, m.index!))) {
       const above = text.slice(0, Math.max(0, lineStart - 1)).split("\n").reverse().find((l) => l.trim());
@@ -103,8 +104,15 @@ export function projectRows(project: string, path: string): { file: string; rows
 
 function sentence(text: string, last: boolean): string | null {
   // TAP (Node's test runner) gives the failure's own words: error: 'Pressing Join ... answered 404'
-  const tap = /^(?:TAP version|not ok )/m.test(text) ? /^\s*(?:error|message):\s*'(.+)'\s*$/m.exec(text) : null;   // only in TAP output, never in a project's own log lines
-  if (tap) return tap[1];
+  const isTap = /^(?:TAP version|not ok )/m.test(text);
+  const tap = isTap ? /^\s*(?:error|message):\s*'(.+)'\s*$/m.exec(text) : null;   // only in TAP output, never in a project's own log lines
+  // "test failed" is Node's own word for a test file that could not even load (Node 18 and 20); the real words are in the
+  // error it printed above, as "# Error: ..." comment lines.
+  if (tap && tap[1] !== "test failed") return tap[1];
+  if (tap) {
+    const printed = text.split("\n").map((l) => l.trim().replace(/^#\s?/, "")).find((l) => ERROR_LINE.test(l) && !/^at\s/.test(l));
+    return printed ?? tap[1];
+  }
   // The same report when the assertion has no words of its own: "error: |-" and the message on the lines under it.
   if (/^(?:TAP version|not ok )/m.test(text)) {
     const block = /^(\s*)(?:error|message):\s*[|>][+-]?[ \t]*\n((?:\1[ \t]+.*\n?)+)/m.exec(text);

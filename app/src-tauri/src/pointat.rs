@@ -237,7 +237,7 @@ mod tests {
         use crate::showme::Platform;
         let dir = std::env::var("COMPANION_POINT_EVAL").expect("set COMPANION_POINT_EVAL to the folder eval-point.ts printed");
         let cases: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/cases.json")).unwrap()).unwrap();
-        let plat = crate::macos_see::MacPlatform::new(Box::new(|_, _, _| {}), Box::new(|_, _, _, _| {}), Box::new(|_| {}));
+        let plat = crate::macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}), Box::new(|_| {}));
         let (mut lines, mut exact, mut rough, mut msgs, mut wrong, mut total_ms) = (0, 0, 0, 0, 0, 0u128);
         let inside = |f: &Found, t: &serde_json::Value| { let v: Vec<f64> = t.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect(); let (cx, cy) = (f.rect.x + f.rect.w / 2.0, f.rect.y + f.rect.h / 2.0); cy >= v[1] - 4.0 && cy <= v[1] + v[3] + 4.0 && cx >= v[0] - 30.0 && f.rect.x <= v[0] + v[2] };
         for c in &cases {

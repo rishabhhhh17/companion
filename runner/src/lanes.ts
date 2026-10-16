@@ -134,12 +134,27 @@ export class ImageStore {
 
 // ---------- vision lane ----------
 
-export type Ocr = { id: string; text: string; box: number[] };
-export type Point = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string };
+export type Ocr = { id: string; text: string; box: number[]; screen?: number };
+/** How a target is marked on the real screen, drawn by hand (app/src/marks.ts). A guess only ever gets the soft ring. */
+export const MARKS = ["ring", "arrow", "underline", "box"] as const;
+export type Mark = (typeof MARKS)[number];
+/** screen: which picture the point is in, 1 being the screen the mouse pointer is on. */
+export type Point = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: Mark; screen?: number };
+/** One picture per screen, labelled for the model ("Screen 2 of 3"); the screen the pointer is on comes first. */
+export type Screen = { image: Image; label: string };
+/** One answer may point at a few things in order (say this, then this, then click this), never more than this many. */
+export const MAX_TARGETS = 5;
+const MAX_SCREENS = 4;
+const MAX_CAPTION = 160;
+/** Two targets this close together on the same screen (picture pixels) are the same target. */
+const SAME_SPOT_PX = 16;
 const VISION_SYSTEM = [
-  "You look at one screenshot and help someone find where to click.",
-  'Reply with ONLY one line of JSON, nothing before or after it: {"x":number,"y":number,"ocrId":string or null,"targetText":string,"confidence":number from 0 to 1,"caption":string}.',
-  "x and y are pixels in the screenshot (origin top left). ocrId is the id of the matching on screen text if there is one. caption is a short plain instruction such as \"Click Deploy\".",
+  "You look at a screenshot and help someone find where to look and where to click.",
+  'Reply with ONLY one line of JSON, nothing before or after it: {"targets":[{"x":number,"y":number,"screen":number,"ocrId":string or null,"targetText":string,"confidence":number from 0 to 1,"caption":string,"mark":"ring" or "arrow" or "underline" or "box"}]}.',
+  "Give one target, or up to 5 when the answer needs several things on the screen, in the order the person should look at them; the last one is where they click.",
+  "x and y are pixels in that screenshot (origin top left). ocrId is the id of the matching on screen text if there is one. caption is a short plain line of at most 8 words such as \"Click Deploy\".",
+  "mark: ring for a button, link, tab or icon; underline for a line of text or a field's label; box for a field, panel or area; arrow for something small that is easy to miss.",
+  'When there are several screenshots, each is labelled "Screen N of M" and "screen" is that N; with one screenshot "screen" is 1.',
   'If you cannot find it, reply {"none":true}.',
 ].join(" ");
 
@@ -164,12 +179,23 @@ export function buildVisionOptions(c: Common & { model: string }) {
   };
 }
 
-export async function* buildVisionMessages(image: Image, question: string, ocr: Ocr[] = []) {
-  const words = ocr.length ? "\nText found on screen:\n" + ocr.map((o) => `${o.id}: ${o.text} [${o.box.join(",")}]`).join("\n") : "";
+/** The label the model sees above each picture. Only this exact shape is ever sent: anything else a command carries is
+ *  replaced, so a label can never slip other words to the model. */
+export function screenLabel(n: number, of: number, given?: string): string {
+  const plain = `Screen ${n} of ${of}`;
+  return given === plain || (n === 1 && given === `${plain} (the mouse pointer is on this one)`) ? given : plain;
+}
+
+export async function* buildVisionMessages(image: Image, question: string, ocr: Ocr[] = [], screens?: Screen[]) {
+  const many = !!screens && screens.length > 1;
+  const words = ocr.length ? "\nText found on screen:\n" + ocr.map((o) => `${o.id}: ${o.text} [${o.box.join(",")}]${many ? ` (screen ${o.screen ?? 1})` : ""}`).join("\n") : "";
+  const picture = (i: Image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: i.mediaType, data: i.base64 } });
+  // One picture per screen, each with its label just before it, the screen the pointer is on first.
+  const pictures = many ? screens!.flatMap((s, i) => [{ type: "text" as const, text: screenLabel(i + 1, screens!.length, s.label) }, picture(s.image)]) : [picture(image)];
   yield {
     type: "user" as const, parent_tool_use_id: null,
     message: { role: "user" as const, content: [
-      { type: "image" as const, source: { type: "base64" as const, media_type: image.mediaType, data: image.base64 } },
+      ...pictures,
       { type: "text" as const, text: `${question}${words}` },
     ] },
   };
@@ -177,7 +203,7 @@ export async function* buildVisionMessages(image: Image, question: string, ocr: 
 
 export class VisionLane {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; model?: string; queryFn?: QueryFn; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> } }) {}
-  async locate(req: { image: Image; question: string; ocr: Ocr[] }, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> {
+  async locate(req: LocateReq, signal: AbortSignal): Promise<Located> {
     // Our own stop switch, so the engine process can be ended the moment the answer arrives instead of being waited for.
     const ac = new AbortController();
     const link = () => ac.abort();
@@ -189,30 +215,31 @@ export class VisionLane {
     try { tmp = await drive.ensure(); } catch (e) { done0(); throw e; }
     function done0() { signal.removeEventListener("abort", link); }
     const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model: this.o.model ?? MODELS.vision, signal: ac.signal });
-    const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr) as never, options: options as never });
+    const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr, req.screens) as never, options: options as never });
     const done = () => { signal.removeEventListener("abort", link); };
     // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that
     // happens in the background, where nobody is waiting for it.
-    let got!: (r: { point: Point | null; costUsd: number }) => void, fail!: (e: unknown) => void;
-    const answer = new Promise<{ point: Point | null; costUsd: number }>((res, rej) => { got = res; fail = rej; });
+    let got!: (r: Located) => void, fail!: (e: unknown) => void;
+    const answer = new Promise<Located>((res, rej) => { got = res; fail = rej; });
     // An error after the answer has already been handed back (the engine complaining as it is ended) is not an error: `fail`
     // does nothing once the answer is settled, where a stray rejected promise would crash the whole engine.
-    const finished = this.read(q as AsyncIterable<any>, req, (p, c) => got({ point: p, costUsd: round(c) }), () => ac.abort())
-      .then(() => got({ point: null, costUsd: 0 }), (e) => { fail(e); });
+    const pictures = req.screens && req.screens.length > 1 ? req.screens.map((s) => s.image) : [req.image];
+    const finished = this.read(q as AsyncIterable<any>, pictures, (ts, c) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c) }), () => ac.abort())
+      .then(() => got({ point: null, targets: [], costUsd: 0 }), (e) => { fail(e); });
     void finished.catch(() => {}).finally(() => { drive.wipe().catch(() => {}); });   // once the engine has closed, the copy is erased
     try { return await answer; } finally { done(); }
   }
 
-  private async read(q: AsyncIterable<any>, req: { image: Image }, set: (p: Point | null, cost: number) => void, stop: () => void): Promise<void> {
-    let point: Point | null = null, cost = 0;
+  private async read(q: AsyncIterable<any>, pictures: Image[], set: (targets: Point[], cost: number) => void, stop: () => void): Promise<void> {
+    let targets: Point[] = [], cost = 0;
     for await (const m of q) {
       if (m.type === "assistant") {
         const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
-        point = parsePointText(text, req.image);
+        targets = parseTargetsText(text, pictures);
         // The answer is one line. Estimated from the tokens used, because the run is not waited on once it has arrived.
         const u = m.message?.usage;
         cost = u ? ((u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)) * 3e-6 + (u.cache_read_input_tokens ?? 0) * 3e-7 + (u.output_tokens ?? 0) * 15e-6 : 0.01;
-        set(point, cost);
+        set(targets, cost);
         stop();     // end the engine process now; do not wait for it to wind down
         return;
       } else if (m.type === "result") {
@@ -220,28 +247,57 @@ export class VisionLane {
         cost = Number(m.total_cost_usd ?? 0);
       }
     }
-    set(point, cost);
+    set(targets, cost);
   }
 }
 
-// The reply is one line of JSON; anything else, or "none", is no answer.
-export function parsePointText(text: string, img: Image): Point | null {
+/** The reply is one line of JSON: a list of targets in order, or (the older shape) one target on its own. Anything else, or
+ *  "none", is no answer. Targets that are malformed, off their picture, on a screen that was not shown, or the same as one
+ *  before them are dropped; the rest keep their order, at most MAX_TARGETS. `pictures`: one per screen, the pointer's first. */
+export function parseTargetsText(text: string, pictures: Image | Image[]): Point[] {
+  const pics = Array.isArray(pictures) ? pictures : [pictures];
   const a = text.indexOf("{"), b = text.lastIndexOf("}");
-  if (a < 0 || b <= a) return null;
-  try { const j = JSON.parse(text.slice(a, b + 1)); return j?.none ? null : validPoint(j, img); } catch { return null; }
+  if (a < 0 || b <= a) return [];
+  let j: any;
+  try { j = JSON.parse(text.slice(a, b + 1)); } catch { return []; }
+  if (!j || typeof j !== "object" || j.none) return [];
+  const raw: unknown[] = Array.isArray(j.targets) ? j.targets : j.targets === undefined ? [j] : [];
+  const out: Point[] = [];
+  for (const r of raw) {
+    if (out.length >= MAX_TARGETS) break;
+    const p = validPoint(r, pics);
+    if (!p) continue;
+    const dup = out.some((o) => o.screen === p.screen && ((o.ocrId !== undefined && o.ocrId === p.ocrId) || Math.hypot(o.x - p.x, o.y - p.y) < SAME_SPOT_PX));
+    if (!dup) out.push(p);
+  }
+  return out;
 }
 
-function validPoint(i: any, img: Image): Point | null {
+/** The first target of the answer, or null. */
+export function parsePointText(text: string, img: Image): Point | null { return parseTargetsText(text, img)[0] ?? null; }
+
+function validPoint(i: any, pics: Image[]): Point | null {
   const ok = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
-  if (!i || !ok(i.x) || !ok(i.y) || !ok(i.confidence) || typeof i.targetText !== "string" || typeof i.caption !== "string") return null;
+  if (!i || typeof i !== "object" || !ok(i.x) || !ok(i.y) || !ok(i.confidence) || typeof i.targetText !== "string" || typeof i.caption !== "string") return null;
+  const screen = i.screen === undefined || i.screen === null ? 1 : i.screen;
+  if (!Number.isInteger(screen) || screen < 1 || screen > pics.length || screen > MAX_SCREENS) return null;
+  const img = pics[screen - 1];
   if (i.x < 0 || i.y < 0 || (img.w !== undefined && i.x > img.w) || (img.h !== undefined && i.y > img.h)) return null;
-  return { x: i.x, y: i.y, ocrId: typeof i.ocrId === "string" ? i.ocrId : undefined, targetText: i.targetText, confidence: Math.min(1, Math.max(0, i.confidence)), caption: i.caption };
+  const mark: Mark = (MARKS as readonly string[]).includes(i.mark) ? i.mark : "ring";
+  const caption = i.caption.replace(/\s+/g, " ").trim();
+  return { x: i.x, y: i.y, ocrId: typeof i.ocrId === "string" ? i.ocrId : undefined, targetText: i.targetText, confidence: Math.min(1, Math.max(0, i.confidence)), caption: caption.length > MAX_CAPTION ? caption.slice(0, MAX_CAPTION - 1).trimEnd() + "…" : caption, mark, screen };
 }
 
 // ---------- commands in, events out ----------
 
+export type LocateReq = { image: Image; question: string; ocr: Ocr[]; screens?: Screen[] };
+/** point: the first target (or none). targets: every target in order, when the lane can name more than one. */
+export type Located = { point: Point | null; targets?: Point[]; costUsd: number };
+/** Where the person clicks: the last target (the prompt lists them in the order to look at them, ending with the click),
+ *  or the point when there is no list. What the aim eval scores, and what a lesson rings. */
+export function clickPoint(r: Located): Point | null { return r.targets?.length ? r.targets[r.targets.length - 1] : r.point; }
 export interface FastLike { run(req: { text: string; system?: string; extra?: string; raw?: boolean }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
-export interface VisionLike { locate(req: { image: Image; question: string; ocr: Ocr[] }, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> }
+export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promise<Located> }
 
 export class AssistService {
   private active = new Map<string, AbortController>();
@@ -307,23 +363,35 @@ export class AssistService {
 
   private async locate(cmd: Extract<Command, { type: "assist.locate" }>) {
     const img = this.o.images.get(cmd.image.ref);
-    if (!img) return this.emit({ type: "assist.error", req: cmd.req, reason: "The screenshot was not found or has expired" });
+    // More than one screen: every picture must be here, the first being the same as `image`. Otherwise nothing is sent,
+    // rather than a guess made from only some of the screens. Every picture is dropped either way.
+    const many = (cmd.screens ?? []).length > 1 ? cmd.screens!.slice(0, 4) : [];
+    const dropAll = () => { this.o.images.delete(cmd.image.ref); for (const s of many) this.o.images.delete(s.ref); };
+    const screens: Screen[] = [];
+    for (const [i, s] of many.entries()) {
+      const pic = i === 0 && s.ref !== cmd.image.ref ? undefined : this.o.images.get(s.ref);
+      if (!pic) { dropAll(); return this.emit({ type: "assist.error", req: cmd.req, reason: "The screenshot was not found or has expired" }); }
+      screens.push({ image: { ...pic, w: s.w, h: s.h }, label: screenLabel(i + 1, many.length, s.label) });
+    }
+    if (!img) { dropAll(); return this.emit({ type: "assist.error", req: cmd.req, reason: "The screenshot was not found or has expired" }); }
     const ac = new AbortController();
     this.active.set(cmd.req, ac);
     // A question about the screen that has not been answered in half a minute is not coming; the person is told, not left waiting.
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
     let timedOut = false;
     try {
-      const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [] }, ac.signal),
+      const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [], ...(screens.length > 1 ? { screens } : {}) }, ac.signal),
         new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
       if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : "cancelled" });
-      if (!r.point) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
-      this.emit({ type: "assist.point", req: cmd.req, step: 1, ...r.point });
+      const list = (r.targets?.length ? r.targets : r.point ? [r.point] : []).slice(0, MAX_TARGETS);
+      if (!list.length) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
+      // The first target as before; when there are several, the whole ordered list as well (the page plays them in turn).
+      this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}) });
     } catch (e) {
       this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
     } finally {
       clearTimeout(timer);
-      this.o.images.delete(cmd.image.ref);   // the screenshot is dropped as soon as it has been used
+      dropAll();   // every screenshot is dropped as soon as it has been used
       this.active.delete(cmd.req);
     }
   }

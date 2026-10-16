@@ -1,3 +1,6 @@
+/** How long a ring that does not wait for a click stays, counted from when the draw was ordered (the flight is part of it).
+ *  The shell watches it a little longer than this (anchor.rs WATCH_MAX_MS), so no part of it goes unwatched (rule 22). */
+export const RING_MS = 10_000;
 // How long the arrow takes to fly to its target: the distance over 800 points a second, never faster than 0.6 s
 // (so it can be followed) and never slower than 1.4 s (so it never feels slow).
 export function flightMs(distance: number): number { return Math.min(1400, Math.max(600, (distance / 800) * 1000)); }
