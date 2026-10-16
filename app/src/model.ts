@@ -11,7 +11,8 @@ export type ToolLine = { id: string; text: string; tool: string; words: string; 
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
 export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string };
 export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string } };
+// undone: an undo point in this project was restored after it, so the work it shows is no longer what is in the files.
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; undone?: boolean };
 export type Task = { agent: string; project?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
@@ -146,7 +147,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
     case "ui.undoCancelled": case "ui.undoClosed": return { ...m, undo: null };
     case "ui.undoSent": return m.undo ? { ...m, undo: { ...m.undo, stage: "working" } } : m;
-    case "checkpoint.restored": return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0 } } : m;
+    case "checkpoint.restored": {
+      // Any undo in this project (from the card or the timeline) puts the files back, so the receipt's work is gone from them.
+      if (m.receipt && !m.receipt.undone && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project)) m = { ...m, receipt: { ...m.receipt, undone: true } };
+      return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0 } } : m;
+    }
     case "ui.approvalsExpire": {
       const left = m.approvals.filter((a) => !a.expiresAt || Date.parse(a.expiresAt) > Number(e.now));
       return left.length === m.approvals.length ? m : { ...m, approvals: left, notice: "A question ran out of time and was not allowed. Ask again if you still want it." };
@@ -357,10 +362,11 @@ export function activityNow(m: Model, n = 2): ToolLine[] {
 
 const BUSY: CharacterState[] = ["thinking", "working", "checking", "needsYou"];
 // The follow up box under the receipt: only once a task has finished, for the project on screen, when nothing else is
-// running or waiting for an answer, and not after Undo (the conversation would no longer match the files).
+// running or waiting for an answer, and not while Undo is asked or once it has put the files back (the conversation would
+// no longer match them; the engine refuses it too).
 export function canFollowUp(m: Model, project: string): boolean {
   const t = m.task;
-  if (!m.receipt || !t || !project || t.project !== project) return false;
+  if (!m.receipt || m.receipt.undone || !t || !project || t.project !== project) return false;
   if (BUSY.includes(m.agents[t.agent] ?? "idle") || BUSY.includes(m.character)) return false;
   if (m.followUp === "sending" || m.undo || m.plan || m.stuck || m.paused || (m.drive && !m.drive.finished)) return false;
   return true;

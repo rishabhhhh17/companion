@@ -91,6 +91,18 @@ describe("three identical failures in a single task stop and ask", () => {
     expect(of(r.events, "loop.stuck").length).toBe(1);
     expect(r.engine.calls.length).toBe(6);
     expect(r.log.list()[0].status).toBe("not_done");
+    // Every check counts, so the card says "Still failing after 6 tries", not 3.
+    expect(of(r.events, "proof.result").map((p) => p.tries)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  test("the tries keep counting through a different approach, so a fix after it is never shown as a first try", async () => {
+    const r = setup(writes(4), [same, same, same, ok()]);
+    const run = r.start();
+    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await r.choose("different");
+    await run;
+    expect(of(r.events, "proof.result").map((p) => p.tries)).toEqual([1, 2, 3, 4]);
+    expect(of(r.events, "proof.result").at(-1).verdict).toBe("passed");
   });
 
   test("off the record, the different approach is told the request again", async () => {

@@ -68,6 +68,25 @@ describe("the follow up box", () => {
   test("is not offered while undo is asked or after it", () => {
     expect(canFollowUp(reduce(run(done), { type: "ui.undoAsked", checkpoint: "cp_0001" } as never), P)).toBe(false);
   });
+  // The conversation would no longer match the files, so the box stays hidden once the work is undone, whatever closes the
+  // undo note afterwards.
+  const undone = [...done, { type: "ui.undoAsked", checkpoint: "cp_0001" }, { type: "ui.undoSent" }, ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_0001", safety: "cp_0002", recovered: [], largeLeftAlone: [], leftAlone: [] })];
+  test("stays hidden after Undo, when the undo note is closed", () => {
+    expect(canFollowUp(run([...undone, { type: "ui.undoClosed" }]), P)).toBe(false);
+    expect(canRetry(run([...notDone, ...undone.slice(done.length), { type: "ui.undoClosed" }]), P)).toBe(false);
+  });
+  test("stays hidden after Undo then Stop everything", () => {
+    expect(canFollowUp(run([...undone, { type: "app.stop_everything" }]), P)).toBe(false);
+  });
+  test("an older undo point restored from the timeline hides it too", () => {
+    expect(canFollowUp(run([...done, ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_0000", safety: "cp_0002", recovered: [], largeLeftAlone: [], leftAlone: [] })]), P)).toBe(false);
+  });
+  test("an undo in another project does not hide it", () => {
+    expect(canFollowUp(run([...done, ev({ type: "checkpoint.restored", project: "/Users/me/other", checkpoint: "cp_0009", safety: "cp_0010", recovered: [], largeLeftAlone: [], leftAlone: [] })]), P)).toBe(true);
+  });
+  test("a new task after Undo brings it back once that task has finished", () => {
+    expect(canFollowUp(run([...undone, { type: "ui.undoClosed" }, ...begin(P, "cp_0003"), receipt("passed", "cp_0003"), state("done")]), P)).toBe(true);
+  });
   test("is not offered while a loop card waits for an answer", () => {
     expect(canFollowUp(run([...done, ev({ type: "loop.stuck", agent: AGENT, index: 0, title: "x", failure: { label: "a", detail: "b" }, options: [] })]), P)).toBe(false);
   });

@@ -1,6 +1,6 @@
 // What a follow up, a Try again and a different approach say to Claude. Plain, testable text.
 import { describe, expect, test } from "bun:test";
-import { differentTaskPrompt, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt } from "../src/followup.ts";
+import { differentTaskPrompt, endingOf, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending } from "../src/followup.ts";
 
 const secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
 const fail = { label: "Running the tests", detail: `1 failed: expected blue, got grey (API_KEY=${secret})` };
@@ -39,26 +39,48 @@ describe("a follow up", () => {
 
 describe("Try again", () => {
   test("gives the request and what failed, redacted", () => {
-    const p = retryPrompt("Add a signup button", fail);
+    const p = retryPrompt("Add a signup button", "failed_check", fail);
     expect(p).toContain("Add a signup button");
+    expect(p).toContain("did not pass the checks");
     expect(p).toContain("Running the tests");
     expect(p).toContain("expected blue, got grey");
     expect(p).not.toContain(secret);
     expect(p).toMatch(/do not change or weaken the tests/i);
   });
-  test("with nothing failed on record, gives the request alone", () => {
-    const p = retryPrompt("Add a signup button");
-    expect(p).toContain("Add a signup button");
-    expect(p).not.toMatch(/failed check/i);
+  test("a failed check with no details still says the checks failed, with no empty lines", () => {
+    const p = retryPrompt("Add a signup button", "failed_check");
+    expect(p).toContain("did not pass the checks");
+    expect(p).not.toMatch(/failed check:/i);
+  });
+  test("says how the last attempt really ended when no check failed", () => {
+    const cases: [Ending, RegExp][] = [["spending_limit", /spending limit/i], ["error", /error/i], ["stopped", /was stopped/i], ["unfinished", /before it finished/i], ["finished", /tried again/i]];
+    for (const [how, words] of cases) {
+      for (const p of [retryPrompt("Add a signup button", how, fail), freshRetryPrompt("Add a signup button", "Add a signup button", how, fail)]) {
+        expect(p).toContain("Add a signup button");
+        expect(p).toMatch(words);
+        expect(p).not.toMatch(/did not pass the checks|failed check/i);   // nothing false about checks, and no stale failure
+      }
+    }
+  });
+  test("how a task ended, from its status and its check", () => {
+    expect(endingOf("not_done", "failed")).toBe("failed_check");
+    expect(endingOf("interrupted", "failed")).toBe("failed_check");   // a check did fail before Stop
+    expect(endingOf("error_max_budget_usd", "failed")).toBe("failed_check");
+    expect(endingOf("error_max_budget_usd", "skipped")).toBe("spending_limit");
+    expect(endingOf("error", "skipped")).toBe("error");
+    expect(endingOf("interrupted", "skipped")).toBe("stopped");
+    expect(endingOf("error_max_turns", "skipped")).toBe("unfinished");
+    expect(endingOf("done", "passed")).toBe("finished");
   });
   test("off the record, also says earlier work may already be in the files", () => {
-    const p = freshRetryPrompt("Add a signup button", "Add a signup button", fail);
+    const p = freshRetryPrompt("Add a signup button", "Add a signup button", "failed_check", fail);
     expect(p).toContain("Add a signup button");
+    expect(p).toContain("did not pass the checks");
     expect(p).toContain("expected blue, got grey");
     expect(p).toMatch(/look/i);
   });
   test("off the record after a follow up, both the first request and the follow up are said", () => {
-    const p = freshRetryPrompt("Add a signup button", "make it blue", fail);
+    const p = freshRetryPrompt("Add a signup button", "make it blue", "failed_check", fail);
     expect(p).toContain("Add a signup button");
     expect(p).toContain("make it blue");
   });

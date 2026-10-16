@@ -54,7 +54,9 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 
 ## What the build settled (single tasks and Try again, 16 Oct 2026)
 - The fix loop breaker also covers a single task, not only a Drive step. When one task's last three checks fail the same way (same rung, same words once numbers are ignored), the task stops and shows the same card (Try a different approach, Stop here) instead of ending as Not done. A different approach runs inside the same task (one undo point, one receipt) with up to three more tries, and it is offered once per task. Stop and Stop everything answer the card. A Drive plan still asks once per step, after the step's task ends.
-- Try again re-runs the last request as a new checked task, giving Claude the failing check redacted and cut to 1,500 characters.
+- Try again re-runs the last request as a new checked task, giving Claude the failing check redacted and cut to 1,500 characters. It tells Claude how the last attempt really ended: a failed check, or stopped before it finished (the spending limit, an error, or Stop). After a Drive plan it names the last step's title, never the step's instructions, and gets the plan's whole budget, not what the last step had left.
+- The tries on a task's check keep counting through a different approach, so a fix after it shows "Fixed after 4 tries", never a plain first pass, and a task that keeps failing says how many checks it really ran.
+- After Undo in a project, a follow up or Try again on a task there is refused (the conversation no longer matches the files), and the card hides the box.
 - Not yet proven with real Claude: how often a different approach rescues a real task (M11 plan, step 7).
 
 ## Revisit if

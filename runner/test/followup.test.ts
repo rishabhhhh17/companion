@@ -23,9 +23,11 @@ const of = (e: Event[], t: string) => e.filter((x) => x.type === t) as any[];
 const states = (e: Event[]) => of(e, "agent.state").map((x) => x.state);
 const waitFor = async (fn: () => boolean, ms = 3000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error("timed out waiting"); await Bun.sleep(10); } };
 
-function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { ceiling?: number } = {}) {
+// empty: no file in the project to begin with. A Drive plan watches the folder for the person's own changes, and a file
+// written just before it starts can be reported late as one.
+function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { ceiling?: number; empty?: boolean } = {}) {
   const project = tmp("p");
-  writeFileSync(join(project, "a.txt"), "original");
+  if (!o.empty) writeFileSync(join(project, "a.txt"), "original");
   const events: Event[] = [];
   const engine = new ScriptedEngine(rounds);
   const log = new TaskLog(":memory:");
@@ -34,8 +36,15 @@ function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { ceiling
   const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, ledger, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)], ...(o.ceiling !== undefined ? { dailyCeilingUsd: o.ceiling } : {}) });
   const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: "Add a signup button", model: "m", budgetUsd: 3, ...extra } as never);
   const send = (extra: Record<string, unknown>) => runner.handle({ v: 1, id: "c2", type: "agent.send", agent: "builder-1", project, ...extra } as never);
-  return { project, events, engine, log, ledger, runner, start, send, ladderRuns: () => n };
+  // A Drive plan for the same agent: the planning round, then the approved steps.
+  const drive = async (steps: string[], extra: Record<string, unknown> = {}) => {
+    await runner.handle({ v: 1, id: "p1", type: "drive.plan", project, agent: "builder-1", goal: "Build a signup page", model: "m", budgetUsd: 5, ...extra } as never);
+    return runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "builder-1", steps } as never);
+  };
+  const undo = (checkpoint: string) => runner.handle({ v: 1, id: "u1", type: "checkpoint.restore", project, checkpoint } as never);
+  return { project, events, engine, log, ledger, runner, start, send, drive, undo, ladderRuns: () => n };
 }
+const plan = (...steps: string[]): Step => ({ text: "```json\n" + JSON.stringify(steps) + "\n```", costUsd: 0.01 });
 
 describe("a follow up carries on the last task", () => {
   test("it resumes the same conversation as a new checked turn, with its own snapshot, check and receipt", async () => {
@@ -187,6 +196,79 @@ describe("Stop ends a follow up", () => {
   });
 });
 
+describe("after a Drive plan", () => {
+  const same = bad("x is not defined");
+  for (const how of ["agent.interrupt", "agent.interruptAll"] as const) {
+    test(`Stop on a plan's loop card (${how}) leaves the agent free for a follow up`, async () => {
+      const r = setup([[plan("One")], [write("a.txt", "1")], [write("a.txt", "2")], [write("a.txt", "3")], [write("a.txt", "fixed")]], [same, same, same, good()], { empty: true });
+      const running = r.drive(["One"]);
+      await waitFor(() => of(r.events, "loop.stuck").length > 0);
+      await r.runner.handle((how === "agent.interrupt" ? { v: 1, id: "k", type: how, agent: "builder-1" } : { v: 1, id: "k", type: how, reason: "kill switch" }) as never);
+      await running;
+      expect(of(r.events, "drive.done")[0].status).toBe("interrupted");
+      const before = of(r.events, "protocol.error").length;
+      await r.send({ text: "the button is still grey" });
+      expect(of(r.events, "protocol.error").slice(before)).toEqual([]);
+      expect(r.engine.calls.length).toBe(5);
+      expect(of(r.events, "receipt").at(-1).proof).toBe("passed");
+    });
+  }
+
+  test("a follow up gets the plan's whole budget and a plain label, not the last step's leftovers", async () => {
+    const r = setup([[plan("One", "Two")], [write("a.txt", "1", 2)], [write("a.txt", "2", 2.5)], [write("a.txt", "3")]], [good()], { empty: true });
+    await r.drive(["One", "Two"]);
+    expect(of(r.events, "drive.done")[0].status).toBe("done");
+    await r.send({ text: "make the button blue" });
+    expect(r.engine.calls[3].budgetUsd).toBeCloseTo(5, 5);
+    expect(r.log.list()[0].label).toBe("Follow up: make the button blue");
+  });
+
+  test("Try again after a plan's failed step names the step, never the step's instructions", async () => {
+    const r = setup([[plan("One", "Two")], [write("a.txt", "1")], [write("a.txt", "2")], [write("a.txt", "3")], [write("a.txt", "fixed")]], [bad("first"), bad("second"), bad("third"), good()], { empty: true });
+    await r.drive(["One", "Two"]);
+    expect(of(r.events, "drive.done")[0].status).toBe("not_done");
+    await r.send({ retry: true });
+    const c = r.engine.calls[4];
+    expect(c.budgetUsd).toBeCloseTo(5, 5);
+    expect(c.prompt).toContain("Please try this again: One");
+    expect(c.prompt).not.toMatch(/Step 1 of|Do only this step/);
+    expect(r.log.list()[0].label).toBe("Try again: One");
+  });
+
+  test("off the record, a follow up after a plan is told the plan's goal, not a step's instructions", async () => {
+    const r = setup([[plan("One")], [write("a.txt", "1")], [write("a.txt", "2")]], [good()], { empty: true });
+    await r.drive(["One"], { offTheRecord: true });
+    await r.send({ text: "make the button blue" });
+    const c = r.engine.calls[2];
+    expect(c.resumeSession).toBeUndefined();
+    expect(c.prompt).toContain("Build a signup page");
+    expect(c.prompt).not.toMatch(/Step 1 of|Do only this step|one step of a bigger goal/);
+  });
+});
+
+describe("after Undo", () => {
+  test("a follow up on the task that was undone is refused, and nothing runs", async () => {
+    const r = setup([[write("a.txt", "v1"), say("ok", "sess-1")], [write("a.txt", "never")]]);
+    await r.start();
+    await r.undo(of(r.events, "checkpoint.created")[0].checkpoint);
+    expect(of(r.events, "checkpoint.restored").length).toBe(1);
+    await r.send({ text: "the button is still grey" });
+    expect(of(r.events, "protocol.error").at(-1).reason).toMatch(/undone/i);
+    await r.send({ retry: true });
+    expect(of(r.events, "protocol.error").at(-1).reason).toMatch(/undone/i);
+    expect(r.engine.calls.length).toBe(1);
+    expect(readFileSync(join(r.project, "a.txt"), "utf8")).toBe("original");
+  });
+  test("a new task after Undo can be followed up as usual", async () => {
+    const r = setup([[write("a.txt", "v1")], [write("a.txt", "v2")], [write("a.txt", "v3")]]);
+    await r.start();
+    await r.undo(of(r.events, "checkpoint.created")[0].checkpoint);
+    await r.start({ prompt: "Add a pricing page" });
+    await r.send({ text: "make the price bold" });
+    expect(r.engine.calls.length).toBe(3);
+  });
+});
+
 describe("Try again", () => {
   const secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
   test("re-runs the same request with the last failure as evidence, redacted and clipped, as a new checked turn", async () => {
@@ -219,13 +301,34 @@ describe("Try again", () => {
     expect(c.prompt).toContain("expected 2, got 3");
   });
 
-  test("with no failed check on record, it re-runs the request", async () => {
+  test("after the spending limit, it re-runs the request and says how the last attempt really ended", async () => {
     const r = setup([[write("a.txt", "v1", 0.5)], [write("a.txt", "v2")]]);
     await r.start({ budgetUsd: 0.2 });
     expect(r.log.list()[0].status).toBe("error_max_budget_usd");
     await r.send({ retry: true });
-    expect(r.engine.calls[1].prompt).toContain("Add a signup button");
-    expect(r.engine.calls[1].prompt).not.toMatch(/failed check/i);
+    const p = r.engine.calls[1].prompt;
+    expect(p).toContain("Add a signup button");
+    expect(p).not.toMatch(/failed check/i);
+    expect(p).not.toMatch(/did not pass the checks/i);
+    expect(p).toMatch(/spending limit/i);
+  });
+
+  test("after an engine error, it says the last attempt stopped with an error, not that checks failed", async () => {
+    class Breaks extends ScriptedEngine {
+      override async *start(o: Parameters<ScriptedEngine["start"]>[0]) { if (this.calls.length === 0) { this.calls.push(o); throw new Error("connection reset"); } yield* super.start(o); }
+    }
+    const project = tmp("p");
+    writeFileSync(join(project, "a.txt"), "original");
+    const events: Event[] = [];
+    const engine = new Breaks([[], [write("a.txt", "v2")]]);
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => good() });
+    await runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: "Add a signup button", model: "m", budgetUsd: 3 } as never);
+    expect(states(events).at(-1)).toBe("error");
+    await runner.handle({ v: 1, id: "c2", type: "agent.send", agent: "builder-1", project, retry: true } as never);
+    const p = engine.calls[1].prompt;
+    expect(p).toContain("Add a signup button");
+    expect(p).not.toMatch(/did not pass the checks/i);
+    expect(p).toMatch(/error/i);
   });
 
   test("is refused while the agent is working", async () => {

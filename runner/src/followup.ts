@@ -22,12 +22,28 @@ export const followUpPrompt = (text: string) =>
 export const freshFollowUpPrompt = (goal: string, text: string) =>
   `${freshStart(goal)}\n\nThe person now says:\n${said(text)}\n\nKeep the change small, and keep what already works.`;
 
-const RETRY_ASK = "Find the cause first, then make the smallest change that fixes it. Do not change or weaken the tests to make them pass.";
-export const retryPrompt = (goal: string, failure?: Failure) =>
-  `Please try this again: ${clip(goal.trim(), MAX_FOLLOW_UP_CHARS)}\n\nThe last attempt did not pass the checks.${failedLines(failure)}\n\n${RETRY_ASK}`;
+/** How the last attempt ended, so Try again never tells Claude something false about it. */
+export type Ending = "failed_check" | "spending_limit" | "error" | "stopped" | "unfinished" | "finished";
+/** From the task's status and its check: a check that failed is said first, even if the task then stopped. */
+export const endingOf = (status: string, proof: string): Ending =>
+  proof === "failed" ? "failed_check" : status === "error_max_budget_usd" ? "spending_limit" : status === "error" ? "error" : status === "interrupted" ? "stopped" : status === "done" ? "finished" : "unfinished";
+const ENDED: Record<Ending, string> = {
+  failed_check: "The last attempt did not pass the checks.",
+  spending_limit: "The last attempt stopped before it finished, because it reached its spending limit.",
+  error: "The last attempt stopped before it finished, because of an error.",
+  stopped: "The last attempt was stopped before it finished.",
+  unfinished: "The last attempt stopped before it finished.",
+  finished: "The last attempt finished, and the person wants it tried again.",
+};
+const RETRY_FIX = "Find the cause first, then make the smallest change that fixes it. Do not change or weaken the tests to make them pass.";
+const RETRY_FINISH = "Look at what is already in the project, then finish the request with the smallest change that works. Do not change or weaken the tests.";
+// Only a failed check has evidence to give.
+const ended = (how: Ending, failure?: Failure) => `${ENDED[how]}${how === "failed_check" ? failedLines(failure) : ""}\n\n${how === "failed_check" ? RETRY_FIX : RETRY_FINISH}`;
+export const retryPrompt = (goal: string, how: Ending, failure?: Failure) =>
+  `Please try this again: ${clip(goal.trim(), MAX_FOLLOW_UP_CHARS)}\n\n${ended(how, failure)}`;
 // goal: what the last turn was for; first: the conversation's first request (the same when there was no follow up).
-export const freshRetryPrompt = (first: string, goal: string, failure?: Failure) =>
-  `${freshStart(first)}${goal.trim() !== first.trim() ? `\n\nThen the person asked:\n${said(goal)}` : ""}\n\nThe last attempt did not pass the checks.${failedLines(failure)}\n\n${RETRY_ASK}`;
+export const freshRetryPrompt = (first: string, goal: string, how: Ending, failure?: Failure) =>
+  `${freshStart(first)}${goal.trim() !== first.trim() ? `\n\nThen the person asked:\n${said(goal)}` : ""}\n\n${ended(how, failure)}`;
 
 const DIFFERENT = "The same check has failed three times in a row with the same problem, so the current approach is not working.";
 export const differentTaskPrompt = (failure: Failure) =>
