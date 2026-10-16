@@ -443,3 +443,19 @@ Checked against F17 section 4.2 and found two places where Show me was bolder th
 - **Safer approvals:** "yes for the rest of this task" covers only harmless asks; commands, installs and anything that cannot be undone still ask every time. Reading the output of a command the task started no longer needs a yes.
 - Spending is counted correctly when a fix continues a conversation (it was counted twice), and token counts are real.
 - One test run reached the internet by mistake while these were built: it downloaded the browser three times into temporary test folders, which were deleted. Nothing else was sent. The tests now cannot reach the network.
+
+## M11 wave 2: fixes it with you, teaches from the real change, and more (17 Oct 2026)
+None of this has been tried by a person on a real screen or with real Claude yet. Tests pass; the hands on session and the real runs come next.
+- **Fixes it with you.** After a task, a box under the receipt lets you say what is still wrong ("the button is still grey"). It carries on from that task with a new undo point and a new check. **Try again** reruns a task that failed and tells Claude what failed.
+- **Stops going in circles.** A single task that fails the same way three times now stops and asks, like a plan already did.
+- **Plain progress lines** while it works, such as "Reading signup.js" or "Running the tests". Never the raw command.
+- **Explains from the real change.** The two lines of "why" are now written from the actual lines that changed (secrets and settings files are never sent), for every step of a plan too, with one quick question to check you got it. Its cost now counts in the day's spending.
+- **Show me what changed** rings the first changed line in your editor.
+- **Your turn** (off by default, in Settings): when a fix made the same small change in two places, Companion can leave the second one to you, ring it, and check your change.
+- **Python projects get real checks:** tests (pytest), code checks (ruff or flake8, mypy) and the page, using the project's own virtual environment. It never installs Python packages for you.
+- **A failed Vercel deploy** is read through your own Vercel tool (read only, never a deploy) and the line that stopped it is ringed.
+- **Lessons prove each step from your project** where they can (for example, the setting is now in .env.local), and pick up where you left off. A new lesson is made for exactly the settings your project needs. One more practice project (a missing setting) is in Settings; three more are in the test set.
+- **On screen:** one answer can point at up to five places in order, Show me can look at every screen (off by default), and pointers can be drawn as hand drawn rings, arrows, underlines or boxes, always only on the window they belong to.
+- **Hidden from screen sharing and quiet on calls**, both on by default. Companion checks only whether a call app is in front or the camera is on, never what is in it.
+- **Which task broke it?** When a check fails, Companion checks earlier saved versions in a private copy (never your folder) to find the task after which it started failing, and can undo just that task. Not for Python projects yet.
+- **Error explainer:** select an error in any app and press Control, Option, Command and E. It explains it in two plain sentences, shows where it is in your project, and offers Fix it (run off the record).
