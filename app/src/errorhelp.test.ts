@@ -62,6 +62,10 @@ describe("Fix it", () => {
     expect(c.prompt).toContain("src/App.tsx, line 5");
     expect((fixError("/p", "boom") as any).prompt).not.toContain("line");
   });
+  test("is off the record: text read from another app is never kept in a saved conversation or learned into memory", () => {
+    expect((fixError("/Users/me/site", "NameError: name 'x' is not defined", where as never) as any).offTheRecord).toBe(true);
+    expect((fixError("/p", "boom") as any).offTheRecord).toBe(true);
+  });
   test("the card's words are in the strings file", () => {
     for (const k of ["ehTitle", "ehFix", "errKeyHint"] as const) expect(typeof S[k]).toBe("string");
     expect(S.ehWhere("src/App.tsx", 5)).toBe("It is in src/App.tsx, line 5.");

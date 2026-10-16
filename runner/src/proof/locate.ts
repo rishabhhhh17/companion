@@ -82,7 +82,8 @@ function projectFiles(root: string): string[] {
 /** A path that is not in the project as written, matched to one file that is. A path that exists somewhere else on this Mac
  *  is another folder's, never this project's. A path from elsewhere (a build machine, a page address) counts when its end,
  *  at least the folder and the file, names a file here; a path from a terminal opened in a folder inside the project counts
- *  when exactly one file here ends with it. Anything less certain is not matched. */
+ *  when exactly one file here ends with it. Anything less certain is not matched. A bare file name (main.py, App.tsx) could
+ *  be any project's: locateProblem also wants the error to print that line of the file (see bare and printed). */
 function looseFile(root: string, path: string, files: () => string[]): string | null {
   if (isAbsolute(path) && existsSync(path)) return null;
   const parts = path.split(/[\\/]+/).filter((x) => x && x !== "." && x !== "..");
@@ -94,7 +95,17 @@ function looseFile(root: string, path: string, files: () => string[]): string | 
   return hits.length === 1 ? join(root, hits[0]) : null;
 }
 
-function lineIn(project: string, root: string, p: Place, loose?: () => string[]): { file: string; lineText: string } | null {
+/** A relative path that names only a file, with no folder of its own (main.py, ./App.tsx, ../index.js). */
+const bare = (path: string) => !isAbsolute(path) && path.split(/[\\/]+/).filter((x) => x && x !== "." && x !== "..").length === 1;
+const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+/** Does the error text print this line of the file (a Python traceback, the code under a TypeScript, Vite or Next.js
+ *  error)? A line too short to tell one file from another does not count. */
+function printed(text: string, row: string): boolean {
+  const r = squash(row);
+  return r.length >= 6 && r.replace(/[^A-Za-z0-9]/g, "").length >= 4 && squash(text).includes(r);
+}
+
+function lineIn(project: string, root: string, p: Place, loose?: () => string[]): { file: string; lineText: string; row: string } | null {
   if (!Number.isInteger(p.line) || p.line < 1) return null;
   let abs = isAbsolute(p.path) ? p.path : resolve(project, p.path);
   if (loose && !existsSync(abs)) { const f = looseFile(root, p.path, loose); if (!f) return null; abs = f; }
@@ -107,7 +118,7 @@ function lineIn(project: string, root: string, p: Place, loose?: () => string[])
   let rows: string[];
   try { rows = readFileSync(real, "utf8").split("\n"); } catch { return null; }
   if (p.line > rows.length) return null;
-  return { file: rel.split(sep).join("/"), lineText: label(rows[p.line - 1], LINE_MAX) };
+  return { file: rel.split(sep).join("/"), lineText: label(rows[p.line - 1], LINE_MAX), row: rows[p.line - 1] };
 }
 
 function sentence(text: string, last: boolean): string | null {
@@ -149,7 +160,7 @@ export function locateProblem(output: string, project: string, from: string, opt
   let files: string[] | null = null;
   const loose = opts.loose ? () => (files ??= projectFiles(root)) : undefined;
   const imp = loose ? FAILED_IMPORT.exec(text) : null;
-  if (imp) {
+  if (imp && !bare(imp[2])) {   // a bare file name has no printed line to confirm it
     const [said, wants, path] = imp;
     const file = lineIn(project, root, { path, line: 1, at: imp.index }, loose);   // the file, checked like any other place
     let rows: string[] = [];
@@ -160,6 +171,7 @@ export function locateProblem(output: string, project: string, from: string, opt
   for (const p of ordered) {
     const hit = lineIn(project, root, p, loose);
     if (!hit) continue;
+    if (loose && bare(p.path) && !printed(text, hit.row)) continue;   // it could be another project's file of that name
     const message = p.message ?? general ?? "";
     return { kind: "line", file: hit.file, line: p.line, ...(p.column !== undefined ? { column: p.column } : {}), lineText: hit.lineText, message: tidy(message), from };
   }

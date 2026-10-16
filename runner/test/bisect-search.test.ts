@@ -1,7 +1,7 @@
 // Which task broke it, the search itself (no git, no checks): how a check of an earlier version is judged, which saved
 // versions belong to which task, and the binary search with its hard cap on runs.
 import { describe, expect, test } from "bun:test";
-import { classify, findFirstBad, MAX_RUNS, taskPoints, WINDOW, type TaskPoint, type Verdict } from "../src/bisect.ts";
+import { classify, findFirstBad, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint, type Verdict } from "../src/bisect.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { TaskRow } from "../src/tasklog.ts";
 
@@ -45,8 +45,28 @@ describe("which saved versions belong to which task", () => {
   });
 });
 
+describe("which versions can use the packages installed today", () => {
+  const pj = (o: Record<string, unknown>) => JSON.stringify(o);
+  const base = { "package.json": pj({ name: "a", version: "1.0.0", scripts: { test: "vitest" }, dependencies: { react: "18.3.1" }, devDependencies: { vitest: "2.1.0" } }) };
+  const lock = { "package-lock.json": "0a1b" };
+  test("only the package lists and the lockfiles count, not scripts, names or the order of keys", () => {
+    const k = packagesKey(base, lock);
+    expect(packagesKey({ "package.json": pj({ devDependencies: { vitest: "2.1.0" }, dependencies: { react: "18.3.1" }, name: "b", version: "2.0.0", scripts: { test: "vitest run" } }) }, lock)).toBe(k);
+    expect(packagesKey({ "package.json": pj({ name: "a", dependencies: { react: "19.0.0" }, devDependencies: { vitest: "2.1.0" } }) }, lock)).not.toBe(k);
+    expect(packagesKey({ "package.json": pj({ name: "a", dependencies: { react: "18.3.1" } }) }, lock)).not.toBe(k);
+    expect(packagesKey(base, { "package-lock.json": "ffff" })).not.toBe(k);
+    expect(packagesKey(base, {})).not.toBe(k);
+  });
+  test("a workspace's own package list counts, and a package.json that cannot be read is compared as it is", () => {
+    const k = packagesKey(base, lock);
+    expect(packagesKey({ ...base, "packages/ui/package.json": pj({ dependencies: { clsx: "2.0.0" } }) }, lock)).not.toBe(k);
+    expect(packagesKey({ "package.json": "{ not json" }, lock)).not.toBe(packagesKey({ "package.json": "{ not json either" }, lock));
+    expect(packagesKey({ "package.json": "{ not json" }, lock)).toBe(packagesKey({ "package.json": "{ not json" }, lock));
+  });
+});
+
 // A pretend project: versions after task `bad` and later fail. States: 0 is before the first task, k is after task k.
-function world(n: number, badFrom: number, o: { skip?: Set<number>; gaps?: Set<number>; badBefore?: Set<number> } = {}) {
+function world(n: number, badFrom: number, o: { skip?: Set<number>; gaps?: Set<number>; badBefore?: Set<number>; unusable?: Set<string> } = {}) {
   const points: TaskPoint[] = Array.from({ length: n }, (_, i) => ({ id: i + 1, label: `task ${i + 1}`, at: `2026-10-1${i}T12:00:00Z`, before: `b${i + 1}`, after: `a${i + 1}` }));
   const probed: string[] = [];
   const stateOf = (cp: string) => (cp.startsWith("a") ? Number(cp.slice(1)) : Number(cp.slice(1)) - 1);
@@ -59,7 +79,8 @@ function world(n: number, badFrom: number, o: { skip?: Set<number>; gaps?: Set<n
   };
   // gaps: the person changed files between task k and task k+1.
   const differs = async (a: string, b: string) => (b === "now" ? true : o.gaps?.has(Number(a.slice(1))) ?? false);
-  return { points, probed, run: (max = MAX_RUNS - 1) => findFirstBad({ points, nowId: "now", probe, differs, maxProbes: max }) };
+  const usable = o.unusable ? async (cp: string) => !o.unusable!.has(cp) : undefined;
+  return { points, probed, run: (max = MAX_RUNS - 1) => findFirstBad({ points, nowId: "now", probe, differs, maxProbes: max, ...(usable ? { usable } : {}) }) };
 }
 
 describe("the search", () => {
@@ -120,6 +141,22 @@ describe("the search", () => {
     const r = await findFirstBad({ points, nowId: "now", maxProbes: 5, differs: async () => false, probe: async () => (++n === 2 ? "cancelled" : "good") });
     expect(r.outcome.kind).toBe("cancelled");
     expect(n).toBe(2);
+  });
+  test("versions that need other packages than today's are stepped round without spending a run", async () => {
+    // Task 4 changed the packages: the versions before it cannot use the ones installed now.
+    const w = world(6, 5, { unusable: new Set(["b1", "a1", "a2", "a3"]) });
+    const r = await w.run();
+    expect(r.outcome).toMatchObject({ kind: "found", task: { label: "task 5" } });
+    expect(w.probed.some((p) => ["b1", "a1", "a2", "a3"].includes(p))).toBe(false);
+    expect(r.probes).toBe(w.probed.length);
+    // Only such versions left where the answer is: unsure, never a task blamed.
+    const u = world(6, 2, { unusable: new Set(["b1", "a1", "a2", "a3"]) });
+    expect((await u.run()).outcome.kind).toBe("unsure");
+    expect(u.probed.some((p) => ["b1", "a1", "a2", "a3"].includes(p))).toBe(false);
+    // The version before a task, checked when the person changed files just before it, is no exception.
+    const g = world(6, 4, { gaps: new Set([3]), unusable: new Set(["b4"]) });
+    expect((await g.run()).outcome.kind).toBe("unsure");
+    expect(g.probed).not.toContain("b4");
   });
   test("the same files giving a different answer (a flaky check) is unsure", async () => {
     const points = [1, 2].map((i) => ({ id: i, label: `t${i}`, at: "x", before: `b${i}`, after: `a${i}` }));

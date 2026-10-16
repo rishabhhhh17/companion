@@ -69,6 +69,31 @@ export async function ownPackages(from: string, to: string, signal?: AbortSignal
   return "failed";
 }
 
+// Folders never looked inside for more installed packages: tools, build output and the packages themselves.
+const NOT_SEARCHED = new Set(["node_modules", ".git", "dist", "build", ".next", ".nuxt", ".svelte-kit", ".output", "coverage", ".turbo", ".cache", ".vercel", "__pycache__", ".venv", "venv", "target"]);
+
+/** Every folder of installed packages in the project, relative to it: node_modules at the top and, in a workspace, each
+ *  package's own (packages/ui/node_modules). Never one inside another, never through a link. A few folders deep, bounded. */
+export function packageFolders(project: string, maxDepth = 4, maxDirs = 5000): string[] {
+  const out: string[] = [];
+  let seen = 0;
+  const walk = (rel: string, depth: number) => {
+    let names: string[];
+    try { names = readdirSync(rel ? join(project, rel) : project); } catch { return; }
+    for (const n of names.sort()) {
+      if (++seen > maxDirs) return;
+      const r = rel ? `${rel}/${n}` : n;
+      let dir = false;
+      try { dir = lstatSync(join(project, r)).isDirectory(); } catch { continue; }   // a link is never followed
+      if (!dir) continue;
+      if (n === "node_modules") { out.push(r); continue; }
+      if (depth < maxDepth && !n.startsWith(".") && !NOT_SEARCHED.has(n)) walk(r, depth + 1);
+    }
+  };
+  walk("", 0);
+  return out;
+}
+
 /** Anything left from a run that was cut off (the app quit mid picture): emptied when the runner starts. */
 export function sweepWork(workDir: string) {
   try { for (const n of readdirSync(workDir)) if (n.startsWith("before-")) rmSync(join(workDir, n), { recursive: true, force: true }); } catch { /* nothing there */ }

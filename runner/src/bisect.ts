@@ -61,7 +61,34 @@ export type SearchOptions = {
   /** Do two saved versions hold different files? (Something changed between two tasks that no task did.) */
   differs: (a: string, b: string) => Promise<boolean>;
   maxProbes: number;
+  /** Can this version be checked at all? One that cannot (it needs other packages than the ones installed now) is stepped
+   *  round like a skip, without spending a check. Every version can be when this is left out. */
+  usable?: (checkpoint: string) => Promise<boolean>;
 };
+
+// The files that decide which packages a version needs. Lockfiles are compared whole; a package.json only by its package
+// lists, so a change to its scripts or name does not stop an earlier version being checked.
+const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "pnpm-workspace.yaml", "bun.lock", "bun.lockb"]);
+const PACKAGE_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "bundleDependencies", "bundledDependencies", "overrides", "resolutions", "workspaces", "pnpm", "packageManager"];
+const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+/** A package.json at any depth (workspaces have their own). */
+export const isManifest = (path: string) => baseName(path) === "package.json";
+export const isLockfile = (path: string) => LOCKFILES.has(baseName(path));
+
+const canonical = (v: unknown): unknown => (Array.isArray(v) ? v.map(canonical) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])])) : v);
+
+/** What a version's installed packages have to match, as one string: the package lists of every package.json (text that
+ *  cannot be read as JSON is kept as it is) and an id of each lockfile's content. Two versions with the same key can be
+ *  checked with the same installed packages. */
+export function packagesKey(manifests: Record<string, string>, locks: Record<string, string>): string {
+  const lists = Object.keys(manifests).sort().map((path) => {
+    let j: unknown;
+    try { j = JSON.parse(manifests[path]); } catch { return [path, { unreadable: manifests[path] }]; }
+    const o = j && typeof j === "object" && !Array.isArray(j) ? (j as Record<string, unknown>) : {};
+    return [path, canonical(Object.fromEntries(PACKAGE_FIELDS.filter((f) => o[f] !== undefined).map((f) => [f, o[f]])))];
+  });
+  return JSON.stringify({ lists, locks: Object.keys(locks).sort().map((p) => [p, locks[p]]) });
+}
 
 /**
  * Binary search for the first version that fails. Version 0 is before the oldest task, version k is after task k, and the
@@ -81,6 +108,7 @@ export async function findFirstBad(o: SearchOptions): Promise<{ outcome: Outcome
     if (open.length === 0 || probes >= o.maxProbes) break;
     const mid = open[Math.floor((open.length - 1) / 2)];
     const s = at(mid);
+    if (o.usable && !(await o.usable(s.cp))) { skipped.add(mid); continue; }   // costs no check
     const v = await o.probe(s.cp, { side: s.side, label: s.label });
     probes++;
     if (v === "cancelled") return { outcome: { kind: "cancelled" }, probes };
@@ -100,7 +128,7 @@ export async function findFirstBad(o: SearchOptions): Promise<{ outcome: Outcome
   const task = p[first - 1];
   if (first >= 2 && (await o.differs(p[first - 2].after, task.before))) {
     const earlier = p[first - 2];
-    if (probes >= o.maxProbes) return { outcome: { kind: "unsure", earlier, later: task }, probes };
+    if (probes >= o.maxProbes || (o.usable && !(await o.usable(task.before)))) return { outcome: { kind: "unsure", earlier, later: task }, probes };
     const v = await o.probe(task.before, { side: "before", label: task.label });
     probes++;
     if (v === "cancelled") return { outcome: { kind: "cancelled" }, probes };

@@ -140,3 +140,36 @@ describe("undoing one task", () => {
     expect(read(t.p, ".git/index")).toBe("pretend index");
   });
 });
+
+describe("files too big to save (over 2 MiB) before the task", () => {
+  const BIG = 3 * 1024 * 1024;
+  test("one the task shrank looks added, but it was there before: it is never deleted, only shown", async () => {
+    const p = tmp("p"); writeFileSync(join(p, "a.txt"), "x"); writeFileSync(join(p, "data.json"), "x".repeat(BIG));
+    const s = new CheckpointStore(tmp("s"), p);
+    const b = await s.snapshot("Before: shrink");
+    expect(b.skipped.map((k) => k.path)).toContain("data.json");
+    writeFileSync(join(p, "data.json"), '{"small":true}'); writeFileSync(join(p, "a.txt"), "y");
+    const a = await s.snapshot("After: shrink");
+    const plan = await s.undoOnePlan(b.id, a.id, (await s.snapshot("now")).id);
+    expect(plan.safe).toBe(false);
+    expect(plan.conflicts).toContain("data.json");
+    expect(plan.reason).toContain("data.json");
+    await expect(s.undoOne(b.id, a.id, "shrink")).rejects.toThrow(/Nothing was changed/);
+    expect(read(p, "data.json")).toBe('{"small":true}');
+    expect(read(p, "a.txt")).toBe("y");
+  });
+  test("one whose saved copy is older than the version before the task is never put back", async () => {
+    const p = tmp("p"); writeFileSync(join(p, "data.json"), "old small");
+    const s = new CheckpointStore(tmp("s"), p);
+    await s.snapshot("first");
+    writeFileSync(join(p, "data.json"), "y".repeat(BIG));
+    const b = await s.snapshot("Before: edit");   // too big now, so the saved copy is still "old small"
+    writeFileSync(join(p, "data.json"), "the task's small version");
+    const a = await s.snapshot("After: edit");
+    const plan = await s.undoOnePlan(b.id, a.id, (await s.snapshot("now")).id);
+    expect(plan.safe).toBe(false);
+    expect(plan.conflicts).toEqual(["data.json"]);
+    await expect(s.undoOne(b.id, a.id, "edit")).rejects.toThrow(/Nothing was changed/);
+    expect(read(p, "data.json")).toBe("the task's small version");
+  });
+});

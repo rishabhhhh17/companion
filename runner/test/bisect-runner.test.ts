@@ -35,13 +35,14 @@ function treeHash(dir: string): string {
 }
 
 // Five tasks, each changing one file. The one at `breaks` (1 based) writes BUG into app.js; later ones change other files.
-function setup(o: { breaks?: number; tasks?: number; judge?: (ctx: ProofContext) => Promise<LadderResult> } = {}) {
+function setup(o: { breaks?: number; tasks?: number; judge?: (ctx: ProofContext) => Promise<LadderResult>; custom?: Record<number, Step[]>; more?: Step[][] } = {}) {
   const project = tmp("p"), work = tmp("w");
   writeFileSync(join(project, "app.js"), "ok\n");
   writeFileSync(join(project, "notes.txt"), "n0\n");
   const n = o.tasks ?? 5, breaks = o.breaks ?? 3;
   const rounds: Step[][] = [];
-  for (let i = 1; i <= n; i++) rounds.push(i === breaks ? [write("app.js", "BUG\n"), say] : [write(`f${i}.txt`, `task ${i}\n`), say]);
+  for (let i = 1; i <= n; i++) rounds.push(o.custom?.[i] ?? (i === breaks ? [write("app.js", "BUG\n"), say] : [write(`f${i}.txt`, `task ${i}\n`), say]));
+  rounds.push(...(o.more ?? []));
   const events: Event[] = [];
   const checked: string[] = [];
   let clock = Date.parse("2026-10-14T09:00:00Z");
@@ -174,6 +175,100 @@ describe("finding which task broke it", () => {
     await s.bisect();
     expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "busy" });
     release(); await p;
+  });
+  test("a task asked for during a search is refused and writes nothing; the character shows only the search", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const s = setup({ more: [[write("during.txt", "written mid search\n"), say]], judge: async (ctx) => { await gate; return readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing; } });
+    await s.runTasks();
+    s.events.length = 0;
+    const p = s.bisect();
+    await Bun.sleep(50);
+    const t = s.runner.handle({ v: 1, id: "t6", type: "agent.start", project: s.project, agent: "builder-1", mode: "drive", prompt: "Write a file during the search", model: "m", budgetUsd: 3 });
+    await Bun.sleep(100);
+    expect(existsSync(join(s.project, "during.txt"))).toBe(false);
+    release(); await p; await t;
+    expect(existsSync(join(s.project, "during.txt"))).toBe(false);
+    expect(of(s.events, "protocol.error").map((e) => e.reason).join(" ")).toMatch(/already working on this project/);
+    expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "found", task: { label: "Task number 3" } });
+    expect(of(s.events, "agent.state").map((e) => e.state)).toEqual(["checking", "needsYou"]);
+    expect(of(s.events, "checkpoint.created")).toEqual([]);
+  });
+  test("a project that cannot be saved at the start does not leave the character checking", async () => {
+    const { CheckpointStore } = await import("../src/checkpoints.ts");
+    const s = setup();
+    await s.runTasks();
+    s.events.length = 0;
+    const orig = CheckpointStore.prototype.snapshot;
+    CheckpointStore.prototype.snapshot = function (this: InstanceType<typeof CheckpointStore>, label: string) { return label.startsWith("Find which task") ? Promise.reject(new Error("disk full")) : orig.call(this, label); };
+    try { await s.bisect(); } finally { CheckpointStore.prototype.snapshot = orig; }
+    expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "failed" });
+    expect(of(s.events, "agent.state").at(-1)?.state).toBe("idle");
+  });
+});
+
+describe("earlier versions that needed other packages", () => {
+  // The installed packages are today's. A version whose package.json asked for other versions (or whose lockfile differs) is
+  // never checked with them: it would fail only because of the packages, and an innocent task would be blamed.
+  const pkg = (runner: string, test = "node test.js") => JSON.stringify({ name: "x", scripts: { test }, devDependencies: { runner } });
+  function packaged(o: { breaks: number; upgrade: number; scriptsOnly?: number }) {
+    const seen: string[] = [];
+    const custom: Record<number, Step[]> = { [o.upgrade]: [write("package.json", pkg("2.0.0")), say] };
+    if (o.scriptsOnly) custom[o.scriptsOnly] = [write("package.json", pkg("1.0.0", "node --test")), say];
+    const s = setup({ breaks: o.breaks, custom, judge: async (ctx) => {
+      const want = JSON.parse(readFileSync(join(ctx.project, "package.json"), "utf8")).devDependencies.runner;
+      const have = JSON.parse(readFileSync(join(ctx.project, "node_modules", "runner", "package.json"), "utf8")).version;
+      seen.push(want);
+      if (want !== have) return failing("the test runner would not start");
+      return readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing;
+    } });
+    writeFileSync(join(s.project, "package.json"), pkg("1.0.0"));
+    mkdirSync(join(s.project, "node_modules", "runner"), { recursive: true });
+    writeFileSync(join(s.project, "node_modules", "runner", "package.json"), JSON.stringify({ version: "1.0.0" }));
+    const upgraded = () => writeFileSync(join(s.project, "node_modules", "runner", "package.json"), JSON.stringify({ version: "2.0.0" }));
+    return { s, seen, upgraded };
+  }
+  test("versions from before a package upgrade are not checked with the new packages, and the real task is found", async () => {
+    const { s, seen, upgraded } = packaged({ breaks: 5, upgrade: 4 });
+    await s.runTasks();
+    upgraded();   // the person installed the new packages after task 4
+    await s.bisect();
+    const r = of(s.events, "bisect.result")[0];
+    expect(r).toMatchObject({ outcome: "found", task: { label: "Task number 5" } });
+    expect(seen).not.toContain("1.0.0");
+    expect(r.runs).toBe(seen.length);
+  });
+  test("when only versions with other packages are left, it says it is unsure and why, and blames no task", async () => {
+    const { s, seen, upgraded } = packaged({ breaks: 2, upgrade: 4 });
+    await s.runTasks();
+    upgraded();
+    await s.bisect();
+    const r = of(s.events, "bisect.result")[0];
+    expect(r.outcome).toBe("unsure");
+    expect(r.detail).toMatch(/packages/);
+    expect(seen).not.toContain("1.0.0");
+  });
+  test("a workspace's packages in its own folders get a copy each, and the person's never change", async () => {
+    const s = setup({ judge: async (ctx) => {
+      expect(readFileSync(join(ctx.project, "packages", "ui", "node_modules", "clsx", "index.js"), "utf8")).toBe("1");
+      writeFileSync(join(ctx.project, "packages", "ui", "node_modules", "clsx", "index.js"), "written by a check");
+      return readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing;
+    } });
+    mkdirSync(join(s.project, "packages", "ui", "node_modules", "clsx"), { recursive: true });
+    writeFileSync(join(s.project, "packages", "ui", "package.json"), JSON.stringify({ name: "ui", dependencies: { clsx: "2.0.0" } }));
+    writeFileSync(join(s.project, "packages", "ui", "node_modules", "clsx", "index.js"), "1");
+    await s.runTasks();
+    await s.bisect();
+    expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "found", task: { label: "Task number 3" } });
+    expect(readFileSync(join(s.project, "packages", "ui", "node_modules", "clsx", "index.js"), "utf8")).toBe("1");
+    expect(readdirSync(s.work)).toEqual([]);
+  });
+  test("a change to package.json that is not about packages (a script) does not stop earlier versions being checked", async () => {
+    const { s, seen } = packaged({ breaks: 2, upgrade: 99, scriptsOnly: 4 });
+    await s.runTasks();
+    await s.bisect();
+    expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "found", task: { label: "Task number 2" } });
+    expect(seen.length).toBeGreaterThan(1);
   });
 });
 

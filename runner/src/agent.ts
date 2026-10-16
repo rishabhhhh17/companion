@@ -30,8 +30,8 @@ import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
-import { captureBefore, ownPackages, sweepWork } from "./proof/before.ts";
-import { classify, findFirstBad, MAX_RUNS, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
+import { captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
+import { classify, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
@@ -439,8 +439,12 @@ export class AgentRunner {
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
   private projectInUse(project: string): boolean {
+    return this.projectBusy.has(resolve(project)) || this.otherWorkOn(project);
+  }
+  /** Anything but a task: a check or a search (Point at the problem, Find which task broke it), an install, a copy, a ship step. */
+  private otherWorkOn(project: string): boolean {
     const key = resolve(project);
-    return this.projectBusy.has(key) || this.shipping.has(key) || [...this.installing.keys()].some((k) => resolve(k) === key) || [...this.finding.keys()].some((k) => resolve(k) === key);
+    return this.shipping.has(key) || [...this.installing.keys()].some((k) => resolve(k) === key) || [...this.finding.keys()].some((k) => resolve(k) === key);
   }
   private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
   private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
@@ -451,7 +455,9 @@ export class AgentRunner {
     const key = resolve(cmd.project);
     if (this.sessions.has(cmd.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
     const holder = this.projectBusy.get(key);
-    if (holder && holder !== cmd.agent) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
+    // A check, a search, an install or a ship step is reading or writing the project too (a search copies its installed
+    // packages, and its checks set the character): a task waits for it, never runs beside it.
+    if ((holder && holder !== cmd.agent) || this.otherWorkOn(cmd.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
     this.projectBusy.set(key, cmd.agent);
     try {
       return await this.runInner(cmd, opts);
@@ -956,22 +962,32 @@ export class AgentRunner {
   private bisected = new Map<string, { before: string; after: string; label: string }>();
 
   /** Check one saved version in a private copy in Companion's own folder, never in the project: its files and .env copies
-   *  are put there, the installed packages get a copy of their own (never installed, never linked, so nothing a build writes
-   *  inside them reaches the person's), the ladder runs on the copy with its own time limits, and the copy is deleted
-   *  afterwards. Null when the version could not be copied or checked. */
-  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, signal: AbortSignal): Promise<LadderResult | null> {
+   *  are put there, each folder of installed packages (`folders`, from the project as it is now: the top one and, in a
+   *  workspace, each package's own) gets a copy of its own (never installed, never linked, so nothing a build writes inside
+   *  them reaches the person's), the ladder runs on the copy with its own time limits, and the copy is deleted afterwards.
+   *  Null when the version could not be copied or checked. */
+  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal): Promise<LadderResult | null> {
     const work = this.o.bisect!.workDir;
     if (signal.aborted) return { verdict: "cancelled", steps: [] };
     mkdirSync(work, { recursive: true, mode: 0o700 });
     const dir = mkdtempSync(join(work, BISECT_PREFIX));
     try {
       await store.exportTo(checkpoint, dir);
-      const packages = await ownPackages(join(project, "node_modules"), join(dir, "node_modules"), signal);
-      if (packages === "cancelled" || signal.aborted) return { verdict: "cancelled", steps: [] };
-      if (packages === "failed") return null;
-      return await this.inTurn(project, () => (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true }));
+      for (const f of folders) {
+        if (!existsSync(dirname(join(dir, f)))) continue;   // that package was not there yet in this version
+        const packages = await ownPackages(join(project, f), join(dir, f), signal);
+        if (packages === "cancelled" || signal.aborted) return { verdict: "cancelled", steps: [] };
+        if (packages === "failed") return null;
+      }
+      // A Stop while the copy was made (or while waiting for the project's turn) ends it before any check starts.
+      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true })));
     } catch { return signal.aborted ? { verdict: "cancelled", steps: [] } : null; }
     finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  /** What the installed packages of a saved version have to match (see packagesKey): its package.json package lists and lockfiles. */
+  private async packagesOf(store: CheckpointStore, checkpoint: string): Promise<string> {
+    return packagesKey(await store.readFiles(checkpoint, isManifest, 2_000_000), await store.fileIds(checkpoint, isLockfile));
   }
 
   private async bisectStart(cmd: Extract<Command, { type: "bisect.start" }>): Promise<void> {
@@ -984,16 +1000,18 @@ export class AgentRunner {
     this.finding.set(cmd.project, { abort, agent: cmd.agent });   // Stop and Stop everything end it, and nothing else runs in the project meanwhile
     const key = resolve(cmd.project);
     this.bisected.delete(key);
-    let found = false;
+    let found = false, shown = false;
     try {
       const store = this.store(cmd.project);
       const points = taskPoints(this.o.log.list(cmd.project, 200), await store.list()).slice(-WINDOW);
       if (points.length < 2) { result("too_few"); return; }
       this.state(cmd.agent, "checking");
+      shown = true;
       const now = await store.snapshot("Find which task broke it: the project as it was found");
+      const folders = packageFolders(cmd.project);
       const tell = (what: "now" | "after" | "before", label?: string) => this.emit({ type: "bisect.progress", project: cmd.project, agent: cmd.agent, run: runs, maxRuns: MAX_RUNS, what, ...(label ? { label } : {}) } as never);
       runs++; tell("now");
-      const first = await this.checkCopy(cmd.project, store, now.id, abort.signal);
+      const first = await this.checkCopy(cmd.project, store, now.id, folders, abort.signal);
       if (abort.signal.aborted || first?.verdict === "cancelled") { result("cancelled"); return; }
       if (!first) { result("failed", { detail: "Your project could not be copied to check it. Nothing was changed." }); return; }
       if (first.verdict !== "failed") { result("not_failing"); return; }
@@ -1001,10 +1019,15 @@ export class AgentRunner {
       // Packages that are not installed (or a check that is not a step of the project) cannot be traced back through versions.
       if (!failed || failed.rung === "install" || failed.rung === "review") { result("cannot_check", { detail: failed?.detail ?? "The check that fails could not be repeated on earlier versions." }); return; }
       const step = { rung: failed.rung, label: failed.label };
+      // The installed packages are today's. A version that asked for other ones (its package lists or lockfile differ) is
+      // never checked with them: it could fail only because of the packages, and an innocent task would be blamed.
+      const wanted = await this.packagesOf(store, now.id);
+      let otherPackages = false;
       const search = await findFirstBad({
         points, nowId: now.id, maxProbes: MAX_RUNS - 1,
         differs: (a, b) => store.differs(a, b),
-        probe: async (cp, at) => { runs++; tell(at.side, at.label); return classify(await this.checkCopy(cmd.project, store, cp, abort.signal), failed.rung); },
+        usable: async (cp) => { const same = (await this.packagesOf(store, cp)) === wanted; if (!same) otherPackages = true; return same; },
+        probe: async (cp, at) => { runs++; tell(at.side, at.label); return classify(await this.checkCopy(cmd.project, store, cp, folders, abort.signal), failed.rung); },
       });
       const o = search.outcome;
       const brief = (p?: TaskPoint) => (p ? { label: p.label, at: p.at } : undefined);
@@ -1022,12 +1045,13 @@ export class AgentRunner {
       }
       if (o.kind === "already_failing") { result(o.kind, { step, earlier: brief(o.oldest) }); return; }
       if (o.kind === "after_last_task") { result(o.kind, { step, earlier: brief(o.last) }); return; }
-      result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}) });
+      result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}),
+        ...(o.kind === "unsure" && otherPackages ? { detail: "Some earlier versions needed other packages than the ones installed now, so they could not be checked." } : {}) });
     } catch (e) {
       result("failed", { detail: `Companion could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
     } finally {
       this.finding.delete(cmd.project);
-      if (runs > 0 || found) this.state(cmd.agent, found ? "needsYou" : "idle");
+      if (shown) this.state(cmd.agent, found ? "needsYou" : "idle");
     }
   }
 

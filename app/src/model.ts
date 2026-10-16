@@ -51,9 +51,10 @@ export type BrowserSetupState = { needed: boolean; installed?: boolean; stage: "
 // a new limit was refused if it was.
 export type Spending = { project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
 // Which task broke it: asked and running (with its progress), then done with the answer; undoing just that task asks first.
+// agent: the one the search ran as, left waiting on the person while a found task is on the card.
 export type BisectTask = { label: string; at: string };
 export type BisectState = {
-  stage: "running" | "done"; run?: number; maxRuns?: number; what?: string; label?: string;
+  stage: "running" | "done"; agent?: string; run?: number; maxRuns?: number; what?: string; label?: string;
   outcome?: string; step?: { rung: string; label: string }; task?: BisectTask & { checkpoint: string }; earlier?: BisectTask; later?: BisectTask;
   changed?: { file: string; kind: string }[]; changedCount?: number; undo?: "safe" | "show_only"; why?: string; diff?: string; detail?: string;
   undoStage?: "confirm" | "working" | "done" | "failed"; note?: string; reverted?: number;
@@ -154,7 +155,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
     // ---- which task broke it ----
     case "ui.bisectAsked": return { ...m, bisect: { stage: "running" } };
-    case "ui.bisectClosed": return { ...m, bisect: null };
+    // The engine leaves the search's agent waiting on the person while the answer is shown: closing it is the answer, as for Point at the problem.
+    case "ui.bisectClosed": {
+      const a = m.bisect?.agent;
+      return a && m.agents[a] === "needsYou" ? withAgents({ ...m, bisect: null }, { ...m.agents, [a]: "idle" }) : { ...m, bisect: null };
+    }
     case "bisect.progress": return m.bisect?.stage === "running" ? { ...m, bisect: { ...m.bisect, run: Number(e.run) || undefined, maxRuns: Number(e.maxRuns) || undefined, what: String(e.what ?? ""), label: typeof e.label === "string" ? e.label : undefined } } : m;
     case "bisect.result": {
       // Only the answer to a search this page asked for and is still waiting on; a stopped one simply goes.
@@ -162,7 +167,7 @@ export function reduce(m: Model, e: Ev): Model {
       if (e.outcome === "cancelled") return { ...m, bisect: null };
       const t = (x: any): BisectTask | undefined => (x && typeof x.label === "string" ? { label: x.label, at: String(x.at ?? "") } : undefined);
       const task = e.task && typeof e.task.label === "string" && typeof e.task.checkpoint === "string" ? { label: e.task.label, at: String(e.task.at ?? ""), checkpoint: e.task.checkpoint } : undefined;
-      return { ...m, bisect: { stage: "done", outcome: String(e.outcome), run: Number(e.runs) || undefined, maxRuns: Number(e.maxRuns) || undefined,
+      return { ...m, bisect: { stage: "done", ...(typeof e.agent === "string" ? { agent: e.agent } : {}), outcome: String(e.outcome), run: Number(e.runs) || undefined, maxRuns: Number(e.maxRuns) || undefined,
         ...(e.step && typeof e.step.label === "string" ? { step: { rung: String(e.step.rung ?? ""), label: e.step.label } } : {}),
         ...(task ? { task } : {}), ...(t(e.earlier) ? { earlier: t(e.earlier) } : {}), ...(t(e.later) ? { later: t(e.later) } : {}),
         ...(Array.isArray(e.changed) ? { changed: e.changed.filter((c: any) => c && typeof c.file === "string").map((c: any) => ({ file: c.file, kind: String(c.kind) })) } : {}),
@@ -528,7 +533,7 @@ export function bisectLines(m: Model): string[] {
     case "already_failing": return [b.earlier ? S.bisectAlready(b.earlier.label, whenWords(b.earlier.at)) : S.bisectUnsure, ...step];
     case "after_last_task": return [b.earlier ? S.bisectAfterLast(b.earlier.label) : S.bisectUnsure, ...step];
     case "outside_change": return [b.earlier && b.later ? S.bisectOutside(b.earlier.label, b.later.label) : S.bisectUnsure, ...step];
-    case "unsure": return [b.earlier && b.later && b.earlier.label !== b.later.label ? S.bisectUnsureRange(b.earlier.label, b.later.label) : S.bisectUnsure, ...step];
+    case "unsure": return [b.earlier && b.later && b.earlier.label !== b.later.label ? S.bisectUnsureRange(b.earlier.label, b.later.label) : S.bisectUnsure, ...[sentence(b.detail)].filter(Boolean), ...step];
     case "too_few": return [S.bisectTooFew];
     case "cannot_check": return [sentence(b.detail) || S.bisectCannot];
     case "busy": return [sentence(b.detail) || S.bisectFailed];

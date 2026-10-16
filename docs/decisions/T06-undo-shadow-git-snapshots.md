@@ -39,6 +39,12 @@ Commands and edge cases are in technical_research.md section 6. Rules a coding a
 - When files changed between two tasks that no task made (the person's own edits, an undo, or a `.env` change, which `differs` counts too), the version from just before the later task decides whether that task or the change before it broke it.
 - Undoing one task in the middle (`undoOne`) puts back only the files that task changed, and its `.env` changes. It saves the project first (so it can be undone too) and checks again against that: if any of those files changed since (a later task or the person), or one is behind a link, too big for a saved copy, or inside a folder with its own git history, it refuses and changes nothing, and the card offers only to show what the task changed. Later tasks' changes to other files are kept. Undoing the single task undo from the card is not built yet (the saved version exists for it).
 
+## Fixed 16 Oct 2026 after review (M11, tested with stand ins)
+- A file with no saved copy in the version before the task (over 2 MiB, or unreadable when it was saved) also makes the task show only. Before this, a big file that the task shrank looked added, so undoing the task deleted a file that was there before it; and a file present only as an older small copy got that old copy put back. `restore` already guarded the second case.
+- The installed packages in each copy are today's, so a version whose package lists (in any `package.json`, scripts and names left out) or lockfiles differ from today's is never checked: it could fail only because of the packages and an innocent task would be blamed. Such versions are stepped round without spending a check, and an unclear answer says why. In a workspace, each package's own `node_modules` gets its copy too (`packageFolders`, a few folders deep).
+- No task starts in the project while a search, a Point at the problem check, an install or a ship step runs on it (`run` refuses, changing nothing). Before this, the ask box could start a task mid search, which wrote into the project while its packages were being copied.
+- A Python virtual environment is still not copied into the checks of earlier versions; a Python project whose checks need one may fail every version the same way and be reported as already failing. Not fixed here.
+
 ## Open [verify] items
 - None marked [verify]. A fresh Mac's `/usr/bin/git` stub would block the first checkpoint (pitfall 12; T04).
 

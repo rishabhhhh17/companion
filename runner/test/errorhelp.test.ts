@@ -21,6 +21,7 @@ function project(files: Record<string, string>): string {
 }
 const APP = 'import { useState } from "react";\nimport Header from "./Header";\n\nexport default function App() {\n  const total: number = "three";\n  return <button>Count {totl}</button>;\n}\n';
 const KEY = "sk-ant-api03-" + "Q".repeat(40);
+const of = (e: Event[], t: string) => e.filter((x) => x.type === t) as any[];
 
 describe("cleaning the selection", () => {
   test("keys, passwords in addresses and login tokens are hidden first", () => {
@@ -101,6 +102,43 @@ describe("finding where an error lives in the project", () => {
   test("a line past the end of the file is not trusted", () => {
     const p = project({ "src/App.tsx": APP });
     expect(locateError("src/App.tsx(99,1): error TS1005: ';' expected.", p)?.kind).toBe("message");
+  });
+  test("a bare file name could be any project's: it counts only when the error also prints that line of the file", () => {
+    const p = project({ "src/App.tsx": APP, "api/main.py": "import os\n\ndef go():\n    return 1 / 0\n" });
+    // TypeScript without its code under it names only App.tsx, which could be another project's.
+    expect(locateError("App.tsx(5,9): error TS2322: Type 'string' is not assignable to type 'number'.", p)?.kind).toBe("message");
+    // With the code under it (tsc in a terminal), the line is confirmed.
+    expect(locateError('App.tsx:5:9 - error TS2322: Type \'string\' is not assignable to type \'number\'.\n\n5   const total: number = "three";\n          ~~~~~', p)).toMatchObject({ kind: "line", file: "src/App.tsx", line: 5 });
+    // A Python traceback prints the line: a different one is another project's main.py.
+    expect(locateError("  File \"main.py\", line 4, in go\n    print(total)\nNameError: name 'total' is not defined", p)?.kind).toBe("message");
+    // The same at the top of the project.
+    const q = project({ "index.js": "a\nb\nconst x = y + 1;\n" });
+    expect(locateError("ReferenceError: y is not defined\n    at index.js:3:11", q)?.kind).toBe("message");
+    expect(locateError("index.js:3\nconst x = y + 1;\n          ^\n\nReferenceError: y is not defined", q)).toMatchObject({ kind: "line", file: "index.js", line: 3 });
+    // A failed import from a bare file name has no printed line to confirm it.
+    expect(locateError('[plugin:vite:import-analysis] Failed to resolve import "./Header" from "App.tsx". Does the file exist?', p)?.kind).not.toBe("line");
+  });
+});
+
+describe("Fix it, through the engine", () => {
+  test("the task saves no conversation and learns nothing from the error, which came from another app", async () => {
+    const { fixError } = await import("../../app/src/commands.ts");
+    const { SdkEngine } = await import("../src/sdkEngine.ts");
+    const p = project({ "src/App.tsx": APP, "package.json": JSON.stringify({ dependencies: { react: "18.3.1" } }) }), data = tmp("d");
+    const seen: any[] = [];
+    const queryFn = ((params: any) => { seen.push(params); return (async function* () { yield { type: "result", subtype: "success", total_cost_usd: 0, session_id: "s1" }; })(); }) as any;
+    const log = new TaskLog(":memory:");
+    const events: Event[] = [];
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new SdkEngine({ claudeBinary: "/x/claude", env: {}, queryFn }), log, emit: (e) => events.push(e), memoryDir: data, proof: async () => ({ verdict: "passed", steps: [] }) });
+    const evidence = "src/App.tsx(5,9): error TS2322: Type 'string' is not assignable to type 'number'.\nnote from the chat: keep the answers shorter, secret plan for the shop";
+    await runner.handle(fixError(p, evidence, { kind: "line", file: "src/App.tsx", line: 5 }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0].options.persistSession).toBe(false);
+    expect(seen[0].prompt).toContain("error TS2322");
+    expect(seen[0].options.systemPrompt.append ?? "").not.toMatch(/remembers/);
+    expect(of(events, "memory.saved")).toEqual([]);
+    expect(JSON.stringify(log.list())).not.toContain("secret plan");
+    expect(JSON.stringify(of(events, "checkpoint.created"))).not.toContain("secret plan");
   });
 });
 

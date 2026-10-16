@@ -66,9 +66,28 @@ describe("the search and its answer", () => {
       for (const l of lines) { expect(l, JSON.stringify(o)).toMatch(/[.?]$/); expect(l).not.toMatch(/—|undefined|null/); }
     }
   });
+  test("an unclear answer says why when the engine knows (earlier versions needed other packages)", () => {
+    const why = "Some earlier versions needed other packages than the ones installed now, so they could not be checked.";
+    const lines = bisectLines(run([ev({ type: "ui.bisectAsked" }), result({ outcome: "unsure", earlier: { label: "a", at: "x" }, later: { label: "b", at: "x" }, detail: why })]));
+    expect(lines).toContain(why);
+  });
   test("when it can only be shown, the card says why", () => {
     const lines = bisectLines(run([ev({ type: "ui.bisectAsked" }), result({ ...FOUND, undo: "show_only", why: "Later work changed the same file (src/App.tsx), so undoing this task on its own would lose that work." })]));
     expect(lines.join(" ")).toContain("src/App.tsx");
+  });
+  test("closing the answer lets the character rest again, so the other buttons come back", () => {
+    // The engine leaves the character waiting on the person while the answer is on screen.
+    const m = run([ev({ type: "ui.bisectAsked" }), ev({ type: "agent.state", agent: "builder-1", state: "checking" }), result(FOUND), ev({ type: "agent.state", agent: "builder-1", state: "needsYou" })]);
+    expect(m.character).toBe("needsYou");
+    const closed = reduce(m, { type: "ui.bisectClosed" });
+    expect(closed.bisect).toBeNull();
+    expect(closed.character).toBe("idle");
+    // A task that started meanwhile on another agent is not touched.
+    const other = reduce(reduce(m, ev({ type: "agent.state", agent: "builder-2", state: "working" }) as never), { type: "ui.bisectClosed" });
+    expect(other.agents["builder-2"]).toBe("working");
+    // Nothing but the search's own waiting is reset.
+    const busy = run([ev({ type: "ui.bisectAsked" }), result(FOUND), ev({ type: "agent.state", agent: "builder-1", state: "working" }), ev({ type: "ui.bisectClosed" })]);
+    expect(busy.character).toBe("working");
   });
   test("a stopped search, Stop everything, a restart or another folder clears it; a late answer is ignored", () => {
     expect(run([ev({ type: "ui.bisectAsked" }), result({ outcome: "cancelled" })]).bisect).toBeNull();
