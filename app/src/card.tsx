@@ -573,6 +573,8 @@ function Card() {
   // Point at the problem: the key checks the project; when a place comes back, the pointer flies there. Any Show me answer
   // still playing ends first, here and in the shell, so none of its later steps or lines lands on top of this one.
   const pointProblem = (project: string, problem: unknown) => { player.current.hush(); void invoke("point_problem", { project, problem }); };
+  // A place made by the card itself (what changed, your turn): pointed at the same way, through pointProblem.
+  const pointAt = (x: { project: string; problem: Problem }) => { if (pointsOnScreen(x.problem)) pointProblem(x.project, x.problem); };
   const projectRef = useRef(project); projectRef.current = project;
   useEffect(() => {
     const offKey = listen("find-problem", () => {
@@ -595,7 +597,7 @@ function Card() {
       const ev = e.payload as { type?: string; made?: boolean; project?: string; checkpoint?: string; target?: { file: string; line: number; lineText: string } };
       if (ev.type !== "teach.ready" || ev.checkpoint !== teachWant.current) return;
       teachWant.current = "";
-      if (ev.made && ev.target && ev.project === projectRef.current) void invoke("point_problem", pointChange(ev.project, ev.target, S.teachHere));
+      if (ev.made && ev.target && ev.project === projectRef.current) pointAt(pointChange(ev.project, ev.target, S.teachHere));
     });
     return () => { off.then((f) => f()); };
   }, []);
@@ -1121,7 +1123,7 @@ function Card() {
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
-            <div className="row"><button className="btn" type="button" onClick={() => void invoke("point_problem", pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
+            <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
           )}
           {canOfferTurn(m) && yourTurn && !undone && project && (
             <div className="line">
@@ -1159,7 +1161,7 @@ function Card() {
             {teachActions(m.teach).map((a) => {
               const t = m.teach!;
               switch (a) {
-                case "where": return <button key={a} className="btn" type="button" onClick={() => void invoke("point_problem", pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
+                case "where": return <button key={a} className="btn" type="button" onClick={() => pointAt(pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
                 case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking" }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
                 case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!)); }}>{S.teachPutBack}</button>;
                 case "leave": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
