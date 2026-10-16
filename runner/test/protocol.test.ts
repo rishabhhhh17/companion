@@ -135,4 +135,13 @@ describe("teaching from the change", () => {
     expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "great", same: true })).toBe(false);
     expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "passed" })).toBe(false);
   });
+  test("a step of the person's own check names the project and the fix, and is a whole step", () => {
+    const s = { type: "teach.step", project: "/p", checkpoint: "cp_1", rung: "tests", label: "Running the tests", status: "running", detail: "" };
+    expect(e(s)).toBe(true);
+    expect(e({ ...s, needs: "browser" })).toBe(true);
+    expect(e({ ...s, checkpoint: undefined })).toBe(false);
+    expect(e({ ...s, status: "great" })).toBe(false);
+    expect(e({ ...s, detail: undefined })).toBe(false);
+    expect(e({ ...s, needs: "chrome" })).toBe(false);
+  });
 });

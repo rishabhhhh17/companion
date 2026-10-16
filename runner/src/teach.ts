@@ -80,7 +80,10 @@ function rowsOf(text: string): { rows: string[]; endsWithBreak: boolean } {
 /** The places that changed between two versions of one file. Lines are split on "\n" only, so a Windows "\r" stays part of
  *  its line and nothing about the file's own line endings is lost. */
 export function hunksOf(file: string, before: string, after: string): Hunk[] {
-  const a = rowsOf(before).rows, b = rowsOf(after).rows;
+  return hunksOfRows(file, rowsOf(before).rows, rowsOf(after).rows);
+}
+
+function hunksOfRows(file: string, a: string[], b: string[]): Hunk[] {
   let p = 0;
   while (p < a.length && p < b.length && a[p] === b[p]) p++;
   let s = 0;
@@ -203,13 +206,26 @@ export function revertHunk(text: string, h: Hunk): string | null {
   return out.join("\n") + (endsWithBreak && out.length ? "\n" : "");
 }
 
-const squash = (l: string[]) => l.join("\n").replace(/\s+/g, "");
-/** Did the person make the task's change at this place? Spacing does not count, and the place may have moved a few lines. */
-export function madeSameChange(text: string, h: Hunk, reach = 10): boolean {
-  const rows = rowsOf(text).rows, want = squash(h.after), n = h.after.length;
-  if (!want) return false;
-  for (let at = Math.max(0, h.afterAt - 1 - reach); at <= Math.min(rows.length - n, h.afterAt - 1 + reach); at++) {
-    if (squash(rows.slice(at, at + n)) === want) return true;
-  }
-  return false;
+// Lines with their spacing taken out, so a change of spacing alone is no change.
+const unspaced = (rows: string[]) => rows.map((r) => r.replace(/\s+/g, ""));
+/** Did any change between a and b reach into rows from..from+n of a? Lines added just above or just below them do not. */
+function reaches(a: string[], b: string[], from: number, n: number): boolean {
+  return hunksOfRows("", unspaced(a), unspaced(b)).some((x) => {
+    const at = x.beforeAt - 1, len = x.before.length;
+    if (n === 0) return at === from;
+    return len > 0 ? at < from + n && at + len > from : at > from && at < from + n;
+  });
+}
+
+/** What the person did at the place they were given (your turn), judged only at that place. given is the file as it was
+ *  handed to them (that place put back as it was before the fix, at line h.afterAt); now is the file as they left it, or
+ *  null when it is gone. "unchanged": that place still reads as it did, wherever lines around it moved. "same": it now reads
+ *  as the task's own fix did there. "other": they changed it some other way. Spacing never counts. */
+export function turnChange(given: string, now: string | null, h: Hunk): "unchanged" | "same" | "other" {
+  const start = rowsOf(given).rows, at = h.afterAt - 1;
+  if (now === null) return "other";
+  const rows = rowsOf(now).rows;
+  if (!reaches(start, rows, at, h.before.length)) return "unchanged";
+  const fixed = [...start.slice(0, at), ...h.after, ...start.slice(at + h.before.length)];
+  return reaches(fixed, rows, at, h.after.length) ? "other" : "same";
 }

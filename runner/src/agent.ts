@@ -24,7 +24,7 @@ import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
-import { changeTarget, diffForExplain, madeSameChange, repeatedChange, revertHunk, taskHunks, teachable, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
+import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
 import { browserCheck } from "./proof/browser.ts";
@@ -995,7 +995,10 @@ export class AgentRunner {
   }
 
   // Check my change: the project's own checks (the proof ladder, no install, no Claude) on the project as the person left it,
-  // compared with what they were given, so the tamper guard sees only their change. Stop everything ends it.
+  // compared with what they were given, so the tamper guard sees only their change. Stop everything ends it. What they did
+  // is judged only at their place, from the same snapshot the checks run on: an untouched place is said as that and nothing
+  // is run, so a pass that was really Companion's is never told as theirs. The rungs go out as teach.step, never as the
+  // finished task's proof.
   private async teachCheck(cmd: Extract<Command, { type: "teach.check" }>): Promise<void> {
     const key = resolve(cmd.project);
     const say = (verdict: string, same: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "teach.result", project: cmd.project, checkpoint: cmd.checkpoint, verdict, same, ...extra } as never);
@@ -1007,16 +1010,21 @@ export class AgentRunner {
     try {
       const store = this.store(cmd.project);
       const snap = await store.snapshot("Your turn: your change");
+      const file = turn.hunk.file;
+      const given = (await store.readFiles(turn.start, (p) => p === file))[file];
+      const theirs = (await store.readFiles(snap.id, (p) => p === file))[file];
+      const now = theirs ?? (existsSync(join(cmd.project, file)) ? undefined : null);   // null: they deleted the file
+      if (given === undefined || now === undefined) { say("cancelled", false, { reason: "Companion could not read that file, so your change was not checked." }); return; }
+      const did = turnChange(given, now, turn.hunk);
+      if (did === "unchanged") { say("cancelled", false, { reason: "You have not changed that line yet." }); return; }
       this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never);
       let res: LadderResult = { verdict: "cancelled", steps: [] };
-      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep: this.stepTeller(cmd.agent), signal: abort.signal, noInstall: true }); }
+      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
-      const abs = this.placeFile(cmd.project, turn.hunk.file);
-      let same = false;
-      try { same = !!abs && madeSameChange(readFileSync(abs, "utf8"), turn.hunk); } catch { same = false; }
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      say(res.verdict, same, { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
+      say(res.verdict, did === "same", { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
       this.state(cmd.agent, res.verdict === "failed" ? "needsYou" : "idle");
     } catch (e) {
       say("cancelled", false, { reason: `Companion could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });

@@ -8,7 +8,7 @@ import { aimDecision, notSureWords } from "./pointer.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, pointChange, tryNextOne, checkMyChange } from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, teachLines } from "./model.ts";
+import { browserView, canOfferTurn, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, receiptProofWords, triesNote, notDoneReason, plainPath, stateLabel, teachActions, teachLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine, Spending } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -1000,7 +1000,7 @@ function Card() {
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
+          {m.receipt.changed.length > 0 && <div className="line muted">{receiptProofWords(m)}</div>}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
@@ -1013,7 +1013,7 @@ function Card() {
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
             <div className="row"><button className="btn" type="button" onClick={() => void invoke("point_problem", pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
           )}
-          {m.receipt.repeat && yourTurn && !m.teach && !undone && !m.undo && project && (
+          {canOfferTurn(m) && yourTurn && !undone && project && (
             <div className="line">
               <div className="line muted">{S.teachOfferHelp}</div>
               <div className="row"><button className="btn" type="button" onClick={() => tryTheNextOne(m.receipt!.checkpoint)}>{S.teachOffer}</button></div>
@@ -1037,14 +1037,21 @@ function Card() {
       )}
 
       {m.teach && (
-        <section className={`panel ${m.teach.stage === "refused" || (m.teach.stage === "checked" && m.teach.result?.verdict === "failed") ? "amber" : ""}`} role="status" aria-label={S.teachTitle}>
+        <section className={`panel ${m.teach.stage === "refused" || m.teach.stage === "left" || (m.teach.stage === "checked" && m.teach.result?.verdict === "failed") ? "amber" : ""}`} role="status" aria-label={S.teachTitle}>
           <h2>{S.teachTitle}</h2>
           {teachLines(m.teach).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {/* No Close while the old code is back at the person's place: Put my fix back, or Leave it as it is (teachActions). */}
           <div className="row">
-            {(m.teach.stage === "ready" || m.teach.stage === "checked") && m.teach.target && <button className="btn" type="button" onClick={() => void invoke("point_problem", pointChange(project, m.teach!.target!, S.teachHere))}>{S.pointWhere}</button>}
-            {(m.teach.stage === "ready" || (m.teach.stage === "checked" && m.teach.result?.verdict !== "passed")) && <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking" }); void send(checkMyChange(project, m.teach!.checkpoint)); }}>{S.teachCheck}</button>}
-            {(m.teach.stage === "ready" || m.teach.stage === "checked") && m.teach.restore && m.teach.result?.verdict !== "passed" && <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, m.teach!.restore!)); }}>{S.teachPutBack}</button>}
-            {!["asking", "checking", "restoring"].includes(m.teach.stage) && <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>}
+            {teachActions(m.teach).map((a) => {
+              const t = m.teach!;
+              switch (a) {
+                case "where": return <button key={a} className="btn" type="button" onClick={() => void invoke("point_problem", pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
+                case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking" }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
+                case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!)); }}>{S.teachPutBack}</button>;
+                case "leave": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
+                case "close": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>;
+              }
+            })}
           </div>
         </section>
       )}

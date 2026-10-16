@@ -111,7 +111,10 @@ export type ExplainReady = Envelope & { type: "explain.ready"; agent: string; ch
 // first place, as it was and as it is. change: the words that changed. restore: the checkpoint that puts the whole fix back.
 export type TeachReady = Envelope & { type: "teach.ready"; project: string; checkpoint: string; made: boolean; reason?: string; target?: ChangeAt; example?: { file: string; line: number; was: string; now: string }; change?: { was: string; now: string }; restore?: string };
 // same: the person's change matches the fix Companion made there. The verdict is the proof ladder's, on their change.
+// "cancelled" with a reason: nothing was checked (their place is still untouched, nothing is waiting, or something was busy).
 export type TeachResult = Envelope & { type: "teach.result"; project: string; checkpoint: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; same: boolean; label?: string; detail?: string; problem?: Problem; reason?: string };
+// One rung of the check of the person's own change, as it runs. Its own event, so it is never taken for the finished task's proof.
+export type TeachStep = Envelope & { type: "teach.step"; project: string; checkpoint: string } & ProofStep;
 export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string };
 
 export type AssistPromptDelta = Envelope & { type: "assist.prompt.delta"; req: string; text: string };
@@ -165,7 +168,7 @@ export type BrowserStatus = Envelope & { type: "browser.status"; installed: bool
 export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
 // problem: why a new limit was refused or not kept; the limit shown is the one still in force.
 export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
-export type Event = ExplainReady | TeachReady | TeachResult | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -274,6 +277,7 @@ const EVENTS: Record<string, Check[]> = {
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate"), opt("step", stepOk)],
   "teach.ready": [str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || isPlace(m.target) ? null : "a made turn needs a \"target\" place")],
   "teach.result": [str("project"), str("checkpoint"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), bool("same")],
+  "teach.step": [str("project"), str("checkpoint"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "explain.state": [str("project"), bool("enabled")],
   "recap.ready": [str("project"), list("lines")],
   "memory.agents_ask": [str("project"), list("files")],

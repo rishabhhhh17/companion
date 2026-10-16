@@ -70,3 +70,4 @@
 {"v":1,"id":"e81","type":"teach.ready","project":"p_9f2c","checkpoint":"cp_0042","made":true,"target":{"file":"src/b.js","line":2,"lineText":"return title(user.name);"},"example":{"file":"src/a.js","line":2,"was":"const n = user.name;","now":"const n = user?.name;"},"change":{"was":"user","now":"user?"},"restore":"cp_0044"}
 {"v":1,"id":"e82","type":"teach.ready","project":"p_9f2c","checkpoint":"cp_0042","made":false,"reason":"That file changed after my fix, so I left it alone."}
 {"v":1,"id":"e83","type":"teach.result","project":"p_9f2c","checkpoint":"cp_0042","verdict":"failed","same":false,"label":"Running the tests","detail":"1 failed","problem":{"kind":"line","file":"src/b.js","line":2,"lineText":"return title(user.name);","message":"Cannot read properties of undefined","from":"tests"}}
+{"v":1,"id":"e84","type":"teach.step","project":"p_9f2c","checkpoint":"cp_0042","rung":"tests","label":"Running the tests","status":"running","detail":"","ms":0}

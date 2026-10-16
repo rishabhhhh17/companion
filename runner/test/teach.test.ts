@@ -1,7 +1,7 @@
 // Teaching from the change itself: the real diff of a task, cut into places that changed, for Explain (why), "Show me
 // what changed" (ring the first changed line) and "your turn" (the same change made in two places). Plain code, no model.
 import { describe, expect, test } from "bun:test";
-import { changeTarget, diffForExplain, hunksOf, madeSameChange, repeatedChange, revertHunk, taskHunks, teachable } from "../src/teach.ts";
+import { changeTarget, diffForExplain, hunksOf, repeatedChange, revertHunk, taskHunks, teachable, turnChange } from "../src/teach.ts";
 
 const lines = (...l: string[]) => l.join("\n") + "\n";
 
@@ -157,10 +157,35 @@ describe("putting one place back the way it was", () => {
     const w = hunksOf("a.js", "a\r\nold\r\nz\r\n", "a\r\nnew\r\nz\r\n")[0];
     expect(revertHunk("a\r\nnew\r\nz\r\n", w)).toBe("a\r\nold\r\nz\r\n");
   });
-  test("did the person make the same change? Spacing does not matter, and a line moved a little still counts", () => {
-    expect(madeSameChange(lines("a", "const n   =   user?.name;", "z"), h)).toBe(true);
-    expect(madeSameChange(lines("new line", "a", "const n = user?.name;", "z"), h)).toBe(true);
-    expect(madeSameChange(before, h)).toBe(false);
-    expect(madeSameChange(lines("a", "const n = user && user.name;", "z"), h)).toBe(false);
+});
+
+describe("your turn: what the person did at their place", () => {
+  // The file as it was given to the person: the place put back as it was before the fix.
+  const given = lines("a", "const n = user.name;", "z");
+  const h = hunksOf("a.js", given, lines("a", "const n = user?.name;", "z"))[0];
+  test("the same change counts whatever the spacing, and also when lines were added above it", () => {
+    expect(turnChange(given, lines("a", "const n   =   user?.name;", "z"), h)).toBe("same");
+    expect(turnChange(given, lines("new line", "a", "const n = user?.name;", "z"), h)).toBe("same");
+  });
+  test("an untouched place is said as untouched: no edit, spacing only, or only lines elsewhere", () => {
+    expect(turnChange(given, given, h)).toBe("unchanged");
+    expect(turnChange(given, lines("a", "const   n = user.name;  ", "z"), h)).toBe("unchanged");
+    expect(turnChange(given, lines("// note", "a", "const n = user.name;", "z", "more"), h)).toBe("unchanged");
+  });
+  test("a different change, or the file gone, is a change of another kind", () => {
+    expect(turnChange(given, lines("a", "const n = user && user.name;", "z"), h)).toBe("other");
+    expect(turnChange(given, lines("a", "z"), h)).toBe("other");
+    expect(turnChange(given, null, h)).toBe("other");
+  });
+  test("two places close together in one file: the place already fixed never counts as the person's change", () => {
+    const fixed = lines("<div>", "<p>{user?.name}</p>", "<hr/>", "<p>{user?.name}</p>", "</div>");
+    const r = repeatedChange(hunksOf("page.jsx", lines("<div>", "<p>{user.name}</p>", "<hr/>", "<p>{user.name}</p>", "</div>"), fixed))!;
+    const start = revertHunk(fixed, r.second)!;
+    expect(start).toBe(lines("<div>", "<p>{user?.name}</p>", "<hr/>", "<p>{user.name}</p>", "</div>"));
+    expect(turnChange(start, start, r.second)).toBe("unchanged");
+    expect(turnChange(start, fixed, r.second)).toBe("same");
+    // Changing only the first place again is not a change to theirs.
+    expect(turnChange(start, lines("<div>", "<p>{user.name}</p>", "<hr/>", "<p>{user.name}</p>", "</div>"), r.second)).toBe("unchanged");
+    expect(turnChange(start, lines("<div>", "<p>{user?.name}</p>", "<hr/>", "<p>{user && user.name}</p>", "</div>"), r.second)).toBe("other");
   });
 });

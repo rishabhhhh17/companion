@@ -9,7 +9,7 @@ import { AgentRunner, type ProofContext } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
-import type { Event } from "../../protocol/index.ts";
+import { parseEvent, serialize, type Event } from "../../protocol/index.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -171,6 +171,47 @@ describe("your turn: the same change in two places", () => {
     expect(ctx.noInstall).toBe(true);
     expect(ctx.beforeId).not.toBe(ctx.afterId);   // the tamper guard compares their change with what they were given
   });
+  test("checking before the person changed anything says so, and runs no checks", async () => {
+    const t = await tried();
+    const checksBefore = t.proofCalls.length;
+    await t.cmd({ type: "teach.check", agent: "b1", checkpoint: t.cp });
+    const r = of(t.events, "teach.result").at(-1);
+    expect(r).toMatchObject({ verdict: "cancelled", same: false, checkpoint: t.cp });
+    expect(r.reason).toBe("You have not changed that line yet.");
+    expect(t.proofCalls.length).toBe(checksBefore);
+    // A change to some other line is not a change to theirs either.
+    writeFileSync(join(t.project, "src/b.js"), "// mine\n" + B);
+    await t.cmd({ type: "teach.check", agent: "b1", checkpoint: t.cp });
+    expect(of(t.events, "teach.result").at(-1).reason).toBe("You have not changed that line yet.");
+    expect(t.proofCalls.length).toBe(checksBefore);
+  });
+  test("two places close together in one file: the place Companion fixed is never taken for the person's change", async () => {
+    const page = (a: string, b: string) => `<div>\n<p>{${a}}</p>\n<hr/>\n<p>{${b}}</p>\n</div>\n`;
+    const t = setup({ files: { "src/page.jsx": page("user.name", "user.name") }, rounds: [[write("src/page.jsx", page("user?.name", "user?.name")), say("Made both safe.")]] });
+    await t.start();
+    const cp = of(t.events, "receipt")[0].checkpoint;
+    expect(of(t.events, "receipt")[0].repeat?.second).toMatchObject({ file: "src/page.jsx", line: 4 });
+    await t.cmd({ type: "teach.try", checkpoint: cp });
+    expect(t.read("src/page.jsx")).toBe(page("user?.name", "user.name"));
+    await t.cmd({ type: "teach.check", agent: "b1", checkpoint: cp });
+    expect(of(t.events, "teach.result").at(-1)).toMatchObject({ verdict: "cancelled", same: false, reason: "You have not changed that line yet." });
+    writeFileSync(join(t.project, "src/page.jsx"), page("user?.name", "user?.name"));
+    await t.cmd({ type: "teach.check", agent: "b1", checkpoint: cp });
+    expect(of(t.events, "teach.result").at(-1)).toMatchObject({ verdict: "passed", same: true });
+  });
+  test("the person's check says its steps as their own, never as steps of the task's proof", async () => {
+    const t = setup({ rounds: [bothPlaces], proofs: async (ctx) => { ctx.onStep({ rung: "tests", label: "Running the tests", status: "running", detail: "", ms: 0 }); ctx.onStep({ rung: "tests", label: "Running the tests", status: "passed", detail: "", ms: 3 }); return passed(); } });
+    await t.start();
+    const cp = of(t.events, "receipt")[0].checkpoint;
+    await t.cmd({ type: "teach.try", checkpoint: cp });
+    writeFileSync(join(t.project, "src/b.js"), "function t() {\n  return title(user?.name);\n}\n");
+    const taskSteps = of(t.events, "proof.step").length;
+    await t.cmd({ type: "teach.check", agent: "b1", checkpoint: cp });
+    expect(of(t.events, "proof.step").length).toBe(taskSteps);
+    const mine = of(t.events, "teach.step");
+    expect(mine.map((s) => [s.checkpoint, s.project, s.rung, s.status])).toEqual([[cp, t.project, "tests", "running"], [cp, t.project, "tests", "passed"]]);
+    for (const s of mine) expect(parseEvent(serialize(s)).ok).toBe(true);
+  });
   test("a different change that fails the checks is said as that, with where it fails", async () => {
     const place = { kind: "line", file: "src/b.js", line: 2, lineText: "return title(user.name);", message: "Cannot read name", from: "tests" };
     let n = 0;
@@ -178,6 +219,7 @@ describe("your turn: the same change in two places", () => {
     await t.start();
     const cp = of(t.events, "receipt")[0].checkpoint;
     await t.cmd({ type: "teach.try", checkpoint: cp });
+    writeFileSync(join(t.project, "src/b.js"), "function t() {\n  return title(user.nam);\n}\n");
     await t.cmd({ type: "teach.check", agent: "b1", checkpoint: cp });
     expect(of(t.events, "teach.result").at(-1)).toMatchObject({ verdict: "failed", same: false, label: "Running the tests", detail: "1 failed", problem: place });
   });
@@ -187,11 +229,14 @@ describe("your turn: the same change in two places", () => {
     await t.start();
     const cp = of(t.events, "receipt")[0].checkpoint;
     await t.cmd({ type: "teach.try", checkpoint: cp });
+    writeFileSync(join(t.project, "src/b.js"), "function t() {\n  return title(user?.name);\n}\n");
     const check = t.cmd({ type: "teach.check", agent: "b1", checkpoint: cp });
-    await Bun.sleep(50);
+    for (let i = 0; i < 150 && n < 2; i++) await Bun.sleep(20);
+    expect(n).toBe(2);   // the check of the person's change is really running
     await t.cmd({ type: "agent.interruptAll", reason: "stop" });
     await check;
     expect(of(t.events, "teach.result").at(-1).verdict).toBe("cancelled");
+    expect(of(t.events, "teach.result").at(-1).reason).toBeUndefined();
     await t.cmd({ type: "checkpoint.restore", checkpoint: of(t.events, "teach.ready").at(-1).restore });
     await t.cmd({ type: "teach.check", agent: "b1", checkpoint: cp });
     const last = of(t.events, "teach.result").at(-1);
