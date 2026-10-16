@@ -50,7 +50,8 @@ describe("the fix loop", () => {
     expect(r.engine.calls[1].resumeSession).toBe("scripted-session");
   });
   test("two retries at most, then Not done with the last reason", async () => {
-    const r = setup([[bash("echo 1 > x.txt")], [bash("echo 2 > x.txt")], [bash("echo 3 > x.txt")], [bash("echo 4 > x.txt")]], [bad("still broken")]);
+    // Three different failures: the same one three times stops and asks instead (task-stuck.test.ts).
+    const r = setup([[bash("echo 1 > x.txt")], [bash("echo 2 > x.txt")], [bash("echo 3 > x.txt")], [bash("echo 4 > x.txt")]], [bad("still broken"), bad("broken another way"), bad("broken a third way")]);
     await r.runner.handle(start(r.project));
     expect(r.engine.calls.length).toBe(3);
     expect(r.ladderRuns()).toBe(3);

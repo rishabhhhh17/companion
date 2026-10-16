@@ -5,13 +5,14 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { label, redact } from "../redact.ts";
+import { readPytest } from "./pytest.ts";
 import type { Problem } from "../../../protocol/index.ts";
 
 export type { Problem };
 
 const ANSI = /\u001b\[[0-9;?]*[ -\/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
 // Folders the person did not write: tools, build output, Companion's own notes.
-const NOT_THEIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".nuxt", ".svelte-kit", ".output", "coverage", ".companion", ".vercel", ".turbo", ".cache", "__pycache__", ".venv", "venv"]);
+const NOT_THEIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".nuxt", ".svelte-kit", ".output", "coverage", ".companion", ".vercel", ".turbo", ".cache", "__pycache__", ".venv", "venv", "site-packages", "dist-packages"]);
 const MAX_FILE = 2_000_000;
 const LINE_MAX = 200;
 const MESSAGE_MAX = 200;
@@ -25,6 +26,11 @@ const ESLINT_FILE = /^((?:\/|\.{1,2}\/|[\w@-]+\/)\S*\.[A-Za-z0-9]{1,6})\s*$/;
 const ESLINT_ROW = /^\s+(\d+):(\d+)\s+error\s+(.+?)(?:\s{2,}\S+)?\s*$/;
 // What a tool says right after the place: "error TS2322: ...", "ERROR: ...", "error: ..."
 const AFTER = /^(?::|\s+-)\s*(?:error\s+TS\d+|ERROR|error)\s*:\s*(.+)$/;
+// Python's linters: "app.py:1:8: F401 [*] `os` imported but unused" (ruff concise, flake8). The rule code is left out.
+const LINT_AFTER = /^:\s*[A-Z]{1,4}\d{2,4}\s+(?:\[\*\]\s+)?(.+)$/;
+// ruff's current report puts the words on the line above the place: "F401 [*] `os` imported but unused" then " --> app.py:1:8".
+const LINT_ABOVE = /^\s*[A-Z]{1,4}\d{2,4}\s+(?:\[\*\]\s+)?(.+?)\s*$/;
+const RULE_NAME = /\s{2,}\[[a-z][a-z0-9-]*\]\s*$/;   // mypy's "  [name-defined]"
 const ERROR_LINE = /^\s*((?:[A-Z][A-Za-z]*)?(?:Error|Exception)\b:.*)$/;
 const ERRORISH = /error|not found|cannot|can't|failed|missing|ERR!|refused|denied|unexpected/i;
 
@@ -35,11 +41,17 @@ function places(text: string): { list: Place[]; python: boolean } {
   for (const m of text.matchAll(AT)) {
     const line = Number(m[2] ?? m[4]), column = m[3] ?? m[5];
     const rest = text.slice(m.index! + m[0].length).split("\n", 1)[0];
-    const said = AFTER.exec(rest)?.[1]?.trim();
-    // TAP output also says where a test was declared ("location: '...:9:1'"): a fallback, never the first choice (the check
-    // that failed is in the stack, and is better to point at).
+    // Node's test runner also says where a test was declared (TAP: "location: '...:9:1'"; the spec report from Node 24:
+    // "test at test/x.test.js:9:1"): a fallback, never the first choice (the check that failed is in the stack, and is
+    // better to point at).
     const lineStart = text.lastIndexOf("\n", m.index!) + 1;
-    const declared = /^\s*location:/.test(text.slice(lineStart, m.index!));
+    const declared = /^\s*(?:location:|(?:test|suite) at\s*$)/.test(text.slice(lineStart, m.index!));
+    let said = AFTER.exec(rest)?.[1]?.trim() ?? LINT_AFTER.exec(rest)?.[1]?.trim();
+    if (!said && /^\s*-->\s*$/.test(text.slice(lineStart, m.index!))) {
+      const above = text.slice(0, Math.max(0, lineStart - 1)).split("\n").reverse().find((l) => l.trim());
+      said = above ? LINT_ABOVE.exec(above)?.[1] : undefined;
+    }
+    if (said) said = said.replace(RULE_NAME, "");
     list.push({ path: m[1], line, ...(column ? { column: Number(column) } : {}), at: m.index!, ...(said ? { message: said } : {}), ...(declared ? { declared: true } : {}) });
   }
   // ESLint names the file on its own line and the places under it.
@@ -105,26 +117,56 @@ function printed(text: string, row: string): boolean {
   return r.length >= 6 && r.replace(/[^A-Za-z0-9]/g, "").length >= 4 && squash(text).includes(r);
 }
 
-function lineIn(project: string, root: string, p: Place, loose?: () => string[]): { file: string; lineText: string; row: string } | null {
-  if (!Number.isInteger(p.line) || p.line < 1) return null;
-  let abs = isAbsolute(p.path) ? p.path : resolve(project, p.path);
-  if (loose && !existsSync(abs)) { const f = looseFile(root, p.path, loose); if (!f) return null; abs = f; }
+// A file inside the project that the person (or their AI) wrote, with its lines; null for anything else. With `loose`, a
+// path that is not in the project as written may still be matched to one file that is (see looseFile); the file it is
+// matched to then meets every rule here too.
+function theirFile(project: string, root: string, path: string, loose?: () => string[]): { file: string; rows: string[] } | null {
+  let abs = isAbsolute(path) ? path : resolve(project, path);
+  if (loose && !existsSync(abs)) { const f = looseFile(root, path, loose); if (!f) return null; abs = f; }
   let real: string;
   try { real = realpathSync(abs); } catch { return null; }
   if (!real.startsWith(root + sep)) return null;
   const rel = relative(root, real);
   if (rel.split(sep).some((part) => NOT_THEIRS.has(part))) return null;
   try { const st = statSync(real); if (!st.isFile() || st.size > MAX_FILE) return null; } catch { return null; }
-  let rows: string[];
-  try { rows = readFileSync(real, "utf8").split("\n"); } catch { return null; }
-  if (p.line > rows.length) return null;
-  return { file: rel.split(sep).join("/"), lineText: label(rows[p.line - 1], LINE_MAX), row: rows[p.line - 1] };
+  try { return { file: rel.split(sep).join("/"), rows: readFileSync(real, "utf8").split("\n") }; } catch { return null; }
+}
+
+// row: the line as it is in the file, for checking that an error printed it (see printed).
+function lineIn(project: string, root: string, p: Place, loose?: () => string[]): { file: string; lineText: string; row: string } | null {
+  if (!Number.isInteger(p.line) || p.line < 1) return null;
+  const f = theirFile(project, root, p.path, loose);
+  if (!f || p.line > f.rows.length) return null;
+  return { file: f.file, lineText: label(f.rows[p.line - 1], LINE_MAX), row: f.rows[p.line - 1] };
+}
+
+/** One line in a file the person wrote, inside the project: the same rules as every place found here. */
+export function projectLine(project: string, path: string, line: number): { file: string; lineText: string; text: string } | null {
+  let root: string;
+  try { root = realpathSync(project); } catch { return null; }
+  const hit = lineIn(project, root, { path, line, at: 0 });
+  if (!hit) return null;
+  return { file: hit.file, lineText: hit.lineText, text: hit.row };
+}
+
+/** The lines of a file the person wrote, inside the project (for finding where something is in it). */
+export function projectRows(project: string, path: string): { file: string; rows: string[] } | null {
+  let root: string;
+  try { root = realpathSync(project); } catch { return null; }
+  return theirFile(project, root, path);
 }
 
 function sentence(text: string, last: boolean): string | null {
   // TAP (Node's test runner) gives the failure's own words: error: 'Pressing Join ... answered 404'
-  const tap = /^(?:TAP version|not ok )/m.test(text) ? /^\s*(?:error|message):\s*'(.+)'\s*$/m.exec(text) : null;   // only in TAP output, never in a project's own log lines
-  if (tap) return tap[1];
+  const isTap = /^(?:TAP version|not ok )/m.test(text);
+  const tap = isTap ? /^\s*(?:error|message):\s*'(.+)'\s*$/m.exec(text) : null;   // only in TAP output, never in a project's own log lines
+  // "test failed" is Node's own word for a test file that could not even load (Node 18 and 20); the real words are in the
+  // error it printed above, as "# Error: ..." comment lines.
+  if (tap && tap[1] !== "test failed") return tap[1];
+  if (tap) {
+    const printed = text.split("\n").map((l) => l.trim().replace(/^#\s?/, "")).find((l) => ERROR_LINE.test(l) && !/^at\s/.test(l));
+    return printed ?? tap[1];
+  }
   // The same report when the assertion has no words of its own: "error: |-" and the message on the lines under it.
   if (/^(?:TAP version|not ok )/m.test(text)) {
     const block = /^(\s*)(?:error|message):\s*[|>][+-]?[ \t]*\n((?:\1[ \t]+.*\n?)+)/m.exec(text);
@@ -154,24 +196,41 @@ export function locateProblem(output: string, project: string, from: string, opt
   const text = output.replace(ANSI, "").replace(/\r/g, "");
   let root: string;
   try { root = realpathSync(project); } catch { return null; }
+  let files: string[] | null = null;
+  const loose = opts.loose ? () => (files ??= projectFiles(root)) : undefined;
+  // In loose mode a bare file name could be another project's file of that name: it counts only when the error prints that
+  // line of it.
+  const unsure = (path: string, row: string) => !!loose && bare(path) && !printed(text, row);
+  // pytest's report has its own shape: the deepest frame of the first failure, else the failing test's own definition.
+  const pt = readPytest(text);
+  if (pt) {
+    const said = pt.message ?? sentence(text, true) ?? "";
+    for (const p of pt.places) {
+      const hit = lineIn(project, root, { path: p.path, line: p.line, at: 0 }, loose);
+      if (hit && !unsure(p.path, hit.row)) return { kind: "line", file: hit.file, line: p.line, lineText: hit.lineText, message: tidy(said), from };
+    }
+    for (const t of pt.tests) {
+      const name = t.name.replace(/[^\w]/g, "");
+      const f = name ? theirFile(project, root, t.path, loose) : null;
+      const n = f ? f.rows.findIndex((r) => new RegExp(`^\\s*(?:async\\s+)?def\\s+${name}\\s*\\(`).test(r)) + 1 : 0;
+      if (f && n > 0 && !unsure(t.path, f.rows[n - 1])) return { kind: "line", file: f.file, line: n, lineText: label(f.rows[n - 1], LINE_MAX), message: tidy(said), from };
+    }
+    return said ? { kind: "message", message: tidy(said), from } : null;
+  }
   const { list, python } = places(text);
   const ordered = (python ? [...list].reverse() : list).sort((a, b) => Number(!!a.declared) - Number(!!b.declared));   // Python prints the deepest frame last; a test's declaration only if nothing better
   const general = sentence(text, python);
-  let files: string[] | null = null;
-  const loose = opts.loose ? () => (files ??= projectFiles(root)) : undefined;
   const imp = loose ? FAILED_IMPORT.exec(text) : null;
   if (imp && !bare(imp[2])) {   // a bare file name has no printed line to confirm it
     const [said, wants, path] = imp;
-    const file = lineIn(project, root, { path, line: 1, at: imp.index }, loose);   // the file, checked like any other place
-    let rows: string[] = [];
-    try { if (file) rows = readFileSync(join(root, file.file), "utf8").split("\n"); } catch { rows = []; }
-    const at = rows.flatMap((r, i) => (r.includes(`"${wants}"`) || r.includes(`'${wants}'`) ? [i + 1] : []));
-    if (file && at.length === 1) return { kind: "line", file: file.file, line: at[0], lineText: label(rows[at[0] - 1], LINE_MAX), message: tidy(said), from };
+    const f = theirFile(project, root, path, loose);   // the file, checked like any other place
+    const at = f ? f.rows.flatMap((r, i) => (r.includes(`"${wants}"`) || r.includes(`'${wants}'`) ? [i + 1] : [])) : [];
+    if (f && at.length === 1) return { kind: "line", file: f.file, line: at[0], lineText: label(f.rows[at[0] - 1], LINE_MAX), message: tidy(said), from };
   }
   for (const p of ordered) {
     const hit = lineIn(project, root, p, loose);
     if (!hit) continue;
-    if (loose && bare(p.path) && !printed(text, hit.row)) continue;   // it could be another project's file of that name
+    if (unsure(p.path, hit.row)) continue;   // it could be another project's file of that name
     const message = p.message ?? general ?? "";
     return { kind: "line", file: hit.file, line: p.line, ...(p.column !== undefined ? { column: p.column } : {}), lineText: hit.lineText, message: tidy(message), from };
   }

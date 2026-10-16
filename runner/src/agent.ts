@@ -4,7 +4,7 @@
 
 import { runCommand, shq } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event, Problem } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
@@ -12,6 +12,7 @@ import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
+import { differentTaskPrompt, endingOf, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { APPROVAL_TIMEOUT_MS, EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS } from "./models.ts";
@@ -24,8 +25,10 @@ import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
+import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
-import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
+import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
+import { readDeployFailure } from "./ship/buildlog.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
@@ -39,9 +42,14 @@ import { aboutLine, inspectProject } from "./proof/intake.ts";
 import { cloneTarget } from "./proof/clone.ts";
 import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
 import { detectProject } from "./proof/detect.ts";
+import { looksPython } from "./proof/python.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
+
+// Point at the problem and Rescue, when the last Vercel deploy is what failed.
+const DEPLOY_FAILED = "Your last Vercel deploy failed";
+const DEPLOY_EVIDENCE = "Your last Vercel deploy";
 
 /** The saved receipt picture's file name. Checkpoint numbers repeat from one project to the next, so the project is part of the name. */
 export const receiptPictureName = (project: string, checkpoint: string): string => `${createHash("sha1").update(resolve(project)).digest("hex").slice(0, 8)}-${checkpoint}.jpg`;
@@ -50,7 +58,8 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null> };
+// noInstall: check the project as it is, without installing its packages first (Point at the problem, your turn).
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -75,6 +84,8 @@ export type RunnerOptions = {
   // Writes the "why" bullets after a task. Without it, Explain is off.
   // Putting a preview and then the live site up. Without it, shipping beyond the safety check is off.
   deployer?: Deployer;
+  // Reading why the last Vercel deploy failed (read only), for Point at the problem and Rescue. Without it, off.
+  deployLogs?: DeployLogReader;
   browser?: typeof browserCheck;
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
@@ -104,7 +115,31 @@ type Session = { agent: string; abort: AbortController; pending: Map<string, (al
 const newSession = (agent: string, abort: AbortController, taskAllowed: Set<string> = new Set()): Session => ({ agent, abort, pending: new Map(), taskAllowed, shells: new Set() });
 type StartCmd = Extract<Command, { type: "agent.start" }>;
 // resumeSession: carry on Claude's conversation. taskAllowed: what a Drive plan's steps share (see Session).
-type RunOpts = { resumeSession?: string; taskAllowed?: Set<string> };
+// For a follow up or a Try again (where the prompt is not what the person typed): label, the timeline's name for the task;
+// said, the person's own words (memory learns only from these); asked, what the reviewer is told was asked.
+// What a later follow up on this task carries on from (when the prompt is not the request itself, as for a follow up or a
+// Drive step): goal, what this task is for; first, the conversation's first request (an off the record follow up is told it
+// again); followBudgetUsd, what a follow up on it may spend (a Drive step's own budget is only what the plan had left).
+// step: which step of a Drive plan this run is, so its explanation can say so.
+type RunOpts = { resumeSession?: string; taskAllowed?: Set<string>; label?: string; said?: string; asked?: string; goal?: string; first?: string; followBudgetUsd?: number; step?: { index: number; title: string } };
+// What a follow up needs from the agent's last task. Kept in memory only, never on disk, and replaced by each new task.
+// sessionId is never kept for an off the record task: nothing of it was saved, so nothing can be continued. ending: how it
+// ended, so Try again says it truly. undone: Undo put the project back, so the conversation no longer matches the files.
+type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean };
+type Step1 = NonNullable<RunOpts["step"]>;
+
+// "Your turn": a proven fix that made the same small change in two places can be offered to the person (teach.ts). offer: the
+// task's receipt checkpoint, the snapshot just after it, and the two places. turn: what the person was given after a press.
+type TeachOffer = { checkpoint: string; afterId: string; repeat: Repeat };
+type TeachTurn = { checkpoint: string; start: string; restore: string; hunk: Hunk };
+// The place to ring for a hunk: its first line with words on it, as the file shows it now (side "after") or as it was ("before").
+// Either way the place starts at the same line: lines above it are the same before and after.
+const placeOf = (h: Hunk, side: "before" | "after"): ChangeAt => {
+  const rows = side === "after" ? h.after : h.before;
+  const i = Math.max(0, rows.findIndex((r) => /\S/.test(r)));
+  return { file: h.file, line: h.afterAt + i, lineText: makeLabel(rows[i] ?? "", 200) };
+};
+const shown = (rows: string[]) => makeLabel(rows.map((r) => r.trim()).join(" "), 160);
 
 // What "the same action" means for a yes that covers the rest of a task: the same tool, the same thing it acts on (the exact
 // command, address, file, or for other tools the exact input), and the same reason Companion asked. Anything else asks again.
@@ -172,6 +207,9 @@ export class AgentRunner {
   // The last proof result for each project, and which saved version it was for. Shipping needs a pass on the exact version.
   private rulesSaid = new Set<string>();
   private lastProof = new Map<string, { verdict: string; snapshot: string }>();   // "Carry on" pressed before the loop is waiting for it
+  private teachOffers = new Map<string, TeachOffer>();   // project -> the latest proven fix that made the same change twice
+  private teaching = new Map<string, TeachTurn>();       // project -> the place the person was asked to change
+  private lastTask = new Map<string, LastTask>();   // agent -> its last task, for a follow up or Try again
 
   // Take the wheel: stop the current step now; the plan waits for the person to resume.
   private requestPause(agent: string, reason: string, path?: string) {
@@ -256,20 +294,23 @@ export class AgentRunner {
     const rows = this.o.log.list(cmd.project, 100);
     this.emit({ type: "recap.ready", project: cmd.project, lines: recapLines(rows, new Date(cmd.since).toISOString(), pending) } as never);
   }
-  // Explain: asks the fast model why the task did what it did. A problem here is never a problem for the task.
-  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string }, checkpoint: string, signal: AbortSignal) {
+  // Explain: asks the fast model why the task did what it did, from the real change. A problem here is never a problem for
+  // the task. Its cost is the person's own, so it counts in today's spending, and it is not asked for once the day's limit is reached.
+  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1) {
     if (!this.o.explainer || input.changed.length === 0) return;
     try {
       const m = this.memoryFor(cmd.project);
       if (m && !m.explainEnabled()) return;
+      if (this.room(cmd.project) <= 0) return;
       const ac = new AbortController();
       const stop = () => ac.abort();
       signal.addEventListener("abort", stop, { once: true });
       const timer = setTimeout(stop, 45_000);
       try {
         const r = await this.o.explainer(explainRequest(input), ac.signal);
+        if (Number.isFinite(r.costUsd) && r.costUsd > 0) this.ledger.add(cmd.project, r.costUsd);
         const e = parseExplain(r.text);
-        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), usdEstimate: r.costUsd } as never);
+        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
@@ -365,6 +406,8 @@ export class AgentRunner {
       case "bisect.start": return this.bisectStart(cmd);
       case "bisect.undo": return this.bisectUndo(cmd);
       case "error.explain": return this.errorExplain(cmd);
+      case "teach.try": return this.teachTry(cmd);
+      case "teach.check": return this.teachCheck(cmd);
       case "diagram.ask": return this.diagramAsk(cmd);
       case "project.inspect": return this.projectInspect(cmd.project);
       case "project.install": return this.projectInstall(cmd.project);
@@ -382,13 +425,9 @@ export class AgentRunner {
         if (this.pauseReq.has(cmd.agent)) { this.resumeEarly.add(cmd.agent); return; }   // paused, but the step is still winding down
         this.fail("The agent is not paused.", cmd.agent); return;
       }
-      case "loop.choose": {
-        const r = this.choices.get(cmd.agent);
-        if (!r) { this.fail("Nothing is waiting for an answer.", cmd.agent); return; }
-        this.choices.delete(cmd.agent); r(cmd.choice); return;
-      }
-      case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.choices.get(cmd.agent)?.("interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
-      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.choices.get(a)?.("interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "loop.choose": if (!this.answerChoice(cmd.agent, cmd.choice)) this.fail("Nothing is waiting for an answer.", cmd.agent); return;
+      case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.answerChoice(cmd.agent, "interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
+      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "spending.show": this.spendingState(cmd.project); return;
       case "spending.set": this.setDailyLimit(cmd); return;
       case "approval.resolve": {
@@ -404,6 +443,10 @@ export class AgentRunner {
         if (this.projectInUse(cmd.project)) { this.fail("Something is still working on this project. Wait for it to finish, or press Stop, then undo."); return; }
         try {
           const r = await this.store(cmd.project).restore(cmd.checkpoint);
+          // The files are not what any offer or turn was made for any more.
+          this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
+          // The files went back, so no conversation in this project matches them any more: nothing there can be followed up.
+          for (const [a, t] of this.lastTask) if (resolve(t.project) === resolve(cmd.project)) this.lastTask.set(a, { ...t, undone: true });
           this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone } as never);
         } catch (e) {
           const m = String((e as Error).message ?? e);
@@ -416,8 +459,56 @@ export class AgentRunner {
         this.emit({ type: "tasks.list", project: cmd.project, tasks } as never);
         return;
       }
-      case "agent.send": return; // follow ups arrive with the real engine
+      case "agent.send": await this.followUp(cmd); return;
     }
+  }
+
+  // "Fixes it with you": a follow up (what is still wrong) or Try again (the same request, with what failed) carries on the
+  // agent's last task as a new task of its own: a snapshot first, the same safety rules, the proof ladder, a receipt, cost
+  // booked to the day and the daily limit (all in run). Off the record nothing was saved, so it starts afresh and is told the
+  // request again.
+  private async followUp(cmd: Extract<Command, { type: "agent.send" }>): Promise<void> {
+    const retry = cmd.retry === true;
+    const text = clip(String(cmd.text ?? "").replace(/\s+/g, " ").trim(), MAX_FOLLOW_UP_CHARS);
+    if (!retry && !text) { this.fail("Say what is still wrong, for example: the button is still grey.", cmd.agent); return; }
+    if (this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.choices.has(cmd.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", cmd.agent); return; }
+    const last = this.lastTask.get(cmd.agent);
+    if (!last) { this.fail("There is no finished task to follow up on. Start a task first.", cmd.agent); return; }
+    if (resolve(last.project) !== resolve(cmd.project)) { this.fail("That task was in another project. Start a new task here instead.", cmd.agent); return; }
+    if (last.undone) { this.fail("That task was undone, so there is nothing to follow up on. Start a new task instead.", cmd.agent); return; }
+    if (this.projectInUse(last.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return; }
+    const off = last.offTheRecord;
+    const prompt = retry
+      ? (off ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
+      : (off ? freshFollowUpPrompt(last.first, text) : followUpPrompt(text));
+    const start: StartCmd = { v: PROTOCOL_VERSION, id: cmd.id, type: "agent.start", project: last.project, agent: cmd.agent, mode: last.mode, prompt, model: last.model, budgetUsd: last.budgetUsd, ...(off ? { offTheRecord: true } : {}) };
+    const goal = retry ? last.goal : text;
+    // The reviewer reads what was asked, never the conversation: the first request, then what this turn is for.
+    const asked = last.first === goal ? goal : `${last.first}\n\nThen: ${goal}`;
+    await this.run(start, { resumeSession: off ? undefined : last.sessionId, label: retry ? `Try again: ${last.goal}` : `Follow up: ${text}`, said: retry ? "" : text, asked, goal, first: last.first, followBudgetUsd: last.budgetUsd });
+  }
+
+  // Answer the loop card that is waiting, and forget it, so a card that was answered never makes the agent look busy.
+  private answerChoice(agent: string, choice: string): boolean {
+    const r = this.choices.get(agent);
+    if (!r) return false;
+    this.choices.delete(agent);
+    r(choice);
+    return true;
+  }
+
+  // The fix loop breaker for a single task: the same card a Drive plan shows (index 0: no step number). The task stays open
+  // until the person answers; Stop and Stop everything answer it too.
+  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal): Promise<string> {
+    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options: STUCK_OPTIONS } as never);
+    this.state(agent, "needsYou");
+    return new Promise<string>((res) => {
+      if (signal.aborted) { res("interrupt"); return; }
+      const done = (c: string) => { signal.removeEventListener("abort", onStop); if (this.choices.get(agent) === done) this.choices.delete(agent); res(c); };
+      const onStop = () => done("interrupt");
+      signal.addEventListener("abort", onStop, { once: true });
+      this.choices.set(agent, done);
+    });
   }
 
   // Stop: every open question is a no, and nothing allowed "for the rest of this task" is allowed any more.
@@ -481,8 +572,11 @@ export class AgentRunner {
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
     const store = this.store(cmd.project);
-    const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(cmd.prompt);
-    const recalled = this.learnAndRecall(cmd.project, cmd.prompt, cmd.offTheRecord);
+    const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(opts.label ?? cmd.prompt);
+    const recalled = this.learnAndRecall(cmd.project, opts.said ?? cmd.prompt, cmd.offTheRecord);
+    // A new task replaces the last one: whatever happens to this one, a follow up never carries on an older conversation.
+    this.lastTask.delete(cmd.agent);
+    const goal = opts.goal ?? cmd.prompt, first = opts.first ?? goal;
     const abort = new AbortController();
     const session = newSession(cmd.agent, abort, opts.taskAllowed);
     this.sessions.set(cmd.agent, session);
@@ -557,11 +651,17 @@ export class AgentRunner {
     let proof: "passed" | "partial" | "failed" | "skipped" = "skipped";
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
+    let stuckOffered = false;
+    const sameThree = (s: string[]) => s.length >= 3 && new Set(s.slice(-3)).size === 1;
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
+    let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
     let ok = await round(cmd.prompt, opts.resumeSession);
-    for (let tries = 1; ; tries++) {
+    // tries: this approach's tries, for the limit of three. checks: every check in this task, which is what the card is told,
+    // so work that needed a different approach is never shown as a first try.
+    for (let tries = 1, checks = 1; ; tries++, checks++) {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
+      lastAfter = after.id;
       changed = await store.diff(before.id, after.id);
       if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) break;
 
@@ -573,7 +673,8 @@ export class AgentRunner {
       const afterFiles = this.o.reviewer ? await store.readFiles(after.id, (p) => paths.has(p)) : {};
       const review = this.o.reviewer && needsReview(changed, afterFiles) ? async () => {
         const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), afterFiles];
-        const text = await this.askReviewer(cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; book(); }, offRecord);
+        // The reviewer reads what was asked, never the conversation (for a follow up, see followUp).
+        const text = await this.askReviewer(opts.asked ?? cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; book(); }, offRecord);
         return parseReview(text);
       } : undefined;
       try {
@@ -581,21 +682,35 @@ export class AgentRunner {
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
-      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries } as never);
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: checks } as never);
       this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
       if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
       proof = "failed"; status = "not_done";
       { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail }; } }
-      if (tries >= MAX_TRIES || usd >= budget) { if (usd >= budget) status = "error_max_budget_usd"; break; }
-      // Send the evidence back into the same conversation and try again.
-      const f = res.failedAt ?? res.steps.at(-1);
+      if (usd >= budget) { status = "error_max_budget_usd"; break; }
+      let next: string;
+      if (tries >= MAX_TRIES) {
+        // The fix loop breaker for a single task: the same failure three times in a row stops and asks, once per task. A
+        // Drive plan asks for itself, once per step, after the step's task has ended (drive.approve).
+        if (stuckOffered || this.driving.has(cmd.agent) || !lastFailure || !sameThree(sigs)) break;
+        stuckOffered = true;
+        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal);
+        if (choice !== "different") { if (choice === "interrupt" || abort.signal.aborted) status = "interrupted"; break; }
+        // A clearly different approach, in this same task (one undo point, one receipt), with up to three more tries.
+        tries = 0;   // checks keeps counting
+        next = offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure) : differentTaskPrompt(lastFailure);
+      } else {
+        // Send the evidence back into the same conversation and try again.
+        const f = res.failedAt ?? res.steps.at(-1);
+        const failedText = `The checks on your work failed. Please fix this and keep the change small.\n\nFailed check: ${f?.label ?? "unknown"}\nWhat happened: ${f?.detail ?? "no details"}`;
+        // Off the record there is no saved conversation to continue, so the request is said again.
+        next = offRecord ? `You were asked to do this in the project:\n${cmd.prompt}\n\nYou have already changed some of the project's files for it. ${failedText}` : failedText;
+      }
       this.state(cmd.agent, "working");
       status = "done";
-      const failedText = `The checks on your work failed. Please fix this and keep the change small.\n\nFailed check: ${f?.label ?? "unknown"}\nWhat happened: ${f?.detail ?? "no details"}`;
-      // Off the record there is no saved conversation to continue, so the request is said again.
-      ok = await round(offRecord ? `You were asked to do this in the project:\n${cmd.prompt}\n\nYou have already changed some of the project's files for it. ${failedText}` : failedText, sessionId);
+      ok = await round(next, sessionId);
       if (ok && status === "done") {
         const probe = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
         if ((await store.diff(after.id, probe.id)).length === 0) { status = "not_done"; break; } // the fix changed nothing
@@ -607,14 +722,24 @@ export class AgentRunner {
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.openTasks.delete(cmd.agent);
+    // The change itself, place by place: the first changed line for "Show me what changed", the diff for Explain, and the
+    // same small change made twice for "your turn" (only after a proven fix, outside a plan, and never off the record).
+    const hunks = changed.length ? await this.taskHunksOf(store, before.id, lastAfter, changed) : [];
+    const changedAt = changeTarget(hunks);
+    const projectKey = resolve(cmd.project);
+    const repeat = status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
+    if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat }); else if (changed.length) this.teachOffers.delete(projectKey);
     // Off the record work gets no saved picture (nothing about it is kept).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}) } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
-    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && !this.driving.has(cmd.agent)) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said }, before.id, ex.signal).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
-    const stuck = proof === "failed" && sigs.length >= 3 && new Set(sigs.slice(-3)).size === 1 ? lastFailure : undefined;
+    // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
+    // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
+    this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
+    const stuck = proof === "failed" && sameThree(sigs) ? lastFailure : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
 
@@ -929,11 +1054,100 @@ export class AgentRunner {
     } finally { this.shipping.delete(key); this.sessions.delete(sk); }
   }
 
+  // The places a task changed, from the two snapshots. Only files that may be taught from are read (teach.ts), at most 40 of
+  // them; a problem reading them only means there is nothing to show.
+  private async taskHunksOf(store: CheckpointStore, fromId: string, toId: string, changed: { file: string; kind: string }[]): Promise<Hunk[]> {
+    try {
+      const keep = new Set(changed.map((c) => c.file).filter(teachable).slice(0, 40));
+      if (keep.size === 0) return [];
+      const before = await store.readFiles(fromId, (p) => keep.has(p));
+      const after = await store.readFiles(toId, (p) => keep.has(p));
+      return taskHunks(changed.filter((c) => keep.has(c.file)), before, after);
+    } catch { return []; }
+  }
+
+  // The file a place is in, as it really is on disk: inside the project, reached through no link. Null when it is not.
+  private placeFile(project: string, file: string): string | null {
+    try {
+      const root = realpathSync(project), abs = join(root, file);
+      if (!teachable(file) || realpathSync(abs) !== abs || !statSync(abs).isFile()) return null;
+      return abs;
+    } catch { return null; }
+  }
+
+  // Your turn, on the person's press: put only the second of two identical changes back as it was (a snapshot first, so the
+  // whole fix can be put back), and say where it is, so the card can ring it. Nothing is done when anything is working on
+  // the project, when this is not the latest proven fix, or when the file changed since the fix.
+  private async teachTry(cmd: Extract<Command, { type: "teach.try" }>): Promise<void> {
+    const say = (made: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "teach.ready", project: cmd.project, checkpoint: cmd.checkpoint, made, ...extra } as never);
+    const key = resolve(cmd.project);
+    if (this.projectInUse(cmd.project)) { say(false, { reason: "Something is still working on this project. Wait for it to finish, or press Stop, then try again." }); return; }
+    const offer = this.teachOffers.get(key);
+    if (!offer || offer.checkpoint !== cmd.checkpoint) { say(false, { reason: "That fix is not the latest one any more, so there is nothing to try." }); return; }
+    const { first, second } = offer.repeat;
+    this.projectBusy.set(key, "teach");   // nothing else starts on this project while its file is rewritten
+    try {
+      const abs = this.placeFile(cmd.project, second.file);
+      const store = this.store(cmd.project);
+      const fixed = abs ? (await store.readFiles(offer.afterId, (p) => p === second.file))[second.file] : undefined;
+      const now = abs ? readFileSync(abs, "utf8") : undefined;
+      const back = now !== undefined && fixed !== undefined && now === fixed ? revertHunk(now, second) : null;
+      if (!abs || back === null) { say(false, { reason: "That file changed after my fix, so I left it alone." }); return; }
+      const restore = await store.snapshot("Before your turn: the whole fix");
+      this.ownWrite(() => writeFileSync(abs, back));
+      const start = await store.snapshot(`Your turn: ${second.file}`);
+      this.teachOffers.delete(key);
+      this.teaching.set(key, { checkpoint: cmd.checkpoint, start: start.id, restore: restore.id, hunk: second });
+      say(true, { target: placeOf(second, "before"), example: { file: first.file, line: placeOf(first, "after").line, was: shown(first.before), now: shown(first.after) }, change: { was: offer.repeat.was, now: offer.repeat.now }, restore: restore.id });
+    } catch (e) {
+      say(false, { reason: `Companion could not set that up (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
+    } finally { if (this.projectBusy.get(key) === "teach") this.projectBusy.delete(key); }
+  }
+
+  // Check my change: the project's own checks (the proof ladder, no install, no Claude) on the project as the person left it,
+  // compared with what they were given, so the tamper guard sees only their change. Stop everything ends it. What they did
+  // is judged only at their place, from the same snapshot the checks run on: an untouched place is said as that and nothing
+  // is run, so a pass that was really Companion's is never told as theirs. The rungs go out as teach.step, never as the
+  // finished task's proof.
+  private async teachCheck(cmd: Extract<Command, { type: "teach.check" }>): Promise<void> {
+    const key = resolve(cmd.project);
+    const say = (verdict: string, same: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "teach.result", project: cmd.project, checkpoint: cmd.checkpoint, verdict, same, ...extra } as never);
+    const turn = this.teaching.get(key);
+    if (!turn || turn.checkpoint !== cmd.checkpoint) { say("cancelled", false, { reason: "There is nothing of yours waiting to be checked." }); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.projectInUse(cmd.project)) { say("cancelled", false, { reason: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
+    const abort = new AbortController();
+    this.finding.set(cmd.project, { abort, agent: cmd.agent });
+    try {
+      const store = this.store(cmd.project);
+      const snap = await store.snapshot("Your turn: your change");
+      const file = turn.hunk.file;
+      const given = (await store.readFiles(turn.start, (p) => p === file))[file];
+      const theirs = (await store.readFiles(snap.id, (p) => p === file))[file];
+      const now = theirs ?? (existsSync(join(cmd.project, file)) ? undefined : null);   // null: they deleted the file
+      if (given === undefined || now === undefined) { say("cancelled", false, { reason: "Companion could not read that file, so your change was not checked." }); return; }
+      const did = turnChange(given, now, turn.hunk);
+      if (did === "unchanged") { say("cancelled", false, { reason: "You have not changed that line yet." }); return; }
+      this.state(cmd.agent, "checking");
+      const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never);
+      let res: LadderResult = { verdict: "cancelled", steps: [] };
+      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
+      catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
+      if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
+      const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
+      say(res.verdict, did === "same", { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
+      this.state(cmd.agent, res.verdict === "failed" ? "needsYou" : "idle");
+    } catch (e) {
+      say("cancelled", false, { reason: `Companion could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });
+      this.state(cmd.agent, "idle");
+    } finally { this.finding.delete(cmd.project); }
+  }
+
   // Point at the problem: check the project exactly as it is (no Claude, nothing changed) and say where it fails,
   // so the character can fly to that line, error or button.
   private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
     // Every press ends with problem.found, so the card never stays on "Checking".
-    const found = (verdict: string, fl?: Step, needs?: "browser") => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}) } as never);
+    // note: one plain line about something that could not be checked (the Vercel tool missing, say), with what to do.
+    const found = (verdict: string, fl?: Pick<Step, "label" | "detail" | "problem">, needs?: "browser", note?: string) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}), ...(note ? { note } : {}) } as never);
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectBusy.has(resolve(cmd.project))) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });
@@ -946,8 +1160,20 @@ export class AgentRunner {
       try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
+      const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
+      // It works here. In a folder linked to Vercel, the last deploy may be where it fails: read its build log (read
+      // only, through the person's own Vercel tool) and point at the line that stopped it.
+      // A Python check that could not run because a package is not installed: the first thing to install, with the
+      // command (Point at the problem never installs anything).
+      const notes: string[] = res.verdict === "passed_with_gaps" && res.gaps?.length ? [res.gaps[0]] : [];
+      if (this.o.deployLogs && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
+        const d = await readDeployFailure(cmd.project, this.o.deployLogs, abort.signal);
+        if (abort.signal.aborted || d?.state === "cancelled") { found("cancelled"); this.state(cmd.agent, "idle"); return; }
+        if (d?.state === "failed") { found("failed", { label: DEPLOY_FAILED, detail: d.summary, problem: d.problem }, needs); this.state(cmd.agent, "needsYou"); return; }
+        if (d?.state === "unknown") notes.push(d.reason);
+      }
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      found(res.verdict, fl, res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined);
+      found(res.verdict, fl, needs, notes.length ? notes.join(" ") : undefined);
       this.state(cmd.agent, fl ? "needsYou" : "idle");
     } catch (e) {
       this.fail(`Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
@@ -996,6 +1222,10 @@ export class AgentRunner {
     if (!this.o.bisect) { result("cannot_check", { detail: "Finding which task broke it is not available here." }); return; }
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { result("busy", { detail: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
     if (!existsSync(cmd.project)) { result("failed", { detail: "That project folder is not there any more." }); return; }
+    // A Python project is checked with its own virtual environment, which a private copy does not have, and its package lists
+    // are not compared between versions (packagesKey reads package.json and lockfiles only): an earlier version could pass or
+    // fail only because of the packages, and an innocent task would be blamed. So no answer is given for one yet.
+    if (!existsSync(join(cmd.project, "package.json")) && looksPython(cmd.project)) { result("cannot_check", { detail: "Finding which task broke it works for JavaScript and TypeScript projects for now, not Python ones. Nothing was changed." }); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });   // Stop and Stop everything end it, and nothing else runs in the project meanwhile
     const key = resolve(cmd.project);
@@ -1066,6 +1296,9 @@ export class AgentRunner {
     try {
       const r = await this.store(cmd.project).undoOne(rec.before, rec.after, rec.label);
       this.bisected.delete(key);
+      // As with Undo: the files are not what any offer, turn or conversation in this project was made for any more.
+      this.teachOffers.delete(key); this.teaching.delete(key);
+      for (const [a, t] of this.lastTask) if (resolve(t.project) === key) this.lastTask.set(a, { ...t, undone: true });
       done(true, { reverted: [...r.reverted, ...r.env], safety: r.safetyCheckpoint });
     } catch (e) {
       const m = String((e as Error).message ?? e);
@@ -1191,6 +1424,13 @@ export class AgentRunner {
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
       if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
       const evidence = res.steps.map((x) => ({ label: x.label, status: x.status, detail: x.detail }));
+      // A project linked to Vercel: why its last deploy failed is evidence too (read only, the person's own Vercel tool).
+      if (this.o.deployLogs) {
+        const d = await readDeployFailure(cmd.project, this.o.deployLogs, st.abort.signal);
+        if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+        if (d?.state === "failed") evidence.push({ label: DEPLOY_EVIDENCE, status: "failed", detail: d.evidence });
+        else if (d?.state === "unknown") evidence.push({ label: DEPLOY_EVIDENCE, status: "skipped", detail: d.reason });
+      }
       this.state(cmd.agent, "thinking");
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
@@ -1243,10 +1483,13 @@ export class AgentRunner {
         // Off the record nothing of the planning conversation was saved, so each step starts afresh and is told the goal again.
         const stepCmd = (p: string): StartCmd => ({ v: PROTOCOL_VERSION, id: `${cmd.id}-s${index}`, type: "agent.start", project: plan.project, agent: cmd.agent, mode: "drive", prompt: plan.offTheRecord ? freshStepPrompt(plan.goal ?? "", p) : p, model: plan.model, budgetUsd: remaining, ...(plan.offTheRecord ? { offTheRecord: true } : {}) });
         const resumeAt = () => (plan.offTheRecord ? undefined : session);
+        // A follow up after the plan carries on from this step: its title (never the step's instructions), the plan's goal,
+        // and the plan's whole budget (a step's own budget is only what the plan had left).
+        const carry = { goal: title, first: plan.goal?.replace(/\s+/g, " ").trim() || title, followBudgetUsd: plan.budgetUsd };
         let prompt = stepPrompt(index, total, title);
         let r: Awaited<ReturnType<AgentRunner["run"]>>;
         for (;;) {
-          r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed });
+          r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
           session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           // Paused in the middle of the step: wait, then carry on with the same step.
           if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
@@ -1259,9 +1502,9 @@ export class AgentRunner {
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
           this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck, options: STUCK_OPTIONS } as never);
           this.state(cmd.agent, "needsYou");
-          const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));
+          const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));   // answerChoice forgets it once answered
           if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt(), taskAllowed });
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }
@@ -1273,6 +1516,7 @@ export class AgentRunner {
     } finally {
       watcher.stop(); this.watchers.delete(cmd.agent); this.pauseReq.delete(cmd.agent); this.resumers.delete(cmd.agent); this.resumeEarly.delete(cmd.agent);
       this.driving.delete(cmd.agent);
+      this.choices.delete(cmd.agent);   // nothing of the plan's is left waiting for an answer
       taskAllowed.clear(); if (this.planAllowed.get(cmd.agent) === taskAllowed) this.planAllowed.delete(cmd.agent);
     }
     this.emit({ type: "drive.done", agent: cmd.agent, status, completed, total, usdEstimate: Math.round(spent * 1e6) / 1e6 } as never);

@@ -1,0 +1,42 @@
+Vercel CLI 53.4.0
+2026-10-15T09:41:00.000Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-15T09:41:00.053Z  Build machine configuration: 2 cores, 8 GB
+2026-10-15T09:41:00.106Z  Cloning github.com/sam-builds/site (Branch: main, Commit: a81c0de)
+2026-10-15T09:41:00.159Z  Cloning completed: 301.000ms
+2026-10-15T09:41:00.212Z  Running "vercel build"
+2026-10-15T09:41:00.265Z  Vercel CLI 48.2.9
+2026-10-15T09:41:00.318Z  Installing dependencies...
+2026-10-15T09:41:00.371Z  
+2026-10-15T09:41:00.424Z  added 211 packages in 6s
+2026-10-15T09:41:00.477Z  Running "npm run build"
+2026-10-15T09:41:00.530Z  
+2026-10-15T09:41:00.583Z  > site@0.0.0 build
+2026-10-15T09:41:00.636Z  > vite build
+2026-10-15T09:41:00.689Z  
+2026-10-15T09:41:00.742Z  vite v8.3.3 building client environment for production...
+2026-10-15T09:41:00.795Z  transforming...
+2026-10-15T09:41:00.848Z  ✓ 4 modules transformed.
+2026-10-15T09:41:00.901Z  ✗ Build failed in 33ms
+2026-10-15T09:41:00.954Z  error during build:
+2026-10-15T09:41:01.007Z  Build failed with 1 error:
+2026-10-15T09:41:01.060Z  
+2026-10-15T09:41:01.113Z  [31m[UNRESOLVED_IMPORT] [0mCould not resolve './components/Navbar' in src/main.ts
+2026-10-15T09:41:01.166Z     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/main.ts:1:24 [38;5;246m][0m
+2026-10-15T09:41:01.219Z     [38;5;246m│[0m
+2026-10-15T09:41:01.272Z   [38;5;246m1 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m [0m[38;5;249mh[0m[38;5;249me[0m[38;5;249ma[0m[38;5;249md[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249m [0m[38;5;249m}[0m[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m"./components/Navbar"[38;5;249m;[0m
+2026-10-15T09:41:01.325Z   [38;5;240m  │[0m                        ──────────┬─────────  
+2026-10-15T09:41:01.378Z   [38;5;240m  │[0m                                  ╰─────────── Module not found.
+2026-10-15T09:41:01.431Z   [38;5;240m  │[0m 
+2026-10-15T09:41:01.484Z   [38;5;240m  │[0m [38;5;115mHelp[0m: 'src/main.ts' is imported by the following path:
+2026-10-15T09:41:01.537Z   [38;5;240m  │[0m         - src/main.ts
+2026-10-15T09:41:01.590Z   [38;5;240m  │[0m         - index.html
+2026-10-15T09:41:01.643Z  [38;5;246m───╯[0m
+2026-10-15T09:41:01.696Z  
+2026-10-15T09:41:01.749Z      at aggregateBindingErrorsIntoJsError (/vercel/path0/node_modules/rolldown/dist/shared/error-Dsqzw0Oa.mjs:49:22)
+2026-10-15T09:41:01.802Z      at unwrapBindingResult (/vercel/path0/node_modules/rolldown/dist/shared/error-Dsqzw0Oa.mjs:19:128)
+2026-10-15T09:41:01.855Z      at #build (/vercel/path0/node_modules/rolldown/dist/shared/rolldown-D_vNlorD.mjs:133:34) {
+2026-10-15T09:41:01.908Z    errors: [Getter/Setter]
+2026-10-15T09:41:01.961Z  }
+2026-10-15T09:41:02.014Z  Error: Command "npm run build" exited with 1
+2026-10-15T09:41:02.067Z  Exiting build container
+status	● Error

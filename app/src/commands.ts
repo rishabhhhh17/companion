@@ -2,6 +2,8 @@
 import type { Command } from "../../protocol/index.ts";
 // Model ids live in one place, with the runner's (T10).
 import { MODELS } from "../../runner/src/models.ts";
+// A follow up is cut to the same length the runner keeps.
+import { MAX_FOLLOW_UP_CHARS } from "../../runner/src/followup.ts";
 
 let n = 0;
 const id = () => `ui${Date.now().toString(36)}${++n}`;
@@ -12,6 +14,13 @@ export const AGENT = "builder-1";
 
 export const startTask = (project: string, prompt: string, offTheRecord = false): Command =>
   ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: DEFAULT_MODEL, budgetUsd: DEFAULT_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
+// Fixes it with you: a follow up on the last task (what is still wrong), or Try again (the same request, with what failed).
+// Each one is a new checked task in the same project; the runner refuses it for any other.
+export const followUp = (project: string, text: string): Command | null => {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t ? { v: 1, id: id(), type: "agent.send", project, agent: AGENT, text: Array.from(t).slice(0, MAX_FOLLOW_UP_CHARS).join("") } : null;
+};
+export const retryTask = (project: string): Command => ({ v: 1, id: id(), type: "agent.send", project, agent: AGENT, retry: true });
 export const answerApproval = (approval: string, allow: boolean): Command =>
   ({ v: 1, id: id(), type: "approval.resolve", approval, decision: allow ? "allow" : "deny", scope: "once" });
 export const undo = (project: string, checkpoint: string): Command =>
@@ -63,10 +72,23 @@ export const startPractice = (project: string): Command =>
 export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
   ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
 
+// Show me what changed: the first changed line, opened and rung the same way Point at the problem does (point_problem in
+// Rust: the editor at that line, the light on first, a solid ring only where the line is confirmed on screen).
+export type ChangeAt = { file: string; line: number; lineText: string };
+export const pointChange = (project: string, at: ChangeAt, message: string): { project: string; problem: { kind: "line"; file: string; line: number; lineText: string; message: string; from: "change" } } =>
+  ({ project, problem: { kind: "line", file: at.file, line: at.line, lineText: at.lineText, message, from: "change" } });
+// Your turn: the person makes the second of two identical changes, then asks for the project's checks on it.
+export const tryNextOne = (project: string, checkpoint: string): Command => ({ v: 1, id: id(), type: "teach.try", project, checkpoint });
+export const checkMyChange = (project: string, checkpoint: string): Command => ({ v: 1, id: id(), type: "teach.check", project, agent: AGENT, checkpoint });
+
 // Guided lessons: the runner keeps the place and checks each step; the app draws the ring and notices the click.
+/** The lesson the runner makes from the project's own missing settings (runner/src/lessongen.ts SETTINGS_LESSON). */
+export const SETTINGS_LESSON_ID = "from-project-settings";
 export const walkList = (project: string): Command => ({ v: 1, id: id(), type: "walk.list", project });
 export const walkStart = (project: string, lesson: string, fresh = false): Command => ({ v: 1, id: id(), type: "walk.start", project, lesson, ...(fresh ? { fresh: true } : {}) });
-export const walkActed = (walk: string, how: "clicked" | "done_for_you", index?: number): Command => ({ v: 1, id: id(), type: "walk.acted", walk, how, ...(index !== undefined ? { index } : {}) });
+// clicked and done_for_you: the ring. pressed: the person's own "I did it" on the card, the only one that can count a step
+// the project proves as not working (a ring click comes before the paste and the save).
+export const walkActed = (walk: string, how: "clicked" | "done_for_you" | "pressed", index?: number): Command => ({ v: 1, id: id(), type: "walk.acted", walk, how, ...(index !== undefined ? { index } : {}) });
 export const walkAnswer = (walk: string, worked: boolean, index?: number): Command => ({ v: 1, id: id(), type: "walk.answer", walk, worked, ...(index !== undefined ? { index } : {}) });
 export const walkSkip = (walk: string, index?: number): Command => ({ v: 1, id: id(), type: "walk.skip", walk, ...(index !== undefined ? { index } : {}) });
 export const walkStop = (walk: string): Command => ({ v: 1, id: id(), type: "walk.stop", walk });

@@ -78,6 +78,10 @@ describe("a command that leaves things behind or never ends", () => {
     const r = await runCommand("yes line | head -c 20000000; echo THE-END", { cwd: tmp(), timeoutMs: 20000 });
     expect(r.stdout.length).toBeLessThanOrEqual(8000); expect(r.stdout).toContain("THE-END");
   }, 30000);
+  test("a command may keep a longer end of its output (a build log), still with a limit", async () => {
+    const r = await runCommand("yes 0123456789 | head -c 100000; echo THE-END", { cwd: tmp(), timeoutMs: 10000, keep: 40000 });
+    expect(r.stdout.length).toBeGreaterThan(30000); expect(r.stdout.length).toBeLessThanOrEqual(40000); expect(r.stdout).toContain("THE-END");
+  });
 });
 
 describe("starting a server", () => {

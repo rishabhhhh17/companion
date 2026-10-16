@@ -9,6 +9,12 @@ export type PermissionKind = "screen_recording" | "accessibility" | "microphone"
  * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */
 export type PermissionState = "allowed" | "off" | "not_allowed" | "not_asked" | "restricted" | "unknown";
 
+// Your turn teaching (offer to make the second of two identical changes yourself). Off unless the person turns it on, kept
+// only in this Mac's page storage; with no storage it stays off.
+const YOUR_TURN_KEY = "companion.yourTurn";
+export function yourTurnOn(): boolean { try { return localStorage.getItem(YOUR_TURN_KEY) === "on"; } catch { return false; } }
+export function setYourTurn(on: boolean): void { try { localStorage.setItem(YOUR_TURN_KEY, on ? "on" : "off"); } catch { /* storage may be unavailable */ } }
+
 /** The exact words the app is given to delete everything. A different string deletes nothing. */
 export const DELETE_PHRASE = "delete everything";
 
@@ -91,3 +97,20 @@ export function submitKey(raw: string): { clear: true; send: string | null; prob
   const problem = keyLooksRight(raw);
   return { clear: true, send: problem ? null : raw.trim(), problem };
 }
+
+// ---- screen sharing and calls (rule 7) ----
+/** Both on unless the person turned them off; the app keeps them (app/src-tauri/src/presentation.rs). */
+export type Presentation = { hideFromSharing: boolean; quietOnCalls: boolean };
+export const PRESENTATION_DEFAULT: Presentation = { hideFromSharing: true, quietOnCalls: true };
+/** What the app answered, read safely: anything that is not a clear "off" counts as on. */
+export function presentationFrom(v: unknown): Presentation {
+  const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
+  return { hideFromSharing: o.hideFromSharing !== false, quietOnCalls: o.quietOnCalls !== false };
+}
+
+// ---- Show me on all screens ----
+/** Off unless the person turns it on: Show me looks only at the display under the mouse pointer (product doc sections 5
+ *  and 10). On, the same press looks at every display, with the light on first and secrets covered on each. */
+const ALL_SCREENS_KEY = "companion.showmeAllScreens";
+export function allScreensOn(): boolean { try { return localStorage.getItem(ALL_SCREENS_KEY) === "1"; } catch { return false; } }
+export function setAllScreens(on: boolean) { try { localStorage.setItem(ALL_SCREENS_KEY, on ? "1" : "0"); } catch { /* storage may be unavailable */ } }

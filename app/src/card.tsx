@@ -1,16 +1,16 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
-import { aimDecision, notSureWords } from "./pointer.ts";
+import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, bisectLines, canBisect, ehLines } from "./model.ts";
+import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, MemoryLine, Spending } from "./model.ts";
+import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
@@ -29,6 +29,34 @@ const lastSeen = (): number => { try { return Number(localStorage.getItem(SEEN_K
 const touch = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); } catch { /* storage may be unavailable */ } };
 // While a person is composing text (Japanese, Chinese, Korean...) Enter and Esc belong to the input method, not to us.
 const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
+
+// Fixes it with you: under the receipt, one line to say what is still wrong (Enter sends), and Try again after a task that
+// was not done. Each one runs as a new checked task. It never takes keyboard focus by itself.
+function FollowUpBox({ project, retry, sending, onSent }: { project: string; retry: boolean; sending: boolean; onSent: () => void }) {
+  const [text, setText] = useState("");
+  const sendIt = () => {
+    const c = followUp(project, text);
+    if (!c || sending) return;
+    onSent(); void send(c); setText("");
+  };
+  return (
+    <div className="followup">
+      {retry && (
+        <div className="row">
+          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(); void send(retryTask(project)); }}>{S.tryAgain}</button>
+          <span className="muted">{S.tryAgainHelp}</span>
+        </div>
+      )}
+      <div className="row">
+        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={S.followUpPlaceholder} aria-label={S.followUpLabel}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); sendIt(); } }} />
+        <button className="btn" type="button" disabled={sending || !text.trim()} onClick={sendIt}>{sending ? S.followUpSending : S.followUpSend}</button>
+      </div>
+      <div className="line muted">{S.followUpHelp}</div>
+    </div>
+  );
+}
 
 function ExplainBox({ e }: { e: Explain }) {
   const [picked, setPicked] = useState<number | null>(null);
@@ -129,7 +157,24 @@ function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; worki
   );
 }
 
-function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+// Screen sharing and calls (rule 7): both on unless turned off. The app keeps them (presentation.rs), so they hold from
+// the moment Companion starts, before any page has loaded.
+function PresentationRow() {
+  const [p, setP] = useState<Presentation>(PRESENTATION_DEFAULT);
+  useEffect(() => { void invoke("presentation_settings").then((v) => setP(presentationFrom(v))).catch(() => {}); }, []);
+  const change = (next: Presentation) => { setP(next); void invoke("set_presentation", { hideFromSharing: next.hideFromSharing, quietOnCalls: next.quietOnCalls }).then((v) => setP(presentationFrom(v))).catch(() => {}); };
+  return (<>
+    <h3>{S.presentationTitle}</h3>
+    <div className="line muted">{S.hideFromSharingHelp}</div>
+    <div className="line muted">{S.quietOnCallsHelp}</div>
+    <div className="row">
+      <button className="btn" type="button" aria-pressed={p.hideFromSharing} onClick={() => change({ ...p, hideFromSharing: !p.hideFromSharing })}>{S.hideFromSharingSetting}: {p.hideFromSharing ? "on" : "off"}</button>
+      <button className="btn" type="button" aria-pressed={p.quietOnCalls} onClick={() => change({ ...p, quietOnCalls: !p.quietOnCalls })}>{S.quietOnCallsSetting}: {p.quietOnCalls ? "on" : "off"}</button>
+    </div>
+  </>);
+}
+
+function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, yourTurn, setYourTurnOn, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; yourTurn: boolean; setYourTurnOn: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -138,6 +183,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
   const [speak, setSpeak] = useState(speechOn);
+  const [allScreens, setAllScreensState] = useState(allScreensOn);
   const [up, setUp] = useState<UpdateState>(foundUpdate ?? { stage: "idle" });
   const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
   const [upAuto, setUpAuto] = useState(() => { try { return localStorage.getItem("companion.updateAuto") !== "0"; } catch { return true; } });
@@ -193,8 +239,12 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
         <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
+        <button className="btn" type="button" aria-pressed={yourTurn} onClick={() => setYourTurnOn(!yourTurn)}>{S.yourTurnSetting}: {yourTurn ? "on" : "off"}</button>
       </div>
-      <div className="row"><button className="btn" type="button" onClick={onPractice}>{S.practiceAgainFromSettings}</button></div>
+      <div className="line muted">{S.yourTurnHelp}</div>
+      <div className="line muted">{S.allScreensHelp}</div>
+      <div className="row"><button className="btn" type="button" aria-pressed={allScreens} onClick={() => { const v = !allScreens; setAllScreensState(v); setAllScreens(v); }}>{S.allScreensSetting}: {allScreens ? "on" : "off"}</button></div>
+      <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
       <SpendingRow project={project} spending={spending} />
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
@@ -202,6 +252,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <h3>{S.speakTitle}</h3>
       <div className="line muted">{S.speakHelp}</div>
       <div className="row"><button className="btn" type="button" aria-pressed={speak} onClick={() => { const v = !speak; setSpeak(v); setSpeech(v); if (!v) void invoke("speak_stop"); }}>{S.speakSetting}: {speak ? "on" : "off"}</button></div>
+      <PresentationRow />
       <h3>{S.updatesTitle}</h3>
       <div className="line muted">{S.updatesHelp}</div>
       <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
@@ -381,11 +432,14 @@ function Card() {
   }, []);
   // The practice project: copied into a new folder, chosen as the project, and followed step by step.
   const practiceBusy = useRef(false);
-  const beginPractice = () => {
+  const beginPractice = (which?: unknown) => {
     if (practiceBusy.current) return;   // one practice folder per press
     practiceBusy.current = true;
-    void invoke("create_practice").then((p) => dispatch({ type: "ui.practiceStarted", project: String(p) })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
+    const kind: PracticeKind = which === "setting" ? "setting" : "signup";   // the first run's unless the setting one was asked for
+    void invoke("create_practice", { which: PRACTICES[kind].folder }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
   };
+  // The setting practice after its lesson: run the project's own checks again, so the fix is proven, not assumed.
+  useEffect(() => { if (m.practice?.stage === "proving" && m.practice.project === project) { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); } }, [m.practice?.stage]);
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
   // About this project: asked each time a folder is opened (reads files only).
@@ -398,13 +452,23 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Show me's answer as it plays (sequence.ts): its steps still to come and its one line still waiting to be said. Closing
+  // the card, holding to talk, Point at the problem, Stop and a new question all hush it.
+  const player = useRef(answerPlayer());
+  useEffect(() => {
+    const off = listen("hush", () => player.current.hush());   // the card closed, or the hold to talk keys went down
+    return () => { off.then((f) => f()); };
+  }, []);
   // Spoken replies: only if turned on, one line per thing shown, and never for anything the person did not ask for.
   const saidKey = useRef("");
   const spoken = lineFor({ walk: m.walk, showme: m.showme });
   useEffect(() => {
     if (!spoken || spoken.key === saidKey.current || !speechOn()) return;
     saidKey.current = spoken.key;
-    void invoke("speak", { text: spoken.text }).catch(() => {});
+    // A step of a multi step answer is said when its pointer lands; if something else comes first, it is not said late.
+    if (!spoken.delayMs) { void invoke("speak", { text: spoken.text }).catch(() => {}); return; }
+    player.current.sayLater(() => void invoke("speak", { text: spoken.text }).catch(() => {}), spoken.delayMs);
+    return () => player.current.cancelLine();
   }, [spoken?.key]);
   // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
   useEffect(() => {
@@ -469,24 +533,48 @@ function Card() {
     return () => ro.disconnect();
   }, []);
 
-  // Show me how: the engine chose a point in the picture; the Mac side snaps it to a real button and draws the pointer.
+  // Show me how: the engine chose one or more points in the picture, in order. Each is played in turn (sequence.ts): the
+  // Mac side snaps it to a real button and draws the pointer, its line follows, then a short pause and the next one. Only
+  // the last one waits for the click. A guess below the confidence line is said in words, never drawn.
   const [walk, setWalk] = useState<{ goal: string; steps: string[] } | null>(null);
+  const inLesson = useRef(false); inLesson.current = !!m.walk;
+  const showmeNow = useRef(m.showme); showmeNow.current = m.showme;
   useEffect(() => {
     const off = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; req?: string; x?: number; y?: number; ocrId?: string; targetText?: string; caption?: string; confidence?: number };
-      if (ev.type === "assist.point" && ev.req?.startsWith("sm_") && aimDecision(ev.confidence) === "words") {
-        // A guess is not drawn: say in words where to look, and clear what was waiting for an answer.
-        void invoke("showme_clear").then(() => dispatch({ type: "app.showme", stage: "not_sure", message: notSureWords(ev.targetText ?? "", ev.caption ?? "") }));
-        return;
-      }
-      if (ev.type === "assist.point" && ev.req?.startsWith("sm_")) {
-        void invoke("showme_aim", { req: ev.req, x: ev.x, y: ev.y, ocrId: ev.ocrId ?? null, targetText: ev.targetText ?? "", caption: ev.caption ?? "" });
-        setWalk((w) => (w ? { ...w, steps: [...w.steps, ev.caption ?? ""] } : w));
-      }
+      const ev = e.payload as { type?: string; req?: string };
+      if (ev.type !== "assist.point" || !ev.req?.startsWith("sm_")) return;
+      // Its question was ended while it was being answered (the card closed, Stop): nothing of it is shown or said.
+      if (!stillWanted(showmeNow.current)) return;
+      const req = ev.req;
+      player.current.hush();
+      const steps = planSteps(targetsOf(ev), { lesson: inLesson.current });
+      if (!steps.length) return;
+      const speaking = speechOn();
+      const aim = (s: Step) => invoke("showme_aim", {
+        req, x: s.target.x, y: s.target.y, ocrId: s.target.ocrId ?? null, targetText: s.target.targetText, caption: s.target.caption,
+        mark: s.target.mark ?? null, screen: s.target.screen ?? 1, step: s.index + 1, of: s.total, hold: s.hold,
+        flyMs: s.total > 1 ? LEAD_MS : null, fadeMs: lineMs(s.text, speaking),
+      }).then((r) => {
+        const out = r as { ok?: boolean; why?: string } | undefined;
+        // The window the picture was taken of changed: nothing more is drawn over it (rule 22). Say so in words.
+        if (out?.ok === false && out.why === "window_changed") dispatch({ type: "app.showme", stage: "window_changed", message: S.sequenceWindowChanged });
+        return out?.ok !== false;
+      }, () => false);
+      const words = (s: Step) => {
+        const say = () => dispatch({ type: "app.showme", stage: "not_sure", message: s.text, req, step: s.index + 1, of: s.total });
+        // The last step said in words ends it: what was seen is forgotten. Before that, only the pointer is taken away.
+        if (s.index === s.total - 1) void invoke("showme_clear").then(say); else void invoke("showme_hide").then(say);
+      };
+      player.current.start(steps, { aim, words }, speaking);
+      if (steps.some((s) => s.draw)) setWalk((w) => (w ? { ...w, steps: [...w.steps, stepsLine(steps)] } : w));
     });
-    return () => { off.then((f) => f()); };
+    return () => { off.then((f) => f()); player.current.hush(); };
   }, []);
-  // Point at the problem: the key checks the project; when a place comes back, the pointer flies there.
+  // Point at the problem: the key checks the project; when a place comes back, the pointer flies there. Any Show me answer
+  // still playing ends first, here and in the shell, so none of its later steps or lines lands on top of this one.
+  const pointProblem = (project: string, problem: unknown) => { player.current.hush(); void invoke("point_problem", { project, problem }); };
+  // A place made by the card itself (what changed, your turn): pointed at the same way, through pointProblem.
+  const pointAt = (x: { project: string; problem: Problem }) => { if (pointsOnScreen(x.problem)) pointProblem(x.project, x.problem); };
   const projectRef = useRef(project); projectRef.current = project;
   useEffect(() => {
     const offKey = listen("find-problem", () => {
@@ -495,11 +583,25 @@ function Card() {
       void send(findProblem(projectRef.current));
     });
     const offFound = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; verdict?: string; problem?: unknown; project?: string };
-      if (ev.type === "problem.found" && ev.verdict === "failed" && ev.problem && ev.project === projectRef.current) void invoke("point_problem", { project: ev.project, problem: ev.problem });
+      const ev = e.payload as { type?: string; verdict?: string; problem?: Problem; project?: string };
+      if (ev.type === "problem.found" && ev.verdict === "failed" && pointsOnScreen(ev.problem) && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
     });
     return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
   }, []);
+  // Your turn (off unless turned on in Settings): the person asked to make the second of two identical changes themselves.
+  // Once the engine has put that place back, it is rung the same way Point at the problem rings a line (light first).
+  const [yourTurn, setYourTurnState] = useState(yourTurnOn);
+  const teachWant = useRef("");
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; made?: boolean; project?: string; checkpoint?: string; target?: { file: string; line: number; lineText: string } };
+      if (ev.type !== "teach.ready" || ev.checkpoint !== teachWant.current) return;
+      teachWant.current = "";
+      if (ev.made && ev.target && ev.project === projectRef.current) pointAt(pointChange(ev.project, ev.target, S.teachHere));
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  const tryTheNextOne = (checkpoint: string) => { if (!project) return; teachWant.current = checkpoint; dispatch({ type: "ui.teachAsked", checkpoint }); void send(tryNextOne(project, checkpoint)); };
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
   const [fun, setFun] = useState(reactionsOn);
@@ -527,7 +629,7 @@ function Card() {
     const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
     return () => { off.then((f) => f()); };
   }, []);
-  const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); setWalk({ goal, steps }); void invoke("showme_start", { question }); };
+  const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); player.current.hush(); setWalk({ goal, steps }); void invoke("showme_start", { question, allScreens: allScreensOn() }); };
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
   const [asking, setAsking] = useState(false);
   const nextStep = (worked = true) => {
@@ -540,7 +642,8 @@ function Card() {
   // In a walkthrough, once the person clicked the step (or it was clicked for them), the next step follows on its own.
   const stage = m.showme?.stage;
   // The walkthrough ends whenever the pointer goes away (Esc, Stop everything, closing, waiting too long).
-  useEffect(() => { if (!m.showme) { setWalk(null); setAsking(false); } }, [m.showme]);
+  // A multi step answer still playing also stops when the Mac side took a step's ring away because its window changed.
+  useEffect(() => { if (sequenceOver(m.showme)) player.current.hush(); if (!m.showme) { setWalk(null); setAsking(false); } }, [m.showme]);
   useEffect(() => {
     // Only a walkthrough's own ring moves it on (a Show me ring carries an "sm_" request; Point at the problem's does not).
     if (!walk || !m.showme?.req?.startsWith("sm_") || (stage !== "your_turn_done" && stage !== "done_for_you")) return;
@@ -556,8 +659,12 @@ function Card() {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
     noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
-    dispatch({ type: "ui.walkRequested", walk: (c as { id: string }).id }); setLessonsOpen(false); void send(c);
+    const walk = (c as { id: string }).id;
+    dispatch({ type: "ui.walkRequested", walk }); setLessonsOpen(false); void send(c);
+    return walk;
   };
+  // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
+  const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
   const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false);
   const wk = m.walk;
   const wkKey = wk ? `${wk.id}:${wk.index}:${wk.variant}` : "";
@@ -566,12 +673,13 @@ function Card() {
     if (aimed.current === wkKey) return;
     aimed.current = wkKey; staleReq.current = m.showme?.req;
     if (noAim.current) return;   // the screen permission was not given: words only, and it is not asked for again at every step
-    void invoke("showme_start", { question: `Where do I click for this: ${wk.find}` });
+    void invoke("showme_start", { question: `Where do I click for this: ${wk.find}`, allScreens: allScreensOn() });
   }, [wkKey, wk?.stage]);
   useEffect(() => { if (wk && m.showme?.stage === "needs_permission") noAim.current = true; }, [m.showme?.stage, wkKey]);
   useEffect(() => { if (!wk) { clearTimeout(actTimer.current); } }, [wk]);
   useEffect(() => {
-    // Only this step's own ring counts: a ring left over from the step before has the old request id.
+    // Only this step's own ring counts: a ring left over from the step before has the old request id. A ring click is only a
+    // click: on a step the project proves, the runner says what is not there yet (walk.wait) and waits for "I did it".
     const r = m.showme?.req;
     if (!wk || wk.stage !== "step" || !r?.startsWith("sm_") || r === staleReq.current) return;
     if ((m.showme?.stage !== "your_turn_done" && m.showme?.stage !== "done_for_you") || acted.current === wkKey) return;
@@ -620,7 +728,7 @@ function Card() {
   return (
     <main className="card" ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
-      onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
+      onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
@@ -645,12 +753,12 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
+      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => setSettingsOpen(false)} onPractice={(k) => { setSettingsOpen(false); beginPractice(k); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
       {m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
           {m.practice.stage === "start" && <>
-            <div className="line">{S.practiceStart}</div>
+            <div className="line">{m.practice.kind === "setting" ? S.practiceSettingStart : S.practiceStart}</div>
             <div className="line muted">{S.practiceKeys}</div>
             <div className="row">
               <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
@@ -659,12 +767,19 @@ function Card() {
           </>}
           {m.practice.stage === "found" && <>
             <div className="line"><b>{S.practiceFound}</b> {m.practice.where?.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where?.message}</div>
-            <div className="line muted">{S.practiceFoundMore}</div>
+            <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingFoundMore : S.practiceFoundMore}</div>
             <div className="row">
-              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>
+              {m.practice.kind === "setting"
+                ? <button className="btn primary" type="button" onClick={practiceLesson}>{S.practiceSettingFix}</button>
+                : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>}
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
             </div>
           </>}
+          {m.practice.stage === "lesson" && <>
+            <div className="line">{S.practiceSettingLesson}</div>
+            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
+          </>}
+          {m.practice.stage === "proving" && <div className="line">{S.practiceProving}</div>}
           {m.practice.stage === "fixing" && <>
             <div className="line">{S.practiceFixing}</div>
             <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
@@ -676,16 +791,20 @@ function Card() {
           </>}
           {m.practice.stage === "done" && <>
             <div className="line"><b>{S.practiceDone}</b></div>
-            <div className="line muted">{S.practiceDoneMore}</div>
+            <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingDoneMore : S.practiceDoneMore}</div>
             <div className="row">
               <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceClosed" }); pickFolder(); }}>{S.practiceOwn}</button>
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
             </div>
           </>}
           {m.practice.stage === "failed" && <>
-            <div className="line">{S.practiceFailed}</div>
+            <div className="line">{m.practice.kind !== "setting" ? S.practiceFailed : m.practice.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed}</div>
+            {m.practice.kind === "setting" && m.practice.where?.message && <div className="line muted">{m.practice.where.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where.message}</div>}
             <div className="row">
-              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>
+              {m.practice.kind === "setting" && m.practice.nameSet && <button className="btn primary" type="button" onClick={() => dispatch({ type: "ui.practiceProving" })}>{S.practiceCheckAgain}</button>}
+              {m.practice.kind === "setting"
+                ? <button className={`btn${m.practice.nameSet ? "" : " primary"}`} type="button" onClick={practiceLesson}>{S.practiceAgain}</button>
+                : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>}
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
             </div>
           </>}
@@ -698,6 +817,7 @@ function Card() {
           {(m.lessons ?? []).map((l) => (
             <div className="line" key={l.id}>
               <b>{l.title}</b> <span className="muted">{l.app}</span>
+              {l.fromProject && <div className="line muted">{S.lessonFromProject}</div>}
               {l.status !== "tried" && <div className="line muted">{S.lessonDraft}</div>}
               <div className="row">
                 <button className="btn primary" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
@@ -713,11 +833,12 @@ function Card() {
         <section className={`panel ${m.walk.stage === "help" ? "amber" : ""}`} role="status" aria-label={S.lessonsTitle}>
           <h2>{m.walk.title}</h2>
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
-          {(m.walk.stage === "step" || m.walk.stage === "asking") && <>
+          {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
             <div className="line"><b>{m.walk.say}</b></div>
           </>}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
+          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}
           {m.walk.log.length > 0 && (
             <details className="line muted">
               <summary>{S.lessonLogTitle} ({m.walk.log.length})</summary>
@@ -726,9 +847,14 @@ function Card() {
           )}
           <div className="row">
             {m.walk.stage === "step" && <>
-              <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}` }); }}>{S.lessonPoint}</button>
+              <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}`, allScreens: allScreensOn() }); }}>{S.lessonPoint}</button>
               {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>}
-              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "clicked", m.walk!.index)); }}>{S.lessonDid}</button>
+              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
+            </>}
+            {m.walk.stage === "already" && <>
+              <div className="line">{S.lessonAlready}</div>
+              <button className="btn primary" type="button" onClick={() => void send(walkAnswer(m.walk!.id, true, m.walk!.index))}>{S.lessonAlreadyYes}</button>
+              <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonAlreadyNo}</button>
             </>}
             {m.walk.stage === "asking" && <>
               <div className="line">{S.lessonWorked}</div>
@@ -736,7 +862,7 @@ function Card() {
               <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonNo}</button>
             </>}
             {m.walk.stage === "help" && <button className="btn primary" type="button" onClick={() => void send(walkSkip(m.walk!.id, m.walk!.index))}>{S.lessonSkip}</button>}
-            {["step", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
+            {["step", "already", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
             {["done", "stopped"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.walkClosed" })}>{S.pointClose}</button>}
           </div>
         </section>
@@ -765,6 +891,7 @@ function Card() {
           {m.about.missingCount > 0 && (
             <div className="line">{S.aboutMissing} <b>{m.about.missing.join(", ")}</b>{m.about.missingCount > m.about.missing.length ? ` ${S.andMore.replace("{n}", String(m.about.missingCount - m.about.missing.length))}` : ""}. {m.about.example ? S.aboutMissingExample.replace("{file}", m.about.example) : S.aboutMissingHow}</div>
           )}
+          {m.about.missingCount > 0 && !m.walk && <div className="row"><button className="btn" type="button" onClick={() => beginLesson(SETTINGS_LESSON_ID, false)}>{S.aboutSettingsLesson}</button></div>}
           <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
@@ -824,14 +951,14 @@ function Card() {
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>
           <h2>{S.stuckTitle}</h2>
-          <div className="line">{S.stepOf} {m.stuck.index}: {m.stuck.title}</div>
+          <div className="line">{stuckWords(m)}</div>
           <div className="line muted">{S.stuckHelp}</div>
           <div className="line">{m.stuck.failure}</div>
           <div className="row">
             {m.stuck.options.map((o, i) => (
               <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
             ))}
-            {m.where && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.where })}>{S.pointWhere}</button>}
+            {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
           </div>
         </section>
       )}
@@ -907,6 +1034,12 @@ function Card() {
         <section className="panel">
           <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
           {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
+          {m.stepExplains.map((x) => (
+            <div key={x.index}>
+              <div className="line muted">{S.stepOf} {x.index}: {x.title}</div>
+              <ExplainBox e={x.explain} key={`${x.index}:${x.explain.checkpoint}`} />
+            </div>
+          ))}
         </section>
       )}
 
@@ -947,7 +1080,7 @@ function Card() {
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
           <div className="row">
-            {m.where && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.where })}>{S.pointWhere}</button>}
+            {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
           </div>
         </section>
@@ -956,7 +1089,8 @@ function Card() {
       {m.task && m.task.lines.length > 0 && (
         <section className="panel" aria-live="polite">
           <h2>{m.task.label || "Task"}</h2>
-          {m.task.lines.slice(-6).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{plainPath(l.text, project)}</div>)}
+          {/* The latest one or two steps, in plain words: never the raw command. */}
+          {activityNow(m).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" || l.outcome === "denied" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</div>)}
         </section>
       )}
 
@@ -981,7 +1115,7 @@ function Card() {
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
+          {m.receipt.changed.length > 0 && <div className="line muted">{receiptProofWords(m)}</div>}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
@@ -991,6 +1125,15 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
+          {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
+            <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
+          )}
+          {canOfferTurn(m) && yourTurn && !undone && project && (
+            <div className="line">
+              <div className="line muted">{S.teachOfferHelp}</div>
+              <div className="row"><button className="btn" type="button" onClick={() => tryTheNextOne(m.receipt!.checkpoint)}>{S.teachOffer}</button></div>
+            </div>
+          )}
           {m.receipt.changed.length > 0 && !m.undo && project && (
             <div className="row"><button className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
           )}
@@ -1005,6 +1148,30 @@ function Card() {
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
+          {(canFollowUp(m, project) || m.followUp === "sending") && (
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)}
+              onSent={() => { dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
+          )}
+        </section>
+      )}
+
+      {m.teach && (
+        <section className={`panel ${m.teach.stage === "refused" || m.teach.stage === "left" || (m.teach.stage === "checked" && m.teach.result?.verdict === "failed") ? "amber" : ""}`} role="status" aria-label={S.teachTitle}>
+          <h2>{S.teachTitle}</h2>
+          {teachLines(m.teach).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {/* No Close while the old code is back at the person's place: Put my fix back, or Leave it as it is (teachActions). */}
+          <div className="row">
+            {teachActions(m.teach).map((a) => {
+              const t = m.teach!;
+              switch (a) {
+                case "where": return <button key={a} className="btn" type="button" onClick={() => pointAt(pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
+                case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking" }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
+                case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!)); }}>{S.teachPutBack}</button>;
+                case "leave": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
+                case "close": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>;
+              }
+            })}
+          </div>
         </section>
       )}
 
@@ -1039,13 +1206,14 @@ function Card() {
           {m.point.stage === "clear" && <div className="line">{S.pointClear}</div>}
           {m.point.stage === "gaps" && <div className="line">{S.pointGaps}</div>}
           {m.point.stage === "nothing" && <div className="line">{S.pointNothing}</div>}
+          {m.point.note && <div className="line muted" role="note">{m.point.note}</div>}
           {m.point.stage === "found" && <>
             <div className="line"><b>{m.point.label}</b></div>
             <div className="line">{m.point.problem && m.point.problem.kind === "line" ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
           </>}
           {m.point.stage !== "checking" && (
             <div className="row">
-              {m.point.stage === "found" && m.point.problem && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.point?.problem })}>{S.pointWhere}</button>}
+              {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
               {m.point.stage === "found" && canBisect(m) && project && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
@@ -1094,7 +1262,7 @@ function Card() {
             </div>
           )}
           <div className="row">
-            {["ready", "unexplained"].includes(m.eh.stage) && m.eh.where && project && m.eh.project === project && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.eh!.where })}>{S.pointWhere}</button>}
+            {["ready", "unexplained"].includes(m.eh.stage) && pointsOnScreen(m.eh.where) && project && m.eh.project === project && <button className="btn" type="button" onClick={() => pointProblem(project, m.eh!.where)}>{S.pointWhere}</button>}
             {["ready", "unexplained"].includes(m.eh.stage) && m.eh.evidence && project && m.eh.project === project && <button className="btn primary" type="button" disabled={working} onClick={() => { dispatch({ type: "ui.undoClosed" }); void send(fixError(project, m.eh!.evidence!, m.eh!.where)); void invoke("eh_dismiss"); }}>{S.ehFix}</button>}
             <button className="btn" type="button" onClick={() => { void invoke("eh_dismiss"); dispatch({ type: "ui.ehClosed" }); }}>{["reading", "thinking", "consent"].includes(m.eh.stage) ? S.planCancel : S.ehClose}</button>
           </div>

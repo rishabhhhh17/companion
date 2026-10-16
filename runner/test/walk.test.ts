@@ -14,6 +14,7 @@ const step = (id: string, extra: Record<string, unknown> = {}) => ({ id, say: `D
 const raw = (steps: unknown[], extra: Record<string, unknown> = {}) => ({ id: "demo", title: "Demo", app: "Demo app", goal: "Do the demo", steps, ...extra });
 const lesson = (steps = [step("a"), step("b"), step("c")]): Lesson => { const r = parseLesson(raw(steps)); if (!r.ok) throw new Error(r.error); return r.lesson; };
 const T = () => "2026-10-12T10:00:00Z";
+const of = (l: Lesson, id: string) => l.steps.find((s) => s.id === id)!;
 
 describe("lesson files", () => {
   test("a good lesson is accepted", () => { expect(parseLesson(raw([step("a"), step("b")])).ok).toBe(true); });
@@ -92,23 +93,43 @@ describe("walking through a lesson", () => {
     expect(await w.answer(true)).toBe("advance");
     expect(w.current()?.step.id).toBe("b");
   });
+  test("a click on the ring is not the moment of proof: what the project does not show yet waits, and is not a failure", async () => {
+    // The ring points at where the value comes from (a dashboard, the settings file), so the click comes before the save.
+    const l = lesson([step("a", { check: { kind: "env_name", name: "ONE" }, instead: { say: "Use the menu", find: "the menu" } }), step("b")]);
+    const w = new Walkthrough(l, null, { now: T, project: "/p" });
+    expect(await w.settle("clicked", async () => false)).toBe("wait");
+    expect(await w.settle("done_for_you", async () => false)).toBe("wait");
+    expect(w.current()).toMatchObject({ index: 0, variant: "main", step: { id: "a" } });
+    expect(w.progress()).toMatchObject({ failed: [], usedInstead: [], blocked: null });
+    // Once it is saved, the next click (or the press) passes it.
+    expect(await w.settle("clicked", async () => true)).toBe("advance");
+    expect(w.current()?.step.id).toBe("b");
+  });
+  test("only the person's own 'I did it' press counts a step the project cannot prove as not working", async () => {
+    const w = new Walkthrough(lesson([step("a", { check: { kind: "env_name", name: "ONE" } }), step("b")]), null, { now: T, project: "/p" });
+    expect(await w.settle("clicked", async () => false)).toBe("wait");
+    expect(await w.settle("pressed", async () => false)).toBe("help");
+    expect(w.progress().failed).toEqual(["a"]);
+    expect(w.progress().log.map((x) => x.outcome)).toEqual(["clicked", "not_yet", "pressed", "failed"]);
+  });
   test("a failed step is not shown again; the other way comes first, then words only", async () => {
     const l = lesson([step("a", { check: { kind: "file_exists", path: "x" }, instead: { say: "Use the menu", find: "the menu" } }), step("b")]);
     const w = new Walkthrough(l, null, { now: T, project: "/p" });
-    expect(await w.settle("clicked", async () => false)).toBe("instead");
+    expect(await w.settle("pressed", async () => false)).toBe("instead");
     expect(w.current()).toMatchObject({ index: 0, variant: "instead", step: { say: "Use the menu", find: "the menu" } });
-    expect(await w.settle("clicked", async () => false)).toBe("help");
+    expect(await w.settle("pressed", async () => false)).toBe("help");
     expect(w.current()).toBeNull();           // nothing is shown again: the person gets words, not the same ring
     expect(w.progress().blocked).toBe("a");
     expect(w.progress().failed).toEqual(["a", "a:instead"]);
   });
   test("a step with no other way goes straight to words when it fails", async () => {
     const w = new Walkthrough(lesson([step("a", { check: { kind: "file_exists", path: "x" } })]), null, { now: T, project: "/p" });
-    expect(await w.settle("clicked", async () => false)).toBe("help");
+    expect(await w.settle("pressed", async () => false)).toBe("help");
   });
   test("a checker that throws counts as not proven, never as passed", async () => {
     const w = new Walkthrough(lesson([step("a", { check: { kind: "file_exists", path: "x" } })]), null, { now: T, project: "/p" });
-    expect(await w.settle("clicked", async () => { throw new Error("boom"); })).toBe("help");
+    expect(await w.settle("clicked", async () => { throw new Error("boom"); })).toBe("wait");
+    expect(await w.settle("pressed", async () => { throw new Error("boom"); })).toBe("help");
   });
   test("saying 'no' to did that work follows the same rule", async () => {
     const w = new Walkthrough(lesson([step("a", { instead: { say: "Other way", find: "other" } })]), null, { now: T, project: "/p" });
@@ -123,7 +144,7 @@ describe("walking through a lesson", () => {
   });
   test("after words only, 'I did it myself' moves past the blocked step", async () => {
     const w = new Walkthrough(lesson([step("a", { check: { kind: "file_exists", path: "x" } }), step("b")]), null, { now: T, project: "/p" });
-    await w.settle("clicked", async () => false);
+    await w.settle("pressed", async () => false);
     expect(w.current()).toBeNull();
     w.skip();
     expect(w.current()?.step.id).toBe("b");
@@ -186,11 +207,81 @@ describe("picking up after a pause", () => {
   });
   test("a step that failed before stays blocked after a resume", async () => {
     const w1 = new Walkthrough(l(), null, { now: T, project: "/p" });
-    await w1.settle("clicked", has());
+    await w1.settle("pressed", has());
     expect(w1.progress().blocked).toBe("a");
     const w2 = new Walkthrough(l(), JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
     await w2.resume(has());
     expect(w2.current()).toBeNull();
+  });
+  test("a pause on a step only the person can confirm asks 'did you already do this?' instead of stopping, and points at nothing yet", async () => {
+    const lp = lesson([step("a"), step("b"), auto("c", "THREE")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);   // a is done, b is next
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(w2.needs()).toBe("already");
+    expect(w2.current()).toMatchObject({ index: 1, already: true, step: { id: "b" } });
+  });
+  test("'yes, I did it' moves past it, proves what the project can prove, and asks again at the next step only the person knows", async () => {
+    const lp = lesson([step("a"), step("b"), auto("c", "THREE"), step("d"), step("e")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has("THREE"));
+    expect(w2.current()).toMatchObject({ index: 1, already: true });
+    expect(await w2.confirm(true, has("THREE"))).toBe("advance");
+    expect(w2.current()).toMatchObject({ index: 3, already: true, step: { id: "d" } });   // c was proven from the project on the way
+    expect(w2.progress().log.slice(-2).map((l) => [l.step, l.outcome])).toEqual([["b", "already_done"], ["c", "already_done"]]);
+    expect(w2.history().map((h) => h.how)).toEqual(["done", "done", "done"]);
+  });
+  test("'no' shows the step itself, the normal way", async () => {
+    const lp = lesson([step("a"), step("b"), step("c")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(await w2.confirm(false, has())).toBe("advance");
+    expect(w2.needs()).toBe("ask");
+    expect(w2.current()).toMatchObject({ index: 1, already: false, step: { id: "b" } });
+    expect(w2.progress().failed).toEqual([]);   // not having done it yet is not a failure
+  });
+  test("a step the project cannot prove yet stops the skipping there, without asking", async () => {
+    const lp = lesson([step("a"), step("b"), auto("c", "THREE"), step("d")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    await w2.confirm(true, has());   // THREE is not set
+    expect(w2.needs()).toBe("verify");
+    expect(w2.current()).toMatchObject({ index: 2, already: false });
+  });
+  test("'yes' on the last step finishes the lesson", async () => {
+    const lp = lesson([step("a"), step("b")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" });
+    await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(await w2.confirm(true, has())).toBe("done");
+    expect(w2.progress().done).toBe(true);
+  });
+  test("an answer to a question nobody asked changes nothing, and Stop while asking ends it", async () => {
+    const w = new Walkthrough(lesson(), null, { now: T, project: "/p" });
+    expect(await w.confirm(true, has())).toBe("advance");
+    expect(w.current()).toMatchObject({ index: 0, already: false });
+    expect(w.progress().log).toEqual([]);
+    const lp = lesson([step("a"), step("b")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" }); await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has()); w2.stop();
+    expect(await w2.confirm(true, has())).toBe("stopped");
+    expect(w2.current()).toBeNull();
+  });
+  test("'I did it myself' while asking moves on and stops asking", async () => {
+    const lp = lesson([step("a"), step("b"), step("c")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" }); await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has()); w2.skip();
+    expect(w2.current()).toMatchObject({ index: 2, already: false });
   });
   test("progress from a different lesson or an older version is ignored", () => {
     const stale = { lesson: "other", project: "/p", index: 2, log: [], failed: [], done: false, version: 1, shape: "a,b,c" };
@@ -270,6 +361,41 @@ describe("the lessons that ship with the app", () => {
     // Nothing is called tried until a person has walked it on a real screen (written down in docs/lessons.md).
     for (const l of r.lessons) expect(l.status, l.id).toBe("draft");
     for (const l of r.lessons) expect(l.steps.length).toBeLessThanOrEqual(MAX_STEPS);
+  });
+  test("a shipped lesson that needs a project proves at least one step from it (otherwise it would not need one)", () => {
+    const r = loadLessons([join(import.meta.dir, "../../lessons")]);
+    for (const l of r.lessons.filter((x) => x.needsProject)) expect(l.steps.some((s) => s.check.kind !== "ask"), l.id).toBe(true);
+  });
+  test("the GitHub lesson proves only what the project really shows: keys left out of git, and a git folder", async () => {
+    const l = loadLessons([join(import.meta.dir, "../../lessons")]).lessons.find((x) => x.id === "github-new-repo")!;
+    expect(l.needsProject).toBe(true);
+    const ids = l.steps.map((s) => s.id);
+    const of = (id: string) => l.steps.find((s) => s.id === id)!;
+    expect(of("ignore").check).toEqual({ kind: "file_contains", path: ".gitignore", text: ".env*" });
+    expect(of("init").check).toEqual({ kind: "file_exists", path: ".git" });
+    // The .env files are left out before anything is saved in git, and saving comes before sending it to GitHub.
+    expect(ids.indexOf("ignore")).toBeLessThan(ids.indexOf("commit"));
+    expect(ids.indexOf("init")).toBeLessThan(ids.indexOf("commit"));
+    expect(ids.indexOf("commit")).toBeLessThan(ids.indexOf("push"));
+    // Plain text files standing in for what git writes (no git is run here).
+    const p = tmp("gh"), c = projectChecker(p);
+    expect(await c(of("ignore").check)).toBe(false);
+    expect(await c(of("init").check)).toBe(false);
+    writeFileSync(join(p, ".gitignore"), "node_modules\n.env*\n"); mkdirSync(join(p, ".git"));
+    expect(await c(of("ignore").check)).toBe(true);
+    expect(await c(of("init").check)).toBe(true);
+  });
+  test("the GitHub lesson does not call a project linked because some GitHub address is in it, nor send only a README", () => {
+    const l = loadLessons([join(import.meta.dir, "../../lessons")]).lessons.find((x) => x.id === "github-new-repo")!;
+    // A project cloned from someone else's repository already names github.com: that proves nothing about the new one.
+    for (const s of l.steps) expect(JSON.stringify(s.check), s.id).not.toContain(".git/config");
+    // Sending the code and seeing it on GitHub are the person's to confirm: only GitHub's page shows the new repository.
+    for (const id of ["commit", "push", "seen"]) expect(l.steps.find((s) => s.id === id)?.check, id).toEqual({ kind: "ask" });
+    expect(l.steps.at(-1)!.id).toBe("seen");
+    // GitHub's "create a new repository on the command line" steps save and send only README.md.
+    const text = JSON.stringify(l.steps);
+    expect(text).not.toMatch(/README\.md|new repository on the command line/i);
+    expect(of(l, "commit").say).toContain("git add .");
   });
 });
 

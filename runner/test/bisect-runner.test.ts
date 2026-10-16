@@ -317,6 +317,44 @@ describe("undoing just the task that broke it", () => {
   });
 });
 
+describe("next to the features merged in beside it", () => {
+  test("after undoing just that task, a follow up on the last task is refused, as after Undo", async () => {
+    const s = setup({ breaks: 3, more: [[write("never.txt", "x"), say]] });
+    await s.runTasks();
+    await s.bisect();
+    const found = of(s.events, "bisect.result")[0];
+    await s.runner.handle({ v: 1, id: "u", type: "bisect.undo", project: s.project, checkpoint: found.task.checkpoint, confirm: true });
+    expect(of(s.events, "bisect.undone")[0]).toMatchObject({ ok: true });
+    await s.runner.handle({ v: 1, id: "f", type: "agent.send", project: s.project, agent: "builder-1", text: "the button is still grey" });
+    expect(of(s.events, "protocol.error").at(-1).reason).toMatch(/undone/i);
+    await s.runner.handle({ v: 1, id: "r", type: "agent.send", project: s.project, agent: "builder-1", retry: true });
+    expect(of(s.events, "protocol.error").at(-1).reason).toMatch(/undone/i);
+    expect(existsSync(join(s.project, "never.txt"))).toBe(false);
+  });
+  test("a Python project is not traced back yet: nothing is copied or checked, and it says so", async () => {
+    const s = setup({ breaks: 3 });
+    writeFileSync(join(s.project, "main.py"), "print('hi')\n");
+    await s.runTasks();
+    s.events.length = 0;
+    await s.bisect();
+    const r = of(s.events, "bisect.result");
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ outcome: "cannot_check", runs: 0 });
+    expect(r[0].detail).toMatch(/Python/);
+    expect(parseEvent(JSON.stringify(r[0])).ok).toBe(true);
+    expect(s.checked).toEqual([]);
+    expect(readdirSync(s.work)).toEqual([]);
+  });
+  test("a project with a package.json is traced back as before, even with a Python file in it", async () => {
+    const s = setup({ breaks: 3 });
+    writeFileSync(join(s.project, "package.json"), "{}\n");
+    writeFileSync(join(s.project, "tool.py"), "print('hi')\n");
+    await s.runTasks();
+    await s.bisect();
+    expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "found", task: { label: "Task number 3" } });
+  });
+});
+
 describe("the packages' own copy", () => {
   test("a copy the check can write into, with its links still pointing inside the copy; the original never changes", async () => {
     const { ownPackages } = await import("../src/proof/before.ts");

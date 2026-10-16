@@ -39,7 +39,13 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - For testing, settings switch them: `COMPANION_MODEL` (agent sessions), `COMPANION_FAST_MODEL` and `COMPANION_VISION_MODEL` (the two small lanes), `COMPANION_AIM_MODEL` (the experimental pointing lane). The app's developer file may pass all four.
 - Open: Drive's planning runs on Sonnet 5.5, not Opus 5.5 as this record says. It was left as it was; the founder decides.
 
-## Added 16 Oct 2026 (M11)
+## Explain from the real change (16 Oct 2026, M11)
+- Explain's request now carries the task's real change (the lines taken away and added, about 6,000 characters at most), built by `runner/src/teach.ts`. Every secret looking value is hidden over the whole text before it is cut (a key can span lines, `redact.ts`), and settings and key files (`isEnvFile`), `.git`, `.claude`, `.companion`, installed packages, build output and lock files are never shown; a settings file is named only. It goes to the same fast lane on the person's own Claude, as before, and nothing from the screen is in it.
+- Explain now also runs once after every finished Drive step, and its cost is added to the day's spending (it was not counted before). It is not asked for once the day's limit is reached.
+- The answer is two short lines and one check question with two or three options; a question with more options, repeated options or no valid answer is dropped, the lines stay.
+- Not yet tried on a real API key (M11 best coding plan step 11 scores it on real diffs).
+
+## The error explainer (16 Oct 2026, M11)
 - The error explainer uses the fast lane too: one turn, no tools, no saved conversation, the person's own key. It is sent the selected error with secrets already hidden and, when one was confirmed, the file and line it points at, and its answer is kept only as two plain sentences. Not yet run against real Claude (no key in this build session).
 
 ## Revisit if

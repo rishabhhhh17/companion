@@ -21,13 +21,16 @@ export async function captureBefore(o: {
   try {
     await o.store.exportTo(o.beforeId, dir);
     borrowPackages(join(o.project, "node_modules"), join(dir, "node_modules"));
+    borrowVenv(o.project, dir);
     if (o.signal?.aborted) return { none: "cancelled" };
     const det = detectProject(dir);
     if (!det.start) return { none: "no_page" };
     let scriptText = "";
     try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(det.start.kind === "server" ? det.start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
     const srv = await startServer(det.start, { cwd: dir, timeoutMs: o.startMs ?? 60_000, scriptText, signal: o.signal });
-    if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : /^The server stopped on its own/.test(srv.reason) ? "crashed" : "not_pictured" };
+    // A package that is not installed says nothing about whether the earlier version worked.
+    const missing = /No module named|Couldn't import Django/.test(srv.ok ? "" : srv.output ?? srv.reason);
+    if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
     // Stop ends the earlier version's server at once, not after the browser gives up.
     const onAbort = () => { void srv.stop(); };
     o.signal?.addEventListener("abort", onAbort, { once: true });
@@ -92,6 +95,15 @@ export function packageFolders(project: string, maxDepth = 4, maxDirs = 5000): s
   };
   walk("", 0);
   return out;
+}
+
+// A Python project's virtual environment is borrowed too, by one link (the snapshot never holds it): the earlier version
+// then runs with the same packages. Nothing is written through it (Python is told not to write bytecode), and removing
+// the copy removes only the link.
+export function borrowVenv(project: string, copy: string) {
+  for (const v of [".venv", "venv"]) {
+    try { if (lstatSync(join(project, v)).isDirectory() && !existsSync(join(copy, v))) symlinkSync(join(project, v), join(copy, v)); } catch { /* none, or it cannot be linked */ }
+  }
 }
 
 /** Anything left from a run that was cut off (the app quit mid picture): emptied when the runner starts. */

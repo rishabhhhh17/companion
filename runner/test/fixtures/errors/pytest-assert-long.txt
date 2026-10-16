@@ -1,0 +1,24 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.4, pytest-8.3.3, pluggy-1.5.0
+rootdir: {{ROOT}}
+configfile: pyproject.toml
+collected 3 items
+
+tests/test_cart.py .F.                                                   [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_total_price _______________________________
+
+    def test_total_price():
+        cart = Cart()
+        cart.add("Mug", 12)
+        cart.add("Tea", 4)
+>       assert cart.total() == 15
+E       assert 16 == 15
+E        +  where 16 = total()
+E        +    where total = <shop.cart.Cart object at 0x1049f2d50>.total
+
+tests/test_cart.py:9: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_cart.py::test_total_price - assert 16 == 15
+========================= 1 failed, 2 passed in 0.04s ==========================

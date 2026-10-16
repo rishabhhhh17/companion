@@ -26,6 +26,8 @@ const ALLOWED: &[&str] = &[
     // Which task broke it: checks earlier saved versions in a private copy, then undoes just that task on a yes. Both name the
     // project, so both are project bound. error.explain is not here: only the hotkey flow (errhelp.rs) sends it.
     "bisect.start", "bisect.undo",
+    // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
+    "teach.try", "teach.check",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -58,10 +60,10 @@ pub const NO_PROJECT: &str = "no-project";
 /// engine to work on any folder on the Mac). Not here: commands that name no project, and the stand in for lessons that need none.
 pub const PROJECT_BOUND: &[&str] = &[
     "project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start",
-    "agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
+    "agent.start", "agent.send", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
     "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
-    "spending.show", "spending.set",
+    "spending.show", "spending.set", "teach.try", "teach.check",
     "bisect.start", "bisect.undo",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
@@ -396,6 +398,26 @@ mod tests {
             if t == "error.explain" { assert!(check_command(&v).is_err(), "{line}"); }
         }
         assert_eq!(seen, 2);
+    }
+    #[test]
+    fn your_turn_may_be_asked_for_by_a_page_and_only_for_the_chosen_project() {
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p, "agent": "builder-1", "checkpoint": "cp_0001" });
+        for t in ["teach.try", "teach.check"] {
+            assert!(check_command(&c(t, "/Users/me/site")).is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t}");
+        }
+    }
+    #[test]
+    fn a_follow_up_or_try_again_may_only_name_the_chosen_project() {
+        // agent.send carries on the last task as a new task in that project, so it is held to the chosen folder like agent.start.
+        let c = |p: &str| json!({ "v": 1, "id": "x", "type": "agent.send", "agent": "builder-1", "project": p, "text": "the button is still grey" });
+        assert!(check_command(&c("/Users/me/site")).is_ok());
+        assert!(check_project(&c("/Users/me/site"), "/Users/me/site").is_ok());
+        assert!(check_project(&c("/Users/me/other"), "/Users/me/site").is_err());
+        assert!(check_project(&c("/Users/me/site"), "").is_err());
+        assert!(check_project(&json!({ "v": 1, "id": "x", "type": "agent.send", "agent": "builder-1", "retry": true }), "/Users/me/site").is_err(), "a follow up that names no project is refused");
     }
     #[test]
     fn the_spending_limit_row_may_only_name_the_chosen_project() {

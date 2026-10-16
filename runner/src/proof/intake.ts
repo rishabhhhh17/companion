@@ -4,6 +4,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { detectProject, replitRun, type PackageManager } from "./detect.ts";
+import { pythonIntakeNote } from "./python.ts";
 export { replitRun };
 
 export type Origin = "lovable" | "bolt" | "replit" | "unknown";
@@ -24,7 +25,7 @@ const readText = (p: string, max = 200_000): string => { try { const s = statSyn
 
 // Settings names a project's code reads. Names only; well known ones that are never "missing" are left out.
 const ALWAYS_THERE = new Set(["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_OPTIONS", "TZ", "LANG", "USER", "SHELL", "TMPDIR", "NODE_ENV", "PORT", "HOST", "MODE", "DEV", "PROD", "SSR", "BASE_URL", "CI", "VERCEL", "VERCEL_ENV", "VERCEL_URL", "NEXT_RUNTIME", "PWD", "HOME", "PATH"]);
-function namesInCode(dir: string): Set<string> {
+export function namesInCode(dir: string): Set<string> {
   const found = new Set<string>();
   const skip = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage", ".vercel", ".companion"]);
   let files = 0;
@@ -117,7 +118,7 @@ export function inspectProject(dir: string): ProjectReport {
   const pm = det.packageManager;
   const needsInstall = !!pkg && !!pm && Object.keys(deps).length > 0 && !existsSync(join(dir, "node_modules"));
   if (workspace) notes.push("This is a workspace with more than one package; Companion checks it from the top folder.");
-  if (stack.startsWith("Python")) notes.push("Companion can read and check this Python project, but cannot install its packages for you yet.");
+  if (det.python) notes.push(pythonIntakeNote(det.python));
 
   let start = det.start?.kind === "server" ? det.start.command : det.start?.kind === "static" ? "a plain web page (no command needed)" : null;
   if (!start && replit) { const r = replitRun(replit); if (r) start = r; }

@@ -10,7 +10,7 @@ export const API_URL = "https://api.anthropic.com/v1/messages";
 const BETA = "computer-use-2025-11-24";
 const MAX_OCR = 60;
 
-type Req = { image: Image; question: string; ocr: Ocr[] };
+type Req = { image: Image; question: string; ocr: Ocr[]; screens?: { image: Image; label: string }[] };
 
 /** What the model is shown. The picture's own size is declared, so no stretching and no rescaling afterwards. */
 export function buildRequest(o: { model: string; image: Image; question: string; ocr: Ocr[] }): object {
@@ -54,6 +54,8 @@ export class ComputerUseVision implements VisionLike {
   constructor(private o: { apiKey: () => Promise<string | null>; model?: string; fetchFn?: typeof fetch; timeoutMs?: number }) {}
   async locate(req: Req, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> {
     if (!req.image.w || !req.image.h) throw new Error("the picture's size is not known");
+    // The tool is declared for one display; with more than one screen the ordinary lane answers instead (withFallback).
+    if ((req.screens?.length ?? 0) > 1) throw new Error("this lane takes one picture only");
     const key = await this.o.apiKey();
     if (!key) throw new Error("no API key");
     if (signal.aborted) throw new Error("stopped");   // Stop came while the key was being fetched: nothing is sent
