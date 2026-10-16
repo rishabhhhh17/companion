@@ -866,12 +866,13 @@ async fn export_logs() -> Result<String, String> {
     }).await.map_err(|_| "The export stopped.".to_string())?
 }
 
-/// The first run's practice project: copied into a new folder in the home folder, then chosen as the project. Never over
-/// anything that is there already.
+/// A practice project (the first run's unless the page names another on the list): copied into a new folder in the home
+/// folder, then chosen as the project. Never over anything that is there already.
 #[tauri::command]
-fn create_practice(app: AppHandle) -> Result<String, String> {
+fn create_practice(app: AppHandle, which: Option<String>) -> Result<String, String> {
+    let name = practice::pick(which.as_deref())?;
     let exe = std::env::current_exe().map_err(|_| "Could not find the practice project.".to_string())?;
-    let src = practice::source(&exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())?;
+    let src = practice::source_of(name, &exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())?;
     let dst = practice::make(&src, std::path::Path::new(&home_dir()))?;
     log("practice_created", json!({}));
     use_project_inner(app, dst.to_string_lossy().to_string())

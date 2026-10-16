@@ -55,7 +55,10 @@ export type ProjectClone = Envelope & { type: "project.clone"; url: string; pare
 // Walkthroughs: lessons are data files; the runner keeps the place, the app draws the ring and notices the click.
 export type WalkList = Envelope & { type: "walk.list"; project: string };
 export type WalkStart = Envelope & { type: "walk.start"; project: string; lesson: string; fresh?: boolean };
-export type WalkActed = Envelope & { type: "walk.acted"; walk: string; index?: number; how: "clicked" | "done_for_you" };
+// clicked and done_for_you come from the ring (the person's click there, or Do it for me). pressed is the person's own "I did
+// it" on the card. A ring click is not the moment of proof (it points at where a value comes from, before it is saved), so on
+// a step the project proves only pressed can count it as not working; a click it cannot prove yet gets walk.wait.
+export type WalkActed = Envelope & { type: "walk.acted"; walk: string; index?: number; how: "clicked" | "done_for_you" | "pressed" };
 export type WalkAnswer = Envelope & { type: "walk.answer"; walk: string; index?: number; worked: boolean };
 export type WalkSkip = Envelope & { type: "walk.skip"; walk: string; index?: number };
 export type WalkStop = Envelope & { type: "walk.stop"; walk: string };
@@ -135,10 +138,15 @@ export type ProjectInstallEvent = Envelope & { type: "project.install"; project:
 export type ProjectCloned = Envelope & { type: "project.cloned"; url: string; ok: boolean; path?: string; detail: string };
 // The diagram is data: the page lays it out and the overlay draws it. made: false means none could be made.
 export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; ask?: string; made: boolean; reason?: string; diagram?: { nodes: { id: string; label: string }[]; edges: { from: string; to: string; label?: string }[]; broken: { node: string; reason: string } | { edge: [string, string]; reason: string }; caption: string }; usdEstimate?: number };
-export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
-export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; log?: { say: string; how: "done" | "skipped" }[] };
+// fromProject: made from this project's own setting names (runner/src/lessongen.ts), not a lesson file.
+export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
+// already: after a pause, the person is first asked "Did you already do this?" and nothing is pointed at until they answer
+// (Yes and No come back as walk.answer). Absent on every other step.
+export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[] };
 export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number };
 export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
+// The step stays as it is: the project does not show its result yet (say: what is not there, in plain words). Not a failure.
+export type WalkWait = Envelope & { type: "walk.wait"; walk: string; index: number; say: string };
 export type WalkDone = Envelope & { type: "walk.done"; walk: string; project: string; lesson: string; title: string; steps: number };
 export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reason: string };
 export type MetricsSummary = Envelope & { type: "metrics.summary"; enabled: boolean; days: Record<string, Record<string, number>>; totals: Record<string, number>; rates: Record<string, number | null> };
@@ -149,7 +157,7 @@ export type BrowserStatus = Envelope & { type: "browser.status"; installed: bool
 export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
 // problem: why a new limit was refused or not kept; the limit shown is the one still in force.
 export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
-export type Event = SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -188,7 +196,7 @@ const COMMANDS: Record<string, Check[]> = {
   "spending.set": [str("project"), num("limitUsd")],
   "walk.list": [str("project")],
   "walk.start": [str("project"), str("lesson")],
-  "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you"])],
+  "walk.acted": [str("walk"), oneOf("how", ["clicked", "done_for_you", "pressed"])],
   "walk.answer": [str("walk"), bool("worked")],
   "walk.skip": [str("walk")],
   "walk.stop": [str("walk")],
@@ -240,6 +248,7 @@ const EVENTS: Record<string, Check[]> = {
   "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
   "walk.ask": [str("walk"), num("index")],
   "walk.help": [str("walk"), str("say")],
+  "walk.wait": [str("walk"), num("index"), str("say")],
   "walk.done": [str("walk"), str("project"), str("lesson"), str("title"), num("steps")],
   "walk.stopped": [str("walk"), str("reason")],
   "project.report": [str("project"), oneOf("origin", ["lovable", "bolt", "replit", "unknown"]), str("about"), str("stack"), bool("needsInstall"), list("missing"), num("missingCount"), list("notes")],

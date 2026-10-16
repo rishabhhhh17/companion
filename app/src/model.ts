@@ -1,6 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
-import { PRACTICE_LABEL } from "./commands.ts";
+import { PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
 import { S } from "./strings.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
@@ -34,14 +34,22 @@ export type Voice = { stage: string; message: string; percent?: number; text?: s
 export type Problem = import("../../protocol/index.ts").Problem;
 export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
-export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
+// The practice projects the shell can make (app/src-tauri/src/practice.rs NAMES), and the file each one's own failure is in.
+// signup is fixed by a small task; setting by the lesson made from the project (a value is the person's to put in place).
+export const PRACTICES = { signup: { folder: "stuck-signup", failing: "test/signup.test.js" }, setting: { folder: "stuck-setting", failing: "settings.js" } } as const;
+export type PracticeKind = keyof typeof PRACTICES;
+// stage: lesson and proving are the setting practice's fix: the lesson is open, then the checks run again. walk: the lesson
+// the practice opened. nameSet: that lesson could not even be made because the setting's name is already in the file, so
+// the value must be empty or wrong (the checks run again instead of a lesson that cannot be made).
+export type Practice = { kind: PracticeKind; stage: "start" | "found" | "fixing" | "lesson" | "proving" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string; walk?: string; nameSet?: boolean };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
-export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; steps: number; saved: boolean };
-// A guided lesson on the card. stage: a step to do, waiting for "did that work?", words only after a step could not be
-// proven, finished, or stopped.
-export type WalkState = { stage: "step" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
+// fromProject: made by the runner from this project's own setting names, not a lesson file.
+export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
+// A guided lesson on the card. stage: a step to do, "did you already do this?" after a pause (nothing is pointed at
+// until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
+export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 // The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
 // engine says so with needs: "browser", never guessed from its words). installed: what the engine last said. stage: the
@@ -151,7 +159,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const } : m.practice, point: null, where: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
     case "app.stop_everything": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
@@ -209,7 +217,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "project.install": return { ...m, install: { project: String(e.project), stage: String(e.stage), detail: String(e.detail ?? "") } };
     case "project.cloned": return { ...m, cloneNote: e.ok ? null : String(e.detail ?? "") };
     case "ui.cloneNoteClosed": return { ...m, cloneNote: null };
-    case "ui.practiceStarted": return { ...m, practice: { stage: "start", project: String(e.project) } };
+    case "ui.practiceStarted": return { ...m, practice: { kind: e.kind === "setting" ? "setting" : "signup", stage: "start", project: String(e.project) } };
+    // The setting practice's fix is a lesson; the signup practice's is a task, so it never waits on one.
+    case "ui.practiceLesson": return m.practice?.kind === "setting" && ["found", "failed"].includes(m.practice.stage) ? { ...m, practice: { ...m.practice, stage: "lesson", walk: typeof e.walk === "string" ? e.walk : undefined, nameSet: undefined } } : m;
+    // The setting is in the file but the checks still failed: run them again (the card starts them when it sees "proving").
+    case "ui.practiceProving": return m.practice?.kind === "setting" && m.practice.stage === "failed" ? { ...m, practice: { ...m.practice, stage: "proving" } } : m;
     case "ui.practiceFixing": return m.practice ? { ...m, practice: { ...m.practice, stage: "fixing", why: undefined } } : m;
     case "ui.practiceClosed": return { ...m, practice: null };
     case "ui.diagramAsked": return { ...m, diagram: { stage: "asking", ask: e.ask, project: e.project } };
@@ -218,11 +230,24 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.walkRequested": return { ...m, walkWant: String(e.walk), walk: null };
     case "ui.walkClosed": return { ...m, walk: null, walkWant: null };
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
-    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
+    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
-    case "walk.done": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "done" } } : m;
+    // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.
+    case "walk.wait": return m.walk && m.walk.id === e.walk && m.walk.stage === "step" && m.walk.index === e.index ? { ...m, walk: { ...m.walk, note: String(e.say ?? "") } } : m;
+    case "walk.done": {
+      // The setting practice: its lesson finishing in its own project means the checks run again (the card starts them).
+      if (m.practice?.stage === "lesson" && e.project === m.practice.project && e.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "proving" } };
+      return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "done" } } : m;
+    }
     case "walk.stopped":
+      // Stopping the setting practice's lesson goes back to the start of the fix, so it can be opened again.
+      if (m.practice?.stage === "lesson" && m.walk && m.walk.id === e.walk && m.walk.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "found" } };
+      // The practice's lesson could not even start: no lesson is made because the setting's name is already in the file
+      // (saved with an empty value, say). The checks run again, and the practice says what that means; no second panel.
+      else if (m.practice?.stage === "lesson" && !m.walk && e.walk === m.walkWant && (m.practice.walk === undefined || m.practice.walk === e.walk)) {
+        return { ...m, walk: null, walkWant: null, practice: { ...m.practice, stage: "proving", nameSet: true } };
+      }
       if (m.walk && m.walk.id === e.walk) return { ...m, walk: { ...m.walk, stage: "stopped", note: String(e.reason ?? "") } };
       // A lesson that could not even start (not found) still tells the person why.
       return !m.walk && e.walk === m.walkWant ? { ...m, walk: { stage: "stopped", id: e.walk, lesson: "", title: "Lesson", index: 0, total: 0, variant: "main", say: "", find: "", ask: false, log: [], note: String(e.reason ?? "") } } : m;
@@ -238,10 +263,16 @@ export function reduce(m: Model, e: Ev): Model {
       if (m.practice?.stage === "start" && e.project === m.practice.project && e.verdict === "failed" && e.problem) {
         const pr = e.problem;
         // Only the practice's own bug counts. A check that could not run at all (no Node on this Mac, say) is told as that.
-        const ours = pr.kind === "line" && typeof pr.file === "string" && pr.file.endsWith("test/signup.test.js");
+        const ours = pr.kind === "line" && typeof pr.file === "string" && pr.file.endsWith(PRACTICES[m.practice.kind].failing);
         m = ours
           ? { ...m, practice: { ...m.practice, stage: "found", label: String(e.label ?? ""), where: { file: pr.file, line: pr.line, message: pr.message } } }
           : { ...m, practice: { ...m.practice, stage: "blocked", why: String(pr.message ?? e.detail ?? "") } };
+      }
+      // The setting practice after its lesson: the checks ran again. A pass is done; anything else is said, with the place.
+      if (m.practice?.stage === "proving" && e.project === m.practice.project && e.verdict !== "cancelled") {
+        const pass = e.verdict === "passed" || e.verdict === "passed_with_gaps";
+        const pr = e.problem;
+        m = { ...m, practice: { ...m.practice, stage: pass ? "done" : "failed", ...(!pass && pr ? { where: { file: pr.file, line: pr.line, message: pr.message } } : {}) } };
       }
       // Only an answer to a press that is still waiting counts; one that arrives after Stop or a folder change is old news.
       if (m.point?.stage !== "checking") return m;

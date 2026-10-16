@@ -7,10 +7,10 @@ import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { aimDecision, notSureWords } from "./pointer.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, MemoryLine, Spending } from "./model.ts";
+import type { Explain, MemoryLine, PracticeKind, Spending } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
@@ -129,7 +129,7 @@ function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; worki
   );
 }
 
-function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: () => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -194,7 +194,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
         <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
       </div>
-      <div className="row"><button className="btn" type="button" onClick={onPractice}>{S.practiceAgainFromSettings}</button></div>
+      <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
       <SpendingRow project={project} spending={spending} />
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
@@ -381,11 +381,14 @@ function Card() {
   }, []);
   // The practice project: copied into a new folder, chosen as the project, and followed step by step.
   const practiceBusy = useRef(false);
-  const beginPractice = () => {
+  const beginPractice = (which?: unknown) => {
     if (practiceBusy.current) return;   // one practice folder per press
     practiceBusy.current = true;
-    void invoke("create_practice").then((p) => dispatch({ type: "ui.practiceStarted", project: String(p) })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
+    const kind: PracticeKind = which === "setting" ? "setting" : "signup";   // the first run's unless the setting one was asked for
+    void invoke("create_practice", { which: PRACTICES[kind].folder }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
   };
+  // The setting practice after its lesson: run the project's own checks again, so the fix is proven, not assumed.
+  useEffect(() => { if (m.practice?.stage === "proving" && m.practice.project === project) { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); } }, [m.practice?.stage]);
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
   // About this project: asked each time a folder is opened (reads files only).
@@ -556,8 +559,12 @@ function Card() {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
     noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
-    dispatch({ type: "ui.walkRequested", walk: (c as { id: string }).id }); setLessonsOpen(false); void send(c);
+    const walk = (c as { id: string }).id;
+    dispatch({ type: "ui.walkRequested", walk }); setLessonsOpen(false); void send(c);
+    return walk;
   };
+  // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
+  const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
   const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false);
   const wk = m.walk;
   const wkKey = wk ? `${wk.id}:${wk.index}:${wk.variant}` : "";
@@ -571,7 +578,8 @@ function Card() {
   useEffect(() => { if (wk && m.showme?.stage === "needs_permission") noAim.current = true; }, [m.showme?.stage, wkKey]);
   useEffect(() => { if (!wk) { clearTimeout(actTimer.current); } }, [wk]);
   useEffect(() => {
-    // Only this step's own ring counts: a ring left over from the step before has the old request id.
+    // Only this step's own ring counts: a ring left over from the step before has the old request id. A ring click is only a
+    // click: on a step the project proves, the runner says what is not there yet (walk.wait) and waits for "I did it".
     const r = m.showme?.req;
     if (!wk || wk.stage !== "step" || !r?.startsWith("sm_") || r === staleReq.current) return;
     if ((m.showme?.stage !== "your_turn_done" && m.showme?.stage !== "done_for_you") || acted.current === wkKey) return;
@@ -643,12 +651,12 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={() => { setSettingsOpen(false); beginPractice(); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
+      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={(k) => { setSettingsOpen(false); beginPractice(k); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
       {m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
           {m.practice.stage === "start" && <>
-            <div className="line">{S.practiceStart}</div>
+            <div className="line">{m.practice.kind === "setting" ? S.practiceSettingStart : S.practiceStart}</div>
             <div className="line muted">{S.practiceKeys}</div>
             <div className="row">
               <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
@@ -657,12 +665,19 @@ function Card() {
           </>}
           {m.practice.stage === "found" && <>
             <div className="line"><b>{S.practiceFound}</b> {m.practice.where?.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where?.message}</div>
-            <div className="line muted">{S.practiceFoundMore}</div>
+            <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingFoundMore : S.practiceFoundMore}</div>
             <div className="row">
-              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>
+              {m.practice.kind === "setting"
+                ? <button className="btn primary" type="button" onClick={practiceLesson}>{S.practiceSettingFix}</button>
+                : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>}
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
             </div>
           </>}
+          {m.practice.stage === "lesson" && <>
+            <div className="line">{S.practiceSettingLesson}</div>
+            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
+          </>}
+          {m.practice.stage === "proving" && <div className="line">{S.practiceProving}</div>}
           {m.practice.stage === "fixing" && <>
             <div className="line">{S.practiceFixing}</div>
             <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
@@ -674,16 +689,20 @@ function Card() {
           </>}
           {m.practice.stage === "done" && <>
             <div className="line"><b>{S.practiceDone}</b></div>
-            <div className="line muted">{S.practiceDoneMore}</div>
+            <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingDoneMore : S.practiceDoneMore}</div>
             <div className="row">
               <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceClosed" }); pickFolder(); }}>{S.practiceOwn}</button>
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
             </div>
           </>}
           {m.practice.stage === "failed" && <>
-            <div className="line">{S.practiceFailed}</div>
+            <div className="line">{m.practice.kind !== "setting" ? S.practiceFailed : m.practice.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed}</div>
+            {m.practice.kind === "setting" && m.practice.where?.message && <div className="line muted">{m.practice.where.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where.message}</div>}
             <div className="row">
-              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>
+              {m.practice.kind === "setting" && m.practice.nameSet && <button className="btn primary" type="button" onClick={() => dispatch({ type: "ui.practiceProving" })}>{S.practiceCheckAgain}</button>}
+              {m.practice.kind === "setting"
+                ? <button className={`btn${m.practice.nameSet ? "" : " primary"}`} type="button" onClick={practiceLesson}>{S.practiceAgain}</button>
+                : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>}
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
             </div>
           </>}
@@ -696,6 +715,7 @@ function Card() {
           {(m.lessons ?? []).map((l) => (
             <div className="line" key={l.id}>
               <b>{l.title}</b> <span className="muted">{l.app}</span>
+              {l.fromProject && <div className="line muted">{S.lessonFromProject}</div>}
               {l.status !== "tried" && <div className="line muted">{S.lessonDraft}</div>}
               <div className="row">
                 <button className="btn primary" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
@@ -711,11 +731,12 @@ function Card() {
         <section className={`panel ${m.walk.stage === "help" ? "amber" : ""}`} role="status" aria-label={S.lessonsTitle}>
           <h2>{m.walk.title}</h2>
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
-          {(m.walk.stage === "step" || m.walk.stage === "asking") && <>
+          {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
             <div className="line"><b>{m.walk.say}</b></div>
           </>}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
+          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}
           {m.walk.log.length > 0 && (
             <details className="line muted">
               <summary>{S.lessonLogTitle} ({m.walk.log.length})</summary>
@@ -726,7 +747,12 @@ function Card() {
             {m.walk.stage === "step" && <>
               <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}` }); }}>{S.lessonPoint}</button>
               {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>}
-              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "clicked", m.walk!.index)); }}>{S.lessonDid}</button>
+              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
+            </>}
+            {m.walk.stage === "already" && <>
+              <div className="line">{S.lessonAlready}</div>
+              <button className="btn primary" type="button" onClick={() => void send(walkAnswer(m.walk!.id, true, m.walk!.index))}>{S.lessonAlreadyYes}</button>
+              <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonAlreadyNo}</button>
             </>}
             {m.walk.stage === "asking" && <>
               <div className="line">{S.lessonWorked}</div>
@@ -734,7 +760,7 @@ function Card() {
               <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonNo}</button>
             </>}
             {m.walk.stage === "help" && <button className="btn primary" type="button" onClick={() => void send(walkSkip(m.walk!.id, m.walk!.index))}>{S.lessonSkip}</button>}
-            {["step", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
+            {["step", "already", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
             {["done", "stopped"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.walkClosed" })}>{S.pointClose}</button>}
           </div>
         </section>
@@ -763,6 +789,7 @@ function Card() {
           {m.about.missingCount > 0 && (
             <div className="line">{S.aboutMissing} <b>{m.about.missing.join(", ")}</b>{m.about.missingCount > m.about.missing.length ? ` ${S.andMore.replace("{n}", String(m.about.missingCount - m.about.missing.length))}` : ""}. {m.about.example ? S.aboutMissingExample.replace("{file}", m.about.example) : S.aboutMissingHow}</div>
           )}
+          {m.about.missingCount > 0 && !m.walk && <div className="row"><button className="btn" type="button" onClick={() => beginLesson(SETTINGS_LESSON_ID, false)}>{S.aboutSettingsLesson}</button></div>}
           <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
