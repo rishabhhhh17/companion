@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { browserExecutable } from "../src/proof/browser.ts";
 import { createLanes, readSettings } from "../src/engines.ts";
+import { clickPoint, type Located } from "../src/lanes.ts";
 
 // Default: the test plan login with a small model. To score the Computer Use lane instead (needs an API key in the
 // Keychain, costs a few cents), start it as:  COMPANION_ROUTE=api_key COMPANION_AIM=computer_use bun run scripts/eval-aim.ts
@@ -70,16 +71,18 @@ for (const pg of real ? realPages : pages()) {
     if (!target) continue;
     n++;
     const t0 = Date.now();
-    const r = await lanes.vision.locate({ image: { base64: png.toString("base64"), mediaType: "image/png", w: 1280, h: 800 }, question: ask.question, ocr: [] }, new AbortController().signal).catch((e) => ({ point: null as null, costUsd: 0, err: String(e) }));
+    const r: Located = await lanes.vision.locate({ image: { base64: png.toString("base64"), mediaType: "image/png", w: 1280, h: 800 }, question: ask.question, ocr: [] }, new AbortController().signal).catch(() => ({ point: null, costUsd: 0 }));
     ms.push(Date.now() - t0); cost += r.costUsd;
-    if (!r.point) { none++; misses.push(`${pg.name}: "${ask.question}" -> no answer`); continue; }
-    const inside = (e: { x: number; y: number; w: number; h: number }) => r.point!.x >= e.x && r.point!.x <= e.x + e.w && r.point!.y >= e.y && r.point!.y <= e.y + e.h;
+    // Scored on where the person would click: the last target of an answer with several (the ones before it are "look here").
+    const hit = clickPoint(r);
+    if (!hit) { none++; misses.push(`${pg.name}: "${ask.question}" -> no answer`); continue; }
+    const inside = (e: { x: number; y: number; w: number; h: number }) => hit.x >= e.x && hit.x <= e.x + e.w && hit.y >= e.y && hit.y <= e.y + e.h;
     const rawHit = inside(target);
     // What the Mac would report: the smallest clickable thing under the point.
     const under = els.filter(inside).sort((a, b) => a.w * a.h - b.w * b.h)[0];
     const snapHit = !!under && under.t === target.t && Math.abs(under.x - target.x) < 1 && Math.abs(under.y - target.y) < 1;
     if (rawHit) raw++; if (snapHit) snapped++;
-    if (!rawHit) misses.push(`${pg.name}: "${ask.question}" wanted ${target.t} at (${Math.round(target.x)},${Math.round(target.y)}); got (${Math.round(r.point.x)},${Math.round(r.point.y)}) "${r.point.targetText}"`);
+    if (!rawHit) misses.push(`${pg.name}: "${ask.question}" wanted ${target.t} at (${Math.round(target.x)},${Math.round(target.y)}); got (${Math.round(hit.x)},${Math.round(hit.y)}) "${hit.targetText}"`);
   }
   await ctx.close();
 }

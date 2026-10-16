@@ -10,6 +10,7 @@
 {"v":1,"id":"e10","type":"assist.prompt.delta","req":"ph_12","text":"Add a gallery page at src/pages/Gallery..."}
 {"v":1,"id":"e11","type":"assist.prompt.done","req":"ph_12","text":"Add a gallery page","question":"Should images open full size on click?","diff":[["-","make a gallery thing"],["+","Add a gallery page"]],"usdEstimate":0.004,"handback":"paste"}
 {"v":1,"id":"e12","type":"assist.point","req":"sm_7","step":1,"x":102,"y":621,"ocrId":"o1","targetText":"Project Settings","confidence":0.82,"caption":"Click Project Settings"}
+{"v":1,"id":"e12b","type":"assist.point","req":"sm_8","step":1,"x":120,"y":88,"ocrId":"t2","targetText":"Name","confidence":0.86,"caption":"Type your name here","mark":"underline","screen":1,"targets":[{"x":120,"y":88,"ocrId":"t2","targetText":"Name","confidence":0.86,"caption":"Type your name here","mark":"underline","screen":1},{"x":120,"y":140,"ocrId":"t3","targetText":"Email","confidence":0.8,"caption":"Then your email","mark":"box","screen":1},{"x":640,"y":410,"ocrId":"s2t1","targetText":"Save","confidence":0.9,"caption":"Then click Save","mark":"ring","screen":2}]}
 {"v":1,"id":"e13","type":"assist.error","req":"sm_7","reason":"cancelled"}
 {"v":1,"id":"e20","type":"approval.resolved","approval":"ap_71","agent":"builder-1","outcome":"denied"}
 {"v":1,"id":"e21","type":"proof.step","agent":"builder-1","rung":"browser","label":"Opening it in a browser","status":"failed","detail":"The page answered with an error (500).","ms":669}
