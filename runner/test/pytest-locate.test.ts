@@ -119,3 +119,20 @@ describe("a Python server that does not start (real uvicorn output)", () => {
     expect(locateProblem(fixture("uvicorn-start", p), p, "start")).toMatchObject({ kind: "line", file: "main.py", line: 11, lineText: "settings = Settings()", message: "NameError: name 'Settings' is not defined" });
   });
 });
+
+describe("a pytest report selected in another app (the error explainer's loose mode)", () => {
+  test("a report from a terminal opened in a folder inside the project still finds the one file it names", () => {
+    const p = project(Object.fromEntries(Object.entries(SHOP).map(([f, c]) => [`backend/${f}`, c])));
+    const text = fixture("pytest-assert-long", "/home/runner/work/shop");
+    expect(locateProblem(text, p, "tests")?.kind).toBe("message");   // a check Companion ran: only paths as written
+    expect(locateProblem(text, p, "explain", { loose: true })).toMatchObject({ kind: "line", file: "backend/tests/test_cart.py", line: 9, lineText: "assert cart.total() == 15", message: "AssertionError: assert 16 == 15" });
+  });
+  test("a bare file name counts only when the report prints that line of it", () => {
+    const p = project(SHOP);
+    expect(locateProblem(fixture("pytest-short-tb", p), p, "explain", { loose: true })).toMatchObject({ kind: "line", file: "app.py", line: 6 });
+    const said = "FileNotFoundError: [Errno 2] No such file or directory: 'data/items.json'";
+    const bare = [".F", "=================================== FAILURES ===================================", `app.py:6: ${said}`, "=========================== short test summary info ============================", `FAILED test_app.py::test_home - ${said}`, "1 failed, 1 passed in 0.03s"].join("\n");
+    expect(locateProblem(bare, p, "tests")).toMatchObject({ kind: "line", file: "app.py", line: 6 });   // Companion ran it in this folder
+    expect(locateProblem(bare, p, "explain", { loose: true })).toMatchObject({ kind: "message" });     // it could be another project's app.py
+  });
+});

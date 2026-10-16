@@ -23,6 +23,9 @@ const ALLOWED: &[&str] = &[
     // or address (the engine always downloads Playwright's own browser into Companion's own folder), so not project bound.
     "browser.check", "browser.install",
     "spending.show", "spending.set",
+    // Which task broke it: checks earlier saved versions in a private copy, then undoes just that task on a yes. Both name the
+    // project, so both are project bound. error.explain is not here: only the hotkey flow (errhelp.rs) sends it.
+    "bisect.start", "bisect.undo",
     // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
     "teach.try", "teach.check",
 ];
@@ -61,6 +64,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
     "spending.show", "spending.set", "teach.try", "teach.check",
+    "bisect.start", "bisect.undo",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -360,6 +364,40 @@ mod tests {
             assert!(!PROJECT_BOUND.contains(&t), "{t}");
             assert!(check_project(&json!({"v":1,"id":"c","type":t}), "").is_ok(), "{t} works before a folder is chosen");
         }
+    }
+    #[test]
+    fn which_task_broke_it_may_be_asked_by_a_page_but_only_for_the_chosen_project() {
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p, "agent": "builder-1", "checkpoint": "cp_0003", "confirm": true });
+        for t in ["bisect.start", "bisect.undo"] {
+            assert!(check_command(&c(t, "/Users/me/site")).is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t} must not accept another folder");
+            assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t} must not work before a folder is chosen");
+        }
+    }
+    #[test]
+    fn a_page_can_never_send_text_to_be_explained_as_if_it_was_read_from_another_app() {
+        // Only the hotkey flow (errhelp.rs) sends error.explain, straight to the engine, after the light and the read rules.
+        assert!(check_command(&json!({ "v": 1, "id": "x", "type": "error.explain", "req": "r", "app": "a", "text": "t" })).is_err());
+    }
+    #[test]
+    fn the_shared_command_fixtures_for_pages_pass_the_same_checks() {
+        // protocol/fixtures is read by the runner's suite too: both sides agree on what these commands look like.
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let mut seen = 0;
+        for line in fixtures.lines().filter(|l| !l.trim().is_empty()) {
+            let v: Value = serde_json::from_str(line).expect("a fixture is JSON");
+            let t = v["type"].as_str().unwrap_or("");
+            if t.starts_with("bisect.") {
+                seen += 1;
+                assert!(check_command(&v).is_ok(), "{line}");
+                let project = v["project"].as_str().unwrap_or("");
+                assert!(check_project(&v, project).is_ok(), "{line}");
+                assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+            }
+            if t == "error.explain" { assert!(check_command(&v).is_err(), "{line}"); }
+        }
+        assert_eq!(seen, 2);
     }
     #[test]
     fn your_turn_may_be_asked_for_by_a_page_and_only_for_the_chosen_project() {

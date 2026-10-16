@@ -15,6 +15,15 @@ export type Checkpoint = { id: string; commit: string; label: string; files: num
 // recovered: big live files (over 2 MiB, which a checkpoint cannot hold) that undo replaced, copied to <shadow>/recovered/<safety id>/.
 // largeLeftAlone: big files undo did not touch (the checkpoint only holds an older small version, or there was no room to copy aside).
 export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[]; recovered: string[]; largeLeftAlone: string[] };
+// Undoing one task in the middle (from the version before it to the version after it), against the project as it is now.
+// conflicts: files that one task changed and later work changed again, or that cannot be written safely; any conflict means
+// the task can only be shown, never undone on its own, so nothing done after it is lost.
+export type Changed = { file: string; kind: "added" | "modified" | "deleted" };
+export type UndoOnePlan = { safe: boolean; changed: Changed[]; env: string[]; conflicts: string[]; reason?: string };
+export type UndoOneResult = { safetyCheckpoint: string; reverted: string[]; env: string[] };
+/** Undoing one task stopped partway (after something was written): the version from just before it is in safetyCheckpoint. */
+export class UndoOneError extends Error { constructor(message: string, readonly safetyCheckpoint?: string) { super(message); } }
+const MAX_UNDO_ONE_FILES = 1000;
 
 const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 5 * 60_000;   // a snapshot that has not finished in five minutes is stuck, not slow
@@ -69,11 +78,39 @@ export class CheckpointStore {
   snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)).catch((e) => { throw friendly(e); }); }
   restore(id: string): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id)).catch((e) => { throw friendly(e); }); }
   readFiles(id: string, keep: (path: string) => boolean, maxBytes = 200_000): Promise<Record<string, string>> { return this.serial(() => this.readFilesNow(id, keep, maxBytes)); }
+  /** An id of the content of selected files at a checkpoint (the same content gives the same id), without reading them. */
+  fileIds(id: string, keep: (path: string) => boolean): Promise<Record<string, string>> {
+    return this.serial(async () => {
+      const m = this.readMeta(id);
+      if (!m) throw new Error(`Unknown checkpoint: ${id}`);
+      const out: Record<string, string> = {};
+      for (const row of (await this.git(["ls-tree", "-r", "-z", m.commit])).split("\0")) {
+        const tab = row.indexOf("\t");
+        if (tab < 0) continue;
+        const path = row.slice(tab + 1), oid = row.slice(0, tab).split(" ")[2];
+        if (path && oid && keep(path)) out[path] = oid;
+      }
+      return out;
+    });
+  }
   diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
   /** Copy the project as it was at a checkpoint (its private .env copies too) into an empty folder outside the project,
    *  for the "before" picture of a visual receipt. The project itself is never touched. */
   exportTo(id: string, dir: string): Promise<void> { return this.serial(() => this.exportNow(id, dir)); }
   list(): Promise<Checkpoint[]> { return this.serial(async () => this.refs().map((r) => this.readMeta(r.id)!).filter(Boolean)); }
+  /** Do two saved versions hold different files, counting the private .env copies kept beside them (usually not in the saved files)? */
+  differs(fromId: string, toId: string): Promise<boolean> {
+    return this.serial(async () => {
+      if ((await this.diffNow(fromId, toId)).length > 0) return true;
+      const a = this.readMeta(fromId)!, b = this.readMeta(toId)!;
+      return [...new Set([...a.envFiles, ...b.envFiles])].some((rel) => { const [x, y] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)]; return !(x === y || (x && y && x.equals(y))); });
+    });
+  }
+  /** Could the one task that went from `fromId` to `toId` be undone on its own, given the project as saved in `nowId`? Writes nothing. */
+  undoOnePlan(fromId: string, toId: string, nowId: string): Promise<UndoOnePlan> { return this.serial(() => this.planOneNow(fromId, toId, nowId)); }
+  /** Undo only that task: save the project first (so this is undoable too), check again against that, then put back only the
+   *  files that task changed. Refuses, changing nothing, if later work changed any of them. */
+  undoOne(fromId: string, toId: string, label: string): Promise<UndoOneResult> { return this.serial(() => this.undoOneNow(fromId, toId, label)).catch((e) => { throw e instanceof UndoOneError ? e : friendly(e); }); }
 
   // ---------- git plumbing ----------
 
@@ -405,5 +442,111 @@ export class CheckpointStore {
       rmSync(abs, { force: true });
     }
     return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone, recovered, largeLeftAlone };
+  }
+
+  // ---------- undo one task in the middle ----------
+
+  private envCopy(id: string, rel: string): Buffer | null {
+    try { return readFileSync(join(this.metaPath(id), "env", rel)); } catch { return null; }
+  }
+
+  private async planOneNow(fromId: string, toId: string, nowId: string): Promise<UndoOnePlan> {
+    const a = this.readMeta(fromId), b = this.readMeta(toId), c = this.readMeta(nowId);
+    if (!a || !b || !c) throw new Error(`Unknown checkpoint: ${!a ? fromId : !b ? toId : nowId}`);
+    // What the task changed, with each file's kind (an ordinary file, a link, a folder with its own history).
+    const parts = (await this.git(["diff-tree", "-r", "--no-renames", "-z", a.commit, b.commit])).split("\0");
+    const changed: Changed[] = [], odd = new Set<string>();
+    for (let i = 0; i + 1 < parts.length; i++) {
+      if (!parts[i].startsWith(":")) continue;
+      const [srcMode, dstMode, , , status] = parts[i].slice(1).split(" ");
+      const file = parts[++i];
+      if (!file) continue;
+      changed.push({ file, kind: status === "A" ? "added" : status === "D" ? "deleted" : "modified" });
+      if ([srcMode, dstMode].some((m) => m === "120000" || m === "160000")) odd.add(file);
+    }
+    changed.sort((x, y) => x.file.localeCompare(y.file));
+    // What changed after the task, up to now.
+    const later = new Set((await this.git(["diff-tree", "-r", "--name-only", "--no-renames", "-z", b.commit, c.commit])).split("\0").filter(Boolean));
+    // Files left out of a saved version (too big, or unreadable) and folders with their own git history, in any of the three.
+    // Before the task counts too: such a file is missing from the version before it (so a task that shrank it looks like it
+    // added it, and undo would delete it) or is there only as an older small copy (which undo would wrongly put back).
+    const all = [...a.skipped, ...b.skipped, ...c.skipped];
+    const files = all.filter((x) => !x.path.endsWith("/"));
+    const big = new Set(files.filter((x) => String(x.reason ?? "").startsWith("over 2 MiB")).map((x) => x.path));
+    const unsaved = new Set(files.map((x) => x.path).filter((p) => !big.has(p)));
+    const ownGit = all.filter((x) => x.path.endsWith("/")).map((x) => x.path);
+    const why: Record<"later" | "link" | "big" | "unsaved" | "git", string[]> = { later: [], link: [], big: [], unsaved: [], git: [] };
+    const blocked = (rel: string): keyof typeof why | null => {
+      if (later.has(rel)) return "later";
+      if (big.has(rel)) return "big";
+      if (unsaved.has(rel)) return "unsaved";
+      if (ownGit.some((g) => rel.startsWith(g))) return "git";
+      if (odd.has(rel)) return "link";
+      try { if (this.hasLinkOnTheWay(this.inProject(rel))) return "link"; } catch { return "link"; }
+      try { if (lstatSync(join(this.projectDir, rel)).isSymbolicLink()) return "link"; } catch { /* not there now */ }
+      return null;
+    };
+    for (const ch of changed) { const k = blocked(ch.file); if (k) why[k].push(ch.file); }
+    // .env files are kept beside each version (they are usually not in the saved files): a change to one counts too.
+    const env: string[] = [];
+    for (const rel of [...new Set([...a.envFiles, ...b.envFiles])].sort()) {
+      const [ea, eb] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)];
+      if (ea === eb || (ea && eb && ea.equals(eb))) continue;
+      env.push(rel);
+      const ec = this.envCopy(nowId, rel);
+      if (!(eb === null ? ec === null : ec !== null && eb.equals(ec))) { if (!why.later.includes(rel)) why.later.push(rel); continue; }
+      try { if (this.hasLinkOnTheWay(this.inProject(rel)) || lstatSync(join(this.projectDir, rel)).isSymbolicLink()) why.link.push(rel); } catch { /* not there now: fine */ }
+    }
+    const conflicts = [...new Set([...why.later, ...why.link, ...why.big, ...why.unsaved, ...why.git])].sort();
+    const names = (l: string[]) => (l.length <= 5 ? l.join(", ") : `${l.slice(0, 5).join(", ")} and ${l.length - 5} more`);
+    const are = (l: string[]) => (l.length === 1 ? "is" : "are");
+    let reason: string | undefined;
+    if (why.later.length) reason = `Later work changed the same ${why.later.length === 1 ? "file" : "files"} (${names(why.later)}), so undoing this task on its own would lose that work.`;
+    else if (why.link.length) reason = `${names(why.link)} ${are(why.link)} behind a link now, so Companion will not write there.`;
+    else if (why.big.length) reason = `${names(why.big)} ${are(why.big)} too big to have a saved copy (over 2 MiB).`;
+    else if (why.unsaved.length) reason = `${names(why.unsaved)} could not be read when a version was saved, so there is no copy to put back.`;
+    else if (why.git.length) reason = `${names(why.git)} ${are(why.git)} inside a folder with its own git history, which Undo does not cover.`;
+    else if (changed.length + env.length === 0) reason = "This task changed nothing that can be undone.";
+    else if (changed.length > MAX_UNDO_ONE_FILES) reason = `This task changed ${changed.length} files, too many to undo one by one.`;
+    return { safe: !reason, changed, env, conflicts, ...(reason ? { reason } : {}) };
+  }
+
+  private async undoOneNow(fromId: string, toId: string, label: string): Promise<UndoOneResult> {
+    const a = this.readMeta(fromId);
+    if (!a || !this.readMeta(toId)) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
+    // The project exactly as it is now: what the check below compares with, and what Undo can go back to.
+    const safety = await this.snapshotNow(`Before undoing one task: ${label.slice(0, 60)}`);
+    const plan = await this.planOneNow(fromId, toId, safety.id);
+    if (!plan.safe) throw new UndoOneError(`${plan.reason ?? "This task cannot be undone on its own."} Nothing was changed.`);
+    try {
+      // Files the task changed or removed come back as they were before it.
+      const back = plan.changed.filter((x) => x.kind !== "added").map((x) => x.file);
+      if (back.length) {
+        const idx = this.tmpIndex();
+        try {
+          await this.git(["read-tree", a.commit], { index: idx });
+          await this.git(["checkout-index", "-f", "--", ...back], { index: idx });
+        } finally { rmSync(idx, { force: true }); }
+      }
+      // Files the task added go, with any folder that is left empty.
+      for (const x of plan.changed.filter((y) => y.kind === "added")) {
+        const abs = this.inProject(x.file);
+        rmSync(abs, { force: true, recursive: false });
+        let dir = dirname(abs);
+        while (dir !== this.projectDir && dir.startsWith(this.projectDir + sep)) {
+          try { if (readdirSync(dir).length === 0) rmdirSync(dir); else break; } catch { break; }
+          dir = dirname(dir);
+        }
+      }
+      // .env files: the copy from before the task, or none if it did not exist then.
+      for (const rel of plan.env) {
+        const dst = this.inProject(rel), src = join(this.metaPath(fromId), "env", rel);
+        if (existsSync(src)) { mkdirSync(dirname(dst), { recursive: true }); copyFileSync(src, dst); }
+        else rmSync(dst, { force: true });
+      }
+    } catch (e) {
+      throw new UndoOneError(`Undoing the task stopped partway (${String((e as Error).message ?? e).split("\n")[0].slice(0, 120)}). Your project as it was just before is saved, so it can be put back.`, safety.id);
+    }
+    return { safetyCheckpoint: safety.id, reverted: plan.changed.map((x) => x.file), env: plan.env };
   }
 }

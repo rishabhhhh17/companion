@@ -7,8 +7,8 @@ import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines } from "./model.ts";
+import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -696,6 +696,8 @@ function Card() {
     if (box.current) box.current.value = "";
   };
 
+  // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
+  const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
   const rescue = () => {
     if (!project) return;
     dispatch({ type: "ui.undoClosed" });
@@ -1103,6 +1105,7 @@ function Card() {
           ))}
           {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
           {notDoneReason(m) && !isFixing(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
+          {canBisect(m) && project && <div className="row"><button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button></div>}
         </section>
       )}
 
@@ -1213,9 +1216,56 @@ function Card() {
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
+              {m.point.stage === "found" && canBisect(m) && project && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
             </div>
           )}
+        </section>
+      )}
+
+      {m.bisect && (
+        <section className={`panel ${m.bisect.stage === "done" && m.bisect.outcome === "found" ? "amber" : ""}`} role="status" aria-live="polite" aria-label={S.bisectTitle}>
+          <h2>{S.bisectTitle}</h2>
+          {bisectLines(m).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {m.bisect.stage === "done" && m.bisect.outcome === "found" && (m.bisect.changed?.length ?? 0) > 0 && (
+            <details>
+              <summary>{S.bisectWhatChanged}</summary>
+              {m.bisect.changed!.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
+              {m.bisect.diff && <pre className="diff" tabIndex={0} aria-label={S.bisectWhatChanged}>{m.bisect.diff}</pre>}
+            </details>
+          )}
+          {m.bisect.undoStage === "confirm" && m.bisect.task && project && (
+            <div className="line"><div>{S.bisectUndoSure(m.bisect.changedCount ?? m.bisect.changed?.length ?? 0)}</div>
+              <div className="row">
+                <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.bisectUndoSent" }); void send(undoOneTask(project, m.bisect!.task!.checkpoint)); }}>{S.bisectUndoYes}</button>
+                <button className="btn" type="button" onClick={() => dispatch({ type: "ui.bisectUndoCancelled" })}>{S.bisectUndoNo}</button>
+              </div></div>
+          )}
+          <div className="row">
+            {m.bisect.stage === "running" && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
+            {m.bisect.stage === "done" && m.bisect.outcome === "found" && m.bisect.undo === "safe" && !m.bisect.undoStage && project && <button className="btn danger" type="button" onClick={() => dispatch({ type: "ui.bisectUndoAsked" })}>{S.bisectUndo}</button>}
+            {m.bisect.stage === "done" && m.bisect.undoStage !== "working" && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.bisectClosed" })}>{S.bisectClose}</button>}
+          </div>
+        </section>
+      )}
+
+      {m.eh && (
+        <section className={`panel ${["refused", "error", "needs_accessibility", "nothing_selected", "consent"].includes(m.eh.stage) ? "amber" : ""}`} role="status" aria-live="polite" aria-label={S.ehTitle}>
+          <h2>{S.ehTitle}</h2>
+          {["ready", "unexplained"].includes(m.eh.stage) && m.eh.excerpt && <div className="line muted">{m.eh.excerpt}</div>}
+          {ehLines(m).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {m.eh.stage === "consent" && (
+            <div className="row">
+              <button className="btn primary" type="button" onClick={() => void invoke("eh_consent", { choice: "always" })}>{S.phAlways}</button>
+              <button className="btn" type="button" onClick={() => void invoke("eh_consent", { choice: "once" })}>{S.phOnce}</button>
+              <button className="btn" type="button" onClick={() => void invoke("eh_consent", { choice: "never" })}>{S.phNever}</button>
+            </div>
+          )}
+          <div className="row">
+            {["ready", "unexplained"].includes(m.eh.stage) && pointsOnScreen(m.eh.where) && project && m.eh.project === project && <button className="btn" type="button" onClick={() => pointProblem(project, m.eh!.where)}>{S.pointWhere}</button>}
+            {["ready", "unexplained"].includes(m.eh.stage) && m.eh.evidence && project && m.eh.project === project && <button className="btn primary" type="button" disabled={working} onClick={() => { dispatch({ type: "ui.undoClosed" }); void send(fixError(project, m.eh!.evidence!, m.eh!.where)); void invoke("eh_dismiss"); }}>{S.ehFix}</button>}
+            <button className="btn" type="button" onClick={() => { void invoke("eh_dismiss"); dispatch({ type: "ui.ehClosed" }); }}>{["reading", "thinking", "consent"].includes(m.eh.stage) ? S.planCancel : S.ehClose}</button>
+          </div>
         </section>
       )}
 

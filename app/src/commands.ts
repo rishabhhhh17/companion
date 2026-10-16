@@ -106,5 +106,15 @@ export const getBrowser = (): Command => ({ v: 1, id: id(), type: "browser.insta
 export const showSpending = (project: string): Command => ({ v: 1, id: id(), type: "spending.show", project });
 export const setSpendingLimit = (project: string, limitUsd: number): Command => ({ v: 1, id: id(), type: "spending.set", project, limitUsd });
 
+// Which task broke it: check earlier saved versions in a private copy (never the project), then undo just that task on a yes.
+export const findBreakingTask = (project: string): Command => ({ v: 1, id: id(), type: "bisect.start", project, agent: AGENT });
+export const undoOneTask = (project: string, checkpoint: string): Command => ({ v: 1, id: id(), type: "bisect.undo", project, checkpoint, confirm: true });
+// The error explainer's Fix it: a normal task (snapshot, safety rules, proof) with the error, secrets already hidden, as evidence.
+// It is off the record, because the error is text read from another app (rule 5): no saved conversation, nothing learned
+// into memory, a plain label in the history, and no Explain or saved picture afterwards.
+export const ERROR_FIX_PROMPT = "Fix this error. Find the cause and make the smallest change that fixes it, then check that it works. Do not weaken or delete tests.";
+export const fixError = (project: string, evidence: string, where?: { kind: string; file?: string; line?: number }): Command =>
+  startTask(project, `${ERROR_FIX_PROMPT}\n\nThe error, as I saw it:\n${evidence.slice(0, 3000)}${where?.kind === "line" && where.file && where.line ? `\n\nIt points at ${where.file}, line ${where.line}.` : ""}`, true);
+
 /** The stand in project for lessons that need none (see runner/src/walk.ts). */
 export const NO_PROJECT = "no-project";

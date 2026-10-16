@@ -65,6 +65,14 @@ describe("the follow up box", () => {
     expect(canFollowUp(step, P)).toBe(false);
     expect(canFollowUp(run([ev({ type: "drive.done", agent: AGENT, status: "done", completed: 3, total: 3, usdEstimate: 0.1 })], step), P)).toBe(true);
   });
+  test("goes once Which task broke it has undone a task in this project", () => {
+    const answer = ev({ type: "bisect.result", project: P, agent: AGENT, outcome: "found", runs: 3, maxRuns: 6, task: { label: "x", at: "t", checkpoint: "cp_0001" }, undo: "safe" });
+    const asked = run([...done, { type: "ui.bisectAsked" }, answer, { type: "ui.bisectUndoAsked" }, { type: "ui.bisectUndoSent" }]);
+    expect(canFollowUp(run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_0001", ok: false, reverted: [], reason: "Nothing was changed." })], asked), P)).toBe(true);
+    const undone = run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_0001", ok: true, reverted: ["a.txt"], safety: "cp_0009" })], asked);
+    expect(canFollowUp(undone, P)).toBe(false);
+    expect(canFollowUp(reduce(undone, { type: "ui.bisectClosed" } as never), P)).toBe(false);
+  });
   test("is not offered while undo is asked or after it", () => {
     expect(canFollowUp(reduce(run(done), { type: "ui.undoAsked", checkpoint: "cp_0001" } as never), P)).toBe(false);
   });

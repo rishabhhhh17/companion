@@ -4,9 +4,9 @@
 
 import { runCommand, shq } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { Command, Event } from "../../protocol/index.ts";
+import type { Command, Event, Problem } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
@@ -33,12 +33,16 @@ import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
-import { captureBefore, sweepWork } from "./proof/before.ts";
+import { captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
+import { classify, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
+import { UndoOneError } from "./checkpoints.ts";
+import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
 import { aboutLine, inspectProject } from "./proof/intake.ts";
 import { cloneTarget } from "./proof/clone.ts";
 import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
 import { detectProject } from "./proof/detect.ts";
+import { looksPython } from "./proof/python.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
@@ -86,7 +90,16 @@ export type RunnerOptions = {
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
   explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
+  // Which task broke it: earlier saved versions are checked in private copies made in this folder (in Companion's own data,
+  // never the project), each deleted as soon as it has been checked. Without it, off.
+  bisect?: { workDir: string };
 };
+
+/** A private copy made for checking an earlier version starts with this; anything left by a run that was cut off is swept. */
+const BISECT_PREFIX = "bisect-";
+export function sweepBisect(workDir: string) {
+  try { for (const n of readdirSync(workDir)) if (n.startsWith(BISECT_PREFIX)) rmSync(join(workDir, n), { recursive: true, force: true }); } catch { /* nothing there */ }
+}
 
 // Receipt pictures are kept for the timeline, newest first, so they never fill the disk.
 const KEEP_PICTURES = 200;
@@ -211,7 +224,7 @@ export class AgentRunner {
   private counter = 0;
   private ledger: Ledger;
   private dailyLimitUsd: number;
-  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); this.dailyLimitUsd = o.dailyCeilingUsd ?? DEFAULT_DAILY_LIMIT_USD; if (o.pictures) sweepWork(o.pictures.workDir); }
+  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); this.dailyLimitUsd = o.dailyCeilingUsd ?? DEFAULT_DAILY_LIMIT_USD; if (o.pictures) sweepWork(o.pictures.workDir); if (o.bisect) sweepBisect(o.bisect.workDir); }
 
   // Companion's own notes are not the person taking the wheel: the watchers treat these writes as the agent's own.
   private ownWrite<T>(fn: () => T): T {
@@ -390,6 +403,9 @@ export class AgentRunner {
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "problem.find": return this.problemFind(cmd);
+      case "bisect.start": return this.bisectStart(cmd);
+      case "bisect.undo": return this.bisectUndo(cmd);
+      case "error.explain": return this.errorExplain(cmd);
       case "teach.try": return this.teachTry(cmd);
       case "teach.check": return this.teachCheck(cmd);
       case "diagram.ask": return this.diagramAsk(cmd);
@@ -514,8 +530,12 @@ export class AgentRunner {
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
   private projectInUse(project: string): boolean {
+    return this.projectBusy.has(resolve(project)) || this.otherWorkOn(project);
+  }
+  /** Anything but a task: a check or a search (Point at the problem, Find which task broke it), an install, a copy, a ship step. */
+  private otherWorkOn(project: string): boolean {
     const key = resolve(project);
-    return this.projectBusy.has(key) || this.shipping.has(key) || [...this.installing.keys()].some((k) => resolve(k) === key) || [...this.finding.keys()].some((k) => resolve(k) === key);
+    return this.shipping.has(key) || [...this.installing.keys()].some((k) => resolve(k) === key) || [...this.finding.keys()].some((k) => resolve(k) === key);
   }
   private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
   private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
@@ -526,7 +546,9 @@ export class AgentRunner {
     const key = resolve(cmd.project);
     if (this.sessions.has(cmd.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
     const holder = this.projectBusy.get(key);
-    if (holder && holder !== cmd.agent) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
+    // A check, a search, an install or a ship step is reading or writing the project too (a search copies its installed
+    // packages, and its checks set the character): a task waits for it, never runs beside it.
+    if ((holder && holder !== cmd.agent) || this.otherWorkOn(cmd.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
     this.projectBusy.set(key, cmd.agent);
     try {
       return await this.runInner(cmd, opts);
@@ -1158,6 +1180,160 @@ export class AgentRunner {
       found("cancelled");
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
+  }
+
+  // ---------- Which task broke it (snapshot bisect) ----------
+
+  // The task the last search found, per project: the only one that may then be undone on its own.
+  private bisected = new Map<string, { before: string; after: string; label: string }>();
+
+  /** Check one saved version in a private copy in Companion's own folder, never in the project: its files and .env copies
+   *  are put there, each folder of installed packages (`folders`, from the project as it is now: the top one and, in a
+   *  workspace, each package's own) gets a copy of its own (never installed, never linked, so nothing a build writes inside
+   *  them reaches the person's), the ladder runs on the copy with its own time limits, and the copy is deleted afterwards.
+   *  Null when the version could not be copied or checked. */
+  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal): Promise<LadderResult | null> {
+    const work = this.o.bisect!.workDir;
+    if (signal.aborted) return { verdict: "cancelled", steps: [] };
+    mkdirSync(work, { recursive: true, mode: 0o700 });
+    const dir = mkdtempSync(join(work, BISECT_PREFIX));
+    try {
+      await store.exportTo(checkpoint, dir);
+      for (const f of folders) {
+        if (!existsSync(dirname(join(dir, f)))) continue;   // that package was not there yet in this version
+        const packages = await ownPackages(join(project, f), join(dir, f), signal);
+        if (packages === "cancelled" || signal.aborted) return { verdict: "cancelled", steps: [] };
+        if (packages === "failed") return null;
+      }
+      // A Stop while the copy was made (or while waiting for the project's turn) ends it before any check starts.
+      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true })));
+    } catch { return signal.aborted ? { verdict: "cancelled", steps: [] } : null; }
+    finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  /** What the installed packages of a saved version have to match (see packagesKey): its package.json package lists and lockfiles. */
+  private async packagesOf(store: CheckpointStore, checkpoint: string): Promise<string> {
+    return packagesKey(await store.readFiles(checkpoint, isManifest, 2_000_000), await store.fileIds(checkpoint, isLockfile));
+  }
+
+  private async bisectStart(cmd: Extract<Command, { type: "bisect.start" }>): Promise<void> {
+    let runs = 0;
+    const result = (outcome: string, extra: Record<string, unknown> = {}) => this.emit({ type: "bisect.result", project: cmd.project, agent: cmd.agent, outcome, runs, maxRuns: MAX_RUNS, ...extra } as never);
+    if (!this.o.bisect) { result("cannot_check", { detail: "Finding which task broke it is not available here." }); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { result("busy", { detail: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
+    if (!existsSync(cmd.project)) { result("failed", { detail: "That project folder is not there any more." }); return; }
+    // A Python project is checked with its own virtual environment, which a private copy does not have, and its package lists
+    // are not compared between versions (packagesKey reads package.json and lockfiles only): an earlier version could pass or
+    // fail only because of the packages, and an innocent task would be blamed. So no answer is given for one yet.
+    if (!existsSync(join(cmd.project, "package.json")) && looksPython(cmd.project)) { result("cannot_check", { detail: "Finding which task broke it works for JavaScript and TypeScript projects for now, not Python ones. Nothing was changed." }); return; }
+    const abort = new AbortController();
+    this.finding.set(cmd.project, { abort, agent: cmd.agent });   // Stop and Stop everything end it, and nothing else runs in the project meanwhile
+    const key = resolve(cmd.project);
+    this.bisected.delete(key);
+    let found = false, shown = false;
+    try {
+      const store = this.store(cmd.project);
+      const points = taskPoints(this.o.log.list(cmd.project, 200), await store.list()).slice(-WINDOW);
+      if (points.length < 2) { result("too_few"); return; }
+      this.state(cmd.agent, "checking");
+      shown = true;
+      const now = await store.snapshot("Find which task broke it: the project as it was found");
+      const folders = packageFolders(cmd.project);
+      const tell = (what: "now" | "after" | "before", label?: string) => this.emit({ type: "bisect.progress", project: cmd.project, agent: cmd.agent, run: runs, maxRuns: MAX_RUNS, what, ...(label ? { label } : {}) } as never);
+      runs++; tell("now");
+      const first = await this.checkCopy(cmd.project, store, now.id, folders, abort.signal);
+      if (abort.signal.aborted || first?.verdict === "cancelled") { result("cancelled"); return; }
+      if (!first) { result("failed", { detail: "Your project could not be copied to check it. Nothing was changed." }); return; }
+      if (first.verdict !== "failed") { result("not_failing"); return; }
+      const failed = first.failedAt ?? first.steps.find((s) => s.status === "failed");
+      // Packages that are not installed (or a check that is not a step of the project) cannot be traced back through versions.
+      if (!failed || failed.rung === "install" || failed.rung === "review") { result("cannot_check", { detail: failed?.detail ?? "The check that fails could not be repeated on earlier versions." }); return; }
+      const step = { rung: failed.rung, label: failed.label };
+      // The installed packages are today's. A version that asked for other ones (its package lists or lockfile differ) is
+      // never checked with them: it could fail only because of the packages, and an innocent task would be blamed.
+      const wanted = await this.packagesOf(store, now.id);
+      let otherPackages = false;
+      const search = await findFirstBad({
+        points, nowId: now.id, maxProbes: MAX_RUNS - 1,
+        differs: (a, b) => store.differs(a, b),
+        usable: async (cp) => { const same = (await this.packagesOf(store, cp)) === wanted; if (!same) otherPackages = true; return same; },
+        probe: async (cp, at) => { runs++; tell(at.side, at.label); return classify(await this.checkCopy(cmd.project, store, cp, folders, abort.signal), failed.rung); },
+      });
+      const o = search.outcome;
+      const brief = (p?: TaskPoint) => (p ? { label: p.label, at: p.at } : undefined);
+      if (o.kind === "cancelled" || abort.signal.aborted) { result("cancelled"); return; }
+      if (o.kind === "found") {
+        const changed = await store.diff(o.task.before, o.task.after);
+        const plan = await store.undoOnePlan(o.task.before, o.task.after, now.id);
+        const paths = new Set(changed.map((c) => c.file));
+        const diff = redact(diffText(await store.readFiles(o.task.before, (p) => paths.has(p)), await store.readFiles(o.task.after, (p) => paths.has(p)), 6000));
+        // Kept even when it can only be shown: an undo asked for anyway is checked again, and refused with the reason.
+        this.bisected.set(key, { before: o.task.before, after: o.task.after, label: o.task.label });
+        found = true;
+        result("found", { step, task: { label: o.task.label, at: o.task.at, checkpoint: o.task.before }, changed: changed.slice(0, 50), changedCount: changed.length, undo: plan.safe ? "safe" : "show_only", ...(plan.reason ? { why: plan.reason } : {}), ...(diff ? { diff } : {}) });
+        return;
+      }
+      if (o.kind === "already_failing") { result(o.kind, { step, earlier: brief(o.oldest) }); return; }
+      if (o.kind === "after_last_task") { result(o.kind, { step, earlier: brief(o.last) }); return; }
+      result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}),
+        ...(o.kind === "unsure" && otherPackages ? { detail: "Some earlier versions needed other packages than the ones installed now, so they could not be checked." } : {}) });
+    } catch (e) {
+      result("failed", { detail: `Companion could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
+    } finally {
+      this.finding.delete(cmd.project);
+      if (shown) this.state(cmd.agent, found ? "needsYou" : "idle");
+    }
+  }
+
+  // Undo just the task that was found, on the person's yes. Only that task, and only if no later work changed its files.
+  private async bisectUndo(cmd: Extract<Command, { type: "bisect.undo" }>): Promise<void> {
+    const done = (ok: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "bisect.undone", project: cmd.project, checkpoint: cmd.checkpoint, ok, reverted: [], ...extra } as never);
+    if ((cmd as { confirm?: unknown }).confirm !== true) { done(false, { reason: "Undoing a task needs your yes." }); return; }
+    const key = resolve(cmd.project);
+    const rec = this.bisected.get(key);
+    if (!rec || rec.before !== cmd.checkpoint) { done(false, { reason: "That is not the task that was found. Press Find which task broke it again." }); return; }
+    if (this.projectInUse(cmd.project)) { done(false, { reason: "Something is still working on this project. Wait for it to finish, or press Stop, then try again." }); return; }
+    try {
+      const r = await this.store(cmd.project).undoOne(rec.before, rec.after, rec.label);
+      this.bisected.delete(key);
+      // As with Undo: the files are not what any offer, turn or conversation in this project was made for any more.
+      this.teachOffers.delete(key); this.teaching.delete(key);
+      for (const [a, t] of this.lastTask) if (resolve(t.project) === key) this.lastTask.set(a, { ...t, undone: true });
+      done(true, { reverted: [...r.reverted, ...r.env], safety: r.safetyCheckpoint });
+    } catch (e) {
+      const m = String((e as Error).message ?? e);
+      const safety = e instanceof UndoOneError ? e.safetyCheckpoint : undefined;
+      done(false, { reason: e instanceof UndoOneError || /^(That|This|Companion needs)/.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`, ...(safety ? { safety } : {}) });
+    }
+  }
+
+  // ---------- The error explainer ----------
+
+  // Text the person selected in another app and sent with the hotkey. Secrets are hidden first, before it is used for anything;
+  // then where it lives in the project is looked up (no model), and the fast model says what it means in two plain sentences.
+  private async errorExplain(cmd: Extract<Command, { type: "error.explain" }>): Promise<void> {
+    const text = cleanSelection(cmd.text);
+    const project = cmd.project && existsSync(cmd.project) ? cmd.project : undefined;
+    const say = (ok: boolean, extra: Record<string, unknown>) => this.emit({ type: "error.explained", req: cmd.req, ...(cmd.project ? { project: cmd.project } : {}), ok, sentences: [], excerpt: excerptOf(text), evidence: clip(text, 3000), usdEstimate: 0, ...extra } as never);
+    if (!text) { say(false, { reason: "There was no text to explain. Select the error first, then press the keys again." }); return; }
+    let where: Problem | null = null;
+    try { where = project ? locateError(text, project) : null; } catch { where = null; }
+    const at = where?.kind === "line" ? { where } : {};
+    if (!this.o.explainer) { say(false, { ...at, reason: "Explaining needs Claude, which is not connected here. You can still look at where it is, or press Fix it." }); return; }
+    const ac = new AbortController();
+    this.picturing.add(ac);   // Stop everything ends it
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 45_000);
+    try {
+      const gone = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
+      const r = await Promise.race([this.o.explainer(errorRequest(text, where), ac.signal), gone]);
+      const sentences = parseExplanation(r.text);
+      if (ac.signal.aborted) { say(false, { ...at, reason: timedOut ? "That took too long. Try again." : "Stopped." }); return; }
+      if (!sentences) { say(false, { ...at, reason: "I could not explain that clearly. You can still look at where it is, or press Fix it.", usdEstimate: r.costUsd }); return; }
+      say(true, { ...at, sentences, usdEstimate: r.costUsd });
+    } catch {
+      say(false, { ...at, reason: ac.signal.aborted ? (timedOut ? "That took too long. Try again." : "Stopped.") : "I could not explain that just now. Try again." });
+    } finally { clearTimeout(timer); this.picturing.delete(ac); }
   }
 
   // Draw it for me: ask the fast model (no tools, one turn) for a small diagram of why something broke, built only from
