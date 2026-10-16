@@ -91,3 +91,20 @@ export function submitKey(raw: string): { clear: true; send: string | null; prob
   const problem = keyLooksRight(raw);
   return { clear: true, send: problem ? null : raw.trim(), problem };
 }
+
+// ---- screen sharing and calls (rule 7) ----
+/** Both on unless the person turned them off; the app keeps them (app/src-tauri/src/presentation.rs). */
+export type Presentation = { hideFromSharing: boolean; quietOnCalls: boolean };
+export const PRESENTATION_DEFAULT: Presentation = { hideFromSharing: true, quietOnCalls: true };
+/** What the app answered, read safely: anything that is not a clear "off" counts as on. */
+export function presentationFrom(v: unknown): Presentation {
+  const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
+  return { hideFromSharing: o.hideFromSharing !== false, quietOnCalls: o.quietOnCalls !== false };
+}
+
+// ---- Show me on all screens ----
+/** Off unless the person turns it on: Show me looks only at the display under the mouse pointer (product doc sections 5
+ *  and 10). On, the same press looks at every display, with the light on first and secrets covered on each. */
+const ALL_SCREENS_KEY = "companion.showmeAllScreens";
+export function allScreensOn(): boolean { try { return localStorage.getItem(ALL_SCREENS_KEY) === "1"; } catch { return false; } }
+export function setAllScreens(on: boolean) { try { localStorage.setItem(ALL_SCREENS_KEY, on ? "1" : "0"); } catch { /* storage may be unavailable */ } }

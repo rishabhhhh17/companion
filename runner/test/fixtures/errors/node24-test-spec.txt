@@ -1,0 +1,29 @@
+✖ joining the list works (32.004292ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 74.920875
+
+✖ failing tests:
+
+test at test/signup.test.js:9:1
+✖ joining the list works (32.004292ms)
+  AssertionError [ERR_ASSERTION]: Pressing Join sends the email to /api/signup, which answered 404
+  
+  404 !== 200
+  
+      at TestContext.<anonymous> ({{ROOT}}/test/signup.test.js:17:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

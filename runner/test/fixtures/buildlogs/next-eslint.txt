@@ -1,0 +1,24 @@
+Vercel CLI 53.4.0
+2026-10-11T16:30:01.101Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-11T16:30:04.010Z  Running "vercel build"
+2026-10-11T16:30:12.100Z  Detected Next.js version: 14.2.35
+2026-10-11T16:30:12.200Z  Running "npm run build"
+2026-10-11T16:30:12.500Z  
+2026-10-11T16:30:12.500Z  > shop@0.1.0 build
+2026-10-11T16:30:12.500Z  > next build
+2026-10-11T16:30:12.500Z  
+2026-10-11T16:30:13.100Z    ▲ Next.js 14.2.35
+2026-10-11T16:30:13.100Z  
+2026-10-11T16:30:13.200Z     Creating an optimized production build ...
+2026-10-11T16:30:29.500Z   ✓ Compiled successfully
+2026-10-11T16:30:29.600Z     Linting and checking validity of types ...
+2026-10-11T16:30:33.000Z  
+2026-10-11T16:30:33.000Z  Failed to compile.
+2026-10-11T16:30:33.000Z  
+2026-10-11T16:30:33.000Z  ./components/Nav.tsx
+2026-10-11T16:30:33.000Z  4:9  Warning: 'open' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+2026-10-11T16:30:33.000Z  12:7  Error: React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render.  react-hooks/rules-of-hooks
+2026-10-11T16:30:33.000Z  
+2026-10-11T16:30:33.000Z  info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules
+2026-10-11T16:30:33.300Z  Error: Command "npm run build" exited with 1
+status	● Error

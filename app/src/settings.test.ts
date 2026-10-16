@@ -122,3 +122,39 @@ describe("permission lessons", () => {
     for (const k of ["screen_recording", "accessibility", "microphone"] as const) expect(shipped).toContain(permissionLesson(k));
   });
 });
+
+import { PRESENTATION_DEFAULT, presentationFrom } from "./settings.ts";
+describe("screen sharing and calls (rule 7)", () => {
+  test("both are on unless the app clearly says off", () => {
+    expect(PRESENTATION_DEFAULT).toEqual({ hideFromSharing: true, quietOnCalls: true });
+    expect(presentationFrom({ hideFromSharing: false, quietOnCalls: true })).toEqual({ hideFromSharing: false, quietOnCalls: true });
+    for (const junk of [undefined, null, "off", 3, { hideFromSharing: "no", quietOnCalls: 0 }]) expect(presentationFrom(junk)).toEqual({ hideFromSharing: true, quietOnCalls: true });
+  });
+  test("Settings shows both switches, and the app has the commands they use, kept in the app (not the page)", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const row = card.slice(card.indexOf("function PresentationRow"), card.indexOf("\n}\n", card.indexOf("function PresentationRow")));
+    expect(row).toContain('invoke("presentation_settings")');
+    expect(row).toContain('invoke("set_presentation", { hideFromSharing: next.hideFromSharing, quietOnCalls: next.quietOnCalls })');
+    expect(card.slice(card.indexOf("function SettingsPanel"))).toContain("<PresentationRow");
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    for (const c of ["presentation_settings", "set_presentation", "quiet_now", "showme_hide"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+  });
+  test("reactions and confetti ask the app first, so they stay quiet during a call", () => {
+    const dock = readFileSync(new URL("./dock.tsx", import.meta.url), "utf8");
+    expect(dock).toContain('invoke("quiet_now")');
+  });
+});
+
+import { allScreensOn } from "./settings.ts";
+describe("Show me on all screens", () => {
+  test("off unless the person turns it on (product doc: the display under the cursor), and off without storage", () => {
+    expect(allScreensOn()).toBe(false);
+  });
+  test("every Show me look passes the person's choice, and Settings has the switch", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const starts = card.split("\n").filter((l) => l.includes('invoke("showme_start"'));
+    expect(starts.length).toBeGreaterThanOrEqual(3);
+    for (const l of starts) expect(l.slice(l.indexOf('invoke("showme_start"'))).toMatch(/^invoke\("showme_start", \{ question[^;]*, allScreens: allScreensOn\(\) \}\)/);
+    expect(card.slice(card.indexOf("function SettingsPanel"))).toContain("S.allScreensSetting");
+  });
+});

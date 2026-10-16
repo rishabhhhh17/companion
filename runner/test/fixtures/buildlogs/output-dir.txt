@@ -1,0 +1,17 @@
+Vercel CLI 53.4.0
+2026-10-12T08:00:01.101Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-12T08:00:04.010Z  Running "vercel build"
+2026-10-12T08:00:05.001Z  Installing dependencies...
+2026-10-12T08:00:09.230Z  added 120 packages in 4s
+2026-10-12T08:00:09.410Z  Running "npm run build"
+2026-10-12T08:00:09.640Z  
+2026-10-12T08:00:09.640Z  > site@0.0.0 build
+2026-10-12T08:00:09.640Z  > vite build --outDir build
+2026-10-12T08:00:09.640Z  
+2026-10-12T08:00:10.101Z  vite v5.4.10 building for production...
+2026-10-12T08:00:10.611Z  ✓ 31 modules transformed.
+2026-10-12T08:00:10.700Z  build/index.html                 0.46 kB │ gzip:  0.30 kB
+2026-10-12T08:00:10.701Z  ✓ built in 1.10s
+2026-10-12T08:00:10.900Z  Error: No Output Directory named "dist" found after the Build completed. Configure the Output Directory in your Project Settings. Alternatively, configure vercel.json#outputDirectory.
+2026-10-12T08:00:10.950Z  Learn More: https://vercel.link/missing-public-directory
+status	● Error

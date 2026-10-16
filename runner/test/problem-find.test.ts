@@ -88,6 +88,23 @@ describe("point at the problem: finding it", () => {
     await s.find();
     expect(of(s.events, "problem.found")[0]).toMatchObject({ verdict: "passed_with_gaps", needs: "browser" });
   });
+  test("checks that passed except for a missing Python package: the card is told what to run, in one line", async () => {
+    const gap = "mypy is not installed in this project's virtual environment (.venv), so the type check could not run. Companion does not install Python packages. To install it, in Terminal in the project folder, run: .venv/bin/pip install mypy";
+    const s = setup(async () => ({ verdict: "passed_with_gaps", steps: [{ rung: "checks", label: "Building and checking the code", status: "passed", detail: `lint passed. ${gap}`, ms: 1 }], gaps: [gap, "another"] }));
+    await s.find();
+    expect(of(s.events, "problem.found")[0]).toMatchObject({ verdict: "passed_with_gaps", note: gap });
+  });
+  test("a Python project with nothing checkable because its packages are missing is what was found, not 'nothing to check'", async () => {
+    const why = "The tests need flask, which is not installed for this Mac's Python. Companion does not install Python packages. To install them, in Terminal in the project folder, run: python3 -m venv .venv, then .venv/bin/pip install -r requirements.txt";
+    const step = { rung: "install" as const, label: "Installing what the project needs", status: "failed" as const, detail: why, ms: 1 };
+    const s = setup(async () => ({ verdict: "failed", steps: [step], failedAt: step, gaps: [why] }));
+    await s.find();
+    const f = of(s.events, "problem.found")[0];
+    expect(f).toMatchObject({ verdict: "failed", label: "Installing what the project needs", detail: why });
+    expect(f.problem).toBeUndefined();
+    expect(f.note).toBeUndefined();
+    expect(of(s.events, "agent.state").map((x) => x.state)).toEqual(["checking", "needsYou"]);
+  });
   test("gaps for another reason do not offer it", async () => {
     const s = setup(async () => ({ verdict: "passed_with_gaps", steps: [{ rung: "browser", label: "Opening it in a browser", status: "skipped", detail: "The hidden browser could not be started.", ms: 0 }] }));
     await s.find();

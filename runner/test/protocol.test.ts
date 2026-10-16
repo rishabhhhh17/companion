@@ -98,6 +98,11 @@ describe("the browser check's download", () => {
     expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed_with_gaps", needs: "something" })).toBe(false);
     expect(e({ type: "proof.result", agent: "a", verdict: "passed_with_gaps", steps: [{ rung: "browser", status: "skipped", needs: "nope" }], tries: 1 })).toBe(false);
   });
+  test("a note on Point at the problem's answer is words, never anything else", () => {
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note: "I could not read why the Vercel deploy failed." })).toBe(true);
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note: { html: "<b>x</b>" } })).toBe(false);
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note: "" })).toBe(false);
+  });
   test("the commands carry nothing a page could point elsewhere: no address, no folder", () => {
     expect(parseCommand('{"v":1,"id":"c","type":"browser.install"}').ok).toBe(true);
     expect(parseCommand('{"v":1,"id":"c","type":"browser.check"}').ok).toBe(true);

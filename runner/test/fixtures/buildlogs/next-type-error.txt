@@ -1,0 +1,42 @@
+Vercel CLI 53.4.0
+2026-10-15T14:02:00.000Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-15T14:02:00.037Z  Build machine configuration: 2 cores, 8 GB
+2026-10-15T14:02:00.074Z  Cloning github.com/sam-builds/shop (Branch: main, Commit: 3f2a9c1)
+2026-10-15T14:02:00.111Z  Cloning completed: 412.000ms
+2026-10-15T14:02:00.148Z  Restored build cache from previous deployment (9QhR1tYwZ)
+2026-10-15T14:02:00.185Z  Running "vercel build"
+2026-10-15T14:02:00.222Z  Vercel CLI 48.2.9
+2026-10-15T14:02:00.259Z  Installing dependencies...
+2026-10-15T14:02:00.296Z  
+2026-10-15T14:02:00.333Z  up to date in 2s
+2026-10-15T14:02:00.370Z  
+2026-10-15T14:02:00.407Z  148 packages are looking for funding
+2026-10-15T14:02:00.444Z    run `npm fund` for details
+2026-10-15T14:02:00.481Z  Detected Next.js version: 14.2.35
+2026-10-15T14:02:00.518Z  Running "npm run build"
+2026-10-15T14:02:00.555Z  
+2026-10-15T14:02:00.592Z  > shop@0.1.0 build
+2026-10-15T14:02:00.629Z  > next build
+2026-10-15T14:02:00.666Z  
+2026-10-15T14:02:00.703Z  ⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+2026-10-15T14:02:00.740Z    ▲ Next.js 14.2.35
+2026-10-15T14:02:00.777Z  
+2026-10-15T14:02:00.814Z     Creating an optimized production build ...
+2026-10-15T14:02:00.851Z   ✓ Compiled successfully
+2026-10-15T14:02:00.888Z     Linting and checking validity of types ...
+2026-10-15T14:02:00.925Z  Failed to compile.
+2026-10-15T14:02:00.962Z  
+2026-10-15T14:02:00.999Z  ./app/page.tsx:6:9
+2026-10-15T14:02:01.036Z  Type error: Type 'string' is not assignable to type 'number'.
+2026-10-15T14:02:01.073Z  
+2026-10-15T14:02:01.110Z  [0m [90m 4 |[39m[0m
+2026-10-15T14:02:01.147Z  [0m [90m 5 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mHome[39m() {[0m
+2026-10-15T14:02:01.184Z  [0m[31m[1m>[22m[39m[90m 6 |[39m   [36mconst[39m total[33m:[39m number [33m=[39m products[33m.[39mmap((p) [33m=>[39m p[33m.[39mprice)[33m.[39mjoin([32m", "[39m)[33m;[39m[0m
+2026-10-15T14:02:01.221Z  [0m [90m   |[39m         [31m[1m^[22m[39m[0m
+2026-10-15T14:02:01.258Z  [0m [90m 7 |[39m   [36mreturn[39m ([0m
+2026-10-15T14:02:01.295Z  [0m [90m 8 |[39m     [33m<[39m[33mmain[39m[33m>[39m[0m
+2026-10-15T14:02:01.332Z  [0m [90m 9 |[39m       [33m<[39m[33mh1[39m[33m>[39m[33mShop[39m[33m<[39m[33m/[39m[33mh1[39m[33m>[39m[0m
+2026-10-15T14:02:01.369Z  Next.js build worker exited with code: 1 and signal: null
+2026-10-15T14:02:01.406Z  Error: Command "npm run build" exited with 1
+2026-10-15T14:02:01.443Z  Exiting build container
+status	● Error
