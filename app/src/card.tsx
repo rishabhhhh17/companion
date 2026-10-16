@@ -7,8 +7,8 @@ import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen } from "./model.ts";
+import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask } from "./commands.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -29,6 +29,34 @@ const lastSeen = (): number => { try { return Number(localStorage.getItem(SEEN_K
 const touch = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); } catch { /* storage may be unavailable */ } };
 // While a person is composing text (Japanese, Chinese, Korean...) Enter and Esc belong to the input method, not to us.
 const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
+
+// Fixes it with you: under the receipt, one line to say what is still wrong (Enter sends), and Try again after a task that
+// was not done. Each one runs as a new checked task. It never takes keyboard focus by itself.
+function FollowUpBox({ project, retry, sending, onSent }: { project: string; retry: boolean; sending: boolean; onSent: () => void }) {
+  const [text, setText] = useState("");
+  const sendIt = () => {
+    const c = followUp(project, text);
+    if (!c || sending) return;
+    onSent(); void send(c); setText("");
+  };
+  return (
+    <div className="followup">
+      {retry && (
+        <div className="row">
+          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(); void send(retryTask(project)); }}>{S.tryAgain}</button>
+          <span className="muted">{S.tryAgainHelp}</span>
+        </div>
+      )}
+      <div className="row">
+        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={S.followUpPlaceholder} aria-label={S.followUpLabel}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); sendIt(); } }} />
+        <button className="btn" type="button" disabled={sending || !text.trim()} onClick={sendIt}>{sending ? S.followUpSending : S.followUpSend}</button>
+      </div>
+      <div className="line muted">{S.followUpHelp}</div>
+    </div>
+  );
+}
 
 function ExplainBox({ e }: { e: Explain }) {
   const [picked, setPicked] = useState<number | null>(null);
@@ -903,7 +931,7 @@ function Card() {
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>
           <h2>{S.stuckTitle}</h2>
-          <div className="line">{S.stepOf} {m.stuck.index}: {m.stuck.title}</div>
+          <div className="line">{stuckWords(m)}</div>
           <div className="line muted">{S.stuckHelp}</div>
           <div className="line">{m.stuck.failure}</div>
           <div className="row">
@@ -1035,7 +1063,8 @@ function Card() {
       {m.task && m.task.lines.length > 0 && (
         <section className="panel" aria-live="polite">
           <h2>{m.task.label || "Task"}</h2>
-          {m.task.lines.slice(-6).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{plainPath(l.text, project)}</div>)}
+          {/* The latest one or two steps, in plain words: never the raw command. */}
+          {activityNow(m).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" || l.outcome === "denied" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</div>)}
         </section>
       )}
 
@@ -1083,6 +1112,10 @@ function Card() {
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
+          {(canFollowUp(m, project) || m.followUp === "sending") && (
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)}
+              onSent={() => { dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
+          )}
         </section>
       )}
 

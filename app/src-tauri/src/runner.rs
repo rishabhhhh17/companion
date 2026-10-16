@@ -55,7 +55,7 @@ pub const NO_PROJECT: &str = "no-project";
 /// engine to work on any folder on the Mac). Not here: commands that name no project, and the stand in for lessons that need none.
 pub const PROJECT_BOUND: &[&str] = &[
     "project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start",
-    "agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
+    "agent.start", "agent.send", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
     "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
     "spending.show", "spending.set",
@@ -358,6 +358,16 @@ mod tests {
             assert!(!PROJECT_BOUND.contains(&t), "{t}");
             assert!(check_project(&json!({"v":1,"id":"c","type":t}), "").is_ok(), "{t} works before a folder is chosen");
         }
+    }
+    #[test]
+    fn a_follow_up_or_try_again_may_only_name_the_chosen_project() {
+        // agent.send carries on the last task as a new task in that project, so it is held to the chosen folder like agent.start.
+        let c = |p: &str| json!({ "v": 1, "id": "x", "type": "agent.send", "agent": "builder-1", "project": p, "text": "the button is still grey" });
+        assert!(check_command(&c("/Users/me/site")).is_ok());
+        assert!(check_project(&c("/Users/me/site"), "/Users/me/site").is_ok());
+        assert!(check_project(&c("/Users/me/other"), "/Users/me/site").is_err());
+        assert!(check_project(&c("/Users/me/site"), "").is_err());
+        assert!(check_project(&json!({ "v": 1, "id": "x", "type": "agent.send", "agent": "builder-1", "retry": true }), "/Users/me/site").is_err(), "a follow up that names no project is refused");
     }
     #[test]
     fn the_spending_limit_row_may_only_name_the_chosen_project() {

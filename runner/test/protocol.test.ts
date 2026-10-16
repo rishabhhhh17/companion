@@ -108,3 +108,21 @@ describe("the browser check's download", () => {
     expect(parseCommand('{"v":1,"id":"c","type":"browser.check"}').ok).toBe(true);
   });
 });
+
+describe("a follow up or Try again (agent.send)", () => {
+  const c = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", type: "agent.send", agent: "builder-1", ...o })).ok;
+  test("names the project it is for, so the app can hold it to the chosen folder", () => {
+    expect(c({ project: "/p", text: "the button is still grey" })).toBe(true);
+    expect(c({ text: "the button is still grey" })).toBe(false);
+  });
+  test("a follow up needs words; Try again needs none", () => {
+    expect(c({ project: "/p" })).toBe(false);
+    expect(c({ project: "/p", text: "" })).toBe(false);
+    expect(c({ project: "/p", retry: true })).toBe(true);
+    expect(c({ project: "/p", retry: "yes" })).toBe(false);
+    expect(c({ project: "/p", retry: true, text: 7 })).toBe(false);
+  });
+  test("a single task's loop card has no step number (index 0)", () => {
+    expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "loop.stuck", agent: "builder-1", index: 0, title: "Fix the signup page", failure: { label: "Running the tests", detail: "1 failed" }, options: [] })).ok).toBe(true);
+  });
+});
