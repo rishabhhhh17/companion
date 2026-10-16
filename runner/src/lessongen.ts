@@ -105,6 +105,9 @@ export function settingsLesson(n: Needs, shape?: string): Lesson | null {
   const { names, total } = pick(n.missing, n.needed, "set", cap, shape);
   if (names.length === 0) return null;
   const file = settingsFile(n.stack);
+  // The start command comes from the project's own files (.replit, a launch file), so it can hold anything. It is named
+  // only when a lesson can hold it as plain words; otherwise the whole lesson would be refused and silently go missing.
+  const start = n.start && !/[<>\u0000-\u001f\u007f]/.test(n.start) ? n.start : null;
   const steps = names.map((name) => {
     const w = whereToGet(name);
     const line = `In ${file}, add a line: ${name}= then the value. Save the file.`;
@@ -123,7 +126,7 @@ export function settingsLesson(n: Needs, shape?: string): Lesson | null {
     steps: [
       { id: "file", say: `Make a file named ${file} in your project's top folder if it is not there yet, and open it in your editor. Keys go only in this file, never in Companion or a chat.`, find: `the ${file} file in your project's top folder`, check: { kind: "file_exists", path: file } },
       ...steps,
-      { id: "restart", say: n.start ? fit(200, `Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then run ${n.start} again.`, "Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then start it again.") : "Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then start it again.", find: "the Terminal window where your project runs", check: { kind: "ask" } },
+      { id: "restart", say: start ? fit(200, `Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then run ${start} again.`,"Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then start it again.") : "Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then start it again.", find: "the Terminal window where your project runs", check: { kind: "ask" } },
     ],
   });
 }

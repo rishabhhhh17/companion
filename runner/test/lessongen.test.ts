@@ -136,6 +136,20 @@ describe("they are lessons like the others", () => {
       expect(new Set(l.steps.map((s) => s.id)).size).toBe(l.steps.length);
     }
   });
+  test("a start command a lesson cannot hold as plain words does not lose the lesson: the restart step says it without it", () => {
+    // From the project's own files (here .replit), so it can hold anything. Before, the whole lesson vanished and About this
+    // project's button then said every setting was already set.
+    const p = project({ "requirements.txt": "flask\n", "main.py": "import os\nkey = os.environ['OPENAI_API_KEY']\n", ".replit": 'run = "python main.py > log.txt"\n' });
+    const l = byId(lessonsFromProject(p, never), SETTINGS_LESSON);
+    expect(l).toBeDefined();
+    expect(envSteps(l!)).toEqual(["OPENAI_API_KEY"]);
+    expect(l!.steps.at(-1)!.say).toMatch(/start it again/);
+    expect(l!.steps.at(-1)!.say).not.toContain(">");
+    for (const start of ["npm run dev < input", "bun dev\tnow", "node a.js\u0007"]) {
+      expect(settingsLesson({ stack: "Next.js", start, needed: ["OPENAI_API_KEY"], missing: ["OPENAI_API_KEY"] }), start).not.toBeNull();
+    }
+    expect(settingsLesson({ stack: "Next.js", start: "npm run dev", needed: ["OPENAI_API_KEY"], missing: ["OPENAI_API_KEY"] })!.steps.at(-1)!.say).toContain("npm run dev");
+  });
   test("names a setting check cannot hold are left out, not allowed to spoil the lesson", () => {
     const p = project({ "package.json": VITE, "src/a.ts": "import.meta.env.VITE_API_URL", ".env.example": "lower_case=1\nX=2\nVITE_API_URL=\n" });
     const l = byId(lessonsFromProject(p, never), SETTINGS_LESSON)!;
