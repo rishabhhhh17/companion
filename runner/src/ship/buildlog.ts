@@ -5,7 +5,7 @@
 // Names of settings only, never their values. Everything shown is cleaned of secrets first.
 import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { label } from "../redact.ts";
+import { clip, label } from "../redact.ts";
 import { envNames, namesInCode } from "../proof/intake.ts";
 import { projectLine, projectRows, type Problem } from "../proof/locate.ts";
 import type { DeployLogReader } from "./deploy.ts";
@@ -72,8 +72,20 @@ const ENV_RULES: RegExp[] = [
   /[Mm]issing (?:required )?(?:[Ee]nvironment|[Ee]nv) [Vv]ariables?:?\s*["'`]?([A-Z][A-Z0-9_]{2,})/,
   /\b([A-Z][A-Z0-9_]{2,})["'`]?\s+(?:[Ee]nvironment [Vv]ariable|env var(?:iable)?)\s+is\s+(?:missing|not set|not defined|required|undefined|empty)/,
   /(?:[Ee]nvironment [Vv]ariable|env var(?:iable)?)\s+["'`]?([A-Z][A-Z0-9_]{2,})["'`]?\s+(?:is\s+)?(?:missing|not set|not defined|required|undefined)/,
-  /Invalid environment variables:?\s*\{?\s*["']?([A-Z][A-Z0-9_]{2,})["']?\s*:/,
 ];
+// t3-env (create-t3-app) prints one shape for a setting that is missing and for one whose value is wrong, over one line
+// or several: zod 3's flatten() ({ NAME: [ 'Required' ] }) or Standard Schema issues ([ { path: [ 'NAME' ], message } ]).
+const T3_ENV = /Invalid environment variables:?/;
+const T3_MISSING = /^Required$|\bundefined\b|\bmissing\b|\bis required\b|\bnot set\b/i;
+function t3Env(lines: string[], i: number): { name: string; said: string } | null {
+  const text = lines.slice(i, i + 16).join("\n");
+  const after = text.slice(text.search(T3_ENV)).replace(T3_ENV, "");
+  const flat = /^\s*\{\s*["']?([A-Z][A-Z0-9_]{2,})["']?\s*:\s*\[\s*(?:(['"])((?:\\.|(?!\2).)*)\2)?/s.exec(after);
+  if (flat) return { name: flat[1], said: flat[3] ?? "" };
+  const path = /^\s*\[\s*\{[\s\S]*?path:\s*\[\s*['"]([A-Z][A-Z0-9_]{2,})['"]/.exec(after);
+  if (path) return { name: path[1], said: /message:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(after)?.[2] ?? "" };
+  return null;
+}
 const SUPABASE = /\bsupabase(Url|Key) is required\b/;
 // @supabase/ssr's clients: either setting may be the one missing.
 const SUPABASE_SSR = /Your project's URL and Key are required to create a Supabase client/;
@@ -196,8 +208,18 @@ function settingFailure(project: string, names: string[]): BuildFailure {
   }
   // Names are short and never secret, so this sentence may run longer than a log line.
   const message = label(`${which} is not set on Vercel.${local} Add ${one ? "it" : "them"} in your Vercel project under Settings, Environment Variables.`, 300);
+  return settingAt(project, name, message);
+}
+function settingAt(project: string, name: string, message: string): BuildFailure {
   const at = settingLine(project, name);
   return at ? { problem: { kind: "line", file: at.file, line: at.line, lineText: at.lineText, message, from: "deploy" }, setting: name } : { problem: { kind: "message", message, from: "deploy" }, setting: name };
+}
+// A setting that is there but whose value the build rejected. The check's own words say why, without any value they
+// quote back ("received '...'"). With no words at all, it cannot tell which, so it says both.
+function invalidSetting(project: string, name: string, said: string): BuildFailure {
+  const why = clip(said.replace(/,?\s*received\s+(['"`])(?:\\.|(?!\1).)*\1/g, "").replace(/\s+/g, " ").trim(), 100);
+  if (!why) return settingAt(project, name, label(`${name} is not set on Vercel, or its value is not valid. Check it in your Vercel project under Settings, Environment Variables.`, 300));
+  return settingAt(project, name, label(`${name} has a value in Vercel's build, but it is not valid (${why}). Check its value in your Vercel project under Settings, Environment Variables.`, 300));
 }
 
 // The setting names the project's code reads that match: the browser's own (NEXT_PUBLIC_, VITE_, PUBLIC_) first, and
@@ -215,25 +237,48 @@ const projectSetting = (setting: string, message: string): BuildFailure => ({ pr
 
 // ---------- reading it ----------
 
+// Has this file changed since the deploy was made? null: there is no time to tell by.
+function changedSince(project: string, file: string, deployedAt: number | undefined): boolean | null {
+  if (!deployedAt) return null;
+  try { return statSync(join(project, file)).mtimeMs > deployedAt; } catch { return null; }
+}
+const quotes = (text: string, spec: string) => [`"${spec}"`, `'${spec}'`, `\`${spec}\``].some((q) => text.includes(q));
+
+// deployedAt: when the deploy whose log this is was made (milliseconds), from the Vercel tool's list.
+export type ReadOptions = { deployedAt?: number };
+
 /** What to point at in a failed Vercel build log: a confirmed line, a setting's name, or the sentence that says why. */
-export function readBuildLog(log: string, project: string): BuildFailure | null {
+export function readBuildLog(log: string, project: string, o: ReadOptions = {}): BuildFailure | null {
   const lines = buildLogLines(log);
   const rootDir = rootDirectory(project);
   const next = (i: number) => { for (let j = i + 1; j < lines.length; j++) if (lines[j].trim()) return j; return -1; };
   const prev = (i: number) => { for (let j = i - 1; j >= 0; j--) if (lines[j].trim()) return j; return -1; };
+  // The log comes from a build of the version that was deployed, which may be older than this folder (rule 22: ring
+  // only a confirmed line). Confirmed: the log's own picture of the line reads the same here, or the line still names the
+  // module the error names, or the file has not changed since the deploy. Otherwise the place is said in words.
   const atPlace = (path: string, line: number, column: number | undefined, message: string, frameFrom?: number): BuildFailure => {
     const hit = lineAt(project, rootDir, path, line);
     if (!hit) return { problem: { kind: "message", message: tidy(message), from: "deploy" } };
-    // When the log shows the line, it must read the same here, or this folder is not what Vercel built.
+    let confirmed = false;
     if (frameFrom !== undefined) {
       for (let j = frameFrom; j < Math.min(lines.length, frameFrom + 16); j++) {
         const f = FRAME.exec(lines[j]);
-        if (f && Number(f[1]) === line && !same(f[2], hit.text)) {
-          return { problem: { kind: "message", message: tidy(`Vercel's build failed at ${hit.file}, line ${line}, but that line is different in this folder, so this may not be the version that was deployed.`), from: "deploy" } };
-        }
+        if (!f || Number(f[1]) !== line) continue;
+        if (!same(f[2], hit.text)) return { problem: { kind: "message", message: tidy(`Vercel's build failed at ${hit.file}, line ${line}, but that line is different in this folder, so this may not be the version that was deployed.`), from: "deploy" } };
+        confirmed = true;
+        break;
       }
     }
+    const spec = TS_NO_MODULE.exec(message)?.[1];
+    if (!confirmed && spec && quotes(hit.text, spec)) confirmed = true;
     const said = typescriptMissing(project, message, hit.file) ?? message;
+    if (!confirmed) {
+      const changed = changedSince(project, hit.file, o.deployedAt);
+      if (changed !== false) {
+        const why = changed ? "that file has changed since that deploy, so that line may hold different code now" : "I could not tell whether that file has changed since that deploy, so check that line";
+        return { problem: { kind: "message", message: label(`Vercel's build failed at ${hit.file}, line ${line} (${label(said, 140)}), but ${why}.`, 320), from: "deploy" } };
+      }
+    }
     return { problem: { kind: "line", file: hit.file, line, ...(column ? { column } : {}), lineText: hit.lineText, message: tidy(said), from: "deploy" } };
   };
 
@@ -282,6 +327,10 @@ export function readBuildLog(log: string, project: string): BuildFailure | null 
     if ((m = ESBUILD.exec(l))) return atPlace(m[1], Number(m[2]), Number(m[3]), m[4]);
     if ((m = ROLLUP_PLACE.exec(l))) return atPlace(m[1], Number(m[2]), Number(m[3]), m[4]);
     // A setting the build needed.
+    if (T3_ENV.test(l)) {
+      const t = t3Env(lines, i);
+      if (t && !NOT_SETTINGS.has(t.name)) return T3_MISSING.test(t.said) ? settingFailure(project, [t.name]) : invalidSetting(project, t.name, t.said);
+    }
     for (const re of ENV_RULES) {
       const e = re.exec(l);
       if (e && SETTING_NAME.test(e[1]) && !NOT_SETTINGS.has(e[1])) return settingFailure(project, [e[1]]);
@@ -334,7 +383,7 @@ export async function readDeployFailure(project: string, reader: DeployLogReader
   if (b.state === "not_linked") return null;
   if (b.state === "none") return { state: "fine" };
   if (b.state === "unavailable") return { state: "unknown", reason: b.reason };
-  const f = readBuildLog(b.log, project);
+  const f = readBuildLog(b.log, project, { deployedAt: b.createdAt });
   if (!f) return { state: "unknown", reason: "Your last Vercel deploy failed, but its build log was empty. Open that deploy in Vercel to read why." };
   const evidence = f.problem.kind === "line" ? `${f.problem.file}, line ${f.problem.line}: ${f.problem.message}` : f.problem.message;
   const summary = f.problem.kind === "line" ? `Your last Vercel deploy failed at ${evidence}` : `Your last Vercel deploy failed: ${evidence}`;

@@ -67,6 +67,13 @@ describe("Point at the problem, when it works here but the deploy failed", () =>
     await s.find();
     expect(of(s.events, "problem.found")[0]).toMatchObject({ verdict: "passed", note: reason });
   });
+  test("a Python package to install and a Vercel tool to sign in to are both said, the package first", async () => {
+    const reason = "I could not read why the Vercel deploy failed: you are not signed in to Vercel. Open Terminal, run: vercel login, then try again.";
+    const gap = "mypy is not installed in this project's virtual environment (.venv), so the type check could not run. Companion does not install Python packages. To install it, in Terminal in the project folder, run: .venv/bin/pip install mypy";
+    const s = setup({ state: "unavailable", reason }, { verdict: "passed_with_gaps", steps: passed.steps, gaps: [gap] });
+    await s.find();
+    expect(of(s.events, "problem.found")[0]).toMatchObject({ verdict: "passed_with_gaps", note: `${gap} ${reason}` });
+  });
   test("the hint to get the browser check is kept when the deploy's problem is shown", async () => {
     const s = setup(FAILED, { verdict: "passed_with_gaps", steps: [{ rung: "browser", label: "Opening it in a browser", status: "skipped", detail: "not installed", ms: 1, needs: "browser" }] });
     await s.find();

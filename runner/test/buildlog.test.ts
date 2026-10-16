@@ -13,10 +13,14 @@
 // The Vercel lines around them (Running build in, Cloning, Running "npm run build", Command ... exited with 1) are written
 // by hand in Vercel's format. None of these came from a real Vercel deployment; that needs the founder's account.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { buildLogLines, readBuildLog } from "../src/ship/buildlog.ts";
+import { buildLogLines, readBuildLog, readDeployFailure } from "../src/ship/buildlog.ts";
+
+// The deploy was made after these files were written: nothing in this folder changed since (a line may be ringed).
+const deployedLater = () => ({ deployedAt: Date.now() + 60_000 });
+const DAY = 24 * 3_600_000;
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -55,11 +59,11 @@ describe("a file and a line, confirmed in this folder", () => {
   });
   test("TypeScript's own checker (tsc -b before vite build)", () => {
     const p = project({ "src/cart.ts": 'export type Item = { name: string; price: number };\n\nexport function total(items: Item[]): number {\n  return items.reduce((sum, i) => sum + i.price, 0);\n}\n\nexport const label: string = total([{ name: "Mug", price: 12 }]);\n' });
-    expect(readBuildLog(log("tsc-error"), p)?.problem).toMatchObject({ kind: "line", file: "src/cart.ts", line: 7, column: 14, message: "Type 'number' is not assignable to type 'string'." });
+    expect(readBuildLog(log("tsc-error"), p, deployedLater())?.problem).toMatchObject({ kind: "line", file: "src/cart.ts", line: 7, column: 14, message: "Type 'number' is not assignable to type 'string'." });
   });
   test("Next.js lint: the error, not the warning above it", () => {
     const p = project({ "components/Nav.tsx": Array.from({ length: 14 }, (_, i) => (i === 11 ? "  const [open, setOpen] = useState(false);" : `// line ${i + 1}`)).join("\n") });
-    const r = readBuildLog(log("next-eslint"), p)!;
+    const r = readBuildLog(log("next-eslint"), p, deployedLater())!;
     expect(r.problem).toMatchObject({ kind: "line", file: "components/Nav.tsx", line: 12, column: 7 });
     expect(r.problem.message).toMatch(/^React Hook "useState" is called conditionally/);
   });
@@ -142,10 +146,10 @@ describe("other tools' words", () => {
     expect(readBuildLog(at("> Build error occurred", "Error: Turbopack build failed with 1 errors:", "./app/page.tsx:3:3", "Parsing ecmascript source code failed", "> 3 |   return <p>{x}</p>;"), p)?.problem).toMatchObject({ kind: "line", file: "app/page.tsx", line: 3, message: "Parsing ecmascript source code failed" });
   });
   test("esbuild inside Vite 4 and 5", () => {
-    expect(readBuildLog(at("[vite:esbuild] Transform failed with 1 error:", "/vercel/path0/src/App.tsx:4:20: ERROR: Expected \";\" but found \"}\""), project(APP))?.problem).toMatchObject({ kind: "line", file: "src/App.tsx", line: 4, column: 20, message: 'Expected ";" but found "}"' });
+    expect(readBuildLog(at("[vite:esbuild] Transform failed with 1 error:", "/vercel/path0/src/App.tsx:4:20: ERROR: Expected \";\" but found \"}\""), project(APP), deployedLater())?.problem).toMatchObject({ kind: "line", file: "src/App.tsx", line: 4, column: 20, message: 'Expected ";" but found "}"' });
   });
   test("Rollup naming a place in brackets", () => {
-    expect(readBuildLog(at('src/App.tsx (1:9): "useStat" is not exported by "node_modules/react/index.js", imported by "src/App.tsx".'), project(APP))?.problem).toMatchObject({ kind: "line", file: "src/App.tsx", line: 1, column: 9 });
+    expect(readBuildLog(at('src/App.tsx (1:9): "useStat" is not exported by "node_modules/react/index.js", imported by "src/App.tsx".'), project(APP), deployedLater())?.problem).toMatchObject({ kind: "line", file: "src/App.tsx", line: 1, column: 9 });
   });
   test("a setting named in the tool's own words (OpenAI's client)", () => {
     const p = project({ "lib/ai.ts": "import OpenAI from 'openai';\nexport const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });\n" });
@@ -213,5 +217,84 @@ describe("Supabase's settings", () => {
     const r = readBuildLog(at("Error: supabaseKey is required."), p)!;
     expect(r.setting).toBe("SUPABASE_SERVICE_ROLE_KEY");
     expect(r.problem).toMatchObject({ kind: "line", file: "lib/admin.ts", line: 2 });
+  });
+});
+
+// Rule 22: a solid ring only on a confirmed target. The build log comes from a build of the version that was deployed,
+// which may be older than this folder. A place is confirmed by the log's own picture of the line (a code frame), by the
+// line still naming what the error names (an import), or by the file not having changed since that deploy.
+describe("a line is ringed only in the version that was deployed", () => {
+  const CART = 'export type Item = { name: string; price: number };\n\nexport function total(items: Item[]): number {\n  return items.reduce((sum, i) => sum + i.price, 0);\n}\n\nexport const label: string = total([{ name: "Mug", price: 12 }]);\n';
+  const deployedAt = Date.now() - DAY;
+  const before = (p: string, f: string) => { const t = new Date(deployedAt - DAY); utimesSync(join(p, f), t, t); };
+  test("a file not changed since that deploy: the line tsc named is ringed", () => {
+    const p = project({ "src/cart.ts": CART });
+    before(p, "src/cart.ts");
+    expect(readBuildLog(log("tsc-error"), p, { deployedAt })?.problem).toMatchObject({ kind: "line", file: "src/cart.ts", line: 7 });
+  });
+  test("a file changed after that deploy: nothing is ringed, and it says where in words", () => {
+    const p = project({ "src/cart.ts": CART });   // written just now, a day after the deploy
+    const r = readBuildLog(log("tsc-error"), p, { deployedAt })!;
+    expect(r.problem.kind).toBe("message");
+    expect(r.problem.message).toBe("Vercel's build failed at src/cart.ts, line 7 (Type 'number' is not assignable to type 'string'.), but that file has changed since that deploy, so that line may hold different code now.");
+  });
+  test("no time for that deploy (an older Vercel tool): not ringed either", () => {
+    const p = project({ "src/cart.ts": CART });
+    before(p, "src/cart.ts");
+    const r = readBuildLog(log("tsc-error"), p)!;
+    expect(r.problem.kind).toBe("message");
+    expect(r.problem.message).toBe("Vercel's build failed at src/cart.ts, line 7 (Type 'number' is not assignable to type 'string'.), but I could not tell whether that file has changed since that deploy, so check that line.");
+  });
+  test("ESLint's rows, esbuild and Rollup are held to the same rule", () => {
+    const p = project({ "components/Nav.tsx": Array.from({ length: 14 }, (_, i) => (i === 11 ? "  const [open, setOpen] = useState(false);" : `// line ${i + 1}`)).join("\n"), "src/App.tsx": "import { useState } from 'react';\n\nexport default function App() {\n  return <h1>Hi</h1>\n}\n" });
+    expect(readBuildLog(log("next-eslint"), p, { deployedAt })?.problem.kind).toBe("message");
+    expect(readBuildLog("2026-10-10T10:00:00.000Z  /vercel/path0/src/App.tsx:4:20: ERROR: Expected \";\" but found \"}\"\n", p, { deployedAt })?.problem.kind).toBe("message");
+    expect(readBuildLog('2026-10-10T10:00:00.000Z  src/App.tsx (1:9): "useStat" is not exported by "node_modules/react/index.js", imported by "src/App.tsx".\n', p, { deployedAt })?.problem.kind).toBe("message");
+  });
+  test("a code frame in the log that reads the same confirms the line, even in a file changed since", () => {
+    const p = project({ "app/page.tsx": PAGE });
+    expect(readBuildLog(log("next-type-error"), p, { deployedAt })?.problem).toMatchObject({ kind: "line", file: "app/page.tsx", line: 6 });
+  });
+  test("an import line that still names the missing module confirms itself, even in a file changed since", () => {
+    const p = project({ "src/App.tsx": 'import { useState } from "react";\nimport Navbar from "./components/navbar";\n', "src/components/Navbar.tsx": "export default function Navbar() { return null; }\n" });
+    expect(readBuildLog("2026-10-10T10:00:00.000Z  src/App.tsx(2,20): error TS2307: Cannot find module './components/navbar' or its corresponding type declarations.\n", p, { deployedAt })?.problem).toMatchObject({ kind: "line", file: "src/App.tsx", line: 2 });
+    const moved = project({ "src/App.tsx": 'import Navbar from "./components/navbar";\nimport { useState } from "react";\n', "src/components/Navbar.tsx": "x\n" });
+    expect(readBuildLog("2026-10-10T10:00:00.000Z  src/App.tsx(2,20): error TS2307: Cannot find module './components/navbar' or its corresponding type declarations.\n", moved, { deployedAt })?.problem.kind).toBe("message");
+  });
+  test("the deploy's time reaches the reading from the Vercel tool's list", async () => {
+    const p = project({ "src/cart.ts": CART });
+    const read = (createdAt?: number) => readDeployFailure(p, { lastFailedBuild: async () => ({ state: "failed", url: "https://shop-abc123-sam.vercel.app", log: log("tsc-error"), ...(createdAt ? { createdAt } : {}) }) });
+    expect(((await read(Date.now() + 60_000)) as any).problem.kind).toBe("line");
+    expect(((await read(deployedAt)) as any).problem.kind).toBe("message");
+  });
+});
+
+// t3-env (create-t3-app) prints the same shape when a setting is missing and when its value is wrong: only the first is
+// "not set". Written by hand in the shapes its versions print (zod 3's flatten(), and Standard Schema issues).
+describe("t3-env's 'Invalid environment variables'", () => {
+  const at = (...rows: string[]) => rows.map((r, i) => `2026-10-10T10:00:${String(i).padStart(2, "0")}.000Z  ${r}`).join("\n") + "\n";
+  const ENV = { "src/env.js": 'import { createEnv } from "@t3-oss/env-nextjs";\nimport { z } from "zod";\n\nexport const env = createEnv({\n  server: { DATABASE_URL: z.string().url(), APP_MODE: z.enum(["live", "test"]) },\n  runtimeEnv: {\n    DATABASE_URL: process.env.DATABASE_URL,\n    APP_MODE: process.env.APP_MODE,\n  },\n});\n' };
+  test("missing ('Required'): not set on Vercel, and the line that reads it is ringed", () => {
+    const r = readBuildLog(at("❌ Invalid environment variables: { DATABASE_URL: [ 'Required' ] }", "Error: Invalid environment variables"), project(ENV))!;
+    expect(r.setting).toBe("DATABASE_URL");
+    expect(r.problem).toMatchObject({ kind: "line", file: "src/env.js", line: 7 });
+    expect(r.problem.message).toBe("DATABASE_URL is not set on Vercel. Add it in your Vercel project under Settings, Environment Variables.");
+  });
+  test("set but wrong ('Invalid url'): it says the value is not valid, never that it is missing", () => {
+    const r = readBuildLog(at("❌ Invalid environment variables: { DATABASE_URL: [ 'Invalid url' ] }", "Error: Invalid environment variables"), project(ENV))!;
+    expect(r.setting).toBe("DATABASE_URL");
+    expect(r.problem).toMatchObject({ kind: "line", file: "src/env.js", line: 7 });
+    expect(r.problem.message).toBe("DATABASE_URL has a value in Vercel's build, but it is not valid (Invalid url). Check its value in your Vercel project under Settings, Environment Variables.");
+  });
+  test("Standard Schema issues over several lines (newer t3-env with zod 4): missing, and not valid", () => {
+    const issues = (message: string) => at("❌ Invalid environment variables: [", "  {", "    expected: 'string',", "    code: 'invalid_type',", "    path: [ 'DATABASE_URL' ],", `    message: '${message}'`, "  }", "]", "Error: Invalid environment variables");
+    expect(readBuildLog(issues("Invalid input: expected string, received undefined"), project(ENV))?.problem.message).toBe("DATABASE_URL is not set on Vercel. Add it in your Vercel project under Settings, Environment Variables.");
+    expect(readBuildLog(issues("Invalid URL"), project(ENV))?.problem.message).toBe("DATABASE_URL has a value in Vercel's build, but it is not valid (Invalid URL). Check its value in your Vercel project under Settings, Environment Variables.");
+  });
+  test("zod 3's flatten() over several lines, and the value a check quotes back is never shown", () => {
+    const r = readBuildLog(at("❌ Invalid environment variables: {", "  APP_MODE: [ \"Invalid enum value. Expected 'live' | 'test', received 'hunter2-prod-value'\" ],", "  DATABASE_URL: [ 'Required' ]", "}"), project(ENV))!;
+    expect(r.setting).toBe("APP_MODE");
+    expect(r.problem.message).toBe("APP_MODE has a value in Vercel's build, but it is not valid (Invalid enum value. Expected 'live' | 'test'). Check its value in your Vercel project under Settings, Environment Variables.");
+    expect(JSON.stringify(r)).not.toContain("hunter2");
   });
 });

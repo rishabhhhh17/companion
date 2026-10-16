@@ -2,7 +2,7 @@
 // flake8, mypy) and which dev server shows it (Flask, FastAPI, Django, Streamlit). Reads ordinary files only. It always
 // prefers the project's own virtual environment, and it never installs anything: when a package is missing it says
 // which command the person can run, inside a virtual environment.
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { shq } from "./exec.ts";
@@ -204,6 +204,27 @@ export function detectPython(dir: string, o: PythonOptions = {}): PythonDetected
   else if (fast) start = { kind: "server", command: `${py} -m uvicorn ${fast.module}:${fast.name}`, python: "uvicorn", env: pyEnv };
   else if (flask) start = { kind: "server", command: `${py} -m flask run --no-reload`, python: "flask", env: { ...pyEnv, FLASK_APP: flask.name === "create_app" ? flask.module : `${flask.module}:${flask.name}` } };
   return { setup, checks, tests, start };
+}
+
+// ---------- leaving the project as it was found ----------
+
+// Django's runserver opens the default SQLite database on its way up (its migration check only reads), and SQLite makes
+// an empty file when there is none. A check must not leave one behind. Only files at the top of the project with a
+// database's name are looked at (Django's default is db.sqlite3 next to manage.py).
+const DATABASE_FILE = /\.(?:sqlite3?|db)$/i;
+/** The database files at the top of the project before the server starts. */
+export function databaseFiles(dir: string): Set<string> {
+  try { return new Set(readdirSync(dir).filter((n) => DATABASE_FILE.test(n))); } catch { return new Set(); }
+}
+/** Remove the database files the server made that are still empty: one that was there before, or with anything in it, stays. */
+export function removeNewEmptyDatabases(dir: string, before: Set<string>): string[] {
+  const gone: string[] = [];
+  for (const n of databaseFiles(dir)) {
+    if (before.has(n)) continue;
+    const p = join(dir, n);
+    try { const s = lstatSync(p); if (s.isFile() && s.size === 0) { unlinkSync(p); gone.push(n); } } catch { /* already gone */ }
+  }
+  return gone;
 }
 
 /** The one line About this project shows for a Python project. */

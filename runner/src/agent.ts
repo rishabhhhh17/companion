@@ -936,15 +936,17 @@ export class AgentRunner {
       const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
       // It works here. In a folder linked to Vercel, the last deploy may be where it fails: read its build log (read
       // only, through the person's own Vercel tool) and point at the line that stopped it.
-      let note: string | undefined;
+      // A Python check that could not run because a package is not installed: the first thing to install, with the
+      // command (Point at the problem never installs anything).
+      const notes: string[] = res.verdict === "passed_with_gaps" && res.gaps?.length ? [res.gaps[0]] : [];
       if (this.o.deployLogs && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
         const d = await readDeployFailure(cmd.project, this.o.deployLogs, abort.signal);
         if (abort.signal.aborted || d?.state === "cancelled") { found("cancelled"); this.state(cmd.agent, "idle"); return; }
         if (d?.state === "failed") { found("failed", { label: DEPLOY_FAILED, detail: d.summary, problem: d.problem }, needs); this.state(cmd.agent, "needsYou"); return; }
-        if (d?.state === "unknown") note = d.reason;
+        if (d?.state === "unknown") notes.push(d.reason);
       }
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      found(res.verdict, fl, needs, note);
+      found(res.verdict, fl, needs, notes.length ? notes.join(" ") : undefined);
       this.state(cmd.agent, fl ? "needsYou" : "idle");
     } catch (e) {
       this.fail(`Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);

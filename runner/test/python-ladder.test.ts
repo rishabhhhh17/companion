@@ -22,20 +22,24 @@ const put = (root: string, files: Record<string, string>) => { for (const [p, c]
 const res = (o: Partial<RunResult> = {}): RunResult => ({ code: 0, signal: null, stdout: "", stderr: "", timedOut: false, ms: 1, ...o });
 const fixture = (name: string, root: string) => readFileSync(join(import.meta.dir, "fixtures", "errors", `${name}.txt`), "utf8").replaceAll("{{ROOT}}", root);
 
-// A stand in for the project's own Python: it acts like `python -m flask run --host H --port P` (or crashes, or is missing
-// flask), and writes down how it was started, outside the project.
-function fakePython(dir: string, mode: "serve" | "crash" | "no-flask", log: string) {
+// A stand in for the project's own Python: it acts like `python -m flask run --host H --port P` or
+// `python manage.py runserver H:P` (or crashes, or is missing flask), and writes down how it was started, outside the
+// project. "serve-db" and "crash-db" also do what Django's runserver does on its way up: open the default SQLite database,
+// which makes an empty db.sqlite3 when there is none (its migration check only reads).
+function fakePython(dir: string, mode: "serve" | "crash" | "no-flask" | "serve-db" | "crash-db", log: string) {
   const script = `#!${process.execPath}
 const a = process.argv.slice(2);
-require("node:fs").writeFileSync(${JSON.stringify(log)}, JSON.stringify({ args: a, flaskApp: process.env.FLASK_APP ?? null, noBytecode: process.env.PYTHONDONTWRITEBYTECODE ?? null }));
+const fs = require("node:fs");
+fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify({ args: a, flaskApp: process.env.FLASK_APP ?? null, noBytecode: process.env.PYTHONDONTWRITEBYTECODE ?? null }));
 const mode = ${JSON.stringify(mode)};
+if (mode.endsWith("-db")) fs.closeSync(fs.openSync("db.sqlite3", "a"));
 if (mode === "no-flask") { console.error(".venv/bin/python: No module named flask"); process.exit(1); }
-if (mode === "crash") {
+if (mode.startsWith("crash")) {
   console.error('Traceback (most recent call last):\\n  File "${dir}/main.py", line 3, in <module>\\n    app = Flask(nme)\\nNameError: name \\'nme\\' is not defined');
   process.exit(1);
 }
-const port = Number(a[a.indexOf("--port") + 1]), host = a[a.indexOf("--host") + 1];
-Bun.serve({ hostname: host, port, fetch: () => new Response("<h1>Shop</h1>", { headers: { "content-type": "text/html" } }) });
+const at = a.includes("runserver") ? a[a.length - 1].split(":") : [a[a.indexOf("--host") + 1], a[a.indexOf("--port") + 1]];
+Bun.serve({ hostname: at[0], port: Number(at[1]), fetch: () => new Response("<h1>Shop</h1>", { headers: { "content-type": "text/html" } }) });
 `;
   put(dir, { ".venv/bin/python": script, ".venv/pyvenv.cfg": "home = /opt/homebrew/bin\n" });
   chmodSync(join(dir, ".venv/bin/python"), 0o755);
@@ -44,7 +48,7 @@ Bun.serve({ hostname: host, port, fetch: () => new Response("<h1>Shop</h1>", { h
 const FLASK_APP = "from flask import Flask\n\napp = Flask(__name__)\n\n\n@app.route('/')\ndef home():\n    return '<h1>Shop</h1>'\n";
 const okBrowser = async (url: string): Promise<BrowserResult> => ({ ok: true, problems: [], consoleErrors: [], failedRequests: [], visited: [url], ms: 1 }) as never;
 
-async function ladder(files: Record<string, string>, o: { run?: (c: string, x: any) => Promise<RunResult>; browser?: (url: string) => Promise<BrowserResult>; python?: "serve" | "crash" | "no-flask"; detect?: (d: string) => ReturnType<typeof detectProject> } = {}) {
+async function ladder(files: Record<string, string>, o: { run?: (c: string, x: any) => Promise<RunResult>; browser?: (url: string) => Promise<BrowserResult>; python?: Parameters<typeof fakePython>[1]; detect?: (d: string) => ReturnType<typeof detectProject>; noInstall?: boolean } = {}) {
   const dir = tmp(), log = join(tmp(), "started.json");
   put(dir, files);
   if (o.python) fakePython(dir, o.python, log);
@@ -53,7 +57,7 @@ async function ladder(files: Record<string, string>, o: { run?: (c: string, x: a
   const updates: StepUpdate[] = [], calls: { command: string; env?: Record<string, string> }[] = [], urls: string[] = [];
   const run = async (command: string, x: any) => { calls.push({ command, env: x.env }); return o.run ? o.run(command, x) : res(); };
   const browser = async (url: string) => { urls.push(url); return (o.browser ?? okBrowser)(url); };
-  const result = await runLadder({ project: dir, store, beforeId: s.id, afterId: s.id, onStep: (u) => updates.push(u), run: run as never, browser: browser as never, limits: { startMs: 15000, browserMs: 5000 }, ...(o.detect ? { detect: o.detect } : {}) });
+  const result = await runLadder({ project: dir, store, beforeId: s.id, afterId: s.id, onStep: (u) => updates.push(u), run: run as never, browser: browser as never, limits: { startMs: 15000, browserMs: 5000 }, ...(o.detect ? { detect: o.detect } : {}), ...(o.noInstall ? { noInstall: true } : {}) });
   const started = existsSync(log) ? JSON.parse(readFileSync(log, "utf8")) : null;
   return { result, updates, calls, urls, dir, started };
 }
@@ -146,6 +150,74 @@ describe("the server rung", () => {
     expect(calls).toEqual([]);
     expect(result.verdict).toBe("nothing_to_check");
     expect(result.steps[0].detail).toMatch(/Python is not set up/);
+  }, 30000);
+});
+
+// Django's runserver opens the default SQLite database on its way up (its migration check), and SQLite makes an empty
+// db.sqlite3 when there is none (checked on this Mac with Python's own sqlite3: a read leaves a 0 byte file). A check
+// must leave the project as it found it, so an empty database file that Companion's run made is taken away again; one
+// that was there before, or one with anything in it, is never touched.
+describe("the server rung leaves no database file behind", () => {
+  const DJANGO = { "manage.py": "#!/usr/bin/env python\nimport os, sys\n\nif __name__ == '__main__':\n    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'shop.settings')\n    from django.core.management import execute_from_command_line\n    execute_from_command_line(sys.argv)\n", "requirements.txt": "django\n", "shop/__init__.py": "", "shop/settings.py": "DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}\n" };
+  test("an empty db.sqlite3 made by Django's start is removed after the check, and the page was still checked", async () => {
+    const { result, dir, started } = await ladder(DJANGO, { python: "serve-db" });
+    expect(started.args.slice(0, 3)).toEqual(["manage.py", "runserver", "--noreload"]);
+    expect(rungs(result)).toEqual(["install:skipped", "checks:skipped", "tests:skipped", "start:passed", "browser:passed"]);
+    expect(existsSync(join(dir, "db.sqlite3"))).toBe(false);
+  }, 30000);
+  test("also when the server stops on its own after making it", async () => {
+    const { result, dir } = await ladder(DJANGO, { python: "crash-db" });
+    expect(result.failedAt?.rung).toBe("start");
+    expect(existsSync(join(dir, "db.sqlite3"))).toBe(false);
+  }, 30000);
+  test("a database that was there before is never touched, even an empty one", async () => {
+    for (const before of ["SQLite format 3\u0000 the person's data", ""]) {
+      const { dir } = await ladder({ ...DJANGO, "db.sqlite3": before }, { python: "serve-db" });
+      expect(readFileSync(join(dir, "db.sqlite3"), "utf8")).toBe(before);
+    }
+  }, 30000);
+});
+
+// Point at the problem changes nothing (noInstall), so it cannot install what is missing. When that is why nothing could
+// be checked, that is what it found, said with the command to run (as for a Node project whose packages are missing),
+// never "nothing to check". When some checks ran, the words for the ones that could not are kept for the card.
+describe("Point at the problem, when a Python project's packages are missing", () => {
+  const TESTS_NEED_FLASK = "==================================== ERRORS ====================================\n___ ERROR collecting tests/test_app.py ___\ntests/test_app.py:1: in <module>\n    from app import Flask\napp.py:1: in <module>\n    from flask import Flask\nE   ModuleNotFoundError: No module named 'flask'\n";
+  const FILES = { "requirements.txt": "flask\npytest\n", "app.py": "from flask import Flask\n", "tests/test_app.py": "from app import Flask\n" };
+  test("nothing could run: it is what was found, with the command to run, and nothing is pointed at on screen", async () => {
+    const { result, calls } = await ladder(FILES, { noInstall: true, run: async () => res({ code: 2, stdout: TESTS_NEED_FLASK }) });
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.rung).toBe("install");
+    expect(result.failedAt?.detail).toContain("python3 -m venv .venv, then .venv/bin/pip install -r requirements.txt");
+    expect(result.failedAt?.detail).toMatch(/does not install Python packages/);
+    expect(result.failedAt?.problem).toBeUndefined();   // Companion's own words are not on the screen to circle
+    expect(calls.some((c) => /\bpip\b/.test(c.command))).toBe(false);
+  }, 30000);
+  test("no Python on this Mac: said plainly as what was found, and nothing is run", async () => {
+    const { result, calls } = await ladder(FILES, { noInstall: true, detect: (d) => detectProject(d, undefined, { path: [], exists: () => false }) });
+    expect(calls).toEqual([]);
+    expect(result).toMatchObject({ verdict: "failed", failedAt: { rung: "install", status: "failed" } });
+    expect(result.failedAt?.detail).toMatch(/^Python is not set up on this Mac/);
+  }, 30000);
+  test("a broken virtual environment: said plainly with how to make it again", async () => {
+    const { result, calls } = await ladder({ ...FILES, ".venv/pyvenv.cfg": "home = /opt/homebrew/Cellar/python@3.11/gone\n" }, { noInstall: true });
+    expect(calls).toEqual([]);
+    expect(result.verdict).toBe("failed");
+    expect(result.failedAt?.detail).toMatch(/virtual environment \(\.venv\) is broken/);
+    expect(result.failedAt?.detail).toContain("rm -rf .venv");
+  }, 30000);
+  test("some checks ran: still not a failure, and the first thing to install is kept (the project's packages before a lone tool)", async () => {
+    const files = { "requirements.txt": "flask\npytest\nruff\n", "app.py": "from flask import Flask\n", "tests/test_app.py": "from app import Flask\n", "pyproject.toml": "[tool.mypy]\n" };
+    const { result } = await ladder(files, { noInstall: true, python: "serve", run: async (c) => (/ruff/.test(c) ? res() : /mypy/.test(c) ? res({ code: 1, stderr: "'.venv/bin/python': No module named mypy" }) : /pytest/.test(c) ? res({ code: 2, stdout: TESTS_NEED_FLASK }) : res()) });
+    expect(result.verdict).toBe("passed_with_gaps");
+    expect(result.gaps).toHaveLength(2);
+    expect(result.gaps![0]).toContain("The tests need flask");
+    expect(result.gaps![1]).toContain(".venv/bin/pip install mypy");
+  }, 30000);
+  test("Rescue (which may install) still gets 'nothing to check' with the words in the steps, as before", async () => {
+    const { result } = await ladder(FILES, { run: async () => res({ code: 2, stdout: TESTS_NEED_FLASK }) });
+    expect(result.verdict).toBe("nothing_to_check");
+    expect(result.gaps![0]).toContain("pip install -r requirements.txt");
   }, 30000);
 });
 
