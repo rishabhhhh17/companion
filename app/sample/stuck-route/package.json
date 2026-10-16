@@ -1,0 +1,10 @@
+{
+  "name": "practice-route",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny two page site for Companion's practice run. One link goes to a page that is not there.",
+  "scripts": {
+    "dev": "node server.js",
+    "test": "node --test"
+  }
+}

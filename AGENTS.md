@@ -118,10 +118,11 @@ spikes/              M0 throwaway proofs, one folder per spike, each with README
 scripts/             test-all.sh (every suite) and build helpers
 protocol/            JSON lines protocol v1: types, parser, shared fixtures
 lessons/             guided lessons as data files (status draft until a person has walked them); shipped inside the app
-runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log, proof (locate, visual receipt), ship, Drive, Rescue, Research, memory, Draw it for me data (diagram), walkthroughs (walk, walkservice), beta numbers (metrics)
-app/src-tauri/       Rust shell: windows, hotkeys, Prompt help, Show me how, Point at the problem (pointat), your turn (yourturn), anchor (a ring belongs to one window), diagram, share, practice, hold to talk, project folder, Keychain key saving and removing, updates, settings helpers (wipe, logexport), one copy at a time (instance), runner supervisor
+runner/              TypeScript sidecar on Bun: checkpoints, safety, agent runner, Keychain, fast and vision lanes, task log, proof (locate, visual receipt), ship, Drive, Rescue, Research, memory, Draw it for me data (diagram), walkthroughs (walk, walkservice, lessongen for lessons made from the project), beta numbers (metrics), follow ups and Try again (followup)
+app/src-tauri/       Rust shell: windows, hotkeys, Prompt help, Show me how, Point at the problem (pointat), your turn (yourturn), anchor (a ring belongs to one window), presentation (hide from screen sharing, quiet during calls), diagram, share, practice, hold to talk, project folder, Keychain key saving and removing, updates, settings helpers (wipe, logexport), one copy at a time (instance), runner supervisor
 app/                 Tauri 2 + React shell: native panels, runner link, cards, ask box, docking, tray, settings; scripts/ build the app, the engine inside it, the disk image and the release
 app/vendor/          Anthropic's Claude binary and the engine, staged at build time; never committed
+app/sample/          practice stuck moments, each broken one way on purpose (expected checks in evals/rescue-projects/practice.json)
 evals/               quality suites: prompt-help, show-me-how (voice latency, rescue projects still to come)
 relay/               (planned, Beta) Cloudflare Worker relay and the phone web app
 ```
@@ -135,7 +136,7 @@ relay/               (planned, Beta) Cloudflare Worker relay and the phone web a
 | Rust shell | `cd app/src-tauri && cargo test` | Paste back, redaction, image resize and coordinate mapping, permissions state, rings and windows (anchor), delete everything, updates |
 | Pages | `cd app && bun run typecheck && bun test ./src` | Character state mapping, cards, lessons, settings, command shapes (`./src` keeps the practice project's deliberately failing test out) |
 | Real Claude checks | `cd runner && bun run scripts/real-verify.ts [scenario]` (test login, small caps, only when asked) | House rule and undo, Drive, Rescue, Research, visual receipt, practice, diagram, explain |
-| Rescue projects eval | `cd evals/rescue-projects && bun test` (free, no model; part of `test-all.sh`) | Fifteen small projects broken in fifteen common ways (JavaScript, TypeScript, Bun, Python): the locator must turn the real failing output into the exact file and line, with a readable message |
+| Rescue projects eval | `cd evals/rescue-projects && bun test` (free, no model; part of `test-all.sh`) | Fifteen small projects broken in fifteen common ways (JavaScript, TypeScript, Bun, Python), plus the five practice stuck moments in `app/sample` (expected checks in `practice.json`): the locator must turn the real failing output into the exact file and line, with a readable message; the open Supabase table must be blocked by the database access check |
 | Prompt help eval | `cd evals/prompt-help && bun test` (free); `bun run run.ts --real` (only when asked) | The scorer and the 30 cases |
 | After adding a Tauri plugin or changing `tauri.conf.json` | `sh app/scripts/build-app.sh`, open the app, check it stays running | A plugin that fails to start crashes the app at launch while every test passes |
 

@@ -98,6 +98,11 @@ describe("the browser check's download", () => {
     expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed_with_gaps", needs: "something" })).toBe(false);
     expect(e({ type: "proof.result", agent: "a", verdict: "passed_with_gaps", steps: [{ rung: "browser", status: "skipped", needs: "nope" }], tries: 1 })).toBe(false);
   });
+  test("a note on Point at the problem's answer is words, never anything else", () => {
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note: "I could not read why the Vercel deploy failed." })).toBe(true);
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note: { html: "<b>x</b>" } })).toBe(false);
+    expect(e({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note: "" })).toBe(false);
+  });
   test("the commands carry nothing a page could point elsewhere: no address, no folder", () => {
     expect(parseCommand('{"v":1,"id":"c","type":"browser.install"}').ok).toBe(true);
     expect(parseCommand('{"v":1,"id":"c","type":"browser.check"}').ok).toBe(true);
@@ -143,5 +148,23 @@ describe("teaching from the change", () => {
     expect(e({ ...s, status: "great" })).toBe(false);
     expect(e({ ...s, detail: undefined })).toBe(false);
     expect(e({ ...s, needs: "chrome" })).toBe(false);
+  });
+});
+
+describe("a follow up or Try again (agent.send)", () => {
+  const c = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", type: "agent.send", agent: "builder-1", ...o })).ok;
+  test("names the project it is for, so the app can hold it to the chosen folder", () => {
+    expect(c({ project: "/p", text: "the button is still grey" })).toBe(true);
+    expect(c({ text: "the button is still grey" })).toBe(false);
+  });
+  test("a follow up needs words; Try again needs none", () => {
+    expect(c({ project: "/p" })).toBe(false);
+    expect(c({ project: "/p", text: "" })).toBe(false);
+    expect(c({ project: "/p", retry: true })).toBe(true);
+    expect(c({ project: "/p", retry: "yes" })).toBe(false);
+    expect(c({ project: "/p", retry: true, text: 7 })).toBe(false);
+  });
+  test("a single task's loop card has no step number (index 0)", () => {
+    expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "loop.stuck", agent: "builder-1", index: 0, title: "Fix the signup page", failure: { label: "Running the tests", detail: "1 failed" }, options: [] })).ok).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import { heldKey } from "./keychain.ts";
 import { TaskLog } from "./tasklog.ts";
 import { FileWalkStore, projectChecker } from "./walk.ts";
 import { WalkService } from "./walkservice.ts";
+import { lessonsFromProject } from "./lessongen.ts";
 import { Metrics } from "./metrics.ts";
 import { BrowserSetup, pretendInstaller } from "./proof/browsersetup.ts";
 import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
@@ -36,9 +37,11 @@ const problem = (m: string) => { notes.push(m); };
 const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(settings) : null;
 // The daily spending limit the person chose in Settings, kept in the data folder (a developer's setting wins, for tests).
 const spending = new SpendingStore(join(settings.data, SPENDING_FILE));
-const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: new VercelCli(), pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, emit });
+// The person's own Vercel tool: Ship deploys through it, and Point at the problem and Rescue read a failed deploy's build log through it (read only).
+const vercel = new VercelCli();
+const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, emit });
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
-const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString() });
+const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject });
 const inflight = new Set<Promise<unknown>>();
 // The browser check's one time download: only on the person's press, ended by Stop everything, by the app closing, and by
 // this engine being ended by force (the installer ends with it).

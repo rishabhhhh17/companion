@@ -1,25 +1,32 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { at, burst, confetti, CONFETTI_S, flightMs } from "./pointer.ts";
+import { at, burst, confetti, CONFETTI_S, flightMs, RING_MS } from "./pointer.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
+import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
 
-type Point = { clip?: { x: number; y: number; w: number; h: number } | null; rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean };
+// mark: a hand drawn ring, arrow, underline or box for a confirmed target (marks.ts); a guess never gets one. flyMs: how
+// long the flight takes (a step of a multi step answer flies for its lead in). fadeMs: how long the mark stays (its line).
+type Point = { clip?: { x: number; y: number; w: number; h: number } | null; rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean; mark?: string | null; flyMs?: number | null; fadeMs?: number | null };
 const svg = document.getElementById("s")!;
 const cap = document.getElementById("cap") as HTMLElement;
 let timer: ReturnType<typeof setTimeout> | undefined;
+let markTimer: ReturnType<typeof setTimeout> | undefined;
 const NS = "http://www.w3.org/2000/svg";
 const el = (name: string, attrs: Record<string, string | number>) => { const e = document.createElementNS(NS, name); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v)); return e; };
 
 
-function clear() { svg.replaceChildren(); cap.classList.remove("on"); clearTimeout(timer); }
+function clear() { svg.replaceChildren(); cap.classList.remove("on"); clearTimeout(timer); clearTimeout(markTimer); }
 
 function show(p: Point) {
   clear();
+  // A ring that waits for the person's click stays until they click, press Do it for me, or close it. Any other goes ten
+  // seconds after this draw was ordered, the flight included, so it never outlives the shell's watch of its window (rule 22).
+  if (!p.hold) timer = setTimeout(clear, RING_MS);
   const reduced = p.reduced ?? matchMedia("(prefers-reduced-motion: reduce)").matches;
   const cx = p.rect.x + p.rect.w / 2, cy = p.rect.y + p.rect.h / 2;
-  const rx = Math.max(p.rect.w / 2 + 10, 26), ry = Math.max(p.rect.h / 2 + 10, 26);
+  const { rx, ry } = ringRadii(p.rect);
   const color = p.exact ? "#ff9a2e" : "#ffb020";
   // The ring and arrow are drawn only inside the window they were confirmed in (nothing lands on a different app).
   let layer: Element = svg;
@@ -30,24 +37,48 @@ function show(p: Point) {
     layer = el("g", { "clip-path": `url(#${id})` });
     svg.appendChild(layer);
   }
-  const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": p.exact ? 4 : 3, "stroke-dasharray": p.exact ? "" : "8 6", class: "ring", opacity: reduced ? 1 : 0 });
+  // A confirmed target may ask for a hand drawn mark; it is drawn on landing, stays while its line is said or read, then
+  // fades and the steady ring takes over. Every point of it is inside the window (marks.ts), and the clip above holds too.
+  const kind = markFor(p.mark, p.exact);
+  const strokes = kind ? markStrokes(kind, p.rect, p.clip ?? null, p.caption, { x: 0, y: 0, w: innerWidth, h: innerHeight }) : null;
+  const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": p.exact ? 4 : 3, "stroke-dasharray": p.exact ? "" : "8 6", class: "ring", opacity: reduced && !strokes ? 1 : 0 });
   layer.appendChild(ring);
   const arrow = el("path", { d: "M0 0 L-14 -26 L0 -18 L14 -26 Z", fill: color, stroke: "#111", "stroke-width": 2, "stroke-linejoin": "round" });
   const place = (x: number, y: number, angle: number) => arrow.setAttribute("transform", `translate(${x} ${y}) rotate(${angle})`);
   layer.appendChild(arrow);
+  const drawMark = (paths: string[]) => {
+    const g = el("g", { class: "mark" });
+    for (const d of paths) g.appendChild(el("path", { d, fill: "none", stroke: color, "stroke-width": 3.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    layer.appendChild(g);
+    if (kind === "arrow") arrow.remove();   // the drawn arrow points at it; the flying one would be a second arrow
+    if (!reduced) {
+      // Each stroke draws itself on, the way a pen would.
+      for (const s of Array.from(g.querySelectorAll("path")) as SVGPathElement[]) {
+        const len = s.getTotalLength?.() ?? 0; if (!len) continue;
+        s.style.strokeDasharray = `${len}`; s.style.strokeDashoffset = `${len}`; s.getBoundingClientRect();
+        s.style.transition = "stroke-dashoffset .45s ease-out"; s.style.strokeDashoffset = "0";
+      }
+    }
+    markTimer = setTimeout(() => {
+      ring.setAttribute("opacity", "1");
+      if (reduced) { g.remove(); return; }
+      g.style.transition = "opacity .5s"; g.style.opacity = "0";
+      markTimer = setTimeout(() => g.remove(), 550);
+    }, fadeMs(p.fadeMs));
+  };
   const land = () => {
-    ring.setAttribute("opacity", "1"); place(cx, cy - ry - 4, 0);
+    if (strokes) drawMark(strokes); else ring.setAttribute("opacity", "1");
+    place(cx, cy - ry - 4, 0);
     const side = cx > innerWidth / 2 ? -1 : 1;
     cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
     const box = p.clip ?? { x: 0, y: 0, w: innerWidth, h: innerHeight };   // the words stay inside the window too
     cap.style.left = `${Math.max(box.x + 8, Math.min(box.x + box.w - 320, side > 0 ? cx + rx + 12 : cx - rx - 12 - 300))}px`;
     cap.style.top = `${Math.max(box.y + 8, Math.min(box.y + box.h - 60, cy - 18))}px`;
     cap.classList.add("on");
-    // A ring that waits for the person's click stays until they click, press Do it for me, or close it.
-    if (!p.hold) timer = setTimeout(clear, 10_000);
   };
   if (reduced) { land(); return; }
-  const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy), dur = flightMs(dist);
+  const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy);
+  const dur = typeof p.flyMs === "number" && Number.isFinite(p.flyMs) ? Math.min(1600, Math.max(300, p.flyMs)) : flightMs(dist);
   const bend = Math.min(80, dist / 4), mx = (p.from.x + cx) / 2, my = (p.from.y + cy) / 2 - bend;
   const t0 = performance.now();
   const step = (now: number) => {
@@ -66,10 +97,11 @@ void listen("overlay-clear", () => clear());
 // The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion).
 function celebrate(rect: { x: number; y: number; w: number; h: number }) {
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  clearTimeout(timer);
+  clearTimeout(timer); clearTimeout(markTimer);
   svg.querySelectorAll("path").forEach((a) => a.remove());
+  svg.querySelectorAll("g.mark").forEach((g) => g.remove());
   const ring = svg.querySelector("ellipse");
-  if (ring) { ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); ring.classList.remove("ring"); }
+  if (ring) { ring.setAttribute("opacity", "1"); ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); ring.classList.remove("ring"); }
   const cx = rect.x + rect.w / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
   svg.appendChild(el("path", { d: `M${cx - 9} ${ty - 14} l6 6 l12 -13`, fill: "none", stroke: "#1e8a4c", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
   cap.textContent = "That's it."; 

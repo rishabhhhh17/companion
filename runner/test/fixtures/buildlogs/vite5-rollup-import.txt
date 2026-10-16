@@ -1,0 +1,28 @@
+Vercel CLI 53.4.0
+2026-10-14T18:20:01.101Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-14T18:20:01.140Z  Cloning github.com/sam-builds/landing (Branch: main, Commit: 7d1e2f0)
+2026-10-14T18:20:01.802Z  Cloning completed: 640.000ms
+2026-10-14T18:20:04.010Z  Running "vercel build"
+2026-10-14T18:20:04.520Z  Vercel CLI 48.2.9
+2026-10-14T18:20:05.001Z  Installing dependencies...
+2026-10-14T18:20:11.230Z  added 198 packages in 6s
+2026-10-14T18:20:11.410Z  Running "npm run build"
+2026-10-14T18:20:11.640Z  
+2026-10-14T18:20:11.640Z  > landing@0.0.0 build
+2026-10-14T18:20:11.640Z  > vite build
+2026-10-14T18:20:11.640Z  
+2026-10-14T18:20:12.101Z  vite v5.4.10 building for production...
+2026-10-14T18:20:12.150Z  transforming...
+2026-10-14T18:20:12.611Z  ✓ 31 modules transformed.
+2026-10-14T18:20:12.620Z  x Build failed in 503ms
+2026-10-14T18:20:12.621Z  error during build:
+2026-10-14T18:20:12.621Z  [vite]: Rollup failed to resolve import "./components/navbar" from "/vercel/path0/src/App.tsx".
+2026-10-14T18:20:12.621Z  This is most likely unintended because it can break your application at runtime.
+2026-10-14T18:20:12.621Z  If you do want to externalize this module explicitly add it to
+2026-10-14T18:20:12.621Z  `build.rollupOptions.external`
+2026-10-14T18:20:12.622Z      at viteWarn (file:///vercel/path0/node_modules/vite/dist/node/chunks/dep-BWSbWtLw.js:65589:17)
+2026-10-14T18:20:12.622Z      at onRollupWarning (file:///vercel/path0/node_modules/vite/dist/node/chunks/dep-BWSbWtLw.js:65621:5)
+2026-10-14T18:20:12.622Z      at onwarn (file:///vercel/path0/node_modules/vite/dist/node/chunks/dep-BWSbWtLw.js:65284:7)
+2026-10-14T18:20:12.700Z  Error: Command "npm run build" exited with 1
+2026-10-14T18:20:12.720Z  Exiting build container
+status	● Error

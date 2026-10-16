@@ -1,10 +1,13 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
-import { PRACTICE_LABEL } from "./commands.ts";
+import { PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
+import { activityWords } from "./activity.ts";
+import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
-export type ToolLine = { id: string; text: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
+// text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
+export type ToolLine = { id: string; text: string; tool: string; words: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
 export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string };
 export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
@@ -12,8 +15,9 @@ export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number }
 export type ChangeAt = { file: string; line: number; lineText: string };
 export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: string };
 // turnTaken: the person's turn was set up from this receipt, so the engine has no offer left to try (Let me try the next one is not shown again).
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean };
-export type Task = { agent: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
+// undone: an undo point in this project was restored after it, so the work it shows is no longer what is in the files.
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean };
+export type Task = { agent: string; project?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
@@ -43,19 +47,31 @@ export type TeachState = {
 };
 export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } };
 // turn: the ring is waiting for the person's own click (Do it for me is offered).
-export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean };
+export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean; step?: number; of?: number };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
-export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
+// note: one plain line from the engine about something that could not be checked (the Vercel tool signed out, say).
+export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string; note?: string };
+/** Is there anything to point at on the screen? A deploy problem with no line in this folder (a setting Vercel lacks,
+ *  say) is Companion's own sentence, never on screen, so the card says it in words and the screen is not looked at. */
+export const pointsOnScreen = (p: Problem | null | undefined): p is Problem => !!p && !(p.kind === "message" && p.from === "deploy");
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
-export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
+// The practice projects the shell can make (app/src-tauri/src/practice.rs NAMES), and the file each one's own failure is in.
+// signup is fixed by a small task; setting by the lesson made from the project (a value is the person's to put in place).
+export const PRACTICES = { signup: { folder: "stuck-signup", failing: "test/signup.test.js" }, setting: { folder: "stuck-setting", failing: "settings.js" } } as const;
+export type PracticeKind = keyof typeof PRACTICES;
+// stage: lesson and proving are the setting practice's fix: the lesson is open, then the checks run again. walk: the lesson
+// the practice opened. nameSet: that lesson could not even be made because the setting's name is already in the file, so
+// the value must be empty or wrong (the checks run again instead of a lesson that cannot be made).
+export type Practice = { kind: PracticeKind; stage: "start" | "found" | "fixing" | "lesson" | "proving" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string; walk?: string; nameSet?: boolean };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
-export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; steps: number; saved: boolean };
-// A guided lesson on the card. stage: a step to do, waiting for "did that work?", words only after a step could not be
-// proven, finished, or stopped.
-export type WalkState = { stage: "step" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
+// fromProject: made by the runner from this project's own setting names, not a lesson file.
+export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
+// A guided lesson on the card. stage: a step to do, "did you already do this?" after a pause (nothing is pointed at
+// until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
+export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 // The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
 // engine says so with needs: "browser", never guessed from its words). installed: what the engine last said. stage: the
@@ -117,11 +133,13 @@ export type Model = {
   task: Task | null;
   approvals: ApprovalCard[];
   receipt: Receipt | null;
+  // A follow up or Try again was sent and its task has not started yet (so a second press sends nothing).
+  followUp: "idle" | "sending";
   notice: string | null;
   error: string | null;
 };
 
-export const initial = (): Model => ({ spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, notice: null, error: null });
+export const initial = (): Model => ({ spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -167,6 +185,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "checkpoint.restored": {
       // Put my fix back: only the restore the turn asked for ends it.
       if (m.teach?.stage === "restoring" && m.teach.restore === e.checkpoint) m = { ...m, teach: { ...m.teach, stage: "restored" } };
+      // Any undo in this project (from the card or the timeline) puts the files back, so the receipt's work is gone from them.
+      if (m.receipt && !m.receipt.undone && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project)) m = { ...m, receipt: { ...m.receipt, undone: true } };
       // Undo of the whole task puts every file back as it was before it, so no turn is left (the engine drops it too).
       return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, teach: null, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0 } } : m;
     }
@@ -208,9 +228,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice, point: null, where: null, teach: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    case "app.runner_restarted": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const } : m.practice, point: null, where: null, teach: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -234,7 +254,7 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], error: null, notice: null };
+    case "ui.projectChanged": return { ...m, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], followUp: "idle", error: null, notice: null };
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -242,7 +262,9 @@ export function reduce(m: Model, e: Ev): Model {
       const turn = e.turn === true || (stage === "your_turn_miss" && !!m.showme?.turn) ? true : undefined;
       // Only the answers to a ring (a miss, a hit, done for you) belong to the ring before them; anything else starts fresh.
       const req = e.req ?? (stage.startsWith("your_turn") || stage === "done_for_you" ? m.showme?.req : undefined);
-      return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}) } };
+      // A step of a multi step answer says which one it is (step of of), so each line is said once and in its turn.
+      const seq = Number.isInteger(e.step) && Number.isInteger(e.of) && (e.of as number) > 1 ? { step: e.step as number, of: e.of as number } : {};
+      return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}), ...seq } };
     }
     case "assist.error": return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } });
     case "app.voice": return e.stage === "idle" ? { ...m, voice: null } : { ...m, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
@@ -254,12 +276,14 @@ export function reduce(m: Model, e: Ev): Model {
     case "checkpoint.created": {
       const open = m.teach && teachOpen(m.teach) && m.teach.target ? S.teachStillOpen(m.teach.target.file, m.teach.target.line) : null;
       const planCheckpoints = m.drive && !m.drive.finished && typeof e.checkpoint === "string" ? [...m.planCheckpoints, e.checkpoint].slice(-40) : m.planCheckpoints;
-      return { ...m, browser: browserFresh(m.browser), explain: null, teach: null, planCheckpoints, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, error: null, notice: open, task: { agent: e.agent, label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
+      return { ...m, browser: browserFresh(m.browser), explain: null, teach: null, planCheckpoints, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, followUp: "idle", error: null, notice: open, task: { agent: e.agent, ...(typeof e.project === "string" ? { project: e.project } : {}), label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     }
     case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
     case "agent.tool": {
       const t = m.task ?? { agent: e.agent, label: "", lines: [], costUsd: 0 };
-      const line = { id: String(e.toolUseId ?? ""), text: e.summary, outcome: e.outcome ?? "" };
+      // Secrets are hidden again here: the engine already does, and a line on the card must never be the place one slips through.
+      const summary = String(e.summary ?? ""), tool = String(e.tool ?? "");
+      const line: ToolLine = { id: String(e.toolUseId ?? ""), text: redact(summary), tool, words: activityWords(tool, summary), outcome: e.outcome ?? "" };
       // The same step is updated as it moves from "waiting" to "ran" or "denied", never listed twice.
       const at = line.id ? t.lines.findIndex((l) => l.id === line.id) : -1;
       return { ...m, task: { ...t, lines: at >= 0 ? t.lines.map((l, i) => (i === at ? line : l)) : [...t.lines, line] } };
@@ -282,7 +306,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "project.install": return { ...m, install: { project: String(e.project), stage: String(e.stage), detail: String(e.detail ?? "") } };
     case "project.cloned": return { ...m, cloneNote: e.ok ? null : String(e.detail ?? "") };
     case "ui.cloneNoteClosed": return { ...m, cloneNote: null };
-    case "ui.practiceStarted": return { ...m, practice: { stage: "start", project: String(e.project) } };
+    case "ui.practiceStarted": return { ...m, practice: { kind: e.kind === "setting" ? "setting" : "signup", stage: "start", project: String(e.project) } };
+    // The setting practice's fix is a lesson; the signup practice's is a task, so it never waits on one.
+    case "ui.practiceLesson": return m.practice?.kind === "setting" && ["found", "failed"].includes(m.practice.stage) ? { ...m, practice: { ...m.practice, stage: "lesson", walk: typeof e.walk === "string" ? e.walk : undefined, nameSet: undefined } } : m;
+    // The setting is in the file but the checks still failed: run them again (the card starts them when it sees "proving").
+    case "ui.practiceProving": return m.practice?.kind === "setting" && m.practice.stage === "failed" ? { ...m, practice: { ...m.practice, stage: "proving" } } : m;
     case "ui.practiceFixing": return m.practice ? { ...m, practice: { ...m.practice, stage: "fixing", why: undefined } } : m;
     case "ui.practiceClosed": return { ...m, practice: null };
     case "ui.diagramAsked": return { ...m, diagram: { stage: "asking", ask: e.ask, project: e.project } };
@@ -291,11 +319,24 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.walkRequested": return { ...m, walkWant: String(e.walk), walk: null };
     case "ui.walkClosed": return { ...m, walk: null, walkWant: null };
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
-    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
+    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
-    case "walk.done": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "done" } } : m;
+    // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.
+    case "walk.wait": return m.walk && m.walk.id === e.walk && m.walk.stage === "step" && m.walk.index === e.index ? { ...m, walk: { ...m.walk, note: String(e.say ?? "") } } : m;
+    case "walk.done": {
+      // The setting practice: its lesson finishing in its own project means the checks run again (the card starts them).
+      if (m.practice?.stage === "lesson" && e.project === m.practice.project && e.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "proving" } };
+      return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "done" } } : m;
+    }
     case "walk.stopped":
+      // Stopping the setting practice's lesson goes back to the start of the fix, so it can be opened again.
+      if (m.practice?.stage === "lesson" && m.walk && m.walk.id === e.walk && m.walk.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "found" } };
+      // The practice's lesson could not even start: no lesson is made because the setting's name is already in the file
+      // (saved with an empty value, say). The checks run again, and the practice says what that means; no second panel.
+      else if (m.practice?.stage === "lesson" && !m.walk && e.walk === m.walkWant && (m.practice.walk === undefined || m.practice.walk === e.walk)) {
+        return { ...m, walk: null, walkWant: null, practice: { ...m.practice, stage: "proving", nameSet: true } };
+      }
       if (m.walk && m.walk.id === e.walk) return { ...m, walk: { ...m.walk, stage: "stopped", note: String(e.reason ?? "") } };
       // A lesson that could not even start (not found) still tells the person why.
       return !m.walk && e.walk === m.walkWant ? { ...m, walk: { stage: "stopped", id: e.walk, lesson: "", title: "Lesson", index: 0, total: 0, variant: "main", say: "", find: "", ask: false, log: [], note: String(e.reason ?? "") } } : m;
@@ -311,16 +352,22 @@ export function reduce(m: Model, e: Ev): Model {
       if (m.practice?.stage === "start" && e.project === m.practice.project && e.verdict === "failed" && e.problem) {
         const pr = e.problem;
         // Only the practice's own bug counts. A check that could not run at all (no Node on this Mac, say) is told as that.
-        const ours = pr.kind === "line" && typeof pr.file === "string" && pr.file.endsWith("test/signup.test.js");
+        const ours = pr.kind === "line" && typeof pr.file === "string" && pr.file.endsWith(PRACTICES[m.practice.kind].failing);
         m = ours
           ? { ...m, practice: { ...m.practice, stage: "found", label: String(e.label ?? ""), where: { file: pr.file, line: pr.line, message: pr.message } } }
           : { ...m, practice: { ...m.practice, stage: "blocked", why: String(pr.message ?? e.detail ?? "") } };
+      }
+      // The setting practice after its lesson: the checks ran again. A pass is done; anything else is said, with the place.
+      if (m.practice?.stage === "proving" && e.project === m.practice.project && e.verdict !== "cancelled") {
+        const pass = e.verdict === "passed" || e.verdict === "passed_with_gaps";
+        const pr = e.problem;
+        m = { ...m, practice: { ...m.practice, stage: pass ? "done" : "failed", ...(!pass && pr ? { where: { file: pr.file, line: pr.line, message: pr.message } } : {}) } };
       }
       // Only an answer to a press that is still waiting counts; one that arrives after Stop or a folder change is old news.
       if (m.point?.stage !== "checking") return m;
       if (e.verdict === "cancelled") return { ...m, point: null };
       if (e.verdict === "failed") return { ...m, point: { stage: "found", label: String(e.label ?? ""), message: String(e.detail ?? ""), agent: e.agent, ...(e.problem ? { problem: e.problem } : {}) }, where: e.problem ?? null };
-      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear" }, where: null };
+      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear", ...(typeof e.note === "string" && e.note ? { note: e.note } : {}) }, where: null };
     }
     case "proof.result": {
       if (browserRung(e.steps, (s) => s.status === "skipped" && s.needs === "browser")) m = { ...m, browser: { ...m.browser, needed: true } };
@@ -336,6 +383,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "drive.paused": return { ...m, stuck: null, paused: { reason: e.reason, path: e.path } };
     case "ui.resumed": return { ...m, paused: null };
     case "ui.stuckAnswered": return { ...m, stuck: null };
+    case "ui.followUpSent": return { ...m, followUp: "sending", error: null, notice: null };
     case "rescue.report": return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
     case "app.prompt_help":
       // Each stage starts fresh, so the old text never lingers into a new press.
@@ -360,7 +408,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
     case "receipt.visual": return m.receipt && m.receipt.checkpoint === e.checkpoint ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
-    case "receipt": return { ...m, ...(m.practice?.stage === "fixing" && (m.task?.label ?? "").includes(PRACTICE_LABEL) ? { practice: { ...m.practice, stage: e.proof === "passed" ? ("done" as const) : ("failed" as const) } } : {}), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}) } };
+    // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's
+    // card always comes after the step's receipt.
+    case "receipt": return { ...m, stuck: null, ...(m.practice?.stage === "fixing" && (m.task?.label ?? "").includes(PRACTICE_LABEL) ? { practice: { ...m.practice, stage: e.proof === "passed" ? ("done" as const) : ("failed" as const) } } : {}), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}) } };
     case "memory.state": return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
     case "memory.refused": return { ...m, memoryNote: String(e.reason) };
     case "memory.exported": return { ...m, exported: String(e.text ?? "") };
@@ -377,7 +427,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "protocol.error": if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };
       // Put my fix back could not be done: the person's turn stays as it was, with the reason.
       if (m.teach?.stage === "restoring") return { ...m, teach: { ...m.teach, stage: "ready", note: plainError(String(e.reason)) }, error: null };
-      return { ...m, ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : {}), error: plainError(String(e.reason)) };
+      return { ...m, followUp: "idle", ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : {}), error: plainError(String(e.reason)) };
     // The browser check's download. A second press while it runs changes nothing.
     case "ui.browserInstallAsked": return browserBusy(m.browser) ? m : { ...m, browser: { ...m.browser, stage: "asked", percent: undefined, mb: undefined, detail: undefined } };
     case "ui.browserClosed": return browserBusy(m.browser) ? m : { ...m, browser: { needed: false, stage: "idle", ...(m.browser.installed !== undefined ? { installed: m.browser.installed } : {}) } };
@@ -413,6 +463,34 @@ export function browserView(m: Model): BrowserView | null {
     case "cancelled": return { line: S.browserStopped, button: S.browserGet, busy: false, closable: true };
     default: return b.needed && !b.installed ? { line: S.browserNeeded, button: S.browserGet, busy: false, closable: true } : null;
   }
+}
+
+// What the agent is doing right now: the latest one or two steps, in plain words.
+export function activityNow(m: Model, n = 2): ToolLine[] {
+  return (m.task?.lines ?? []).slice(-n);
+}
+
+const BUSY: CharacterState[] = ["thinking", "working", "checking", "needsYou"];
+// The follow up box under the receipt: only once a task has finished, for the project on screen, when nothing else is
+// running or waiting for an answer, and not while Undo is asked or once it has put the files back (the conversation would
+// no longer match them; the engine refuses it too).
+export function canFollowUp(m: Model, project: string): boolean {
+  const t = m.task;
+  if (!m.receipt || m.receipt.undone || !t || !project || t.project !== project) return false;
+  if (BUSY.includes(m.agents[t.agent] ?? "idle") || BUSY.includes(m.character)) return false;
+  if (m.followUp === "sending" || m.undo || m.plan || m.stuck || m.paused || (m.drive && !m.drive.finished)) return false;
+  return true;
+}
+// Try again: the same, after a task that was not done (a check failed, or it ended with an error).
+export function canRetry(m: Model, project: string): boolean {
+  if (!canFollowUp(m, project)) return false;
+  return m.receipt!.proof === "failed" || m.agents[m.task!.agent] === "error";
+}
+// The loop card's heading: a Drive step by its number, a single task (index 0) by its name.
+export function stuckWords(m: Model): string | null {
+  const s = m.stuck;
+  if (!s) return null;
+  return s.index > 0 ? `${S.stepOf} ${s.index}: ${s.title}` : s.title;
 }
 
 // The toast after Companion learns something new.

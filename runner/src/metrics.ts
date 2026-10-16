@@ -65,7 +65,8 @@ export class Metrics {
   private look(e: Event) {
     const x = e as unknown as Record<string, unknown>;
     switch (e.type) {
-      case "walk.step": this.bump("walk_step"); if (x.variant === "instead") this.bump("walk_other_way"); return;
+      // "Did you already do this?" after a pause is a question, not a step shown (a "no" shows the step after it).
+      case "walk.step": if (x.already === true) return; this.bump("walk_step"); if (x.variant === "instead") this.bump("walk_other_way"); return;
       case "walk.help": this.bump("walk_help"); return;
       case "walk.done": this.bump("walk_done"); return;
       case "walk.stopped": this.bump("walk_stopped"); return;

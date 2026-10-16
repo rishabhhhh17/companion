@@ -1,0 +1,20 @@
+F401 [*] `os` imported but unused
+ --> app.py:1:8
+  |
+1 | import os
+  |        ^^
+2 | from flask import Flask, render_template
+  |
+help: Remove unused import: `os`
+
+F821 Undefined name `load_item`
+  --> app.py:11:51
+   |
+ 9 | @app.route("/")
+10 | def home():
+11 |     return render_template("index.html", items=load_item())
+   |                                                   ^^^^^^^^^
+   |
+
+Found 2 errors.
+[*] 1 fixable with the `--fix` option.

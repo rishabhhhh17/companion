@@ -37,6 +37,24 @@ describe("Node's test output when the assertion has no message of its own", () =
   });
 });
 
+describe("Node's test runner, as the practice stuck moments meet it (real output, Node 18 and Node 24, 16 Oct 2026)", () => {
+  test("a test file that cannot even load: the person reads the error it printed, not Node's own 'test failed'", () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-loc3-"))); made.push(d);
+    const settings = readFileSync(join(import.meta.dir, "../../app/sample/stuck-setting/settings.js"), "utf8");
+    writeFileSync(join(d, "settings.js"), settings); writeFileSync(join(d, "server.js"), "x\nx\nconst { shopName } = require(\"./settings.js\");\n");
+    const p = locateProblem(fixture("node-test-tap-load", d), d, "tests");
+    expect(p).toMatchObject({ kind: "line", file: "settings.js", line: 16, message: "Error: SHOP_NAME is not set. Add it to .env.local in this folder." });
+  });
+  test("Node 24 says where the test starts ('test at ...:9:1') before the failing check: the failing check wins", () => {
+    const p = project();
+    expect(locateProblem(fixture("node24-test-spec", p), p, "tests")).toMatchObject({ kind: "line", file: "test/signup.test.js", line: 17, lineText: "assert.strictEqual(res.status, 200);" });
+  });
+  test("Node's own 'test failed' is still said when nothing better was printed", () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-loc4-"))); made.push(d);
+    expect(locateProblem("TAP version 13\nnot ok 1 - x\n  ---\n  error: 'test failed'\n  ...\n", d, "tests")).toMatchObject({ kind: "message", message: "test failed" });
+  });
+});
+
 describe("real tool output becomes a file and a line", () => {
   test("TypeScript (plain): the first error, with the line's own text", () => {
     const p = project();

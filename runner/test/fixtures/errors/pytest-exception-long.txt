@@ -1,0 +1,26 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.4, pytest-8.3.3, pluggy-1.5.0
+rootdir: {{ROOT}}
+collected 3 items
+
+tests/test_cart.py ..F                                                   [100%]
+
+=================================== FAILURES ===================================
+________________________________ test_discount _________________________________
+
+    def test_discount():
+>       assert apply_discount(20, 0) == 20
+
+tests/test_cart.py:13: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+price = 20, percent = 0
+
+    def apply_discount(price, percent):
+>       return price - price / percent
+E       ZeroDivisionError: division by zero
+
+shop/cart.py:14: ZeroDivisionError
+=========================== short test summary info ============================
+FAILED tests/test_cart.py::test_discount - ZeroDivisionError: division by zero
+========================= 1 failed, 2 passed in 0.05s ==========================

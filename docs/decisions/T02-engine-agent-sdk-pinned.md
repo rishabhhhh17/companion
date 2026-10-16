@@ -39,5 +39,11 @@ The full option set is in technical_research.md section 3. Rules a coding agent 
 ## Settled by desk research (7 Oct 2026)
 - Login shell `PATH`: our own `$SHELL -ilc` read with a 3 s timeout and a fixed fallback list (owned by T04).
 
+## What the build settled (follow ups, 16 Oct 2026)
+- A follow up from the card (`agent.send`) is not streamed into a running `query()`. It is refused while the agent or its project is busy, and once the task has ended it runs as a new task that resumes the last task's session (`resume`), so it gets its own snapshot, the same safety rules, the proof ladder, a receipt, cost booked to the day and the daily limit. Try again (`agent.send` with `retry`) is the same, with the last failing check as evidence. This differs from the streaming input design above and in technical_research.md section 3 ("fed by agent.send"): interjecting while a task runs ("also make it blue" mid run) is not built. Stop, then a follow up, does that job with a clear undo point.
+- `agent.send` now names its project, so the app holds it to the folder the person chose (project bound in `app/src-tauri/src/runner.rs`), and the runner refuses it for any project other than the last task's.
+- Off the record tasks keep no session (`persistSession: false`), so a follow up or Try again starts a fresh session and is told the request again. The last task's request is kept in the engine's memory only, never on disk.
+- Not yet proven with real Claude: that resuming a finished session with the bundled binary carries the conversation over on the API key route, and what a resumed follow up costs. It needs a real-verify scenario with a real key.
+
 ## Revisit if
 Anthropic gives written terms for managed credits, which need a Companion owned loop on the Messages API (section 20, question 2; product_research.md section 15, point 4). A routine SDK upgrade is not a revisit.

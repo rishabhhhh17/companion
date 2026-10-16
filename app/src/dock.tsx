@@ -22,10 +22,13 @@ function Dock() {
   const reactor = useRef(new Reactor());
   const seq = useRef(0);
   useEffect(() => {
-    const off = listen("runner-event", (e) => {
+    const off = listen("runner-event", async (e) => {
       if (!reactionsOn()) return;
       const r = reactionFor(e.payload as never);
-      const got = r && reactor.current.push(r, Date.now());
+      if (!r) return;
+      // Quiet during calls (rule 7): the app says only whether it should be quiet (a call app is in front), nothing more.
+      if (await invoke("quiet_now").then((q) => q === true, () => false)) return;
+      const got = reactor.current.push(r, Date.now());
       if (!got) return;
       const id = ++seq.current;   // each reaction is its own, so an older timer never cuts a newer one short
       // Cleared for one frame first, so the same move twice in a row plays again (the button itself is never rebuilt,
