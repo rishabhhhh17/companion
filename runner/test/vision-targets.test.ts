@@ -2,7 +2,7 @@
 // each with a short line and a kind of mark, on any of the screens it was shown. Every model reply here is written by hand
 // (a stand in for real output, which needs an API key); none of it reaches the network.
 import { describe, expect, test } from "bun:test";
-import { AssistService, buildVisionMessages, buildVisionOptions, ImageStore, MAX_TARGETS, parsePointText, parseTargetsText, VisionLane } from "../src/lanes.ts";
+import { AssistService, buildVisionMessages, buildVisionOptions, clickPoint, ImageStore, MAX_TARGETS, parsePointText, parseTargetsText, VisionLane } from "../src/lanes.ts";
 import { ComputerUseVision, withFallback } from "../src/aim.ts";
 import { parseCommand, parseEvent, serialize, type Event } from "../../protocol/index.ts";
 
@@ -207,5 +207,22 @@ describe("the Computer Use lane takes one picture only", () => {
     const classic = { locate: async () => ({ point: { x: 1, y: 1, targetText: "A", confidence: 0.9, caption: "ordinary" }, costUsd: 0 }) };
     const r = await withFallback(cu, classic).locate({ image: img(), question: "q", ocr: [], screens: [{ image: img(), label: "Screen 1 of 2" }, { image: img(), label: "Screen 2 of 2" }] }, cfg.signal);
     expect(sent).toBe(false); expect(r.point?.caption).toBe("ordinary");
+  });
+});
+
+describe("the target the person clicks is the last one (found in review, 16 Oct 2026)", () => {
+  // The prompt lists targets in the order to look at them, the last being where to click. The aim eval scored the first,
+  // so once answers carry several targets it would count a right answer as a miss.
+  test("the click target of a located answer is its last target, or its point when it has no list", () => {
+    const a = t({ x: 1, caption: "Look at the sidebar" }), b = t({ x: 2, caption: "Click Save" });
+    expect(clickPoint({ point: a, targets: [a, b], costUsd: 0 })?.caption).toBe("Click Save");
+    expect(clickPoint({ point: a, costUsd: 0 })?.caption).toBe("Look at the sidebar");
+    expect(clickPoint({ point: a, targets: [], costUsd: 0 })?.caption).toBe("Look at the sidebar");
+    expect(clickPoint({ point: null, costUsd: 0 })).toBeNull();
+  });
+  test("the aim eval scores the click target", async () => {
+    const src = await Bun.file(new URL("../scripts/eval-aim.ts", import.meta.url)).text();
+    expect(src).toContain("const hit = clickPoint(r);");
+    expect(src).not.toMatch(/r\.point!?\.(x|y|targetText)/);
   });
 });

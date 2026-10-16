@@ -1,7 +1,7 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { at, burst, confetti, CONFETTI_S, flightMs } from "./pointer.ts";
+import { at, burst, confetti, CONFETTI_S, flightMs, RING_MS } from "./pointer.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
@@ -21,6 +21,9 @@ function clear() { svg.replaceChildren(); cap.classList.remove("on"); clearTimeo
 
 function show(p: Point) {
   clear();
+  // A ring that waits for the person's click stays until they click, press Do it for me, or close it. Any other goes ten
+  // seconds after this draw was ordered, the flight included, so it never outlives the shell's watch of its window (rule 22).
+  if (!p.hold) timer = setTimeout(clear, RING_MS);
   const reduced = p.reduced ?? matchMedia("(prefers-reduced-motion: reduce)").matches;
   const cx = p.rect.x + p.rect.w / 2, cy = p.rect.y + p.rect.h / 2;
   const { rx, ry } = ringRadii(p.rect);
@@ -72,8 +75,6 @@ function show(p: Point) {
     cap.style.left = `${Math.max(box.x + 8, Math.min(box.x + box.w - 320, side > 0 ? cx + rx + 12 : cx - rx - 12 - 300))}px`;
     cap.style.top = `${Math.max(box.y + 8, Math.min(box.y + box.h - 60, cy - 18))}px`;
     cap.classList.add("on");
-    // A ring that waits for the person's click stays until they click, press Do it for me, or close it.
-    if (!p.hold) timer = setTimeout(clear, 10_000);
   };
   if (reduced) { land(); return; }
   const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy);

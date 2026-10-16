@@ -42,7 +42,8 @@ pub trait Platform {
     fn windows(&self) -> (Vec<Win>, i32) { (vec![], 0) }
     /// Text on the picture, boxes in picture pixels (top left origin).
     fn read_text(&self, frame: &Frame) -> Vec<OcrBox>;
-    /// A quicker, rougher read, tried first where speed matters. Defaults to the careful one.
+    /// A quicker, rougher read, tried first where speed matters and nothing is sent (Point at the problem). Never used for a
+    /// picture that is sent: covering secrets needs the careful read. Defaults to the careful one.
     fn read_text_fast(&self, frame: &Frame) -> Vec<OcrBox> { self.read_text(frame) }
     /// The nearest clickable element at a global point, if the Mac reports one.
     fn element_at(&self, p: Pt) -> Option<R>;
@@ -106,11 +107,12 @@ pub fn start_on(p: &dyn Platform, question: &str, all_screens: bool) -> Result<P
             match p.capture_other(&tried) { Some(Ok(c)) => caps.push(c), _ => break }
         }
         let (wins, front_pid) = p.windows();
-        // Each picture: secrets covered, shrunk, its text read. The pointer's screen is read carefully; the others quickly,
-        // so a second display does not make the answer much slower.
+        // Each picture: its text read, secrets covered, shrunk. Every picture that is sent is read with the careful reader:
+        // those boxes are all the covering has to go on, and the quick reader can misread one character of a card number or
+        // a token, which would leave it uncovered (found in review, 16 Oct 2026). More screens cost time, never safety.
         let mut ready: Vec<(Frame, Vec<OcrBox>, usize, R)> = Vec::new();
-        for (i, cap) in caps.into_iter().enumerate() {
-            let boxes = if i == 0 { p.read_text(&cap.frame) } else { p.read_text_fast(&cap.frame) };
+        for cap in caps {
+            let boxes = p.read_text(&cap.frame);
             let display = cap.display;
             let (small, covered, keep) = prepare_frame(cap.frame, &boxes);
             ready.push((small, keep, covered, display));
@@ -198,6 +200,33 @@ pub fn unchanged(prep: &Prepared, ours: i32, now: &[Win], now_front: i32, target
     }
 }
 
+/// One Show me answer at a time: what was seen, kept in memory from the press until the answer's last step (or until the
+/// answer is ended), and where its last step pointed, so the next flight starts there. Ending it (Stop everything, closing
+/// the card, holding to talk, Point at the problem, a newer question, its window changing) means no step still to come is
+/// drawn, and what was seen is forgotten at once.
+#[derive(Default)]
+pub struct Pending { cur: Option<(String, Prepared)>, last: Option<Pt> }
+impl Pending {
+    pub const fn new() -> Pending { Pending { cur: None, last: None } }
+    /// A new question was asked and its pictures sent: nothing of an older answer is left over.
+    pub fn begin(&mut self, req: &str, prep: Prepared) { self.cur = Some((req.to_string(), prep)); self.last = None; }
+    /// A step of answer `req`: what was seen, and where the step before it pointed (None for the first). The last step
+    /// takes what was seen, so it is forgotten then. None when that answer is not the current one or has ended.
+    pub fn step(&mut self, req: &str, last: bool) -> Option<(Prepared, Option<Pt>)> {
+        if !self.cur.as_ref().is_some_and(|(r, _)| r == req) { return None; }
+        let from = self.last;
+        if last { self.last = None; self.cur.take().map(|(_, p)| (p, from)) } else { self.cur.as_ref().map(|(_, p)| (p.clone(), from)) }
+    }
+    /// A step of answer `req` that was not its last was drawn here.
+    pub fn pointed(&mut self, req: &str, at: Pt) { if self.cur.as_ref().is_some_and(|(r, _)| r == req) { self.last = Some(at); } }
+    /// Ends whatever answer is on its way or playing. True when there was one.
+    pub fn end(&mut self) -> bool { self.last = None; self.cur.take().is_some() }
+    /// Ends answer `req` only, if it is still the current one (a late tidy up never ends a newer answer).
+    pub fn end_if(&mut self, req: &str) { if self.cur.as_ref().is_some_and(|(r, _)| r == req) { self.end(); } }
+    /// Is an answer on its way or still playing (steps still to come)?
+    pub fn is_on(&self) -> bool { self.cur.is_some() }
+}
+
 /// The hand drawn mark a target asked for, passed to the overlay only when it is one of the four known kinds.
 pub fn mark_name(m: Option<&str>) -> Option<&'static str> { ["ring", "arrow", "underline", "box"].into_iter().find(|k| Some(*k) == m) }
 
@@ -220,9 +249,14 @@ mod tests {
 
     /// The display the pointer is on is 1280 by 800 points with a picture twice that size. `others` are more displays, each
     /// with the text on it; their pictures are 1920 + 8 times their place in the list pixels wide, so each can be told apart.
-    struct Fake { granted: bool, secure: bool, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, others: Vec<(R, Vec<OcrBox>)>, fail_other: bool, tried: RefCell<Vec<R>>, wins: (Vec<Win>, i32) }
-    impl Fake { fn new() -> Fake { Fake { granted: true, secure: false, log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, others: vec![], fail_other: false, tried: RefCell::new(vec![]), wins: (vec![], 0) } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
+    /// `fast_misses`: text the quick reader misreads (it leaves those boxes out), as Vision's fast level can with small or
+    /// unusual text; the careful reader finds them.
+    struct Fake { granted: bool, secure: bool, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, others: Vec<(R, Vec<OcrBox>)>, fail_other: bool, tried: RefCell<Vec<R>>, wins: (Vec<Win>, i32), fast_misses: Vec<&'static str> }
+    impl Fake { fn new() -> Fake { Fake { granted: true, secure: false, log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, others: vec![], fail_other: false, tried: RefCell::new(vec![]), wins: (vec![], 0), fast_misses: vec![] } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
     impl Platform for Fake {
+        fn read_text_fast(&self, f: &Frame) -> Vec<OcrBox> {
+            self.read_text(f).into_iter().filter(|b| !self.fast_misses.iter().any(|m| b.text.contains(m))).collect()
+        }
         fn screen_recording_granted(&self) -> bool { self.log.borrow_mut().push("permission".into()); self.granted }
         fn secure_input_on(&self) -> bool { self.secure }
         fn indicator(&self, on: bool) { self.log.borrow_mut().push(format!("light {}", if on { "on" } else { "off" })); }
@@ -434,6 +468,20 @@ mod tests {
         assert!(g.said().iter().any(|x| x.starts_with("ask") && x.contains("screens=[1:]")));
     }
     #[test]
+    fn every_screen_that_is_sent_is_read_carefully_so_a_secret_on_screen_two_is_covered_too() {
+        // Found in review, 16 Oct 2026: screens 2 to 4 were read with the quick reader only, and those boxes are all the
+        // covering has to go on. A secret the quick reader misread was left uncovered in the picture sent to the model.
+        let mut f = Fake::new();
+        f.text = vec![tb("a", "Home", 100.0, 100.0)];
+        f.others = vec![(RIGHT, vec![tb("b", "Deploy", 400.0, 300.0), tb("c", "sk_live_abcdefghijklmnop1234", 400.0, 500.0)])];
+        f.fast_misses = vec!["sk_live"];
+        let prep = start_on(&f, "where is Deploy?", true).unwrap();
+        assert_eq!(prep.shots.len(), 2);
+        assert_eq!(prep.covered, 1, "the secret on screen 2 is blacked out in its picture before it is sent");
+        let ask = f.said().into_iter().find(|x| x.starts_with("ask")).unwrap();
+        assert!(ask.contains("Deploy") && !ask.contains("sk_live"), "{ask}");
+    }
+    #[test]
     fn the_model_names_a_screen_and_its_point_becomes_a_place_on_that_screen() {
         let mut f = Fake::new();
         f.others = vec![(LEFT, vec![])];
@@ -522,6 +570,89 @@ mod tests {
         let aim = &main[main.find("fn showme_aim(").unwrap()..];
         let aim = &aim[..aim.find("\n}\n").unwrap()];
         assert!(aim.contains("showme::pointing_extra(&req"), "showme_aim must say which request it points for");
+    }
+    // ---- one answer at a time, and what ends it (found in review, 16 Oct 2026) ----
+    // Before this, closing the card or holding to talk only silenced the current line: the rest of a multi step answer went
+    // on pointing and talking with the card closed. And Point at the problem did not end an answer still playing, so its
+    // next step took Point at the problem's ring away.
+    fn three_steps() -> (Pending, Prepared) {
+        let prep = prep_with(vec![], SAFARI);
+        let mut a = Pending::default();
+        a.begin("sm_1", prep.clone());
+        (a, prep)
+    }
+    #[test]
+    fn each_step_of_an_answer_gets_what_was_seen_and_the_last_one_takes_it() {
+        let (mut a, _) = three_steps();
+        assert!(a.is_on());
+        let (_, from) = a.step("sm_1", false).expect("step 1");
+        assert_eq!(from, None, "the first step flies from the character");
+        a.pointed("sm_1", Pt { x: 10.0, y: 20.0 });
+        let (_, from) = a.step("sm_1", false).expect("step 2");
+        assert_eq!(from, Some(Pt { x: 10.0, y: 20.0 }), "the next flight starts where the last step pointed");
+        assert!(a.step("sm_1", true).is_some(), "step 3, the last");
+        assert!(!a.is_on(), "what was seen is forgotten after the last step");
+        assert!(a.step("sm_1", false).is_none() && a.step("sm_1", true).is_none());
+    }
+    #[test]
+    fn a_step_of_another_answer_gets_nothing() {
+        let (mut a, _) = three_steps();
+        assert!(a.step("sm_0", false).is_none());
+        assert!(a.is_on(), "and the current answer is left as it is");
+    }
+    #[test]
+    fn once_an_answer_is_ended_no_step_still_to_come_is_drawn() {
+        // Closing the card, holding to talk, Point at the problem and Stop all end it the same way.
+        let (mut a, _) = three_steps();
+        assert!(a.step("sm_1", false).is_some());
+        a.pointed("sm_1", Pt { x: 1.0, y: 1.0 });
+        assert!(a.end(), "an answer with steps still to come was ended");
+        assert!(!a.is_on());
+        assert!(a.step("sm_1", false).is_none(), "step 2 is gone");
+        assert!(a.step("sm_1", true).is_none(), "and so is the last one");
+        assert!(!a.end(), "ending again reports nothing was playing");
+    }
+    #[test]
+    fn an_answer_still_on_its_way_is_ended_too() {
+        // The question was asked and the answer has not come yet: it is dropped when it comes.
+        let (mut a, _) = three_steps();
+        assert!(a.end());
+        assert!(a.step("sm_1", true).is_none());
+    }
+    #[test]
+    fn ending_one_answer_never_ends_a_newer_one() {
+        let (mut a, prep) = three_steps();
+        a.begin("sm_2", prep);
+        a.end_if("sm_1");
+        assert!(a.is_on(), "a late tidy up of sm_1 leaves sm_2 alone");
+        a.pointed("sm_1", Pt { x: 5.0, y: 5.0 });
+        assert_eq!(a.step("sm_2", false).unwrap().1, None, "nor does a late point of sm_1 move sm_2's flight");
+        a.end_if("sm_2");
+        assert!(!a.is_on());
+    }
+    #[test]
+    fn a_new_question_starts_with_nothing_left_over() {
+        let (mut a, prep) = three_steps();
+        a.step("sm_1", false); a.pointed("sm_1", Pt { x: 9.0, y: 9.0 });
+        a.begin("sm_2", prep);
+        assert_eq!(a.step("sm_2", false).unwrap().1, None);
+    }
+    #[test]
+    fn the_shell_ends_an_answer_when_the_card_closes_on_hold_to_talk_and_on_point_at_the_problem() {
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let hush = body("fn card_closed_hush(");
+        assert!(hush.contains("speech_off(app)") && hush.contains("showme_end_answer(app)") && hush.contains("emit(\"hush\""), "closing the card silences it and ends an answer still playing");
+        assert!(body("fn close_card(").contains("card_closed_hush(&app)"), "Esc in the card");
+        assert!(body("fn toggle_card(").contains("card_closed_hush("), "and a click on the character");
+        let hold = &main[main.find("if s == &sc_voice()").unwrap()..];
+        let hold = &hold[..hold.find("return;").unwrap()];
+        assert!(hold.contains("showme_end_answer(app)") && hold.contains("emit(\"hush\""), "so does starting to hold to talk");
+        let pp = body("fn point_problem(");
+        let start = &pp[..pp.find("std::thread::spawn").unwrap()];
+        assert!(start.contains("showme_end_answer(&app)") && start.contains("hide_overlay(&app)"), "Point at the problem ends any Show me answer and takes its ring away first");
+        assert!(body("fn showme_end_answer(").contains("say_showme(app, \"done\""), "and the page is told, so it stops too");
+        assert!(main.contains("if t == \"runner.hello\" { showme_pending().end(); }"), "a restarted engine knows no question: what was seen is forgotten");
     }
     #[test]
     fn a_step_is_the_last_one_when_it_is_the_end_of_the_list_or_when_no_list_was_given() {

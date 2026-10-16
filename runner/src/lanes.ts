@@ -293,6 +293,9 @@ function validPoint(i: any, pics: Image[]): Point | null {
 export type LocateReq = { image: Image; question: string; ocr: Ocr[]; screens?: Screen[] };
 /** point: the first target (or none). targets: every target in order, when the lane can name more than one. */
 export type Located = { point: Point | null; targets?: Point[]; costUsd: number };
+/** Where the person clicks: the last target (the prompt lists them in the order to look at them, ending with the click),
+ *  or the point when there is no list. What the aim eval scores, and what a lesson rings. */
+export function clickPoint(r: Located): Point | null { return r.targets?.length ? r.targets[r.targets.length - 1] : r.point; }
 export interface FastLike { run(req: { text: string; system?: string; extra?: string; raw?: boolean }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
 export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promise<Located> }
 

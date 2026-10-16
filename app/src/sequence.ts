@@ -38,9 +38,10 @@ export function targetsOf(ev: unknown): Target[] {
   return raw.map(asTarget).filter((t): t is Target => t !== null).slice(0, MAX_TARGETS);
 }
 
-/** The steps to play. In a lesson only the first target is used, because a lesson step is one click. */
+/** The steps to play. In a lesson only the click target (the last one) is used, because a lesson step is one click. */
 export function planSteps(targets: Target[], o: { lesson?: boolean } = {}): Step[] {
-  const use = (o.lesson ? targets.slice(0, 1) : targets).slice(0, MAX_TARGETS);
+  const click = clickTarget(targets);
+  const use = (o.lesson ? (click ? [click] : []) : targets).slice(0, MAX_TARGETS);
   return use.map((target, index) => {
     const draw = aimDecision(target.confidence) === "draw";
     return { target, index, total: use.length, draw, hold: draw && index === use.length - 1, text: draw ? target.caption : notSureWords(target.targetText, target.caption) };
@@ -68,11 +69,20 @@ export function startTimes(steps: Step[], speaking: boolean): number[] {
   return at;
 }
 
-/** Whether what the card now shows ends a sequence that is still playing: the pointer went away (Stop, Esc, closing), or
- *  the Mac side took a step's ring away because its window changed while it was up (rule 22). */
+/** Whether what the card now shows ends a sequence that is still playing: the pointer went away (Stop, closing the card,
+ *  holding to talk, Point at the problem: the shell then says "done"), or the Mac side took a step's ring away because its
+ *  window changed while it was up (rule 22). */
 export function sequenceOver(showme: { stage: string } | null | undefined): boolean {
   return !showme || showme.stage === "window_changed";
 }
+
+/** Whether an answer that has just arrived is still wanted: the card is still on that question. Once its question was
+ *  ended (closing the card or Stop while "Finding it", its window changed), it is not played, not even in words. */
+export const stillWanted = (showme: { stage: string } | null | undefined): boolean => !sequenceOver(showme);
+
+/** The target of an answer the person clicks: the last one (the vision prompt lists them in the order to look at them,
+ *  ending with where to click). */
+export function clickTarget(targets: Target[]): Target | null { return targets.length ? targets[targets.length - 1] : null; }
 
 export type Actions = {
   /** Snap and draw this step. Resolves false when it could not be drawn (its window changed, or the pointer was cleared). */
@@ -81,10 +91,29 @@ export type Actions = {
   words: (s: Step) => void;
 };
 type Timers = { set: (f: () => void, ms: number) => unknown; clear: (t: unknown) => void };
+const realTimers: Timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) };
+
+/** The card's one Show me answer at a time: the steps still to come and the one line still waiting to be said (a step's
+ *  line waits for its pointer to land). hush() ends both at once: closing the card, holding to talk, Point at the problem,
+ *  Stop, a new question. */
+export function answerPlayer(timers: Timers = realTimers) {
+  let stop: () => void = () => {};
+  let line: unknown;
+  const cancelLine = () => { if (line !== undefined) { timers.clear(line); line = undefined; } };
+  return {
+    /** Plays a new answer; whatever was playing or waiting to be said before it is dropped. */
+    start(steps: Step[], act: Actions, speaking: boolean) { this.hush(); stop = play(steps, act, speaking, timers); },
+    /** Says a line after a pause, unless it is hushed or replaced first. One line waits at a time. */
+    sayLater(say: () => void, ms: number) { cancelLine(); line = timers.set(() => { line = undefined; say(); }, ms); },
+    cancelLine,
+    /** Nothing more of the answer is drawn or said. */
+    hush() { stop(); stop = () => {}; cancelLine(); },
+  };
+}
 
 /** Plays the steps in order. Each next step is scheduled only once the one before it was shown, so a step that could not
  *  be drawn stops the rest. Returns the stop switch (Stop everything, Esc, a new question). */
-export function play(steps: Step[], act: Actions, speaking: boolean, timers: Timers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) }): () => void {
+export function play(steps: Step[], act: Actions, speaking: boolean, timers: Timers = realTimers): () => void {
   let stopped = false;
   let timer: unknown;
   const run = async (i: number) => {

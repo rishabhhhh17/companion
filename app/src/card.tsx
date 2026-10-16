@@ -4,7 +4,7 @@ import { reactionsOn, setReactions } from "./reactions.ts";
 import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
-import { lineMs, LEAD_MS, planSteps, play, sequenceOver, stepsLine, targetsOf, type Step } from "./sequence.ts";
+import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
@@ -419,6 +419,13 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Show me's answer as it plays (sequence.ts): its steps still to come and its one line still waiting to be said. Closing
+  // the card, holding to talk, Point at the problem, Stop and a new question all hush it.
+  const player = useRef(answerPlayer());
+  useEffect(() => {
+    const off = listen("hush", () => player.current.hush());   // the card closed, or the hold to talk keys went down
+    return () => { off.then((f) => f()); };
+  }, []);
   // Spoken replies: only if turned on, one line per thing shown, and never for anything the person did not ask for.
   const saidKey = useRef("");
   const spoken = lineFor({ walk: m.walk, showme: m.showme });
@@ -427,8 +434,8 @@ function Card() {
     saidKey.current = spoken.key;
     // A step of a multi step answer is said when its pointer lands; if something else comes first, it is not said late.
     if (!spoken.delayMs) { void invoke("speak", { text: spoken.text }).catch(() => {}); return; }
-    const t = setTimeout(() => void invoke("speak", { text: spoken.text }).catch(() => {}), spoken.delayMs);
-    return () => clearTimeout(t);
+    player.current.sayLater(() => void invoke("speak", { text: spoken.text }).catch(() => {}), spoken.delayMs);
+    return () => player.current.cancelLine();
   }, [spoken?.key]);
   // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
   useEffect(() => {
@@ -497,14 +504,16 @@ function Card() {
   // Mac side snaps it to a real button and draws the pointer, its line follows, then a short pause and the next one. Only
   // the last one waits for the click. A guess below the confidence line is said in words, never drawn.
   const [walk, setWalk] = useState<{ goal: string; steps: string[] } | null>(null);
-  const stopSequence = useRef<() => void>(() => {});
   const inLesson = useRef(false); inLesson.current = !!m.walk;
+  const showmeNow = useRef(m.showme); showmeNow.current = m.showme;
   useEffect(() => {
     const off = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; req?: string };
       if (ev.type !== "assist.point" || !ev.req?.startsWith("sm_")) return;
+      // Its question was ended while it was being answered (the card closed, Stop): nothing of it is shown or said.
+      if (!stillWanted(showmeNow.current)) return;
       const req = ev.req;
-      stopSequence.current();
+      player.current.hush();
       const steps = planSteps(targetsOf(ev), { lesson: inLesson.current });
       if (!steps.length) return;
       const speaking = speechOn();
@@ -523,12 +532,14 @@ function Card() {
         // The last step said in words ends it: what was seen is forgotten. Before that, only the pointer is taken away.
         if (s.index === s.total - 1) void invoke("showme_clear").then(say); else void invoke("showme_hide").then(say);
       };
-      stopSequence.current = play(steps, { aim, words }, speaking);
+      player.current.start(steps, { aim, words }, speaking);
       if (steps.some((s) => s.draw)) setWalk((w) => (w ? { ...w, steps: [...w.steps, stepsLine(steps)] } : w));
     });
-    return () => { off.then((f) => f()); stopSequence.current(); };
+    return () => { off.then((f) => f()); player.current.hush(); };
   }, []);
-  // Point at the problem: the key checks the project; when a place comes back, the pointer flies there.
+  // Point at the problem: the key checks the project; when a place comes back, the pointer flies there. Any Show me answer
+  // still playing ends first, here and in the shell, so none of its later steps or lines lands on top of this one.
+  const pointProblem = (project: string, problem: unknown) => { player.current.hush(); void invoke("point_problem", { project, problem }); };
   const projectRef = useRef(project); projectRef.current = project;
   useEffect(() => {
     const offKey = listen("find-problem", () => {
@@ -538,7 +549,7 @@ function Card() {
     });
     const offFound = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; verdict?: string; problem?: unknown; project?: string };
-      if (ev.type === "problem.found" && ev.verdict === "failed" && ev.problem && ev.project === projectRef.current) void invoke("point_problem", { project: ev.project, problem: ev.problem });
+      if (ev.type === "problem.found" && ev.verdict === "failed" && ev.problem && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
     });
     return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
   }, []);
@@ -569,7 +580,7 @@ function Card() {
     const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
     return () => { off.then((f) => f()); };
   }, []);
-  const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); stopSequence.current(); setWalk({ goal, steps }); void invoke("showme_start", { question, allScreens: allScreensOn() }); };
+  const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); player.current.hush(); setWalk({ goal, steps }); void invoke("showme_start", { question, allScreens: allScreensOn() }); };
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
   const [asking, setAsking] = useState(false);
   const nextStep = (worked = true) => {
@@ -583,7 +594,7 @@ function Card() {
   const stage = m.showme?.stage;
   // The walkthrough ends whenever the pointer goes away (Esc, Stop everything, closing, waiting too long).
   // A multi step answer still playing also stops when the Mac side took a step's ring away because its window changed.
-  useEffect(() => { if (sequenceOver(m.showme)) stopSequence.current(); if (!m.showme) { setWalk(null); setAsking(false); } }, [m.showme]);
+  useEffect(() => { if (sequenceOver(m.showme)) player.current.hush(); if (!m.showme) { setWalk(null); setAsking(false); } }, [m.showme]);
   useEffect(() => {
     // Only a walkthrough's own ring moves it on (a Show me ring carries an "sm_" request; Point at the problem's does not).
     if (!walk || !m.showme?.req?.startsWith("sm_") || (stage !== "your_turn_done" && stage !== "done_for_you")) return;
@@ -661,7 +672,7 @@ function Card() {
   return (
     <main className="card" ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
-      onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); void invoke("close_card"); } }}>
+      onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
@@ -872,7 +883,7 @@ function Card() {
             {m.stuck.options.map((o, i) => (
               <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
             ))}
-            {m.where && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.where })}>{S.pointWhere}</button>}
+            {m.where && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
           </div>
         </section>
       )}
@@ -988,7 +999,7 @@ function Card() {
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
           <div className="row">
-            {m.where && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.where })}>{S.pointWhere}</button>}
+            {m.where && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
           </div>
         </section>
@@ -1085,7 +1096,7 @@ function Card() {
           </>}
           {m.point.stage !== "checking" && (
             <div className="row">
-              {m.point.stage === "found" && m.point.problem && <button className="btn" type="button" onClick={() => void invoke("point_problem", { project, problem: m.point?.problem })}>{S.pointWhere}</button>}
+              {m.point.stage === "found" && m.point.problem && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>

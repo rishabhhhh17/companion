@@ -34,8 +34,29 @@ pub fn check(wins: &[Win], ours: i32, a: &Anchor, front_pid: i32, x: f64, y: f64
     }
 }
 
-/// How often a ring that does not wait for a click checks its window, and for how long at most (the overlay takes such a
-/// ring away by itself after ten seconds).
+/// What a ring is watched against while it is up: the window it was confirmed in, or, when no ordinary window was under it
+/// (a menu, a dialog, the desktop; the ring is soft then and not clipped), the app that was in front when it went up. Either
+/// way it goes away when another app comes to the front (rule 22).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Watched { Window(Anchor), Front(i32) }
+impl Watched {
+    /// The window, when the ring has one.
+    pub fn window(&self) -> Option<&Anchor> { match self { Watched::Window(a) => Some(a), Watched::Front(_) => None } }
+}
+/// The window under the target if there is one, otherwise the app in front.
+pub fn watched_for(anchor: Option<Anchor>, front_pid: i32) -> Watched { anchor.map(Watched::Window).unwrap_or(Watched::Front(front_pid)) }
+
+/// Is the ring still where it belongs? With a window: `check`. Without one: only whether the same app is in front.
+pub fn check_watched(w: &Watched, wins: &[Win], ours: i32, front_pid: i32, x: f64, y: f64) -> Verdict {
+    match w {
+        Watched::Window(a) => check(wins, ours, a, front_pid, x, y),
+        Watched::Front(p) => if front_pid == *p { Verdict::Fine } else { Verdict::SwitchedApp },
+    }
+}
+
+/// How often a ring that does not wait for a click checks its window, and for how long at most. The overlay takes such a
+/// ring away by itself ten seconds after the draw was ordered (overlay.ts, RING_MS, the flight included); the watch starts
+/// at the same moment and lasts half a second longer, so no part of the ring's life goes unwatched.
 pub const WATCH_POLL_MS: u64 = 250;
 pub const WATCH_MAX_MS: u64 = 10_500;
 
@@ -44,12 +65,12 @@ pub const WATCH_MAX_MS: u64 = 10_500;
 /// ring, Stop, Esc, the overlay's own timer), otherwise `look` at the windows and the app in front and stop with the
 /// verdict as soon as it is not Fine. Gives up quietly after `max_polls` turns. Rule 22.
 #[allow(clippy::too_many_arguments)]
-pub fn watch(a: &Anchor, ours: i32, x: f64, y: f64, max_polls: u32, mut alive: impl FnMut() -> bool, mut look: impl FnMut() -> (Vec<Win>, i32), mut wait: impl FnMut()) -> Option<Verdict> {
+pub fn watch(a: &Watched, ours: i32, x: f64, y: f64, max_polls: u32, mut alive: impl FnMut() -> bool, mut look: impl FnMut() -> (Vec<Win>, i32), mut wait: impl FnMut()) -> Option<Verdict> {
     for _ in 0..max_polls {
         wait();
         if !alive() { return None; }
         let (wins, front) = look();
-        let v = check(&wins, ours, a, front, x, y);
+        let v = check_watched(a, &wins, ours, front, x, y);
         // Taken away by something else while it was looking: nothing more to say.
         if v != Verdict::Fine { return if alive() { Some(v) } else { None }; }
     }
@@ -124,11 +145,46 @@ mod tests {
         let last = states.last().cloned().unwrap();
         let it = RefCell::new(states.into_iter());
         let (looks, turns) = (Cell::new(0u32), Cell::new(0u32));
-        let v = watch(&a, OURS, 200.0, 200.0, max,
+        let v = watch(&Watched::Window(a), OURS, 200.0, 200.0, max,
             || turns.get() <= alive_for,
             || { looks.set(looks.get() + 1); it.borrow_mut().next().unwrap_or_else(|| last.clone()) },
             || turns.set(turns.get() + 1));
         (v, looks.get())
+    }
+    /// The same, for a ring that had no ordinary window under it when it went up (a menu, a dialog, the desktop).
+    fn run_front(front_then: i32, states: Vec<(Vec<Win>, i32)>, max: u32) -> (Option<Verdict>, u32) {
+        let last = states.last().cloned().unwrap();
+        let it = RefCell::new(states.into_iter());
+        let looks = Cell::new(0u32);
+        let v = watch(&Watched::Front(front_then), OURS, 200.0, 200.0, max, || true,
+            || { looks.set(looks.get() + 1); it.borrow_mut().next().unwrap_or_else(|| last.clone()) }, || {});
+        (v, looks.get())
+    }
+    #[test]
+    fn a_ring_with_no_window_under_it_still_goes_away_when_another_app_comes_to_the_front() {
+        // Found in review, 16 Oct 2026: a soft ring over a menu, a dialog or the desktop had nothing to be watched against,
+        // so it stayed for ten seconds over whatever app came to the front.
+        let (v, looks) = run_front(SAFARI, vec![(vec![], SAFARI), (vec![], SAFARI), (vec![w(CURSOR, 0, WIN)], CURSOR)], 40);
+        assert_eq!(v, Some(Verdict::SwitchedApp));
+        assert_eq!(looks, 3);
+    }
+    #[test]
+    fn a_ring_with_no_window_under_it_stays_while_the_same_app_is_in_front() {
+        // A menu opening or closing over it changes the windows, not the app in front: nothing to take away.
+        let (v, looks) = run_front(SAFARI, vec![(vec![], SAFARI), (vec![w(SAFARI, 0, WIN)], SAFARI), (vec![], SAFARI)], 6);
+        assert_eq!(v, None);
+        assert_eq!(looks, 6);
+    }
+    #[test]
+    fn what_a_ring_is_watched_against_is_its_window_when_it_has_one_and_otherwise_the_app_in_front() {
+        let a = anchor_at(&[w(SAFARI, 0, WIN)], OURS, SAFARI, 200.0, 200.0).unwrap();
+        assert_eq!(watched_for(Some(a.clone()), SAFARI), Watched::Window(a.clone()));
+        assert_eq!(watched_for(None, SAFARI), Watched::Front(SAFARI));
+        assert_eq!(Watched::Window(a.clone()).window(), Some(&a));
+        assert_eq!(Watched::Front(SAFARI).window(), None, "no window: the ring can only be soft and is not clipped");
+        assert_eq!(check_watched(&Watched::Front(SAFARI), &[], OURS, SAFARI, 5.0, 5.0), Verdict::Fine);
+        assert_eq!(check_watched(&Watched::Front(SAFARI), &[], OURS, CURSOR, 5.0, 5.0), Verdict::SwitchedApp);
+        assert_eq!(check_watched(&Watched::Window(a), &[w(SAFARI, 0, WIN)], OURS, CURSOR, 200.0, 200.0), Verdict::SwitchedApp);
     }
     #[test]
     fn a_ring_that_does_not_wait_goes_away_as_soon_as_another_app_comes_to_the_front() {
@@ -160,17 +216,33 @@ mod tests {
         assert_eq!(looks, 2);
     }
     #[test]
-    fn its_time_matches_the_overlays_own_ten_seconds() {
+    fn its_time_covers_the_overlays_own_ten_seconds_with_the_flight_included() {
+        // The overlay takes such a ring away ten seconds after the draw was ordered, not after it landed (the flight takes
+        // 0.3 to 1.6 s), so this watch, which starts when the draw is ordered, covers the ring's whole life with a margin.
         assert!(WATCH_POLL_MS <= 250, "four times a second, like the your turn ring");
-        assert!((10_000..=11_000).contains(&WATCH_MAX_MS));
+        assert!((10_300..=11_000).contains(&WATCH_MAX_MS));
+        let overlay = include_str!("../../src/overlay.ts");
+        let show = &overlay[overlay.find("function show(").unwrap()..overlay.find("void listen(\"overlay-point\"").unwrap()];
+        let land = &show[show.find("const land =").unwrap()..show.find("if (reduced) { land(); return; }").unwrap()];
+        assert!(show.contains("setTimeout(clear, RING_MS)"), "the overlay counts its ten seconds from the order");
+        assert!(!land.contains("setTimeout(clear"), "not from landing");
+        let pointer = include_str!("../../src/pointer.ts");
+        assert!(pointer.contains("export const RING_MS = 10_000;"));
     }
     #[test]
     fn the_shell_watches_every_ring_that_does_not_wait_for_a_click() {
-        // Wiring: a step of a multi step answer and Point at the problem's line or error ring both start the watch.
+        // Wiring: a step of a multi step answer and Point at the problem's line or error ring both start the watch, with or
+        // without a window under them (no window: the app in front is watched).
         let main = include_str!("main.rs");
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         assert!(body("fn showme_aim(").contains("watch_ring("), "showme_aim must watch a step that does not wait");
         assert!(body("fn point_problem(").contains("watch_ring("), "point_problem must watch its ring when it does not wait");
         assert!(body("fn watch_ring(").contains("anchor::watch("));
+        for name in ["fn showme_aim(", "fn point_problem("] {
+            assert!(!body(name).contains("if let Some(an) = anchored"), "{name}: a ring with no window under it is watched too");
+        }
+        assert!(body("fn draw_pointer_with(").contains("anchor::watched_for("));
+        assert!(body("fn your_turn(").contains("anchor::check_watched("), "the ring waiting for a click too");
+        assert!(body("fn draw_pointer_with(").contains("now() as u64 + anchor::WATCH_MAX_MS"), "confetti waits as long as the watch");
     }
 }

@@ -2,7 +2,8 @@
 // (the pointer flies there, then its line), with a short pause between, and only the last one waits for the person's
 // click. Targets below the confidence line are said in words, never drawn (F17 4.2). Timers are fake here.
 import { describe, expect, jest, test } from "bun:test";
-import { AFTER_MS, LEAD_MS, lineMs, MAX_TARGETS, planSteps, play, sequenceOver, startTimes, stepsLine, targetsOf, type Step } from "./sequence.ts";
+import { readFileSync } from "node:fs";
+import { AFTER_MS, answerPlayer, clickTarget, LEAD_MS, lineMs, MAX_TARGETS, planSteps, play, sequenceOver, startTimes, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor } from "./speech.ts";
 import { initial, reduce } from "./model.ts";
 
@@ -43,8 +44,18 @@ describe("planning the steps", () => {
     expect(planSteps([tg()])).toMatchObject([{ draw: true, hold: true, total: 1 }]);
     expect(planSteps([tg({ confidence: 0.1 })])).toMatchObject([{ draw: false, hold: false }]);
   });
-  test("in a lesson only the first target is used: a lesson step is one click", () => {
-    expect(planSteps([tg({ caption: "A" }), tg({ caption: "B" })], { lesson: true }).map((x) => [x.text, x.hold])).toEqual([["A", true]]);
+  test("in a lesson only the click target is used: a lesson step is one click", () => {
+    // Found in review, 16 Oct 2026: the vision prompt lists targets in the order to look at them, the last one being where
+    // to click. A lesson used the first, so it rang a "look here" target as "Your turn" and the right click was a miss.
+    const s = planSteps([tg({ caption: "Look at the sidebar", x: 40 }), tg({ caption: "Click Save", x: 900 })], { lesson: true });
+    expect(s.map((x) => [x.text, x.hold, x.target.x, x.total])).toEqual([["Click Save", true, 900, 1]]);
+    expect(planSteps([tg({ caption: "Only" })], { lesson: true }).map((x) => x.text)).toEqual(["Only"]);
+    expect(planSteps([], { lesson: true })).toEqual([]);
+  });
+  test("the click target of an answer is its last one", () => {
+    expect(clickTarget([tg({ caption: "A" }), tg({ caption: "B" }), tg({ caption: "C" })])?.caption).toBe("C");
+    expect(clickTarget([tg({ caption: "Only" })])?.caption).toBe("Only");
+    expect(clickTarget([])).toBeNull();
   });
   test("the walkthrough remembers the whole answer as one step", () => {
     expect(stepsLine(planSteps([tg({ caption: "Type your name" }), tg({ caption: "Click Save" })]))).toBe("Type your name; then Click Save");
@@ -153,6 +164,99 @@ describe("what ends a sequence that is still playing", () => {
   });
   test("its own steps do not end it", () => {
     for (const stage of ["pointing", "pointing_roughly", "not_sure", "thinking", "looking"]) expect(sequenceOver({ stage })).toBe(false);
+  });
+});
+
+describe("closing the card or holding to talk ends an answer still playing (fake timers)", () => {
+  // Found in review, 16 Oct 2026: Esc closed the card and silenced only the current line. Every later step was still drawn,
+  // and its line was said 900 ms later, for up to about 45 s with the card closed. Hold to talk did the same over the person.
+  const fakeTimers = { set: (f: () => void, ms: number) => setTimeout(f, ms), clear: (t: unknown) => clearTimeout(t as ReturnType<typeof setTimeout>) };
+  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+  const rig = () => {
+    const log: string[] = [];
+    const p = answerPlayer(fakeTimers);
+    const act = { aim: async (s: Step) => { log.push(`aim ${s.index}`); return true; }, words: (s: Step) => { log.push(`words ${s.index}`); } };
+    return { log, p, act };
+  };
+  test("a closed card leaves no step still to come and no line still to be said", async () => {
+    clock.useFakeTimers();
+    try {
+      const { log, p, act } = rig();
+      p.start(planSteps([tg({ caption: "A" }), tg({ caption: "B" }), tg({ caption: "C" })]), act, true);
+      await flush();
+      p.sayLater(() => log.push("said A"), LEAD_MS);   // step A's line waits for the pointer to land
+      expect(log).toEqual(["aim 0"]);
+      p.hush();   // Esc, the character, or the hold to talk keys
+      for (let i = 0; i < 6; i++) { clock.advanceTimersByTime(60_000); await flush(); }
+      expect(log).toEqual(["aim 0"]);
+    } finally { clock.useRealTimers(); }
+  });
+  test("the last step's line, still waiting after it was drawn, is not said either", async () => {
+    clock.useFakeTimers();
+    try {
+      const { log, p, act } = rig();
+      p.start(planSteps([tg({ caption: "Only" })]), act, true);
+      await flush();
+      p.sayLater(() => log.push("said"), LEAD_MS);
+      p.hush();
+      clock.advanceTimersByTime(60_000); await flush();
+      expect(log).toEqual(["aim 0"]);
+    } finally { clock.useRealTimers(); }
+  });
+  test("without a hush everything plays and is said in its turn", async () => {
+    clock.useFakeTimers();
+    try {
+      const { log, p, act } = rig();
+      p.start(planSteps([tg({ caption: "A" }), tg({ caption: "B" })]), act, false);
+      await flush();
+      p.sayLater(() => log.push("said A"), LEAD_MS);
+      for (let i = 0; i < 4; i++) { clock.advanceTimersByTime(60_000); await flush(); }
+      expect(log).toEqual(["aim 0", "said A", "aim 1"]);
+    } finally { clock.useRealTimers(); }
+  });
+  test("a new answer replaces the one before, with its waiting line; a hush with nothing playing does nothing", async () => {
+    clock.useFakeTimers();
+    try {
+      const { log, p, act } = rig();
+      p.hush();
+      p.start(planSteps([tg({ caption: "A" }), tg({ caption: "B" })]), act, false);
+      await flush();
+      p.sayLater(() => log.push("said old"), LEAD_MS);
+      p.start(planSteps([tg({ caption: "X" })]), { aim: async () => { log.push("aim new"); return true; }, words: () => {} }, false);
+      for (let i = 0; i < 4; i++) { clock.advanceTimersByTime(60_000); await flush(); }
+      expect(log).toEqual(["aim 0", "aim new"]);
+    } finally { clock.useRealTimers(); }
+  });
+  test("one line waits at a time: a newer one replaces it", async () => {
+    clock.useFakeTimers();
+    try {
+      const { log, p } = rig();
+      p.sayLater(() => log.push("first"), 900);
+      p.sayLater(() => log.push("second"), 900);
+      clock.advanceTimersByTime(2_000); await flush();
+      expect(log).toEqual(["second"]);
+      p.cancelLine();
+      p.sayLater(() => log.push("third"), 900); p.cancelLine();
+      clock.advanceTimersByTime(2_000); await flush();
+      expect(log).toEqual(["second"]);
+    } finally { clock.useRealTimers(); }
+  });
+  test("an answer that arrives after its question was ended is not played", () => {
+    // Closing the card or Stop while "Finding it": the shell ended the answer and the card went back to nothing.
+    expect(stillWanted(null)).toBe(false);
+    expect(stillWanted(undefined)).toBe(false);
+    expect(stillWanted({ stage: "window_changed" })).toBe(false);
+    for (const stage of ["looking", "thinking", "pointing", "not_sure", "error"]) expect(stillWanted({ stage })).toBe(true);
+  });
+  test("the card ends the answer when it closes, when the hold to talk keys go down, and before Point at the problem", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toMatch(/listen\("hush", \(\) => player\.current\.hush\(\)\)/);
+    expect(card).toMatch(/e\.key === "Escape"[^\n]*player\.current\.hush\(\);[^\n]*close_card/);
+    // Only through pointProblem, which ends the answer first.
+    expect(card.match(/invoke\("point_problem"/g)?.length).toBe(1);
+    expect(card).toMatch(/const pointProblem = [^\n]*player\.current\.hush\(\);[^\n]*invoke\("point_problem"/);
+    expect(card).toMatch(/if \(!stillWanted\(showmeNow\.current\)\) return;/);
+    expect(card).toMatch(/player\.current\.sayLater\(/);
   });
 });
 
