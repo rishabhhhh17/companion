@@ -23,6 +23,8 @@ const ALLOWED: &[&str] = &[
     // or address (the engine always downloads Playwright's own browser into Companion's own folder), so not project bound.
     "browser.check", "browser.install",
     "spending.show", "spending.set",
+    // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
+    "teach.try", "teach.check",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -58,7 +60,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "agent.start", "agent.send", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
     "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
-    "spending.show", "spending.set",
+    "spending.show", "spending.set", "teach.try", "teach.check",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -357,6 +359,16 @@ mod tests {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
             assert!(!PROJECT_BOUND.contains(&t), "{t}");
             assert!(check_project(&json!({"v":1,"id":"c","type":t}), "").is_ok(), "{t} works before a folder is chosen");
+        }
+    }
+    #[test]
+    fn your_turn_may_be_asked_for_by_a_page_and_only_for_the_chosen_project() {
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p, "agent": "builder-1", "checkpoint": "cp_0001" });
+        for t in ["teach.try", "teach.check"] {
+            assert!(check_command(&c(t, "/Users/me/site")).is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t}");
         }
     }
     #[test]

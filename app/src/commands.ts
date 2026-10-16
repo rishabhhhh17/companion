@@ -72,6 +72,15 @@ export const startPractice = (project: string): Command =>
 export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
   ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
 
+// Show me what changed: the first changed line, opened and rung the same way Point at the problem does (point_problem in
+// Rust: the editor at that line, the light on first, a solid ring only where the line is confirmed on screen).
+export type ChangeAt = { file: string; line: number; lineText: string };
+export const pointChange = (project: string, at: ChangeAt, message: string): { project: string; problem: { kind: "line"; file: string; line: number; lineText: string; message: string; from: "change" } } =>
+  ({ project, problem: { kind: "line", file: at.file, line: at.line, lineText: at.lineText, message, from: "change" } });
+// Your turn: the person makes the second of two identical changes, then asks for the project's checks on it.
+export const tryNextOne = (project: string, checkpoint: string): Command => ({ v: 1, id: id(), type: "teach.try", project, checkpoint });
+export const checkMyChange = (project: string, checkpoint: string): Command => ({ v: 1, id: id(), type: "teach.check", project, agent: AGENT, checkpoint });
+
 // Guided lessons: the runner keeps the place and checks each step; the app draws the ring and notices the click.
 /** The lesson the runner makes from the project's own missing settings (runner/src/lessongen.ts SETTINGS_LESSON). */
 export const SETTINGS_LESSON_ID = "from-project-settings";

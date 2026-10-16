@@ -1,14 +1,14 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords } from "./model.ts";
+import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange } from "./commands.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -174,7 +174,7 @@ function PresentationRow() {
   </>);
 }
 
-function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; onClose: () => void }) {
+function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, yourTurn, setYourTurnOn, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; yourTurn: boolean; setYourTurnOn: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -239,7 +239,9 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
         <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
+        <button className="btn" type="button" aria-pressed={yourTurn} onClick={() => setYourTurnOn(!yourTurn)}>{S.yourTurnSetting}: {yourTurn ? "on" : "off"}</button>
       </div>
+      <div className="line muted">{S.yourTurnHelp}</div>
       <div className="line muted">{S.allScreensHelp}</div>
       <div className="row"><button className="btn" type="button" aria-pressed={allScreens} onClick={() => { const v = !allScreens; setAllScreensState(v); setAllScreens(v); }}>{S.allScreensSetting}: {allScreens ? "on" : "off"}</button></div>
       <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
@@ -571,6 +573,8 @@ function Card() {
   // Point at the problem: the key checks the project; when a place comes back, the pointer flies there. Any Show me answer
   // still playing ends first, here and in the shell, so none of its later steps or lines lands on top of this one.
   const pointProblem = (project: string, problem: unknown) => { player.current.hush(); void invoke("point_problem", { project, problem }); };
+  // A place made by the card itself (what changed, your turn): pointed at the same way, through pointProblem.
+  const pointAt = (x: { project: string; problem: Problem }) => { if (pointsOnScreen(x.problem)) pointProblem(x.project, x.problem); };
   const projectRef = useRef(project); projectRef.current = project;
   useEffect(() => {
     const offKey = listen("find-problem", () => {
@@ -584,6 +588,20 @@ function Card() {
     });
     return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
   }, []);
+  // Your turn (off unless turned on in Settings): the person asked to make the second of two identical changes themselves.
+  // Once the engine has put that place back, it is rung the same way Point at the problem rings a line (light first).
+  const [yourTurn, setYourTurnState] = useState(yourTurnOn);
+  const teachWant = useRef("");
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; made?: boolean; project?: string; checkpoint?: string; target?: { file: string; line: number; lineText: string } };
+      if (ev.type !== "teach.ready" || ev.checkpoint !== teachWant.current) return;
+      teachWant.current = "";
+      if (ev.made && ev.target && ev.project === projectRef.current) pointAt(pointChange(ev.project, ev.target, S.teachHere));
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  const tryTheNextOne = (checkpoint: string) => { if (!project) return; teachWant.current = checkpoint; dispatch({ type: "ui.teachAsked", checkpoint }); void send(tryNextOne(project, checkpoint)); };
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
   const [fun, setFun] = useState(reactionsOn);
@@ -733,7 +751,7 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} onClose={() => setSettingsOpen(false)} onPractice={(k) => { setSettingsOpen(false); beginPractice(k); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
+      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => setSettingsOpen(false)} onPractice={(k) => { setSettingsOpen(false); beginPractice(k); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
       {m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
@@ -1014,6 +1032,12 @@ function Card() {
         <section className="panel">
           <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
           {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
+          {m.stepExplains.map((x) => (
+            <div key={x.index}>
+              <div className="line muted">{S.stepOf} {x.index}: {x.title}</div>
+              <ExplainBox e={x.explain} key={`${x.index}:${x.explain.checkpoint}`} />
+            </div>
+          ))}
         </section>
       )}
 
@@ -1088,7 +1112,7 @@ function Card() {
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          {m.receipt.changed.length > 0 && <div className="line muted">{m.receipt.proof === "passed" ? S.proven : m.receipt.proof === "failed" ? S.notDone : S.notChecked}</div>}
+          {m.receipt.changed.length > 0 && <div className="line muted">{receiptProofWords(m)}</div>}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
@@ -1098,6 +1122,15 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
+          {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
+            <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
+          )}
+          {canOfferTurn(m) && yourTurn && !undone && project && (
+            <div className="line">
+              <div className="line muted">{S.teachOfferHelp}</div>
+              <div className="row"><button className="btn" type="button" onClick={() => tryTheNextOne(m.receipt!.checkpoint)}>{S.teachOffer}</button></div>
+            </div>
+          )}
           {m.receipt.changed.length > 0 && !m.undo && project && (
             <div className="row"><button className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
           )}
@@ -1116,6 +1149,26 @@ function Card() {
             <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)}
               onSent={() => { dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
           )}
+        </section>
+      )}
+
+      {m.teach && (
+        <section className={`panel ${m.teach.stage === "refused" || m.teach.stage === "left" || (m.teach.stage === "checked" && m.teach.result?.verdict === "failed") ? "amber" : ""}`} role="status" aria-label={S.teachTitle}>
+          <h2>{S.teachTitle}</h2>
+          {teachLines(m.teach).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {/* No Close while the old code is back at the person's place: Put my fix back, or Leave it as it is (teachActions). */}
+          <div className="row">
+            {teachActions(m.teach).map((a) => {
+              const t = m.teach!;
+              switch (a) {
+                case "where": return <button key={a} className="btn" type="button" onClick={() => pointAt(pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
+                case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking" }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
+                case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!)); }}>{S.teachPutBack}</button>;
+                case "leave": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
+                case "close": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>;
+              }
+            })}
+          </div>
         </section>
       )}
 

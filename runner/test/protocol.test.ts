@@ -109,6 +109,48 @@ describe("the browser check's download", () => {
   });
 });
 
+describe("teaching from the change", () => {
+  const e = (o: Record<string, unknown>) => parseEvent(JSON.stringify({ v: 1, id: "e", ...o })).ok;
+  const c = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", ...o })).ok;
+  const receipt = { type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 };
+  const at = { file: "src/a.js", line: 2, lineText: "const n = user?.name;" };
+  test("a receipt may name the first changed line and the same change made twice, and must name them whole", () => {
+    expect(e({ ...receipt, changedAt: at, repeat: { first: at, second: { ...at, file: "src/b.js" }, was: "user", now: "user?" } })).toBe(true);
+    expect(e({ ...receipt, changedAt: { ...at, line: 0 } })).toBe(false);
+    expect(e({ ...receipt, changedAt: { file: "a.js", line: 2 } })).toBe(false);
+    expect(e({ ...receipt, changedAt: "src/a.js:2" })).toBe(false);
+    expect(e({ ...receipt, repeat: { first: at, was: "a", now: "b" } })).toBe(false);
+    expect(e({ ...receipt, repeat: { first: at, second: at, was: "a" } })).toBe(false);
+  });
+  test("an explanation for a Drive step names the step", () => {
+    const x = { type: "explain.ready", agent: "a", checkpoint: "cp_1", bullets: ["Why."], usdEstimate: 0.001 };
+    expect(e({ ...x, step: { index: 2, title: "Add the form" } })).toBe(true);
+    expect(e({ ...x, step: { index: 0, title: "x" } })).toBe(false);
+    expect(e({ ...x, step: "two" })).toBe(false);
+  });
+  test("your turn: try names the change, check names the agent too, and the answers say what happened", () => {
+    expect(c({ type: "teach.try", project: "/p", checkpoint: "cp_1" })).toBe(true);
+    expect(c({ type: "teach.try", project: "/p" })).toBe(false);
+    expect(c({ type: "teach.check", project: "/p", agent: "a", checkpoint: "cp_1" })).toBe(true);
+    expect(c({ type: "teach.check", project: "/p", checkpoint: "cp_1" })).toBe(false);
+    expect(e({ type: "teach.ready", project: "/p", checkpoint: "cp_1", made: true, target: at, restore: "cp_2" })).toBe(true);
+    expect(e({ type: "teach.ready", project: "/p", checkpoint: "cp_1", made: true })).toBe(false);
+    expect(e({ type: "teach.ready", project: "/p", checkpoint: "cp_1", made: false, reason: "That file changed." })).toBe(true);
+    expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "passed", same: true })).toBe(true);
+    expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "great", same: true })).toBe(false);
+    expect(e({ type: "teach.result", project: "/p", checkpoint: "cp_1", verdict: "passed" })).toBe(false);
+  });
+  test("a step of the person's own check names the project and the fix, and is a whole step", () => {
+    const s = { type: "teach.step", project: "/p", checkpoint: "cp_1", rung: "tests", label: "Running the tests", status: "running", detail: "" };
+    expect(e(s)).toBe(true);
+    expect(e({ ...s, needs: "browser" })).toBe(true);
+    expect(e({ ...s, checkpoint: undefined })).toBe(false);
+    expect(e({ ...s, status: "great" })).toBe(false);
+    expect(e({ ...s, detail: undefined })).toBe(false);
+    expect(e({ ...s, needs: "chrome" })).toBe(false);
+  });
+});
+
 describe("a follow up or Try again (agent.send)", () => {
   const c = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", type: "agent.send", agent: "builder-1", ...o })).ok;
   test("names the project it is for, so the app can hold it to the chosen folder", () => {

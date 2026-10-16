@@ -9,6 +9,12 @@ export type PermissionKind = "screen_recording" | "accessibility" | "microphone"
  * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */
 export type PermissionState = "allowed" | "off" | "not_allowed" | "not_asked" | "restricted" | "unknown";
 
+// Your turn teaching (offer to make the second of two identical changes yourself). Off unless the person turns it on, kept
+// only in this Mac's page storage; with no storage it stays off.
+const YOUR_TURN_KEY = "companion.yourTurn";
+export function yourTurnOn(): boolean { try { return localStorage.getItem(YOUR_TURN_KEY) === "on"; } catch { return false; } }
+export function setYourTurn(on: boolean): void { try { localStorage.setItem(YOUR_TURN_KEY, on ? "on" : "off"); } catch { /* storage may be unavailable */ } }
+
 /** The exact words the app is given to delete everything. A different string deletes nothing. */
 export const DELETE_PHRASE = "delete everything";
 

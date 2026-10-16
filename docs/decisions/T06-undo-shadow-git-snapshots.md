@@ -39,5 +39,8 @@ Commands and edge cases are in technical_research.md section 6. Rules a coding a
 ## Settled by desk research (7 Oct 2026)
 - Bundled git (dugite-native) is GPL-2.0 and needs our signature inside, so the alpha uses an environment doctor (T04).
 
+## Your turn writes one place back (16 Oct 2026, M11)
+- "Your turn" (off by default) is, besides Undo, the only Companion feature that changes the person's own code (Companion's notes in `.companion/` and the shared `AGENTS.md` block are not code). On the person's press it snapshots the project ("Before your turn: the whole fix"), then puts back only the second of two identical changes the task made, and only when that file is still exactly the task's version (otherwise nothing is written and the card says why). It snapshots again ("Your turn"), so the proof ladder's test tamper guard compares only the person's own change. "Put my fix back" is an ordinary restore to the first of those snapshots, and stays on the card until the person's change passes or the fix is back: the turn has no Close while that place has the old code, only "Leave it as it is", which says the place is not fixed. "Check my change" judges only that place, from its own snapshot, so a place the person has not touched is said as that and no check runs. The person's git is never touched.
+
 ## Revisit if
 SDK file checkpointing closes its gaps (Bash edits, subagent edits, directory moves, rewind across sessions). Until then the shadow store is the source of truth.
