@@ -1,0 +1,19 @@
+Vercel CLI 53.4.0
+2026-10-15T09:41:00.000Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-15T09:41:00.053Z  Build machine configuration: 2 cores, 8 GB
+2026-10-15T09:41:00.106Z  Cloning github.com/sam-builds/site (Branch: main, Commit: a81c0de)
+2026-10-15T09:41:00.159Z  Cloning completed: 301.000ms
+2026-10-15T09:41:00.212Z  Running "vercel build"
+2026-10-15T09:41:00.265Z  Vercel CLI 48.2.9
+2026-10-15T09:41:00.318Z  Installing dependencies...
+2026-10-15T09:41:00.371Z  
+2026-10-15T09:41:00.424Z  added 211 packages in 6s
+2026-10-15T09:41:00.477Z  Running "npm run build"
+2026-10-15T09:41:00.530Z  
+2026-10-15T09:41:00.583Z  > site@0.0.0 build
+2026-10-15T09:41:00.636Z  > tsc -b && vite build
+2026-10-15T09:41:00.689Z  
+2026-10-15T09:41:00.742Z  src/cart.ts(7,14): error TS2322: Type 'number' is not assignable to type 'string'.
+2026-10-15T09:41:00.795Z  Error: Command "npm run build" exited with 1
+2026-10-15T09:41:00.848Z  Exiting build container
+status	● Error

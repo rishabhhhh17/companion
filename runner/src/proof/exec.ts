@@ -15,7 +15,8 @@ const LIFELINE = 'exec 3<&0 </dev/null; ( while read x <&3; do :; done; kill -s 
 
 // onOutput: each piece of output as it arrives (both streams), for a command whose progress is shown while it runs.
 // endWithUs: the command ends the moment this program ends (see LIFELINE). For a long download that must obey rule 11.
-export type RunOptions = { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal; stopWhen?: RegExp; onOutput?: (text: string) => void; endWithUs?: boolean };
+// keep: how much of the end of each stream to keep (a long build log needs more than a test run).
+export type RunOptions = { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal; stopWhen?: RegExp; onOutput?: (text: string) => void; endWithUs?: boolean; keep?: number };
 export function runCommand(command: string, o: RunOptions): Promise<RunResult> {
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -26,8 +27,9 @@ export function runCommand(command: string, o: RunOptions): Promise<RunResult> {
       : spawn("sh", ["-c", command], { cwd: o.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     child.stdin?.on("error", () => { /* the command's side closed first; nothing is ever written */ });
     let out = "", err = "", timedOut = false, aborted = false, settled = false, matched = false;
+    const tail = o.keep ?? TAIL;
     let graceTimer: ReturnType<typeof setTimeout> | undefined;
-    const keep = (s: string, chunk: Buffer) => { const n = s + chunk.toString("utf8"); return n.length > TAIL * 2 ? n.slice(-TAIL) : n; };
+    const keep = (s: string, chunk: Buffer) => { const n = s + chunk.toString("utf8"); return n.length > tail * 2 ? n.slice(-tail) : n; };
     const watch = () => { if (o.stopWhen && !matched && (o.stopWhen.test(out) || o.stopWhen.test(err))) { matched = true; stopEverything(); } };
     const tell = (c: Buffer) => { if (o.onOutput) try { o.onOutput(c.toString("utf8")); } catch { /* a listener that breaks must not break the command */ } };
     child.stdout!.on("data", (c: Buffer) => { out = keep(out, c); watch(); tell(c); });
@@ -45,7 +47,7 @@ export function runCommand(command: string, o: RunOptions): Promise<RunResult> {
       child.stdout?.destroy(); child.stderr?.destroy();
       killGroup("SIGKILL");   // everything in the command's group goes with it (a program that starts its own session is out of reach)
       child.stdin?.destroy();   // the lifeline, if any, has nothing left to guard
-      resolve({ code, signal, stdout: out.slice(-TAIL), stderr: err.slice(-TAIL), timedOut, ms: Date.now() - t0, ...(aborted ? { aborted } : {}), ...(matched ? { matched } : {}) });
+      resolve({ code, signal, stdout: out.slice(-tail), stderr: err.slice(-tail), timedOut, ms: Date.now() - t0, ...(aborted ? { aborted } : {}), ...(matched ? { matched } : {}) });
     };
     child.on("exit", (code, signal) => { graceTimer = setTimeout(() => done(code, signal), GRACE_MS); });   // a child that kept the pipe open must not hang us
     child.on("close", done);

@@ -1,9 +1,10 @@
 // Point at the problem, as the card sees it: press the key, the project is checked, the place comes back, the pointer
 // flies there. A failed check during a task also keeps its place, so "Show me where" can point at it later.
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { findProblem } from "./commands.ts";
-import { characterWords, initial, reduce, visualState, type Model } from "./model.ts";
+import { characterWords, initial, pointsOnScreen, reduce, visualState, type Model } from "./model.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -29,6 +30,29 @@ describe("pressing the key", () => {
   test("a healthy project is not pointed at", () => {
     expect(run([ev({ type: "ui.findProblem" }), ev({ type: "problem.found", project: "p", agent: "a", verdict: "passed" })]).point?.stage).toBe("clear");
     expect(run([ev({ type: "ui.findProblem" }), ev({ type: "problem.found", project: "p", agent: "a", verdict: "nothing_to_check" })]).point?.stage).toBe("nothing");
+  });
+  test("a failed Vercel deploy is found and pointed at like any other failure", () => {
+    const deploy = { kind: "line", file: "app/page.tsx", line: 6, column: 9, lineText: "const total: number = 1;", message: "Type error: Type 'string' is not assignable to type 'number'.", from: "deploy" };
+    const m = run([ev({ type: "ui.findProblem" }), ev({ type: "problem.found", project: "p", agent: "a", verdict: "failed", label: "Your last Vercel deploy failed", detail: "Your last Vercel deploy failed at app/page.tsx, line 6: Type error", problem: deploy })]);
+    expect(m.point).toMatchObject({ stage: "found", label: "Your last Vercel deploy failed", problem: deploy });
+    expect(m.where).toEqual(deploy as never);
+  });
+  test("a deploy problem with no line in this folder (a setting Vercel lacks) is said in words: the screen is never looked at for it", () => {
+    expect(pointsOnScreen({ kind: "message", message: "DATABASE_URL is not set on Vercel.", from: "deploy" })).toBe(false);
+    expect(pointsOnScreen({ kind: "line", file: "app/page.tsx", line: 6, lineText: "x", message: "m", from: "deploy" })).toBe(true);
+    expect(pointsOnScreen({ kind: "message", message: "Cannot find module 'x'", from: "checks" })).toBe(true);   // an error that may be on screen, as before
+    expect(pointsOnScreen(null)).toBe(false);
+    expect(pointsOnScreen(undefined)).toBe(false);
+    // Every way the card asks to point (as soon as it is found, and each Show me where button) goes through it.
+    const calls = readFileSync(new URL("./card.tsx", import.meta.url), "utf8").split("\n").filter((l) => l.includes('invoke("point_problem"'));
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    for (const l of calls) expect(l).toContain("pointsOnScreen(");
+  });
+  test("a check that could not run (the Vercel tool signed out) is said in one line under the result", () => {
+    const note = "I could not read why the Vercel deploy failed: you are not signed in to Vercel. Open Terminal, run: vercel login, then try again.";
+    expect(run([ev({ type: "ui.findProblem" }), ev({ type: "problem.found", project: "p", agent: "a", verdict: "passed", note })]).point).toEqual({ stage: "clear", note });
+    expect(run([ev({ type: "ui.findProblem" }), ev({ type: "problem.found", project: "p", agent: "a", verdict: "passed" })]).point).toEqual({ stage: "clear" });
+    expect(readFileSync(new URL("./card.tsx", import.meta.url), "utf8")).toMatch(/m\.point\.note && <div className="line[^"]*"[^>]*>\{m\.point\.note\}<\/div>/);
   });
   test("stopping, closing or changing project clears it", () => {
     const found = [ev({ type: "ui.findProblem" }), ev({ type: "problem.found", project: "p", agent: "a", verdict: "failed", label: "x", detail: "y", problem: place })];

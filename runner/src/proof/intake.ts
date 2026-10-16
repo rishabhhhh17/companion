@@ -25,7 +25,7 @@ const readText = (p: string, max = 200_000): string => { try { const s = statSyn
 
 // Settings names a project's code reads. Names only; well known ones that are never "missing" are left out.
 const ALWAYS_THERE = new Set(["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_OPTIONS", "TZ", "LANG", "USER", "SHELL", "TMPDIR", "NODE_ENV", "PORT", "HOST", "MODE", "DEV", "PROD", "SSR", "BASE_URL", "CI", "VERCEL", "VERCEL_ENV", "VERCEL_URL", "NEXT_RUNTIME", "PWD", "HOME", "PATH"]);
-function namesInCode(dir: string): Set<string> {
+export function namesInCode(dir: string): Set<string> {
   const found = new Set<string>();
   const skip = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage", ".vercel", ".companion"]);
   let files = 0;

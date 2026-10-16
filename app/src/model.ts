@@ -32,7 +32,11 @@ export type ShipFlow = { stage: string; detail: string; previewUrl?: string; pro
 export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
-export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string };
+// note: one plain line from the engine about something that could not be checked (the Vercel tool signed out, say).
+export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string; note?: string };
+/** Is there anything to point at on the screen? A deploy problem with no line in this folder (a setting Vercel lacks,
+ *  say) is Companion's own sentence, never on screen, so the card says it in words and the screen is not looked at. */
+export const pointsOnScreen = (p: Problem | null | undefined): p is Problem => !!p && !(p.kind === "message" && p.from === "deploy");
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
 export type Practice = { stage: "start" | "found" | "fixing" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
@@ -247,7 +251,7 @@ export function reduce(m: Model, e: Ev): Model {
       if (m.point?.stage !== "checking") return m;
       if (e.verdict === "cancelled") return { ...m, point: null };
       if (e.verdict === "failed") return { ...m, point: { stage: "found", label: String(e.label ?? ""), message: String(e.detail ?? ""), agent: e.agent, ...(e.problem ? { problem: e.problem } : {}) }, where: e.problem ?? null };
-      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear" }, where: null };
+      return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear", ...(typeof e.note === "string" && e.note ? { note: e.note } : {}) }, where: null };
     }
     case "proof.result": {
       if (browserRung(e.steps, (s) => s.status === "skipped" && s.needs === "browser")) m = { ...m, browser: { ...m.browser, needed: true } };

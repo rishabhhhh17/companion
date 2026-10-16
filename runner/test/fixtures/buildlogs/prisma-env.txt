@@ -1,0 +1,26 @@
+Vercel CLI 53.4.0
+2026-10-13T11:02:01.101Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-13T11:02:04.010Z  Running "vercel build"
+2026-10-13T11:02:05.001Z  Installing dependencies...
+2026-10-13T11:02:14.230Z  added 402 packages in 9s
+2026-10-13T11:02:14.410Z  Running "npm run build"
+2026-10-13T11:02:14.640Z  
+2026-10-13T11:02:14.640Z  > notes@0.1.0 build
+2026-10-13T11:02:14.640Z  > prisma migrate deploy && next build
+2026-10-13T11:02:14.640Z  
+2026-10-13T11:02:15.880Z  Prisma schema loaded from prisma/schema.prisma
+2026-10-13T11:02:15.890Z  Error: Prisma schema validation - (get-config wasm)
+2026-10-13T11:02:15.890Z  Error code: P1012
+2026-10-13T11:02:15.890Z  error: Environment variable not found: DATABASE_URL.
+2026-10-13T11:02:15.890Z    -->  prisma/schema.prisma:7
+2026-10-13T11:02:15.890Z     | 
+2026-10-13T11:02:15.890Z   6 |   provider = "postgresql"
+2026-10-13T11:02:15.890Z   7 |   url      = env("DATABASE_URL")
+2026-10-13T11:02:15.890Z     | 
+2026-10-13T11:02:15.890Z  
+2026-10-13T11:02:15.890Z  Validation Error Count: 1
+2026-10-13T11:02:15.890Z  [Context: getConfig]
+2026-10-13T11:02:15.890Z  
+2026-10-13T11:02:15.890Z  Prisma CLI Version : 5.22.0
+2026-10-13T11:02:16.000Z  Error: Command "npm run build" exited with 1
+status	● Error

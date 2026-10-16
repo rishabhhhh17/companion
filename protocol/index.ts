@@ -110,7 +110,9 @@ export type Problem =
   | { kind: "message"; message: string; from: string };
 // needs: "browser" means this step was skipped only because the hidden browser is not installed, so the page can offer it.
 export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser" };
-export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser" };
+// note: one plain line about a check that could not run (the Vercel tool missing or signed out), with what to do.
+// A problem with from "deploy" is the line the last Vercel deploy failed at, confirmed in this folder.
+export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser"; note?: string };
 export type ProofStepEvent = Envelope & { type: "proof.step"; agent: string } & ProofStep;
 export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number };
 
@@ -247,7 +249,7 @@ const EVENTS: Record<string, Check[]> = {
   "project.cloned": [str("url"), bool("ok"), str("detail")],
   "ship.card": [str("project"), str("url"), str("title"), str("image"), bool("withShot")],
   "receipt.visual": [str("agent"), str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || (typeof m.image === "string" && m.image.length > 0) ? null : "a made picture needs \"image\""), num("circles")],
-  "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), needsOk],
+  "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), needsOk, opt("note", str("note"))],
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate")],
   "explain.state": [str("project"), bool("enabled")],
   "recap.ready": [str("project"), list("lines")],
