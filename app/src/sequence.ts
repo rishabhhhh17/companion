@@ -68,6 +68,12 @@ export function startTimes(steps: Step[], speaking: boolean): number[] {
   return at;
 }
 
+/** Whether what the card now shows ends a sequence that is still playing: the pointer went away (Stop, Esc, closing), or
+ *  the Mac side took a step's ring away because its window changed while it was up (rule 22). */
+export function sequenceOver(showme: { stage: string } | null | undefined): boolean {
+  return !showme || showme.stage === "window_changed";
+}
+
 export type Actions = {
   /** Snap and draw this step. Resolves false when it could not be drawn (its window changed, or the pointer was cleared). */
   aim: (s: Step) => Promise<boolean>;

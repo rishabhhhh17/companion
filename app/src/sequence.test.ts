@@ -2,7 +2,7 @@
 // (the pointer flies there, then its line), with a short pause between, and only the last one waits for the person's
 // click. Targets below the confidence line are said in words, never drawn (F17 4.2). Timers are fake here.
 import { describe, expect, jest, test } from "bun:test";
-import { AFTER_MS, LEAD_MS, lineMs, MAX_TARGETS, planSteps, play, startTimes, stepsLine, targetsOf, type Step } from "./sequence.ts";
+import { AFTER_MS, LEAD_MS, lineMs, MAX_TARGETS, planSteps, play, sequenceOver, startTimes, stepsLine, targetsOf, type Step } from "./sequence.ts";
 import { lineFor } from "./speech.ts";
 import { initial, reduce } from "./model.ts";
 
@@ -140,6 +140,19 @@ describe("playing them in order (fake timers)", () => {
       for (let i = 0; i < 4; i++) { clock.advanceTimersByTime(60_000); await Promise.resolve(); await Promise.resolve(); }
       expect(log).toEqual(["aim 0"]);
     } finally { clock.useRealTimers(); }
+  });
+});
+
+describe("what ends a sequence that is still playing", () => {
+  // Found 16 Oct 2026: when the Mac side took a step's ring away because its window changed while it was up, the page
+  // went on and said the next steps in words over the "the window changed" message.
+  test("the window changing under a step, or the pointer going away, ends it", () => {
+    expect(sequenceOver(null)).toBe(true);
+    expect(sequenceOver(undefined)).toBe(true);
+    expect(sequenceOver({ stage: "window_changed" })).toBe(true);
+  });
+  test("its own steps do not end it", () => {
+    for (const stage of ["pointing", "pointing_roughly", "not_sure", "thinking", "looking"]) expect(sequenceOver({ stage })).toBe(false);
   });
 });
 

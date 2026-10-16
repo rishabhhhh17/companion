@@ -596,17 +596,18 @@ fn anchor_for(target: coords::R) -> Option<anchor::Anchor> {
 struct Look { mark: Option<&'static str>, fly_ms: Option<u64>, fade_ms: Option<u64>, from: Option<coords::Pt> }
 
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
-/// The ring is clipped to the window under it.
-fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) { draw_pointer_with(app, d, rect, caption, exact, hold, Look::default()); }
-fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look) {
-    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + 10_500 }, std::sync::atomic::Ordering::SeqCst);
+/// The ring is clipped to the window under it, which is handed back so the caller can watch it (`your_turn` for a ring
+/// that waits for a click, `watch_ring` for one that does not).
+fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) -> Option<anchor::Anchor> { draw_pointer_with(app, d, rect, caption, exact, hold, Look::default()) }
+fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look) -> Option<anchor::Anchor> {
+    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + anchor::WATCH_MAX_MS }, std::sync::atomic::Ordering::SeqCst);
     let a = app.clone();
     let caption2 = caption.to_string();
     let anchored = anchor_for(rect);
     // Rule 22: a solid ring only where the window it sits in is confirmed. Over a menu, a dialog or anything that is not
     // an ordinary window the ring is soft and says it is a guess.
     let exact = exact && anchored.is_some();
-    let clip = anchored.map(|an| json!({ "x": an.bounds[0] - d.x, "y": an.bounds[1] - d.y, "w": an.bounds[2], "h": an.bounds[3] }));
+    let clip = anchored.as_ref().map(|an| json!({ "x": an.bounds[0] - d.x, "y": an.bounds[1] - d.y, "w": an.bounds[2], "h": an.bounds[3] }));
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
@@ -618,6 +619,36 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
+    });
+    anchored
+}
+
+/// What the person is told when a ring went away because its window changed (moved, closed, covered, another app in front).
+const RING_WINDOW_CHANGED: &str = "The window changed, so I took the ring away. Press Show me where to point again.";
+
+/// A ring that does not wait for a click (a step in the middle of a multi step answer, Point at the problem's line or
+/// error) is watched while it is up, like the your turn ring: if its window moves, closes, is covered or another app comes
+/// to the front, it goes away at once and the page is told (rule 22). It stops by itself when a newer ring, Stop or Esc
+/// takes it away, or after the overlay's own ten seconds. Window owners and sizes only, no permission, never content.
+fn watch_ring(app: &AppHandle, target: coords::R, an: anchor::Anchor, showme_step: bool) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let gen = POINT_GEN.load(SeqCst);
+    let alive = move || POINT_GEN.load(SeqCst) == gen && overlay_busy();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let c = target.center();
+        let polls = (anchor::WATCH_MAX_MS / anchor::WATCH_POLL_MS) as u32;
+        let v = anchor::watch(&an, std::process::id() as i32, c.x, c.y, polls, alive,
+            || (fullscreen::sys::on_screen_windows(), front_pid()), || std::thread::sleep(Duration::from_millis(anchor::WATCH_POLL_MS)));
+        let Some(v) = v else { return };
+        log("ring_window_changed", json!({ "why": format!("{v:?}"), "showme": showme_step }));
+        // What was seen no longer shows what is there, so the rest of a multi step answer is not drawn either.
+        if showme_step {
+            *SHOWME.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        point_cancel(); hide_overlay(&app);
+        say_showme(&app, "window_changed", RING_WINDOW_CHANGED, json!({}));
     });
 }
 
@@ -654,8 +685,9 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     *SHOWME_LAST.lock().unwrap_or_else(|e| e.into_inner()) = if last { None } else { Some(s.rect.center()) };
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact, "step": step, "of": of, "screen": screen.unwrap_or(1) }));
     let look = Look { mark: showme::mark_name(mark.as_deref()), fly_ms, fade_ms, from: if step.unwrap_or(1) > 1 { from } else { None } };
-    draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look);
-    if hold { your_turn(&app, display, s.rect, &target_text); }
+    let anchored = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look);
+    // The ring goes away the moment its window changes: the last step's while it waits for the click, the others while up.
+    if hold { your_turn(&app, display, s.rect, &target_text); } else if let Some(an) = anchored { watch_ring(&app, s.rect, an, true); }
     say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, showme::pointing_extra(&req, step.unwrap_or(1), of.unwrap_or(1), hold));
     json!({ "ok": true })
 }
@@ -708,7 +740,7 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
                     if v != anchor::Verdict::Fine && alive() {
                         log("your_turn_window_changed", json!({ "why": format!("{v:?}") }));
                         turn_cancel(); hide_overlay(&app);
-                        say_showme(&app, "window_changed", "The window changed, so I took the ring away. Press Show me where to point again.", json!({}));
+                        say_showme(&app, "window_changed", RING_WINDOW_CHANGED, json!({}));
                         return;
                     }
                 }
@@ -1170,9 +1202,9 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         match (found, display) {
             (Some(f), Some(d)) => {
                 let button = kind == "button";
-                draw_pointer(&app, d, f.rect, &cap, f.exact, button);
+                let anchored = draw_pointer(&app, d, f.rect, &cap, f.exact, button);
                 say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
-                if button { your_turn(&app, d, f.rect, &label); }
+                if button { your_turn(&app, d, f.rect, &label); } else if let Some(an) = anchored { watch_ring(&app, f.rect, an, false); }
             }
             _ => {
                 let what = match kind { "line" => "the line", "button" => "that button", _ => "that error" };

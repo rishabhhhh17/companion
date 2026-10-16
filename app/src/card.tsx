@@ -4,7 +4,7 @@ import { reactionsOn, setReactions } from "./reactions.ts";
 import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
-import { lineMs, LEAD_MS, planSteps, play, stepsLine, targetsOf, type Step } from "./sequence.ts";
+import { lineMs, LEAD_MS, planSteps, play, sequenceOver, stepsLine, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
@@ -582,7 +582,8 @@ function Card() {
   // In a walkthrough, once the person clicked the step (or it was clicked for them), the next step follows on its own.
   const stage = m.showme?.stage;
   // The walkthrough ends whenever the pointer goes away (Esc, Stop everything, closing, waiting too long).
-  useEffect(() => { if (!m.showme) { stopSequence.current(); setWalk(null); setAsking(false); } }, [m.showme]);
+  // A multi step answer still playing also stops when the Mac side took a step's ring away because its window changed.
+  useEffect(() => { if (sequenceOver(m.showme)) stopSequence.current(); if (!m.showme) { setWalk(null); setAsking(false); } }, [m.showme]);
   useEffect(() => {
     // Only a walkthrough's own ring moves it on (a Show me ring carries an "sm_" request; Point at the problem's does not).
     if (!walk || !m.showme?.req?.startsWith("sm_") || (stage !== "your_turn_done" && stage !== "done_for_you")) return;
