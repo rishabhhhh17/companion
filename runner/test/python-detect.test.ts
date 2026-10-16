@@ -66,7 +66,10 @@ describe("what a Python project has to check", () => {
     expect(flake.checks[0]).toMatchObject({ name: "lint", tool: "flake8" });
     expect(flake.checks[0].command).toContain("--extend-exclude");   // never lints the packages in the virtual environment
     const mypy = detectProject(project({ ...VENV, "mypy.ini": "[mypy]\nstrict = True\n", "app.py": "" }));
-    expect(mypy.checks).toEqual([{ name: "typecheck", command: "'.venv/bin/python' -m mypy .", tool: "mypy" }]);
+    // mypy's own way to write no cache (.mypy_cache) into the project.
+    expect(mypy.checks).toEqual([{ name: "typecheck", command: "'.venv/bin/python' -m mypy --cache-dir /dev/null .", tool: "mypy" }]);
+    const files = detectProject(project({ ...VENV, "setup.cfg": "[mypy]\nfiles = src\n", "app.py": "" }));
+    expect(files.checks).toEqual([{ name: "typecheck", command: "'.venv/bin/python' -m mypy --cache-dir /dev/null", tool: "mypy" }]);
     expect(detectProject(project({ ...VENV, "app.py": "" })).checks).toEqual([]);
   });
   test("each framework gets its own dev server command, with the reloader off", () => {

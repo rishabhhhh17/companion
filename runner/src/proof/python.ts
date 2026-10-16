@@ -187,7 +187,8 @@ export function detectPython(dir: string, o: PythonOptions = {}): PythonDetected
   if (uses("ruff") || /^\s*\[tool\.ruff[\].]/m.test(pyproject) || has(dir, "ruff.toml") || has(dir, ".ruff.toml")) checks.push({ name: "lint", command: `${py} -m ruff check --no-cache .`, tool: "ruff" });
   else if (uses("flake8") || has(dir, ".flake8") || /^\s*\[flake8\]/m.test(setupCfg)) checks.push({ name: "lint", command: `${py} -m flake8 --extend-exclude .venv,venv,node_modules,build,dist .`, tool: "flake8" });
   const mypyCfg = readText(join(dir, "mypy.ini")) + readText(join(dir, ".mypy.ini")) + (/^\s*\[mypy\]/m.test(setupCfg) ? setupCfg : "") + (/^\s*\[tool\.mypy\]/m.test(pyproject) ? pyproject : "");
-  if (uses("mypy") || mypyCfg) checks.push({ name: "typecheck", command: `${py} -m mypy${/^\s*files\s*=/m.test(mypyCfg) ? "" : " ."}`, tool: "mypy" });
+  // --cache-dir /dev/null is mypy's own way to write no cache (.mypy_cache) into the project.
+  if (uses("mypy") || mypyCfg) checks.push({ name: "typecheck", command: `${py} -m mypy --cache-dir /dev/null${/^\s*files\s*=/m.test(mypyCfg) ? "" : " ."}`, tool: "mypy" });
 
   const tests = uses("pytest") || /^\s*\[tool\.pytest/m.test(pyproject) || /^\s*\[(?:tool:)?pytest\]/m.test(setupCfg) || hasTests(dir)
     ? { command: `${py} -m pytest -q --tb=short -p no:cacheprovider`, tool: "pytest" } : null;
