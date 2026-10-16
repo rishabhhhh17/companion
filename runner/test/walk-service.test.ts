@@ -58,19 +58,19 @@ describe("walkthrough service", () => {
   test("a step that did not work offers the other way, then words, and never the same ring again", async () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.answer", { walk: "w1", worked: true });
-    await s.cmd("walk.acted", { walk: "w1", how: "clicked" });   // the key is not there
+    await s.cmd("walk.acted", { walk: "w1", how: "pressed" });   // the key is not there
     expect(s.of("walk.step").at(-1)).toMatchObject({ index: 1, variant: "instead", say: "Use the menu" });
-    await s.cmd("walk.acted", { walk: "w1", how: "clicked" });
+    await s.cmd("walk.acted", { walk: "w1", how: "pressed" });
     expect(s.of("walk.help")).toHaveLength(1);
     expect(s.of("walk.help")[0].say).toContain("Copy the key name");
     const steps = s.of("walk.step").length;
-    await s.cmd("walk.acted", { walk: "w1", how: "clicked" });   // nothing more is drawn
+    await s.cmd("walk.acted", { walk: "w1", how: "pressed" });   // nothing more is drawn
     expect(s.of("walk.step").length).toBe(steps);
   });
   test("after help, 'I did it myself' moves past the step", async () => {
     const s = setup(); await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     await s.cmd("walk.skip", { walk: "w1" });
-    await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.acted", { walk: "w1", how: "clicked" });
+    await s.cmd("walk.acted", { walk: "w1", how: "pressed" }); await s.cmd("walk.acted", { walk: "w1", how: "pressed" });
     expect(s.of("walk.help")).toHaveLength(1);
     await s.cmd("walk.skip", { walk: "w1" });
     expect(s.of("walk.step").at(-1)).toMatchObject({ index: 2 });
@@ -182,6 +182,34 @@ describe("lessons made from the project", () => {
     expect(s.of("walk.step").at(-1)).toMatchObject({ index: 2 });
     expect(JSON.stringify(s.events)).not.toContain("eyJ-not-a-real-key");
   });
+  test("a ring click before the value is saved keeps the step and says what is not there yet: it is not a failure", async () => {
+    // The ring points at where the value comes from (the Supabase settings), so the click always comes before the save.
+    const s = made(); await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
+    writeFileSync(join(s.project, ".env.local"), "");
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked", index: 0 });
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 1 });
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked", index: 1 });       // clicked the Supabase page, nothing saved yet
+    await s.cmd("walk.acted", { walk: "w1", how: "done_for_you", index: 1 });  // or Do it for me clicked it
+    expect(s.of("walk.help")).toHaveLength(0);
+    expect(s.of("walk.wait")).toHaveLength(2);
+    expect(s.of("walk.wait")[0]).toMatchObject({ walk: "w1", index: 1 });
+    expect(s.of("walk.wait")[0].say).toContain("VITE_SUPABASE_ANON_KEY");
+    expect(s.of("walk.wait")[0].say).toContain('"I did it"');
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 1, variant: "main" });
+    // Saved, then the person's own press: proven, on to the next name.
+    writeFileSync(join(s.project, ".env.local"), "VITE_SUPABASE_ANON_KEY=x\n");
+    await s.cmd("walk.acted", { walk: "w1", how: "pressed", index: 1 });
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 2 });
+    expect(s.of("walk.help")).toHaveLength(0);
+  });
+  test("the person's own press on a setting that is not there is said plainly, with the name", async () => {
+    const s = made(); await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
+    writeFileSync(join(s.project, ".env.local"), "");
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked", index: 0 });
+    await s.cmd("walk.acted", { walk: "w1", how: "pressed", index: 1 });
+    expect(s.of("walk.help")).toHaveLength(1);
+    expect(s.of("walk.help")[0].say).toContain("I do not see VITE_SUPABASE_ANON_KEY");
+  });
   test("a pause keeps the lesson's names, so it carries on where it was instead of starting over", async () => {
     const s = made(); await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
     writeFileSync(join(s.project, ".env.local"), "VITE_SUPABASE_ANON_KEY=x\n");
@@ -208,6 +236,32 @@ describe("lessons made from the project", () => {
     expect(s.of("walk.lessons")[0].lessons.map((l: any) => l.title)).not.toContain("Fake");
     await s.cmd("walk.start", { project: s.project, lesson: SETTINGS_LESSON });
     expect(s.of("walk.step")).toHaveLength(0);
+  });
+});
+
+describe("the GitHub lesson's steps that the project proves", () => {
+  test("a ring click before the file is saved or the command is run waits for it, and is never a failure", async () => {
+    const project = tmp("gh"), data = tmp("ghd"), events: any[] = [];
+    const svc = new WalkService({ emit: (e) => events.push(e), lessonDirs: [join(import.meta.dir, "../../lessons")], store: new FileWalkStore(join(data, "walks")), checker: projectChecker, now: () => "t" });
+    const cmd = (type: string, extra: Record<string, unknown> = {}) => svc.handle({ v: 1, id: "w1", type, ...extra } as never);
+    const of = (t: string) => events.filter((e) => e.type === t);
+    const at = () => of("walk.step").at(-1);
+    await cmd("walk.start", { project, lesson: "github-new-repo" });
+    // The steps on GitHub's own site are the person's to confirm.
+    while (at().ask) { const i = at().index; await cmd("walk.acted", { walk: "w1", how: "clicked", index: i }); await cmd("walk.answer", { walk: "w1", worked: true, index: i }); }
+    for (const [file, make] of [[".gitignore", () => writeFileSync(join(project, ".gitignore"), ".env*\n")], [".git", () => mkdirSync(join(project, ".git"))]] as const) {
+      const i = at().index;
+      expect(at().ask, file).toBe(false);
+      await cmd("walk.acted", { walk: "w1", how: "clicked", index: i });
+      expect(of("walk.help"), file).toHaveLength(0);
+      expect(at().index, file).toBe(i);
+      expect(of("walk.wait").at(-1)).toMatchObject({ index: i });
+      make();
+      await cmd("walk.acted", { walk: "w1", how: "pressed", index: i });
+      expect(at().index, file).toBe(i + 1);
+    }
+    expect(of("walk.help")).toHaveLength(0);
+    expect(at().ask).toBe(true);   // saving and sending the code: the person says
   });
 });
 
@@ -277,17 +331,20 @@ describe("walkthrough messages are in the protocol", () => {
       '{"v":1,"id":"a","type":"walk.list","project":"p"}',
       '{"v":1,"id":"a","type":"walk.start","project":"p","lesson":"keys"}',
       '{"v":1,"id":"a","type":"walk.acted","walk":"w1","how":"clicked"}',
+      '{"v":1,"id":"a","type":"walk.acted","walk":"w1","how":"pressed","index":2}',
       '{"v":1,"id":"a","type":"walk.answer","walk":"w1","worked":true}',
       '{"v":1,"id":"a","type":"walk.skip","walk":"w1"}',
       '{"v":1,"id":"a","type":"walk.stop","walk":"w1"}',
     ]) expect(parseCommand(l).ok, l).toBe(true);
     expect(parseCommand('{"v":1,"id":"a","type":"walk.acted","walk":"w1","how":"typed"}').ok).toBe(false);
     expect(parseCommand('{"v":1,"id":"a","type":"walk.start","project":"p"}').ok).toBe(false);
+    expect(parseEvent('{"v":1,"id":"e","type":"walk.wait","walk":"w1","say":"words"}').ok).toBe(false);
     for (const l of [
       '{"v":1,"id":"e","type":"walk.lessons","project":"p","lessons":[]}',
       '{"v":1,"id":"e","type":"walk.step","walk":"w1","project":"p","lesson":"keys","title":"T","index":0,"total":3,"variant":"main","say":"s","find":"f","ask":true}',
       '{"v":1,"id":"e","type":"walk.ask","walk":"w1","index":0}',
       '{"v":1,"id":"e","type":"walk.help","walk":"w1","say":"words"}',
+      '{"v":1,"id":"e","type":"walk.wait","walk":"w1","index":1,"say":"words"}',
       '{"v":1,"id":"e","type":"walk.done","walk":"w1","project":"p","lesson":"keys","title":"T","steps":3}',
       '{"v":1,"id":"e","type":"walk.stopped","walk":"w1","reason":"r"}',
     ]) expect(parseEvent(l).ok, l).toBe(true);

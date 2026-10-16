@@ -92,11 +92,15 @@ describe("the settings lesson", () => {
     expect(l.steps[1].say).toContain(".env");
     expect(l.steps[1].say).not.toContain(".env.local");
   });
-  test("a setting the page can read that looks like a secret gets a plain warning instead", () => {
-    const p = project({ "package.json": VITE, "src/pay.ts": "import.meta.env.VITE_STRIPE_SECRET_KEY" });
-    const step = byId(lessonsFromProject(p, never), SETTINGS_LESSON)!.steps[1];
+  test("a setting the page can read that looks like a secret gets a plain warning, which the person answers, never a check to set it", () => {
+    const p = project({ "package.json": VITE, "src/pay.ts": "import.meta.env.VITE_STRIPE_SECRET_KEY; import.meta.env.VITE_SUPABASE_URL" });
+    const l = byId(lessonsFromProject(p, never), SETTINGS_LESSON)!;
+    const step = l.steps.find((s) => s.say.includes("VITE_STRIPE_SECRET_KEY"))!;
     expect(step.say).toMatch(/anyone who opens/i);
-    expect(step.check).toEqual({ kind: "env_name", name: "VITE_STRIPE_SECRET_KEY" });
+    expect(step.say).toMatch(/only if they say it is safe/);
+    // Proving it would mean doing what the warning says not to do yet, so the person says when they have asked.
+    expect(step.check).toEqual({ kind: "ask" });
+    expect(envSteps(l)).toEqual(["VITE_SUPABASE_URL"]);
   });
   test("with nothing missing there is no settings lesson; with nothing needed, no lessons at all", () => {
     const set = project({ "package.json": VITE, "src/a.ts": "import.meta.env.VITE_SUPABASE_URL", ".env.local": "VITE_SUPABASE_URL=x\n" });

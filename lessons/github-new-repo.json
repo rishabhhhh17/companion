@@ -2,7 +2,7 @@
   "id": "github-new-repo",
   "title": "Make a place for your project on GitHub",
   "app": "GitHub",
-  "goal": "Create a GitHub repository for your project and link your project to it",
+  "goal": "Create a GitHub repository and put your project's code in it, with your keys left out",
   "status": "draft",
   "needsProject": true,
   "steps": [
@@ -40,24 +40,65 @@
     },
     {
       "id": "create",
-      "say": "Press Create repository. GitHub then shows the next steps for your project.",
+      "say": "Leave the README, .gitignore and license choices off, so the repository starts empty. Then press Create repository. GitHub then shows the next steps.",
       "find": "the Create repository button",
       "check": {
         "kind": "ask"
       }
     },
     {
-      "id": "link",
-      "say": "In Terminal, inside your project folder, follow the steps GitHub shows for a project you already have. Companion then checks that your project is linked to GitHub.",
-      "find": "the steps GitHub shows on the new repository page",
+      "id": "ignore",
+      "say": "Keep your keys off GitHub: in your project's top folder, open the file named .gitignore in your editor (make it if it is not there), add a line .env* and save the file.",
+      "find": "the .gitignore file in your editor",
       "check": {
         "kind": "file_contains",
-        "path": ".git/config",
-        "text": "github.com"
+        "path": ".gitignore",
+        "text": ".env*"
+      }
+    },
+    {
+      "id": "init",
+      "say": "In Terminal, inside your project folder, run git init. It is safe to run even if the folder already uses git. Companion then checks that the folder uses git.",
+      "find": "the Terminal window",
+      "check": {
+        "kind": "file_exists",
+        "path": ".git"
       },
       "instead": {
-        "say": "If Terminal says this is not a git repository, follow GitHub's other set of steps, the one that starts a new repository on the command line.",
-        "find": "the other set of steps on the new repository page"
+        "say": "To be sure Terminal is in your project folder: type cd and a space, drag the project folder from Finder onto the Terminal window, press Return, then run git init.",
+        "find": "the Terminal window"
+      }
+    },
+    {
+      "id": "commit",
+      "say": "Run git add . (with the dot), then git commit -m \"First version\". This saves your files in git, leaving out the ones .gitignore names. If it says nothing to commit, that is fine.",
+      "find": "the Terminal window",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If git asked who you are, run the two git config lines it shows, with your own name and email, then run the git commit line again.",
+        "find": "the Terminal window"
+      }
+    },
+    {
+      "id": "push",
+      "say": "On GitHub, copy the lines under push an existing repository from the command line. Paste them into Terminal and press Return.",
+      "find": "the lines under push an existing repository on the new repository page",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If Terminal said remote origin already exists, run git remote set-url origin followed by the address GitHub shows, then run git push -u origin main.",
+        "find": "the repository address in the Quick setup box on GitHub"
+      }
+    },
+    {
+      "id": "seen",
+      "say": "Refresh the repository page on GitHub. Your project's files should be listed there now, with no .env file among them.",
+      "find": "the list of files on the repository page",
+      "check": {
+        "kind": "ask"
       }
     }
   ]

@@ -38,8 +38,10 @@ export type About = { project: string; about: string; origin: string; needsInsta
 // signup is fixed by a small task; setting by the lesson made from the project (a value is the person's to put in place).
 export const PRACTICES = { signup: { folder: "stuck-signup", failing: "test/signup.test.js" }, setting: { folder: "stuck-setting", failing: "settings.js" } } as const;
 export type PracticeKind = keyof typeof PRACTICES;
-// stage: lesson and proving are the setting practice's fix: the lesson is open, then the checks run again.
-export type Practice = { kind: PracticeKind; stage: "start" | "found" | "fixing" | "lesson" | "proving" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string };
+// stage: lesson and proving are the setting practice's fix: the lesson is open, then the checks run again. walk: the lesson
+// the practice opened. nameSet: that lesson could not even be made because the setting's name is already in the file, so
+// the value must be empty or wrong (the checks run again instead of a lesson that cannot be made).
+export type Practice = { kind: PracticeKind; stage: "start" | "found" | "fixing" | "lesson" | "proving" | "done" | "failed" | "blocked"; project: string; where?: { file?: string; line?: number; message?: string }; label?: string; why?: string; walk?: string; nameSet?: boolean };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
@@ -217,7 +219,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.cloneNoteClosed": return { ...m, cloneNote: null };
     case "ui.practiceStarted": return { ...m, practice: { kind: e.kind === "setting" ? "setting" : "signup", stage: "start", project: String(e.project) } };
     // The setting practice's fix is a lesson; the signup practice's is a task, so it never waits on one.
-    case "ui.practiceLesson": return m.practice?.kind === "setting" && ["found", "failed"].includes(m.practice.stage) ? { ...m, practice: { ...m.practice, stage: "lesson" } } : m;
+    case "ui.practiceLesson": return m.practice?.kind === "setting" && ["found", "failed"].includes(m.practice.stage) ? { ...m, practice: { ...m.practice, stage: "lesson", walk: typeof e.walk === "string" ? e.walk : undefined, nameSet: undefined } } : m;
+    // The setting is in the file but the checks still failed: run them again (the card starts them when it sees "proving").
+    case "ui.practiceProving": return m.practice?.kind === "setting" && m.practice.stage === "failed" ? { ...m, practice: { ...m.practice, stage: "proving" } } : m;
     case "ui.practiceFixing": return m.practice ? { ...m, practice: { ...m.practice, stage: "fixing", why: undefined } } : m;
     case "ui.practiceClosed": return { ...m, practice: null };
     case "ui.diagramAsked": return { ...m, diagram: { stage: "asking", ask: e.ask, project: e.project } };
@@ -229,6 +233,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
+    // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.
+    case "walk.wait": return m.walk && m.walk.id === e.walk && m.walk.stage === "step" && m.walk.index === e.index ? { ...m, walk: { ...m.walk, note: String(e.say ?? "") } } : m;
     case "walk.done": {
       // The setting practice: its lesson finishing in its own project means the checks run again (the card starts them).
       if (m.practice?.stage === "lesson" && e.project === m.practice.project && e.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "proving" } };
@@ -237,6 +243,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "walk.stopped":
       // Stopping the setting practice's lesson goes back to the start of the fix, so it can be opened again.
       if (m.practice?.stage === "lesson" && m.walk && m.walk.id === e.walk && m.walk.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "found" } };
+      // The practice's lesson could not even start: no lesson is made because the setting's name is already in the file
+      // (saved with an empty value, say). The checks run again, and the practice says what that means; no second panel.
+      else if (m.practice?.stage === "lesson" && !m.walk && e.walk === m.walkWant && (m.practice.walk === undefined || m.practice.walk === e.walk)) {
+        return { ...m, walk: null, walkWant: null, practice: { ...m.practice, stage: "proving", nameSet: true } };
+      }
       if (m.walk && m.walk.id === e.walk) return { ...m, walk: { ...m.walk, stage: "stopped", note: String(e.reason ?? "") } };
       // A lesson that could not even start (not found) still tells the person why.
       return !m.walk && e.walk === m.walkWant ? { ...m, walk: { stage: "stopped", id: e.walk, lesson: "", title: "Lesson", index: 0, total: 0, variant: "main", say: "", find: "", ask: false, log: [], note: String(e.reason ?? "") } } : m;

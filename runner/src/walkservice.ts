@@ -1,6 +1,6 @@
 // Runs walkthroughs for the app: commands in, events out. The place is saved after every move. The project is only read.
 import type { Command, Event } from "../../protocol/index.ts";
-import { FileWalkStore, loadLessons, NO_PROJECT, Walkthrough, type Checker, type Lesson, type Settled } from "./walk.ts";
+import { FileWalkStore, loadLessons, NO_PROJECT, notThereYet, Walkthrough, type Check, type Checker, type Lesson, type Settled } from "./walk.ts";
 import { MADE_PREFIX, VERCEL_LESSON } from "./lessongen.ts";
 
 // Lessons made from the project (lessongen.ts): given the folder and each lesson's saved list of step ids (so a paused one
@@ -8,6 +8,8 @@ import { MADE_PREFIX, VERCEL_LESSON } from "./lessongen.ts";
 export type FromProject = (project: string, saved: (lesson: string) => string | undefined) => Lesson[];
 
 type Active = { walk: string; project: string; lesson: Lesson; w: Walkthrough; busy: boolean; asked: boolean };
+// After a ring click the project cannot prove yet: what is not there, and what to do next. The card's button says "I did it".
+const waitWords = (c: Check) => `${notThereYet(c)} ${c.kind === "file_exists" ? 'When it is there, press "I did it".' : 'Save the file, then press "I did it".'}`;
 type WalkCmd = Extract<Command, { type: `walk.${string}` }>;
 
 export class WalkService {
@@ -104,10 +106,13 @@ export class WalkService {
     this.save(a);
     if (r === "help") {
       const p = a.w.progress(), s = l.steps.find((x) => x.id === p.blocked) ?? l.steps[p.index];
-      this.emit({ type: "walk.help", walk: a.walk, say: `I could not tell that this worked: ${s.say} I will not point at it again. What to look for: ${s.find}. When you have done it yourself, press "I did it myself".` });
+      const why = s.check.kind === "ask" ? "I could not tell that this worked:" : `I could not tell that this worked. ${notThereYet(s.check)} The step was:`;
+      this.emit({ type: "walk.help", walk: a.walk, say: `${why} ${s.say} I will not point at it again. What to look for: ${s.find}. When you have done it yourself, press "I did it myself".` });
       return;
     }
     const c = a.w.current(); if (!c) return;
+    // The step stays on the card as it is (nothing is pointed at again), with words on what the project does not show yet.
+    if (r === "wait") { this.emit({ type: "walk.wait", walk: a.walk, index: c.index, say: waitWords(c.step.check) }); return; }
     this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", ...(c.already ? { already: true } : {}), log: a.w.history() });
   }
 }

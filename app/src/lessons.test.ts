@@ -1,5 +1,6 @@
 // Guided lessons on the card: the state follows the runner's walk events, and only the walk the person started.
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
 import { SETTINGS_LESSON_ID, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop } from "./commands.ts";
 
@@ -42,6 +43,23 @@ describe("lessons on the card", () => {
     expect(run([...started, step({ index: 1, already: true }), step({ index: 2 })]).walk).toMatchObject({ stage: "step", index: 2 });
     expect(run([...started, step({ index: 1, already: true }), step({ index: 1 })]).walk).toMatchObject({ stage: "step", index: 1 });   // "No": the same step, to do
   });
+  test("a step the project cannot see yet stays on the card with plain words on what is missing; the next step clears them", () => {
+    const wait = { type: "walk.wait", walk: "w1", index: 0, say: "I do not see SHOP_NAME in the project's settings files yet." };
+    const m = run([...started, step({ ask: false }), wait]);
+    expect(m.walk).toMatchObject({ stage: "step", index: 0, note: wait.say });
+    expect(run([step({ index: 1, ask: false })], m).walk).toMatchObject({ stage: "step", index: 1 });
+    expect(run([step({ index: 1, ask: false })], m).walk?.note).toBeUndefined();
+    // Words for another walk, or an older step, change nothing.
+    expect(run([...started, step({ ask: false }), { ...wait, walk: "other" }]).walk?.note).toBeUndefined();
+    expect(run([...started, step({ index: 2, ask: false }), wait]).walk?.note).toBeUndefined();
+    expect(run([...started, step({ ask: false }), { type: "walk.help", walk: "w1", say: "h" }, wait]).walk?.stage).toBe("help");
+  });
+  test("only the person's own press on the card says 'I did it'; a ring click is only a click", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const press = card.split("\n").find((l) => l.includes("{S.lessonDid}"))!;
+    expect(press).toContain('"pressed"');
+    expect(card).not.toMatch(/setTimeout\(\(\) => void send\(walkActed\([^)]*"pressed"/);
+  });
   test("a new step after asking goes back to showing the step", () => {
     const m = run([...started, step(), { type: "walk.ask", walk: "w1", index: 0 }, step({ index: 1, say: "Copy it", ask: false })]);
     expect(m.walk).toMatchObject({ stage: "step", index: 1, say: "Copy it", ask: false });
@@ -72,6 +90,7 @@ describe("lesson commands", () => {
     const s = walkStart("p", "keys", true) as any; expect(s).toMatchObject({ type: "walk.start", project: "p", lesson: "keys", fresh: true });
     expect(walkStart("p", "keys")).not.toHaveProperty("fresh");
     expect(walkActed("w1", "clicked", 2)).toMatchObject({ type: "walk.acted", walk: "w1", how: "clicked", index: 2 });
+    expect(walkActed("w1", "pressed", 2)).toMatchObject({ type: "walk.acted", walk: "w1", how: "pressed", index: 2 });
     expect(walkAnswer("w1", false)).toMatchObject({ type: "walk.answer", walk: "w1", worked: false });
     expect(walkSkip("w1")).toMatchObject({ type: "walk.skip", walk: "w1" });
     expect(walkStop("w1")).toMatchObject({ type: "walk.stop", walk: "w1" });

@@ -1,6 +1,7 @@
 // Lessons made from the person's own project. About this project already knows which setting names the code reads and
 // which no .env file sets. From exactly those names this makes a walkthrough: where to get each value, how to put it in
-// the settings file without pasting it into Companion, and a setting name check per name that proves it. It also makes
+// the settings file without pasting it into Companion, and a setting name check per name that proves it (a name that looks
+// like a secret the page could read gets a warning the person answers instead). It also makes
 // the same names into steps in the project's Vercel settings, which only the person can confirm.
 // The result is a lesson like any other: plain data, put through the same checks as a lesson file, a draft, at most 15
 // steps. Only names are read, never a value. Nothing is run and nothing is written.
@@ -66,9 +67,12 @@ export function whereToGet(name: string): Where | null {
 }
 /** A name the page can read (it starts with the page's prefix) that looks like a secret key. */
 const exposedSecret = (name: string) => BROWSER.test(name) && (SECRET.test(base(name)) || KNOWN_SECRET.has(base(name)));
+// The person answers this step themselves (an "ask" check): it cannot be proven by setting the name, since setting it is
+// what the warning says to hold off on.
 const warning = (name: string) => fit(200,
-  `Careful: ${name} starts with ${BROWSER.exec(name)?.[1] ?? ""}, so anyone who opens your site can read it, and a secret key must never go in a name like that. Ask whoever made the project before you set it.`,
-  `Careful: anyone who opens your site can read ${name}, so a secret key must never go in it. Ask whoever made the project before you set it.`,
+  `Careful: ${name} starts with ${BROWSER.exec(name)?.[1] ?? ""}, so anyone who opens your site can read it. A secret key must never go in a name like that. Ask whoever made the project, and set it only if they say it is safe.`,
+  `Careful: anyone who opens your site can read ${name}, so a secret key must never go in it. Ask whoever made the project, and set it only if they say it is safe.`,
+  `Careful: anyone who opens your site can read ${name}. Ask before you set it, and set it only if they say it is safe.`,
   `Careful: anyone who opens your site can read ${name}. Ask before you set it.`);
 
 /** The settings file to use: .env.local where the tools read it (Vite, Next.js and most page tools), .env for a plain Node
@@ -116,7 +120,7 @@ export function settingsLesson(n: Needs, shape?: string): Lesson | null {
       : w
         ? fit(200, `${name}: copy it from ${w.from}.${w.note ? ` ${w.note}` : ""} ${line}`, `${name}: copy it from ${w.from}. ${line}`, `Copy ${name} from ${w.from}, and add it to ${file}.`, `${line}`, `Add ${name} to ${file}.`)
         : fit(200, `${name}: Companion does not know where this value comes from, so look in the project's README or ask whoever made it. ${line}`, `${name}: Companion does not know where it comes from; see the project's README. ${line}`, `Add ${name} to ${file}. Companion does not know where it comes from; see the README.`, `Add ${name} to ${file}.`);
-    return { id: stepId("set", name), say, find: w && !exposedSecret(name) ? w.find : `the ${file} file in your editor`, check: { kind: "env_name", name } };
+    return { id: stepId("set", name), say, find: w && !exposedSecret(name) ? w.find : `the ${file} file in your editor`, check: exposedSecret(name) ? { kind: "ask" } : { kind: "env_name", name } };
   });
   const goal = total > names.length
     ? `Put the settings this project's code reads into ${file}. This covers ${names.length} of the ${total}; open it again afterwards for the rest.`

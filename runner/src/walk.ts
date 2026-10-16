@@ -102,10 +102,14 @@ export function loadLessons(dirs: string[]): { lessons: Lesson[]; problems: { fi
   return { lessons, problems };
 }
 
-export type Outcome = "clicked" | "done_for_you" | "passed" | "failed" | "skipped" | "asked_yes" | "asked_no" | "already_done";
+// not_yet: a ring click on a step the project proves, before its result was there (not a failure).
+export type Outcome = "clicked" | "done_for_you" | "pressed" | "not_yet" | "passed" | "failed" | "skipped" | "asked_yes" | "asked_no" | "already_done";
 export type LogEntry = { step: string; outcome: Outcome; at: string };
 export type Progress = { version: 1; shape: string; lesson: string; project: string; index: number; log: LogEntry[]; failed: string[]; usedInstead: string[]; blocked: string | null; done: boolean };
-export type Settled = "advance" | "done" | "instead" | "help" | "stopped";
+// wait: the step stays as it is, because the project does not show its result yet.
+export type Settled = "advance" | "done" | "instead" | "help" | "wait" | "stopped";
+/** How a step was acted on: a click on the ring, Do it for me, or the person's own "I did it" press on the card. */
+export type Acted = "clicked" | "done_for_you" | "pressed";
 
 export class Walkthrough {
   private p: Progress;
@@ -167,13 +171,17 @@ export class Walkthrough {
   /** Is this the step a command was meant for? A late command for an earlier step is dropped. */
   at(index?: number): boolean { return index === undefined || index === this.p.index; }
 
-  /** The person clicked (or it was clicked for them): prove the real result, then move on, try the other way, or ask for words. */
-  async settle(how: "clicked" | "done_for_you", check: Checker): Promise<Settled> {
+  /** The step was acted on: prove the real result, then move on, try the other way, or ask for words. A click on the ring
+   *  (or Do it for me) is not the moment of proof: the ring points at where a value comes from, so the click comes before
+   *  the paste and the save. When the project does not show the result yet, the step waits. Only the person's own "I did
+   *  it" press counts it as not working. */
+  async settle(how: Acted, check: Checker): Promise<Settled> {
     const s = this.step; if (!s) return this.p.blocked ? "help" : "stopped";
     this.log(s.id, how);
     let ok = false;
     try { ok = (await check(s.check)) === true; } catch { ok = false; }
     if (this.stopped) return "stopped";
+    if (!ok && how !== "pressed") { this.log(s.id, "not_yet"); return "wait"; }
     if (!ok) return this.fail(s);
     this.log(s.id, "passed");
     return this.advance();
@@ -236,6 +244,16 @@ export class Walkthrough {
     await this.passDone(check);
     if (this.stopped) return "stopped";
     return this.p.done ? "done" : "advance";
+  }
+}
+
+/** What the project does not show yet for a step it proves, in plain words (names and paths only, never a value). */
+export function notThereYet(c: Check): string {
+  switch (c.kind) {
+    case "env_name": return `I do not see ${c.name} in the project's settings files yet.`;
+    case "file_exists": return `I do not see ${c.path} in the project yet.`;
+    case "file_contains": return `I do not see that in ${c.path} yet.`;
+    default: return "I cannot see this step in the project.";
   }
 }
 

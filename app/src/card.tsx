@@ -559,8 +559,12 @@ function Card() {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
     noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
-    dispatch({ type: "ui.walkRequested", walk: (c as { id: string }).id }); setLessonsOpen(false); void send(c);
+    const walk = (c as { id: string }).id;
+    dispatch({ type: "ui.walkRequested", walk }); setLessonsOpen(false); void send(c);
+    return walk;
   };
+  // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
+  const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
   const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false);
   const wk = m.walk;
   const wkKey = wk ? `${wk.id}:${wk.index}:${wk.variant}` : "";
@@ -574,7 +578,8 @@ function Card() {
   useEffect(() => { if (wk && m.showme?.stage === "needs_permission") noAim.current = true; }, [m.showme?.stage, wkKey]);
   useEffect(() => { if (!wk) { clearTimeout(actTimer.current); } }, [wk]);
   useEffect(() => {
-    // Only this step's own ring counts: a ring left over from the step before has the old request id.
+    // Only this step's own ring counts: a ring left over from the step before has the old request id. A ring click is only a
+    // click: on a step the project proves, the runner says what is not there yet (walk.wait) and waits for "I did it".
     const r = m.showme?.req;
     if (!wk || wk.stage !== "step" || !r?.startsWith("sm_") || r === staleReq.current) return;
     if ((m.showme?.stage !== "your_turn_done" && m.showme?.stage !== "done_for_you") || acted.current === wkKey) return;
@@ -663,7 +668,7 @@ function Card() {
             <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingFoundMore : S.practiceFoundMore}</div>
             <div className="row">
               {m.practice.kind === "setting"
-                ? <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceLesson" }); beginLesson(SETTINGS_LESSON_ID, true); }}>{S.practiceSettingFix}</button>
+                ? <button className="btn primary" type="button" onClick={practiceLesson}>{S.practiceSettingFix}</button>
                 : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>}
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
             </div>
@@ -691,11 +696,12 @@ function Card() {
             </div>
           </>}
           {m.practice.stage === "failed" && <>
-            <div className="line">{m.practice.kind === "setting" ? S.practiceSettingFailed : S.practiceFailed}</div>
+            <div className="line">{m.practice.kind !== "setting" ? S.practiceFailed : m.practice.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed}</div>
             {m.practice.kind === "setting" && m.practice.where?.message && <div className="line muted">{m.practice.where.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where.message}</div>}
             <div className="row">
+              {m.practice.kind === "setting" && m.practice.nameSet && <button className="btn primary" type="button" onClick={() => dispatch({ type: "ui.practiceProving" })}>{S.practiceCheckAgain}</button>}
               {m.practice.kind === "setting"
-                ? <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceLesson" }); beginLesson(SETTINGS_LESSON_ID, true); }}>{S.practiceAgain}</button>
+                ? <button className={`btn${m.practice.nameSet ? "" : " primary"}`} type="button" onClick={practiceLesson}>{S.practiceAgain}</button>
                 : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>}
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
             </div>
@@ -730,6 +736,7 @@ function Card() {
             <div className="line"><b>{m.walk.say}</b></div>
           </>}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
+          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}
           {m.walk.log.length > 0 && (
             <details className="line muted">
               <summary>{S.lessonLogTitle} ({m.walk.log.length})</summary>
@@ -740,7 +747,7 @@ function Card() {
             {m.walk.stage === "step" && <>
               <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}` }); }}>{S.lessonPoint}</button>
               {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>}
-              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "clicked", m.walk!.index)); }}>{S.lessonDid}</button>
+              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
             </>}
             {m.walk.stage === "already" && <>
               <div className="line">{S.lessonAlready}</div>

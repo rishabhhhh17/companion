@@ -274,6 +274,8 @@ export const S = {
   practiceProving: "Running the project's checks again…",
   practiceSettingDoneMore: "That is the whole loop: found, set by you, proven. Companion never asks for a setting's value. Now try it on your own project.",
   practiceSettingFailed: "The checks still fail. Look at what they say, then try the lesson again.",
+  practiceSettingNameSet: "The setting's name is in .env.local now, but the checks still fail, so its value looks empty or wrong. Put the value after the = sign, save the file, then run the checks again.",
+  practiceCheckAgain: "Run the checks again",
   folderLabel: "Project folder",
   openLink: "Open from a link",
   openLinkLabel: "Link to a project on GitHub, GitLab or Bitbucket",
