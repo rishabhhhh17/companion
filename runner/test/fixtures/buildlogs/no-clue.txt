@@ -1,0 +1,10 @@
+Vercel CLI 53.4.0
+2026-10-10T10:00:01.101Z  Running build in Washington, D.C., USA (East) – iad1
+2026-10-10T10:00:04.010Z  Running "vercel build"
+2026-10-10T10:00:09.410Z  Running "npm run build"
+2026-10-10T10:00:09.640Z  
+2026-10-10T10:00:09.640Z  > app@0.0.0 build
+2026-10-10T10:00:09.640Z  > node scripts/build.mjs
+2026-10-10T10:00:09.640Z  
+2026-10-10T10:00:10.000Z  Error: Command "npm run build" exited with 1
+status	● Error

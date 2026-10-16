@@ -8,9 +8,9 @@ import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stil
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel } from "./model.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, MemoryLine, PracticeKind, Spending } from "./model.ts";
+import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
@@ -551,8 +551,8 @@ function Card() {
       void send(findProblem(projectRef.current));
     });
     const offFound = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; verdict?: string; problem?: unknown; project?: string };
-      if (ev.type === "problem.found" && ev.verdict === "failed" && ev.problem && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
+      const ev = e.payload as { type?: string; verdict?: string; problem?: Problem; project?: string };
+      if (ev.type === "problem.found" && ev.verdict === "failed" && pointsOnScreen(ev.problem) && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
     });
     return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
   }, []);
@@ -910,7 +910,7 @@ function Card() {
             {m.stuck.options.map((o, i) => (
               <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
             ))}
-            {m.where && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
+            {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
           </div>
         </section>
       )}
@@ -1026,7 +1026,7 @@ function Card() {
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
           <div className="row">
-            {m.where && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
+            {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
           </div>
         </section>
@@ -1117,13 +1117,14 @@ function Card() {
           {m.point.stage === "clear" && <div className="line">{S.pointClear}</div>}
           {m.point.stage === "gaps" && <div className="line">{S.pointGaps}</div>}
           {m.point.stage === "nothing" && <div className="line">{S.pointNothing}</div>}
+          {m.point.note && <div className="line muted" role="note">{m.point.note}</div>}
           {m.point.stage === "found" && <>
             <div className="line"><b>{m.point.label}</b></div>
             <div className="line">{m.point.problem && m.point.problem.kind === "line" ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
           </>}
           {m.point.stage !== "checking" && (
             <div className="row">
-              {m.point.stage === "found" && m.point.problem && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
+              {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>

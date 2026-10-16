@@ -2,17 +2,21 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { minimalEnv } from "../env.ts";
+import { detectPython, looksPython, type PythonOptions, type PythonServer, type PythonSetup } from "./python.ts";
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
-export type Check = { name: "typecheck" | "lint" | "build"; command: string };
-export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean } | { kind: "static"; dir: string };
+// tool: for a Python check, the module it runs (so "No module named ruff" reads as not installed, not as a failure).
+export type Check = { name: "typecheck" | "lint" | "build"; command: string; tool?: string };
+// python: a Python dev server, told its host and port on the command line. env: fixed settings it needs (never the person's).
+export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean; python?: PythonServer; env?: Record<string, string> } | { kind: "static"; dir: string };
 export type Detected = {
-  kind: "node" | "static" | "unknown";
+  kind: "node" | "python" | "static" | "unknown";
   packageManager: PackageManager | null;
   lockfile: string | null;
   checks: Check[];
-  tests: { command: string } | null;
+  tests: { command: string; tool?: string } | null;
   start: Start | null;
+  python?: PythonSetup;   // only for a Python project (one without a package.json)
 };
 
 const LOCKS: [string, PackageManager][] = [["bun.lock", "bun"], ["bun.lockb", "bun"], ["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"], ["package-lock.json", "npm"]];
@@ -21,9 +25,11 @@ function readJson(path: string): Record<string, any> | null {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-export function detectProject(dir: string, has: (m: PackageManager) => boolean = (m) => installed(m)): Detected {
+export function detectProject(dir: string, has: (m: PackageManager) => boolean = (m) => installed(m), pythonOptions?: PythonOptions): Detected {
   const pkgPath = join(dir, "package.json");
   const hasPkg = existsSync(pkgPath);
+  // A folder with a package.json is a Node project, exactly as before; only one without is looked at as Python.
+  const py = !hasPkg && looksPython(dir) ? detectPython(dir, pythonOptions) : null;
   const pkg = hasPkg ? readJson(pkgPath) ?? {} : {};
   const scripts: Record<string, string> = typeof pkg.scripts === "object" && pkg.scripts ? pkg.scripts : {};
   const locks = LOCKS.filter(([f]) => existsSync(join(dir, f)));
@@ -43,8 +49,9 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
     const s = candidates.find((c) => scripts[c]);
     if (pm && s) checks.push({ name, command: run(s) });
   }
+  if (py) checks.push(...py.checks);
   // npm's default placeholder is not a test.
-  const tests = pm && scripts.test && !/no test specified/i.test(scripts.test) ? { command: run("test") } : null;
+  const tests = pm && scripts.test && !/no test specified/i.test(scripts.test) ? { command: run("test") } : py?.tests ?? null;
 
   let start: Start | null = null;
   const launch = readJson(join(dir, ".claude", "launch.json"));
@@ -53,11 +60,12 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
     start = { kind: "server", command: [cfg.runtimeExecutable, ...(Array.isArray(cfg.runtimeArgs) ? cfg.runtimeArgs : [])].join(" "), ...(typeof cfg.port === "number" ? { port: cfg.port } : {}), ...(typeof cfg.autoPort === "boolean" ? { autoPort: cfg.autoPort } : {}) };
   } else if (pm && scripts.dev) start = { kind: "server", command: run("dev") };
   else if (pm && scripts.start) start = { kind: "server", command: run("start") };
+  else if (py?.start) start = py.start;
   else if (existsSync(join(dir, ".replit")) && replitRun(readFileSync(join(dir, ".replit"), "utf8"))) start = { kind: "server", command: replitRun(readFileSync(join(dir, ".replit"), "utf8"))! };
   else if (existsSync(join(dir, "dist", "index.html"))) start = { kind: "static", dir: join(dir, "dist") };
   else if (existsSync(join(dir, "index.html"))) start = { kind: "static", dir };
 
-  return { kind: hasPkg ? "node" : start ? "static" : "unknown", packageManager: pm, lockfile: lock?.[0] ?? null, checks, tests, start };
+  return { kind: hasPkg ? "node" : py ? "python" : start ? "static" : "unknown", packageManager: pm, lockfile: lock?.[0] ?? null, checks, tests, start, ...(py ? { python: py.setup } : {}) };
 }
 
 // Is this package manager on the Mac's tool path (the same path Companion runs commands with)?

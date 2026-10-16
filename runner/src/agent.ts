@@ -25,7 +25,8 @@ import { askSignals, projectFacts } from "./memory/learn.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
 import { recapLines } from "./recap.ts";
-import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer } from "./ship/deploy.ts";
+import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
+import { readDeployFailure } from "./ship/buildlog.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
@@ -39,6 +40,10 @@ import { detectProject } from "./proof/detect.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
+
+// Point at the problem and Rescue, when the last Vercel deploy is what failed.
+const DEPLOY_FAILED = "Your last Vercel deploy failed";
+const DEPLOY_EVIDENCE = "Your last Vercel deploy";
 
 /** The saved receipt picture's file name. Checkpoint numbers repeat from one project to the next, so the project is part of the name. */
 export const receiptPictureName = (project: string, checkpoint: string): string => `${createHash("sha1").update(resolve(project)).digest("hex").slice(0, 8)}-${checkpoint}.jpg`;
@@ -72,6 +77,8 @@ export type RunnerOptions = {
   // Writes the "why" bullets after a task. Without it, Explain is off.
   // Putting a preview and then the live site up. Without it, shipping beyond the safety check is off.
   deployer?: Deployer;
+  // Reading why the last Vercel deploy failed (read only), for Point at the problem and Rescue. Without it, off.
+  deployLogs?: DeployLogReader;
   browser?: typeof browserCheck;
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
@@ -912,7 +919,8 @@ export class AgentRunner {
   // so the character can fly to that line, error or button.
   private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
     // Every press ends with problem.found, so the card never stays on "Checking".
-    const found = (verdict: string, fl?: Step, needs?: "browser") => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}) } as never);
+    // note: one plain line about something that could not be checked (the Vercel tool missing, say), with what to do.
+    const found = (verdict: string, fl?: Pick<Step, "label" | "detail" | "problem">, needs?: "browser", note?: string) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}), ...(note ? { note } : {}) } as never);
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectBusy.has(resolve(cmd.project))) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });
@@ -925,8 +933,20 @@ export class AgentRunner {
       try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
+      const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
+      // It works here. In a folder linked to Vercel, the last deploy may be where it fails: read its build log (read
+      // only, through the person's own Vercel tool) and point at the line that stopped it.
+      // A Python check that could not run because a package is not installed: the first thing to install, with the
+      // command (Point at the problem never installs anything).
+      const notes: string[] = res.verdict === "passed_with_gaps" && res.gaps?.length ? [res.gaps[0]] : [];
+      if (this.o.deployLogs && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
+        const d = await readDeployFailure(cmd.project, this.o.deployLogs, abort.signal);
+        if (abort.signal.aborted || d?.state === "cancelled") { found("cancelled"); this.state(cmd.agent, "idle"); return; }
+        if (d?.state === "failed") { found("failed", { label: DEPLOY_FAILED, detail: d.summary, problem: d.problem }, needs); this.state(cmd.agent, "needsYou"); return; }
+        if (d?.state === "unknown") notes.push(d.reason);
+      }
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      found(res.verdict, fl, res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined);
+      found(res.verdict, fl, needs, notes.length ? notes.join(" ") : undefined);
       this.state(cmd.agent, fl ? "needsYou" : "idle");
     } catch (e) {
       this.fail(`Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
@@ -1023,6 +1043,13 @@ export class AgentRunner {
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
       if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
       const evidence = res.steps.map((x) => ({ label: x.label, status: x.status, detail: x.detail }));
+      // A project linked to Vercel: why its last deploy failed is evidence too (read only, the person's own Vercel tool).
+      if (this.o.deployLogs) {
+        const d = await readDeployFailure(cmd.project, this.o.deployLogs, st.abort.signal);
+        if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+        if (d?.state === "failed") evidence.push({ label: DEPLOY_EVIDENCE, status: "failed", detail: d.evidence });
+        else if (d?.state === "unknown") evidence.push({ label: DEPLOY_EVIDENCE, status: "skipped", detail: d.reason });
+      }
       this.state(cmd.agent, "thinking");
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }

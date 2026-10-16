@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { runCommand, type RunResult } from "../proof/exec.ts";
+import { runCommand, shq, type RunResult } from "../proof/exec.ts";
+import { minimalEnv } from "../env.ts";
 import { clip, redact } from "../redact.ts";
 
 export type Ok<T = object> = { ok: true } & T;
@@ -18,12 +19,68 @@ export interface Deployer {
 }
 
 export const NOT_SIGNED_IN = "You are not signed in to Vercel. Open Terminal, run: vercel login, then try again.";
+
+// Reading why the last deploy failed: read only. It lists the deployments and prints one build log; it never deploys,
+// promotes, rolls back or removes anything. Only for a folder linked to a Vercel project (.vercel/project.json): in any
+// other folder the Vercel tool would list every project's deployments.
+// failed: the newest finished deploy failed, with its build log, and when it was made (createdAt, in milliseconds, when
+// the list says; a line is ringed only in a file that has not changed since). none: it did not (or there is none).
+// not_linked: this folder is not a Vercel project, so there is nothing to say. unavailable: one plain line saying why,
+// with what to do.
+export type FailedBuild =
+  | { state: "failed"; url: string; log: string; createdAt?: number }
+  | { state: "none" }
+  | { state: "not_linked" }
+  | { state: "unavailable"; reason: string }
+  | { state: "cancelled" };
+export interface DeployLogReader { lastFailedBuild(project: string, signal?: AbortSignal): Promise<FailedBuild> }
+const COULD_NOT = "I could not read why the Vercel deploy failed:";
+const LOG_NO_CLI = `${COULD_NOT} the Vercel tool is not installed. Install it with: npm install -g vercel`;
+const LOG_NO_LOGIN = `${COULD_NOT} you are not signed in to Vercel. Open Terminal, run: vercel login, then try again.`;
+// The list holds teammates' names and commit messages, so when it cannot be read none of it is shown or passed on.
+const LOG_NO_LIST = `${COULD_NOT} the Vercel tool's list of deploys could not be read. Open this project on vercel.com to see why the last deploy failed.`;
+// The list of 20 deployments with their GitHub details runs to tens of thousands of characters (pretty printed JSON).
+const LIST_KEEP = 256_000;
+// The team (or personal account) the linked project belongs to, as Vercel writes its id: never anything a shell could read.
+const ORG_ID = /^(?:team_)?[A-Za-z0-9]+$/;
+const DEPLOYMENT_HOST = /^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.vercel\.app$/i;
+const STATUS = /\b(Ready|Error|Building|Queued|Initializing|Canceled|Deploying|Analyzing)\b/;
+const LOG_LINE = /^\[?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/m;
+// Is the Vercel tool on the tool path Companion runs commands with? (Tests say yes, so they never depend on this Mac.)
+const cliOnPath = () => process.env.COMPANION_TEST_ASSUME_TOOLS === "1" || (minimalEnv().PATH ?? "").split(":").some((d) => d && existsSync(join(d, "vercel")));
+
+/** The deployments `vercel list --format json` printed, newest first. */
+type Listed = { url: string; state: string; createdAt?: number };
+export function parseDeploymentList(stdout: string): Listed[] | null {
+  const a = stdout.indexOf("{"), b = stdout.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  let j: any;
+  try { j = JSON.parse(stdout.slice(a, b + 1)); } catch { return null; }
+  if (!Array.isArray(j?.deployments)) return null;
+  return j.deployments
+    .map((d: any) => ({ url: String(d?.url ?? ""), state: String(d?.state ?? d?.readyState ?? "").toUpperCase(), at: Number(d?.createdAt) || 0 }))
+    .sort((x: { at: number }, y: { at: number }) => y.at - x.at)
+    .map(({ url, state, at }: { url: string; state: string; at: number }) => ({ url, state, ...(at > 0 ? { createdAt: at } : {}) }));
+}
+// The id of the team the folder's link names (.vercel/project.json), or null.
+function linkedOrg(project: string): string | null {
+  try { const id = JSON.parse(readFileSync(join(project, ".vercel", "project.json"), "utf8"))?.orgId; return typeof id === "string" && ORG_ID.test(id) ? id : null; } catch { return null; }
+}
+/** The table an older `vercel list` prints (no --format there): one row per deployment, newest first. */
+export function parseDeploymentTable(text: string): Listed[] {
+  const out: Listed[] = [];
+  for (const line of text.split("\n")) {
+    const url = /https:\/\/\S+?\.vercel\.app\b/.exec(line)?.[0], st = STATUS.exec(line.replace(/https:\/\/\S+/g, ""))?.[1];
+    if (url && st) out.push({ url, state: st.toUpperCase() });
+  }
+  return out;
+}
 const LOGIN_FLOW = /Starting login flow|oauth\/device|No existing credentials/i;
 const URL_RE = /https:\/\/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.vercel\.app\b[^\s)"']*/gi;
 const plain = (r: RunResult) => clip(redact(`${r.stderr}\n${r.stdout}`).replace(/\s+/g, " ").trim(), 300);
 
-export class VercelCli implements Deployer {
-  constructor(private run: typeof runCommand = runCommand, private authFile = join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json")) {}
+export class VercelCli implements Deployer, DeployLogReader {
+  constructor(private run: typeof runCommand = runCommand, private authFile = join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), private hasCli: () => boolean = cliOnPath) {}
   // Only whether the file exists: its contents are never opened.
   signedIn() { return existsSync(this.authFile); }
 
@@ -56,6 +113,45 @@ export class VercelCli implements Deployer {
   async rollback(project: string, signal?: AbortSignal) {
     const { fail } = await this.vercel("rollback --yes", project, 5 * 60_000, signal);
     return fail ? { ok: false as const, reason: fail } : { ok: true as const };
+  }
+
+  // Read only: `vercel list`, then `vercel inspect <url> --logs` for the newest finished deploy if it failed.
+  async lastFailedBuild(project: string, signal?: AbortSignal): Promise<FailedBuild> {
+    if (!existsSync(join(project, ".vercel", "project.json"))) return { state: "not_linked" };
+    if (!this.hasCli()) return { state: "unavailable", reason: LOG_NO_CLI };
+    if (!this.signedIn()) return { state: "unavailable", reason: LOG_NO_LOGIN };
+    const read = (args: string, timeoutMs: number, keep?: number) => this.run(`vercel ${args}`, { cwd: project, timeoutMs, signal, stopWhen: LOGIN_FLOW, ...(keep ? { keep } : {}) });
+    const stopped = (r: RunResult): FailedBuild | null =>
+      r.aborted ? { state: "cancelled" } : r.matched ? { state: "unavailable", reason: LOG_NO_LOGIN }
+      : r.timedOut ? { state: "unavailable", reason: `${COULD_NOT} Vercel took too long, so I stopped it.` }
+      : r.code === 127 ? { state: "unavailable", reason: LOG_NO_CLI } : null;
+    // Kept whole: the default keeps only the end of a command's output, and a list cut short is not JSON.
+    let r = await read("list --format json", 60_000, LIST_KEEP);
+    let deployments: Listed[] | null = null;
+    if (stopped(r)) return stopped(r)!;
+    if (r.code === 0) deployments = parseDeploymentList(r.stdout);
+    else if (/unknown or unexpected option|unknown option/i.test(`${r.stderr}\n${r.stdout}`)) {
+      r = await read("list", 60_000, LIST_KEEP);
+      if (stopped(r)) return stopped(r)!;
+      if (r.code === 0) deployments = parseDeploymentTable(`${r.stderr}\n${r.stdout}`);
+    }
+    // A no from the tool says why on its error stream; a list it printed but that cannot be read is never shown.
+    if (!deployments) return { state: "unavailable", reason: r.code === 0 ? LOG_NO_LIST : `${COULD_NOT} Vercel said no: ${plain({ ...r, stdout: "" }) || "no details"}` };
+    // The newest deploy that finished; one still building, queued or cancelled says nothing yet.
+    const last = deployments.find((d) => d.state === "READY" || d.state === "ERROR");
+    if (!last || last.state !== "ERROR") return { state: "none" };
+    const host = last.url.replace(/^https:\/\//, "").replace(/\/$/, "");
+    if (!DEPLOYMENT_HOST.test(host)) return { state: "unavailable", reason: `${COULD_NOT} its address looked wrong, so I did not use it.` };
+    const url = `https://${host}`;
+    // `vercel list` looks in the team the link names; `vercel inspect` does not read the link and looks in the tool's
+    // default team, so it is told the same team. [verify] with a team project that is not the default (T08).
+    const org = linkedOrg(project);
+    // Exit code 1 is what inspect gives for a failed deployment, so the log itself is what counts.
+    const l = await read(`inspect ${shq(url)} --logs${org ? ` --scope ${shq(org)}` : ""}`, 90_000, 64_000);
+    if (stopped(l)) return stopped(l)!;
+    const log = [l.stderr, l.stdout].filter(Boolean).join("\n");
+    if (!LOG_LINE.test(log)) return { state: "unavailable", reason: `${COULD_NOT} Vercel said no: ${plain(l) || "no details"}` };
+    return { state: "failed", url, log, ...(last.createdAt ? { createdAt: last.createdAt } : {}) };
   }
 }
 
