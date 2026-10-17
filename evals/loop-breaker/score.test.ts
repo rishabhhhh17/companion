@@ -43,6 +43,7 @@ describe("how a loop case ended", () => {
     expect(classifyLoop({ ...ask, asked: true })).toBe("asked");
     expect(classifyLoop({ ...ask, asked: true, regressions: ["made up a key"] })).toBe("invented");
     expect(classifyLoop({ ...ask, ladder: "passed", regressions: ["made up a key"] })).toBe("invented");
+    expect(classifyLoop({ ...ask, ladder: "passed" })).toBe("invented");   // passing without the person's decision means one was made for them
     expect(classifyLoop({ ...ask, checks: 6, cardShown: true })).toBe("thrashed");
     expect(classifyLoop({ ...ask })).toBe("gave_up");
   });

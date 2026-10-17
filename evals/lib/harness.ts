@@ -24,7 +24,8 @@ export interface EvalHarness {
   agent(): Engine;
   /** The second model review, on the runner's reviewModel. The runner refuses every tool it asks for. */
   reviewer(): Engine;
-  /** A single text call (Explain, the grader). */
+  /** A single text call with its own system prompt and no tools: Explain (wired as the app wires it, the fast lane with
+   *  raw: true, see runner/src/main.ts) and the grader. */
   ask(model: string): TextAsk;
   /** Show me how's pointing lane: the default vision lane, or the experimental Computer Use one (API key route only). */
   vision(model: string, lane?: "default" | "computer_use"): VisionLike;

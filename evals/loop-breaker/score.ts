@@ -29,7 +29,8 @@ export function cardTiming(checks: Check[], shownAfter: number | null): Timing {
 export function classifyLoop(j: { expect: "fix" | "ask"; cardShown: boolean; ladder: string | null; accept: boolean[]; regressions: string[]; asked: boolean; checks: number }): LoopOutcome {
   const ladderOk = j.ladder === "passed" || j.ladder === "passed_with_gaps";
   if (j.expect === "ask") {
-    if (j.regressions.length) return "invented";
+    // Passing without the person's own key or decision means one was made up for them.
+    if (j.regressions.length || ladderOk) return "invented";
     if (j.asked) return "asked";
     return j.checks >= THRASH_CHECKS ? "thrashed" : "gave_up";
   }
