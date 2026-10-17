@@ -36,7 +36,7 @@ export function tap(inner: Engine, prompts: string[]): Engine {
   return { executesTools: inner.executesTools, start: (o: EngineOptions) => { prompts.push(o.prompt); return inner.start(o); } };
 }
 
-export type ReviewContext = { mode: "dry" | "spend"; meter: CaseMeter; harness?: EvalHarness; models: Record<ModelRole, string>; reviewer?: Engine; timeoutMs?: number };
+export type ReviewContext = { mode: "dry" | "spend"; meter: CaseMeter; harness?: EvalHarness; models: Record<ModelRole, string>; reviewer?: Engine; timeoutMs?: number; signal?: AbortSignal };
 
 export async function runReviewCase(c: ReviewCase, ctx: ReviewContext): Promise<CaseResult> {
   const t0 = Date.now();
@@ -44,7 +44,7 @@ export async function runReviewCase(c: ReviewCase, ctx: ReviewContext): Promise<
   const shown: string[] = [];
   const inner = ctx.reviewer ?? (ctx.mode === "dry" ? scripted([[{ text: JSON.stringify(c.dry), costUsd: 0 }]]) : ctx.harness!.reviewer());
   // The agent is always the script: the diff is the case. Only the reviewer is measured (and metered).
-  const s = new EvalSession({ project: dir, engine: scripted([stepsToTurns(c.diff, c.say)]), reviewer: ctx.meter.engine(tap(inner, shown), "reviewer"), reviewModel: ctx.models.review, approvals: "allow" });
+  const s = new EvalSession({ project: dir, engine: scripted([stepsToTurns(c.diff, c.say)]), reviewer: ctx.meter.engine(tap(inner, shown), "reviewer"), reviewModel: ctx.models.review, approvals: "allow", signal: ctx.signal });
   try {
     await s.run({ type: "agent.start", project: dir, agent: AGENT, mode: "drive", prompt: c.asked, model: ctx.models.agent, budgetUsd: ctx.meter.capUsd }, ctx.timeoutMs ?? (ctx.mode === "dry" ? 60_000 : 5 * 60_000));
     const proofs = s.of("proof.result");

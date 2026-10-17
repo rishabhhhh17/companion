@@ -27,6 +27,8 @@ export type SessionOptions = {
   approvals?: "deny" | "allow";
   /** What the eval presses on the loop card: "Try a different approach" (what the card is for) or "Stop here". */
   onStuck?: "different" | "stop";
+  /** The case's signal (runSet): aborted at a refusal or a spending stop, which stops everything at once, as Stop does. */
+  signal?: AbortSignal;
 };
 
 export class EvalSession {
@@ -44,6 +46,7 @@ export class EvalSession {
       ...(o.explainer ? { explainer: o.explainer } : {}),
       ...(o.proof ? { proof: o.proof } : {}),
     });
+    o.signal?.addEventListener("abort", () => void this.send({ type: "agent.interruptAll", reason: "the eval's harness stopped this case" }), { once: true });
   }
   private seen(e: Ev) {
     this.events.push(e);

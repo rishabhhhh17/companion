@@ -1,15 +1,15 @@
-// The parts every eval set shares, and above all the spending stops: a dry run spends nothing, --spend is refused until
-// the real harness is plugged in, a case stops at its cap, and the run stops starting cases at its total.
+// The parts every eval set shares, and above all the spending stops: a dry run spends nothing, a case stops at its cap, and
+// the run stops starting cases at its total. The real run harness itself (what --spend builds) is tested in real.test.ts.
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "../../runner/src/agent.ts";
 import { EngineStop, ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "../../runner/src/engine.ts";
-import { buildFastOptions } from "../../runner/src/lanes.ts";
 import { TaskLog } from "../../runner/src/tasklog.ts";
 import { CAP_REACHED, CaseMeter, SpendGuard } from "./budget.ts";
-import { askOptions, DEFAULT_MODELS, HarnessMissing, parseArgs, realHarness, type EvalHarness } from "./harness.ts";
-import { costTable, estimateUsd, uncachedUsd } from "./prices.ts";
+import { DEFAULT_MODELS, parseArgs, type EvalHarness } from "./harness.ts";
+import { estimateUsd as modelsUsd } from "../../runner/src/models.ts";
+import { costTable, estimateUsd, PRICES, uncachedUsd } from "./prices.ts";
 import { checkResults, readResults, type CaseResult } from "./results.ts";
 import { runSet } from "./runset.ts";
 import { changeSize, lineChanges, parsePytest, parseTap, removeDir, tempDir, testRegressions } from "./project.ts";
@@ -44,32 +44,6 @@ describe("the command line", () => {
   test("--spend takes no value: --spend=false is refused, never read as a yes", () => {
     for (const bad of ["--spend=false", "--spend=no", "--spend=0", "--spend=", "--spend=true"]) expect(() => parseArgs([bad], d), bad).toThrow(/--spend on its own/);
     expect(parseArgs(["--spend"], d).spend).toBe(true);
-  });
-});
-
-describe("the request shape of a single text call (Explain and the grader)", () => {
-  const base = { claudeBinary: "/nowhere/claude", env: {}, system: "Grade it.", signal: noSignal() };
-  test("the grader's default model is never sent thinking turned off, which Sonnet 5.5 and Opus 5.5 refuse", () => {
-    for (const model of [DEFAULT_MODELS.grader, "claude-sonnet-5-5", "claude-opus-5-5"]) {
-      const o = askOptions({ ...base, model }) as Record<string, any>;
-      expect(o.thinking?.type, model).not.toBe("disabled");
-      expect(o.effort, model).toBe("low");
-      expect(o.model).toBe(model);
-    }
-  });
-  test("on the fast lane's own models the request is exactly the app's, so Explain is measured as it ships", () => {
-    for (const model of [DEFAULT_MODELS.fast, "claude-haiku-5-5"]) {
-      const o = askOptions({ ...base, model }) as Record<string, any>;
-      const { abortController: _a, canUseTool: _c, ...mine } = o;
-      const { abortController: _b, canUseTool: _d, ...app } = buildFastOptions({ ...base, model }) as Record<string, any>;
-      expect(mine, model).toEqual(app);
-      expect(o.thinking).toEqual({ type: "disabled" });
-      expect("effort" in o, model).toBe(false);
-    }
-  });
-  test("no tools, no saved conversation and no settings, whatever the model", () => {
-    const o = askOptions({ ...base, model: "claude-opus-5-5" }) as Record<string, any>;
-    expect(o).toMatchObject({ tools: [], allowedTools: [], settingSources: [], strictMcpConfig: true, maxTurns: 1, persistSession: false, systemPrompt: "Grade it." });
   });
 });
 
@@ -152,9 +126,11 @@ describe("spending stops", () => {
     expect(seen[0].capped).toBe(true);
     expect(engines[1].calls[0].budgetUsd).toBeCloseTo(0.15);   // the second case was told only what the run had left
     expect(results.spentUsd).toBeCloseTo(1.1);   // the run's own count (SpendGuard.spentUsd), which decides what may start
-    expect(results.cases.map((x) => x.outcome)).toEqual(["fine", "fine", "not_started", "not_started"]);
+    // Both cases were cut short by the spending limit, so neither is scored, whatever the case said: they fail with the reason.
+    expect(results.cases.map((x) => x.outcome)).toEqual(["stopped", "stopped", "not_started", "not_started"]);
+    expect(results.cases[0].detail?.wouldHaveBeen).toBe("fine");
     expect(results.cases[0].costUsd).toBeCloseTo(0.85);
-    expect(results.cases[0].notes.join(" ")).toMatch(/Stopped at the case's cap/);
+    expect(results.cases[0].notes[0]).toMatch(/^Stopped: .*spending limit/);
   });
 
   test("a single text call that fails with a cost is counted too", async () => {
@@ -182,13 +158,6 @@ describe("a run of a set", () => {
   const cases: C[] = [{ id: "one" }, { id: "two" }, { id: "three" }];
   const result = (id: string, usd: number, turns: number): CaseResult => ({ id, outcome: "fine", costUsd: usd, turns, tokens: { in: 0, cacheRead: 0, out: 0 }, ms: 1, notes: [] });
   const quiet = () => {};
-
-  test("--spend is refused while the real harness is not plugged in, before any case starts", async () => {
-    await expect(realHarness()).rejects.toBeInstanceOf(HarnessMissing);
-    let ran = 0;
-    await expect(runSet({ set: "t", setDir: tmp("set"), cases, args: parseArgs(["--spend"], { perCaseUsd: 1, totalUsd: 2 }), models: {}, summarize: () => ({}), log: quiet, run: async (c) => { ran++; return result(c.id, 0, 0); } })).rejects.toBeInstanceOf(HarnessMissing);
-    expect(ran).toBe(0);
-  });
 
   test("a dry run spends nothing, says so in its results file, and the file reads back", async () => {
     const out = join(tmp("out"), "r.json");
@@ -254,6 +223,16 @@ describe("cost estimates", () => {
     expect(estimateUsd("claude-haiku-5-5", { fresh: 0, written: 1_000_000, cacheRead: 1_000_000, out: 0 })).toBeCloseTo(0.135);
     expect(uncachedUsd("claude-haiku-4-5-20251001", { fresh: 0, written: 1_000_000, cacheRead: 1_000_000, out: 0 })).toBeCloseTo(2);
     expect(() => estimateUsd("some-model", { fresh: 1, written: 0, cacheRead: 0, out: 0 })).toThrow(/No price/);
+  });
+  test("the estimates use the same prices as the runner's model table, the one the spending stops count by", () => {
+    for (const model of Object.keys(PRICES)) {
+      const p = PRICES[model];
+      // One small request of each kind (well under Haiku 5.5's long prompt line), priced both ways.
+      expect(modelsUsd(model, { input_tokens: 10_000 }), model).toBeCloseTo(estimateUsd(model, { fresh: 10_000, written: 0, cacheRead: 0, out: 0 }), 9);
+      expect(modelsUsd(model, { output_tokens: 10_000 }), model).toBeCloseTo((10_000 * p.out) / 1e6, 9);
+      expect(modelsUsd(model, { cache_read_input_tokens: 10_000 }), model).toBeCloseTo((10_000 * p.cacheRead) / 1e6, 9);
+      expect(modelsUsd(model, { cache_creation_input_tokens: 10_000 }), model).toBeCloseTo(estimateUsd(model, { fresh: 0, written: 10_000, cacheRead: 0, out: 0 }), 9);
+    }
   });
   test("evals/README.md carries the table these numbers make", () => {
     const readme = join(import.meta.dir, "..", "README.md");

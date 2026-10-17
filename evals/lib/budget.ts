@@ -9,6 +9,9 @@
 // Between rounds (a proof retry, the next step of a plan) the meter refuses to start the next one once the case is at its
 // cap. A single text call (Explain, the grader, the vision lane) is checked before it starts and cannot be cut off half
 // way, so it can go over by one call (a cent or two).
+// When the cap cut work short (a round, a call or a turn refused, or a round the SDK stopped at its limit), `cut` says so,
+// and runSet fails the case with that reason instead of scoring it: a case that ran out of money is never a bad answer.
+// The real run harness (evals/lib/harness.ts) has its own stops on top, counted from the token stream while a query runs.
 import { EngineStop, type Engine, type EngineOptions, type ToolResult, type Turn, type Usage } from "../../runner/src/engine.ts";
 import type { LocateReq, Located, VisionLike } from "../../runner/src/lanes.ts";
 import type { TextAsk } from "./harness.ts";
@@ -50,7 +53,10 @@ export class CaseMeter {
   /** What the second model review said. */
   reviewerSaid: string[] = [];
   tools: string[] = [];
+  /** The case reached its cap (a later round would be refused). */
   capped = false;
+  /** Why work was cut short by the cap, or null: set only when something was refused or stopped, not merely reached. */
+  cut: string | null = null;
   constructor(readonly capUsd: number, private onSpend: (usd: number) => void = () => {}) {}
   left(): number { return Math.max(0, this.capUsd - this.usd); }
   over(): boolean { return this.usd >= this.capUsd; }
@@ -66,18 +72,27 @@ export class CaseMeter {
     if (t.text) (who === "reviewer" ? this.reviewerSaid : planOnly ? this.planSaid : this.said).push(t.text);
     if (t.tool) this.tools.push(t.tool.name);
   }
+  /** Nothing more starts: the case is at its cap. Throws the stop. */
+  refuse(): never {
+    this.capped = true;
+    this.cut ??= `this case's cap of $${this.capUsd.toFixed(2)} was reached (spent about $${this.usd.toFixed(2)}), so no more work was started`;
+    throw new EngineStop(CAP_REACHED);
+  }
   /** A round that ended by throwing: the SDK's EngineStop carries what the round cost, which no turn reported. */
   stoppedWith(e: unknown) {
     const usd = costOf(e);
     if (usd > 0) this.charge(usd);
-    if (e instanceof EngineStop && /^error_max_budget_usd\b/.test(e.message)) this.capped = true;
+    if (e instanceof EngineStop && /^error_max_budget_usd\b/.test(e.message)) {
+      this.capped = true;
+      this.cut ??= e.message === CAP_REACHED ? `this case's cap of $${this.capUsd.toFixed(2)} was reached, so no more work was started` : `the SDK stopped a round at this case's spending limit of $${this.capUsd.toFixed(2)} (spent about $${this.usd.toFixed(2)})`;
+    }
   }
   /** Any engine, counted and stopped at this case's cap. */
   engine(inner: Engine, who: Speaker = "agent"): Engine { return new MeteredEngine(inner, this, (t, planOnly) => this.turn(t, who, planOnly)); }
   /** A text call, refused once the cap is reached, its cost and tokens counted (also when it fails with a cost). */
   ask(inner: TextAsk): TextAsk {
     return async (req, signal) => {
-      if (this.over()) { this.capped = true; throw new EngineStop(CAP_REACHED); }
+      if (this.over()) this.refuse();
       let r: Awaited<ReturnType<TextAsk>>;
       try { r = await inner(req, signal); } catch (e) { this.turns++; this.stoppedWith(e); throw e; }
       this.turns++;
@@ -87,7 +102,7 @@ export class CaseMeter {
   }
   vision(inner: VisionLike): VisionLike {
     return { locate: async (req: LocateReq, signal: AbortSignal): Promise<Located> => {
-      if (this.over()) { this.capped = true; throw new EngineStop(CAP_REACHED); }
+      if (this.over()) this.refuse();
       let r: Located;
       try { r = await inner.locate(req, signal); } catch (e) { this.turns++; this.stoppedWith(e); throw e; }
       this.turns++;
@@ -101,7 +116,7 @@ class MeteredEngine implements Engine {
   constructor(private inner: Engine, private meter: CaseMeter, private count: (t: Turn, planOnly: boolean) => void) {}
   get executesTools() { return this.inner.executesTools; }
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    if (this.meter.over()) { this.meter.capped = true; throw new EngineStop(CAP_REACHED); }
+    if (this.meter.over()) this.meter.refuse();
     // The real engine is told the smaller of the task's budget and what this case has left (the SDK's maxBudgetUsd).
     const gen = this.inner.start({ ...opts, budgetUsd: Math.min(opts.budgetUsd, this.meter.left()) });
     // The inner engine's own steps: a round the SDK stopped at its limit throws, with the round's cost inside the stop. The
@@ -115,7 +130,7 @@ class MeteredEngine implements Engine {
         this.count(next.value, !!opts.planOnly);
         const result = yield next.value;
         // The runner has counted this turn's cost; the next one does not start once the case is over its cap.
-        if (this.meter.over()) { this.meter.capped = true; throw new EngineStop(CAP_REACHED); }
+        if (this.meter.over()) this.meter.refuse();
         next = await step(result);
       }
     } finally { try { await gen.return(undefined); } catch { /* already finished */ } }

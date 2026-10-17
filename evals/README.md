@@ -19,33 +19,49 @@ Built in M11 wave 3 (`docs/milestones/M11-wave3-plan.md`, part A.5), so that whe
 
 All commands run from the repo root unless they say otherwise.
 
+## Running each set
+
+Run every set dry first (free, no model, no network). Spend only when the founder says go, and only after the smoke test (`cd runner && bun run scripts/smoke-real.ts --spend`) has passed. The key is read in code from the Keychain item `companion-dev` (`COMPANION_KEYCHAIN_SERVICE` names another), never typed or printed; see `docs/milestones/M11-real-run-checklist.md`, step 1, for how to store it.
+
+| Set | Dry (free) | Spend | One case, estimated | Stops by default |
+|---|---|---|---|---|
+| `review-catch` | `bun run evals/review-catch/run.ts` | `bun run evals/review-catch/run.ts --spend` | $0.05 (Opus 5.5) | $0.20 a case, $1.50 in all |
+| `explain` | `bun run evals/explain/run.ts` | `bun run evals/explain/run.ts --spend` (again with `--fast-model claude-haiku-5-5`) | $0.003 to explain (Haiku 4.5) plus $0.01 to grade (Sonnet 5.5) | $0.05 a case, $1 in all |
+| `fix-projects` | `bun run evals/fix-projects/run.ts` | `bun run evals/fix-projects/run.ts --spend` | $0.22 (Sonnet 5.5; $0.61 if nothing is cached) | $0.75 a case, $8 in all |
+| `loop-breaker` | `bun run evals/loop-breaker/run.ts` | `bun run evals/loop-breaker/run.ts --spend` | $0.47 (Sonnet 5.5; $1.51 if nothing is cached) | $1.50 a case, $5 in all |
+| `show-me-how` (the aim eval) | `cd runner && bun run scripts/eval-aim.ts` | `cd runner && bun run scripts/eval-aim.ts --spend` (again with `--lane computer_use`) | $0.02 an ask (Sonnet 5.5), $0.0008 (Haiku 5.5) | $0.05 an ask, $6 in all |
+
+The estimates come from the table in "What a case costs" below. A spend run prints each case as it finishes, writes its results file to the set's own `results/` folder, and exits with code 1 if a refusal or a spending stop took any case out of the rates (code 2 if it could not start at all, for example with no key in the Keychain item; nothing is spent then).
+
 ## Dry and spend
 
 **Dry (the default).** Every model is a stand in that plays back the case data: the known good fix, a first approach that keeps failing then the right one, the labelled review answer, the reference explanation. The rest is real: Companion's runner (its snapshots, safety rules, proof ladder and loop card), the project's own checks, the hidden checks, the scorer and the results file. A dry run proves the wiring, that every case is broken as it says, that every case can be solved, and that the scorer tells right from wrong. **It says nothing about how good Claude is.** Dry runs cost nothing, and reach no network unless you ask the aim eval for its older public website pages (`--real`). Their tests are part of `scripts/test-all.sh`.
 
-**Spend.** Add `--spend` (on its own: `--spend=false` or any other value after it is refused, never read as a yes). Every set then asks Claude through one module, `evals/lib/harness.ts`. The real run harness (the bundled binary, the key read from the Keychain in code, a throwaway `CLAUDE_CONFIG_DIR`, `settingSources: []`, `strictMcpConfig`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, and a check that `system/init` lists only the expected tools) comes with the real-key work and plugs in at `realHarness()`. **Until it does, `--spend` refuses and exits with code 2.** Nothing in this folder has ever spent money.
+**Spend.** Add `--spend` (on its own: `--spend=false` or any other value after it is refused, never read as a yes). Every set then asks Claude through one module, `evals/lib/harness.ts`, whose `realHarness()` is built on the real run harness every script that spends the key uses (`runner/scripts/realrun-harness.ts`): the SDK's bundled binary, the key read from the Keychain in code and never printed (it is hidden in every note, line and results file), a throwaway `CLAUDE_CONFIG_DIR` removed at the end, a short plain environment so no shell setting changes the request, `settingSources: []`, `strictMcpConfig`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, never `bypassPermissions`, a check that `system/init` lists only the expected tools, and its spending stops (below). Agent sessions and the reviewer run on Companion's own engine (`SdkEngine`), Explain and the grader on the app's fast lane, pointing on the app's vision lane (or the Computer Use lane), each with the harness's guarded query, so every request is built exactly as the app builds it. With no key in the Keychain item, `--spend` refuses before any case starts and exits with code 2. **Nothing in this folder has been run against real Claude yet.** The harness is tested with stubbed queries only (`evals/lib/real.test.ts`).
 
 Options every set takes:
 
 ```
   (no flag)          DRY: stand ins play the case data back, nothing is spent
-  --spend            really call Claude (needs the real run harness)
+  --spend            really call Claude, through the real run harness
   --only a,b         run only these case ids
   --per-case 0.6     the most one case may spend, in dollars
   --total 8          stop starting new cases once this much has been spent, in dollars
   --out file.json    where the results file goes
-  --agent-model id, --review-model id, --fast-model id, --vision-model id, --grader-model id, --diagnose-model id
+  --agent-model id, --review-model id, --fast-model id, --vision-model id, --aim-model id, --grader-model id, --diagnose-model id
 ```
 
-Set options: `fix-projects` takes `--flow rescue` (the app's own Fix it with me path: Rescue's diagnosis, then every step of its plan), `--split train` or `--split test` (12 and 13 cases, for prompt work), `--hard` (the 12 hardest, for the model sweep), `--on-stuck stop` and `--review`. `loop-breaker` takes `--on-stuck stop`. The aim eval takes `--set basic|hard|all`, `--lane computer_use` and `--count n` (or a number on its own; a number after a flag that takes a value, such as `--total 6`, is that flag's).
+Set options: `fix-projects` takes `--flow rescue` (the app's own Fix it with me path: Rescue's diagnosis, then every step of its plan), `--split train` or `--split test` (12 and 13 cases, for prompt work), `--hard` (the 12 hardest, for the model sweep), `--on-stuck stop` and `--review`. `loop-breaker` takes `--on-stuck stop`. The aim eval takes `--set basic|hard|all`, `--lane computer_use` (the experimental pointing lane, on `--aim-model`, falling back to the vision lane as the app does) and `--count n` (or a number on its own; a number after a flag that takes a value, such as `--total 6`, is that flag's). It also reads the app's own settings for these lanes, `COMPANION_AIM=computer_use`, `COMPANION_VISION_MODEL` and `COMPANION_AIM_MODEL`; a flag wins over them.
 
-**How a single text call is sent.** Explain and the grader go through the harness's `ask()`, which the real harness sends with `askOptions()` in `evals/lib/harness.ts`. On the fast lane's own models (Haiku 4.5, Haiku 5.5) that is exactly the app's fast lane request, so Explain is measured as it ships. The fast lane turns thinking off, which Sonnet 5.5 and Opus 5.5 refuse (a 400, so a call that is never answered, though it costs nothing); on those models `askOptions()` keeps the model's own thinking and asks for low effort. The grader's default is Sonnet 5.5, so this matters on every Explain run. The app's vision lane turns thinking off too, so a paid aim eval on Sonnet 5.5 waits for the runner's part A.1 fix; on Haiku 5.5 it does not.
+**What each request asks of its model.** One place decides it: `runner/src/models.ts` (`thinkingFor`, checked by `requestProblems`), the same rules the app uses. The eval sets keep no rules of their own (a test checks it). Explain and the grader go through the harness's `ask()`, which is the app's fast lane exactly as it sends Explain: thinking off on Haiku 4.5, adaptive thinking at low effort on Sonnet 5.5, Opus 5.5 and Haiku 5.5 (`models.ts` says why for each). The vision lane asks the same way. Agent sessions and the reviewer ask for medium effort on the 5.5 models. The Computer Use lane's one network call goes only to the Messages API, and is refused before it leaves if its request is not one its model takes. These are the documented rules, not yet seen against the live API: the smoke test proves them first.
 
 ## Spending stops
 
 - **Per case.** Each case gets its own cap (`--per-case`). The agent's budget is set to it, and the real engine is told what the case has left as its spending limit (the SDK's `maxBudgetUsd`). Inside one round of work that limit is the only stop: the real engine reports a round's cost only when the round ends, so the eval cannot see it grow turn by turn. The SDK checks its limit between its own turns, so a round can end a little over it; the eval counts that cost too, whether the round finished or was stopped at the limit. Between rounds (a retry after a failed check, the next step of a plan) the eval starts no new round once the case is at its cap. A single call for Explain, the grader or pointing is checked before it starts and can go over by that one call (a cent or two).
-- **Cumulative.** Once the run has spent `--total`, no new case starts. The cases not started are in the results file as `not_started`, with the reason.
-- These count the engine's own cost estimates. The hard stop is still the workspace spend limit in the Anthropic Console (M11: a separate key with an $80 limit).
+- **The harness's own stops.** On top of that, the real run harness counts every query while it runs, from the token counts of each reply, against the same per case cap and the run's total. Past either, it aborts the query in flight, ends the case at once (its signal stops everything, as Stop does), and nothing new starts in it. No query is ever sent outside a case.
+- **Cumulative.** Once the run has spent `--total` (by the larger of the two counts), no new case starts. The cases not started are in the results file as `not_started`, with the reason.
+- **A stop is never a score.** A case cut short by a spending stop is `stopped`, and a case the harness refused (an option or a `system/init` that breaks a rule) is `refused`, with the reason first in its notes and what it would otherwise have been scored as in `detail.wouldHaveBeen`, whatever the case itself made of the error ("no answer", "not fixed", "not graded"). Every set counts them on their own and leaves them out of every rate, and its summary line starts with "Not a clean run". A refusal ends the run, since it would only repeat. In the aim eval any stop ends the run and nothing is scored; a pointing lane that fails for another reason is an `error`, counted apart from the misses.
+- These count Companion's cost estimates. The hard stop is still the workspace spend limit in the Anthropic Console (M11: a separate key with an $80 limit).
 
 Default caps: fix-projects $0.75 a case, $8 in all; loop-breaker $1.50 and $5; review-catch $0.20 and $1.50; explain $0.05 and $1; the aim eval $0.05 an ask and $6. Opus runs on fix-projects need `--per-case 1.25`.
 
@@ -73,13 +89,13 @@ The aim eval with every page (`--set all`, 88 asks) costs a little over twice th
 
 Run every set dry first; all must be green. Then spend, cheapest first, so a problem with the harness costs cents, not dollars:
 
-1. **The smoke test** from the real-key work (about $0.50).
+1. **The smoke test**, `cd runner && bun run scripts/smoke-real.ts --spend` (about $0.55, stops at $1): every lane accepts its request on its default model, through the same harness.
 2. **review-catch** on Opus 5.5 (about $0.50). One turn per case, so it checks the harness's single answer path. Decides whether to turn review on by default for risky changes.
 3. **explain** on Haiku 4.5, then on Haiku 5.5 with `--fast-model claude-haiku-5-5` (about $0.45 each with grading). Decides the fast lane's model (Haiku 4.5 may retire after 15 Oct 2026).
 4. **fix-projects** baseline on Sonnet 5.5 (about $5.50, cap $8).
 5. **loop-breaker** on Sonnet 5.5 (about $2.30, cap $5).
 6. **fix-projects sweep**: Haiku 5.5 on all 25 (about $0.30), then Opus 5.5 on `--hard` with `--per-case 1.25` (about $4.70). Pick defaults by cost per fixed case, not cost per request.
-7. **The aim eval** (`--set all`) on Haiku 5.5, and on Sonnet 5.5 once the runner's vision lane no longer turns thinking off (part A.1) (about $0.10 and $1.50).
+7. **The aim eval** (`--set all`) on Sonnet 5.5 (the app's default, about $1.50) and on Haiku 5.5 with `--vision-model claude-haiku-5-5` (about $0.07); then the Computer Use lane with `--lane computer_use` against the vision lane's snapped hit rate.
 8. Prompt work on `fix-projects --split train`, one final run on `--split test`, then the final regression.
 
 ## How each set is judged

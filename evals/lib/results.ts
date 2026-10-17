@@ -85,6 +85,22 @@ export function readResults(path: string): Results {
   return r as Results;
 }
 
+/** Outcomes a stop gave a case instead of a score: refused by the harness, or stopped by a spending stop (runset.ts).
+ *  Every set counts them on their own and leaves them out of every rate. */
+export const ENDED_BY_A_STOP = ["refused", "stopped"] as const;
+export const endedByAStop = (c: { outcome: string }) => (ENDED_BY_A_STOP as readonly string[]).includes(c.outcome);
+
+/** A run whose every case finished on its own: nothing refused or stopped, and the run was not ended early. */
+export const isClean = (r: Pick<Results, "stopped" | "cases">) => !r.stopped && !r.cases.some(endedByAStop);
+
+/** The first words of a set's summary line when a stop took cases out of the rates; empty for a clean run. */
+export function notCleanLine(counts: Record<string, number>): string {
+  const stopped = counts.stopped ?? 0, refused = counts.refused ?? 0, notStarted = counts.not_started ?? 0;
+  if (!stopped && !refused) return "";
+  const parts = [stopped ? `${stopped} stopped by a spending stop` : "", refused ? `${refused} refused by the harness` : "", notStarted ? `${notStarted} not started` : ""].filter(Boolean);
+  return `Not a clean run: ${parts.join(", ")}. They are left out of every rate below. `;
+}
+
 /** Counts of each outcome, in a fixed order, for the summary and the printed line. */
 export function countOutcomes(cases: CaseResult[], order: string[]): Record<string, number> {
   const out: Record<string, number> = {};

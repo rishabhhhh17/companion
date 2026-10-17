@@ -40,6 +40,8 @@ export const dryAgent = (c: LoopCase): Engine => scripted(c.dry.map((r) => steps
 export type LoopContext = {
   mode: "dry" | "spend"; meter: CaseMeter; harness?: EvalHarness; models: Record<ModelRole, string>;
   onStuck?: "different" | "stop"; approvals?: "deny" | "allow"; agent?: Engine; timeoutMs?: number;
+  /** runSet's case signal: aborted at a refusal or a spending stop. */
+  signal?: AbortSignal;
 };
 
 const empty = (id: string, outcome: string, notes: string[]): CaseResult => ({ id, outcome, costUsd: 0, turns: 0, tokens: { in: 0, cacheRead: 0, out: 0 }, ms: 0, notes });
@@ -62,7 +64,7 @@ export async function runLoopCase(c: LoopCase, ctx: LoopContext): Promise<CaseRe
   const timeout = ctx.timeoutMs ?? (ctx.mode === "dry" ? 120_000 : 20 * 60_000);
   const dir = copyProject(src, c.overlay ?? {});
   const engine = ctx.meter.engine(ctx.agent ?? (ctx.mode === "dry" ? dryAgent(c) : ctx.harness!.agent()));
-  const s = new EvalSession({ project: dir, engine, approvals: ctx.approvals ?? "deny", onStuck: ctx.onStuck ?? "different" });
+  const s = new EvalSession({ project: dir, engine, approvals: ctx.approvals ?? "deny", onStuck: ctx.onStuck ?? "different", signal: ctx.signal });
   try {
     const before = await hiddenState(c, dir);
     const printBefore = testPrint(dir);

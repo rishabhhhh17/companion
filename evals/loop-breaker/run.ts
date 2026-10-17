@@ -1,8 +1,9 @@
 // The loop breaker eval. DRY by default: the stand ins play a failing first approach, then the right one.
 //   bun run evals/loop-breaker/run.ts               dry, all 5 cases
-//   bun run evals/loop-breaker/run.ts --spend       real Claude (needs the real run harness), Sonnet 5.5 by default
+//   bun run evals/loop-breaker/run.ts --spend       real Claude (through the real run harness), Sonnet 5.5 by default
 //   --on-stuck stop   press Stop here on the loop card instead of Try a different approach
 import { COMMON_HELP, parseArgs } from "../lib/harness.ts";
+import { isClean } from "../lib/results.ts";
 import { explainFailure, runSet } from "../lib/runset.ts";
 import { loadCases, runLoopCase, SET_DIR } from "./pipeline.ts";
 import { summarize, summaryLine } from "./score.ts";
@@ -16,4 +17,6 @@ try {
     run: (c, ctx) => runLoopCase(c, { ...ctx, models: args.models, onStuck }),
   });
   console.log(summaryLine(results.summary as ReturnType<typeof summarize>));
+  // A refusal or a spending stop took cases out of the rates: the run is not a clean result.
+  if (!isClean(results)) process.exitCode = 1;
 } catch (e) { explainFailure(e); }

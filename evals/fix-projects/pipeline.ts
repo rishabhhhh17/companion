@@ -85,6 +85,8 @@ export type FixContext = {
   /** Tests only: a stand in other than the known good fix (a wrong fix, one that breaks something else). */
   agent?: Engine;
   timeoutMs?: number;
+  /** runSet's case signal: aborted at a refusal or a spending stop. */
+  signal?: AbortSignal;
 };
 
 type CheckState = Record<string, boolean>;
@@ -113,7 +115,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
   const inner = ctx.agent ?? (ctx.mode === "dry" ? dryAgent(c, flow) : ctx.harness!.agent());
   const engine = ctx.meter.engine(inner);
   const reviewer = ctx.review ? ctx.meter.engine(ctx.mode === "dry" ? scripted([[{ text: '{"verdict":"approve","concerns":[]}', costUsd: 0 }]]) : ctx.harness!.reviewer(), "reviewer") : undefined;
-  const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "deny", onStuck: ctx.onStuck ?? "different" });
+  const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "deny", onStuck: ctx.onStuck ?? "different", signal: ctx.signal });
   try {
     const before = await runHidden(c, dir);
     const printBefore = testPrint(dir);

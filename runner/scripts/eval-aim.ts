@@ -1,32 +1,40 @@
-// The aim eval: how often does Claude's pointer land on the right thing? Pages are rendered in the hidden browser (headless:
-// nothing is shown on the screen, and it is never the person's screen), so the true place of every target is known from
-// the page itself. Scores: raw hit (the point is inside the target), and snapped hit (the clickable thing under the point
-// IS the target, which is what the Mac's Accessibility lookup gives us in the app); see evals/show-me-how/score.ts.
-// Two sets: the basic generated dashboards (48 asks) and the hard set (evals/show-me-how: 40 asks on four synthetic busy
-// dashboards, made up products, local files only).
+// MANUAL, REAL CLAUDE ON THE FOUNDER'S API KEY WITH --spend: how often does Claude's pointer land on the right thing?
+// Pages are rendered in the hidden browser (headless: nothing is shown on the screen, and it is never the person's screen),
+// so the true place of every target is known from the page itself. Scores: raw hit (the point is inside the target), and
+// snapped hit (the clickable thing under the point IS the target, which is what the Mac's Accessibility lookup gives us in
+// the app); see evals/show-me-how/score.ts. Two sets: the basic generated dashboards (48 asks) and the hard set
+// (evals/show-me-how: 40 asks on four synthetic busy dashboards, made up products, local files only).
 // DRY by default: every page is rendered and every target checked, and nothing is asked of Claude, so nothing is spent.
 //   bun run scripts/eval-aim.ts [--set basic|hard|all] [--count n]
-//   bun run scripts/eval-aim.ts --spend [--vision-model id] [--lane computer_use] [--per-case 0.05] [--total 6]
-//     real Claude through the eval harness (evals/lib/harness.ts), refused until the real run harness is plugged in
+//   bun run scripts/eval-aim.ts --spend [--vision-model id] [--lane computer_use] [--aim-model id] [--per-case 0.05] [--total 6]
+//     real Claude through the eval sets' real harness (evals/lib/harness.ts), which is runner/scripts/realrun-harness.ts
+//     underneath: the bundled binary, the key read in code from the companion-dev Keychain item, a throwaway Claude Code
+//     folder, the system/init check and the spending stops. The vision lane on its default model (COMPANION_VISION_MODEL
+//     or --vision-model switches it), or the Computer Use lane with --lane computer_use or COMPANION_AIM=computer_use
+//     (COMPANION_AIM_MODEL or --aim-model switches its model; it falls back to the vision lane as the app does). Its one
+//     network call goes only to the Messages API, is checked against models.ts before it leaves, and is metered.
 //   --real   the older opt in: open eight public websites instead (network; their asks are made from each page)
-// The command line and the harness come from evals/show-me-how/aim.ts, where the refusal to spend is tested.
+// A refusal or a spending stop ends the run and nothing is scored (it is never "no answer"); a lane error is counted apart
+// from the misses. The command line, the harness and the scoring of one ask come from evals/show-me-how/aim.ts, where they
+// are tested.
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { browserExecutable } from "../src/proof/browser.ts";
-import { clickPoint, type Located } from "../src/lanes.ts";
-import { COMMON_HELP } from "../../evals/lib/harness.ts";
+import { COMMON_HELP, type EvalHarness } from "../../evals/lib/harness.ts";
 import { explainFailure, runSet } from "../../evals/lib/runset.ts";
-import { countOutcomes, type CaseResult } from "../../evals/lib/results.ts";
-import { aimHarness, parseAimArgs, type AimArgs } from "../../evals/show-me-how/aim.ts";
+import { isClean } from "../../evals/lib/results.ts";
+import { aimHarness, aimReport, parseAimArgs, runAimAsk, summarizeAim, type AimArgs, type AimAsk } from "../../evals/show-me-how/aim.ts";
 import { FIND_ELEMENTS, hardPages, rightTargets, type HardAsk } from "../../evals/show-me-how/hard.ts";
-import { scorePoint, type Element } from "../../evals/show-me-how/score.ts";
+import type { Element } from "../../evals/show-me-how/score.ts";
 
 let aim: AimArgs;
-try { aim = parseAimArgs(process.argv.slice(2)); } catch (e) { explainFailure(e); }
+try { aim = parseAimArgs(process.argv.slice(2), process.env); } catch (e) { explainFailure(e); }
 const { args, count: want, which, real, lane } = aim;
 if (args.help) { console.log(`bun run scripts/eval-aim.ts [--set basic|hard|all] [--count n] [options]${COMMON_HELP}\n  --lane computer_use, --real`); process.exit(0); }
-// Refused before any page is rendered when spending is asked for but cannot happen yet.
-const harness = await aimHarness(aim).catch(explainFailure);
+// Refused before any page is rendered when spending is asked for but cannot happen (no key in the Keychain item).
+const harness: EvalHarness | undefined = await aimHarness(aim).catch(explainFailure);
+/** Ends the script before the run, removing the harness's throwaway folder first. */
+const fail = async (e: unknown): Promise<never> => { await harness?.close?.(); return explainFailure(e); };
 
 const css = (dark: boolean, dense: boolean) => `*{box-sizing:border-box}body{margin:0;font:${dense ? 12 : 15}px -apple-system,Helvetica,sans-serif;background:${dark ? "#111418" : "#f6f7f9"};color:${dark ? "#e7e9ec" : "#1b1f24"}}
 a{color:${dark ? "#7cb7ff" : "#0b57d0"};text-decoration:none}button,.btn{font:inherit;padding:${dense ? "3px 8px" : "8px 14px"};border-radius:6px;border:1px solid ${dark ? "#3a4048" : "#c9ced6"};background:${dark ? "#1d2229" : "#fff"};color:inherit;cursor:pointer}
@@ -58,66 +66,53 @@ const pages = (): Page[] => {
 const SITES = ["https://github.com/login", "https://news.ycombinator.com", "https://en.wikipedia.org/wiki/Main_Page", "https://www.python.org", "https://vercel.com", "https://stripe.com", "https://supabase.com", "https://www.npmjs.com"];
 let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 const exe = browserExecutable();
-if (!exe) explainFailure(new Error("The hidden browser is not installed, so no page can be rendered. Install it from Companion first."));
+if (!exe) await fail(new Error("The hidden browser is not installed, so no page can be rendered. Install it from Companion first."));
 
 // Render every page once and keep what each ask needs: the picture, the controls on it, the target (and any other control
 // that answers it as well, on the hard set) and the question.
-type Ask = { id: string; page: string; png: string; els: Element[]; target: Element; targets: Element[]; question: string; set: "basic" | "hard" | "real" };
-const asks: Ask[] = [];
-let leftOut = 0;
-const browser = await chromium.launch({ headless: true, executablePath: exe! });
-const list: { name: string; html: string; asks: HardAsk[]; set: Ask["set"]; byLabel: boolean }[] = real
-  ? SITES.map((url) => ({ name: new URL(url).host, html: url, asks: [], set: "real", byLabel: false }))
-  : [...(which !== "hard" ? pages().map((p) => ({ ...p, set: "basic" as const, byLabel: false })) : []), ...(which !== "basic" ? hardPages().map((p) => ({ ...p, set: "hard" as const, byLabel: true })) : [])];
-for (const pg of list) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
-  const page = await ctx.newPage();
-  if (pg.set === "real") { try { await page.goto(pg.html, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(2500); } catch { await ctx.close(); continue; } } else await page.setContent(pg.html);
-  const els: Element[] = await page.evaluate(`(${FIND_ELEMENTS})()`);
-  if (pg.set === "real") {
-    // Pick up to six links or buttons with short, unique visible text.
-    const counts = new Map<string, number>(); for (const e of els) counts.set(e.t.toLowerCase(), (counts.get(e.t.toLowerCase()) ?? 0) + 1);
-    const ok = els.filter((e) => e.t.length >= 3 && e.t.length <= 30 && counts.get(e.t.toLowerCase()) === 1 && e.w >= 20 && e.h >= 14 && e.x >= 0 && e.x + e.w <= 1280 && e.y + e.h <= 800).sort(() => rnd() - 0.5).slice(0, 6);
-    pg.asks = ok.map((e) => ({ target: e.t, question: `Where is the "${e.t}" button or link?` }));
-  }
-  const png = (await page.screenshot({ type: "png" })).toString("base64");
-  for (const ask of pg.asks) {
-    if (asks.length >= want) break;
-    // A hard page names its targets by label; the others by the words on it.
-    const targets = pg.byLabel ? rightTargets(ask).map((id) => els.find((e) => e.id === id)) : [els.find((e) => e.t.toLowerCase() === ask.target.toLowerCase()) ?? els.find((e) => e.t.toLowerCase().includes(ask.target.toLowerCase()))];
-    if (targets.some((t) => !t)) { leftOut++; console.log(`  ${pg.name}: not every right answer to ${ask.target} is on the page, so that ask is left out`); continue; }
-    asks.push({ id: `${pg.name}:${ask.target}`, page: pg.name, png, els, target: targets[0]!, targets: targets as Element[], question: ask.question, set: pg.set });
-  }
-  await ctx.close();
+async function render(): Promise<{ asks: AimAsk[]; leftOut: number }> {
+  const asks: AimAsk[] = [];
+  let leftOut = 0;
+  const browser = await chromium.launch({ headless: true, executablePath: exe! });
+  try {
+    const list: { name: string; html: string; asks: HardAsk[]; set: AimAsk["set"]; byLabel: boolean }[] = real
+      ? SITES.map((url) => ({ name: new URL(url).host, html: url, asks: [], set: "real", byLabel: false }))
+      : [...(which !== "hard" ? pages().map((p) => ({ ...p, set: "basic" as const, byLabel: false })) : []), ...(which !== "basic" ? hardPages().map((p) => ({ ...p, set: "hard" as const, byLabel: true })) : [])];
+    for (const pg of list) {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+      const page = await ctx.newPage();
+      if (pg.set === "real") { try { await page.goto(pg.html, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(2500); } catch { await ctx.close(); continue; } } else await page.setContent(pg.html);
+      const els: Element[] = await page.evaluate(`(${FIND_ELEMENTS})()`);
+      if (pg.set === "real") {
+        // Pick up to six links or buttons with short, unique visible text.
+        const counts = new Map<string, number>(); for (const e of els) counts.set(e.t.toLowerCase(), (counts.get(e.t.toLowerCase()) ?? 0) + 1);
+        const ok = els.filter((e) => e.t.length >= 3 && e.t.length <= 30 && counts.get(e.t.toLowerCase()) === 1 && e.w >= 20 && e.h >= 14 && e.x >= 0 && e.x + e.w <= 1280 && e.y + e.h <= 800).sort(() => rnd() - 0.5).slice(0, 6);
+        pg.asks = ok.map((e) => ({ target: e.t, question: `Where is the "${e.t}" button or link?` }));
+      }
+      const png = (await page.screenshot({ type: "png" })).toString("base64");
+      for (const ask of pg.asks) {
+        if (asks.length >= want) break;
+        // A hard page names its targets by label; the others by the words on it.
+        const targets = pg.byLabel ? rightTargets(ask).map((id) => els.find((e) => e.id === id)) : [els.find((e) => e.t.toLowerCase() === ask.target.toLowerCase()) ?? els.find((e) => e.t.toLowerCase().includes(ask.target.toLowerCase()))];
+        if (targets.some((t) => !t)) { leftOut++; console.log(`  ${pg.name}: not every right answer to ${ask.target} is on the page, so that ask is left out`); continue; }
+        asks.push({ id: `${pg.name}:${ask.target}`, page: pg.name, png, els, target: targets[0]!, targets: targets as Element[], question: ask.question, set: pg.set });
+      }
+      await ctx.close();
+    }
+  } finally { await browser.close(); }
+  return { asks, leftOut };
 }
-await browser.close();
+const { asks, leftOut } = await render().catch(fail);
 
-const OUTCOMES = ["snapped", "raw_only", "missed", "no_answer", "rendered", "error", "not_started"];
-const summarize = (cases: CaseResult[]) => {
-  const asked = cases.filter((c) => ["snapped", "raw_only", "missed", "no_answer"].includes(c.outcome));
-  const ms = asked.map((c) => c.ms).sort((a, b) => a - b);
-  const by = (set: string) => { const xs = asked.filter((c) => c.detail?.set === set); return { asked: xs.length, snapped: xs.filter((c) => c.outcome === "snapped").length, raw: xs.filter((c) => c.outcome === "snapped" || c.outcome === "raw_only").length }; };
-  return { counts: countOutcomes(cases, OUTCOMES), rendered: cases.length, asked: asked.length, basic: by("basic"), hard: by("hard"), real: by("real"), medianMs: ms[Math.floor(ms.length / 2)] ?? 0, slowestMs: ms.at(-1) ?? 0, costUsd: Math.round(cases.reduce((s, c) => s + c.costUsd, 0) * 1e6) / 1e6 };
-};
-const zero = { in: 0, cacheRead: 0, out: 0 };
 try {
   const { results } = await runSet({
-    set: "show-me-how", setDir: join(import.meta.dir, "..", "..", "evals", "show-me-how"), cases: asks, args, summarize, harness, models: { vision: args.models.vision, lane },
-    run: async (a, ctx): Promise<CaseResult> => {
-      const where = { set: a.set, page: a.page, target: { t: a.target.t, x: Math.round(a.target.x), y: Math.round(a.target.y) } };
-      if (ctx.mode === "dry") return { id: a.id, outcome: "rendered", costUsd: 0, turns: 0, tokens: zero, ms: 0, notes: [], detail: where };
-      const t0 = Date.now();
-      const vision = ctx.meter.vision(ctx.harness!.vision(args.models.vision, lane));
-      const r: Located = await vision.locate({ image: { base64: a.png, mediaType: "image/png", w: 1280, h: 800 }, question: a.question, ocr: [] }, new AbortController().signal).catch(() => ({ point: null, costUsd: 0 }));
-      // Scored on where the person would click: the last target of an answer with several (the ones before it are "look here").
-      const hit = clickPoint(r);
-      const s = scorePoint(hit, a.targets, a.els);
-      const outcome = !hit ? "no_answer" : s.snapped ? "snapped" : s.raw ? "raw_only" : "missed";
-      return { id: a.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: zero, ms: Date.now() - t0, notes: outcome === "snapped" || !hit ? [] : [`wanted "${a.target.t}" at (${Math.round(a.target.x)},${Math.round(a.target.y)}); got (${Math.round(hit.x)},${Math.round(hit.y)}) "${hit.targetText}"`], detail: { ...where, hit: hit ? { x: Math.round(hit.x), y: Math.round(hit.y), text: hit.targetText } : null } };
-    },
+    set: "show-me-how", setDir: join(import.meta.dir, "..", "..", "evals", "show-me-how"), cases: asks, args, summarize: summarizeAim, harness,
+    models: { vision: args.models.vision, lane, ...(lane === "computer_use" ? { aim: args.models.aim } : {}) },
+    // One ask over its cap means the estimates are off: the run ends there rather than spending on.
+    endRunOnCaseStop: true,
+    run: (a, ctx) => runAimAsk(a, ctx, { model: args.models.vision, lane, aimModel: args.models.aim }),
   });
-  const s = results.summary as ReturnType<typeof summarize>;
-  const pct = (n: number, of: number) => (of ? `${Math.round((100 * n) / of)}%` : "none");
-  if (results.mode === "dry") console.log(`\n${s.rendered} asks rendered${leftOut ? `; ${leftOut} left out because their target was not on the page` : ", every target found on its page"} (basic ${asks.filter((a) => a.set === "basic").length}, hard ${asks.filter((a) => a.set === "hard").length}${real ? `, public sites ${asks.filter((a) => a.set === "real").length}` : ""}). Nothing was asked of Claude.`);
-  else console.log(`\nasked: ${s.asked}\nsnapped hit rate: basic ${pct(s.basic.snapped, s.basic.asked)}, hard ${pct(s.hard.snapped, s.hard.asked)}${real ? `, public sites ${pct(s.real.snapped, s.real.asked)}` : ""}\nraw hit rate: basic ${pct(s.basic.raw, s.basic.asked)}, hard ${pct(s.hard.raw, s.hard.asked)}\nno answer: ${s.counts.no_answer}\nmedian time: ${s.medianMs} ms; slowest: ${s.slowestMs} ms\ncost: $${s.costUsd.toFixed(2)}`);
+  if (results.mode === "dry") console.log(`\n${asks.length} asks rendered${leftOut ? `; ${leftOut} left out because their target was not on the page` : ", every target found on its page"} (basic ${asks.filter((a) => a.set === "basic").length}, hard ${asks.filter((a) => a.set === "hard").length}${real ? `, public sites ${asks.filter((a) => a.set === "real").length}` : ""}). Nothing was asked of Claude.`);
+  else for (const line of aimReport(results, real)) console.log(line);
+  if (!isClean(results)) process.exitCode = 1;
 } catch (e) { explainFailure(e); }

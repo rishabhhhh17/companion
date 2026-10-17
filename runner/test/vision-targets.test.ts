@@ -221,8 +221,11 @@ describe("the target the person clicks is the last one (found in review, 16 Oct 
     expect(clickPoint({ point: null, costUsd: 0 })).toBeNull();
   });
   test("the aim eval scores the click target", async () => {
-    const src = await Bun.file(new URL("../scripts/eval-aim.ts", import.meta.url)).text();
+    // The script renders the pages; each ask is asked and scored in evals/show-me-how/aim.ts (runAimAsk).
+    const script = await Bun.file(new URL("../scripts/eval-aim.ts", import.meta.url)).text();
+    const src = await Bun.file(new URL("../../evals/show-me-how/aim.ts", import.meta.url)).text();
+    expect(script).toContain("runAimAsk(");
     expect(src).toContain("const hit = clickPoint(r);");
-    expect(src).not.toMatch(/r\.point!?\.(x|y|targetText)/);
+    for (const s of [script, src]) expect(s).not.toMatch(/r\.point!?\.(x|y|targetText)/);
   });
 });

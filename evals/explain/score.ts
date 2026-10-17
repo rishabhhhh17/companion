@@ -1,7 +1,7 @@
 // How one explanation is scored, following RUBRIC.md: the rules checked in code here, and the parts a reader must judge
 // (is it true of the change, is the marked answer right, could a non-engineer follow it) asked of a grader model.
 import { parseExplain, type Explanation } from "../../runner/src/explain.ts";
-import { countOutcomes, type CaseResult } from "../lib/results.ts";
+import { countOutcomes, endedByAStop, notCleanLine, type CaseResult } from "../lib/results.ts";
 
 const JARGON = ["variable", "function", "parameter", "argument", "undefined", "null", "boolean", "integer", "array", "string", "async", "await", "promise", "callback", "runtime", "compile", "syntax", "regex", "refactor", "dependency", "stack trace", "exception", "directive", "hook", "typeerror", "referenceerror"];
 const FRAMEWORKS = /\b(Next|Node|Nuxt|Vue|Express|Three|Chart|Ember|Backbone)\.js\b/g;
@@ -65,7 +65,9 @@ export function parseGrade(text: string): Grade | null {
 
 // ---------- the verdict ----------
 
-export const OUTCOMES = ["pass", "fail", "no_explanation", "not_graded", "error", "not_started"] as const;
+/** refused and stopped (set by evals/lib/runset.ts, never by judge): the real run harness refused the case, or a spending
+ *  stop cut it short. Never scored. */
+export const OUTCOMES = ["pass", "fail", "no_explanation", "not_graded", "error", "refused", "stopped", "not_started"] as const;
 
 export function judge(r: Rules, g: Grade | null): { outcome: (typeof OUTCOMES)[number]; reasons: string[] } {
   if (!r.parsed) return { outcome: "no_explanation", reasons: r.problems };
@@ -84,7 +86,7 @@ export function summarize(cases: CaseResult[]) {
   const part = (k: string) => rate(scored.filter((c) => c.detail?.[k] === true).length, scored.length);
   return {
     counts: countOutcomes(cases, [...OUTCOMES]),
-    passRate: rate(cases.filter((c) => c.outcome === "pass").length, cases.filter((c) => c.outcome !== "not_started" && c.outcome !== "error").length),
+    passRate: rate(cases.filter((c) => c.outcome === "pass").length, cases.filter((c) => c.outcome !== "not_started" && c.outcome !== "error" && !endedByAStop(c)).length),
     correct: part("correct"), plain: part("plain"), twoLines: part("twoLines"), question: part("question"),
     costUsd: Math.round(cases.reduce((s, c) => s + c.costUsd, 0) * 1e6) / 1e6,
   };
@@ -92,6 +94,6 @@ export function summarize(cases: CaseResult[]) {
 
 export function summaryLine(s: ReturnType<typeof summarize>): string {
   const pct = (x: number | null) => (x === null ? "none" : `${Math.round(x * 100)}%`);
-  return `Passed ${pct(s.passRate)}. Correct ${pct(s.correct)}, plain ${pct(s.plain)}, two lines ${pct(s.twoLines)}, a fair question ${pct(s.question)}. ` +
+  return `${notCleanLine(s.counts)}Passed ${pct(s.passRate)}. Correct ${pct(s.correct)}, plain ${pct(s.plain)}, two lines ${pct(s.twoLines)}, a fair question ${pct(s.question)}. ` +
     `No explanation ${s.counts.no_explanation}, not graded ${s.counts.not_graded}. Cost $${s.costUsd.toFixed(2)}.`;
 }
