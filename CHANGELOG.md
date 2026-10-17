@@ -459,3 +459,11 @@ None of this has been tried by a person on a real screen or with real Claude yet
 - **Hidden from screen sharing and quiet on calls**, both on by default. Companion checks only whether a call app is in front or the camera is on, never what is in it.
 - **Which task broke it?** When a check fails, Companion checks earlier saved versions in a private copy (never your folder) to find the task after which it started failing, and can undo just that task. Not for Python projects yet.
 - **Error explainer:** select an error in any app and press Control, Option, Command and E. It explains it in two plain sentences, shows where it is in your project, and offers Fix it (run off the record).
+
+## M11 wave 3: ready for real Claude, home in the notch, the companion from anywhere (17 Oct 2026)
+None of this has been seen on a real screen or run with real Claude yet.
+- **Home lives in the notch.** A quiet island at the top center of the screen (a small pill on screens without a notch) shows what Companion is doing when you hover, and opens Home below it with five tabs: Now, What I did, Learn, Memory, Settings. Hidden in full screen apps and from screen sharing.
+- **The companion comes from anywhere.** Drag it to any edge or corner. When it has something about a window, it comes beside that window (never over it) and goes home afterwards. You can turn this off in Settings ("Come to what it is about").
+- **Hold to talk is Option and Space.** If another app already uses those keys, Settings offers other two key choices that are free on your Mac.
+- **Ready for your Claude key.** Every request Companion makes now has the shape the newest Claude models accept (some older shapes would have failed on Sonnet 5.5 and Opus 5.5, including every Show me how on the default settings). Pointing with Computer Use uses the newest tool version.
+- **Safe paid tests.** All test runs with your key go through one harness: your key is read from the Keychain in code and never shown, each case and the whole run have a spending stop, and nothing spends unless asked. The test sets are ready: 25 fix cases, 5 "going in circles" cases, 10 risky changes for the second check, Explain scoring, and harder pointing tests.
