@@ -1,1 +1,1 @@
-{ "identifier": "default", "windows": ["dock", "card"], "permissions": ["core:default"] }
+{ "identifier": "default", "windows": ["dock", "card", "island"], "permissions": ["core:default"] }

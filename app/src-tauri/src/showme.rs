@@ -644,7 +644,11 @@ mod tests {
         let hush = body("fn card_closed_hush(");
         assert!(hush.contains("speech_off(app)") && hush.contains("showme_end_answer(app)") && hush.contains("emit(\"hush\""), "closing the card silences it and ends an answer still playing");
         assert!(body("fn close_card(").contains("card_closed_hush(&app)"), "Esc in the card");
-        assert!(body("fn toggle_card(").contains("card_closed_hush("), "and a click on the character");
+        // A click on the character, or on the island in the notch (F18 item 1), closes Home through toggle_home.
+        let line = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find('\n').unwrap()].to_string() };
+        assert!(line("fn toggle_card(").contains("toggle_home(app, \"character\")") && line("fn island_click(").contains("toggle_home(app, \"island\")"));
+        assert!(body("fn toggle_home(").contains("card_closed_hush("), "and a click on the character or the island");
+        // Hold to talk is the two key chord in use (F18 item 3): found by is_talk(s).
         let hold = &main[main.find("if is_talk(s) {").unwrap()..];
         let hold = &hold[..hold.find("voice_send(app").unwrap()];
         assert!(hold.contains("showme_end_answer(app)") && hold.contains("emit(\"hush\""), "so does starting to hold to talk");

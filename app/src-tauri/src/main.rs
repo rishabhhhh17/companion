@@ -4,6 +4,7 @@
 //! makeKeyAndOrderFront on a panel.
 
 mod docking;
+mod island;
 mod roam;
 mod fullscreen;
 mod anchor;
@@ -62,7 +63,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use docking::{card_frame, choice, inside, pick, signature, snap_on, Prefs, Rect, Screen};
+use docking::{choice, inside, pick, signature, snap_on, Prefs, Rect, Screen};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -73,10 +74,9 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuil
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const DOCK: (f64, f64) = (160.0, 160.0);
-const CARD: (f64, f64) = (340.0, 150.0);
-/// The tallest the card grows (its page asks for its content's height). The character beside a window keeps clear of
-/// the card at this height, so the card growing as a result comes in never ends over it.
-const CARD_MAX_H: f64 = 520.0;
+// Home's size (the card, F18): CARD is its width (380, for its tabs) and its least height, CARD_MAX_H the tallest it
+// grows. One definition, in island.rs, used by resize_card, by card_spot and by everything that keeps clear of Home.
+use island::{CARD, CARD_MAX_H};
 
 static RUN: OnceLock<String> = OnceLock::new();
 static T0: OnceLock<u128> = OnceLock::new();
@@ -198,21 +198,22 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel
 }
 
-/// Where the card goes at a given height (top left points, with the primary display's height for AppKit): next to the
-/// character's home, not where it may be visiting beside a window (F18 item 2), with its top level with the
-/// character's top, inside the work area.
+/// Where Home (the card) is when it is `h` tall (top left points, with the primary display's height for AppKit). The one
+/// answer for placing it and for the character keeping clear of it (island::card_spot, tested): dropped down from the
+/// island in the notch (F18 item 1) when the island's display is known, else beside the character's home as before F18,
+/// never beside where the character may be visiting a window (F18 item 2).
 fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> {
     let list = screens_now(mtm);
     let first = list.first()?;
     let ph = first.frame[3];
-    let df = roamer().home().unwrap_or_else(|| from_appkit(d.frame(), ph));
-    let (cx, cy) = (df[0] + df[2] / 2.0, df[1] + df[3] / 2.0);
-    let scr = list.iter().find(|s| cx >= s.frame[0] && cx < s.frame[0] + s.frame[2] && cy >= s.frame[1] && cy < s.frame[1] + s.frame[3]).unwrap_or(first);
-    let edge = with_prefs(|p| choice(p, &scr.id).0);
-    Some((card_frame(df, (CARD.0, h), scr.work, edge), ph))
+    let on = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let home = roamer().home().unwrap_or_else(|| from_appkit(d.frame(), ph));
+    let spot = island::card_spot(on.as_ref(), home, &list, |id| with_prefs(|p| choice(p, id).0), h)?;
+    Some((spot, ph))
 }
 
-/// Place the card next to the character's home. The card does not follow the character to a window.
+/// Place Home: under the island, or beside the character's home when no island display is known. It does not follow
+/// the character to a window.
 fn place_card(d: &NSPanel, c: &NSPanel) {
     let mtm = MainThreadMarker::new().unwrap();
     let Some((cf, ph)) = card_spot(mtm, d, CARD_H.load(Ordering::SeqCst) as f64) else { return };
@@ -248,15 +249,9 @@ fn save_prefs() { with_prefs(|p| { let _ = logfile::write_atomic(&prefs_path(), 
 fn to_appkit(r: Rect, primary_h: f64) -> NSRect { NSRect::new(NSPoint::new(r[0], primary_h - (r[1] + r[3])), NSSize::new(r[2], r[3])) }
 fn from_appkit(f: NSRect, primary_h: f64) -> Rect { [f.origin.x, primary_h - (f.origin.y + f.size.height), f.size.width, f.size.height] }
 
-fn screens_now(mtm: MainThreadMarker) -> Vec<Screen> {
-    let list = NSScreen::screens(mtm);
-    let primary_h = list.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-    list.iter().enumerate().map(|(i, s)| {
-        let (f, v) = (s.frame(), s.visibleFrame());
-        let frame = from_appkit(f, primary_h);
-        Screen { id: format!("{}x{}@{},{}", frame[2], frame[3], frame[0], frame[1]), frame, work: from_appkit(v, primary_h), primary: i == 0 }
-    }).collect()
-}
+/// Each display, with its notch if it has one, so the character keeps clear of the island and Home on it (docking.rs
+/// `dock_zone`). The same reading as the island's (`displays_now`; island::Display is docking::Screen). Main thread.
+fn screens_now(mtm: MainThreadMarker) -> Vec<Screen> { displays_now(mtm) }
 
 /// Put the character where it belongs: the saved display, else the same size, else under the mouse,
 /// else the primary one; inside the work area, on its saved edge at its saved height.
@@ -310,6 +305,239 @@ fn drop_dock(app: AppHandle) {
     let _ = app.run_on_main_thread(|| {
         let (x, y, wx, ww) = *LAST_DRAG.lock().unwrap();
         log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen), "last_pointer": [x, y], "work_x_and_width": [wx, ww] })));
+    });
+}
+
+// ---------- Home in the notch (F18.1; the maths is in island.rs, tested) ----------
+
+thread_local! {
+    static ISLAND: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) };
+    // The tracking area on the island does not keep its owner alive, so it is kept here for as long as the app runs.
+    static ISLAND_HOVER_OWNER: RefCell<Option<Retained<hover::HoverOwner>>> = const { RefCell::new(None) };
+}
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false });
+static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
+/// The display the island was on last (`island.json`), read once.
+static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
+/// The display it is on now, for Home to drop down from.
+static ISLAND_ON: Mutex<Option<island::Display>> = Mutex::new(None);
+/// What the island page was last told: its size, and what it sits on (the notch, a pill, or the thin line on the top edge).
+static ISLAND_SENT: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+/// Which display the pointer has stayed on, so the island can go to the one the person is using.
+static ISLAND_FOLLOW: Mutex<island::Follow> = Mutex::new(island::Follow::new());
+/// Home (the card) is open; each opening takes a number, so an older click away watch stops.
+static HOME_OPEN: AtomicBool = AtomicBool::new(false);
+static HOME_GEN: AtomicU64 = AtomicU64::new(0);
+/// One of Companion's own native dialogs (the folder chooser, the delete question) is up: a click in it is not a click elsewhere.
+static NATIVE_DIALOGS: AtomicU64 = AtomicU64::new(0);
+struct NativeDialog;
+impl NativeDialog { fn open() -> Self { NATIVE_DIALOGS.fetch_add(1, Ordering::SeqCst); NativeDialog } }
+impl Drop for NativeDialog { fn drop(&mut self) { NATIVE_DIALOGS.fetch_sub(1, Ordering::SeqCst); } }
+
+fn island_path() -> PathBuf { island::path(&data_dir()) }
+fn island_last() -> String {
+    ISLAND_LAST.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| island::parse_last(std::fs::read_to_string(island_path()).ok().as_deref())).clone()
+}
+fn remember_island(id: &str) {
+    *ISLAND_LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(id.to_string());
+    let _ = logfile::write_atomic(&island_path(), island::last_json(id).as_bytes());
+}
+
+/// Each display, with its notch if it has one (NSScreen's safe area and the two areas beside the camera). Main thread.
+fn displays_now(mtm: MainThreadMarker) -> Vec<island::Display> {
+    let list = NSScreen::screens(mtm);
+    let primary_h = list.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+    list.iter().enumerate().map(|(i, s)| {
+        let (f, v) = (s.frame(), s.visibleFrame());
+        let frame = from_appkit(f, primary_h);
+        let notch = island::notch_from(f.size.width, s.safeAreaInsets().top, s.auxiliaryTopLeftArea().size.width, s.auxiliaryTopRightArea().size.width);
+        island::Display { id: format!("{}x{}@{},{}", frame[2], frame[3], frame[0], frame[1]), frame, work: from_appkit(v, primary_h), primary: i == 0, notch }
+    }).collect()
+}
+
+/// Puts the island on its display at the size it should be now, and tells its page. `follow_mouse`: the person is opening
+/// Home, so the display with the pointer. Otherwise the display it was on last (`follow_pointer` changes that after the
+/// pointer stays on another display), so a change of size alone never moves it. Main thread.
+fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
+    let list = displays_now(mtm);
+    let Some(first) = list.first() else { return };
+    let ph = first.frame[3];
+    let last = island_last();
+    let mouse = if follow_mouse || !list.iter().any(|d| d.id == last) { let m = NSEvent::mouseLocation(); (m.x, ph - m.y) } else { (f64::NAN, f64::NAN) };
+    let Some((d, how)) = island::pick(&list, &last, mouse, follow_mouse) else { return };
+    let d = d.clone();
+    if d.id != last { remember_island(&d.id); }
+    let moved = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref() != Some(&d);
+    if moved { reset_hover(); }
+    let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); *s };
+    let mode = island::mode(state);
+    let f = island::island_frame(&d, mode);
+    *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setFrame_display(to_appkit(f, ph), true); } });
+    let kind = island::kind(&d);
+    tell_island(mode, kind);
+    if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
+}
+
+fn tell_island(mode: island::Mode, kind: island::Kind) {
+    {
+        let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
+        if g.0 == mode.word() && g.1 == kind.word() { return; }
+        *g = (mode.word().to_string(), kind.word().to_string());
+    }
+    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", json!({ "mode": mode.word(), "kind": kind.word() })); }
+}
+
+/// The island goes to the display the person is using: the one the pointer has stayed on for a few seconds (island.rs
+/// `Follow`), not while Home is open. Called from `tick`, twice a second. Only which display the pointer is on is used,
+/// read with `NSEvent::mouseLocation` (no permission); never what is on the screen, never keys. Main thread.
+fn follow_pointer(mtm: MainThreadMarker) {
+    let list = displays_now(mtm);
+    if list.len() < 2 { return; }
+    let ph = list[0].frame[3];
+    let m = NSEvent::mouseLocation();
+    let p = (m.x, ph - m.y);
+    let under = list.iter().find(|d| island::contains(d.frame, p)).map(|d| d.id.as_str());
+    let current = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|d| d.id.clone()).unwrap_or_default();
+    let to = ISLAND_FOLLOW.lock().unwrap_or_else(|e| e.into_inner()).sample(under, &current, HOME_OPEN.load(Ordering::SeqCst), now() as u64);
+    if let Some(id) = to { remember_island(&id); place_island(mtm, false, "followed_pointer"); }
+}
+
+fn island_show(on: bool) {
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { if on { p.orderFrontRegardless(); } else { p.orderOut(None); } } });
+    if !on { reset_hover(); }
+}
+
+/// The island's frame in global top left points, if it is on screen. Main thread.
+fn island_rect(primary_h: f64) -> Option<Rect> {
+    ISLAND.with(|i| i.borrow().as_ref().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), primary_h)))
+}
+
+/// Forgets whether the pointer was on the island (it was hidden, moved, or Home opened or closed over it).
+fn reset_hover() {
+    *ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()) = island::Hover::new();
+    ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()).hover = false;
+}
+
+/// Home went away (Esc, Close, a click elsewhere, the island or the character clicked again, a full screen app, Hide): the
+/// click away watch stops and the island goes back to its own size. Main thread.
+fn home_closed() {
+    HOME_OPEN.store(false, Ordering::SeqCst);
+    HOME_GEN.fetch_add(1, Ordering::SeqCst);
+    reset_hover();
+    if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "home_closed"); }
+}
+
+/// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
+/// pill, or the thin line on the top edge growing into the pill.
+#[tauri::command]
+fn island_alert(app: AppHandle, on: bool) {
+    let _ = app.run_on_main_thread(move || {
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on; s.alert = on; c };
+        if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
+    });
+}
+
+/// For the island page when it loads: its size now, and what it sits on.
+#[tauri::command]
+fn island_state() -> Value {
+    let (mode, kind) = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "kind": if kind.is_empty() { "pill".to_string() } else { kind } })
+}
+
+/// macOS tells us the pointer entered or left the island: a tracking area on that one window, active even while another
+/// app is in front. Nothing else about the pointer is read for this. Main thread.
+fn island_hover_changed(inside: bool) {
+    let t = now() as u64;
+    { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); if inside { h.enter(t) } else { h.exit(t) } }
+    island_hover_settle();
+}
+fn island_hover_settle() {
+    let t = now() as u64;
+    let (shown, wait) = { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); (h.at(t), h.wait_ms(t)) };
+    let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.hover != shown; s.hover = shown; c };
+    if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "hover"); } }
+    // Not settled yet (the pointer has only just come or gone): look again when it may have.
+    if let (Some(ms), Some(app)) = (wait, APP.get()) {
+        let a = app.clone();
+        std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(ms + 5)); let _ = a.run_on_main_thread(island_hover_settle); });
+    }
+}
+
+fn add_hover_tracking(mtm: MainThreadMarker, panel: &NSPanel) {
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions};
+    let Some(view) = panel.contentView() else { return };
+    let owner = hover::HoverOwner::new(mtm);
+    let opts = NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::ActiveAlways | NSTrackingAreaOptions::InVisibleRect;
+    let any: &objc2::runtime::AnyObject = owner.as_ref();
+    let area = unsafe { NSTrackingArea::initWithRect_options_owner_userInfo(NSTrackingArea::alloc(), view.bounds(), opts, Some(any), None) };
+    view.addTrackingArea(&area);
+    ISLAND_HOVER_OWNER.with(|o| *o.borrow_mut() = Some(owner));
+}
+
+mod hover {
+    use objc2::rc::Retained;
+    use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly};
+    use objc2_app_kit::NSEvent;
+    use objc2_foundation::NSObject;
+
+    define_class!(
+        // SAFETY: NSObject has no rules for subclasses, and this class has no Drop and no instance variables.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "CompanionIslandHover"]
+        pub struct HoverOwner;
+
+        impl HoverOwner {
+            #[unsafe(method(mouseEntered:))]
+            fn mouse_entered(&self, _event: &NSEvent) { super::island_hover_changed(true); }
+            #[unsafe(method(mouseExited:))]
+            fn mouse_exited(&self, _event: &NSEvent) { super::island_hover_changed(false); }
+        }
+    );
+
+    impl HoverOwner {
+        pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
+        }
+    }
+}
+
+/// While Home is open, a press that starts outside every Companion window counts as a click elsewhere, and Home is told:
+/// it closes unless something on it is waiting for the person (home.ts). Only whether the button is down and where the
+/// pointer is are read, twenty times a second, and only while Home is open: never keys, never anything on the screen.
+fn watch_click_away(app: &AppHandle) {
+    let gen = HOME_GEN.load(Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let down = || NSEvent::pressedMouseButtons() & 1 == 1;
+        let mut w = island::ClickAway::new(down());
+        // Companion's own windows, read at the moment of a press (Home grows and moves while it is open).
+        let a2 = app.clone();
+        let ours = move || -> Option<Vec<Rect>> {
+            let (tx, rx) = std::sync::mpsc::channel::<Vec<Rect>>();
+            let _ = a2.run_on_main_thread(move || {
+                let mtm = MainThreadMarker::new().unwrap();
+                let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+                let mut v: Vec<Rect> = with_panels(|d, c| [d, c].iter().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), ph)).collect()).unwrap_or_default();
+                if let Some(r) = island_rect(ph) { v.push(r); }
+                let _ = tx.send(v);
+            });
+            rx.recv_timeout(Duration::from_millis(500)).ok()
+        };
+        while HOME_OPEN.load(Ordering::SeqCst) && HOME_GEN.load(Ordering::SeqCst) == gen {
+            std::thread::sleep(Duration::from_millis(island::CLICK_POLL_MS));
+            // A click in one of our own dialogs (another process) is not a click elsewhere, nor is the press that ends it.
+            if NATIVE_DIALOGS.load(Ordering::SeqCst) > 0 { w = island::ClickAway::new(true); continue; }
+            let p = macos_see::pointer();
+            // If our windows cannot be read in time, the press counts as ours: Home never closes on a guess.
+            if w.sample(down(), (p.x, p.y), || ours().unwrap_or_else(|| vec![[p.x - 1.0, p.y - 1.0, 2.0, 2.0]])) {
+                log("home_click_away", json!({}));
+                let _ = app.emit_to("card", "home-click-away", ());
+            }
+        }
     });
 }
 
@@ -558,12 +786,17 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
+        let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
+        if !was_open { HOME_OPEN.store(true, Ordering::SeqCst); HOME_GEN.fetch_add(1, Ordering::SeqCst); reset_hover(); }
+        // Home opens on the display the person is using (the one with the pointer): the island goes there first.
+        place_island(mtm, true, "home_opened");
         with_panels(|d, c| {
             place_card(d, c);
             c.orderFrontRegardless();
             if keyboard { c.makeKeyWindow(); }
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
+        if !was_open { watch_click_away(&a); }
         let _ = a.emit_to("card", "opened", json!({ "keyboard": keyboard }));
     });
 }
@@ -612,17 +845,24 @@ fn open_card_cmd(app: AppHandle) {
     open_card(&app, "button", true);
 }
 
-/// Clicking the character shows or hides the card, and never takes the keyboard.
+/// Clicking the character shows or hides Home, and never takes the keyboard.
 #[tauri::command]
-fn toggle_card(app: AppHandle) {
+fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
+
+/// Clicking the island in the notch does the same (F18).
+#[tauri::command]
+fn island_click(app: AppHandle) { toggle_home(app, "island"); }
+
+fn toggle_home(app: AppHandle, source: &'static str) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         if card_visible() {
             with_panels(|_, c| c.orderOut(None));
-            log("card_closed", json!({ "source": "character" }));
+            home_closed();
+            log("card_closed", json!({ "source": source }));
             card_closed_hush(&a);
         } else {
-            open_card(&a, "character", false);
+            open_card(&a, source, false);
         }
     });
 }
@@ -702,6 +942,7 @@ fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String)
 /// Opens the Mac's own folder chooser (another process, so the keyboard is never taken), then uses the folder.
 #[tauri::command]
 async fn pick_project(app: AppHandle) -> Result<String, String> {
+    let _dialog = NativeDialog::open();
     let chosen = tauri::async_runtime::spawn_blocking(projects::choose_folder).await.map_err(|_| "The folder chooser stopped.".to_string())?;
     match chosen { Some(path) => use_project_inner(app, path), None => Err(String::new()) }
 }
@@ -711,7 +952,9 @@ async fn pick_project(app: AppHandle) -> Result<String, String> {
 async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
     let url = url.trim().to_string();
     if !url.starts_with("https://") { return Err("Paste the project's link; it starts with https://".into()); }
+    let dialog = NativeDialog::open();
     let chosen = tauri::async_runtime::spawn_blocking(projects::choose_parent).await.map_err(|_| "The folder chooser stopped.".to_string())?;
+    drop(dialog);
     let Some(parent) = chosen else { return Err(String::new()) };
     let parent = projects::validate_parent(&parent, &home_dir(), &data_dir())?;
     let cmd = json!({ "v": 1, "id": format!("clone{}", now()), "type": "project.clone", "url": url, "parent": parent.to_string_lossy() });
@@ -725,6 +968,7 @@ fn close_card(app: AppHandle) {
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         with_panels(|_, c| c.orderOut(None));
+        home_closed();
         log("card_closed", json!({ "app_active": active(mtm) }));
     });
 }
@@ -974,7 +1218,8 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
             let _ = a2.run_on_main_thread(move || {
                 let mtm = MainThreadMarker::new().unwrap();
                 let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-                let v = with_panels(|dock, card| [dock, card].iter().filter(|p| p.isVisible()).map(|p| { let f = p.frame(); coords::R { x: f.origin.x, y: primary_h - f.origin.y - f.size.height, w: f.size.width, h: f.size.height } }).collect::<Vec<_>>()).unwrap_or_default();
+                let mut v = with_panels(|dock, card| [dock, card].iter().filter(|p| p.isVisible()).map(|p| { let f = p.frame(); coords::R { x: f.origin.x, y: primary_h - f.origin.y - f.size.height, w: f.size.width, h: f.size.height } }).collect::<Vec<_>>()).unwrap_or_default();
+                if let Some(r) = island_rect(primary_h) { v.push(coords::R { x: r[0], y: r[1], w: r[2], h: r[3] }); }
                 let _ = tx.send(v);
             });
             rx.recv_timeout(Duration::from_millis(500)).unwrap_or_default()
@@ -1106,6 +1351,7 @@ fn apply_sharing(s: &presentation::Settings) {
     // F18: the character too, wherever it is (at home or beside a window).
     with_panels(|dock, card| { card.setSharingType(t); dock.setSharingType(t); });
     OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setSharingType(t); } });
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setSharingType(t); } });
 }
 
 /// Quiet during calls: a known call app is in front (and, once verified, a camera is in use). Only the front app's id (and
@@ -1266,7 +1512,9 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool)
     use std::sync::atomic::Ordering::SeqCst;
     if confirm != "delete everything" { return Err("Not confirmed.".into()); }
     if WIPING.swap(true, SeqCst) { return Err("Already deleting.".into()); }
+    let dialog = NativeDialog::open();
     let asked = tauri::async_runtime::spawn_blocking(confirm_delete_natively).await.unwrap_or(false);
+    drop(dialog);
     if !asked { WIPING.store(false, SeqCst); return Err(String::new()); }   // cancelled: nothing happened, nothing to say
     let projects: Vec<String> = if with_projects { projects::load(&projects_path()).still_there() } else { vec![] };
     let exe = std::env::current_exe().map_err(|_| { WIPING.store(false, SeqCst); "Could not start the cleanup.".to_string() })?;
@@ -1723,14 +1971,24 @@ fn tick(app: &AppHandle) {
     let show = visibility::should_show(visibility::Inputs { full_screen_app_in_front: fs, show_over_full_screen: std::env::var("COMPANION_OVER_FULLSCREEN").is_ok_and(|v| v == "1"), user_hid_it: USER_HID.load(Ordering::SeqCst) });
     if !show && !USER_HID.load(Ordering::SeqCst) && !HIDDEN_BY_US.swap(true, Ordering::SeqCst) {
         with_panels(|d, c| { d.orderOut(None); c.orderOut(None); });
+        island_show(false);
+        home_closed();
         log("hidden_for_full_screen", json!({}));
     } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
         with_panels(|d, _| d.orderFrontRegardless());
+        island_show(true);
         log("shown_after_full_screen", json!({}));
     }
     // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.
     let sig = signature(&screens_now(mtm));
-    if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } { apply_dock(mtm, "screens_changed", false); }
+    // The island and Home go back on their display too, and Home is placed again if it is open.
+    if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } {
+        apply_dock(mtm, "screens_changed", false);
+        place_island(mtm, false, "screens_changed");
+        with_panels(|d, c| if c.isVisible() { place_card(d, c) });
+    }
+    // With more than one display, the island moves to the one the person has been using for a few seconds.
+    follow_pointer(mtm);
     // The character beside a window goes home when its window changed, its app left the front, or nothing about it is up.
     roam_tick(app, &wins, front_pid);
     let act = active(mtm);
@@ -1874,7 +2132,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -1891,6 +2149,7 @@ fn main() {
             let dock_w = mk("dock", "dock.html", DOCK)?;
             let card_w = mk("card", "card.html", CARD)?;
             let overlay_w = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(100.0, 100.0).build()?;
+            let island_w = WebviewWindowBuilder::new(app, "island", WebviewUrl::App("island.html".into())).visible(false).focused(false).decorations(false).transparent(true).accept_first_mouse(true).inner_size(185.0, 32.0).build()?;
             let dock_ns: &NSWindow = unsafe { &*(dock_w.ns_window()? as *const NSWindow) };
             let card_ns: &NSWindow = unsafe { &*(card_w.ns_window()? as *const NSWindow) };
             let dock = make_panel(mtm, dock_ns, false, dock_frame);
@@ -1911,12 +2170,23 @@ fn main() {
             let overlay_ns: &NSWindow = unsafe { &*(overlay_w.ns_window()? as *const NSWindow) };
             let overlay = make_overlay(mtm, overlay_ns);
             OVERLAY.with(|o| *o.borrow_mut() = Some(overlay));
+            // The island in the notch (F18): borderless, so it can never become the key window, and above the menu bar.
+            let island_ns: &NSWindow = unsafe { &*(island_w.ns_window()? as *const NSWindow) };
+            let island = make_panel(mtm, island_ns, false, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(185.0, 32.0)));
+            island.setOpaque(false);
+            island.setHasShadow(false);
+            island.setBackgroundColor(Some(&NSColor::clearColor()));
+            island.setLevel(island::LEVEL);
+            add_hover_tracking(mtm, &island);
+            ISLAND.with(|i| *i.borrow_mut() = Some(island));
             PANELS.with(|p| *p.borrow_mut() = Some((dock, card)));
             // Hide from screen sharing (on unless turned off), set before anything is ever drawn.
             apply_sharing(&presentation_now());
             apply_dock(mtm, "launch", false);
+            place_island(mtm, false, "launch");
             *SIG.lock().unwrap() = signature(&screens_now(mtm));
             with_panels(|d, _| d.orderFrontRegardless());
+            island_show(true);
             log("dock_shown", json!({ "app_active": active(mtm) }));
             let _ = APP.set(app.handle().clone());
             let h = app.handle().clone();
@@ -1958,6 +2228,8 @@ fn main() {
                         let hide = !USER_HID.load(Ordering::SeqCst);
                         USER_HID.store(hide, Ordering::SeqCst);
                         with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
+                        island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
+                        if hide { home_closed(); }
                         log("menu_hide", json!({ "hidden": hide }));
                     }); }
                     "stop" => {

@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use crate::island;
 
 pub type Rect = [f64; 4]; // x, y, width, height
 
@@ -15,8 +16,10 @@ pub type Rect = [f64; 4]; // x, y, width, height
 #[serde(rename_all = "lowercase")]
 pub enum Edge { Left, Right, Top, Bottom }
 
+/// A display: its frame and work area (top left points), whether it is the primary one, and its camera housing if it has
+/// one (read from macOS, island.rs `notch_from`). The island in the notch reads the same type (island.rs `Display`).
 #[derive(Clone, Debug, PartialEq)]
-pub struct Screen { pub id: String, pub frame: Rect, pub work: Rect, pub primary: bool }
+pub struct Screen { pub id: String, pub frame: Rect, pub work: Rect, pub primary: bool, pub notch: Option<crate::island::Notch> }
 
 /// Saved choices (`dock.json`): the display used last, per display which edge and where along it (0 is the top or
 /// left end, 1 the bottom or right end), and the "Come to what it is about" switch (on unless turned off).
@@ -51,15 +54,45 @@ impl Prefs {
     }
 }
 
-/// The clear zone at the top centre of a display, left for the notch island (another part of F18): the width of a
-/// notch (about 190 points on a MacBook) plus a margin each side, from the very top down past the menu bar. Kept the
-/// same on displays without a notch, where the home is a pill in the same place.
+/// The clear zone at the top centre of a display, left for the island in the notch (F18 item 1, island.rs): the width
+/// of a notch (about 190 points on a MacBook) plus a margin each side, from the very top down past the menu bar. Kept
+/// the same on displays without a notch, where the island is a pill (or a thin line) in the same place, and on every
+/// display, since the island moves to the display the person uses. It always holds the island at its biggest (opened
+/// downward with the status, island.rs `island_frame`) with CLEAR_MARGIN around it, should a notch read wider or off
+/// centre; for every real display the fixed numbers already hold it. Trips beside a window keep clear of this zone.
 pub const NOTCH_CLEAR: (f64, f64) = (360.0, 120.0);
 pub fn notch_zone(s: &Screen) -> Rect {
     let (w, depth) = NOTCH_CLEAR;
     let below_menu = (s.work[1] - s.frame[1]).max(0.0);
-    [s.frame[0] + s.frame[2] / 2.0 - w / 2.0, s.frame[1], w, below_menu + depth]
+    let fixed = [s.frame[0] + s.frame[2] / 2.0 - w / 2.0, s.frame[1], w, below_menu + depth];
+    union(fixed, widen(island::island_frame(s, island::Mode::Peek), CLEAR_MARGIN))
 }
+
+/// Room kept between the character and the island or Home: the gap the card keeps from the character.
+pub const CLEAR_MARGIN: f64 = 8.0;
+
+/// Where Home reaches at its widest and tallest, with CLEAR_MARGIN around it: Home drops down from the island, centred
+/// under it and inside the work area (island.rs `home_frame`), CARD wide and up to CARD_MAX_H tall. Taken from the very
+/// top of the display, so with the island it makes one column.
+pub fn home_zone(s: &Screen) -> Rect {
+    let h = island::home_frame(s, (island::CARD.0, island::CARD_MAX_H));
+    widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN)
+}
+
+/// What the character's own place keeps clear of: the island at its biggest and Home at its tallest. Home opens and
+/// grows often (a click on the island or the character, the card hotkey, a result coming in), so the place is clear of
+/// it all the time: Home never covers the character and the character never has to move out of its way. Trips beside a
+/// window keep clear of the island always and of Home only while it is open (roam.rs, main.rs `card_room`), so a closed
+/// Home costs them no room.
+pub fn dock_zone(s: &Screen) -> Rect { union(notch_zone(s), home_zone(s)) }
+
+/// The smallest rectangle holding both.
+fn union(a: Rect, b: Rect) -> Rect {
+    let (x0, y0) = (a[0].min(b[0]), a[1].min(b[1]));
+    [x0, y0, (a[0] + a[2]).max(b[0] + b[2]) - x0, (a[1] + a[3]).max(b[1] + b[3]) - y0]
+}
+/// `r` with `m` more on its left, its right and below it (not above: the island and Home hang from the top).
+fn widen(r: Rect, m: f64) -> Rect { [r[0] - m, r[1], r[2] + 2.0 * m, r[3] + m] }
 
 /// True when two rectangles share any area (touching edges do not count).
 pub fn overlaps(a: Rect, b: Rect) -> bool { a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3] }
@@ -101,14 +134,16 @@ fn clear_of_zone(f: Rect, zone: Rect, work: Rect, edge: Edge) -> Rect {
     }
 }
 
-/// Where the character sits on a display: on its edge at its position, inside the work area, out of the clear zone.
+/// Where the character sits on a display: on its edge at its position, inside the work area, out of the island's zone
+/// and Home's drop down area (`dock_zone`).
 pub fn place(s: &Screen, size: (f64, f64), edge: Edge, pct: f64) -> Rect {
-    clear_of_zone(dock_frame(s.work, size, edge, pct), notch_zone(s), s.work, edge)
+    clear_of_zone(dock_frame(s.work, size, edge, pct), dock_zone(s), s.work, edge)
 }
 
 /// The card sits beside the character, on the side facing into the screen, and is kept inside the work area: beside a
 /// character on a side edge with its top level with the character's top, below one on the top edge, above one on the
-/// bottom edge, with its left side level with the character's.
+/// bottom edge, with its left side level with the character's. Since F18 Home drops down from the island in the notch
+/// instead (island.rs `card_spot`); this is used only when no display is known for the island.
 pub fn card_frame(dock: Rect, card: (f64, f64), work: Rect, edge: Edge) -> Rect {
     let gap = 8.0;
     let (x, y) = match edge {
@@ -180,8 +215,10 @@ pub fn signature(list: &[Screen]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // The card's real size (one definition, island.rs): 380 wide, at most 640 tall.
+    use crate::island::{CARD, CARD_MAX_H};
     const WORK: Rect = [0.0, 33.0, 1512.0, 949.0];
-    fn screen(id: &str, frame: Rect, work: Rect, primary: bool) -> Screen { Screen { id: id.into(), frame, work, primary } }
+    fn screen(id: &str, frame: Rect, work: Rect, primary: bool) -> Screen { Screen { id: id.into(), frame, work, primary, notch: None } }
     fn mac() -> Screen { screen("1512x982@0,0", [0.0, 0.0, 1512.0, 982.0], WORK, true) }
     fn ext() -> Screen { screen("1920x1080@1512,0", [1512.0, 0.0, 1920.0, 1080.0], [1512.0, 0.0, 1920.0, 1055.0], false) }
 
@@ -206,17 +243,17 @@ mod tests {
     #[test]
     fn the_card_faces_into_the_screen_and_stays_inside() {
         let d = dock_frame(WORK, (160.0, 160.0), Edge::Right, 0.5);
-        let c = card_frame(d, (340.0, 300.0), WORK, Edge::Right);
+        let c = card_frame(d, (CARD.0, 300.0), WORK, Edge::Right);
         assert!(c[0] + c[2] <= d[0]);
         assert!(inside(c, WORK));
         let dl = dock_frame(WORK, (160.0, 160.0), Edge::Left, 0.5);
-        let cl = card_frame(dl, (340.0, 300.0), WORK, Edge::Left);
+        let cl = card_frame(dl, (CARD.0, 300.0), WORK, Edge::Left);
         assert!(cl[0] >= dl[0] + dl[2]);
     }
     #[test]
     fn a_tall_card_near_the_bottom_is_pulled_up_to_fit() {
         let d = dock_frame(WORK, (160.0, 160.0), Edge::Right, 1.0);
-        let c = card_frame(d, (340.0, 520.0), WORK, Edge::Right);
+        let c = card_frame(d, (CARD.0, CARD_MAX_H), WORK, Edge::Right);
         assert!(inside(c, WORK));
     }
     #[test]
@@ -340,10 +377,12 @@ mod tests {
                 assert!(inside(f, s.work), "{} {e:?} {i}: {f:?}", s.id);
             } }
         }
-        // Just left of the middle it goes to the left of the zone, just right of it to the right.
-        let (s, z) = (mac(), notch_zone(&mac()));
+        // Just left of the middle it goes to the left of the zone its place keeps clear of (the island, and Home below it
+        // since the merge of F18 items 1 and 2), just right of it to the right; either way out of the island's zone.
+        let (s, z) = (mac(), dock_zone(&mac()));
         let l = place(&s, SIZE, Edge::Top, 0.49); assert!(l[0] + l[2] <= z[0] && z[0] - (l[0] + l[2]) < 2.0, "{l:?} {z:?}");
         let r = place(&s, SIZE, Edge::Top, 0.51); assert!(r[0] >= z[0] + z[2] && r[0] - (z[0] + z[2]) < 2.0, "{r:?} {z:?}");
+        for f in [l, r] { assert!(!overlaps(f, notch_zone(&s)), "{f:?}"); }
         // Away from the middle the top edge is untouched.
         assert_eq!(place(&s, SIZE, Edge::Top, 0.1), [0.1 * 1352.0, 33.0, 160.0, 160.0]);
     }
@@ -405,7 +444,7 @@ mod tests {
     #[test]
     fn the_card_faces_into_the_screen_from_every_edge() {
         let s = mac();
-        let card = (340.0, 300.0);
+        let card = (CARD.0, 300.0);
         let t = place(&s, SIZE, Edge::Top, 0.2);
         let ct = card_frame(t, card, s.work, Edge::Top);
         assert!(ct[1] >= t[1] + t[3], "below a character on the top edge: {ct:?}");
@@ -466,5 +505,95 @@ mod tests {
         assert_eq!((s2.id.as_str(), how), ("1920x1080@1512,-98", "exact"));
         let f2 = place(s2, SIZE, Edge::Top, 0.5);
         assert!(inside(f2, s2.work) && !overlaps(f2, notch_zone(s2)), "{f2:?}");
+    }
+
+    // ---- F18 items 1 and 2 together: the character keeps clear of the island and of Home below it (17 Oct 2026) ----
+    /// A display with a notch `notch_w` wide and 32 tall in the middle of its top edge, read the way macOS reports it.
+    fn notched(w: f64, h: f64, work: Rect, notch_w: f64) -> Screen {
+        let side = (w - notch_w) / 2.0;
+        Screen { id: format!("{w}x{h}@0,0"), frame: [0.0, 0.0, w, h], work, primary: true, notch: island::notch_from(w, 32.0, side, side) }
+    }
+    /// Real Macs and odd readings: notched laptops (14 and 16 inch with the Dock below, a 13 inch Air, a 14 inch at its
+    /// largest text, the Dock on the left, the menu bar and the Dock hidden), the widest notch reading island.rs accepts,
+    /// an uneven reading, the displays without a notch above, and a small 1024 x 640 display.
+    fn island_screens() -> Vec<Screen> {
+        let mut v = vec![
+            notched(1512.0, 982.0, [0.0, 32.0, 1512.0, 875.0], 185.0),
+            notched(1728.0, 1117.0, [0.0, 32.0, 1728.0, 1010.0], 185.0),
+            notched(1470.0, 956.0, [0.0, 32.0, 1470.0, 850.0], 185.0),
+            notched(1147.0, 745.0, [0.0, 32.0, 1147.0, 640.0], 140.0),
+            notched(1512.0, 982.0, [70.0, 32.0, 1442.0, 950.0], 185.0),
+            notched(1512.0, 982.0, [0.0, 0.0, 1512.0, 982.0], 185.0),
+            notched(1512.0, 982.0, [0.0, 32.0, 1512.0, 950.0], island::MAX_NOTCH_W),
+        ];
+        let mut uneven = notched(1512.0, 982.0, [0.0, 32.0, 1512.0, 875.0], 185.0);
+        uneven.notch = island::notch_from(1512.0, 32.0, 640.0, 687.0);
+        v.push(uneven);
+        assert!(v.iter().all(|s| s.notch.is_some()), "every notch reading above is taken as a notch");
+        v.extend(screens());
+        v.push(screen("1024x640@0,0", [0.0, 0.0, 1024.0, 640.0], [0.0, 25.0, 1024.0, 615.0], true));
+        v
+    }
+    fn holds(outer: Rect, r: Rect) -> bool { r[0] >= outer[0] - 1e-9 && r[1] >= outer[1] - 1e-9 && r[0] + r[2] <= outer[0] + outer[2] + 1e-9 && r[1] + r[3] <= outer[1] + outer[3] + 1e-9 }
+    const MODES: [island::Mode; 3] = [island::Mode::Rest, island::Mode::Alert, island::Mode::Peek];
+
+    #[test]
+    fn the_zones_hold_the_island_at_every_size_and_home_at_every_height_as_island_rs_draws_them() {
+        for s in island_screens() {
+            let (nz, hz, dz) = (notch_zone(&s), home_zone(&s), dock_zone(&s));
+            for m in MODES {
+                let i = island::island_frame(&s, m);
+                assert!(holds(nz, i) && holds(dz, i), "{} {m:?}: the island {i:?} is outside the zone {nz:?}", s.id);
+            }
+            for h in (CARD.1 as i32..=CARD_MAX_H as i32).step_by(10) {
+                let home = island::home_frame(&s, (CARD.0, h as f64));
+                assert!(holds(hz, home) && holds(dz, home), "{} Home {h} tall: {home:?} outside {hz:?}", s.id);
+                assert!(home[0] - hz[0] >= CLEAR_MARGIN - 1e-9 && (hz[0] + hz[2]) - (home[0] + home[2]) >= CLEAR_MARGIN - 1e-9
+                    && (hz[1] + hz[3]) - (home[1] + home[3]) >= CLEAR_MARGIN - 1e-9, "{} with the gap on each side and below: {home:?} {hz:?}", s.id);
+            }
+            assert!(holds(dz, nz) && holds(dz, hz), "{}", s.id);
+            assert_eq!(dz[1], s.frame[1], "{}: from the very top", s.id);
+        }
+        // For a real notch (up to 200 points, centred) and every display without one, the island's own zone keeps the
+        // numbers it had before the merge, so trips beside a window lose no room to it.
+        let (w, depth) = NOTCH_CLEAR;
+        for s in island_screens().into_iter().filter(|s| s.notch.is_none_or(|n| n.w <= 200.0 && (n.x + n.w / 2.0 - s.frame[2] / 2.0).abs() < 1.0)) {
+            assert_eq!(notch_zone(&s), [s.frame[0] + s.frame[2] / 2.0 - w / 2.0, s.frame[1], w, (s.work[1] - s.frame[1]).max(0.0) + depth], "{}", s.id);
+        }
+    }
+    #[test]
+    fn the_character_never_docks_inside_the_island_or_homes_drop_down_zone() {
+        for s in island_screens() {
+            let island_big = island::island_frame(&s, island::Mode::Peek);
+            let homes: Vec<Rect> = [CARD.1, 300.0, 450.0, CARD_MAX_H].iter().map(|h| island::home_frame(&s, (CARD.0, *h))).collect();
+            for e in EDGES { for i in 0..=200 {
+                let f = place(&s, SIZE, e, i as f64 / 200.0);
+                let why = format!("{} {e:?} {i}: {f:?}", s.id);
+                assert!(inside(f, s.work), "outside the work area: {why}");
+                for m in MODES { assert!(!overlaps(f, island::island_frame(&s, m)), "under the island ({m:?}): {why}"); }
+                for home in &homes { assert!(!overlaps(f, *home), "under Home {home:?}: {why}"); }
+                assert!(!overlaps(f, dock_zone(&s)), "{why}");
+            } }
+            // A drag along the top and along the bottom, the whole width: what is shown, and so saved, is clear too.
+            let w = s.work;
+            let mut x = w[0];
+            while x <= w[0] + w[2] {
+                for y in [w[1] + 10.0, w[1] + w[3] - 10.0] {
+                    let (e, p) = snap_on(&s, SIZE, x, y);
+                    let f = place(&s, SIZE, e, p);
+                    assert!(!overlaps(f, island_big) && !overlaps(f, homes[3]), "{} drag at {x},{y}: {f:?}", s.id);
+                }
+                x += 9.0;
+            }
+        }
+        // On a 14 inch MacBook Pro the top edge stops just beside Home at its widest, with the card's gap between them;
+        // the bottom edge, below Home at its tallest, is not moved at all.
+        let s = &island_screens()[0];
+        let home = island::home_frame(s, (CARD.0, CARD_MAX_H));
+        let l = place(s, SIZE, Edge::Top, 0.49);
+        assert!((home[0] - (l[0] + l[2]) - CLEAR_MARGIN).abs() < 0.01, "{l:?} {home:?}");
+        let r = place(s, SIZE, Edge::Top, 0.51);
+        assert!((r[0] - (home[0] + home[2]) - CLEAR_MARGIN).abs() < 0.01, "{r:?} {home:?}");
+        assert_eq!(place(s, SIZE, Edge::Bottom, 0.5), dock_frame(s.work, SIZE, Edge::Bottom, 0.5));
     }
 }

@@ -293,13 +293,15 @@ impl Roamer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // The card's real size (one definition, island.rs): 380 wide, at most 640 tall.
+    use crate::island::{CARD, CARD_MAX_H};
 
     const PHASES: [Phase; 6] = [Phase::Home, Phase::Surface, Phase::Travel, Phase::Settle, Phase::Visiting, Phase::Return];
     const SIZE: (f64, f64) = (160.0, 160.0);
     const OURS: i32 = 1;
     const EDITOR: i32 = 200;
     const OTHER: i32 = 300;
-    fn scr(id: &str, frame: Rect, work: Rect, primary: bool) -> Screen { Screen { id: id.into(), frame, work, primary } }
+    fn scr(id: &str, frame: Rect, work: Rect, primary: bool) -> Screen { Screen { id: id.into(), frame, work, primary, notch: None } }
     fn laptop() -> Screen { scr("1512x982@0,0", [0.0, 0.0, 1512.0, 982.0], [0.0, 33.0, 1512.0, 949.0], true) }
     fn ext() -> Screen { scr("1920x1080@1512,0", [1512.0, 0.0, 1920.0, 1080.0], [1512.0, 25.0, 1920.0, 1000.0], false) }
     fn dock_left() -> Screen { scr("1512x982@0,0", [0.0, 0.0, 1512.0, 982.0], [70.0, 33.0, 1442.0, 949.0], true) }
@@ -352,7 +354,7 @@ mod tests {
     #[test]
     fn it_keeps_off_its_own_card() {
         let s = laptop();
-        let card = [1012.0, 200.0, 340.0, 300.0];   // right where it would go
+        let card = [1352.0 - CARD.0, 200.0, CARD.0, 300.0];   // right where it would go
         let (spot, side) = go(plan(&ask(&s, [100.0, 100.0, 900.0, 700.0], [300.0, 300.0, 100.0, 30.0], &[card], HOME_LEFT)));
         assert!(!overlaps(spot, card), "{spot:?}");
         assert_eq!(side, Side::Right, "it slides along the same side when it can");
@@ -406,7 +408,7 @@ mod tests {
                 let window = [w[0] + wx, w[1] + wy, ww, wh];
                 for (fx, fy) in [(0.1, 0.1), (0.5, 0.5), (0.9, 0.2), (0.3, 0.95)] {
                     let target = [window[0] + window[2] * fx - 30.0, window[1] + window[3] * fy - 10.0, 60.0, 20.0];
-                    for home in homes { for card in [None, Some([home[0] - 348.0, home[1], 340.0, 300.0])] {
+                    for home in homes { for card in [None, Some([home[0] - CARD.0 - 8.0, home[1], CARD.0, 300.0])] {
                         cases += 1;
                         let avoid: Vec<Rect> = card.into_iter().collect();
                         let a = ask(&s, window, target, &avoid, home);
@@ -662,8 +664,8 @@ mod tests {
         // Home on the right edge, a Terminal window on the left. Level with the error line is beside the short card, so the
         // spot slides to just below it; then the card grows down over it as the explanation comes in.
         let (window, target) = ([40.0, 100.0, 900.0, 500.0], [400.0, 505.0, 200.0, 30.0]);
-        let short = crate::docking::card_frame(HOME_RIGHT, (340.0, 150.0), s.work, Edge::Right);
-        let tallest = crate::docking::card_frame(HOME_RIGHT, (340.0, 520.0), s.work, Edge::Right);
+        let short = crate::docking::card_frame(HOME_RIGHT, CARD, s.work, Edge::Right);
+        let tallest = crate::docking::card_frame(HOME_RIGHT, (CARD.0, CARD_MAX_H), s.work, Edge::Right);
         let (spot, side) = go(plan(&ask(&s, window, target, &[short], HOME_RIGHT)));
         assert!(!overlaps(spot, short) && overlaps(spot, tallest), "the layout the review found: {spot:?}");
         let mut r = Roamer::new();
@@ -687,7 +689,7 @@ mod tests {
         let home = [864.0, 252.5, 160.0, 160.0];
         let (window, target) = ([20.0, 25.0, 500.0, 615.0], [200.0, 300.0, 120.0, 24.0]);
         let (spot, side) = go(plan(&ask(&s, window, target, &[], home)));
-        let tallest = crate::docking::card_frame(home, (340.0, 520.0), s.work, Edge::Right);
+        let tallest = crate::docking::card_frame(home, (CARD.0, CARD_MAX_H), s.work, Edge::Right);
         assert!(overlaps(spot, tallest));
         let mut r = Roamer::new();
         r.placed_home(home);
@@ -702,10 +704,10 @@ mod tests {
         let s = laptop();
         let mut r = Roamer::new();
         r.placed_home(HOME_LEFT);
-        assert_eq!(r.card_moved([170.0, 427.5, 340.0, 520.0], &s, SIZE), None, "no visit");
+        assert_eq!(r.card_moved([170.0, 427.5, CARD.0, CARD_MAX_H], &s, SIZE), None, "no visit");
         r.begin(visit());
         assert!(r.next_move(false).is_some());
-        assert_eq!(r.card_moved([170.0, 427.5, 340.0, 520.0], &s, SIZE), None, "clear of the spot");
+        assert_eq!(r.card_moved([170.0, 427.5, CARD.0, CARD_MAX_H], &s, SIZE), None, "clear of the spot");
         assert_eq!(r.visit(), Some(&visit()));
         assert_eq!(r.next_move(false), None, "no trip");
     }
@@ -718,9 +720,9 @@ mod tests {
             let w = s.work;
             for edge in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] { for pct in [0.0, 0.3, 0.5, 0.8, 1.0] {
                 let home = crate::docking::place(&s, SIZE, edge, pct);
-                let tallest = crate::docking::card_frame(home, (340.0, 520.0), w, edge);
-                for h in (150..=520).step_by(10) {
-                    let c = crate::docking::card_frame(home, (340.0, h as f64), w, edge);
+                let tallest = crate::docking::card_frame(home, (CARD.0, CARD_MAX_H), w, edge);
+                for h in (CARD.1 as i32..=CARD_MAX_H as i32).step_by(10) {
+                    let c = crate::docking::card_frame(home, (CARD.0, h as f64), w, edge);
                     assert!(within(c, tallest), "{} {edge:?} {pct} {h}: {c:?} not in {tallest:?}", s.id);
                 }
             } }
@@ -735,7 +737,7 @@ mod tests {
             let w = s.work;
             for (edge, pct) in [(Edge::Left, 0.5), (Edge::Right, 0.5), (Edge::Right, 0.1), (Edge::Top, 0.2), (Edge::Bottom, 0.7)] {
                 let home = crate::docking::place(&s, SIZE, edge, pct);
-                let tallest = crate::docking::card_frame(home, (340.0, 520.0), w, edge);
+                let tallest = crate::docking::card_frame(home, (CARD.0, CARD_MAX_H), w, edge);
                 for wx in [0.0, 60.0, 300.0, 520.0, 800.0] { for wy in [0.0, 40.0, 200.0, 420.0] { for ww in [300.0, 600.0, 900.0, 1300.0] { for wh in [200.0, 450.0, 700.0] {
                     let window = [w[0] + wx, w[1] + wy, ww, wh];
                     for (fx, fy) in [(0.1, 0.1), (0.5, 0.5), (0.9, 0.2), (0.3, 0.95)] {
@@ -798,7 +800,7 @@ mod tests {
         assert!(body(MAIN, "fn drop_dock(").contains("DRAG_AT.store(0"));
         let apply = body(MAIN, "fn apply_dock(");
         assert!(apply.contains("docking::place(") && apply.contains("placed_home("), "a drag or a display change puts it home and ends any visit");
-        assert!(body(MAIN, "fn place_card(").contains("card_spot(") && body(MAIN, "fn card_spot(").contains("roamer().home()"), "the card stays by home while the character visits");
+        assert!(body(MAIN, "fn place_card(").contains("card_spot(") && body(MAIN, "fn card_spot(").contains("roamer().home()"), "Home is placed by card_spot: under the island, or by the character's home, never where it visits");
         assert!(body(MAIN, "fn roam_animate(").contains("reduced"), "reduced motion appears in place");
         assert!(MAIN.contains("accessibilityDisplayShouldReduceMotion()"));
     }
@@ -837,5 +839,92 @@ mod tests {
         let mut r = Roamer::new();
         assert_eq!(r.want(), None);
         assert_eq!(r.next_move(false), None);
+    }
+    // ---- F18 items 1 and 2 together: Home drops down from the island in the notch (17 Oct 2026) ----
+    fn notched(w: f64, h: f64, work: Rect) -> Screen {
+        let side = (w - 185.0) / 2.0;
+        Screen { id: format!("{w}x{h}@0,0"), frame: [0.0, 0.0, w, h], work, primary: true, notch: crate::island::notch_from(w, 32.0, side, side) }
+    }
+    /// A 14 inch MacBook Pro with the Dock below.
+    fn notched_laptop() -> Screen { notched(1512.0, 982.0, [0.0, 32.0, 1512.0, 875.0]) }
+    /// Where Home is at the tallest it can grow, as the shell keeps clear of it (main.rs `card_room` and `place_card`,
+    /// both through card_spot), with the island on this display.
+    fn home_open(s: &Screen, home: Rect, h: f64) -> Rect {
+        crate::island::card_spot(Some(s), home, std::slice::from_ref(s), |_: &str| Edge::Right, h).unwrap()
+    }
+    #[test]
+    fn a_trip_keeps_clear_of_home_under_the_notch_at_the_tallest_it_can_grow() {
+        let s = notched_laptop();
+        let home = crate::docking::place(&s, SIZE, Edge::Right, 0.5);
+        let open = home_open(&s, home, CARD_MAX_H);
+        assert!(open[1] < 100.0 && (open[0] + open[2] / 2.0 - 756.0).abs() < 0.01, "Home is under the notch, not beside the character: {open:?}");
+        // Only above the window has room, and the target is right under the notch.
+        let (window, target) = ([100.0, 300.0, 1312.0, 600.0], [700.0, 320.0, 112.0, 24.0]);
+        // Home closed: the trip keeps out of the island's zone only, and lands where Home would drop.
+        let (closed_spot, side) = go(plan(&ask(&s, window, target, &[], home)));
+        assert_eq!(side, Side::Above);
+        assert!(!overlaps(closed_spot, notch_zone(&s)));
+        assert!(overlaps(closed_spot, open), "the layout this test is about: {closed_spot:?} {open:?}");
+        // Home open: planned clear of it at its tallest, and of the island.
+        let (spot, _) = go(plan(&ask(&s, window, target, &[open], home)));
+        for b in [open, window, target, notch_zone(&s), crate::island::island_frame(&s, crate::island::Mode::Peek)] { assert!(!overlaps(spot, b), "{spot:?} covers {b:?}"); }
+        assert!(within(spot, s.work));
+        // Home opening after the trip was planned: planned again from the same window, clear of it, in one move.
+        let mut r = Roamer::new();
+        r.placed_home(home);
+        r.begin(visit_to(window, target, closed_spot, side));
+        assert!(r.next_move(false).is_some());
+        let p = r.card_moved(open, &s, SIZE).expect("planned again");
+        let v = r.visit().expect("still visiting, clear of Home").clone();
+        assert_eq!(p, Plan::Go { spot: v.spot, side: v.side });
+        for b in [open, window, target, notch_zone(&s)] { assert!(!overlaps(v.spot, b), "{v:?} covers {b:?}"); }
+        assert_eq!(r.next_move(false), Some(Move { to: v.spot, out: true }));
+        // However tall Home grows after that, it never reaches the character.
+        for h in (CARD.1 as i32..=CARD_MAX_H as i32).step_by(10) { assert!(!overlaps(v.spot, home_open(&s, home, h as f64)), "{h}"); }
+        assert_eq!(r.card_moved(open, &s, SIZE), None, "clear of the tallest: it stays put");
+    }
+    /// Many layouts on notched displays: whatever the plan, with Home open or opening later, the character never ends
+    /// under Home dropped from the notch, under the island, over the window or the target, or outside the work area.
+    #[test]
+    fn many_layouts_no_trip_ends_under_home_dropped_from_the_notch() {
+        let (mut cases, mut clear_already, mut replans, mut homes) = (0u32, 0u32, 0u32, 0u32);
+        for s in [notched_laptop(), notched(1728.0, 1117.0, [0.0, 32.0, 1728.0, 1010.0]), notched(1147.0, 745.0, [0.0, 32.0, 1147.0, 640.0])] {
+            let w = s.work;
+            let island = crate::island::island_frame(&s, crate::island::Mode::Peek);
+            for (edge, pct) in [(Edge::Left, 0.5), (Edge::Right, 0.5), (Edge::Top, 0.2), (Edge::Top, 0.8), (Edge::Bottom, 0.5)] {
+                let home = crate::docking::place(&s, SIZE, edge, pct);
+                let open = home_open(&s, home, CARD_MAX_H);
+                assert!(!overlaps(home, open) && !overlaps(home, island), "{} {edge:?}: home itself is clear", s.id);
+                for wx in [0.0, 60.0, 300.0, 520.0, 800.0] { for wy in [0.0, 40.0, 200.0, 420.0] { for ww in [300.0, 600.0, 900.0, 1300.0] { for wh in [200.0, 450.0, 700.0] {
+                    let window = [w[0] + wx, w[1] + wy, ww, wh];
+                    for (fx, fy) in [(0.1, 0.1), (0.5, 0.05), (0.5, 0.5), (0.9, 0.2), (0.3, 0.95)] {
+                        let target = [window[0] + window[2] * fx - 30.0, window[1] + window[3] * fy - 10.0, 60.0, 20.0];
+                        let why = format!("{} {edge:?} window {window:?} target {target:?}", s.id);
+                        // Planned with Home open.
+                        if let Plan::Go { spot, .. } = plan(&ask(&s, window, target, &[open], home)) {
+                            for b in [open, island, window, target] { assert!(!overlaps(spot, b), "{spot:?} covers {b:?}: {why}"); }
+                            assert!(within(spot, w), "{why}");
+                        }
+                        // Planned with Home closed, then Home opens.
+                        let Plan::Go { spot, side } = plan(&ask(&s, window, target, &[], home)) else { continue };
+                        cases += 1;
+                        assert!(!overlaps(spot, island), "under the island: {why}");
+                        let mut r = Roamer::new();
+                        r.placed_home(home);
+                        r.begin(visit_to(window, target, spot, side));
+                        match r.card_moved(open, &s, SIZE) {
+                            None => { clear_already += 1; assert!(!overlaps(spot, open), "kept a spot under Home: {why}"); }
+                            Some(Plan::Go { spot: n, .. }) => {
+                                replans += 1;
+                                for b in [open, island, window, target] { assert!(!overlaps(n, b), "{n:?} covers {b:?}: {why}"); }
+                                assert!(within(n, w), "{why}");
+                            }
+                            Some(Plan::Stay(_)) => { homes += 1; assert_eq!(r.want(), Some(home), "{why}"); }
+                        }
+                    }
+                } } } }
+            }
+        }
+        assert!(cases > 2_000 && clear_already > 100 && replans > 50, "not vacuous: {cases} trips, {clear_already} clear already, {replans} planned again, {homes} sent home");
     }
 }
