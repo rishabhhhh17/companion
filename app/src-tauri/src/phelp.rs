@@ -122,6 +122,8 @@ fn finish_read(app: &AppHandle, mut session: rules::ReadSession, pid: i32, bundl
             let text = r.text.clone();
             st().pending = Some(Pending { pid, bundle: bundle.clone(), name: name.clone(), element: Arc::new(el), element_id, original: r.text, had_selection: r.had_selection, sel_start: r.sel_start, improved: None, handback_copy: false });
             say(app, "thinking", json!({ "app": name, "selection": r.had_selection }));
+            // The character comes beside the window the prompt was read from while the card shows the result (F18 item 2).
+            crate::roam_beside_window_of(app, pid);
             send_prompt(app, &bundle, &text, None);
         }
     }

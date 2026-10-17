@@ -1,7 +1,7 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { at, burst, confetti, CONFETTI_S, flightMs, RING_MS } from "./pointer.ts";
+import { at, bend, burst, confetti, CONFETTI_S, ease, flightMs, RING_MS } from "./pointer.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
@@ -79,10 +79,10 @@ function show(p: Point) {
   if (reduced) { land(); return; }
   const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy);
   const dur = typeof p.flyMs === "number" && Number.isFinite(p.flyMs) ? Math.min(1600, Math.max(300, p.flyMs)) : flightMs(dist);
-  const bend = Math.min(80, dist / 4), mx = (p.from.x + cx) / 2, my = (p.from.y + cy) / 2 - bend;
+  const lift = bend(dist), mx = (p.from.x + cx) / 2, my = (p.from.y + cy) / 2 - lift;
   const t0 = performance.now();
   const step = (now: number) => {
-    const t = Math.min(1, (now - t0) / dur), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const t = Math.min(1, (now - t0) / dur), e = ease(t);
     const x = (1 - e) ** 2 * p.from.x + 2 * (1 - e) * e * mx + e ** 2 * cx, y = (1 - e) ** 2 * p.from.y + 2 * (1 - e) * e * my + e ** 2 * (cy - ry - 4);
     const ax = 2 * (1 - e) * (mx - p.from.x) + 2 * e * (cx - mx), ay = 2 * (1 - e) * (my - p.from.y) + 2 * e * ((cy - ry - 4) - my);
     place(x, y, (Math.atan2(ay, ax) * 180) / Math.PI + 90);

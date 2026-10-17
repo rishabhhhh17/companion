@@ -4,6 +4,10 @@ export const RING_MS = 10_000;
 // How long the arrow takes to fly to its target: the distance over 800 points a second, never faster than 0.6 s
 // (so it can be followed) and never slower than 1.4 s (so it never feels slow).
 export function flightMs(distance: number): number { return Math.min(1400, Math.max(600, (distance / 800) * 1000)); }
+// The arrow's easing (slow out, quick through the middle, slow in) and how far its path bends above the straight line:
+// a quarter of the way, at most 80 points. The character's trip to a window uses the same two (roam.rs ease and bend).
+export function ease(t: number): number { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+export function bend(distance: number): number { return Math.min(80, distance / 4); }
 
 // The celebration when the person clicks the right thing: a short burst of dots from the ring's edge, evenly spread,
 // travelling a little way out. Deterministic, so it looks the same every time and can be tested.
