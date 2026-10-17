@@ -90,9 +90,18 @@ describe("the island window", () => {
     expect(tick.slice(tick.indexOf("let sig = signature("))).toMatch(/place_island\(mtm, false, "screens_changed"\)/);
   });
   test("Home drops down from the island; beside the character only when there is no island", () => {
-    const place = fnBody("place_card");
-    expect(place).toContain("island::home_frame(");
-    expect(place.indexOf("island::home_frame(")).toBeLessThan(place.indexOf("card_frame("));
+    // One place for Home (F18 items 1 and 2 together): placing it and the character keeping clear of it both ask card_spot,
+    // which asks the tested rule in island.rs with the island's display.
+    expect(fnBody("place_card")).toContain("card_spot(mtm, d, CARD_H.load(");
+    const spot = fnBody("card_spot");
+    expect(spot).toContain("ISLAND_ON.lock()");
+    expect(spot).toContain("island::card_spot(on.as_ref()");
+    const rs = read("../src-tauri/src/island.rs");
+    const at = rs.indexOf("pub fn card_spot(");
+    const rule = rs.slice(at, rs.indexOf("\n}\n", at));
+    expect(rule).toContain("if let Some(d) = on { return Some(home_frame(d, size)); }");
+    expect(rule.indexOf("home_frame(")).toBeLessThan(rule.indexOf("card_frame("));
+    expect(main).not.toContain("island::home_frame(");
   });
   test("opening Home brings the island to the display with the pointer, and starts the click away watch", () => {
     const open = fnBody("open_card");

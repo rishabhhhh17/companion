@@ -82,7 +82,15 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 @keyframes wince { 25% { transform: scale(.9) rotate(-4deg); } 55% { transform: scale(.95) rotate(3deg); } }
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
 @keyframes party { 20% { transform: translateY(-14px) rotate(-10deg) scale(1.08); } 45% { transform: translateY(0) rotate(8deg); } 65% { transform: translateY(-6px) rotate(-4deg); } }
-@media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion] { animation: none; } }
+/* Coming to what it is about (F18): the named states the app moves the character through. Placeholders for the
+   founder's art (the water idea: it surfaces from its edge, travels, settles beside the window, returns). Home and
+   visiting are at rest, so the state's own motion plays. */
+.character[data-roam="surface"] { animation: roam-surface .16s ease-out 1; }
+.character[data-roam="travel"], .character[data-roam="return"] { animation: none; transform: scale(.92); transition: transform .12s ease-out; }
+.character[data-roam="settle"] { animation: roam-settle .22s ease-out 1; }
+@keyframes roam-surface { from { transform: scale(.72); opacity: .55; } to { transform: scale(.92); opacity: 1; } }
+@keyframes roam-settle { 0% { transform: scale(1.06, .94); } 60% { transform: scale(.98, 1.02); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion], .character[data-roam] { animation: none; transition: none; } }
 
 /* Home (F18): the card's tabs. */
 .tabs { display: flex; gap: 2px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }

@@ -5,8 +5,15 @@
 //! press start outside every Companion window while Home is open. Points with a top left origin, like docking.rs. Pure and
 //! tested; the AppKit glue is in main.rs.
 
-use crate::docking::Rect;
+use crate::docking::{card_frame, Edge, Rect};
 use std::path::{Path, PathBuf};
+
+/// Home's size (the card, F18): CARD is its width, wide enough for its five tabs, and the least height it has;
+/// CARD_MAX_H is the tallest it grows (its page asks for its content's height, and main.rs `resize_card` holds it
+/// between the two). The character keeps clear of Home at CARD_MAX_H: its own place always (docking.rs `dock_zone`), a
+/// trip beside a window while Home is open (main.rs `card_room`, from `card_spot`).
+pub const CARD: (f64, f64) = (380.0, 150.0);
+pub const CARD_MAX_H: f64 = 640.0;
 
 /// The camera housing of a display that has one: its left edge counted from the display's left edge, its width and height.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -27,8 +34,9 @@ pub fn notch_from(screen_w: f64, safe_top: f64, left_w: f64, right_w: f64) -> Op
     Some(Notch { x: left_w, w, h: safe_top })
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Display { pub id: String, pub frame: Rect, pub work: Rect, pub primary: bool, pub notch: Option<Notch> }
+/// A display as the island and the character both see it: its frame and work area, and its notch if it has one. One type
+/// for both (docking.rs `Screen`), so the character keeps clear of the island and Home from the same reading.
+pub use crate::docking::Screen as Display;
 
 /// What the island sits on. Notch: the camera housing, on a display that has one. Pill: a small pill in the middle of the
 /// menu bar, on a display without a notch. Edge: a thin line on the top edge, where no menu bar shows (it hides itself, or
@@ -121,6 +129,19 @@ pub fn home_frame(d: &Display, size: (f64, f64)) -> Rect {
     let top = ((r[1] + r[3]).max(wy) + GAP).min(wy + wh);
     let h = size.1.min((wy + wh - top - GAP).max(0.0)).max(0.0);
     [around(center_x(d), w, wx, ww), top, w, h]
+}
+
+/// Where Home (the card) is when it is `h` tall: the one answer used both to place it and to keep the character clear of
+/// it (main.rs `place_card`, `card_room`). With the island's display known (`on`), it drops down from the island
+/// (`home_frame`). Otherwise (no display found for the island yet) it goes beside the character's home as before F18,
+/// on the display that home is on (else the first), facing into the screen from that display's edge (`edge_of`, then
+/// docking.rs `card_frame`). Never beside where the character may be visiting a window.
+pub fn card_spot(on: Option<&Display>, home: Rect, screens: &[Display], edge_of: impl FnOnce(&str) -> Edge, h: f64) -> Option<Rect> {
+    let size = (CARD.0, h);
+    if let Some(d) = on { return Some(home_frame(d, size)); }
+    let c =(home[0] + home[2] / 2.0, home[1] + home[3] / 2.0);
+    let s = screens.iter().find(|s| contains(s.frame, c)).or(screens.first())?;
+    Some(card_frame(home, size, s.work, edge_of(&s.id)))
 }
 
 pub fn contains(r: Rect, p: (f64, f64)) -> bool { p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3] }
@@ -373,6 +394,84 @@ mod tests {
             assert_eq!((h[2], h[3]), (380.0, 420.0));
         }
         assert_eq!(home_frame(&mbp14(), (380.0, 420.0)), [756.0 - 190.0, 32.0 + GAP, 380.0, 420.0]);
+    }
+
+    // ---- F18 items 1 and 2 together: one place for Home, used to put it there and to keep the character clear of it ----
+    #[test]
+    fn home_is_under_the_island_when_its_display_is_known_and_beside_the_character_otherwise() {
+        let (mac, ext) = (mbp14(), ext());
+        let both = [mac.clone(), ext.clone()];
+        // The character lives on the right edge of the laptop, halfway down.
+        let home = [1352.0, 427.5, 160.0, 160.0];
+        let mut asked: Vec<String> = Vec::new();
+        for h in [CARD.1, 420.0, CARD_MAX_H] {
+            // The island's display known: Home drops from the island, wherever the character lives, and no edge is read.
+            let spot = card_spot(Some(&mac), home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, h).unwrap();
+            assert_eq!(spot, home_frame(&mac, (CARD.0, h)), "{h}");
+            assert!((cx(spot) - cx(island_frame(&mac, Mode::Rest))).abs() < 0.01 && spot[1] >= 32.0 + GAP, "under the notch: {spot:?}");
+            assert!(!crate::docking::overlaps(spot, home), "never over the character");
+            // On the external display when the island is there, even with the character on the laptop.
+            assert_eq!(card_spot(Some(&ext), home, &both, |_: &str| Edge::Right, h), Some(home_frame(&ext, (CARD.0, h))));
+            // No display known for the island: beside the character's home, facing into the screen from its edge, as before F18.
+            let beside = card_spot(None, home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, h).unwrap();
+            assert_eq!(beside, card_frame(home, (CARD.0, h), mac.work, Edge::Right), "{h}");
+            assert!(beside[0] + beside[2] <= home[0], "to the left of a character on the right edge: {beside:?}");
+            // At its tallest it holds every shorter Home, so keeping clear of the tallest keeps clear of Home however it grows.
+            for on in [Some(&mac), None] {
+                let tallest = card_spot(on, home, &both, |_: &str| Edge::Right, CARD_MAX_H).unwrap();
+                let now = card_spot(on, home, &both, |_: &str| Edge::Right, h).unwrap();
+                assert!(inside(now, tallest), "{on:?} {h}: {now:?} not in {tallest:?}");
+            }
+        }
+        assert_eq!(asked, vec![mac.id.clone(); 3], "an edge is read only for Home beside the character, for the display home is on");
+        // A home on the external display, with no island display known: beside it there, with that display's edge.
+        let on_ext = [3912.0, 300.0, 160.0, 160.0];
+        let e = card_spot(None, on_ext, &both, |id: &str| if id == ext.id { Edge::Right } else { Edge::Left }, 300.0).unwrap();
+        assert_eq!(e, card_frame(on_ext, (CARD.0, 300.0), ext.work, Edge::Right));
+        // A home on no display at all: kept on the first display.
+        let l = card_spot(None, [-5000.0, -5000.0, 160.0, 160.0], &both, |_: &str| Edge::Left, 300.0).unwrap();
+        assert!(inside(l, mac.work), "{l:?}");
+        assert_eq!(card_spot(None, home, &[], |_: &str| Edge::Right, 300.0), None, "no display at all: nowhere");
+        assert_eq!(card_spot(Some(&mac), home, &[], |_: &str| Edge::Right, 300.0), Some(home_frame(&mac, (CARD.0, 300.0))));
+        assert_eq!((CARD, CARD_MAX_H), ((380.0, 150.0), 640.0), "Home is 380 wide for its tabs and grows to 640");
+    }
+    fn main_body(name: &str) -> String {
+        let main = include_str!("main.rs");
+        let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..];
+        s[..s.find("\n}\n").unwrap()].to_string()
+    }
+    #[test]
+    fn the_shell_has_one_place_for_home_and_one_tallest_height() {
+        let main = include_str!("main.rs");
+        let spot = main_body("fn card_spot(");
+        assert!(spot.contains("island::card_spot(") && spot.contains("ISLAND_ON") && spot.contains("roamer().home()"), "card_spot asks the rule, with the island's display and the character's home");
+        assert_eq!(main.matches("island::home_frame(").count(), 0, "Home is placed only through card_spot");
+        assert_eq!(main.matches("card_frame(").count(), 0, "and only card_spot puts it beside the character");
+        assert!(main.contains("use island::{CARD, CARD_MAX_H};") && !main.contains("const CARD:") && !main.contains("const CARD_MAX_H"), "one card size, defined here");
+        assert!(main_body("fn resize_card(").contains("height.clamp(CARD.1, CARD_MAX_H)"), "Home never grows past what the character keeps clear of");
+        assert!(main_body("fn card_room(").contains("card_spot(mtm, d, CARD_MAX_H)"), "trips keep clear of Home where card_spot says, at its tallest");
+        let pc = main_body("fn place_card(");
+        assert!(pc.contains("card_spot(mtm, d, CARD_H.load(") && pc.contains("card_spot(mtm, d, CARD_MAX_H)"), "placed, then the visit checked against the tallest");
+    }
+    #[test]
+    fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
+        let main = include_str!("main.rs");
+        let tick = main_body("fn tick(");
+        let order = ["apply_dock(mtm, \"screens_changed\", false)", "place_island(mtm, false, \"screens_changed\")", "if c.isVisible() { place_card(d, c) }", "follow_pointer(mtm)", "roam_tick(app, &wins, front_pid)"];
+        let at: Vec<usize> = order.iter().map(|p| tick.find(p).unwrap_or_else(|| panic!("tick lost {p}"))).collect();
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "in this order: {order:?}");
+        // The character's displays carry the notch, read once the same way as the island's.
+        assert!(main.contains("fn screens_now(mtm: MainThreadMarker) -> Vec<Screen> { displays_now(mtm) }"));
+        // Every command from both sides reaches the pages.
+        let h = &main[main.find("generate_handler![").unwrap()..];
+        let h = &h[..h.find(']').unwrap()];
+        let cmds: Vec<&str> = h["generate_handler![".len()..].split(',').map(str::trim).collect();
+        for c in ["toggle_card", "island_click", "island_alert", "island_state", "resize_card", "talk_keys", "set_talk_keys", "dock_settings", "set_come_to", "drag_dock", "drop_dock", "close_card"] {
+            assert_eq!(cmds.iter().filter(|x| **x == c).count(), 1, "{c} is a command once");
+        }
+        // Hidden from screen sharing: the island, Home (the card), the ring overlay and the character.
+        let share = main_body("fn apply_sharing(");
+        for p in ["ISLAND.with", "card.setSharingType(t)", "OVERLAY.with", "dock.setSharingType(t)"] { assert!(share.contains(p), "{p}"); }
     }
     #[test]
     fn a_home_taller_than_the_work_area_is_made_shorter_and_never_runs_under_the_dock() {

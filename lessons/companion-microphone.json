@@ -2,7 +2,7 @@
   "id": "companion-microphone",
   "title": "Let Companion hear you when you hold to talk",
   "app": "System Settings",
-  "goal": "Turn on the Microphone for Companion (only used while you hold the key)",
+  "goal": "Turn on the Microphone for Companion (only used while you hold the talk keys)",
   "status": "draft",
   "needsProject": false,
   "steps": [
