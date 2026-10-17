@@ -1,6 +1,6 @@
 # F17: Teaching engine, works anywhere, and launch scope (12 Oct 2026)
 
-**Status:** source of truth. It amends F16 (10 Oct) and replaces the launch priorities in F15 (8 Oct). Where this file disagrees with older docs about scope or order, this file wins. All earlier rules and technical decisions (T01 to T15, F01 to F14) still stand unless this file says otherwise.
+**Status:** source of truth (amended by F18 on 17 Oct 2026: home in the notch, the character from anywhere, two key hold to talk, no general assistant features at launch). It amends F16 (10 Oct) and replaces the launch priorities in F15 (8 Oct). Where this file disagrees with older docs about scope or order, this file wins. All earlier rules and technical decisions (T01 to T15, F01 to F14) still stand unless this file says otherwise.
 
 **Suggested record:** save as `docs/decisions/F17-teaching-engine-and-launch-scope.md`, link it from `AGENTS.md`, and mark F15 and F16 as "amended by F17".
 
