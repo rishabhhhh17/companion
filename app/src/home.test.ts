@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
-import { PANEL_TAB, TABS, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, need, panelsIn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { PANEL_TAB, PLACES, TABS, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, need, panelsIn, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -20,11 +20,13 @@ describe("Home's tabs", () => {
     expect(TABS.map(tabName)).toEqual(["Now", "What I did", "Learn", "Memory", "Settings"]);
     for (const t of TABS) expect(tabName(t)).toBe(S.homeTabs[t]);
   });
-  test("every part of the old card has exactly one tab, and every tab has something in it", () => {
+  test("every part of the old card has exactly one place (a tab, or every tab), and every tab has something in it", () => {
     for (const t of TABS) expect(panelsIn(t).length, t).toBeGreaterThan(0);
-    const all = TABS.flatMap(panelsIn);
+    expect([...PLACES]).toEqual([...TABS, "every"]);
+    const all = PLACES.flatMap(panelsIn);
     expect(new Set(all).size).toBe(all.length);
     expect(all.sort()).toEqual((Object.keys(PANEL_TAB) as Panel[]).sort());
+    expect(panelsIn("every")).toEqual(["notes"]);
   });
   test("Now holds what the card showed while working; the rest go to their own tabs", () => {
     for (const p of ["ask", "urgent", "task", "proof", "receipt", "promptHelp", "errorHelp", "showMe", "point", "drive", "ship", "voice"] as Panel[]) expect(PANEL_TAB[p], p).toBe("now");
@@ -92,6 +94,60 @@ describe("which tab opens by itself", () => {
     expect(need(m)?.tab).toBe("learn");
     const alone = run([ev({ type: "app.showme", stage: "needs_permission", message: "Allow Screen Recording" })]);
     expect(need(alone)?.tab).toBe("now");
+  });
+  test("during a lesson, what Show me says is on Learn under the lesson, and a problem with it is a new thing to see there", () => {
+    // Screen Recording is needed, it could not find that, the window changed, the click missed: the person must see why
+    // no pointer came, on the tab that shows the lesson (the old card showed it under the lesson too).
+    for (const stage of ["needs_permission", "error", "window_changed", "not_sure", "your_turn_miss"]) {
+      const m = run([...walkStep(), ev({ type: "app.showme", stage, message: "Screen Recording is needed", req: "sm_1", turn: true })]);
+      const n = need(m);
+      expect(n?.tab, stage).toBe("learn");
+      expect(n?.key, stage).toBe(`showme:sm_1:${stage}`);
+      expect(shownOn("showMe", n!.tab, m), stage).toBe(true);
+      expect(shownOn("walk", n!.tab, m), stage).toBe(true);
+      expect(shownOn("showMe", "now", m), stage).toBe(false);
+    }
+    // Someone who went to Now during the lesson is brought back to see it.
+    const step = run(walkStep());
+    const problem = run([...walkStep(), ev({ type: "app.showme", stage: "needs_permission", message: "Screen Recording is needed", req: "sm_1" })]);
+    const s = [{ type: "need", need: need(step) }, { type: "pick", tab: "now" }, { type: "need", need: need(problem) }].reduce((a, x) => homeReduce(a, x as never), homeStart());
+    expect(s.tab).toBe("learn");
+    // Without a lesson, Show me answers on Now as before.
+    const alone = run([ev({ type: "app.showme", stage: "needs_permission", message: "Allow Screen Recording" })]);
+    expect(shownOn("showMe", "now", alone)).toBe(true);
+    expect(shownOn("showMe", "learn", alone)).toBe(false);
+  });
+  test("the card decides what shows with the same rule", () => {
+    expect(card).toContain("const show = (p: Panel) => shownOn(p, home.tab, m);");
+  });
+});
+
+describe("what Companion says about itself shows on every tab", () => {
+  test("opening Home with the engine down shows why, whatever tab was left open", () => {
+    const m = run([ev({ type: "app.runner_down" })]);
+    expect(m.error).toBeTruthy();
+    for (const t of TABS) {
+      const s = [{ type: "pick", tab: t }, { type: "opened", keyboard: false }].reduce((a, x) => homeReduce(a, x as never), homeStart());
+      expect(s.tab, t).toBe(t);
+      expect(shownOn("notes", s.tab, m), t).toBe(true);
+    }
+  });
+  test("so does an error from something done on another tab (a memory edit, the lesson list)", () => {
+    const m = run([ev({ type: "protocol.error", reason: "Could not save that." })]);
+    expect(m.error).toBeTruthy();
+    for (const t of TABS) expect(shownOn("notes", t, m), t).toBe(true);
+  });
+  test("the card draws the notes between the tabs and the tab's panel, not inside one tab", () => {
+    const at = card.indexOf('{show("notes") && <>');
+    expect(at).toBeGreaterThan(card.indexOf('role="tablist"'));
+    expect(at).toBeLessThan(card.indexOf('role="tabpanel"'));
+    const block = card.slice(at, card.indexOf("</>}", at));
+    expect(block).toContain("{m.error}");
+    expect(block).toContain("{m.notice}");
+    expect(block).not.toContain("folderNone");
+  });
+  test("Memory does not say it is looking while the engine is down", () => {
+    expect(card).toMatch(/show\("memory"\) && project && !m\.memory && m\.runnerUp && /);
   });
 });
 

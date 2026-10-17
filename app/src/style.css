@@ -92,19 +92,23 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 .tabdot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--amber); vertical-align: middle; }
 @media (forced-colors: active) { .tab[aria-selected="true"] { border-bottom-color: Highlight; } .tabdot { forced-color-adjust: none; border: 1px solid CanvasText; } }
 
-/* The island in the notch (F18): black like the notch in both themes, white words. The app sizes the window; this fills it. */
+/* The island in the notch (F18): black like the notch in both themes, white words. The app sizes the window (island.rs);
+   this fills it. It only grows downward, so everything drawn sits at the bottom: the lip under the notch, the status lines. */
 html.island-page, body.island-page { background: transparent; overflow: hidden; height: 100%; }
 .island { height: 100vh; }
-.island-hit { all: unset; box-sizing: border-box; position: relative; display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; padding: 0 12px 8px; background: #000; color: #fff; cursor: pointer; font: 600 12px -apple-system, "SF Pro Text", sans-serif; overflow: hidden; }
+.island-hit { all: unset; box-sizing: border-box; position: relative; display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; padding: 0 10px 6px; background: #000; color: #fff; cursor: pointer; font: 600 12px -apple-system, "SF Pro Text", sans-serif; overflow: hidden; }
 .island.notch .island-hit { border-radius: 0 0 12px 12px; }
 .island.pill .island-hit { border-radius: 999px; align-items: center; padding: 0 10px; }
-.island.pill[data-mode="peek"] .island-hit { border-radius: 10px; align-items: flex-end; padding-bottom: 8px; }
+.island.pill[data-mode="peek"] .island-hit { border-radius: 10px; align-items: flex-end; padding-bottom: 6px; }
+.island.edge .island-hit { border-radius: 0 0 4px 4px; padding: 0; }
+.island.edge[data-mode="alert"] .island-hit { border-radius: 0 0 10px 10px; align-items: center; padding: 0 10px; }
+.island.edge[data-mode="peek"] .island-hit { border-radius: 0 0 10px 10px; padding: 0 10px 6px; }
 .island-hit:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
-.peekline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.peekline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 15px; overflow: hidden; max-width: 100%; text-align: center; white-space: normal; overflow-wrap: anywhere; }
 .pillrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
-.ear { position: absolute; top: 0; bottom: 0; width: 28px; display: grid; place-items: center; font-size: 11px; }
-.ear.left { left: 0; } .ear.right { right: 0; }
+.lip { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 9px; }
 .mark { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; flex: none; }
+.lip .mark { width: 6px; height: 6px; }
 .mark[data-state="needsYou"] { background: var(--amber); }
 .mark[data-state="listening"] { background: var(--accent); }
 .mark[data-state="done"] { background: #4cc27f; }

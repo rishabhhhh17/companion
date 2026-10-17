@@ -1,10 +1,12 @@
 //! Home in the notch (F18.1). Where the island sits on a display (on the notch where there is one, a small pill at the top
-//! center inside the menu bar where there is not), how it grows when something needs you or when the pointer is on it, where
-//! Home drops down to, which display it lives on, and the two small judgements made from the pointer: is it on our own
-//! island, and did a press start outside every Companion window while Home is open. Points with a top left origin, like
-//! docking.rs. Pure and tested; the AppKit glue is in main.rs.
+//! center inside the menu bar where there is not, a thin line on the top edge where no menu bar shows), how it grows (only
+//! ever downward) when something needs you or when the pointer rests on it, where Home drops down to, which display it
+//! lives on, and the small judgements made from the pointer: is it on our own island, which display is it on, and did a
+//! press start outside every Companion window while Home is open. Points with a top left origin, like docking.rs. Pure and
+//! tested; the AppKit glue is in main.rs.
 
 use crate::docking::Rect;
+use std::path::{Path, PathBuf};
 
 /// The camera housing of a display that has one: its left edge counted from the display's left edge, its width and height.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -28,31 +30,50 @@ pub fn notch_from(screen_w: f64, safe_top: f64, left_w: f64, right_w: f64) -> Op
 #[derive(Clone, Debug, PartialEq)]
 pub struct Display { pub id: String, pub frame: Rect, pub work: Rect, pub primary: bool, pub notch: Option<Notch> }
 
-/// How big the island is. Rest: quiet (the notch itself, or a small pill). Alert: a little wider, so a mark shows beside the
-/// notch when something needs you. Peek: the pointer is on it, so it opens downward with one line of status.
+/// What the island sits on. Notch: the camera housing, on a display that has one. Pill: a small pill in the middle of the
+/// menu bar, on a display without a notch. Edge: a thin line on the top edge, where no menu bar shows (it hides itself, or
+/// this display has none), so that nothing sits on the front app's own window (its title, tabs or toolbar) all day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind { Notch, Pill, Edge }
+impl Kind { pub fn word(self) -> &'static str { match self { Kind::Notch => "notch", Kind::Pill => "pill", Kind::Edge => "edge" } } }
+
+/// How big the island is. Rest: quiet (the notch itself, the pill, or the thin line). Alert: something needs you, so a mark
+/// shows (in a lip below the notch, in the pill, or the line grows into the pill). Peek: the pointer rests on it, so it opens
+/// downward with the status. It only ever grows downward: the part of it inside the menu bar is always the notch or the
+/// pill at rest, so it never covers the app menus and status icons beside the notch, nor more of the menu bar than the pill.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode { Rest, Alert, Peek }
 impl Mode { pub fn word(self) -> &'static str { match self { Mode::Rest => "rest", Mode::Alert => "alert", Mode::Peek => "peek" } } }
 
 pub const PILL_W: f64 = 120.0;
-pub const ALERT_W: f64 = 150.0;
-pub const EARS: f64 = 28.0;
-pub const PEEK_W: f64 = 340.0;
-pub const LINE_H: f64 = 30.0;
-/// The macOS menu bar on a display without a notch, used when the work area does not show it (it hides itself, or this
-/// display has none).
+/// The thin line on the top edge where no menu bar shows.
+pub const EDGE_H: f64 = 5.0;
+/// Below the notch while something needs you: room for the mark and the number of questions waiting. island.tsx's `.lip`.
+pub const LIP: f64 = 12.0;
+/// One line of the status, and how many lines it may take (it wraps, at the notch's or the pill's width). style.css's
+/// `.peekline` draws the same: three lines at most, 15 points each, with room around them.
+pub const LINE_H: f64 = 15.0;
+pub const PEEK_LINES: f64 = 3.0;
+pub const PEEK_H: f64 = PEEK_LINES * LINE_H + 9.0;
+/// The usual macOS menu bar on a display without a notch: the pill's size where no menu bar shows.
 pub const DEFAULT_MENU_BAR: f64 = 24.0;
 /// Between the island and Home, and between Home and the bottom of the work area.
 pub const GAP: f64 = 6.0;
-/// The island's window level: above the menu bar (24) and its status items (25), so it can sit on the notch. Home stays
-/// at the card's own floating level below the menu bar, and the pointer overlay at 25.
+/// The island's window level: above the menu bar (24) and its status items (25), so it can sit on the notch and show over
+/// a menu bar that hides itself. Home stays at the card's own floating level below the menu bar, and the pointer overlay at 25.
 pub const LEVEL: isize = 27;
 
-/// The menu bar's height on this display: the notch's, or the distance from the top of the display to its work area.
-pub fn menu_bar_h(d: &Display) -> f64 {
-    if let Some(n) = d.notch { return n.h; }
+/// The height of the menu bar this display shows: the notch's on a display with one, else the distance from the top of the
+/// display to its work area. None when no menu bar shows (it hides itself, or this display has none) or the reading makes
+/// no sense.
+pub fn menu_bar(d: &Display) -> Option<f64> {
+    if let Some(n) = d.notch { return Some(n.h); }
     let h = d.work[1] - d.frame[1];
-    if (18.0..=44.0).contains(&h) { h } else { DEFAULT_MENU_BAR }
+    (18.0..=44.0).contains(&h).then_some(h)
+}
+
+pub fn kind(d: &Display) -> Kind {
+    if d.notch.is_some() { Kind::Notch } else if menu_bar(d).is_some() { Kind::Pill } else { Kind::Edge }
 }
 
 /// The island's middle: the notch's, or the display's.
@@ -63,30 +84,41 @@ fn center_x(d: &Display) -> f64 {
 /// A left edge for something `w` wide around `cx`, kept on the span from `x0`, `span` wide.
 fn around(cx: f64, w: f64, x0: f64, span: f64) -> f64 { (cx - w / 2.0).clamp(x0, (x0 + span - w).max(x0)) }
 
-/// Where the island is drawn, in global points.
-pub fn island_frame(d: &Display, mode: Mode) -> Rect {
+/// The pill's height in a menu bar `mb` tall: a little inside it.
+fn pill_h(mb: f64) -> f64 { (mb - 4.0).max(16.0).min(mb) }
+
+/// The island at rest, in global points.
+fn rest_frame(d: &Display) -> Rect {
     let (fx, fy, fw) = (d.frame[0], d.frame[1], d.frame[2]);
-    let cx = center_x(d);
-    match (d.notch, mode) {
-        (Some(n), Mode::Rest) => [fx + n.x, fy, n.w, n.h],
-        (Some(n), Mode::Alert) => { let w = (n.w + 2.0 * EARS).min(fw); [around(cx, w, fx, fw), fy, w, n.h] }
-        (Some(n), Mode::Peek) => { let w = PEEK_W.max(n.w + 2.0 * EARS).min(fw); [around(cx, w, fx, fw), fy, w, n.h + LINE_H] }
-        (None, m) => {
-            let mb = menu_bar_h(d);
-            let h = (mb - 4.0).max(16.0).min(mb);
-            let w = match m { Mode::Rest => PILL_W, Mode::Alert => ALERT_W, Mode::Peek => PEEK_W }.min(fw);
-            [around(cx, w, fx, fw), fy + (mb - h) / 2.0, w, if m == Mode::Peek { h + LINE_H } else { h }]
-        }
+    let w = PILL_W.min(fw);
+    let x = around(center_x(d), w, fx, fw);
+    match (d.notch, menu_bar(d)) {
+        (Some(n), _) => [fx + n.x, fy, n.w, n.h],
+        (None, Some(mb)) => { let h = pill_h(mb); [x, fy + (mb - h) / 2.0, w, h] }
+        (None, None) => [x, fy, w, EDGE_H],
     }
 }
 
-/// Where Home drops down to: centered under the island, just below the menu bar, kept inside the work area (a tall Home is
-/// made shorter, and scrolls, rather than running under the Dock).
+/// Where the island is drawn, in global points: the rest frame, taller when something needs you or the pointer rests on it.
+pub fn island_frame(d: &Display, mode: Mode) -> Rect {
+    let r = rest_frame(d);
+    let grow = match (kind(d), mode) {
+        (_, Mode::Rest) | (Kind::Pill, Mode::Alert) => 0.0,
+        (Kind::Notch, Mode::Alert) => LIP,
+        (Kind::Edge, Mode::Alert) => pill_h(DEFAULT_MENU_BAR) - EDGE_H,
+        (_, Mode::Peek) => PEEK_H,
+    };
+    [r[0], r[1], r[2], r[3] + grow]
+}
+
+/// Where Home drops down to: centered under the island, just below the menu bar (or the thin line), kept inside the work
+/// area (a tall Home is made shorter, and scrolls, rather than running under the Dock).
 pub fn home_frame(d: &Display, size: (f64, f64)) -> Rect {
     let [wx, wy, ww, wh] = d.work;
     let w = size.0.min(ww).max(0.0);
-    // Just below the menu bar (the island at rest is never taller), and never above the work area.
-    let top = ((d.frame[1] + menu_bar_h(d)).max(wy) + GAP).min(wy + wh);
+    // While Home is open the island is at rest (`mode`), so Home starts just below that, and never above the work area.
+    let r = rest_frame(d);
+    let top = ((r[1] + r[3]).max(wy) + GAP).min(wy + wh);
     let h = size.1.min((wy + wh - top - GAP).max(0.0)).max(0.0);
     [around(center_x(d), w, wx, ww), top, w, h]
 }
@@ -108,18 +140,39 @@ pub fn pick<'a>(list: &'a [Display], last: &str, mouse: (f64, f64), follow_mouse
     list.iter().find(|d| d.primary).or(list.first()).map(|d| (d, "primary"))
 }
 
+/// How long the pointer must stay on another display before the island moves there (main.rs looks twice a second).
+pub const FOLLOW_MS: u64 = 3000;
+
+/// The island goes to the display the person is using: the one the pointer has stayed on for a few seconds. A quick trip
+/// to another display does not move it, and while Home is open it stays (Home drops from it). Only which display the pointer
+/// is on is used; never what is on the screen.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Follow { on: String, since: u64 }
+impl Follow {
+    pub const fn new() -> Self { Follow { on: String::new(), since: 0 } }
+    /// `under`: the display the pointer is on now (None in a gap between displays); `current`: the island's display;
+    /// `hold`: Home is open. Returns the display to move to, once.
+    pub fn sample(&mut self, under: Option<&str>, current: &str, hold: bool, t: u64) -> Option<String> {
+        let Some(u) = under.filter(|u| !hold && *u != current) else { self.on.clear(); return None };
+        if self.on != u { self.on = u.to_string(); self.since = t; return None; }
+        if t.saturating_sub(self.since) < FOLLOW_MS { return None; }
+        self.on.clear();
+        Some(u.to_string())
+    }
+}
+
 /// What decides the island's size: the pointer is on it, something needs the person, Home is open.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool }
 
-/// Home open shows everything the line would, so the island does not open over it.
+/// Home open shows everything the line or the mark would, right below, so the island stays at rest over it.
 pub fn mode(s: State) -> Mode {
-    if s.hover && !s.home_open { Mode::Peek } else if s.alert { Mode::Alert } else { Mode::Rest }
+    if s.home_open { Mode::Rest } else if s.hover { Mode::Peek } else if s.alert { Mode::Alert } else { Mode::Rest }
 }
 
-/// How long the pointer must stay on the island before the line opens (a pass on the way to the menu bar does not open
-/// it), and how long off it before the line closes (a slip off the edge does not close it).
-pub const HOVER_IN_MS: u64 = 120;
+/// How long the pointer must rest on the island before the line opens (crossing the notch on the way along the menu bar,
+/// even slowly, does not open it), and how long off it before the line closes (a slip off the edge does not close it).
+pub const HOVER_IN_MS: u64 = 400;
 pub const HOVER_OUT_MS: u64 = 300;
 
 /// The pointer on our own island. macOS tells us only when it enters and leaves that one window (a tracking area on it);
@@ -159,6 +212,10 @@ impl ClickAway {
         pressed && !ours().iter().any(|r| contains(*r, pointer))
     }
 }
+
+/// The file in Companion's own data folder that keeps the display the island was on last. Everything that reads or writes
+/// it goes through here, so delete everything finds it (it removes every file directly in that folder).
+pub fn path(data: &Path) -> PathBuf { data.join(FILE) }
 
 /// The display the island was on last, kept in `island.json` in Companion's own folder (delete everything removes it).
 pub const FILE: &str = "island.json";
@@ -213,50 +270,91 @@ mod tests {
         assert_eq!(island_frame(&d, Mode::Rest), [663.5, 0.0, 185.0, 32.0]);
         let big = mbp16();
         assert_eq!(island_frame(&big, Mode::Rest), [771.5, 0.0, 185.0, 32.0]);
-        assert_eq!(menu_bar_h(&d), 32.0);
+        assert_eq!(menu_bar(&d), Some(32.0));
+    }
+    // The menu bar beside the notch holds app menus and status icons, and the middle of a menu bar without a notch can
+    // hold menu titles. The island must never take those clicks: whatever its size, the part of it inside the menu bar is
+    // exactly the notch, or the pill at rest. It only ever grows downward, below the menu bar.
+    #[test]
+    fn on_a_notch_the_island_never_grows_sideways_over_the_menu_bar() {
+        for d in [mbp14(), mbp16()] {
+            let n = d.notch.unwrap();
+            for m in [Mode::Rest, Mode::Alert, Mode::Peek] {
+                let r = island_frame(&d, m);
+                assert_eq!((r[0], r[2]), (d.frame[0] + n.x, n.w), "{} {m:?}: as wide as the notch, where the notch is: {r:?}", d.id);
+                assert_eq!(r[1], d.frame[1], "{} {m:?} hangs from the top", d.id);
+                assert!(r[3] >= n.h, "{} {m:?} covers the notch", d.id);
+            }
+        }
     }
     #[test]
-    fn on_a_notch_something_that_needs_you_shows_beside_it_and_the_pointer_opens_it_downward() {
+    fn no_size_of_the_island_is_wider_than_it_is_at_rest_on_any_display() {
+        let mut hidden = air(); hidden.work = [0.0, 0.0, 1440.0, 830.0];
+        for d in [mbp14(), mbp16(), ext(), air(), hidden] {
+            let rest = island_frame(&d, Mode::Rest);
+            for m in [Mode::Alert, Mode::Peek] {
+                let r = island_frame(&d, m);
+                assert_eq!((r[0], r[1], r[2]), (rest[0], rest[1], rest[2]), "{} {m:?} grows only downward: {r:?} from {rest:?}", d.id);
+                assert!(r[3] >= rest[3], "{} {m:?}", d.id);
+            }
+        }
+    }
+    #[test]
+    fn on_a_notch_something_that_needs_you_shows_as_a_lip_below_it_and_the_pointer_opens_it_downward() {
         let d = mbp14();
-        let a = island_frame(&d, Mode::Alert);
-        assert_eq!(a, [663.5 - EARS, 0.0, 185.0 + 2.0 * EARS, 32.0]);
+        assert_eq!(island_frame(&d, Mode::Alert), [663.5, 0.0, 185.0, 32.0 + LIP], "a lip below the menu bar, under the notch");
         let p = island_frame(&d, Mode::Peek);
-        assert_eq!(p[1], 0.0, "it hangs from the top of the screen");
-        assert_eq!(p[3], 32.0 + LINE_H, "one line below the notch");
+        assert_eq!(p, [663.5, 0.0, 185.0, 32.0 + PEEK_H], "the line opens below the notch");
         assert!((cx(p) - 756.0).abs() < 0.01, "centered on the notch");
-        assert!(p[2] >= 185.0 + 2.0 * EARS && p[2] >= PEEK_W);
         assert!(inside(p, d.frame));
     }
     #[test]
     fn without_a_notch_it_is_a_small_pill_at_the_top_center_inside_the_menu_bar() {
         for d in [ext(), air()] {
-            let mb = menu_bar_h(&d);
+            assert_eq!(kind(&d), Kind::Pill, "{}", d.id);
+            let mb = menu_bar(&d).unwrap();
             assert_eq!(mb, 24.0, "{}", d.id);
             for m in [Mode::Rest, Mode::Alert] {
                 let r = island_frame(&d, m);
                 assert!((cx(r) - cx(d.frame)).abs() < 0.01, "{} {m:?} centered", d.id);
                 assert!(r[1] >= d.frame[1] && r[1] + r[3] <= d.frame[1] + mb, "{} {m:?} inside the menu bar: {r:?}", d.id);
-                assert!(r[2] <= ALERT_W && r[2] >= PILL_W);
+                assert_eq!(r[2], PILL_W);
             }
-            assert_eq!(island_frame(&d, Mode::Rest)[2], PILL_W);
-            assert_eq!(island_frame(&d, Mode::Alert)[2], ALERT_W);
+            // Something that needs you changes the pill's mark and word, not its size.
+            assert_eq!(island_frame(&d, Mode::Alert), island_frame(&d, Mode::Rest));
             let p = island_frame(&d, Mode::Peek);
-            assert_eq!(p[2], PEEK_W);
-            assert!(p[1] + p[3] > d.frame[1] + mb, "the line opens below the menu bar");
+            assert_eq!(p[2], PILL_W);
+            assert!(p[1] + p[3] > d.frame[1] + mb + LINE_H, "the line opens below the menu bar");
             assert!((cx(p) - cx(d.frame)).abs() < 0.01);
         }
         // The external monitor's pill is on the external monitor, not the laptop.
         assert!((cx(island_frame(&ext(), Mode::Rest)) - (1512.0 + 1280.0)).abs() < 0.01);
     }
     #[test]
-    fn a_hidden_menu_bar_or_a_display_without_one_uses_the_usual_height() {
-        let mut d = air();
-        d.work = [0.0, 0.0, 1440.0, 830.0];   // the menu bar hides itself: the work area starts at the top
-        assert_eq!(menu_bar_h(&d), DEFAULT_MENU_BAR);
-        let r = island_frame(&d, Mode::Rest);
-        assert!(r[1] >= 0.0 && r[1] + r[3] <= DEFAULT_MENU_BAR);
-        d.work = [0.0, 300.0, 1440.0, 500.0];   // nonsense
-        assert_eq!(menu_bar_h(&d), DEFAULT_MENU_BAR);
+    fn where_the_menu_bar_hides_itself_or_there_is_none_it_is_a_thin_line_at_the_top_edge() {
+        // With no menu bar showing, a pill would sit on the front app's own window (its title, tabs or toolbar) all day.
+        // So at rest it is only a thin line on the top edge; it grows into the pill when something needs you.
+        let mut hidden = air();
+        hidden.work = [0.0, 0.0, 1440.0, 830.0];   // the menu bar hides itself: the work area starts at the top
+        let mut second = ext();
+        second.work = second.frame;   // a second display with no menu bar ("Displays have separate Spaces" off)
+        let mut junk = air();
+        junk.work = [0.0, 300.0, 1440.0, 500.0];   // a reading that makes no sense: no menu bar is assumed
+        for d in [hidden, second, junk] {
+            assert_eq!(kind(&d), Kind::Edge, "{}", d.id);
+            assert_eq!(menu_bar(&d), None, "{}", d.id);
+            let r = island_frame(&d, Mode::Rest);
+            assert_eq!(r[1], d.frame[1], "{} on the top edge", d.id);
+            assert_eq!(r[3], EDGE_H, "{} only a thin line", d.id);
+            assert!((cx(r) - cx(d.frame)).abs() < 0.01, "{} centered", d.id);
+            let a = island_frame(&d, Mode::Alert);
+            assert!(a[3] > EDGE_H && a[3] <= DEFAULT_MENU_BAR, "{} the pill shows when something needs you: {a:?}", d.id);
+            assert_eq!(island_frame(&d, Mode::Peek)[3], EDGE_H + PEEK_H);
+            let h = home_frame(&d, (380.0, 420.0));
+            assert!(inside(h, d.work) && h[1] >= r[1] + r[3], "{} Home below the line: {h:?}", d.id);
+        }
+        assert_eq!(Kind::Edge.word(), "edge");
+        assert_eq!(kind(&mbp14()), Kind::Notch);
     }
     #[test]
     fn a_display_narrower_than_the_line_keeps_the_island_on_it() {
@@ -322,7 +420,8 @@ mod tests {
         assert_eq!(s(true, false, false), Mode::Peek);
         assert_eq!(s(true, true, false), Mode::Peek);
         assert_eq!(s(true, false, true), Mode::Rest, "Home open: the line does not open over it");
-        assert_eq!(s(true, true, true), Mode::Alert);
+        assert_eq!(s(true, true, true), Mode::Rest, "nor the lip: Home shows what needs you, right below");
+        assert_eq!(s(false, true, true), Mode::Rest);
         assert_eq!(Mode::Peek.word(), "peek");
     }
     #[test]
@@ -344,6 +443,53 @@ mod tests {
         h.enter(4000); h.exit(4050);
         assert!(!h.at(4000 + HOVER_IN_MS + 10));
         assert!(!h.at(5000));
+    }
+    #[test]
+    fn crossing_the_notch_along_the_menu_bar_even_slowly_does_not_open_it() {
+        // From the menus on the left to the icons on the right: 185 points at a slow 500 points a second is 370 ms.
+        let crossing = (185.0 / 500.0 * 1000.0) as u64;
+        assert!(HOVER_IN_MS > crossing, "{HOVER_IN_MS} ms is shorter than a slow crossing ({crossing} ms)");
+        let mut h = Hover::default();
+        h.enter(0); h.exit(crossing);
+        for t in [crossing, crossing + 1, HOVER_IN_MS, HOVER_IN_MS + HOVER_OUT_MS, 10_000] { assert!(!h.at(t), "{t}"); }
+        // Resting on it does open it, and soon enough to feel like a reply.
+        h.enter(20_000);
+        assert!(h.at(20_000 + HOVER_IN_MS));
+        assert!(HOVER_IN_MS <= 600);
+    }
+    #[test]
+    fn the_island_follows_the_person_to_another_display_after_the_pointer_stays_there() {
+        let (mac, ext) = ("1512x982@0,0", "2560x1440@1512,-458");
+        let mut f = Follow::new();
+        assert_eq!(f.sample(Some(mac), mac, false, 0), None, "already there");
+        // A quick trip to the other display and back does not move it.
+        assert_eq!(f.sample(Some(ext), mac, false, 1000), None);
+        assert_eq!(f.sample(Some(ext), mac, false, 1000 + FOLLOW_MS - 1), None);
+        assert_eq!(f.sample(Some(mac), mac, false, 1000 + FOLLOW_MS + 10), None);
+        assert_eq!(f.sample(Some(ext), mac, false, 1000 + FOLLOW_MS + 500), None, "the wait starts again");
+        // Staying there does, once.
+        let t = 1000 + FOLLOW_MS + 500;
+        assert_eq!(f.sample(Some(ext), mac, false, t + FOLLOW_MS), Some(ext.to_string()));
+        assert_eq!(f.sample(Some(ext), ext, false, t + FOLLOW_MS + 500), None, "it is there now");
+        assert_eq!(f.sample(Some(ext), ext, false, t + 10 * FOLLOW_MS), None);
+    }
+    #[test]
+    fn the_island_stays_with_home_while_home_is_open_and_a_third_display_starts_the_wait_again() {
+        let (a, b, c) = ("A", "B", "C");
+        let mut f = Follow::new();
+        assert_eq!(f.sample(Some(b), a, true, 0), None);
+        assert_eq!(f.sample(Some(b), a, true, 10 * FOLLOW_MS), None, "Home is open: it drops from the island, so neither moves");
+        // Home closed: the wait starts from now, not from when the pointer first went there.
+        assert_eq!(f.sample(Some(b), a, false, 10 * FOLLOW_MS + 1), None);
+        assert_eq!(f.sample(Some(c), a, false, 10 * FOLLOW_MS + FOLLOW_MS / 2), None);
+        assert_eq!(f.sample(Some(c), a, false, 11 * FOLLOW_MS + 2), None, "C only since half a wait ago");
+        assert_eq!(f.sample(Some(c), a, false, 11 * FOLLOW_MS + FOLLOW_MS / 2), Some(c.to_string()));
+        // The pointer between displays (in a gap) is no reading at all.
+        let mut g = Follow::new();
+        assert_eq!(g.sample(Some(b), a, false, 0), None);
+        assert_eq!(g.sample(None, a, false, FOLLOW_MS / 2), None);
+        assert_eq!(g.sample(Some(b), a, false, FOLLOW_MS + 1), None, "a gap starts the wait again");
+        assert!(FOLLOW_MS >= 1500 && FOLLOW_MS <= 5000, "a few seconds");
     }
     #[test]
     fn a_press_outside_every_companion_window_is_a_click_elsewhere() {
@@ -380,12 +526,20 @@ mod tests {
     }
     #[test]
     fn the_remembered_display_is_kept_where_delete_everything_finds_it() {
+        // The app reads and writes the file only through `path`, given its own data folder.
+        let main = include_str!("main.rs");
+        assert!(main.contains("fn island_path() -> PathBuf { island::path(&data_dir()) }"), "main.rs names the file through island::path");
+        assert_eq!(main.matches("island::FILE").count(), 0, "and never builds the path itself");
         let tmp = std::env::temp_dir().join(format!("companion-island-{}", std::process::id()));
         let (home, data) = (tmp.join("home"), tmp.join("home/Library/Application Support/dev.companion.app"));
         std::fs::create_dir_all(&data).unwrap();
-        std::fs::write(data.join(FILE), last_json("x")).unwrap();
-        let settings = crate::wipe::items(&home, &data).into_iter().find(|i| i.id == "settings").unwrap();
-        assert!(settings.paths.contains(&data.join(FILE)));
+        let p = path(&data);
+        assert_eq!(p.parent(), Some(data.as_path()), "directly in Companion's own folder");
+        crate::logfile::write_atomic(&p, last_json("x").as_bytes()).unwrap();
+        let items = crate::wipe::items(&home, &data);
+        let settings = items.iter().find(|i| i.id == "settings").unwrap();
+        assert!(settings.paths.contains(&p), "delete everything removes it with the settings");
+        assert_eq!(items.iter().filter(|i| i.paths.contains(&p)).count(), 1, "and only once");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

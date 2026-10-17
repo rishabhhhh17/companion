@@ -26,6 +26,24 @@ describe("the island page", () => {
     expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state"]));
     expect(page).not.toMatch(/send_command|keydown|onKey/i);
   });
+  test("is told what the island sits on: the notch, a pill in the menu bar, or the thin line on the top edge", () => {
+    const page = read("./island.tsx");
+    expect(main).toContain('"island-mode", json!({ "mode": mode.word(), "kind": kind.word() })');
+    expect(fnBody("island_state")).toContain('"kind"');
+    for (const k of ["notch", "pill", "edge"]) expect(page, k).toContain(`"${k}"`);
+    expect(page).not.toMatch(/\.notch\b|notch: /);
+  });
+  test("draws the lip under the notch and the status lines at the sizes the app gives them", () => {
+    const rs = read("../src-tauri/src/island.rs");
+    const css = read("./style.css");
+    const num = (re: RegExp, text: string) => { const m = text.match(re); expect(m, String(re)).not.toBeNull(); return Number(m![1]); };
+    expect(num(/\.lip \{[^}]*height: (\d+)px/, css)).toBe(num(/pub const LIP: f64 = ([\d.]+);/, rs));
+    expect(num(/\.peekline \{[^}]*line-height: (\d+)px/, css)).toBe(num(/pub const LINE_H: f64 = ([\d.]+);/, rs));
+    expect(num(/\.peekline \{[^}]*-webkit-line-clamp: (\d+)/, css)).toBe(num(/pub const PEEK_LINES: f64 = ([\d.]+);/, rs));
+    // Nothing is drawn beside the notch any more: the old ears over the menu bar are gone.
+    expect(read("./island.tsx")).not.toMatch(/\bear\b/);
+    expect(css).not.toMatch(/\.ear\b/);
+  });
   test("the app has the commands the page uses", () => {
     for (const c of ["island_click", "island_alert", "island_state"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
   });
@@ -55,6 +73,17 @@ describe("the island window", () => {
   });
   test("follows the screen sharing setting with the card and the overlay", () => {
     expect(fnBody("apply_sharing")).toContain("ISLAND.with(");
+  });
+  test("goes to the display the person uses: from tick, by which display the pointer is on, not while Home is open", () => {
+    const tick = fnBody("tick");
+    expect(tick).toContain("follow_pointer(mtm);");
+    const f = fnBody("follow_pointer");
+    expect(f).toContain("ISLAND_FOLLOW.lock()");
+    expect(f).toContain("NSEvent::mouseLocation()");
+    expect(f).toContain("HOME_OPEN.load(");
+    expect(f).toMatch(/remember_island\(&id\); place_island\(mtm, false, "followed_pointer"\)/);
+    // Only where the pointer is: never a picture of the screen, never the windows under it, never keys.
+    expect(f).not.toMatch(/capture|CGWindowList|on_screen_windows|screenshot|pressedMouseButtons|key/i);
   });
   test("moves when a display is plugged in or out", () => {
     const tick = fnBody("tick");

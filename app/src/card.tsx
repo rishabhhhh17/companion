@@ -14,7 +14,7 @@ import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./mod
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { PANEL_TAB, TABS, closesOnClickAway, homeReduce, homeStart, need, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
+import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
@@ -380,10 +380,11 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 
 function Card() {
   const [m, dispatch] = useModel();
-  // Home (F18): the card in tabs. Each part of the old card shows only on its own tab (home.ts); a tab that needs the
-  // person is shown by itself, once per new need, and said out loud because the keyboard focus does not move there.
+  // Home (F18): the card in tabs. Each part of the old card shows only on its own tab, or on every tab (home.ts); a tab
+  // that needs the person is shown by itself, once per new need, and said out loud because the keyboard focus does not
+  // move there.
   const [home, homeDispatch] = useReducer(homeReduce, undefined, homeStart);
-  const show = (p: Panel) => PANEL_TAB[p] === home.tab;
+  const show = (p: Panel) => shownOn(p, home.tab, m);
   const needNow = need(m);
   useEffect(() => {
     const a = document.activeElement as HTMLElement | null;
@@ -773,6 +774,11 @@ function Card() {
         })}
       </div>
       <div className="sr" role="status" aria-live="polite">{home.said}</div>
+      {/* About Companion itself (the engine stopped, a notice, an error from something done on any tab): on every tab. */}
+      {show("notes") && <>
+      {m.notice && <div className="notice" role="status">{m.notice}</div>}
+      {m.error && <div className="error" role="alert">{m.error}</div>}
+      </>}
       <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
       {show("folder") && <>
       <div className="row" aria-label={S.folderLabel}>
@@ -795,6 +801,7 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
+      {!project && <div className="notice">{S.folderNone}</div>}
       </>}
       {show("settings") && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
       {show("practice") && m.practice && m.practice.project === project && (
@@ -965,11 +972,6 @@ function Card() {
         <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
       )}
       </div>
-      {show("notes") && <>
-      {!project && <div className="notice">{S.folderNone}</div>}
-      {m.notice && <div className="notice" role="status">{m.notice}</div>}
-      {m.error && <div className="error" role="alert">{m.error}</div>}
-      </>}
 
       {show("urgent") && <div ref={urgent}>
       {m.agentsAsk && (
@@ -1358,7 +1360,7 @@ function Card() {
       )}
 
       {show("memory") && !project && <div className="line muted">{S.homeMemoryNoProject}</div>}
-      {show("memory") && project && !m.memory && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
+      {show("memory") && project && !m.memory && m.runnerUp && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
       {show("memory") && m.memory && (
         <section className="panel" aria-label={S.memoryTitle}>
           <h2>{S.memoryTitle}</h2>

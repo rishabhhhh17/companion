@@ -300,8 +300,10 @@ static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
 /// The display it is on now, for Home to drop down from.
 static ISLAND_ON: Mutex<Option<island::Display>> = Mutex::new(None);
-/// What the island page was last told: its size, and whether the display has a notch.
-static ISLAND_SENT: Mutex<(String, bool)> = Mutex::new((String::new(), false));
+/// What the island page was last told: its size, and what it sits on (the notch, a pill, or the thin line on the top edge).
+static ISLAND_SENT: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+/// Which display the pointer has stayed on, so the island can go to the one the person is using.
+static ISLAND_FOLLOW: Mutex<island::Follow> = Mutex::new(island::Follow::new());
 /// Home (the card) is open; each opening takes a number, so an older click away watch stops.
 static HOME_OPEN: AtomicBool = AtomicBool::new(false);
 static HOME_GEN: AtomicU64 = AtomicU64::new(0);
@@ -311,7 +313,7 @@ struct NativeDialog;
 impl NativeDialog { fn open() -> Self { NATIVE_DIALOGS.fetch_add(1, Ordering::SeqCst); NativeDialog } }
 impl Drop for NativeDialog { fn drop(&mut self) { NATIVE_DIALOGS.fetch_sub(1, Ordering::SeqCst); } }
 
-fn island_path() -> PathBuf { data_dir().join(island::FILE) }
+fn island_path() -> PathBuf { island::path(&data_dir()) }
 fn island_last() -> String {
     ISLAND_LAST.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| island::parse_last(std::fs::read_to_string(island_path()).ok().as_deref())).clone()
 }
@@ -333,8 +335,8 @@ fn displays_now(mtm: MainThreadMarker) -> Vec<island::Display> {
 }
 
 /// Puts the island on its display at the size it should be now, and tells its page. `follow_mouse`: the person is opening
-/// Home, so the display with the pointer. Where the pointer is gets read once, and only then or when the display the island
-/// was on is gone (like docking the character); a change of size alone never reads it. Main thread.
+/// Home, so the display with the pointer. Otherwise the display it was on last (`follow_pointer` changes that after the
+/// pointer stays on another display), so a change of size alone never moves it. Main thread.
 fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let list = displays_now(mtm);
     let Some(first) = list.first() else { return };
@@ -351,17 +353,33 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let f = island::island_frame(&d, mode);
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setFrame_display(to_appkit(f, ph), true); } });
-    tell_island(mode, d.notch.is_some());
-    if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "notch": d.notch.is_some(), "frame": f })); }
+    let kind = island::kind(&d);
+    tell_island(mode, kind);
+    if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
 }
 
-fn tell_island(mode: island::Mode, notch: bool) {
+fn tell_island(mode: island::Mode, kind: island::Kind) {
     {
         let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
-        if g.0 == mode.word() && g.1 == notch { return; }
-        *g = (mode.word().to_string(), notch);
+        if g.0 == mode.word() && g.1 == kind.word() { return; }
+        *g = (mode.word().to_string(), kind.word().to_string());
     }
-    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", json!({ "mode": mode.word(), "notch": notch })); }
+    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", json!({ "mode": mode.word(), "kind": kind.word() })); }
+}
+
+/// The island goes to the display the person is using: the one the pointer has stayed on for a few seconds (island.rs
+/// `Follow`), not while Home is open. Called from `tick`, twice a second. Only which display the pointer is on is used,
+/// read with `NSEvent::mouseLocation` (no permission); never what is on the screen, never keys. Main thread.
+fn follow_pointer(mtm: MainThreadMarker) {
+    let list = displays_now(mtm);
+    if list.len() < 2 { return; }
+    let ph = list[0].frame[3];
+    let m = NSEvent::mouseLocation();
+    let p = (m.x, ph - m.y);
+    let under = list.iter().find(|d| island::contains(d.frame, p)).map(|d| d.id.as_str());
+    let current = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|d| d.id.clone()).unwrap_or_default();
+    let to = ISLAND_FOLLOW.lock().unwrap_or_else(|e| e.into_inner()).sample(under, &current, HOME_OPEN.load(Ordering::SeqCst), now() as u64);
+    if let Some(id) = to { remember_island(&id); place_island(mtm, false, "followed_pointer"); }
 }
 
 fn island_show(on: bool) {
@@ -389,7 +407,8 @@ fn home_closed() {
     if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "home_closed"); }
 }
 
-/// The page says whether something should show beside the notch (a question waits, listening, just done; home.ts).
+/// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
+/// pill, or the thin line on the top edge growing into the pill.
 #[tauri::command]
 fn island_alert(app: AppHandle, on: bool) {
     let _ = app.run_on_main_thread(move || {
@@ -398,11 +417,11 @@ fn island_alert(app: AppHandle, on: bool) {
     });
 }
 
-/// For the island page when it loads: its size now, and whether it sits on a notch.
+/// For the island page when it loads: its size now, and what it sits on.
 #[tauri::command]
 fn island_state() -> Value {
-    let (mode, notch) = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "notch": notch })
+    let (mode, kind) = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "kind": if kind.is_empty() { "pill".to_string() } else { kind } })
 }
 
 /// macOS tells us the pointer entered or left the island: a tracking area on that one window, active even while another
@@ -1667,6 +1686,8 @@ fn tick(app: &AppHandle) {
         place_island(mtm, false, "screens_changed");
         with_panels(|d, c| if c.isVisible() { place_card(d, c) });
     }
+    // With more than one display, the island moves to the one the person has been using for a few seconds.
+    follow_pointer(mtm);
     let act = active(mtm);
     let fr = front();
     // Take the wheel: the editor or terminal came to the front while a plan runs, so ask it to pause.

@@ -10,7 +10,9 @@ export const tabName = (t: Tab): string => S.homeTabs[t];
 export const tabId = (t: Tab) => `home-tab-${t}`;
 export const tabPanelId = (t: Tab) => `home-panel-${t}`;
 
-// Every part of the old card, and the tab it now lives on. Now is everything the card showed while working.
+// Every part of the old card, and the tab it now lives on. Now is everything the card showed while working. "every": shown
+// between the tabs and the tab's panel whatever tab is open, because it is about Companion itself (the engine stopped, a
+// notice, an error from something done on any tab) and must never be hidden on a tab the person is not looking at.
 export type Panel =
   | "folder" | "ask" | "urgent" | "notes" | "about" | "diagram" | "promptHelp" | "drive" | "ship" | "research" | "rescue"
   | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "bisect" | "errorHelp" | "showMe" | "recap" | "toast"
@@ -18,8 +20,11 @@ export type Panel =
   | "practice" | "lessons" | "walk"
   | "memory"
   | "settings";
-export const PANEL_TAB: Record<Panel, Tab> = {
-  folder: "now", ask: "now", urgent: "now", notes: "now", about: "now", diagram: "now", promptHelp: "now", drive: "now", ship: "now",
+export type Place = Tab | "every";
+export const PLACES: readonly Place[] = [...TABS, "every"];
+export const PANEL_TAB: Record<Panel, Place> = {
+  notes: "every",
+  folder: "now", ask: "now", urgent: "now", about: "now", diagram: "now", promptHelp: "now", drive: "now", ship: "now",
   research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now",
   bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now",
   history: "did",
@@ -27,7 +32,20 @@ export const PANEL_TAB: Record<Panel, Tab> = {
   memory: "memory",
   settings: "settings",
 };
-export const panelsIn = (t: Tab): Panel[] => (Object.keys(PANEL_TAB) as Panel[]).filter((p) => PANEL_TAB[p] === t);
+export const panelsIn = (t: Place): Panel[] => (Object.keys(PANEL_TAB) as Panel[]).filter((p) => PANEL_TAB[p] === t);
+
+/** Where a part shows right now. Show me answers on Now, except during a lesson: then its pointer, and what it says when
+ *  no pointer comes (Screen Recording is needed, it could not find that, the window changed, the click missed), belong
+ *  under the lesson on Learn, as they were under the lesson on the old card. */
+export function placeOf(p: Panel, m: Model): Place {
+  if (p === "showMe" && m.walk) return "learn";
+  return PANEL_TAB[p];
+}
+/** Does this part show on this tab? card.tsx draws each part only where this says. */
+export function shownOn(p: Panel, tab: Tab, m: Model): boolean {
+  const at = placeOf(p, m);
+  return at === "every" || at === tab;
+}
 
 // ---- which tab opens by itself ----
 
@@ -37,6 +55,8 @@ export type Need = { key: string; tab: Tab; why: string };
 const WALK_NEEDS = ["step", "already", "asking", "help"];
 const PRACTICE_NEEDS = ["start", "found", "failed", "blocked", "done"];
 const SHOWME_NEEDS = ["needs_permission", "pointing", "pointing_roughly", "your_turn_miss", "window_changed", "error", "not_sure"];
+// Show me during a lesson: the pointer is the lesson's own step, but these say why no pointer came, so they are new.
+const SHOWME_PROBLEMS = ["needs_permission", "your_turn_miss", "window_changed", "error", "not_sure"];
 const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "blocked", "error"];
 // Prompt help and the error explainer start from a hotkey and answer on Now: each step there, a refusal included.
 const PH_NEEDS = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
@@ -49,12 +69,13 @@ export function need(m: Model): Need | null {
   if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle };
   if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle };
   if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle };
+  if (m.walk && m.showme && SHOWME_PROBLEMS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "learn", why: S.showMe };
   if (m.walk && WALK_NEEDS.includes(m.walk.stage)) return { key: `walk:${m.walk.id}:${m.walk.index}:${m.walk.stage}`, tab: "learn", why: S.lessonsTitle };
   if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: "learn", why: S.practiceTitle };
   if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle };
   if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle };
   if (m.point?.stage === "found") return { key: `point:${m.point.label ?? ""}`, tab: "now", why: S.pointTitle };
-  // A pointer during a lesson belongs to the lesson, which is on Learn.
+  // A pointer during a lesson belongs to the lesson, which is on Learn (its problems are above).
   if (!m.walk && m.showme && SHOWME_NEEDS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "now", why: S.showMe };
   if (m.voice && VOICE_NEEDS.includes(m.voice.stage)) return { key: `voice:${m.voice.stage}`, tab: "now", why: S.voiceTitle };
   return null;
