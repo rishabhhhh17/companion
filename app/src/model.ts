@@ -328,7 +328,15 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}), ...seq } };
     }
     case "assist.error": return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: String(e.reason), diff: [] } });
-    case "app.voice": return e.stage === "idle" ? { ...m, voice: null } : { ...m, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
+    case "app.voice": {
+      // Which microphone listened, in one line above the tabs (voiceset.rs): the picked one is not connected so the
+      // default listens, the one in use went away (even after another took over), or another one took over while talking.
+      const s = (k: string) => (typeof e[k] === "string" && e[k] ? String(e[k]) : null);
+      const missing = s("micMissing"), using = s("micUsing"), switched = s("micSwitched");
+      const mic = missing && using ? S.micUsingDefault(missing, using) : e.micLost === true ? S.micLost : switched ? S.micSwitched(switched) : null;
+      const n = mic ? { notice: mic } : {};
+      return e.stage === "idle" ? { ...m, ...n, voice: null } : { ...m, ...n, voice: { stage: String(e.stage), message: String(e.message ?? ""), percent: typeof e.percent === "number" ? e.percent : undefined, text: typeof e.text === "string" ? e.text : undefined } };
+    }
     case "ui.voiceClosed": return { ...m, voice: null };
     case "doctor.report": return { ...m, doctor: Array.isArray(e.items) ? e.items : [] };
     case "ui.recapClosed": return { ...m, recap: null };

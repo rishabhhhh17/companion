@@ -1,0 +1,121 @@
+// Voice settings (M11 wave 4, item 2): the Mac's voice and its speed, the microphone, the language, whether the sound is
+// on. What the app sends is read safely, and everything is said in plain words. Nothing here makes a sound or listens.
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { VOICE_START, languageLabel, micDefaultLabel, micLine, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type VoiceSettings } from "./voicesettings.ts";
+import { S } from "./strings.ts";
+
+const sample: VoiceSettings = {
+  voices: [{ id: "ava", name: "Ava", lang: "en-US", quality: 2 }, { id: "jamie", name: "Jamie", lang: "en-GB", quality: 3 }, { id: "lekha", name: "Lekha", lang: "hi-IN", quality: 1 }],
+  macLang: "en-US", voice: "ava", voiceMissing: null, voiceUsing: null, speed: 1.25, speeds: [0.5, 0.75, 1, 1.25, 1.5],
+  inputs: [{ id: "coreaudio:built-in", name: "MacBook Pro Microphone" }, { id: "coreaudio:usb", name: "Blue Yeti" }], defaultInput: "MacBook Pro Microphone",
+  mic: "coreaudio:usb", micMissing: null, language: "hi", languages: ["auto", "en", "hi"], sound: "on",
+};
+const lang = (code: string) => new Intl.DisplayNames(["en"], { type: "language", languageDisplay: "standard" }).of(code);
+
+describe("what the app says about voice settings, read safely", () => {
+  test("a full answer is read as it is", () => {
+    expect(voiceSettingsFrom(JSON.parse(JSON.stringify(sample)))).toEqual(sample);
+  });
+  test("an answer that cannot be read keeps the Mac's own choices and never claims something is away or the sound is off", () => {
+    for (const bad of [null, undefined, 5, "x", [], { voices: "no", speed: "fast", sound: "loud", voice: 7, mic: {}, language: 3 }]) {
+      const s = voiceSettingsFrom(bad);
+      expect(s.voice).toBeNull(); expect(s.mic).toBeNull(); expect(s.voiceMissing).toBeNull(); expect(s.micMissing).toBeNull();
+      expect(s.speed).toBe(1); expect(s.sound).toBe("on"); expect(s.language).toBe("auto");
+      expect(s.speeds).toEqual(VOICE_START.speeds); expect(s.languages).toContain("auto");
+    }
+  });
+  test("odd entries in the lists are dropped, never shown", () => {
+    const s = voiceSettingsFrom({ ...sample, voices: [...sample.voices, { id: 5 }, null, "x", { id: "ok", name: "", lang: "en" }], inputs: [{ id: "a" }, { id: "b", name: "Mic B" }], speeds: [1, "2", -1, 9, 0.5] });
+    expect(s.voices.map((v) => v.id)).toEqual(["ava", "jamie", "lekha"]);
+    expect(s.inputs).toEqual([{ id: "b", name: "Mic B" }]);
+    expect(s.speeds).toEqual([1, 0.5]);
+  });
+});
+
+describe("voice settings in plain words", () => {
+  test("a voice is its name, its language in words and, when better than the default, its quality", () => {
+    expect(voiceLabel({ id: "ava", name: "Ava", lang: "en-US", quality: 2 })).toBe(`Ava, ${lang("en-US")}, ${S.voiceQualityEnhanced}`);
+    expect(voiceLabel({ id: "jamie", name: "Jamie", lang: "en-GB", quality: 3 })).toBe(`Jamie, ${lang("en-GB")}, ${S.voiceQualityPremium}`);
+    expect(voiceLabel({ id: "lekha", name: "Lekha", lang: "hi-IN", quality: 1 })).toBe(`Lekha, ${lang("hi-IN")}`);
+    expect(voiceLabel({ id: "z", name: "Zoe (Premium)", lang: "en-US", quality: 3 })).toBe(`Zoe (Premium), ${lang("en-US")}`, );
+    expect(voiceLabel({ id: "q", name: "Q", lang: "not a code", quality: 1 })).toBe("Q, not a code");
+  });
+  test("speeds and languages have plain names", () => {
+    expect(speedLabel(1)).toBe(S.voiceSpeedNames["1"]);
+    for (const n of [0.5, 0.75, 1, 1.25, 1.5]) expect(speedLabel(n)).not.toBe("");
+    expect(speedLabel(1.1)).toBe("1.1 times");
+    expect(languageLabel("auto")).toBe(S.voiceLanguageAuto);
+    expect(languageLabel("hi")).toBe("Hindi");
+    expect(languageLabel("zz")).toBe("zz");
+    // Every language the app offers has a name here (voiceset.rs LANGUAGES).
+    const rs = readFileSync(new URL("../src-tauri/src/voiceset.rs", import.meta.url), "utf8");
+    const list = rs.slice(rs.indexOf("pub const LANGUAGES"), rs.indexOf("];", rs.indexOf("pub const LANGUAGES")));
+    const codes = [...list.matchAll(/"([a-z]+)"/g)].map((m) => m[1]);
+    expect(codes.length).toBeGreaterThan(10);
+    for (const c of codes) expect(languageLabel(c), c).not.toBe(c);
+  });
+  test("a picked voice that is gone says which one and what speaks instead", () => {
+    expect(voiceLine({ ...sample, voiceMissing: "Zoe", voiceUsing: "Ava" })).toBe("Zoe is no longer on this Mac, so Ava speaks instead.");
+    expect(voiceLine({ ...sample, voiceMissing: "Zoe", voiceUsing: null })).toBe("Zoe is no longer on this Mac, so your Mac's own voice speaks instead.");
+    expect(voiceLine(sample)).toBe("");
+  });
+  test("a picked microphone that is not connected says the default listens until it is back", () => {
+    expect(micLine({ ...sample, micMissing: "AirPods Pro" })).toBe("AirPods Pro is not connected, so your Mac's default microphone (MacBook Pro Microphone) listens until it is back.");
+    expect(micLine({ ...sample, micMissing: "AirPods Pro", defaultInput: null })).toBe("AirPods Pro is not connected, so your Mac's default microphone listens until it is back.");
+    expect(micLine({ ...sample, micMissing: "AirPods Pro", inputs: [], defaultInput: null })).toBe(S.micNone);
+    expect(micLine({ ...sample, inputs: [], defaultInput: null })).toBe(S.micNone);
+    expect(micLine(sample)).toBe("");
+    expect(micDefaultLabel(sample)).toBe("Your Mac's default (MacBook Pro Microphone)");
+    expect(micDefaultLabel({ ...sample, defaultInput: null })).toBe("Your Mac's default");
+  });
+  test("the sound being off is said plainly, with what to do", () => {
+    expect(soundLine("on")).toBe("");
+    for (const s of ["muted", "zero", "none"] as const) { expect(soundLine(s)).not.toBe(""); expect(soundLine(s)).toMatch(/words/); }
+    expect(soundLine("muted")).toMatch(/muted/);
+  });
+  test("every reason the app can give for not saving is said in plain words", () => {
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const rs = readFileSync(new URL("../src-tauri/src/voiceset.rs", import.meta.url), "utf8");
+    const set = main.slice(main.indexOf("fn set_voice_settings("), main.indexOf("\n}\n", main.indexOf("fn set_voice_settings(")));
+    const apply = rs.slice(rs.indexOf("pub fn apply("), rs.indexOf("\n}\n", rs.indexOf("pub fn apply(")));
+    const codes = [...set.matchAll(/"([a-z_]+)"\.(?:into|to_string)\(\)/g), ...apply.matchAll(/"(unknown_[a-z]+)"/g)].map((m) => m[1]);
+    expect([...new Set(codes)].sort()).toEqual(["not_card", "not_saved", "unknown_language", "unknown_mic", "unknown_voice"]);
+    for (const c of codes) { expect(voiceProblem(c), c).not.toBe(""); expect(voiceProblem(c), c).not.toContain("_"); }
+    expect(voiceProblem("Error: odd")).toBe(S.voiceSaveFailed);
+  });
+  test("a change sends everything else as it is, so changing the speed never drops the picked voice or microphone", () => {
+    expect(voiceAsk(sample, { speed: 0.75 })).toEqual({ voice: "ava", speed: 0.75, mic: "coreaudio:usb", language: "hi" });
+    expect(voiceAsk(sample, { voice: null, mic: null })).toEqual({ voice: null, speed: 1.25, mic: null, language: "hi" });
+    expect(voiceAsk(VOICE_START, { language: "en" })).toEqual({ voice: null, speed: 1, mic: null, language: "en" });
+  });
+});
+
+describe("the Settings rows", () => {
+  const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+  const rows = card.slice(card.indexOf("function VoiceRows"), card.indexOf("\n}\n", card.indexOf("function VoiceRows")));
+  test("Settings asks the app for the lists and changes them only through set_voice_settings, and the app has both commands", () => {
+    expect(rows).toContain('invoke("voice_settings")');
+    expect(rows).toContain('invoke("set_voice_settings", voiceAsk(');
+    expect(rows).toContain("voiceSettingsFrom(");
+    const panel = card.slice(card.indexOf("function SettingsPanel"), card.indexOf("\n}\n", card.indexOf("function SettingsPanel")));
+    expect(panel).toContain("<VoiceRows");
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    for (const c of ["voice_settings", "set_voice_settings"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+  });
+  test("every row is labelled for VoiceOver, and the lines about what is away are announced", () => {
+    for (const label of ["S.voicePickLabel", "S.micPickLabel", "S.voiceLanguageLabel", "S.voiceSpeedGroup"]) expect(rows).toContain(label);
+    expect(rows).toContain("voiceLine(v)"); expect(rows).toContain("micLine(v)"); expect(rows).toContain("soundLine(v.sound)");
+    expect(rows).toMatch(/role="status"/);
+  });
+  test("the sample is said only when the person presses its button, through the same speak command", () => {
+    const tries = rows.split("\n").filter((l) => l.includes('invoke("speak"'));
+    expect(tries.length).toBe(1);
+    expect(tries[0]).toContain("onClick=");
+    expect(tries[0]).toContain("S.voiceSample");
+  });
+  test("Speak to me and Answer out loud are both here, each off until turned on", () => {
+    expect(rows).toContain("S.speakSetting"); expect(rows).toContain("S.speakRepliesSetting");
+    expect(rows).toContain("speechOn"); expect(rows).toContain("repliesOn");
+  });
+});

@@ -94,52 +94,115 @@ pub fn ask_for_mic() {
 
 // ---------- recording ----------
 
-/// The recorder lives on its own thread (the audio stream cannot move between threads) and is told to start and stop.
-pub struct Recorder { stop: Sender<()>, result: mpsc::Receiver<Result<(Vec<f32>, usize, u32), String>> }
+use crate::voiceset::{self, Input, Named, OnError};
 
-fn collect<T: SizedSample + 'static>(dev: &cpal::Device, cfg: cpal::StreamConfig, buf: Arc<Mutex<Vec<f32>>>, to_f32: fn(T) -> f32) -> Result<cpal::Stream, String> {
-    dev.build_input_stream(cfg, move |data: &[T], _| { if let Ok(mut b) = buf.lock() { if b.len() < 16_000 * 4 * 70 * 2 { b.extend(data.iter().map(|s| to_f32(*s))); } } }, |_e| {}, None).map_err(|e| e.to_string())
+/// The Mac's microphones, by their lasting id (Core Audio's device id) and name, and which one is the Mac's default now.
+/// Names only: nothing is opened and nothing listens.
+pub fn inputs() -> (Vec<Input>, Option<String>) {
+    let host = cpal::default_host();
+    (input_list(&host).into_iter().map(|(i, _)| i).collect(), default_id(&host))
+}
+fn name_of(d: &cpal::Device) -> String { d.to_string().chars().filter(|c| !c.is_control()).take(120).collect() }
+fn input_list(host: &cpal::Host) -> Vec<(Input, cpal::Device)> {
+    host.input_devices().map(|ds| ds.filter_map(|d| { let id = d.id().ok()?.to_string(); Some((Input { id, name: name_of(&d) }, d)) }).collect()).unwrap_or_default()
+}
+fn default_id(host: &cpal::Host) -> Option<String> { host.default_input_device().and_then(|d| d.id().ok()).map(|i| i.to_string()) }
+
+/// One open microphone: what it heard, in its own format, and the first problem it reported (an error kind's name).
+struct Open { stream: cpal::Stream, buf: Arc<Mutex<Vec<f32>>>, ch: usize, rate: u32, trouble: Arc<Mutex<Option<String>>> }
+impl Open {
+    /// Closes this microphone and gives what it heard at 16 kHz, one channel.
+    fn close(self) -> Vec<f32> {
+        drop(self.stream);
+        let samples = self.buf.lock().map(|b| b.clone()).unwrap_or_default();
+        crate::voice::to_mono_16k(&samples, self.ch, self.rate)
+    }
+    fn trouble(&self) -> Option<String> { self.trouble.lock().ok().and_then(|t| t.clone()) }
+    fn clear_trouble(&self) { if let Ok(mut t) = self.trouble.lock() { *t = None; } }
 }
 
+fn collect<T: SizedSample + 'static>(dev: &cpal::Device, cfg: cpal::StreamConfig, buf: Arc<Mutex<Vec<f32>>>, trouble: Arc<Mutex<Option<String>>>, to_f32: fn(T) -> f32) -> Result<cpal::Stream, String> {
+    // The most serious problem waiting wins (voiceset::replaces): a microphone that went away is never hidden behind an overload.
+    let on_error = move |e: cpal::Error| { let k = format!("{:?}", e.kind()); if let Ok(mut t) = trouble.lock() { if voiceset::replaces(t.as_deref(), &k) { *t = Some(k); } } };
+    dev.build_input_stream(cfg, move |data: &[T], _| { if let Ok(mut b) = buf.lock() { if b.len() < 16_000 * 4 * 70 * 2 { b.extend(data.iter().map(|s| to_f32(*s))); } } }, on_error, None).map_err(|e| e.to_string())
+}
+
+fn open(dev: &cpal::Device) -> Result<Open, String> {
+    let sup = dev.default_input_config().map_err(|e| e.to_string())?;
+    let (ch, rate, fmt) = (sup.channels() as usize, sup.sample_rate(), sup.sample_format());
+    let cfg: cpal::StreamConfig = sup.into();
+    let (buf, trouble) = (Arc::new(Mutex::new(Vec::<f32>::new())), Arc::new(Mutex::new(None)));
+    let stream = match fmt {
+        SampleFormat::F32 => collect::<f32>(dev, cfg, buf.clone(), trouble.clone(), |s| s),
+        SampleFormat::I16 => collect::<i16>(dev, cfg, buf.clone(), trouble.clone(), |s| s as f32 / 32768.0),
+        SampleFormat::U16 => collect::<u16>(dev, cfg, buf.clone(), trouble.clone(), |s| (s as f32 - 32768.0) / 32768.0),
+        SampleFormat::I32 => collect::<i32>(dev, cfg, buf.clone(), trouble.clone(), |s| s as f32 / 2147483648.0),
+        other => return Err(format!("This microphone uses a format I cannot read ({other:?}).")),
+    }?;
+    stream.play().map_err(|e| e.to_string())?;
+    Ok(Open { stream, buf, ch, rate, trouble })
+}
+
+/// Which microphone was opened, and the picked one's name when it was not connected (then the Mac's default was used).
+pub struct Opened { pub name: String, pub missing: Option<String> }
+/// What was heard, at 16 kHz on one channel. `switched_to`: another microphone took over while the keys were held (the
+/// one in use went away, Bluetooth headphones switched off). `lost`: it went away and no other one could listen, so this
+/// is what was heard until then.
+pub struct Heard { pub mono: Vec<f32>, pub switched_to: Option<String>, pub lost: bool }
+
+/// The recorder lives on its own thread (the audio stream cannot move between threads) and is told to stop.
+pub struct Recorder { stop: Sender<()>, result: mpsc::Receiver<Result<Heard, String>> }
+
 impl Recorder {
-    pub fn start() -> Result<Recorder, String> {
+    /// Opens the microphone picked in Settings, or the Mac's default when none is picked or the picked one is not connected
+    /// (voiceset::pick_mic). While the keys are held, a microphone that goes away is replaced by another (voiceset::after_loss)
+    /// and one that changes (a Bluetooth headset starting its microphone) is opened again, at most MAX_REOPENS times.
+    pub fn start(saved: Option<Named>) -> Result<(Recorder, Opened), String> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (res_tx, res_rx) = mpsc::channel();
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<Opened, String>>();
         std::thread::spawn(move || {
-            let go = || -> Result<(cpal::Stream, Arc<Mutex<Vec<f32>>>, usize, u32), String> {
-                let host = cpal::default_host();
-                let dev = host.default_input_device().ok_or("No microphone was found.")?;
-                let sup = dev.default_input_config().map_err(|e| e.to_string())?;
-                let (ch, rate, fmt) = (sup.channels() as usize, sup.sample_rate(), sup.sample_format());
-                let cfg: cpal::StreamConfig = sup.into();
-                let buf = Arc::new(Mutex::new(Vec::<f32>::new()));
-                let stream = match fmt {
-                    SampleFormat::F32 => collect::<f32>(&dev, cfg, buf.clone(), |s| s),
-                    SampleFormat::I16 => collect::<i16>(&dev, cfg, buf.clone(), |s| s as f32 / 32768.0),
-                    SampleFormat::U16 => collect::<u16>(&dev, cfg, buf.clone(), |s| (s as f32 - 32768.0) / 32768.0),
-                    SampleFormat::I32 => collect::<i32>(&dev, cfg, buf.clone(), |s| s as f32 / 2147483648.0),
-                    other => return Err(format!("This microphone uses a format I cannot read ({other:?}).")),
-                }?;
-                stream.play().map_err(|e| e.to_string())?;
-                Ok((stream, buf, ch, rate))
+            let host = cpal::default_host();
+            let list = input_list(&host);
+            let infos: Vec<Input> = list.iter().map(|(i, _)| i.clone()).collect();
+            let pick = voiceset::pick_mic(saved.as_ref(), &infos, default_id(&host).as_deref());
+            let first = match pick.index {
+                Some(i) => Some(list[i].clone()),
+                None => host.default_input_device().map(|d| (Input { id: d.id().map(|x| x.to_string()).unwrap_or_default(), name: name_of(&d) }, d)),
             };
-            match go() {
-                Ok((stream, buf, ch, rate)) => {
-                    let _ = ready_tx.send(Ok(()));
-                    let _ = stop_rx.recv();          // the key came up (or Stop everything)
-                    drop(stream);                     // the microphone is closed here
-                    let samples = buf.lock().map(|b| b.clone()).unwrap_or_default();
-                    let _ = res_tx.send(Ok((samples, ch, rate)));
+            let Some((mut using, dev)) = first else { let e = "No microphone was found.".to_string(); let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); return };
+            let mut live = match open(&dev) { Ok(o) => Some(o), Err(e) => { let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); return } };
+            let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing: pick.missing.clone() }));
+            let (mut heard, mut switched_to, mut lost, mut reopens) = (Vec::<f32>::new(), None, false, 0u32);
+            loop {
+                // The key came up (or Stop everything, or the recorder was dropped): stop listening.
+                match stop_rx.recv_timeout(Duration::from_millis(100)) { Err(mpsc::RecvTimeoutError::Timeout) => {} _ => break }
+                let Some(kind) = live.as_ref().and_then(Open::trouble) else { continue };
+                let what = voiceset::on_stream_error(&kind);
+                if what == OnError::Ignore { if let Some(o) = live.as_ref() { o.clear_trouble(); } continue; }
+                if let Some(o) = live.take() { heard.extend(o.close()); }   // keep what it heard, and close it
+                if reopens >= voiceset::MAX_REOPENS { lost = true; continue; }
+                reopens += 1;
+                let host = cpal::default_host();
+                let list = input_list(&host);
+                let infos: Vec<Input> = list.iter().map(|(i, _)| i.clone()).collect();
+                let did = default_id(&host);
+                // Changed: the same one again first. Gone, or the same one will not open: another (voiceset::after_loss).
+                let same = if what == OnError::OpenSameAgain { infos.iter().position(|x| x.id == using.id) } else { None };
+                let other = voiceset::after_loss(saved.as_ref(), &infos, did.as_deref(), &using.id);
+                match [same, other].into_iter().flatten().find_map(|i| open(&list[i].1).ok().map(|o| (i, o))) {
+                    Some((i, o)) => { if infos[i].id != using.id { switched_to = Some(infos[i].name.clone()); } using = infos[i].clone(); live = Some(o); }
+                    None => lost = true,
                 }
-                Err(e) => { let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); }
             }
+            if let Some(o) = live.take() { heard.extend(o.close()); }   // the microphone is closed here
+            let _ = res_tx.send(Ok(Heard { mono: heard, switched_to, lost }));
         });
-        ready_rx.recv_timeout(Duration::from_secs(5)).map_err(|_| "The microphone did not start.".to_string())??;
-        Ok(Recorder { stop: stop_tx, result: res_rx })
+        let opened = ready_rx.recv_timeout(Duration::from_secs(5)).map_err(|_| "The microphone did not start.".to_string())??;
+        Ok((Recorder { stop: stop_tx, result: res_rx }, opened))
     }
-    /// Closes the microphone and returns what it heard: samples, channels, sample rate.
-    pub fn finish(self) -> Result<(Vec<f32>, usize, u32), String> {
+    /// Closes the microphone and returns what it heard.
+    pub fn finish(self) -> Result<Heard, String> {
         let _ = self.stop.send(());
         self.result.recv_timeout(Duration::from_secs(5)).map_err(|_| "The microphone did not stop in time.".to_string())?
     }
@@ -156,11 +219,14 @@ pub fn load(model: &Path) -> Result<Speech, String> {
     Speech::new_with_params(model.to_str().ok_or("bad model path")?, WhisperContextParameters::default()).map_err(|e| format!("Could not load the speech model: {e}"))
 }
 
-pub fn transcribe_with(ctx: &Speech, samples_16k: &[f32]) -> Result<String, String> {
+/// `prompt`: the open project's own words (voicewords.rs), empty for none. `language`: a language code picked in Settings,
+/// None to let the model tell. Neither may hold a NUL (whisper-rs would stop on one): both are dropped if they do.
+pub fn transcribe_with(ctx: &Speech, samples_16k: &[f32], prompt: &str, language: Option<&str>) -> Result<String, String> {
     use whisper_rs::{FullParams, SamplingStrategy};
     let mut state = ctx.create_state().map_err(|e| e.to_string())?;
     let mut p = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    p.set_language(None); p.set_translate(false);
+    p.set_language(language.filter(|l| !l.contains('\0'))); p.set_translate(false);
+    if !prompt.is_empty() && !prompt.contains('\0') { p.set_initial_prompt(prompt); }
     p.set_print_special(false); p.set_print_progress(false); p.set_print_realtime(false); p.set_print_timestamps(false);
     p.set_no_context(true); p.set_single_segment(false);
     state.full(p, samples_16k).map_err(|e| format!("Could not understand the audio: {e}"))?;
@@ -203,13 +269,39 @@ mod tests {
         let ctx = load(&model_path(&data)).unwrap();
         eprintln!("model loaded in {:?}", t_load.elapsed());
         let t0 = std::time::Instant::now();
-        let text = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples).unwrap());
+        let text = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples, "", None).unwrap());
         eprintln!("heard: {text:?} in {:?}", t0.elapsed());
         let t1 = std::time::Instant::now();
-        let again = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples).unwrap());
+        let again = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples, "", None).unwrap());
         eprintln!("second time: {again:?} in {:?}", t1.elapsed());
         let low = text.to_lowercase();
         assert!(low.contains("deploy") && low.contains("website"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The project's own words help the speech model write them the way the project does (voicewords.rs). Needs the model
+    /// (see speech_round_trip). The sentence is made with the Mac's `say` into a file; nothing is played out loud.
+    /// Run with: cargo test -- --ignored project_words_round_trip
+    #[test]
+    #[ignore]
+    fn project_words_round_trip() {
+        let data = PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Application Support/dev.companion.app");
+        assert!(model_ready(&data), "download the model first (speech_round_trip)");
+        let dir = std::env::temp_dir().join(format!("companion-test-words-speech-{}", std::process::id())); std::fs::create_dir_all(&dir).unwrap();
+        let (aiff, wav) = (dir.join("a.aiff"), dir.join("a.wav"));
+        assert!(std::process::Command::new("say").args(["-o"]).arg(&aiff).arg("Why does use auth fail when I sign up with supabase, and how do I deploy it to vercel").status().unwrap().success());
+        assert!(std::process::Command::new("afconvert").args(["-f", "WAVE", "-d", "LEI16@16000", "-c", "1"]).arg(&aiff).arg(&wav).status().unwrap().success());
+        let bytes = std::fs::read(&wav).unwrap();
+        let samples: Vec<f32> = bytes[44..].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        let ctx = load(&model_path(&data)).unwrap();
+        let words = crate::voicewords::prompt(&["supabase".to_string(), "vercel".to_string(), "useAuth".to_string(), "next".to_string()]);
+        let plain = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples, "", None).unwrap());
+        let t0 = std::time::Instant::now();
+        let with = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples, &words, Some("en")).unwrap());
+        eprintln!("without the words: {plain:?}\nwith the words ({:?}): {with:?}", t0.elapsed());
+        assert!(!crate::voicewords::is_echo(&with, &words));
+        assert!(with.contains("useAuth"), "{with}");
+        assert!(with.to_lowercase().contains("supabase") && with.to_lowercase().contains("vercel"), "{with}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

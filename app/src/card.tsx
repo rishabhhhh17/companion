@@ -5,7 +5,8 @@ import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, ty
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
-import { lineFor, setSpeech, speechOn } from "./speech.ts";
+import { askedByVoice, lineAnswers, lineFor, newReply, repliesIn, repliesOn, setReplies, setSpeech, speakWhen, speechOn, spokenNote, type AskKind, type VoiceQuestion } from "./speech.ts";
+import { VOICE_START, languageLabel, micDefaultLabel, micLine, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
 import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
@@ -212,6 +213,64 @@ function TalkKeysRow({ talk, onChange }: { talk: TalkKeys; onChange: (t: TalkKey
   </>);
 }
 
+// Talking and listening (M11 wave 4, item 2): the microphone, the language, Speak to me, Answer out loud, the voice and its
+// speed. The app lists the Mac's voices and microphones and keeps the choices on this Mac (voiceset.rs, voice.json); one
+// that is away says so, and when the Mac's sound is off it says spoken lines are shown as words only. Read again whenever
+// the card comes back to the front (headphones may have been switched on or off meanwhile).
+function VoiceRows() {
+  const [v, setV] = useState<VoiceSettings>(VOICE_START);
+  const [speak, setSpeak] = useState(speechOn);
+  const [replies, setRepliesState] = useState(repliesOn);
+  const [problem, setProblem] = useState("");
+  const [tried, setTried] = useState("");
+  const load = () => void invoke("voice_settings").then((x) => setV(voiceSettingsFrom(x))).catch(() => {});
+  useEffect(() => { load(); const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
+  const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(voiceSettingsFrom(x))).catch((e) => setProblem(voiceProblem(String(e)))); };
+  const heard = (r: unknown) => { const o = (r ?? {}) as { said?: boolean; why?: string; sound?: Sound }; setTried(o.said === false && o.why === "sound" ? soundLine(o.sound ?? "muted") : o.said === false && o.why === "quiet" ? S.voiceQuietNow : ""); };
+  return (<>
+    <h3>{S.voiceSettingsTitle}</h3>
+    <div className="line muted">{S.voiceSettingsHelp}</div>
+    <div className="row">
+      <select aria-label={S.micPickLabel} value={v.mic ?? ""} onChange={(e) => change({ mic: e.target.value || null })}>
+        <option value="">{S.micPickLabel}: {micDefaultLabel(v)}</option>
+        {v.mic && v.micMissing && <option value={v.mic}>{S.micPickLabel}: {S.notConnected(v.micMissing)}</option>}
+        {v.inputs.map((i) => <option key={i.id} value={i.id}>{S.micPickLabel}: {i.name}</option>)}
+      </select>
+    </div>
+    <div className="line muted">{S.micHelp}</div>
+    {micLine(v) && <div className="line" role="status">{micLine(v)}</div>}
+    <div className="row">
+      <select aria-label={S.voiceLanguageLabel} value={v.language} onChange={(e) => change({ language: e.target.value })}>
+        {v.languages.map((l) => <option key={l} value={l}>{S.voiceLanguageLabel}: {languageLabel(l)}</option>)}
+      </select>
+    </div>
+    <div className="line muted">{S.voiceLanguageHelp}</div>
+    <div className="line muted">{S.voiceWordsHelp}</div>
+    <div className="line muted">{S.speakHelp}</div>
+    <div className="line muted">{S.speakRepliesHelp}</div>
+    <div className="row">
+      <button className="btn" type="button" aria-pressed={speak} onClick={() => { const x = !speak; setSpeak(x); setSpeech(x); if (!x) void invoke("speak_stop"); }}>{S.speakSetting}: {speak ? "on" : "off"}</button>
+      <button className="btn" type="button" aria-pressed={replies} onClick={() => { const x = !replies; setRepliesState(x); setReplies(x); if (!x) void invoke("speak_stop"); }}>{S.speakRepliesSetting}: {replies ? "on" : "off"}</button>
+    </div>
+    <div className="row">
+      <select aria-label={S.voicePickLabel} value={v.voice ?? ""} onChange={(e) => change({ voice: e.target.value || null })}>
+        <option value="">{S.voicePickLabel}: {S.voiceMacDefault}</option>
+        {v.voice && v.voiceMissing && <option value={v.voice}>{S.voicePickLabel}: {S.notOnThisMac(v.voiceMissing)}</option>}
+        {v.voices.map((x) => <option key={x.id} value={x.id}>{S.voicePickLabel}: {voiceLabel(x)}</option>)}
+      </select>
+      <button className="btn" type="button" onClick={() => void invoke("speak", { text: S.voiceSample }).then(heard).catch(() => {})}>{S.voiceTry}</button>
+    </div>
+    {voiceLine(v) && <div className="line" role="status">{voiceLine(v)}</div>}
+    <div className="line muted">{S.voiceMoreHelp}</div>
+    <div className="row" role="group" aria-label={S.voiceSpeedGroup}>
+      {v.speeds.map((n) => <button key={n} className={v.speed === n ? "btn primary" : "btn"} type="button" aria-pressed={v.speed === n} onClick={() => change({ speed: n })}>{speedLabel(n)}</button>)}
+    </div>
+    {soundLine(v.sound) && <div className="line" role="status">{soundLine(v.sound)}</div>}
+    {tried && tried !== soundLine(v.sound) && <div className="line" role="status">{tried}</div>}
+    {problem && <div className="error" role="alert">{problem}</div>}
+  </>);
+}
+
 function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, yourTurn, setYourTurnOn, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; yourTurn: boolean; setYourTurnOn: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
@@ -220,7 +279,6 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
-  const [speak, setSpeak] = useState(speechOn);
   const [allScreens, setAllScreensState] = useState(allScreensOn);
   const [talk, setTalk] = useState<TalkKeys>(TALK_KEYS_START);
   useEffect(() => { void invoke("talk_keys").then((v) => setTalk(talkKeysFrom(v))).catch(() => {}); }, []);
@@ -291,9 +349,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <h3>{S.settingsKept}</h3>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
-      <h3>{S.speakTitle}</h3>
-      <div className="line muted">{S.speakHelp}</div>
-      <div className="row"><button className="btn" type="button" aria-pressed={speak} onClick={() => { const v = !speak; setSpeak(v); setSpeech(v); if (!v) void invoke("speak_stop"); }}>{S.speakSetting}: {speak ? "on" : "off"}</button></div>
+      <VoiceRows />
       <PresentationRow />
       <h3>{S.updatesTitle}</h3>
       <div className="line muted">{S.updatesHelp}</div>
@@ -514,16 +570,38 @@ function Card() {
     return () => { off.then((f) => f()); };
   }, []);
   // Spoken replies: only if turned on, one line per thing shown, and never for anything the person did not ask for.
+  // When the question was asked by voice (hold to talk) and Answer out loud is on, its answer is said whole when short
+  // (speech.ts speakWhen). Every line goes through sayIt; when the Mac's sound is off nothing is said and the card says so once.
+  const voiceAsked = useRef<VoiceQuestion>(null);   // the last question sent by voice, what it asked for and when (null: typed or pressed)
+  const fromVoice = useRef(false);    // the box holds words that came from hold to talk
+  const sayIt = (text: string, whole: boolean) => void invoke("speak", { text, whole, rest: S.speakRest }).then((r) => { const n = spokenNote(r); if (n) dispatch({ type: "app.notice", message: n }); }).catch(() => {});
+  const answersVoice = (key: string) => { const k = lineAnswers(key); return k !== null && askedByVoice(voiceAsked.current, k, Date.now()); };
   const saidKey = useRef("");
   const spoken = lineFor({ walk: m.walk, showme: m.showme });
   useEffect(() => {
-    if (!spoken || spoken.key === saidKey.current || !speechOn()) return;
+    if (!spoken || spoken.key === saidKey.current) return;
+    const when = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: answersVoice(spoken.key) });
+    if (!when.say) return;
     saidKey.current = spoken.key;
     // A step of a multi step answer is said when its pointer lands; if something else comes first, it is not said late.
-    if (!spoken.delayMs) { void invoke("speak", { text: spoken.text }).catch(() => {}); return; }
-    player.current.sayLater(() => void invoke("speak", { text: spoken.text }).catch(() => {}), spoken.delayMs);
+    if (!spoken.delayMs) { sayIt(spoken.text, when.whole); return; }
+    player.current.sayLater(() => sayIt(spoken.text, when.whole), spoken.delayMs);
     return () => player.current.cancelLine();
   }, [spoken?.key]);
+  // The answer to a question asked by voice (a research answer, a finished task's result), said once, whole when short:
+  // only the answer that is new on the card, and only of the kind that was asked (speech.ts newReply, askedByVoice).
+  const seenReplies = useRef(new Set<string>());
+  const replyKeys = repliesIn(m).map((r) => r.key).join("|");
+  useEffect(() => {
+    const all = repliesIn(m);
+    const r = newReply(all, seenReplies.current);
+    for (const x of all) seenReplies.current.add(x.key);
+    if (!r || !repliesOn() || !askedByVoice(voiceAsked.current, r.kind, Date.now())) return;
+    voiceAsked.current = null;   // one answer per question
+    sayIt(r.text, true);
+  }, [replyKeys]);
+  // A question sent from the box counts as asked by voice when the box still held words from hold to talk.
+  const sentFromBox = (kind: AskKind) => { voiceAsked.current = fromVoice.current ? { kind, at: Date.now() } : null; fromVoice.current = false; };
   // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
   useEffect(() => {
     let last: number | null = null, enabled = true;
@@ -669,7 +747,8 @@ function Card() {
       if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
         homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
         if (box.current) box.current.value = ev.text;
-        if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (box.current) box.current.value = ""; }
+        fromVoice.current = true;
+        if (askModeRef.current === "showme") { sentFromBox("showme"); showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (box.current) box.current.value = ""; }
         else if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
         else setTimeout(() => box.current?.focus(), 30);
         dispatch({ type: "ui.voiceClosed" });
@@ -761,6 +840,7 @@ function Card() {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
     dispatch({ type: "ui.undoClosed" });
+    sentFromBox("task");
     void send(startTask(project, prompt, off)); setOff(false);
     if (box.current) box.current.value = "";
   };
@@ -769,6 +849,7 @@ function Card() {
   const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
   const rescue = () => {
     if (!project) return;
+    voiceAsked.current = null;   // pressed, not asked by voice
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(diagnose(project));
@@ -781,6 +862,7 @@ function Card() {
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "");
     if (!c || !project) return;
+    sentFromBox("research");
     dispatch({ type: "ui.researchRequested" });
     void send(c);
     if (box.current) box.current.value = "";
@@ -788,6 +870,7 @@ function Card() {
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
     if (!goal || !project) return;
+    sentFromBox("plan");
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(planDrive(project, goal, off)); setOff(false);
@@ -991,7 +1074,8 @@ function Card() {
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
-          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); setAskMode("task"); if (box.current) box.current.value = ""; } } else submit(); } }} />
+          onInput={(e) => { if (!(e.target as HTMLInputElement).value) fromVoice.current = false; }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); if (box.current) box.current.value = ""; } } else submit(); } }} />
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
       {!working && (
@@ -1002,7 +1086,7 @@ function Card() {
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
-          <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
+          <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
           <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
         </div>
       )}
