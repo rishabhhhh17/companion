@@ -82,9 +82,63 @@ export function limitFromText(text: string, min: number, max: number): number | 
   return Number.isFinite(n) && n >= min && n <= max ? n : null;
 }
 
-/** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings). The keys
- * named here are checked against the ones the app registers (hotkeys.test.ts). */
-export const keyHints = (): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.errKeyHint, S.voiceHint, S.stopHint];
+// ---- hold to talk keys (F18.3) ----
+/** Two keys held while talking. The app keeps the choice and registers it (app/src-tauri/src/talkkeys.rs): `using` is the
+ *  chord registered now (null when another app holds it), `picked` the one the person chose, `choices` the short list, and
+ *  `free` the chords on it macOS let Companion register just now (talkkeys::free; the one in use always counts). */
+export type TalkKeys = { using: string | null; picked: string; choices: string[]; free: string[] };
+export const TALK_DEFAULT = "option-space";
+const TALK_NAMES: Record<string, string> = S.talkKeyNames;
+const TALK_COSTS: Record<string, string> = S.talkKeyCosts;
+const TALK_IDS = Object.keys(TALK_NAMES);
+export const TALK_KEYS_START: TalkKeys = { using: TALK_DEFAULT, picked: TALK_DEFAULT, choices: TALK_IDS, free: TALK_IDS };
+const knownChord = (v: unknown): v is string => typeof v === "string" && TALK_IDS.includes(v);
+/** "Option and Space"; empty for anything not on the list. */
+export const talkLabel = (id: string): string => TALK_NAMES[id] ?? "";
+/** What the app answered, read safely. Only a clear none means hold to talk is off, and only a clear list says which keys
+ *  are free; an answer that cannot be read keeps the default and every chord free, so the page never claims another app
+ *  holds keys when it does not know (pressing a chord still tries it, and says so if another app has it). */
+export function talkKeysFrom(v: unknown): TalkKeys {
+  const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
+  if (o.using !== null && !knownChord(o.using)) return TALK_KEYS_START;
+  const choices = Array.isArray(o.choices) ? o.choices.filter(knownChord) : [];
+  const free = Array.isArray(o.free) ? o.free.filter(knownChord) : TALK_IDS;
+  return { using: o.using, picked: knownChord(o.picked) ? o.picked : TALK_DEFAULT, choices: choices.length > 0 ? choices : TALK_IDS, free };
+}
+/** Whether a chord's button can be pressed: free on this Mac, or the keys hold to talk already uses (pressing them keeps them). */
+export const talkCanPick = (t: TalkKeys, id: string): boolean => knownChord(id) && (t.using === id || t.free.includes(id));
+/** One plain reason under the buttons when some cannot be pressed. Not when the only one is the chord the line above already
+ *  says another app has (hold to talk off, or fallen back from it). */
+export function talkNotFreeLine(t: TalkKeys): string {
+  const said = t.using !== t.picked ? t.picked : null;
+  return t.choices.some((id) => id !== said && !talkCanPick(t, id)) ? S.talkKeysNotFree : "";
+}
+/** What a chord gives up while it is hold to talk, said beside the picker; empty for the default and anything not listed. */
+export const talkCost = (id: string): string => TALK_COSTS[id] ?? "";
+/** The hold to talk hint: the keys in use, or where to pick keys when another app holds them. */
+export const voiceHint = (t: TalkKeys): string => (t.using ? S.voiceHint.replace("{keys}", talkLabel(t.using)) : S.voiceHintOff);
+/** The first run's warning that Alfred, Raycast and ChatGPT may share Option and Space with no notice (macOS lets both
+ *  have them unless the other app took them alone), only while hold to talk uses them. */
+export const talkSharedNote = (t: TalkKeys): string => (t.using === TALK_DEFAULT ? S.talkKeysShared : "");
+/** The line above the picker in Settings. `problem` when hold to talk is off or not on the keys the person picked. */
+export function talkKeysLine(t: TalkKeys): { text: string; problem: boolean } {
+  // Off since launch, but the free check just now found the picked keys free again (the other app let go of them).
+  if (!t.using && talkCanPick(t, t.picked)) return { text: S.talkKeysOffFreeNow.replace("{keys}", talkLabel(t.picked)), problem: true };
+  if (!t.using) return { text: S.talkKeysOff.replace("{keys}", talkLabel(t.picked)), problem: true };
+  if (t.using !== t.picked) return { text: S.talkKeysFellBack.replace("{picked}", talkLabel(t.picked)).replace("{using}", talkLabel(t.using)), problem: true };
+  if (t.using === TALK_DEFAULT) return { text: S.talkKeysNowDefault, problem: false };
+  return { text: S.talkKeysNow.replace("{keys}", talkLabel(t.using)), problem: false };
+}
+/** Why the keys did not change, from the code the app sends (talkkeys.rs Problem, and set_talk_keys in main.rs). */
+export function talkProblem(code: string): string {
+  if (code === "taken") return S.talkKeysTaken;
+  if (code === "not_saved") return S.talkKeysNotSaved;
+  return S.talkKeysFailed;
+}
+
+/** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings), with the
+ * hold to talk keys in use. The keys named here are checked against the ones the app registers (hotkeys.test.ts). */
+export const keyHints = (talk: TalkKeys = TALK_KEYS_START): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.errKeyHint, voiceHint(talk), S.stopHint];
 
 /** The exact words Settings sends to remove the key (the app checks the same words, keystore::REMOVE_PHRASE). */
 export const REMOVE_KEY_PHRASE = "remove the key";

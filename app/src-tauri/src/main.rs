@@ -40,6 +40,7 @@ mod voice;
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 mod voice_mac;
+mod talkkeys;
 mod visibility;
 mod wheel;
 mod presentation;
@@ -289,7 +290,6 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 fn sc_mods() -> Modifiers { Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER }
 fn sc_showme() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyS) }
 fn sc_problem() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyF) }
-fn sc_voice() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyV) }
 fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
 fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
 fn sc_explain() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyE) }
@@ -1267,6 +1267,86 @@ fn copy_link(url: String) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- Hold to talk keys (F18.3, the rules are in talkkeys.rs) ----------
+
+const NO_CHORD: usize = usize::MAX;
+/// The chord registered for hold to talk now (an index into talkkeys::CHOICES), or none when another app holds it.
+/// Read without a lock, because the hotkey handler reads it on every press.
+static TALK_USING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(NO_CHORD);
+/// The chord the person picked (saved on this Mac), the default until they pick.
+static TALK_PICKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// One change at a time, never held while the hotkey handler runs.
+static TALK_SWITCH: Mutex<()> = Mutex::new(());
+/// Key repeats while the keys are held restart nothing (talkkeys::Held).
+static TALK_HELD: Mutex<talkkeys::Held> = Mutex::new(talkkeys::Held::new());
+
+fn talk_keys_path() -> PathBuf { data_dir().join("talk-keys.json") }
+fn talk_using() -> Option<&'static talkkeys::Chord> { talkkeys::at(TALK_USING.load(Ordering::SeqCst)) }
+fn talk_picked() -> &'static talkkeys::Chord { talkkeys::at(TALK_PICKED.load(Ordering::SeqCst)).unwrap_or(talkkeys::DEFAULT) }
+fn set_talk_using(c: Option<&'static talkkeys::Chord>) { TALK_USING.store(c.map(talkkeys::index).unwrap_or(NO_CHORD), Ordering::SeqCst); }
+/// Whether a shortcut the plugin reports is the hold to talk chord in use right now.
+fn is_talk(s: &Shortcut) -> bool { talk_using().is_some_and(|c| &talkkeys::shortcut(c) == s) }
+
+/// At launch: the saved chord, else the default (talkkeys::start). Returns how it went, for the one launch notice.
+fn start_talk_keys(app: &AppHandle) -> talkkeys::Started {
+    let picked = talkkeys::parse(std::fs::read_to_string(talk_keys_path()).ok().as_deref());
+    let gs = app.global_shortcut();
+    let started = talkkeys::start(picked, |c| gs.register(talkkeys::shortcut(c)).is_ok());
+    TALK_PICKED.store(talkkeys::index(picked), Ordering::SeqCst);
+    set_talk_using(started.using());
+    log("talk_keys", json!({ "picked": picked.id, "using": started.using().map(|c| c.id) }));
+    started
+}
+
+/// What the page is told (talkkeys::state_json), with which chords are free on this Mac now: each chord not in use is
+/// registered and let go again at once (talkkeys::free), never the one in use. Called with TALK_SWITCH held.
+fn talk_state(app: &AppHandle) -> Value {
+    let gs = app.global_shortcut();
+    let using = talk_using();
+    let free = talkkeys::free(using,
+        |c| gs.register(talkkeys::shortcut(c)).is_ok(),
+        |c| { if gs.unregister(talkkeys::shortcut(c)).is_err() { log("talk_keys_not_let_go", json!({ "id": c.id })); } });
+    talkkeys::state_json(using, talk_picked(), &free)
+}
+
+/// Settings and the first run: what hold to talk uses now, what the person picked, the short list and which of it is free.
+/// Only from the card, since it briefly registers chords. A sync command, so it runs on the main thread like set_talk_keys.
+#[tauri::command]
+fn talk_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
+    if window.label() != "card" { return Err("not_card".into()); }
+    let _one = TALK_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    Ok(talk_state(&app))
+}
+
+/// Settings: use other keys for hold to talk. Only from the card, only a chord on the list. Registered at once and saved
+/// on this Mac only if it works; otherwise nothing changes. The error is a code the page turns into words.
+#[tauri::command]
+fn set_talk_keys(app: AppHandle, window: tauri::WebviewWindow, id: String) -> Result<Value, String> {
+    if window.label() != "card" { return Err("not_card".into()); }
+    let Some(wanted) = talkkeys::find(&id) else { return Err("unknown".into()) };
+    let _one = TALK_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    let before = talk_using();
+    let gs = app.global_shortcut();
+    let r = talkkeys::switch(before, wanted,
+        |c| gs.register(talkkeys::shortcut(c)).is_ok(),
+        |c| { let _ = std::fs::create_dir_all(data_dir()); logfile::write_atomic(&talk_keys_path(), talkkeys::to_json(c).to_string().as_bytes()).is_ok() },
+        |c| { if gs.unregister(talkkeys::shortcut(c)).is_err() { log("talk_keys_not_let_go", json!({ "id": c.id })); } });
+    match r {
+        Ok(c) => {
+            TALK_PICKED.store(talkkeys::index(c), Ordering::SeqCst);
+            if before != Some(c) {
+                set_talk_using(Some(c));
+                // The old keys no longer reach hold to talk, so a hold still going on them is ended here, not left open.
+                TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset();
+                voice_send(&app, VoiceMsg::Cancel);
+            }
+            log("talk_keys_set", json!({ "id": c.id }));
+            Ok(talk_state(&app))
+        }
+        Err(p) => { log("talk_keys_not_set", json!({ "id": wanted.id, "why": p.code() })); Err(p.code().into()) }
+    }
+}
+
 // ---------- Hold to talk ----------
 
 enum VoiceMsg { Down(u64), Up(u64), Cancel }
@@ -1388,7 +1468,7 @@ fn voice_download(app: AppHandle) {
             say_voice(&a, "downloading", "Downloading the speech model", json!({ "percent": pct }));
         });
         match r {
-            Ok(()) => say_voice(&app, "model_ready", "The speech model is ready. Hold Control, Option, Command and V to talk.", json!({})),
+            Ok(()) => say_voice(&app, "model_ready", &talkkeys::ready_words(talk_using()), json!({})),
             Err(e) => say_voice(&app, "error", &e, json!({})),
         }
     });
@@ -1503,13 +1583,17 @@ fn main() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
-                    // Hold to talk needs to know when the keys come up as well as down.
-                    if s == &sc_voice() {
-                        log("hotkey", json!({ "id": "V", "down": e.state == ShortcutState::Pressed }));
+                    // Hold to talk (two keys, talkkeys.rs) needs to know when the keys come up as well as down.
+                    if is_talk(s) {
+                        let down = e.state == ShortcutState::Pressed;
+                        // A key repeat while held, or a let go that ends no press, restarts nothing and is not logged.
+                        let counts = { let mut h = TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()); if down { h.press(now() as u64) } else { h.release() } };
+                        if !counts { return; }
+                        log("hotkey", json!({ "id": "talk", "down": down }));
                         // Never talk over the person: what is being said stops, a Show me answer still playing ends (no
                         // later step is drawn or said), and the page drops any line still waiting to be said.
-                        if e.state == ShortcutState::Pressed { speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ()); }
-                        voice_send(app, if e.state == ShortcutState::Pressed { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
+                        if down { speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ()); }
+                        voice_send(app, if down { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
                         return;
                     }
                     if e.state != ShortcutState::Pressed { return; }
@@ -1556,7 +1640,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -1609,13 +1693,16 @@ fn main() {
             });
             // Another app may already own one of our hotkeys. That must never stop Companion from opening.
             let mut taken: Vec<&str> = Vec::new();
-            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_voice(), "hold to talk"), (sc_showme(), "Show me how"), (sc_problem(), "point at the problem"), (sc_explain(), "explain an error")] {
+            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_showme(), "Show me how"), (sc_problem(), "point at the problem"), (sc_explain(), "explain an error")] {
                 if app.global_shortcut().register(sc).is_err() { taken.push(what); }
             }
-            if !taken.is_empty() {
-                log("hotkey_unavailable", json!({ "which": taken }));
-                let list = taken.join(", ");
-                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-hotkeys", "type": "app.notice", "message": format!("Another app is already using the keys for: {list}. Those shortcuts will not work until it lets go of them. You can still use the buttons.") }));
+            // Hold to talk is two keys the person can change (F18.3): the saved ones, else Option and Space.
+            let talk = start_talk_keys(app.handle());
+            if !taken.is_empty() || talk.using() != Some(talk.picked()) {
+                log("hotkey_unavailable", json!({ "which": taken, "hold_to_talk": talk.using().map(|c| c.id) }));
+            }
+            if let Some(message) = talkkeys::launch_notice(&taken, &talk) {
+                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-hotkeys", "type": "app.notice", "message": message }));
             }
             start_runner(app.handle());
             // If a "delete everything" could not remove some of it, the helper left a note; say it once.

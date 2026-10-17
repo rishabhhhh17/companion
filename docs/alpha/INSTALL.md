@@ -22,12 +22,13 @@ Companion asks for each permission **only the first time you use the feature tha
 You can see and change all three in **Settings** on the card.
 
 ## The keys
-Hold **Control + Option + Command** and press:
+**To talk**, hold Option and Space while you speak, and let go when you are done. Your words appear in the box; nothing is sent until you press Start. Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs. If one of them stops opening, or talking does nothing, pick other keys in **Settings**, under Keys to remember: Option and Return, or Control and Return (while picked, they no longer add a new line in other apps). Only if another app keeps Option and Space to itself does Companion notice and say so when it opens.
+
+For everything else, hold **Control + Option + Command** and press:
 - **F**: find what is wrong in your project and point at it. If the place is on another monitor, it looks there too.
 - **S**: ask about something on your screen (it looks once, with a light first).
-- **V** (hold): talk. Your words appear in the box; nothing is sent until you press Start.
 - **R**: rewrite the prompt you are typing in another app so it is clearer (then **A** to put it back, or Esc to drop it).
-- **K**: open the ask box. **X**: stop everything, always (it also silences spoken replies).
+- **K**: open the ask box. **X**: stop everything, always (it also silences spoken replies and stops listening).
 
 ## The card, in short
 Open it by clicking the character or pressing K. Buttons you will use:
@@ -35,7 +36,7 @@ Open it by clicking the character or pressing K. Buttons you will use:
 - **Show me**: type what you are trying to do on screen; it points at the next click and waits for your own click. **Do it for me** presses it only when that is safe (never anything that sends, pays, deletes or publishes).
 - **Draw it**: a hand drawn sketch of why something broke, from your project.
 - **Lessons**: guided step by step lessons (install Claude Code, get a project out of Bolt or Replit, add a setting on Vercel, connect Lovable to GitHub, allow Companion's permissions). **They are drafts written from the makers' help pages and nobody has tried them yet, so tell me when a step is wrong.**
-- **Settings**: permissions with a Walk me through it button, the keys to remember, **Your Claude key** (replace it or remove it; removing asks first), **Speak to me** (spoken replies with your Mac's own voice, off until you turn it on), Updates, Beta numbers (counts on your Mac only, off until you turn them on), Save a log for support, Delete everything.
+- **Settings**: permissions with a Walk me through it button, the keys to remember (and other keys for talking, if you need them), **Your Claude key** (replace it or remove it; removing asks first), **Speak to me** (spoken replies with your Mac's own voice, off until you turn it on), Updates, Beta numbers (counts on your Mac only, off until you turn them on), Save a log for support, Delete everything.
 
 ## If something goes wrong
 - **Settings, Save a log for support** writes a text file in your Downloads folder. It holds no project content, nothing you typed or said and nothing from your screen. Send it to me.

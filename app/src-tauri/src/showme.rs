@@ -645,8 +645,8 @@ mod tests {
         assert!(hush.contains("speech_off(app)") && hush.contains("showme_end_answer(app)") && hush.contains("emit(\"hush\""), "closing the card silences it and ends an answer still playing");
         assert!(body("fn close_card(").contains("card_closed_hush(&app)"), "Esc in the card");
         assert!(body("fn toggle_card(").contains("card_closed_hush("), "and a click on the character");
-        let hold = &main[main.find("if s == &sc_voice()").unwrap()..];
-        let hold = &hold[..hold.find("return;").unwrap()];
+        let hold = &main[main.find("if is_talk(s) {").unwrap()..];
+        let hold = &hold[..hold.find("voice_send(app").unwrap()];
         assert!(hold.contains("showme_end_answer(app)") && hold.contains("emit(\"hush\""), "so does starting to hold to talk");
         let pp = body("fn point_problem(");
         let start = &pp[..pp.find("std::thread::spawn").unwrap()];
