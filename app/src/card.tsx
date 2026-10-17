@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
+import { allScreensOn, setAllScreens, comeToFrom, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
@@ -174,6 +174,19 @@ function PresentationRow() {
   </>);
 }
 
+// Come to what it is about (F18 item 2): on unless turned off. The app keeps it (dock.json), because the app moves the
+// character; and how to give the character a new place.
+function ComeToRow() {
+  const [on, setOn] = useState(true);
+  useEffect(() => { void invoke("dock_settings").then((v) => setOn(comeToFrom(v))).catch(() => {}); }, []);
+  const change = (next: boolean) => { setOn(next); void invoke("set_come_to", { on: next }).then((v) => setOn(comeToFrom(v))).catch(() => {}); };
+  return (<>
+    <div className="line muted">{S.comeToHelp}</div>
+    <div className="row"><button className="btn" type="button" aria-pressed={on} onClick={() => change(!on)}>{S.comeToSetting}: {on ? "on" : "off"}</button></div>
+    <div className="line muted">{S.dragHint}</div>
+  </>);
+}
+
 function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, yourTurn, setYourTurnOn, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; yourTurn: boolean; setYourTurnOn: (v: boolean) => void; onClose: () => void }) {
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
@@ -244,6 +257,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <div className="line muted">{S.yourTurnHelp}</div>
       <div className="line muted">{S.allScreensHelp}</div>
       <div className="row"><button className="btn" type="button" aria-pressed={allScreens} onClick={() => { const v = !allScreens; setAllScreensState(v); setAllScreens(v); }}>{S.allScreensSetting}: {allScreens ? "on" : "off"}</button></div>
+      <ComeToRow />
       <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
       <SpendingRow project={project} spending={spending} />
       <h3>{S.settingsKept}</h3>

@@ -1,6 +1,6 @@
 //! Screen sharing and calls (rule 7). Two settings, both on unless the person turns them off:
-//!  - hide from screen sharing: the ring overlay and the card ask macOS to be left out of other apps' screen captures
-//!    (NSWindow sharingType none). Best effort only: ScreenCaptureKit apps do not reliably honour it (technical research,
+//!  - hide from screen sharing: the ring overlay, the card and (from F18) the character ask macOS to be left out of other
+//!    apps' screen captures (NSWindow sharingType none). Best effort only: ScreenCaptureKit apps do not reliably honour it (technical research,
 //!    "Presentation mode"), so nothing private may rely on it. Companion's own look at the screen already leaves its own
 //!    windows out by process (macos_see.rs), and the proof and receipt pictures come from the hidden browser, so neither
 //!    is affected.
