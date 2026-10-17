@@ -123,6 +123,12 @@ pub fn front_window_of(wins: &[Win], pid: i32) -> Option<Rect> {
     wins.iter().find(|w| w.pid == pid && w.layer == 0 && w.bounds[2] >= 50.0 && w.bounds[3] >= 50.0).map(|w| w.bounds)
 }
 
+/// Where the arrow leaves from: the middle of where the character is right now (home, beside a window, or part way along
+/// a trip), read before it sets off. Never the spot it is heading to: that spot is empty until the trip ends, and the
+/// trip may be held back while the pointer is over the character. The character then follows the arrow to the window.
+/// The arrow is not held back for the trip, so the ring, its words and the watch of its window stay in step.
+pub fn arrow_start(at: Option<Rect>, fallback: (f64, f64)) -> (f64, f64) { at.map(center).unwrap_or(fallback) }
+
 // ---------- the motion ----------
 
 /// The arrow's easing (overlay.ts through pointer.ts `ease`): slow out, quick through the middle, slow in.
@@ -251,6 +257,21 @@ impl Roamer {
         let why = why.or_else(|| self.linger.done(t.up, t.now).then_some(EndWhy::Done));
         if why.is_some() { self.end(); }
         why
+    }
+    /// Our card opened or grew after the trip was planned (it opens when a result comes and grows as the result comes
+    /// in). `room` is where the card can reach at its tallest. While that is clear of the spot nothing changes. Once it
+    /// is not, the visit is planned again from the same window and target, clear of the card: a new spot (one move, since
+    /// the tallest card holds every shorter one), or home when there is none. Says what it decided, if anything.
+    pub fn card_moved(&mut self, room: Rect, screen: &Screen, size: (f64, f64)) -> Option<Plan> {
+        let v = self.visit.as_ref()?;
+        if !overlaps(v.spot, room) { return None; }
+        let home = self.home?;
+        let p = plan(&Ask { screen, window: v.anchor.bounds, target: v.target, size, avoid: &[room], home });
+        match p {
+            Plan::Go { spot, side } => { let next = Visit { spot, side, ..v.clone() }; self.begin(next); }
+            Plan::Stay(_) => self.end(),
+        }
+        Some(p)
     }
     /// Where it should be: beside the window while it visits, otherwise home.
     pub fn want(&self) -> Option<Rect> { self.visit.as_ref().map(|v| v.spot).or(self.home) }
@@ -623,6 +644,125 @@ mod tests {
         assert_eq!(r.visit(), Some(&newer));
         assert_eq!(r.next_move(false), Some(Move { to: newer.spot, out: true }));
     }
+    // ---- the arrow leaves from the character ----
+    #[test]
+    fn the_arrow_leaves_from_where_the_character_is_now_never_from_where_it_is_going() {
+        assert_eq!(arrow_start(Some(HOME_RIGHT), (0.0, 0.0)), (1432.0, 507.5), "from the middle of the character at home");
+        let mid = arc_at(HOME_RIGHT, visit().spot, ease(0.5), true);
+        assert_eq!(arrow_start(Some(mid), (0.0, 0.0)), center(mid), "part way along a trip: from where it is on the way");
+        assert_eq!(arrow_start(Some(visit().spot), (0.0, 0.0)), center(visit().spot), "already beside the window: from there");
+        assert_eq!(arrow_start(None, (10.0, 20.0)), (10.0, 20.0), "nothing known: the given place");
+    }
+
+    // ---- the card opening or growing after the trip was planned ----
+    fn visit_to(window: Rect, target: Rect, spot: Rect, side: Side) -> Visit { Visit { anchor: Anchor { pid: EDITOR, bounds: window, front_pid: EDITOR }, target, spot, side } }
+    #[test]
+    fn the_card_growing_over_the_spot_moves_the_character_clear_of_it() {
+        let s = laptop();
+        // Home on the right edge, a Terminal window on the left. Level with the error line is beside the short card, so the
+        // spot slides to just below it; then the card grows down over it as the explanation comes in.
+        let (window, target) = ([40.0, 100.0, 900.0, 500.0], [400.0, 505.0, 200.0, 30.0]);
+        let short = crate::docking::card_frame(HOME_RIGHT, (340.0, 150.0), s.work, Edge::Right);
+        let tallest = crate::docking::card_frame(HOME_RIGHT, (340.0, 520.0), s.work, Edge::Right);
+        let (spot, side) = go(plan(&ask(&s, window, target, &[short], HOME_RIGHT)));
+        assert!(!overlaps(spot, short) && overlaps(spot, tallest), "the layout the review found: {spot:?}");
+        let mut r = Roamer::new();
+        r.placed_home(HOME_RIGHT);
+        r.begin(visit_to(window, target, spot, side));
+        assert!(r.next_move(false).is_some());
+        let p = r.card_moved(tallest, &s, SIZE).expect("planned again");
+        let v = r.visit().expect("still visiting, somewhere clear").clone();
+        assert_eq!(p, Plan::Go { spot: v.spot, side: v.side });
+        for b in [tallest, window, target, notch_zone(&s)] { assert!(!overlaps(v.spot, b), "{v:?} covers {b:?}"); }
+        assert!(within(v.spot, s.work));
+        assert_eq!((v.anchor.bounds, v.target), (window, target), "the same window and target");
+        assert_eq!(r.next_move(false), Some(Move { to: v.spot, out: true }), "it moves there");
+        assert_eq!(r.card_moved(tallest, &s, SIZE), None, "once clear of the tallest card it stays put while the card keeps growing");
+        assert_eq!(r.next_move(false), None);
+    }
+    #[test]
+    fn when_the_card_leaves_no_clear_spot_beside_the_window_it_goes_home() {
+        // A small display: the card at its tallest fills the room right of a window on the left half.
+        let s = scr("1024x640@0,0", [0.0, 0.0, 1024.0, 640.0], [0.0, 25.0, 1024.0, 615.0], true);
+        let home = [864.0, 252.5, 160.0, 160.0];
+        let (window, target) = ([20.0, 25.0, 500.0, 615.0], [200.0, 300.0, 120.0, 24.0]);
+        let (spot, side) = go(plan(&ask(&s, window, target, &[], home)));
+        let tallest = crate::docking::card_frame(home, (340.0, 520.0), s.work, Edge::Right);
+        assert!(overlaps(spot, tallest));
+        let mut r = Roamer::new();
+        r.placed_home(home);
+        r.begin(visit_to(window, target, spot, side));
+        assert!(r.next_move(false).is_some());
+        assert_eq!(r.card_moved(tallest, &s, SIZE), Some(Plan::Stay(Stay::NoRoom)));
+        assert!(r.visit().is_none());
+        assert_eq!(r.next_move(false), Some(Move { to: home, out: false }), "it goes home");
+    }
+    #[test]
+    fn a_card_clear_of_the_spot_or_no_visit_changes_nothing() {
+        let s = laptop();
+        let mut r = Roamer::new();
+        r.placed_home(HOME_LEFT);
+        assert_eq!(r.card_moved([170.0, 427.5, 340.0, 520.0], &s, SIZE), None, "no visit");
+        r.begin(visit());
+        assert!(r.next_move(false).is_some());
+        assert_eq!(r.card_moved([170.0, 427.5, 340.0, 520.0], &s, SIZE), None, "clear of the spot");
+        assert_eq!(r.visit(), Some(&visit()));
+        assert_eq!(r.next_move(false), None, "no trip");
+    }
+    /// The card at its tallest holds every shorter card for every edge, so keeping clear of the tallest keeps clear of
+    /// the card however far it grows.
+    #[test]
+    fn the_tallest_card_holds_every_shorter_one() {
+        let small = scr("1024x640@0,0", [0.0, 0.0, 1024.0, 640.0], [0.0, 25.0, 1024.0, 615.0], true);
+        for s in [laptop(), ext(), dock_left(), small] {
+            let w = s.work;
+            for edge in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] { for pct in [0.0, 0.3, 0.5, 0.8, 1.0] {
+                let home = crate::docking::place(&s, SIZE, edge, pct);
+                let tallest = crate::docking::card_frame(home, (340.0, 520.0), w, edge);
+                for h in (150..=520).step_by(10) {
+                    let c = crate::docking::card_frame(home, (340.0, h as f64), w, edge);
+                    assert!(within(c, tallest), "{} {edge:?} {pct} {h}: {c:?} not in {tallest:?}", s.id);
+                }
+            } }
+        }
+    }
+    /// Many layouts: the trip is planned with the card closed, then the card opens at its tallest beside home. Whatever
+    /// comes of it, the character is never under the card, over the window or the target, or outside the work area.
+    #[test]
+    fn many_layouts_the_card_opening_later_never_ends_over_the_character() {
+        let (mut cases, mut replans, mut homes) = (0u32, 0u32, 0u32);
+        for s in [laptop(), ext(), dock_left()] {
+            let w = s.work;
+            for (edge, pct) in [(Edge::Left, 0.5), (Edge::Right, 0.5), (Edge::Right, 0.1), (Edge::Top, 0.2), (Edge::Bottom, 0.7)] {
+                let home = crate::docking::place(&s, SIZE, edge, pct);
+                let tallest = crate::docking::card_frame(home, (340.0, 520.0), w, edge);
+                for wx in [0.0, 60.0, 300.0, 520.0, 800.0] { for wy in [0.0, 40.0, 200.0, 420.0] { for ww in [300.0, 600.0, 900.0, 1300.0] { for wh in [200.0, 450.0, 700.0] {
+                    let window = [w[0] + wx, w[1] + wy, ww, wh];
+                    for (fx, fy) in [(0.1, 0.1), (0.5, 0.5), (0.9, 0.2), (0.3, 0.95)] {
+                        let target = [window[0] + window[2] * fx - 30.0, window[1] + window[3] * fy - 10.0, 60.0, 20.0];
+                        let Plan::Go { spot, side } = plan(&ask(&s, window, target, &[], home)) else { continue };
+                        cases += 1;
+                        let mut r = Roamer::new();
+                        r.placed_home(home);
+                        r.begin(visit_to(window, target, spot, side));
+                        let why = format!("{} {edge:?} window {window:?} target {target:?} spot {spot:?}", s.id);
+                        match r.card_moved(tallest, &s, SIZE) {
+                            None => assert!(!overlaps(spot, tallest), "kept a spot under the card: {why}"),
+                            Some(Plan::Go { spot: n, .. }) => {
+                                replans += 1;
+                                assert_eq!(r.visit().map(|v| v.spot), Some(n));
+                                for b in [tallest, window, target, notch_zone(&s)] { assert!(!overlaps(n, b), "{n:?} covers {b:?}: {why}"); }
+                                assert!(within(n, w), "{why}");
+                            }
+                            Some(Plan::Stay(_)) => { homes += 1; assert!(r.visit().is_none() && r.want() == Some(home), "{why}"); }
+                        }
+                    }
+                } } } }
+            }
+        }
+        assert!(cases > 2_000 && replans > 50 && homes > 0, "not vacuous: {cases} trips, {replans} planned again, {homes} sent home");
+    }
+
     // ---- the shell's wiring (main.rs moves the panel; the rules above decide) ----
     fn body(src: &str, name: &str) -> String {
         let s = &src[src.find(name).unwrap_or_else(|| panic!("{name} missing"))..];
@@ -633,7 +773,12 @@ mod tests {
     fn every_ring_on_a_window_and_every_result_about_a_window_brings_the_character() {
         let draw = body(MAIN, "fn draw_pointer_with(");
         assert!(draw.contains("roam_to(") && draw.contains("watched.window()"), "a ring in a confirmed window brings it; one with no window does not");
-        assert!(draw.find("roam_to(").unwrap() < draw.find("\"from\"").unwrap(), "the arrow starts beside the window, where the character is going");
+        // The arrow leaves from where the character is before it sets off (it follows the arrow to the window), never from
+        // the spot it is heading to: that spot is empty until the trip ends, and the trip may be held back by the pointer.
+        let (here, go) = (draw.find("roam::arrow_start(").expect("the arrow's start comes from the rule"), draw.find("roam_to(").unwrap());
+        assert!(here < go, "read where the character is before it sets off");
+        assert!(!draw.contains("spot"), "the arrow never starts from where the character is going");
+        assert!(!body(MAIN, "fn roam_to(").contains("-> Option<Rect>"), "roam_to does not hand back where it is going");
         for f in [include_str!("errhelp.rs"), include_str!("phelp.rs")] { assert!(f.contains("crate::roam_beside_window_of(app, pid)"), "a result about a window brings it"); }
         let to = body(MAIN, "fn roam_to(");
         for gate in ["come_to", "HIDDEN_BY_US", "USER_HID", "roam::display_of(", "roam::plan("] { assert!(to.contains(gate), "{gate}"); }
@@ -653,13 +798,25 @@ mod tests {
         assert!(body(MAIN, "fn drop_dock(").contains("DRAG_AT.store(0"));
         let apply = body(MAIN, "fn apply_dock(");
         assert!(apply.contains("docking::place(") && apply.contains("placed_home("), "a drag or a display change puts it home and ends any visit");
-        assert!(body(MAIN, "fn place_card(").contains("roamer().home()"), "the card stays by home while the character visits");
+        assert!(body(MAIN, "fn place_card(").contains("card_spot(") && body(MAIN, "fn card_spot(").contains("roamer().home()"), "the card stays by home while the character visits");
         assert!(body(MAIN, "fn roam_animate(").contains("reduced"), "reduced motion appears in place");
         assert!(MAIN.contains("accessibilityDisplayShouldReduceMotion()"));
     }
     #[test]
+    fn the_card_opening_or_growing_plans_the_visit_again_and_trips_keep_clear_of_its_tallest() {
+        let pc = body(MAIN, "fn place_card(");
+        assert!(pc.contains("roam_card_moved(") && pc.contains("CARD_MAX_H"), "every time the card opens or grows, checked against its tallest");
+        assert!(pc.find("setFrame_display").unwrap() < pc.find("roam_card_moved(").unwrap(), "after the card is placed");
+        let moved = body(MAIN, "fn roam_card_moved(");
+        assert!(moved.contains(".card_moved(") && moved.contains("roam_kick("), "planned again by the rule, and the trip starts");
+        assert!(body(MAIN, "fn roam_to(").contains("card_room("), "planned clear of where the card can grow to");
+        assert!(body(MAIN, "fn card_room(").contains("CARD_MAX_H"));
+        assert!(body(MAIN, "fn resize_card(").contains("CARD_MAX_H"), "the card never grows past what the plan keeps clear of");
+        for name in ["fn open_card(", "fn resize_card("] { assert!(body(MAIN, name).contains("place_card("), "{name} places the card, so it rechecks the visit"); }
+    }
+    #[test]
     fn moving_it_never_takes_focus_or_shows_a_window() {
-        for name in ["fn roam_to(", "fn roam_kick(", "fn roam_animate(", "fn roam_fly(", "fn roam_set(", "fn roam_tick(", "fn roam_beside_window_of(", "fn roam_home_now("] {
+        for name in ["fn roam_to(", "fn roam_kick(", "fn roam_animate(", "fn roam_fly(", "fn roam_set(", "fn roam_tick(", "fn roam_beside_window_of(", "fn roam_home_now(", "fn roam_card_moved(", "fn card_room("] {
             let b = body(MAIN, name);
             for bad in ["makeKey", "orderFront", "set_focus", "activate", ".show("] { assert!(!b.contains(bad), "{name} must not {bad}"); }
         }

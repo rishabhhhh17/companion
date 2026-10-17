@@ -73,6 +73,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 const DOCK: (f64, f64) = (160.0, 160.0);
 const CARD: (f64, f64) = (340.0, 150.0);
+/// The tallest the card grows (its page asks for its content's height). The character beside a window keeps clear of
+/// the card at this height, so the card growing as a result comes in never ends over it.
+const CARD_MAX_H: f64 = 520.0;
 
 static RUN: OnceLock<String> = OnceLock::new();
 static T0: OnceLock<u128> = OnceLock::new();
@@ -194,19 +197,34 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel
 }
 
-/// Place the card next to the character, keeping its top level with the character's top. Next to its home, not where it
-/// may be visiting beside a window (F18 item 2): the card does not follow it there.
-fn place_card(d: &NSPanel, c: &NSPanel) {
-    let mtm = MainThreadMarker::new().unwrap();
+/// Where the card goes at a given height (top left points, with the primary display's height for AppKit): next to the
+/// character's home, not where it may be visiting beside a window (F18 item 2), with its top level with the
+/// character's top, inside the work area.
+fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> {
     let list = screens_now(mtm);
-    let Some(first) = list.first() else { return };
+    let first = list.first()?;
     let ph = first.frame[3];
     let df = roamer().home().unwrap_or_else(|| from_appkit(d.frame(), ph));
     let (cx, cy) = (df[0] + df[2] / 2.0, df[1] + df[3] / 2.0);
     let scr = list.iter().find(|s| cx >= s.frame[0] && cx < s.frame[0] + s.frame[2] && cy >= s.frame[1] && cy < s.frame[1] + s.frame[3]).unwrap_or(first);
     let edge = with_prefs(|p| choice(p, &scr.id).0);
-    let cf = card_frame(df, (CARD.0, CARD_H.load(Ordering::SeqCst) as f64), scr.work, edge);
+    Some((card_frame(df, (CARD.0, h), scr.work, edge), ph))
+}
+
+/// Place the card next to the character's home. The card does not follow the character to a window.
+fn place_card(d: &NSPanel, c: &NSPanel) {
+    let mtm = MainThreadMarker::new().unwrap();
+    let Some((cf, ph)) = card_spot(mtm, d, CARD_H.load(Ordering::SeqCst) as f64) else { return };
     c.setFrame_display(to_appkit(cf, ph), true);
+    // The card opened or grew. If at its tallest it could reach the character beside a window, the visit is planned
+    // again clear of it (or ends).
+    if let Some((room, _)) = card_spot(mtm, d, CARD_MAX_H) { roam_card_moved(mtm, room); }
+}
+
+/// Where our card can reach at its tallest while it is up, for the character to keep clear of. Nothing while it is
+/// closed: if it opens later, place_card plans the visit again.
+fn card_room(mtm: MainThreadMarker) -> Vec<Rect> {
+    with_panels(|d, c| if c.isVisible() { card_spot(mtm, d, CARD_MAX_H).map(|(r, _)| r) } else { None }).flatten().into_iter().collect()
 }
 
 // ---------- screens and docking glue (the maths is in docking.rs, tested) ----------
@@ -331,8 +349,8 @@ fn reduce_motion() -> bool { NSWorkspace::sharedWorkspace().accessibilityDisplay
 
 /// Something about a place on screen is up: the character comes beside the window it is in, unless the setting is off,
 /// Companion is hidden, the place has no confirmed window (a menu, a dialog, the desktop), or there is no room outside
-/// the window; then any older visit ends. Main thread. Returns where it is going, so the arrow can start there.
-fn roam_to(app: &AppHandle, mtm: MainThreadMarker, an: Option<&anchor::Anchor>, target: Rect) -> Option<Rect> {
+/// the window; then any older visit ends. Main thread.
+fn roam_to(app: &AppHandle, mtm: MainThreadMarker, an: Option<&anchor::Anchor>, target: Rect) {
     use std::sync::atomic::Ordering::SeqCst;
     let going = (|| {
         if !with_prefs(|p| p.come_to) || HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return None; }
@@ -340,21 +358,29 @@ fn roam_to(app: &AppHandle, mtm: MainThreadMarker, an: Option<&anchor::Anchor>, 
         let list = screens_now(mtm);
         let screen = roam::display_of(&list, target)?;
         let home = roamer().home()?;
-        let ph = list.first().map(|s| s.frame[3]).unwrap_or(0.0);
-        // Never over our own card.
-        let avoid: Vec<Rect> = with_panels(|_, c| if c.isVisible() { vec![from_appkit(c.frame(), ph)] } else { vec![] }).unwrap_or_default();
+        // Never over our own card, at the height it can grow to.
+        let avoid = card_room(mtm);
         match roam::plan(&roam::Ask { screen, window: an.bounds, target, size: DOCK, avoid: &avoid, home }) {
             roam::Plan::Go { spot, side } => Some(roam::Visit { anchor: an.clone(), target, spot, side }),
             roam::Plan::Stay(why) => { log("roam_stay", json!({ "why": format!("{why:?}") })); None }
         }
     })();
-    let spot = going.as_ref().map(|v| v.spot);
     match going {
         Some(v) => { log("roam_go", json!({ "side": format!("{:?}", v.side) })); roamer().begin(v); }
-        None => { if roamer().visit().is_none() { return None; } roamer().end(); }
+        None => { if roamer().visit().is_none() { return; } roamer().end(); }
     }
     roam_kick(app);
-    spot
+}
+
+/// The card opened or grew (place_card) and at its tallest reaches `room`: the rule decides whether the character
+/// beside a window moves clear of it or goes home, and the trip starts. Main thread.
+fn roam_card_moved(mtm: MainThreadMarker, room: Rect) {
+    let Some(target) = roamer().visit().map(|v| v.target) else { return };
+    let list = screens_now(mtm);
+    let Some(screen) = roam::display_of(&list, target) else { return };
+    let Some(p) = roamer().card_moved(room, screen, DOCK) else { return };
+    log("roam_card_moved", json!({ "now": match p { roam::Plan::Go { side, .. } => format!("{side:?}"), roam::Plan::Stay(why) => format!("{why:?}") } }));
+    if let Some(app) = APP.get() { roam_kick(app); }
 }
 
 /// A result about another app's window (the error explainer, Prompt help): the character comes beside that app's front
@@ -604,7 +630,7 @@ fn toggle_card(app: AppHandle) {
 /// The card page tells us how tall its content is; we resize the panel to fit.
 #[tauri::command]
 fn resize_card(app: AppHandle, height: f64) {
-    let h = height.clamp(150.0, 520.0);
+    let h = height.clamp(CARD.1, CARD_MAX_H);
     CARD_H.store(h as u64, Ordering::SeqCst);
     let _ = app.run_on_main_thread(move || { with_panels(|d, c| if c.isVisible() { place_card(d, c) }); });
 }
@@ -843,14 +869,12 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        // The flight starts at the last target of the same answer on this display, or else where the character is now,
+        // read before it sets off: it follows the arrow to the window.
+        let here = roam::arrow_start(with_panels(|dock, _| from_appkit(dock.frame(), primary_h)), (d.x + d.w - 40.0, d.y + d.h / 2.0));
+        let from = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y)).unwrap_or(here);
         // The character comes beside the window the ring is in (F18 item 2); a ring with no confirmed window leaves it home.
-        let spot = roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
-        // The flight starts where the character is going, or where it is docked, or at the last target of the same
-        // answer on this display.
-        let dock_at = spot.map(|s| (s[0] + s[2] / 2.0, s[1] + s[3] / 2.0))
-            .or_else(|| with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }))
-            .unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let from = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y)).unwrap_or(dock_at);
+        roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
         let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
             "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)) });
         let ak = coords::rect_to_appkit(d, primary_h);
