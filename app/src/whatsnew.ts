@@ -26,10 +26,13 @@ export function releases(): Release[] {
 }
 
 /** What to show for this version, given the version seen last (null on a first install or with no storage), and which
- *  version to remember once it has been shown. A first install, an older version or a damaged note shows nothing. */
-export function whatsNew(seen: string | null, current: string, list: Release[] = releases()): { show: Release[]; remember: string | null } {
+ *  version to remember once it has been shown. A first install, an older version or a damaged note shows nothing.
+ *  usedBefore: the first run was finished before (no version kept, but not a first install): an update from a version
+ *  that did not keep one yet, so this version's own lines show once. */
+export function whatsNew(seen: string | null, current: string, list: Release[] = releases(), o: { usedBefore?: boolean } = {}): { show: Release[]; remember: string | null } {
   if (!parts(current)) return { show: [], remember: null };
   if (seen === current) return { show: [], remember: null };
+  if (!seen && o.usedBefore) return { show: list.filter((r) => compareVersions(r.version, current) === 0).slice(0, 1), remember: current };
   if (!seen || !parts(seen) || compareVersions(seen, current) > 0) return { show: [], remember: current };
   const show = list.filter((r) => compareVersions(r.version, seen) > 0 && compareVersions(r.version, current) <= 0)
     .sort((a, b) => compareVersions(b.version, a.version)).slice(0, MAX_SHOWN);

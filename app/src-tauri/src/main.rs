@@ -1771,6 +1771,16 @@ fn copy_link(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Copy on a reply or a receipt (copytext.ts): only from Home, only on a press, only the lines the card shows (the page hid
+/// anything that looks like a key again first), checked here (share::copyable). The text is not logged.
+#[tauri::command]
+fn copy_text(window: tauri::WebviewWindow, text: String) -> Result<(), String> {
+    if window.label() != "card" { return Err("Only Companion's own window can copy.".into()); }
+    let Some(text) = share::copyable(&text) else { return Err("That could not be copied.".into()) };
+    ax::write_clipboard(text);
+    Ok(())
+}
+
 /// Open a link in the person's own browser, through the Mac's own `open`: only from Home, only a plain web address
 /// (share::web_link), only the address as checked. The page calls this only from a button the person pressed (a test reads
 /// card.tsx for that); nothing the model wrote is ever opened by itself. The address is not logged.
@@ -2168,7 +2178,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

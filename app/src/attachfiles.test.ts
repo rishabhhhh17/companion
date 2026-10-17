@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ATTACH } from "../../runner/src/attach.ts";
-import { addFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
+import { addFiles, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
 
@@ -92,6 +92,17 @@ describe("what a paste carries", () => {
     expect(pastedFiles({ files: [], items: [{ kind: "file", getAsFile: () => null }] })).toEqual([]);
     expect(pastedFiles(null)).toEqual([]);
   });
+  test("text copied from an app that also puts a picture of it on the clipboard (Word, Excel, Keynote) pastes as text", () => {
+    const pic = file("image.png", PNG, "image/png");
+    const copied = (text: string, files: FileLike[], items: { kind: string; getAsFile(): FileLike | null }[] = []) => ({ files, items, getData: (t: string) => (t === "text/plain" ? text : "") });
+    expect(pastedFiles(copied("Q3 sales by region", [pic]))).toEqual([]);
+    expect(pastedFiles(copied("Q3 sales by region", [], [{ kind: "file", getAsFile: () => pic }]))).toEqual([]);
+    // A text or code file copied in Finder, whose name comes as text too, is still added.
+    const md = file("notes.md", enc("a"), "text/markdown");
+    expect(pastedFiles(copied("notes.md", [md, pic]))).toEqual([md]);
+    // Only spaces is not text: a copied screenshot still comes as a picture.
+    expect(pastedFiles(copied("  \n", [], [{ kind: "file", getAsFile: () => pic }]))).toEqual([pic]);
+  });
 });
 
 describe("the chips", () => {
@@ -129,7 +140,26 @@ describe("Home takes files only from a drop or a paste the person makes", () => 
   test("a file dropped anywhere else in the window is never opened in place of Home", () => {
     expect(card).toMatch(/addEventListener\("dragover", [a-zA-Z]+\)/);
     expect(card).toMatch(/addEventListener\("drop", [a-zA-Z]+\)/);
-    expect(card).toMatch(/const stopOpen = \(e: DragEvent\) => e\.preventDefault\(\)/);
+    expect(card).toMatch(/const stopOpen = \(e: DragEvent\) => \{ if \(blocksDrop\(e\.dataTransfer\?\.types, e\.target\)\) e\.preventDefault\(\); \}/);
+    // Home's own drop takes files only, so words dragged into the ask box still land there.
+    const drop = card.slice(card.indexOf("onDrop={"), card.indexOf("\n", card.indexOf("onDrop={")));
+    expect(drop).toMatch(/if \(!carriesFiles\(e\.dataTransfer\?\.types\)\) return; e\.preventDefault\(\)/);
+  });
+  test("words dragged from another app into the ask box land there; anything dropped anywhere else is stopped", () => {
+    const box = { tagName: "TEXTAREA" }, line = { tagName: "DIV" };
+    // A file, wherever it is dropped: Home takes it, never the page.
+    expect(blocksDrop(["Files"], box)).toBe(true);
+    expect(blocksDrop(["text/uri-list", "Files"], line)).toBe(true);
+    // Words or a link onto the ask box: the box takes them as typing.
+    expect(blocksDrop(["text/plain"], box)).toBe(false);
+    expect(blocksDrop(["text/uri-list", "text/plain"], { tagName: "INPUT" })).toBe(false);
+    // Anything onto the rest of Home is stopped, so a dropped link can never open a web page in Home's place.
+    expect(blocksDrop(["text/uri-list", "text/plain"], line)).toBe(true);
+    expect(blocksDrop(["text/plain"], null)).toBe(true);
+    expect(blocksDrop(undefined, box)).toBe(false);
+    expect(carriesFiles(["text/plain", "Files"])).toBe(true);
+    expect(carriesFiles(["text/plain"])).toBe(false);
+    expect(carriesFiles(undefined)).toBe(false);
   });
   test("the window lets the page see the dropped file (Tauri's own drop handler is off for Home only)", () => {
     const mk = shell.slice(shell.indexOf("let mk = |label: &str"), shell.indexOf("let dock_w = mk("));

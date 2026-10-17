@@ -24,7 +24,7 @@ const TEXT_EXT = new Set(("txt md markdown mdx rst json jsonc json5 yaml yml tom
 const TEXT_NAMES = new Set(["readme", "license", "licence", "changelog", "dockerfile", "makefile", "procfile", "gemfile", "rakefile", "brewfile", "vagrantfile", "jenkinsfile",
   ".gitignore", ".gitattributes", ".dockerignore", ".editorconfig", ".prettierrc", ".eslintrc", ".babelrc", ".nvmrc", ".node-version", ".python-version", ".tool-versions"]);
 // Right to left overrides, zero width spaces, a soft hyphen: they change how a name looks without showing.
-const HIDDEN = /[­​-‏‪-‮⁠-⁩﻿]/g;
+const HIDDEN = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 
@@ -52,7 +52,7 @@ export function textFrom(bytes: Uint8Array): string | null {
   let t: string;
   try { t = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return null; }
   if (t.includes("\u0000")) return null;
-  return t.startsWith("﻿") ? t.slice(1) : t;
+  return t.startsWith("\ufeff") ? t.slice(1) : t;
 }
 
 /** PNG or JPEG, from the file's first bytes. */

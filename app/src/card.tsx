@@ -21,7 +21,7 @@ import { DRAFT_KEY, askKey, draftToKeep } from "./askbox.ts";
 import { aboutCopy, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
-import { addFiles, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
+import { addFiles, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -358,13 +358,14 @@ function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => vo
 }
 
 // Copy: puts what the card shows on the clipboard, only on a press (copytext.ts hides anything that looks like a key again
-// first). Says so when the clipboard could not be used, so a failure is never silent.
+// first). The Mac side writes it (copy_text, the same clipboard as Copy link); the page's own clipboard is the fallback.
+// Says so when neither could be used, so a failure is never silent.
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   if (!text) return null;
   const copy = () => {
     setState("idle");
-    void (navigator.clipboard?.writeText(text) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
+    void invoke("copy_text", { text }).catch(() => navigator.clipboard?.writeText(text) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
   };
   return <>
     <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : S.copy}</button>
@@ -545,9 +546,10 @@ function Card() {
   const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); void addFiles(attachedNow.current, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); }); };
   const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); };
   useEffect(() => { clearAttached(); }, [project]);
-  // A file dropped on Home outside the drop handling must never be opened in place of Home's page.
+  // A file dropped on Home outside the drop handling must never be opened in place of Home's page, and neither may a link
+  // dropped anywhere but the ask box (blocksDrop); words dragged onto the ask box land there.
   useEffect(() => {
-    const stopOpen = (e: DragEvent) => e.preventDefault();
+    const stopOpen = (e: DragEvent) => { if (blocksDrop(e.dataTransfer?.types, e.target)) e.preventDefault(); };
     window.addEventListener("dragover", stopOpen);
     window.addEventListener("drop", stopOpen);
     return () => { window.removeEventListener("dragover", stopOpen); window.removeEventListener("drop", stopOpen); };
@@ -561,10 +563,12 @@ function Card() {
   const newsNow = useRef(news); newsNow.current = news;
   const rememberVersion = (v: string) => { try { localStorage.setItem(SEEN_VERSION_KEY, v); } catch { /* storage may be unavailable */ } };
   useEffect(() => {
+    // Read as the page starts: a first run finished later on is a first install, not an update from an older version.
+    const usedBefore = (() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return false; } })();
     void invoke("update_status").then((v) => {
       let seen: string | null = null;
       try { seen = localStorage.getItem(SEEN_VERSION_KEY); } catch { /* storage may be unavailable */ }
-      const w = whatsNew(seen, String((v as { version?: unknown } | null)?.version ?? ""));
+      const w = whatsNew(seen, String((v as { version?: unknown } | null)?.version ?? ""), undefined, { usedBefore });
       if (w.show.length && w.remember) setNews({ show: w.show, remember: w.remember });
       else if (w.remember) rememberVersion(w.remember);
     }).catch(() => {});
@@ -945,9 +949,9 @@ function Card() {
   return (
     <main className={`card${dragging ? " dropping" : ""}`} ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
-      onDragOver={(e) => { if (!onboarded || !Array.from(e.dataTransfer?.types ?? []).includes("Files")) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
+      onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
-      onDrop={(e) => { e.preventDefault(); setDragging(false); if (onboarded) addDropped(e.dataTransfer?.files); }}
+      onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 

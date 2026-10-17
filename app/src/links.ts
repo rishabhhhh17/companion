@@ -5,7 +5,7 @@
 export type WebLink = { url: string; host: string };
 
 // Right to left overrides, zero width spaces, a soft hyphen: they change how text looks without showing.
-const HIDDEN = /[­​-‏‪-‮⁠-⁩﻿]/;
+const HIDDEN = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
 // eslint-disable-next-line no-control-regex
 const SPACE_OR_CONTROL = /[\s\u0000-\u001f\u007f-\u009f]/;
 

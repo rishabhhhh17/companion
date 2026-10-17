@@ -37,6 +37,22 @@ describe("what changed after an update", () => {
     expect(whatsNew(null, "0.2.0", list)).toEqual({ show: [], remember: "0.2.0" });
     expect(whatsNew("", "0.2.0", list)).toEqual({ show: [], remember: "0.2.0" });
   });
+  test("someone who used Companion before it kept the version sees what changed in this one, once", () => {
+    // No version kept, but the first run was finished earlier: this is an update from a version before this note existed.
+    expect(versions(whatsNew(null, "0.2.0", list, { usedBefore: true }).show)).toEqual(["0.2.0"]);
+    expect(whatsNew(null, "0.2.0", list, { usedBefore: true }).remember).toBe("0.2.0");
+    expect(whatsNew(null, "0.4.0", list, { usedBefore: true })).toEqual({ show: [], remember: "0.4.0" });
+    expect(whatsNew(null, "0.2.0", list, { usedBefore: false })).toEqual({ show: [], remember: "0.2.0" });
+    // Once kept, the usual rules apply.
+    expect(whatsNew("0.2.0", "0.2.0", list, { usedBefore: true })).toEqual({ show: [], remember: null });
+  });
+  test("Home tells it whether the first run was finished before, read when the page starts", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const at = card.indexOf("SEEN_VERSION_KEY);");
+    expect(at).toBeGreaterThan(0);
+    expect(card.slice(at, at + 400)).toMatch(/whatsNew\(seen, [^\n]*\{ usedBefore \}\)/);
+    expect(card.slice(card.indexOf("const usedBefore"), card.indexOf("const usedBefore") + 200)).toContain('localStorage.getItem("companion.onboarded") === "1"');
+  });
   test("the same version as last time shows nothing again", () => {
     expect(whatsNew("0.2.0", "0.2.0", list)).toEqual({ show: [], remember: null });
   });

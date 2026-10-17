@@ -4,7 +4,7 @@
 // the key is not read and nothing goes on the network. At most once every 15 minutes, one read at a time, and Stop
 // everything ends a read under way. The Agent SDK's own way to start a parked Claude Code process before a prompt
 // (prewarm, alpha in the pinned SDK) is not used: it starts the real process, signs in, and fixes its hooks and settings
-// before the project is known, which needs a real run to prove safe (see docs/milestones/M11-wave4-plan.md).
+// before the project is known, which needs a real run to prove safe (docs/architecture.md, the warm row).
 import { open } from "node:fs/promises";
 
 export const CHUNK = 4 * 1024 * 1024;

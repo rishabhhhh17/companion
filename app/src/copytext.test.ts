@@ -63,6 +63,18 @@ describe("Copy on replies and receipts", () => {
     expect(recapCopy({ lines: ["You fixed the signup page.", "The tests pass."] })).toBe([S.recapTitle, "You fixed the signup page.", "The tests pass."].join("\n"));
     expect(aboutCopy({ project: "/p", about: "A small shop made with Next.js.", origin: "", needsInstall: false, installCommand: null, missing: [], missingCount: 0, example: null, notes: ["It uses Stripe."] })).toBe([S.aboutTitle, "A small shop made with Next.js.", "It uses Stripe."].join("\n"));
   });
+  test("Copy puts the text on the Mac's clipboard itself, falls back to the page's clipboard, and says so when both fail", () => {
+    const btn = card.slice(card.indexOf("function CopyButton("), card.indexOf("function ResearchNote("));
+    expect(btn).toMatch(/invoke\("copy_text", \{ text \}\)\.catch\(\(\) => navigator\.clipboard/);
+    expect(btn).toContain('setState("failed")');
+    expect(btn).toMatch(/onClick=\{copy\}/);
+    // Only from Home, and the Mac side checks the text (share.rs copyable).
+    const shell = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const cmd = shell.slice(shell.indexOf("fn copy_text("), shell.indexOf("fn copy_text(") + 600);
+    expect(cmd).toContain('window.label() != "card"');
+    expect(cmd).toContain("share::copyable(");
+    expect(shell).toMatch(/generate_handler!\[[^\]]*\bcopy_text\b/);
+  });
   test("the card offers Copy on why it was done, where you left off, and what the project is", () => {
     for (const f of ["explainCopy(e)", "recapCopy(m.recap)", "aboutCopy(m.about)"]) expect(card, f).toContain(`<CopyButton text={${f}}`);
   });

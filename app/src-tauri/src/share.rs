@@ -1,5 +1,6 @@
 //! The "it's live" card leaves Companion only when the person presses a button: Save picture writes it to their
-//! Downloads folder (never over an existing file), Copy link puts the live address on the clipboard. Links on Home (the
+//! Downloads folder (never over an existing file), Copy link puts the live address on the clipboard, and Copy on a reply or
+//! a receipt puts the lines the card shows there (`copyable`). Links on Home (the
 //! live and preview addresses, a research note's source) open in the person's own browser only on a press, and only when
 //! they are a plain web address (`web_link`).
 use std::path::{Path, PathBuf};
@@ -24,8 +25,21 @@ pub fn check_jpeg(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// Only a web address may be put on the clipboard from this button (the same check as opening one).
+/// Only a web address may be put on the clipboard from this button (the same check as opening one). Copy link uses
+/// `web_link` itself, so this is only for the tests.
+#[cfg(test)]
 pub fn is_web_link(s: &str) -> bool { web_link(s).is_some() }
+
+/// Copy on a reply or a receipt (the page's Copy button): the most it puts on the clipboard at once.
+pub const MAX_COPY: usize = 20_000;
+
+/// The text a Copy button may put on the clipboard: plain text the card shows (the page hid secrets again first), not empty,
+/// not too long, with no control characters but new lines and tabs.
+pub fn copyable(s: &str) -> Option<&str> {
+    if s.trim().is_empty() || s.chars().count() > MAX_COPY { return None; }
+    if s.chars().any(|c| c.is_control() && c != '\n' && c != '\t') { return None; }
+    Some(s)
+}
 
 /// Characters that change how text looks without showing (right to left overrides, zero width spaces, a soft hyphen).
 pub fn hidden_char(c: char) -> bool { matches!(c, '\u{ad}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}') }
@@ -45,7 +59,9 @@ fn parsed(s: &str) -> Option<tauri::Url> {
 /// another alphabet becomes its punycode name), so it always starts with http:// or https:// and is never read as an option.
 pub fn web_link(s: &str) -> Option<String> { parsed(s).map(|u| u.as_str().to_string()) }
 
-/// The name of the site, as it will really be opened (a look alike name shows as its punycode name).
+/// The name of the site, as it will really be opened (a look alike name shows as its punycode name). The page names the
+/// site on its Open button itself (links.ts); the tests check both sides agree.
+#[cfg(test)]
 pub fn link_host(s: &str) -> Option<String> { parsed(s).and_then(|u| u.host_str().map(str::to_string)) }
 
 #[cfg(test)]
@@ -71,6 +87,16 @@ mod tests {
         assert!(!is_web_link("rm -rf ~"));
         assert!(!is_web_link("https://a.com\nrm -rf"));
         assert!(!is_web_link("javascript:alert(1)"));
+    }
+    #[test]
+    fn copy_takes_only_plain_text_of_a_sensible_length() {
+        assert_eq!(copyable("What changed\nAdded: src/page.js\n\t3 commands"), Some("What changed\nAdded: src/page.js\n\t3 commands"));
+        assert_eq!(copyable(&"é".repeat(MAX_COPY)).map(|t| t.chars().count()), Some(MAX_COPY));
+        assert_eq!(copyable(""), None);
+        assert_eq!(copyable("  \n "), None);
+        assert_eq!(copyable(&"a".repeat(MAX_COPY + 1)), None, "too long");
+        assert_eq!(copyable("a\u{0}b"), None, "a NUL byte");
+        assert_eq!(copyable("a\u{1b}[31mb"), None, "a terminal control");
     }
     #[test]
     fn a_plain_web_address_is_opened_as_it_was_checked() {
