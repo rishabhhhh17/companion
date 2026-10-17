@@ -1,0 +1,26 @@
+[
+  { "page": "deploy-settings", "asks": [
+    { "target": "env-add", "also": ["env-key"], "key": "add", "question": "I have a new API key. How do I add it to this project?" },
+    { "target": "env-edit-stripe", "key": "edit", "decoys": 5, "question": "How do I change the Stripe secret key?" },
+    { "target": "env-save", "key": "save", "decoys": 1, "question": "I typed a new setting at the top. How do I keep it?" },
+    { "target": "nav-logs", "key": "logs", "question": "Where can I see what went wrong when the site ran?" },
+    { "target": "redeploy", "key": "redeploy", "question": "How do I put the latest version online again?" } ] },
+  { "page": "table-editor", "asks": [
+    { "target": "insert-row", "key": "insert", "decoys": 1, "question": "How do I add a new order by hand?" },
+    { "target": "enable-rls", "key": "RLS", "question": "How do I stop strangers from reading this table?" },
+    { "target": "table-notes", "key": "notes", "question": "Where is my notes table?" },
+    { "target": "add-column", "also": ["insert-column"], "key": "column", "question": "How do I add another column to this table?" },
+    { "target": "filter", "key": "filter", "question": "How do I show only the orders that are unpaid?" } ] },
+  { "page": "project-settings", "asks": [
+    { "target": "copy-public", "key": "copy", "decoys": 2, "question": "Where do I copy the key that is safe to put in my app?" },
+    { "target": "tab-billing", "key": "billing", "question": "Where can I see what I am paying for this?" },
+    { "target": "rename", "also": ["project-name"], "key": "name", "question": "How do I change the project's name?" },
+    { "target": "invite-member", "key": "invite", "question": "How do I let my co-founder into this project?" },
+    { "target": "pause", "key": "pause", "question": "How do I stop the project for now without losing anything?" } ] },
+  { "page": "repo-page", "asks": [
+    { "target": "code-btn", "key": "code", "decoys": 1, "question": "How do I download this project to my computer?" },
+    { "target": "tab-actions", "key": "actions", "question": "Where can I see why the automatic checks failed?" },
+    { "target": "tab-issues", "key": "issues", "question": "Where do people report bugs?" },
+    { "target": "add-file", "key": "add", "question": "How do I upload a picture to this project?" },
+    { "target": "branch", "key": "main", "question": "How do I look at the other version of the code, not main?" } ] }
+]

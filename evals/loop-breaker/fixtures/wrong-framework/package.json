@@ -1,0 +1,9 @@
+{
+  "name": "plant-shop",
+  "private": true,
+  "scripts": {
+    "client": "vite",
+    "server": "node server/index.js",
+    "test": "node --test"
+  }
+}

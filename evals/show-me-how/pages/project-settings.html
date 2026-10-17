@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Settings · Projecta</title><link rel="stylesheet" href="base.css"></head>
+<body>
+<header class="top">
+  <span class="brand">● Projecta</span><span class="muted">Fern and Moss</span>
+  <nav class="row"><a href="#">Dashboard</a><a href="#">Data</a><a href="#">Users</a><a href="#">Functions</a><a href="#" class="on">Project settings</a></nav>
+  <div class="right"><input placeholder="Search" style="width:160px"><button class="icon" aria-label="Account">SR</button></div>
+</header>
+<main class="main" style="max-width:980px">
+  <div class="row" style="gap:4px;margin-bottom:12px;border-bottom:1px solid var(--line)">
+    <a href="#" style="padding:8px 10px;border-bottom:2px solid var(--text);color:var(--text)">General</a>
+    <a href="#" style="padding:8px 10px;color:var(--muted)">Members</a>
+    <a href="#" style="padding:8px 10px;color:var(--muted)" data-eval-target="tab-billing">Billing</a>
+    <a href="#" style="padding:8px 10px;color:var(--muted)">API</a>
+    <a href="#" style="padding:8px 10px;color:var(--muted)">Integrations</a>
+    <a href="#" style="padding:8px 10px;color:var(--muted)">Usage</a>
+  </div>
+  <div class="card">
+    <h3>Project details</h3>
+    <div class="row" style="margin:6px 0"><label style="width:140px">Name</label><input value="Fern and Moss" aria-label="Project name" style="width:280px" data-eval-target="project-name"><button data-eval-target="rename">Rename</button></div>
+    <div class="row" style="margin:6px 0"><label style="width:140px">Project ID</label><code class="muted">fernmoss-7d2</code><button class="icon" aria-label="Copy project ID">⧉</button></div>
+    <div class="row" style="margin:6px 0"><label style="width:140px">Region</label><select><option>Frankfurt (eu-central)</option><option>Virginia (us-east)</option></select><button>Change region</button></div>
+  </div>
+  <div class="card">
+    <h3>API keys</h3>
+    <p class="muted" style="margin:0 0 8px">The public key is safe in your app's pages. The secret key must stay on your server.</p>
+    <div class="row" style="margin:6px 0"><label style="width:140px">Public key</label><code class="muted">pk_live_••••••••••••a91</code><button>Reveal</button><button data-eval-target="copy-public">Copy</button></div>
+    <div class="row" style="margin:6px 0"><label style="width:140px">Secret key</label><code class="muted">••••••••••••••••••••</code><button>Reveal</button><button>Copy</button><button>Roll key</button></div>
+  </div>
+  <div class="card">
+    <h3>Team</h3>
+    <div class="row" style="justify-content:space-between"><span>2 members · Sam Rivera (owner), Ana Lima</span><button class="primary" data-eval-target="invite-member">Invite member</button></div>
+  </div>
+  <div class="card">
+    <h3>Danger zone</h3>
+    <div class="row" style="justify-content:space-between;margin:6px 0"><span>Pause the project. Your data is kept and you can start it again.</span><button data-eval-target="pause">Pause project</button></div>
+    <div class="row" style="justify-content:space-between;margin:6px 0"><span>Move the project to another team.</span><button>Transfer project</button></div>
+    <div class="row" style="justify-content:space-between;margin:6px 0"><span>Delete the project and all of its data, for good.</span><button class="danger">Delete project</button></div>
+  </div>
+</main>
+</body></html>

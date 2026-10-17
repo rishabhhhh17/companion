@@ -1,0 +1,8 @@
+{
+  "name": "weather-widget",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --no-warnings --experimental-loader ./test/vite-env.mjs test/config.mjs"
+  }
+}

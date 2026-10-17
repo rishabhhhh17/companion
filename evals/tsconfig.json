@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "strict": true, "noEmit": true, "allowImportingTsExtensions": true, "types": ["bun"], "typeRoots": ["../runner/node_modules/@types"], "skipLibCheck": true },
+  "include": ["lib/*.ts", "fix-projects/*.ts", "fix-projects/hidden/*.ts", "loop-breaker/*.ts", "review-catch/*.ts", "explain/*.ts", "show-me-how/*.ts", "../runner/scripts/eval-aim.ts"]
+}

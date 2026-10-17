@@ -1,0 +1,5 @@
+/* Buttons are hidden until a kind of button says how to show them. */
+.btn { display: none; padding: 8px 14px; border-radius: 6px; border: 0; font: inherit; }
+.btn-primary { display: inline-block; background: #2563eb; color: #fff; }
+.btn-quiet { display: inline-block; background: transparent; color: #374151; }
+.cart { display: flex; gap: 12px; align-items: center; }

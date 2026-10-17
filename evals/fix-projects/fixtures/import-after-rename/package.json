@@ -1,0 +1,7 @@
+{
+  "name": "profile-page",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

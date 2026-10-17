@@ -1,0 +1,7 @@
+{
+  "name": "plant-shop",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
