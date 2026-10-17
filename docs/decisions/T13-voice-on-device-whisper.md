@@ -35,11 +35,13 @@ Details are in technical_research.md section 15. Rules a coding agent must never
 ## Settled by the build (9 Oct 2026)
 - whisper-rs 0.16.0 with Metal builds and runs on this Mac (macOS 27, Apple Silicon). The base model (147,951,465 bytes, SHA-256 60ed5bc3...2efe, checked against Hugging Face's own record) is downloaded once into Companion's folder by the Mac's own `curl` and kept only if size and fingerprint match.
 - A spoken sentence made with the Mac's `say` came back word for word. Loading the model takes a few seconds, so it is loaded while the person is still holding the keys; transcribing a 3 second sentence then takes about 0.18 seconds (target was about 1 second). The model is let go after five idle minutes.
-- The global shortcut plugin reports key down and key up, so hold to talk needs no permission beyond the microphone. Default keys: Control, Option, Command and V.
+- The global shortcut plugin reports key down and key up, so hold to talk needs no permission beyond the microphone. Default keys: Control, Option, Command and V. (Changed by F18 on 17 Oct 2026: two keys, Option and Space by default, with a short list of other chords in Settings; `talkkeys.rs`.)
 - Still to do by a person: the microphone permission prompt and a real voice through a real microphone.
 
 ## Open [verify] items
-- **[verify]** the release event still fires when the user lets go of the modifier before the main key.
+- **[verify]** the release event still fires when the user lets go of the modifier before the main key (with Option and Space: Option first), and whether a Space still held then types spaces into the app in front.
+- **[verify]** with ChatGPT, Raycast, Alfred or Superwhisper holding Option and Space, whether macOS refuses Companion's registration (then the launch notice and the Settings picker show) or both apps get it and only one receives the press. The global shortcut library registers without the exclusive flag (global-hotkey 0.8.0), so a refusal is expected only when the other app asked for the keys exclusively; if both get it, the person has to pick other keys by hand.
+- **[verify]** whether the Mac's hot key service repeats the press while the keys are held. Handled either way (`talkkeys::Held` ignores repeats), but the answer tells whether that code is needed.
 - **[verify]** whether `SpeechTranscriber` supports Hindi on macOS 27; print `supportedLocales` on the founder's Mac.
 
 ## Settled by desk research (7 Oct 2026)

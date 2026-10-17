@@ -82,9 +82,43 @@ export function limitFromText(text: string, min: number, max: number): number | 
   return Number.isFinite(n) && n >= min && n <= max ? n : null;
 }
 
-/** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings). The keys
- * named here are checked against the ones the app registers (hotkeys.test.ts). */
-export const keyHints = (): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.errKeyHint, S.voiceHint, S.stopHint];
+// ---- hold to talk keys (F18.3) ----
+/** Two keys held while talking. The app keeps the choice and registers it (app/src-tauri/src/talkkeys.rs): `using` is the
+ *  chord registered now (null when another app holds it), `picked` the one the person chose, `choices` the short list. */
+export type TalkKeys = { using: string | null; picked: string; choices: string[] };
+export const TALK_DEFAULT = "option-space";
+const TALK_NAMES: Record<string, string> = S.talkKeyNames;
+const TALK_IDS = Object.keys(TALK_NAMES);
+export const TALK_KEYS_START: TalkKeys = { using: TALK_DEFAULT, picked: TALK_DEFAULT, choices: TALK_IDS };
+const knownChord = (v: unknown): v is string => typeof v === "string" && TALK_IDS.includes(v);
+/** "Option and Space"; empty for anything not on the list. */
+export const talkLabel = (id: string): string => TALK_NAMES[id] ?? "";
+/** What the app answered, read safely. Only a clear none means hold to talk is off; an answer that cannot be read keeps the
+ *  default, so the page never claims another app holds keys when it does not know. */
+export function talkKeysFrom(v: unknown): TalkKeys {
+  const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
+  if (o.using !== null && !knownChord(o.using)) return TALK_KEYS_START;
+  const choices = Array.isArray(o.choices) ? o.choices.filter(knownChord) : [];
+  return { using: o.using, picked: knownChord(o.picked) ? o.picked : TALK_DEFAULT, choices: choices.length > 0 ? choices : TALK_IDS };
+}
+/** The hold to talk hint: the keys in use, or where to pick keys when another app holds them. */
+export const voiceHint = (t: TalkKeys): string => (t.using ? S.voiceHint.replace("{keys}", talkLabel(t.using)) : S.voiceHintOff);
+/** The line above the picker in Settings. `problem` when hold to talk is off or not on the keys the person picked. */
+export function talkKeysLine(t: TalkKeys): { text: string; problem: boolean } {
+  if (!t.using) return { text: S.talkKeysOff.replace("{keys}", talkLabel(t.picked)), problem: true };
+  if (t.using !== t.picked) return { text: S.talkKeysFellBack.replace("{picked}", talkLabel(t.picked)).replace("{using}", talkLabel(t.using)), problem: true };
+  return { text: S.talkKeysNow.replace("{keys}", talkLabel(t.using)), problem: false };
+}
+/** Why the keys did not change, from the code the app sends (talkkeys.rs Problem, and set_talk_keys in main.rs). */
+export function talkProblem(code: string): string {
+  if (code === "taken") return S.talkKeysTaken;
+  if (code === "not_saved") return S.talkKeysNotSaved;
+  return S.talkKeysFailed;
+}
+
+/** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings), with the
+ * hold to talk keys in use. The keys named here are checked against the ones the app registers (hotkeys.test.ts). */
+export const keyHints = (talk: TalkKeys = TALK_KEYS_START): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.errKeyHint, voiceHint(talk), S.stopHint];
 
 /** The exact words Settings sends to remove the key (the app checks the same words, keystore::REMOVE_PHRASE). */
 export const REMOVE_KEY_PHRASE = "remove the key";

@@ -13,5 +13,15 @@
 ## What stays
 Every AGENTS.md rule. In particular: the home and the character are non activating panels and never take keyboard focus by themselves (rule 9); the screen is touched only on a hotkey with the light first (rule 5); nothing reads key events (rule 8); presentation mode and hiding from screen sharing apply to the home and the character (rule 7, M11).
 
+## Settled in the build (17 Oct 2026, item 3)
+Details inside item 3, not changes to it.
+- Option and Space is registered through the same global shortcut plugin as every other hotkey: the Mac's hot key service reports the keys going down and coming up. Nothing reads key events and nothing asks for Input Monitoring.
+- The short list in Settings is Option and Space, Option and Return, and Control and Return. Left out on purpose, because macOS or the tools our users live in already use them: Control and Space (keyboard languages), Command and Space (Spotlight), Command and Backquote (the next window of an app), Control and Backquote (the terminal in Cursor and VS Code), Option and Backquote (types accents such as à on a US keyboard, and the key has another label on other keyboards), anything with Tab, Option and Escape (Speak selection), Command and Return (sends in many apps), Shift with anything (pressed by accident while typing), and letters, digits or symbols.
+- The list is not tried against other apps in advance. Pressing a chord in Settings tries it at once; if another app holds it, nothing changes and Settings says so in one line.
+- The choice is kept on this Mac (`talk-keys.json` in Companion's folder; delete everything removes it). At launch the saved chord is tried, then Option and Space, and nothing else is taken without the person asking. One notice at launch says which keys another app holds and points to Settings, Keys to remember.
+- Key repeats while the keys are held restart nothing. A let go that never arrives cannot leave hold to talk stuck, and the microphone still closes after a minute.
+- The old Control, Option, Command and V is dropped, not kept as a second binding: nobody has used hold to talk yet (F17), and a hotkey that no hint names would take a key from other apps for nothing.
+
 ## Open, to settle on a real Mac
 How the island looks and behaves around the notch, in full screen apps, and on a second display; the hands on session checks it.
+Hold to talk: whether macOS refuses Option and Space when another app (ChatGPT, Raycast, Alfred, Superwhisper) holds it, or lets both have it; whether letting go of Option before Space still ends the hold; and whether the press repeats while held (T13 open items).
