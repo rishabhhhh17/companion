@@ -10,13 +10,14 @@ import { shouldTakeFocus } from "./cardlogic.ts";
 import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
 import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
+import type { Explain, HistoryItem, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { webLink } from "./links.ts";
+import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -414,6 +415,35 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
   );
 }
 
+// What I did: the project's tasks, newest first, with a search by words in their name and by how they ended (history.ts).
+// Without a search the newest 20 show; with one, every match among the tasks the engine sent.
+function HistoryPanel({ items, q, setQ }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void }) {
+  const filtering = historyFiltering(q);
+  const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
+  return (
+    <section className="panel" aria-label={S.recentTitle}>
+      <h2>{S.recentTitle}</h2>
+      {items.length === 0 && <div className="line muted">{S.homeHistoryNone}</div>}
+      {items.length > 0 && (
+        <div className="row" role="search">
+          <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
+            onChange={(e) => setQ({ ...q, words: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Escape" && !composing(e) && q.words) { e.preventDefault(); e.stopPropagation(); setQ({ ...q, words: "" }); } }} />
+          <select aria-label={S.historyStatusLabel} value={q.status} onChange={(e) => setQ({ ...q, status: e.target.value as HistoryStatus })}>
+            {HISTORY_STATUSES.map((s) => <option key={s} value={s}>{S.historyStatus[s]}</option>)}
+          </select>
+          {filtering && <button className="btn" type="button" onClick={() => setQ(NO_FILTER)}>{S.historyClear}</button>}
+        </div>
+      )}
+      {filtering && <div className="line muted" role="status" aria-live="polite">{shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch}</div>}
+      {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
+      {shown.map((h) => (
+        <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+      ))}
+    </section>
+  );
+}
+
 function MemoryList({ title, scope, lines, project }: { title: string; scope: "project" | "profile"; lines: MemoryLine[]; project: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -470,6 +500,9 @@ function Card() {
   const root = useRef<HTMLElement>(null);
   const box = useRef<HTMLInputElement>(null);
   const [project, setProject] = useState("");
+  // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
+  const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
+  useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
   // The first run: shown until finished, remembered only on this Mac.
@@ -1456,15 +1489,7 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && (
-        <section className="panel" aria-label={S.recentTitle}>
-          <h2>{S.recentTitle}</h2>
-          {(!project || m.history.length === 0) && <div className="line muted">{S.homeHistoryNone}</div>}
-          {project && m.history.slice(0, 20).map((h) => (
-            <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
-          ))}
-        </section>
-      )}
+      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} />}
       </div>
       </>)}
     </main>

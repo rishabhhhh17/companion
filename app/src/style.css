@@ -36,7 +36,7 @@ button { font: inherit; }
 .row { display: flex; align-items: center; gap: 8px; margin: 6px 0;  flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .ask { display: flex; gap: 6px; margin: 8px 0; }
-.ask input, .row input[type="text"] { flex: 1; min-width: 0; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
+.ask input, .row input[type="text"], .row input[type="search"] { flex: 1; min-width: 0; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
 .btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); cursor: pointer; }
 .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
