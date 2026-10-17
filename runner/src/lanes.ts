@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { adapterFor, buildContext, grewTooMuch, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
-import { MODELS } from "./models.ts";
+import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -53,8 +53,9 @@ export function buildFastOptions(c: Common & { model: string; system?: string })
     systemPrompt: c.system ?? FAST_SYSTEM,
     maxTurns: 1,
     model: c.model,
-    // Short text jobs do not need to think first; this took the vision lane from about 8 s to about 2.6 s.
-    thinking: { type: "disabled" as const },
+    // Short text jobs think as little as the model allows: thinking off where it can be (Haiku 4.5), else adaptive at low
+    // effort (Sonnet 5.5, Opus 5.5 and Haiku 5.5 refuse thinking off through the SDK). The rule per model is in models.ts.
+    ...thinkingFor(c.model, "quick"),
     includePartialMessages: true,
     persistSession: false,      // no saved conversation: text read from another app must not end up in a log
     canUseTool: deny,
@@ -71,7 +72,8 @@ export class FastLane {
     const ac = new AbortController();
     const link = () => ac.abort();
     if (signal.aborted) ac.abort(); else signal.addEventListener("abort", link, { once: true });
-    const options = buildFastOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model: this.o.model ?? MODELS.fast, signal: ac.signal, system: req.system });
+    const model = this.o.model ?? MODELS.fast;
+    const options = buildFastOptions({ claudeBinary: this.o.claudeBinary, env: this.o.env, model, signal: ac.signal, system: req.system });
     // A leading "/" would run as a Claude Code command, so such text is introduced first.
     const prompt = req.raw ? (req.text.startsWith("/") ? `Input:\n${req.text}` : req.text) : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
     const q = (this.o.queryFn ?? realQuery)({ prompt, options: options as never });
@@ -81,12 +83,14 @@ export class FastLane {
         if (m.type === "stream_event" && m.event?.type === "content_block_delta" && m.event.delta?.type === "text_delta") {
           streamed += m.event.delta.text; onDelta(m.event.delta.text);
         } else if (m.type === "assistant") {
-          full = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+          // A message with no text (a thinking block, which the 5.5 models send first) is not the answer.
+          const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+          if (text) full = text;
           if (req.raw && full) {
             // The answer is complete: hand it back now and let the engine process end in the background. The cost is
-            // estimated from the tokens used (Haiku prices), because the run is not waited on.
+            // estimated from the tokens used at this model's price, because the run is not waited on.
             const u = m.message?.usage;
-            cost = u ? ((u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) * 1.25) * 1e-6 + (u.cache_read_input_tokens ?? 0) * 1e-7 + (u.output_tokens ?? 0) * 5e-6 : 0.002;
+            cost = u ? estimateUsd(model, u) : 0.002;
             onDelta(full);
             setTimeout(() => ac.abort(), 0);
             return { text: full, costUsd: round(cost) };
@@ -169,8 +173,9 @@ export function buildVisionOptions(c: Common & { model: string }) {
     strictMcpConfig: true,
     mcpServers: {},
     systemPrompt: VISION_SYSTEM,
-    // Speed is the product here: no thinking, one turn, no tool to start, and the answer is a single line.
-    thinking: { type: "disabled" as const },
+    // Speed is the product here: as little thinking as the model allows (models.ts), one turn, no tool to start, and the
+    // answer is a single line. Thinking off took this lane from about 8 s to about 2.6 s on Sonnet 5; Sonnet 5.5 refuses it.
+    ...thinkingFor(c.model, "quick"),
     maxTurns: 1,
     persistSession: false,      // no saved conversation: a picture of the screen must not end up in a log
     model: c.model,
@@ -214,7 +219,8 @@ export class VisionLane {
     let tmp: string;
     try { tmp = await drive.ensure(); } catch (e) { done0(); throw e; }
     function done0() { signal.removeEventListener("abort", link); }
-    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model: this.o.model ?? MODELS.vision, signal: ac.signal });
+    const model = this.o.model ?? MODELS.vision;
+    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model, signal: ac.signal });
     const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr, req.screens) as never, options: options as never });
     const done = () => { signal.removeEventListener("abort", link); };
     // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that
@@ -224,21 +230,23 @@ export class VisionLane {
     // An error after the answer has already been handed back (the engine complaining as it is ended) is not an error: `fail`
     // does nothing once the answer is settled, where a stray rejected promise would crash the whole engine.
     const pictures = req.screens && req.screens.length > 1 ? req.screens.map((s) => s.image) : [req.image];
-    const finished = this.read(q as AsyncIterable<any>, pictures, (ts, c) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c) }), () => ac.abort())
+    const finished = this.read(q as AsyncIterable<any>, model, pictures, (ts, c) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c) }), () => ac.abort())
       .then(() => got({ point: null, targets: [], costUsd: 0 }), (e) => { fail(e); });
     void finished.catch(() => {}).finally(() => { drive.wipe().catch(() => {}); });   // once the engine has closed, the copy is erased
     try { return await answer; } finally { done(); }
   }
 
-  private async read(q: AsyncIterable<any>, pictures: Image[], set: (targets: Point[], cost: number) => void, stop: () => void): Promise<void> {
+  private async read(q: AsyncIterable<any>, model: string, pictures: Image[], set: (targets: Point[], cost: number) => void, stop: () => void): Promise<void> {
     let targets: Point[] = [], cost = 0;
     for await (const m of q) {
       if (m.type === "assistant") {
         const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+        // A message with no text is the thinking the 5.5 models do first, not the answer: wait for the answer.
+        if (!text) continue;
         targets = parseTargetsText(text, pictures);
-        // The answer is one line. Estimated from the tokens used, because the run is not waited on once it has arrived.
+        // The answer is one line. Estimated from the tokens used at this model's price, because the run is not waited on.
         const u = m.message?.usage;
-        cost = u ? ((u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)) * 3e-6 + (u.cache_read_input_tokens ?? 0) * 3e-7 + (u.output_tokens ?? 0) * 15e-6 : 0.01;
+        cost = u ? estimateUsd(model, u) : 0.01;
         set(targets, cost);
         stop();     // end the engine process now; do not wait for it to wind down
         return;

@@ -140,10 +140,12 @@ describe("the vision lane", () => {
     const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: (() => slow) as never });
     const t0 = Date.now();
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
-    expect(Date.now() - t0).toBeLessThan(1000); expect(r.point).not.toBeNull(); expect(r.costUsd).toBeCloseTo(1500 * 3e-6 + 40 * 15e-6, 6);
+    expect(Date.now() - t0).toBeLessThan(1000); expect(r.point).not.toBeNull(); expect(r.costUsd).toBeCloseTo(1500 * 2e-6 + 40 * 10e-6, 6);   // Sonnet 5.5's own price ($2 / $10), not an older model's
   });
-  test("thinking is off for pointing, because speed is the point", () => {
-    expect((buildVisionOptions({ claudeBinary: "/x", env: {}, model: "m", signal: new AbortController().signal }) as any).thinking).toEqual({ type: "disabled" });
+  test("pointing thinks as little as the model allows, because speed is the point (Sonnet 5.5 refuses thinking off)", () => {
+    const o: any = buildVisionOptions({ claudeBinary: "/x", env: {}, model: "claude-sonnet-5-5", signal: new AbortController().signal });
+    expect(o.thinking).toEqual({ type: "adaptive" }); expect(o.effort).toBe("low");
+    expect((buildVisionOptions({ claudeBinary: "/x", env: {}, model: "claude-haiku-4-5-20251001", signal: new AbortController().signal }) as any).thinking).toEqual({ type: "disabled" });
   });
   test("not finding it, or not answering in JSON, is no answer, not a made up one", async () => {
     for (const reply of ['{"none":true}', "I cannot see it", "{ broken", '{"x":"left","y":1}']) {
@@ -273,7 +275,7 @@ describe("the fast lane, raw requests (Explain, Draw it for me)", () => {
     expect(r.text).toBe("done");
     expect(Date.now() - t0).toBeLessThan(300);
     expect(released).toBe(false);
-    const o: any = buildFastOptions({ ...cfg, model: "m" });
+    const o: any = buildFastOptions({ ...cfg, model: "claude-haiku-4-5-20251001" });
     expect(o.thinking).toEqual({ type: "disabled" });
   });
   test("an error that arrives before any answer is still an error", async () => {
@@ -298,5 +300,31 @@ describe("an error after the answer is not a crash (found by the 15 Oct 2026 rev
       await new Promise((res) => setTimeout(res, 100));
       expect(seen).toEqual([]);
     } finally { process.off("unhandledRejection", on); }
+  });
+});
+
+// Sonnet 5.5, Opus 5.5 and Haiku 5.5 think before they answer, so a reply can begin with a thinking block whose text is
+// empty, arriving as its own assistant message (the SDK hands over one content block per message). Recorded shapes, not runs.
+describe("a reply that begins with thinking (the 5.5 models)", () => {
+  const thinkingOnly = { type: "assistant", message: { content: [{ type: "thinking", thinking: "", signature: "c2ln" }], usage: { input_tokens: 1500, output_tokens: 30 } } };
+  const point = { type: "assistant", message: { content: [{ type: "text", text: '{"targets":[{"x":40,"y":50,"screen":1,"ocrId":null,"targetText":"Deploy","confidence":0.9,"caption":"Click Deploy","mark":"ring"}]}' }], usage: { input_tokens: 1500, output_tokens: 70 } } };
+  test("the vision lane waits for the answer instead of taking the thinking block as no answer", async () => {
+    const lane = new VisionLane({ ...cfg, model: "claude-sonnet-5-5", tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([thinkingOnly, point, result(0.01)]) });
+    const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png", w: 100, h: 100 }, question: "q", ocr: [] }, cfg.signal);
+    expect(r.point).toMatchObject({ x: 40, y: 50, caption: "Click Deploy" });
+  });
+  test("the fast lane's raw answer skips the thinking block too", async () => {
+    const r = await new FastLane({ ...cfg, model: "claude-haiku-5-5", queryFn: fake([thinkingOnly, assistant("two lines"), result(0.001)]) }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal);
+    expect(r.text).toBe("two lines");
+  });
+  test("Prompt help keeps the answer when a block without text comes after it", async () => {
+    const r = await new FastLane({ ...cfg, model: "claude-sonnet-5-5", queryFn: fake([thinkingOnly, assistant("Better prompt"), thinkingOnly, result(0.001)]) }).run({ text: "make a thing" }, () => {}, cfg.signal);
+    expect(r.text).toBe("Better prompt");
+  });
+  test("estimates use the model the lane runs on", async () => {
+    const fast = await new FastLane({ ...cfg, model: "claude-haiku-5-5", queryFn: fake([{ type: "assistant", message: { content: [{ type: "text", text: "ok" }], usage: { input_tokens: 1_000_000, output_tokens: 0 } } }]) }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal);
+    expect(fast.costUsd).toBeCloseTo(0.1, 6);   // Haiku 5.5: $0.10 a million input tokens
+    const lane = new VisionLane({ ...cfg, model: "claude-opus-5-5", tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([{ ...point, message: { ...point.message, usage: { input_tokens: 1_000_000, output_tokens: 0 } } }]) });
+    expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png", w: 100, h: 100 }, question: "q", ocr: [] }, cfg.signal)).costUsd).toBeCloseTo(4, 6);
   });
 });

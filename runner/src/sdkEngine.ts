@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
 import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
+import { thinkingFor } from "./models.ts";
 import { APPROVAL_TIMEOUT_MS, EngineStop, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
 
 // The safety hook waits while an approval card is open. Its own time limit (in seconds, the SDK's unit) is set longer than a
@@ -85,6 +86,9 @@ export function buildSdkOptions(c: SdkConfig) {
     maxBudgetUsd: c.budgetUsd,
     maxTurns: 80,
     model: c.model,
+    // Effort stated for the model, never left to a default that differs by model (models.ts): medium on the 5.5 models,
+    // nothing extra on Haiku 4.5 (it takes no effort) or on a model the table does not know. Thinking stays adaptive.
+    ...thinkingFor(c.model, "agent"),
     enableFileCheckpointing: true,
     includePartialMessages: false,
     abortController: controller,
