@@ -22,7 +22,7 @@ Companion asks for each permission **only the first time you use the feature tha
 You can see and change all three in **Settings** on the card.
 
 ## The keys
-**To talk**, hold Option and Space while you speak, and let go when you are done. Your words appear in the box; nothing is sent until you press Start. If another app already uses Option and Space, Companion says so when it opens: pick other keys in **Settings**, under Keys to remember (Option and Return, or Control and Return).
+**To talk**, hold Option and Space while you speak, and let go when you are done. Your words appear in the box; nothing is sent until you press Start. Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs. If one of them stops opening, or talking does nothing, pick other keys in **Settings**, under Keys to remember: Option and Return, or Control and Return (while picked, they no longer add a new line in other apps). Only if another app keeps Option and Space to itself does Companion notice and say so when it opens.
 
 For everything else, hold **Control + Option + Command** and press:
 - **F**: find what is wrong in your project and point at it. If the place is on another monitor, it looks there too.

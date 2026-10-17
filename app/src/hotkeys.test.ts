@@ -75,6 +75,15 @@ describe("the hotkeys main.rs registers", () => {
     expect(Object.keys(names)).toEqual(chords().map((c) => c.id));
     for (const c of chords()) expect(names[c.id], c.id).toBe(c.label);
   });
+  test("every chord but the default says what it gives up, as talkkeys.rs lists it", () => {
+    // talkkeys.rs checks that each other chord is on its list of macOS text keys it takes; the page must say which.
+    expect(talkRs).toContain("fn every_other_choice_gives_up_a_macos_text_key_and_the_picker_must_say_which()");
+    const costs = S.talkKeyCosts as Record<string, string>;
+    const others = chords().slice(1);
+    expect(Object.keys(costs)).toEqual(others.map((c) => c.id));
+    for (const c of others) { expect(costs[c.id], c.id).toStartWith(`${c.label}: while picked, it no longer `); expect(namedChords(costs[c.id])).toEqual([c.label]); }
+    expect(costs[TALK_DEFAULT]).toBeUndefined();
+  });
 });
 
 describe("every hint names the right key", () => {
@@ -114,6 +123,7 @@ describe("every hint names the right key", () => {
     const texts: string[] = [
       ...(Object.values(S) as unknown[]).filter((v): v is string => typeof v === "string"),
       ...Object.values(S.talkKeyNames as Record<string, string>),
+      ...Object.values(S.talkKeyCosts as Record<string, string>),
       ...readdirSync(lessonDir).filter((f) => f.endsWith(".json")).map((f) => readFileSync(lessonDir + f, "utf8")),
       ...[...main.matchAll(/"([^"\n]*Control, Option, Command[^"\n]*)"/g)].map((m) => m[1]),
       ...[...talkRs.matchAll(/"([^"\n]*(?:Option|Control) and [^"\n]*)"/g)].map((m) => m[1]),
@@ -132,6 +142,15 @@ describe("every hint names the right key", () => {
     const privacy = readFileSync(new URL("../../docs/alpha/PRIVACY.md", import.meta.url), "utf8");
     for (const d of [install, privacy]) { expect(d).toContain("Option and Space"); expect(d).not.toMatch(/\*\*V\*\*/); }
     expect(install).toContain(S.keysTitle);
+  });
+  test("the install note covers apps that share Option and Space without any notice, and what the other keys give up", () => {
+    // macOS refuses keys only when another app took them alone, so Alfred, Raycast and ChatGPT can share them silently.
+    const install = readFileSync(new URL("../../docs/alpha/INSTALL.md", import.meta.url), "utf8");
+    const talk = install.slice(install.indexOf("**To talk**"), install.indexOf("\n", install.indexOf("**To talk**")));
+    expect(talk).toContain("Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs.");
+    expect(talk).toContain("If one of them stops opening, or talking does nothing, pick other keys");
+    expect(talk).not.toMatch(/If another app already uses Option and Space, Companion says so when it opens/);
+    expect(talk).toContain("no longer add a new line");
   });
   test("the launch notice and the ready line point to the same Settings heading the page shows", () => {
     expect(talkRs).toContain(`const WHERE_TO_PICK: &str = "in Settings, under ${S.keysTitle}";`);

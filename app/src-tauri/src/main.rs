@@ -1298,9 +1298,25 @@ fn start_talk_keys(app: &AppHandle) -> talkkeys::Started {
     started
 }
 
-/// Settings: what hold to talk uses now, what the person picked, and the short list (talkkeys::state_json).
+/// What the page is told (talkkeys::state_json), with which chords are free on this Mac now: each chord not in use is
+/// registered and let go again at once (talkkeys::free), never the one in use. Called with TALK_SWITCH held.
+fn talk_state(app: &AppHandle) -> Value {
+    let gs = app.global_shortcut();
+    let using = talk_using();
+    let free = talkkeys::free(using,
+        |c| gs.register(talkkeys::shortcut(c)).is_ok(),
+        |c| { if gs.unregister(talkkeys::shortcut(c)).is_err() { log("talk_keys_not_let_go", json!({ "id": c.id })); } });
+    talkkeys::state_json(using, talk_picked(), &free)
+}
+
+/// Settings and the first run: what hold to talk uses now, what the person picked, the short list and which of it is free.
+/// Only from the card, since it briefly registers chords. A sync command, so it runs on the main thread like set_talk_keys.
 #[tauri::command]
-fn talk_keys() -> Value { talkkeys::state_json(talk_using(), talk_picked()) }
+fn talk_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
+    if window.label() != "card" { return Err("not_card".into()); }
+    let _one = TALK_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    Ok(talk_state(&app))
+}
 
 /// Settings: use other keys for hold to talk. Only from the card, only a chord on the list. Registered at once and saved
 /// on this Mac only if it works; otherwise nothing changes. The error is a code the page turns into words.
@@ -1325,7 +1341,7 @@ fn set_talk_keys(app: AppHandle, window: tauri::WebviewWindow, id: String) -> Re
                 voice_send(&app, VoiceMsg::Cancel);
             }
             log("talk_keys_set", json!({ "id": c.id }));
-            Ok(talk_keys())
+            Ok(talk_state(&app))
         }
         Err(p) => { log("talk_keys_not_set", json!({ "id": wanted.id, "why": p.code() })); Err(p.code().into()) }
     }

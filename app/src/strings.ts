@@ -121,8 +121,15 @@ export const S = {
   voiceHintOff: "Hold to talk is off because another app is using its keys. Pick other keys in Settings, under Keys to remember.",
   // Hold to talk keys (F18.3). The ids and the order are talkkeys.rs's; hotkeys.test.ts checks each name against it.
   talkKeyNames: { "option-space": "Option and Space", "option-return": "Option and Return", "control-return": "Control and Return" },
-  talkKeysNow: "Hold to talk uses {keys}. If another app needs these keys, pick others:",
+  // What each other chord gives up while it is hold to talk (macOS's own text keys; talkkeys.rs lists them).
+  talkKeyCosts: { "option-return": "Option and Return: while picked, it no longer adds a new line in Messages and other apps.", "control-return": "Control and Return: while picked, it no longer adds a line break in text boxes." },
+  // macOS refuses keys only when another app took them alone, so these apps can share Option and Space with no notice.
+  talkKeysNowDefault: "Hold to talk uses Option and Space. Alfred, Raycast and ChatGPT also use these keys unless you changed theirs. If one of them stops opening, or talking does nothing, pick others:",
+  talkKeysShared: "Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs. If one of them stops opening, or talking does nothing, pick other keys in Settings, under Keys to remember.",
+  talkKeysNow: "Hold to talk uses {keys}. If talking does nothing, or another app stops reacting to these keys, pick others:",
+  talkKeysNotFree: "Keys you cannot pick are already used by another app.",
   talkKeysOff: "Another app is already using {keys}, so hold to talk is off. Pick other keys:",
+  talkKeysOffFreeNow: "Hold to talk is off because another app was using {keys} when Companion opened. They are free now: press them to turn hold to talk back on, or pick others:",
   talkKeysFellBack: "Another app is already using {picked}, so hold to talk uses {using} for now. Keep them, or pick others:",
   talkKeysGroup: "Keys for hold to talk",
   talkKeysTaken: "Another app is already using those keys. Pick other keys.",

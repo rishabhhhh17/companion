@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, TALK_KEYS_START, talkKeysFrom, talkKeysLine, talkLabel, talkProblem, type TalkKeys, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
+import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, TALK_KEYS_START, talkCanPick, talkCost, talkKeysFrom, talkKeysLine, talkLabel, talkNotFreeLine, talkProblem, type TalkKeys, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
@@ -174,12 +174,14 @@ function PresentationRow() {
   </>);
 }
 
-// Hold to talk keys (F18.3): a short list of two key chords. The app tries the new keys at once and keeps them only if they
-// work, saved on this Mac (talkkeys.rs). Only hold to talk can be changed here.
+// Hold to talk keys (F18.3): a short list of two key chords. Only the ones free on this Mac can be pressed (the app tries
+// each when Settings opens, talkkeys::free); the app tries the new keys again at once and keeps them only if they work,
+// saved on this Mac (talkkeys.rs). Each other chord says what it gives up. Only hold to talk can be changed here.
 function TalkKeysRow({ talk, onChange }: { talk: TalkKeys; onChange: (t: TalkKeys) => void }) {
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const line = talkKeysLine(talk);
+  const notFree = talkNotFreeLine(talk);
   const pick = (id: string) => {
     if (busy) return;
     setBusy(true); setProblem("");
@@ -188,8 +190,10 @@ function TalkKeysRow({ talk, onChange }: { talk: TalkKeys; onChange: (t: TalkKey
   return (<>
     <div className="line" role={line.problem ? "alert" : undefined}>{line.text}</div>
     <div className="row" role="group" aria-label={S.talkKeysGroup}>
-      {talk.choices.map((id) => <button key={id} className={talk.using === id ? "btn primary" : "btn"} type="button" disabled={busy} aria-pressed={talk.using === id} onClick={() => pick(id)}>{talkLabel(id)}</button>)}
+      {talk.choices.map((id) => <button key={id} className={talk.using === id ? "btn primary" : "btn"} type="button" disabled={busy || !talkCanPick(talk, id)} aria-pressed={talk.using === id} aria-describedby={talkCost(id) ? `talk-cost-${id}` : undefined} onClick={() => pick(id)}>{talkLabel(id)}</button>)}
     </div>
+    {notFree && <div className="line muted">{notFree}</div>}
+    {talk.choices.map((id) => talkCost(id) && <div className="line muted" id={`talk-cost-${id}`} key={id}>{talkCost(id)}</div>)}
     {problem && <div className="error" role="alert">{problem}</div>}
   </>);
 }
