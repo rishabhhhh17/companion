@@ -28,7 +28,8 @@ pub fn dock_frame(work: Rect, size: (f64, f64), edge: Edge, pct: f64) -> Rect {
 }
 
 /// The card sits beside the character, on the side facing into the screen, with its top level
-/// with the character's top, and is kept inside the work area.
+/// with the character's top, and is kept inside the work area. Since F18 Home drops down from the
+/// island in the notch instead (island.rs); this is used only when no display is known for it.
 pub fn card_frame(dock: Rect, card: (f64, f64), work: Rect, edge: Edge) -> Rect {
     let gap = 8.0;
     let x = match edge { Edge::Right => dock[0] - card.0 - gap, Edge::Left => dock[0] + dock[2] + gap };

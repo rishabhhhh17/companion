@@ -1,5 +1,5 @@
 //! Screen sharing and calls (rule 7). Two settings, both on unless the person turns them off:
-//!  - hide from screen sharing: the ring overlay and the card ask macOS to be left out of other apps' screen captures
+//!  - hide from screen sharing: the ring overlay, the card and the island ask macOS to be left out of other apps' screen captures
 //!    (NSWindow sharingType none). Best effort only: ScreenCaptureKit apps do not reliably honour it (technical research,
 //!    "Presentation mode"), so nothing private may rely on it. Companion's own look at the screen already leaves its own
 //!    windows out by process (macos_see.rs), and the proof and receipt pictures come from the hidden browser, so neither
@@ -47,7 +47,7 @@ pub fn quiet(s: &Settings, front_bundle: &str, camera_in_use: impl FnOnce() -> b
     s.quiet_on_calls && (is_call_app(front_bundle) || camera_in_use())
 }
 
-/// NSWindowSharingType for our overlay and card: 0 is none (left out of other apps' captures), 1 is read only (the default).
+/// NSWindowSharingType for our overlay, card and island: 0 is none (left out of other apps' captures), 1 is read only (the default).
 pub fn sharing_type(s: &Settings) -> usize { if s.hide_from_sharing { 0 } else { 1 } }
 
 #[cfg(target_os = "macos")]

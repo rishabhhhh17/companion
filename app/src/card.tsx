@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useReducer, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn } from "./settings.ts";
@@ -14,6 +14,7 @@ import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./mod
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
+import { PANEL_TAB, TABS, closesOnClickAway, homeReduce, homeStart, need, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
@@ -379,6 +380,17 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 
 function Card() {
   const [m, dispatch] = useModel();
+  // Home (F18): the card in tabs. Each part of the old card shows only on its own tab (home.ts); a tab that needs the
+  // person is shown by itself, once per new need, and said out loud because the keyboard focus does not move there.
+  const [home, homeDispatch] = useReducer(homeReduce, undefined, homeStart);
+  const show = (p: Panel) => PANEL_TAB[p] === home.tab;
+  const needNow = need(m);
+  useEffect(() => {
+    const a = document.activeElement as HTMLElement | null;
+    homeDispatch({ type: "need", need: needNow, typing: typing(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus()) });
+  }, [needNow?.key ?? ""]);
+  // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
+  useEffect(() => { if (document.hasFocus() && (!document.activeElement || document.activeElement === document.body)) document.getElementById(tabId(home.tab))?.focus(); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
   const box = useRef<HTMLInputElement>(null);
   const [project, setProject] = useState("");
@@ -420,7 +432,7 @@ function Card() {
     const a = document.activeElement as HTMLElement | null;
     if (!shouldTakeFocus(a ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus())) return;
     urgent.current?.querySelector<HTMLElement>("button, input")?.focus();
-  }, [urgentKey]);
+  }, [urgentKey, home.needKey]);
 
   const [recent, setRecent] = useState<string[]>([]);
   const [folderNote, setFolderNote] = useState("");
@@ -515,7 +527,9 @@ function Card() {
   useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
   useEffect(() => {
     const off = listen("opened", (e) => {
-      if ((e.payload as { keyboard?: boolean } | null)?.keyboard) setTimeout(() => box.current?.focus(), 30);
+      const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
+      homeDispatch({ type: "opened", keyboard });
+      if (keyboard) setTimeout(() => box.current?.focus(), 30);
       // Coming back after a break: ask what happened while away. Only Companion's own history is used.
       const last = lastSeen();
       if (last && project && Date.now() - last >= AWAY_MS) void send(askRecap(project, new Date(last).toISOString()));
@@ -579,7 +593,7 @@ function Card() {
   useEffect(() => {
     const offKey = listen("find-problem", () => {
       if (!projectRef.current) { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
-      dispatch({ type: "ui.findProblem" }); count("hero_press"); count("builder_use");
+      dispatch({ type: "ui.findProblem" }); homeDispatch({ type: "pick", tab: "now" }); count("hero_press"); count("builder_use");
       void send(findProblem(projectRef.current));
     });
     const offFound = listen("runner-event", (e) => {
@@ -605,13 +619,13 @@ function Card() {
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
   const [fun, setFun] = useState(reactionsOn);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
   useEffect(() => {
     const off = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; stage?: string; text?: string };
       if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
+        homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
         if (box.current) box.current.value = ev.text;
         if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (box.current) box.current.value = ""; }
         else if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
@@ -652,15 +666,21 @@ function Card() {
   }, [stage]);
   showMeRef.current = showMe;
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
-  const [lessonsOpen, setLessonsOpen] = useState(false);
-  // Lessons that read the project need a chosen folder; the others (installing a tool, leaving a builder) do not.
-  const openLessons = () => { setLessonsOpen((v) => !v); void send(walkList(projectRef.current || NO_PROJECT)); };
+  const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
+  // What each tab shows is asked for whenever it is the one showing (picked, or shown by itself), and again for a new folder:
+  // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
+  // not), what Companion knows, and the task history.
+  useEffect(() => {
+    if (home.tab === "learn") void send(walkList(project || NO_PROJECT));
+    if (home.tab === "memory" && project) void send(listMemory(project));
+    if (home.tab === "did" && project) void send(listTasks(project));
+  }, [home.tab, project]);
   const beginLesson = (lesson: string, fresh: boolean) => {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
     noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
     const walk = (c as { id: string }).id;
-    dispatch({ type: "ui.walkRequested", walk }); setLessonsOpen(false); void send(c);
+    dispatch({ type: "ui.walkRequested", walk }); homeDispatch({ type: "pick", tab: "learn" }); void send(c);
     return walk;
   };
   // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
@@ -687,6 +707,13 @@ function Card() {
     clearTimeout(actTimer.current);
     actTimer.current = setTimeout(() => void send(walkActed(wk.id, m.showme?.stage === "done_for_you" ? "done_for_you" : "clicked", wk.index)), 700);
   }, [m.showme?.stage, m.showme?.req, wkKey]);
+  // A click in another app while Home is open (the shell sees only that a press started outside Companion's windows).
+  const nowModel = useRef(m); nowModel.current = m;
+  const onboardingNow = useRef(!onboarded); onboardingNow.current = !onboarded;
+  useEffect(() => {
+    const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    return () => { off.then((f) => f()); };
+  }, []);
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
@@ -733,6 +760,21 @@ function Card() {
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && (<>
+      <div className="tabs" role="tablist" aria-label={S.homeLabel}>
+        {TABS.map((t) => {
+          const waits = needNow?.tab === t && t !== home.tab;
+          return (
+            <button key={t} id={tabId(t)} className="tab" type="button" role="tab" aria-selected={t === home.tab} aria-controls={tabPanelId(t)} tabIndex={t === home.tab ? 0 : -1}
+              onClick={() => pickTab(t)}
+              onKeyDown={(e) => { const n = tabKey(t, e.key); if (!n) return; e.preventDefault(); pickTab(n); document.getElementById(tabId(n))?.focus(); }}>
+              {tabName(t)}{waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="sr" role="status" aria-live="polite">{home.said}</div>
+      <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
+      {show("folder") && <>
       <div className="row" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
@@ -753,8 +795,9 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {settingsOpen && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => setSettingsOpen(false)} onPractice={(k) => { setSettingsOpen(false); beginPractice(k); }} onLesson={(l) => { setSettingsOpen(false); beginLesson(l, false); }} />}
-      {m.practice && m.practice.project === project && (
+      </>}
+      {show("settings") && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
+      {show("practice") && m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
           {m.practice.stage === "start" && <>
@@ -810,7 +853,7 @@ function Card() {
           </>}
         </section>
       )}
-      {lessonsOpen && !m.walk && (
+      {show("lessons") && !m.walk && (
         <section className="panel" role="status" aria-label={S.lessonsTitle}>
           <h2>{S.lessonsTitle}</h2>
           {(m.lessons ?? []).length === 0 && <div className="line">{S.lessonsNone}</div>}
@@ -826,10 +869,10 @@ function Card() {
             </div>
           ))}
           <div className="line muted">{S.lessonLooking}</div>
-          <div className="row"><button className="btn" type="button" onClick={() => setLessonsOpen(false)}>{S.pointClose}</button></div>
+          <div className="row"><button className="btn" type="button" onClick={() => pickTab("now")}>{S.pointClose}</button></div>
         </section>
       )}
-      {m.walk && (
+      {show("walk") && m.walk && (
         <section className={`panel ${m.walk.stage === "help" ? "amber" : ""}`} role="status" aria-label={S.lessonsTitle}>
           <h2>{m.walk.title}</h2>
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
@@ -867,7 +910,7 @@ function Card() {
           </div>
         </section>
       )}
-      {m.diagram && (
+      {show("diagram") && m.diagram && (
         <section className={`panel ${m.diagram.stage === "none" ? "amber" : ""}`} role="status" aria-label={S.drawTitle}>
           <h2>{S.drawTitle}</h2>
           {m.diagram.stage === "asking" && <div className="line">{S.drawing}</div>}
@@ -876,7 +919,7 @@ function Card() {
           {m.diagram.stage !== "asking" && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.diagramClosed" }); }}>{S.pointClose}</button></div>}
         </section>
       )}
-      {m.about && m.about.project === project && (
+      {show("about") && m.about && m.about.project === project && (
         <section className="panel" aria-label={S.aboutTitle}>
           <h2>{S.aboutTitle}</h2>
           <div className="line">{m.about.about}</div>
@@ -895,6 +938,8 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
+      {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
+      <div hidden={!show("ask")}>
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
         <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
@@ -911,9 +956,6 @@ function Card() {
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
           <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
           <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
-          <button className="btn" type="button" aria-expanded={lessonsOpen} onClick={openLessons}>{S.lessonsButton}</button>
-          <button className="btn" type="button" onClick={() => { if (project) void send(listMemory(project)); }}>{S.memoryButton}</button>
-          <button className="btn" type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((v) => !v)}>{S.settingsButton}</button>
         </div>
       )}
       {!working && (
@@ -922,11 +964,14 @@ function Card() {
       {!working && (
         <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
       )}
+      </div>
+      {show("notes") && <>
       {!project && <div className="notice">{S.folderNone}</div>}
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
       {m.error && <div className="error" role="alert">{m.error}</div>}
+      </>}
 
-      <div ref={urgent}>
+      {show("urgent") && <div ref={urgent}>
       {m.agentsAsk && (
         <section className="panel amber" role="alert" aria-label={S.agentsTitle}>
           <h2>{S.agentsTitle}</h2>
@@ -991,8 +1036,8 @@ function Card() {
         </section>
       )}
 
-      </div>
-      {m.ph && (
+      </div>}
+      {show("promptHelp") && m.ph && (
         <section className="panel amber" aria-label={S.phTitle}>
           <h2>{S.phTitle}</h2>
           {phWords(m) && <div className="line">{phWords(m)}</div>}
@@ -1030,7 +1075,7 @@ function Card() {
         </section>
       )}
 
-      {m.drive && (
+      {show("drive") && m.drive && (
         <section className="panel">
           <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
           {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
@@ -1043,9 +1088,9 @@ function Card() {
         </section>
       )}
 
-      {m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} />}
+      {show("ship") && m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} />}
 
-      {m.ship && (
+      {show("ship") && m.ship && (
         <section className={`panel ${m.ship.canShip ? "" : "amber"}`} aria-label={S.shipTitle}>
           <h2>{S.shipTitle}</h2>
           <div className="line"><b>{shipWords(m)}</b></div>
@@ -1060,7 +1105,7 @@ function Card() {
         </section>
       )}
 
-      {m.research && (
+      {show("research") && m.research && (
         <section className="panel" aria-label={m.research.title}>
           <h2>{m.research.title}</h2>
           <div className="line">{m.research.answer}</div>
@@ -1071,7 +1116,7 @@ function Card() {
         </section>
       )}
 
-      {m.rescue && (
+      {show("rescue") && m.rescue && (
         <section className="panel" aria-label={S.rescueTitle}>
           <h2>{S.rescueTitle}</h2>
           <div className="line">{m.rescue.summary}</div>
@@ -1086,7 +1131,7 @@ function Card() {
         </section>
       )}
 
-      {m.task && m.task.lines.length > 0 && (
+      {show("task") && m.task && m.task.lines.length > 0 && (
         <section className="panel" aria-live="polite">
           <h2>{m.task.label || "Task"}</h2>
           {/* The latest one or two steps, in plain words: never the raw command. */}
@@ -1094,7 +1139,7 @@ function Card() {
         </section>
       )}
 
-      {m.task?.proof && m.task.proof.steps.length > 0 && (
+      {show("proof") && m.task?.proof && m.task.proof.steps.length > 0 && (
         <section className={`panel ${notDoneReason(m) ? "amber" : ""}`} aria-label={S.checkingTitle}>
           <h2>{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
           {m.task.proof.steps.map((s) => (
@@ -1109,7 +1154,7 @@ function Card() {
         </section>
       )}
 
-      {m.receipt && (
+      {show("receipt") && m.receipt && (
         <section className="panel">
           <h2>{S.receiptTitle}</h2>
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
@@ -1155,7 +1200,7 @@ function Card() {
         </section>
       )}
 
-      {m.teach && (
+      {show("teach") && m.teach && (
         <section className={`panel ${m.teach.stage === "refused" || m.teach.stage === "left" || (m.teach.stage === "checked" && m.teach.result?.verdict === "failed") ? "amber" : ""}`} role="status" aria-label={S.teachTitle}>
           <h2>{S.teachTitle}</h2>
           {teachLines(m.teach).map((l, i) => <div className="line" key={i}>{l}</div>)}
@@ -1175,7 +1220,7 @@ function Card() {
         </section>
       )}
 
-      {bv && (
+      {show("browser") && bv && (
         <section className={`panel ${m.browser.stage === "failed" ? "amber" : ""}`} role="status" aria-label={S.browserTitle}>
           <h2>{S.browserTitle}</h2>
           <div className="line">{bv.line}</div>
@@ -1190,7 +1235,7 @@ function Card() {
       )}
 
 
-      {m.voice && (
+      {show("voice") && m.voice && (
         <section className={`panel ${["error", "mic_refused", "blocked", "needs_mic", "needs_model"].includes(m.voice.stage) ? "amber" : ""}`} role="status" aria-label={S.voiceTitle}>
           <h2>{S.voiceTitle}</h2>
           <div className="line">{m.voice.message}{m.voice.stage === "downloading" && typeof m.voice.percent === "number" ? ` ${m.voice.percent}%` : ""}</div>
@@ -1199,7 +1244,7 @@ function Card() {
         </section>
       )}
 
-      {m.point && (
+      {show("point") && m.point && (
         <section className={`panel ${m.point.stage === "found" ? "amber" : ""}`} role="status" aria-label={S.pointTitle}>
           <h2>{S.pointTitle}</h2>
           {m.point.stage === "checking" && <div className="line">{S.pointChecking}</div>}
@@ -1223,7 +1268,7 @@ function Card() {
         </section>
       )}
 
-      {m.bisect && (
+      {show("bisect") && m.bisect && (
         <section className={`panel ${m.bisect.stage === "done" && m.bisect.outcome === "found" ? "amber" : ""}`} role="status" aria-live="polite" aria-label={S.bisectTitle}>
           <h2>{S.bisectTitle}</h2>
           {bisectLines(m).map((l, i) => <div className="line" key={i}>{l}</div>)}
@@ -1249,7 +1294,7 @@ function Card() {
         </section>
       )}
 
-      {m.eh && (
+      {show("errorHelp") && m.eh && (
         <section className={`panel ${["refused", "error", "needs_accessibility", "nothing_selected", "consent"].includes(m.eh.stage) ? "amber" : ""}`} role="status" aria-live="polite" aria-label={S.ehTitle}>
           <h2>{S.ehTitle}</h2>
           {["ready", "unexplained"].includes(m.eh.stage) && m.eh.excerpt && <div className="line muted">{m.eh.excerpt}</div>}
@@ -1269,7 +1314,7 @@ function Card() {
         </section>
       )}
 
-      {m.showme && (
+      {show("showMe") && m.showme && (
         <section className={`panel ${m.showme.stage === "error" || m.showme.stage === "needs_permission" || m.showme.stage === "window_changed" ? "amber" : ""}`} role="status" aria-label={S.showMe}>
           <h2>{S.showMe}</h2>
           <div className="line">{m.showme.message}</div>
@@ -1293,7 +1338,7 @@ function Card() {
         </section>
       )}
 
-      {m.recap && (
+      {show("recap") && m.recap && (
         <section className="panel" role="status" aria-label={S.recapTitle}>
           <h2>{S.recapTitle}</h2>
           {m.recap.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
@@ -1302,17 +1347,19 @@ function Card() {
         </section>
       )}
 
-      {m.toast && (
+      {show("toast") && m.toast && (
         <section className="panel" role="status" aria-label={S.memoryTitle}>
           <div className="line">{savedWords(m)}</div>
           <div className="row">
             <button className="btn" type="button" onClick={() => { for (const l of m.toast!.lines) void send(forgetLine(project, l.scope, l.id)); dispatch({ type: "ui.toastClear" }); }}>{S.memoryUndo}</button>
-            <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.toastClear" }); void send(listMemory(project)); }}>{S.memorySeeAll}</button>
+            <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.toastClear" }); pickTab("memory"); }}>{S.memorySeeAll}</button>
           </div>
         </section>
       )}
 
-      {m.memory && (
+      {show("memory") && !project && <div className="line muted">{S.homeMemoryNoProject}</div>}
+      {show("memory") && project && !m.memory && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
+      {show("memory") && m.memory && (
         <section className="panel" aria-label={S.memoryTitle}>
           <h2>{S.memoryTitle}</h2>
           <div className="line muted">{S.memoryNever}</div>
@@ -1327,19 +1374,21 @@ function Card() {
             <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
             <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
             <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>
-            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.memoryClosed" })}>{S.memoryClose}</button>
+            <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.memoryClosed" }); pickTab("now"); }}>{S.memoryClose}</button>
           </div>
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {project && m.character !== "thinking" && m.character !== "working" && m.character !== "checking" && m.history.length > 0 && (
+      {show("history") && (
         <section className="panel" aria-label={S.recentTitle}>
           <h2>{S.recentTitle}</h2>
-          {m.history.slice(0, 5).map((h) => (
+          {(!project || m.history.length === 0) && <div className="line muted">{S.homeHistoryNone}</div>}
+          {project && m.history.slice(0, 20).map((h) => (
             <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
           ))}
         </section>
       )}
+      </div>
       </>)}
     </main>
   );

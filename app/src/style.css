@@ -83,3 +83,31 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
 @keyframes party { 20% { transform: translateY(-14px) rotate(-10deg) scale(1.08); } 45% { transform: translateY(0) rotate(8deg); } 65% { transform: translateY(-6px) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion] { animation: none; } }
+
+/* Home (F18): the card's tabs. */
+.tabs { display: flex; gap: 2px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tab { position: relative; font: inherit; font-size: 13px; padding: 5px 9px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--muted); cursor: pointer; border-radius: 6px 6px 0 0; }
+.tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, var(--bg)); }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.tabdot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--amber); vertical-align: middle; }
+@media (forced-colors: active) { .tab[aria-selected="true"] { border-bottom-color: Highlight; } .tabdot { forced-color-adjust: none; border: 1px solid CanvasText; } }
+
+/* The island in the notch (F18): black like the notch in both themes, white words. The app sizes the window; this fills it. */
+html.island-page, body.island-page { background: transparent; overflow: hidden; height: 100%; }
+.island { height: 100vh; }
+.island-hit { all: unset; box-sizing: border-box; position: relative; display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; padding: 0 12px 8px; background: #000; color: #fff; cursor: pointer; font: 600 12px -apple-system, "SF Pro Text", sans-serif; overflow: hidden; }
+.island.notch .island-hit { border-radius: 0 0 12px 12px; }
+.island.pill .island-hit { border-radius: 999px; align-items: center; padding: 0 10px; }
+.island.pill[data-mode="peek"] .island-hit { border-radius: 10px; align-items: flex-end; padding-bottom: 8px; }
+.island-hit:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.peekline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pillrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
+.ear { position: absolute; top: 0; bottom: 0; width: 28px; display: grid; place-items: center; font-size: 11px; }
+.ear.left { left: 0; } .ear.right { right: 0; }
+.mark { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; flex: none; }
+.mark[data-state="needsYou"] { background: var(--amber); }
+.mark[data-state="listening"] { background: var(--accent); }
+.mark[data-state="done"] { background: #4cc27f; }
+.mark[data-state="working"], .mark[data-state="thinking"], .mark[data-state="checking"] { background: #f2f2f2; }
+.mark[data-state="error"] { background: #ff7a6e; }
+@media (forced-colors: active) { .island-hit { forced-color-adjust: none; border: 1px solid #fff; } }
