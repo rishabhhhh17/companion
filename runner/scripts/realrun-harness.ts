@@ -236,13 +236,13 @@ export function guardQuery(real: QueryFn, o: { meter: SpendMeter; expect: Expect
 
 // ---------- the runner process (real-verify drives the runner exactly as the app starts it) ----------
 
-/** What a script answers on the person's behalf so a run never waits forever: approval cards are denied (scenarios never
- *  need one), a loop card is answered (stop, unless asked to try a different way), and the shared files question is
- *  answered yes (the project is a throwaway folder). Returns null for everything else. */
+/** What a script answers on the person's behalf so a run never waits forever: approval cards are denied (unless the
+ *  scenario checks the allow path), a loop card is answered (stop, unless asked to try a different way), and the shared
+ *  files question is answered yes (the project is a throwaway folder). Returns null for everything else. */
 let answerN = 0;
-export function autoAnswer(e: Ev, o: { loopChoice?: "stop" | "different" } = {}): Ev | null {
+export function autoAnswer(e: Ev, o: { loopChoice?: "stop" | "different"; approve?: "allow" | "deny" } = {}): Ev | null {
   const id = `auto-${++answerN}`;
-  if (e?.type === "approval.request") return { v: 1, id, type: "approval.resolve", approval: String(e.approval), decision: "deny", scope: "once" };
+  if (e?.type === "approval.request") return { v: 1, id, type: "approval.resolve", approval: String(e.approval), decision: o.approve ?? "deny", scope: "once" };
   if (e?.type === "loop.stuck") return { v: 1, id, type: "loop.choose", agent: String(e.agent), choice: o.loopChoice ?? "stop" };
   if (e?.type === "memory.agents_ask") return { v: 1, id, type: "memory.agents", project: String(e.project), answer: "yes" };
   return null;
@@ -278,7 +278,7 @@ export class RunnerDriver {
   private answered: string[] = [];
   eventUsd = 0;   // spent by work the ledger does not hold (Draw it for me, the error explainer), as the events say
   private t0 = Date.now();
-  constructor(private proc: Proc, private o: { key?: string; loopChoice?: "stop" | "different"; onEvent?: (e: Ev) => void }) {}
+  constructor(private proc: Proc, private o: { key?: string; loopChoice?: "stop" | "different"; approve?: { decision: "allow" | "deny"; afterMs?: number }; onEvent?: (e: Ev) => void }) {}
   start() {
     if (this.o.key) this.proc.write(JSON.stringify({ v: 1, type: "auth.key", key: this.o.key }));
     void this.pump();
@@ -292,11 +292,12 @@ export class RunnerDriver {
         e.at = Date.now() - this.t0;
         this.events.push(e);
         if ((e.type === "diagram.ready" || e.type === "error.explained") && Number(e.usdEstimate) > 0) this.eventUsd += Number(e.usdEstimate);
-        const a = autoAnswer(e, { loopChoice: this.o.loopChoice });
+        const a = autoAnswer(e, { loopChoice: this.o.loopChoice, approve: this.o.approve?.decision });
         if (a) {
           if (e.type === "loop.stuck") this.stuck.push(e);
-          this.answered.push(`${e.type} answered: ${a.type} ${a.choice ?? a.decision ?? a.answer ?? ""}`.trim());
-          this.send(a);
+          const wait = e.type === "approval.request" ? this.o.approve?.afterMs ?? 0 : 0;
+          this.answered.push(`${e.type} answered: ${a.type} ${a.choice ?? a.decision ?? a.answer ?? ""}${wait ? ` after ${wait} ms` : ""}`.trim());
+          if (wait) setTimeout(() => this.send(a), wait); else this.send(a);
         }
         try { this.o.onEvent?.(e); } catch { /* a watcher must not stop the pump */ }
       }

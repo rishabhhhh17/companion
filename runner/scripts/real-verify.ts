@@ -36,7 +36,8 @@ export type Live = {
   ready(): Promise<boolean>; usd(): number; stop(): void;
 };
 /** What a scenario is given: runners, folders, the models, and the case's own context. */
-export type Kit = { runner(project: string, env?: Record<string, string>): Live; scratch(label: string): string; agentModel: string; diagnoseModel: string; reviewModel: string; cheap: boolean; ctx: CaseCtx };
+export type RunnerOpts = { approve?: { decision: "allow" | "deny"; afterMs?: number } };
+export type Kit = { runner(project: string, env?: Record<string, string>, o?: RunnerOpts): Live; scratch(label: string): string; agentModel: string; diagnoseModel: string; reviewModel: string; cheap: boolean; ctx: CaseCtx };
 export type Scenario = { name: string; what: string; estimateUsd: number; capUsd: number; timeoutS: number; inProcess?: boolean; run(kit: Kit, note: (s: string) => void): Promise<boolean> };
 
 /** A command this script would send that the runner would refuse is a bug in the script: it is caught before it is sent. */
@@ -333,6 +334,62 @@ export const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: "error-explainer", what: "an error selected in another app is explained in two plain sentences and placed at its line in the project", estimateUsd: 0.005, capUsd: 0.1, timeoutS: 120,
+    async run(kit, note) {
+      const dir = kit.scratch("err"); put(dir, { "src/App.tsx": 'import React from "react";\n\nexport default function App() {\n  const name = "shop";\n  const total: number = "three";\n  return <p>{name} {total}</p>;\n}\n' });
+      const r = kit.runner(dir); if (!await r.ready()) return false;
+      r.send({ v: 1, id: "e", type: "error.explain", req: "err-1", app: "com.apple.Terminal", text: "src/App.tsx:5:9 - error TS2322: Type 'string' is not assignable to type 'number'.", project: dir });
+      const out = await r.until((e) => e.type === "error.explained", 60_000);
+      if (!out) { note("no answer"); return false; }
+      note(`ok = ${out.ok}; sentences: ${JSON.stringify(out.sentences)}; where: ${JSON.stringify(out.where ? { file: out.where.file, line: out.where.line } : null)}; reason: ${out.reason ?? "-"}; cost ${out.usdEstimate}`);
+      return out.ok === true && out.sentences.length >= 1 && out.sentences.length <= 2 && out.where?.file === "src/App.tsx" && out.where?.line === 5;
+    },
+  },
+  {
+    name: "approve-after-wait", what: "an approval card answered yes after a wait lets the command run once, and the task finishes", estimateUsd: 0.1, capUsd: 0.6, timeoutS: 300,
+    async run(kit, note) {
+      const dir = kit.scratch("approve"); put(dir, { "notes.txt": "start" });
+      const r = kit.runner(dir, {}, { approve: { decision: "allow", afterMs: 5000 } }); if (!await r.ready()) return false;
+      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Run the shell command git init in this folder (I want this folder to be a git repository), then create a file README.md containing the word hello. Then stop.", model: kit.agentModel, budgetUsd: 0.5 });
+      const rec = await r.until((e) => e.type === "receipt", 240_000);
+      const asked = r.of("approval.request"), resolved = r.of("approval.resolved");
+      const readme = existsSync(join(dir, "README.md")) ? readFileSync(join(dir, "README.md"), "utf8") : "";
+      note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; .git made = ${existsSync(join(dir, ".git"))}; README has hello = ${/hello/i.test(readme)}; receipt = ${rec ? rec.proof : "none"}`);
+      return !!rec && asked.length >= 1 && resolved.some((e) => e.outcome === "allowed") && existsSync(join(dir, ".git")) && /hello/i.test(readme);
+    },
+  },
+  {
+    name: "stop-everything", what: "Stop everything during a real task ends it within seconds, as a stop and not a crash", estimateUsd: 0.08, capUsd: 0.5, timeoutS: 240,
+    async run(kit, note) {
+      const dir = kit.scratch("stop"); put(dir, { "notes.txt": "start" });
+      const r = kit.runner(dir); if (!await r.ready()) return false;
+      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Create ten files named f1.txt to f10.txt, one at a time, each containing its own number. Then stop.", model: kit.agentModel, budgetUsd: 0.4 });
+      const first = await r.until((e) => e.type === "agent.tool" && e.outcome === "ran", 120_000);
+      if (!first) { note("the task never ran a tool"); return false; }
+      const n = r.events.length, t = Date.now();
+      r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "stop everything key" });
+      const ended = await r.until((e) => e.type === "agent.state" && ["idle", "error", "done"].includes(e.state), 20_000, n);
+      const ms = Date.now() - t;
+      await Bun.sleep(1500);
+      const errors = r.events.slice(n).filter((e) => e.type === "protocol.error").map((e) => e.reason);
+      const made = readdirSync(dir).filter((f) => /^f\d+\.txt$/.test(f)).length;
+      note(`ended as ${ended?.state ?? "nothing"} ${ms} ms after Stop everything; errors: ${JSON.stringify(errors)}; files made before the stop: ${made} of 10`);
+      return ended?.state === "idle" && ms < 10_000 && errors.length === 0;
+    },
+  },
+  {
+    name: "loop-breaker", what: "a fix that cannot pass (a missing secret) ends with a receipt, never a hang; a loop card, if shown, is answered and noted", estimateUsd: 0.4, capUsd: 1.2, timeoutS: 600,
+    async run(kit, note) {
+      const test = "const assert = require('assert');\nif (!process.env.SHOP_PRICE_KEY) { console.error('SHOP_PRICE_KEY is not set'); process.exit(1); }\nassert.strictEqual(require('./price')(2), 40);\nconsole.log('ok');\n";
+      const dir = kit.scratch("loop"); put(dir, { "package.json": JSON.stringify({ name: "shop", version: "1.0.0", scripts: { test: "node test.js" } }), "price.js": "module.exports = function price(n) { return n * PRICE; };\n", "test.js": test });
+      const r = kit.runner(dir); if (!await r.ready()) return false;
+      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "npm test fails. Fix price.js so the tests pass. Do not change test.js and do not make up secret values.", model: kit.agentModel, budgetUsd: 1.0 });
+      const rec = await r.until((e) => e.type === "receipt", 540_000);
+      note(`receipt proof = ${rec?.proof ?? "none"}; checks run: ${r.of("proof.result").length}; loop cards: ${r.of("loop.stuck").length}; test.js untouched = ${readFileSync(join(dir, "test.js"), "utf8") === test}`);
+      return !!rec && rec.proof !== "passed" && readFileSync(join(dir, "test.js"), "utf8") === test;
+    },
+  },
+  {
     name: "ship-gates", what: "no model: the real ship gates pass a clean page and block a leaked key, an open table and a stale check", estimateUsd: 0, capUsd: 0.05, timeoutS: 900,
     async run(kit, note) {
       const gatesOf = async (dir: string, extra: Ev = {}) => {
@@ -371,7 +428,7 @@ export const SCENARIOS: Scenario[] = [
 
 /** The kit a real run gives each scenario: runner processes on the key route, watched for spending. */
 export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | "different" }): Kit {
-  const runner = (project: string, env: Record<string, string> = {}): Live => {
+  const runner = (project: string, env: Record<string, string> = {}, ro: RunnerOpts = {}): Live => {
     const data = ctx.scratch("data");
     // The runner gets a short, plain environment (no Claude Code folder, no account switching variables from the shell),
     // its own throwaway data folder (Claude Code's folder is inside it, as in the app), and the key over the pipe only.
@@ -380,7 +437,7 @@ export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | 
       ...minimalEnv(process.env), COMPANION_DATA: data, COMPANION_ROUTE: "api_key", COMPANION_KEY_SOURCE: "app",
       COMPANION_DAILY_CEILING_USD: String(Math.max(0.01, Math.round(ctx.meter.caseStop * 100) / 100)), ...(o.cheap ? { COMPANION_MODEL: CHEAP } : {}), ...env,
     } });
-    const d = new RunnerDriver(proc, { key: ctx.key, loopChoice: o.loopChoice }).start();
+    const d = new RunnerDriver(proc, { key: ctx.key, loopChoice: o.loopChoice, approve: ro.approve }).start();
     const meterKey = `runner-${data}`;
     const spent = () => ledgerSpent(data) + d.eventUsd;
     let stopped = false;
@@ -409,7 +466,7 @@ export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | 
 }
 
 export function verifyCases(o: { cheap: boolean; loopChoice: "stop" | "different" }, make: (ctx: CaseCtx) => Kit = (ctx) => realKit(ctx, o)): Case[] {
-  const models = (s: Scenario) => (s.name === "ship-gates" ? ["no model"] : s.name === "rescue" ? [o.cheap ? CHEAP : MODELS.diagnose, o.cheap ? CHEAP : MODELS.agent] : s.name === "second-model-review" ? [o.cheap ? CHEAP : MODELS.review] : s.name === "diagram" ? [MODELS.fast] : s.name === "explain" ? [o.cheap ? CHEAP : MODELS.agent, MODELS.fast] : [o.cheap ? CHEAP : MODELS.agent]);
+  const models = (s: Scenario) => (s.name === "ship-gates" ? ["no model"] : s.name === "rescue" ? [o.cheap ? CHEAP : MODELS.diagnose, o.cheap ? CHEAP : MODELS.agent] : s.name === "second-model-review" ? [o.cheap ? CHEAP : MODELS.review] : s.name === "diagram" || s.name === "error-explainer" ? [MODELS.fast] : s.name === "explain" ? [o.cheap ? CHEAP : MODELS.agent, MODELS.fast] : [o.cheap ? CHEAP : MODELS.agent]);
   return SCENARIOS.map((s) => ({ name: s.name, what: s.what, models: models(s), estimateUsd: s.estimateUsd, capUsd: s.capUsd, timeoutS: s.timeoutS, run: (ctx) => s.run(make(ctx), ctx.note) }));
 }
 

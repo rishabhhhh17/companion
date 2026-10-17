@@ -331,6 +331,18 @@ describe("the runner driver", () => {
     expect(JSON.parse(f.sent.find((l) => l.includes("loop.choose"))!)).toMatchObject({ choice: "stop", agent: "b1" });
     d.stop();
   });
+  test("an approval card can be answered yes after a wait, for the scenario that checks the allow path", async () => {
+    const f = fakeProc(() => {});
+    const d = new RunnerDriver(f.proc, { approve: { decision: "allow", afterMs: 120 } }); d.start();
+    const t0 = Date.now();
+    f.emit({ v: 1, id: "e1", type: "approval.request", approval: "ap9", agent: "b1", checkpoint: "c", toolUseId: "t", risk: "git", title: "git init", expiresAt: "x" });
+    for (let i = 0; i < 100 && !f.sent.some((l) => l.includes("approval.resolve")); i++) await Bun.sleep(20);
+    const line = f.sent.find((l) => l.includes("approval.resolve"))!;
+    expect(JSON.parse(line)).toMatchObject({ approval: "ap9", decision: "allow", scope: "once" });
+    expect(parseCommand(line).ok).toBe(true);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(100);
+    d.stop();
+  });
   test("waiting gives up at its time limit", async () => {
     const d = new RunnerDriver(fakeProc(() => {}).proc, {}); d.start();
     const t0 = Date.now();
