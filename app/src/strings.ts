@@ -24,6 +24,10 @@ export const S = {
   copyLink: "Copy link",
   savedTo: "Saved in your Downloads folder as",
   linkCopied: "Link copied.",
+  // Links open in your own browser only when you press the button. The site's real name is on it (links.ts).
+  openSite: (host: string) => `Open ${host}`,
+  previewAddress: "Preview",
+  liveAddress: "Live",
   receiptPicturing: "Making a before and after picture of your page…",
   nothingChanged: "Nothing changed.",
   cannotUndo: "Cannot be undone",

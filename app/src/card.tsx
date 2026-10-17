@@ -16,6 +16,7 @@ import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "
 import { useModel } from "./useModel.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { webLink } from "./links.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -339,6 +340,38 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   );
 }
 
+// Opens a web address in the person's own browser, only when this button is pressed (rule: never from text the model
+// wrote by itself). The site's real name is on the button. The Mac side checks the address again (share.rs web_link).
+// This is the only place Home asks for a link to be opened (links.test.ts checks that).
+function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => void }) {
+  const l = webLink(url);
+  if (!l) return null;
+  return <button className="btn" type="button" onClick={() => void invoke("open_link", { url: l.url }).then(() => onNote("")).catch((e) => onNote(String(e)))}>{S.openSite(l.host)}</button>;
+}
+
+// One research note and where it came from. Its source was written by the model, so it opens only on a press, and the
+// button names the site it really goes to.
+function ResearchNote({ text, source }: { text: string; source: string }) {
+  const [note, setNote] = useState("");
+  return (
+    <div className="line">
+      {text} <span className="muted">{source}</span> <OpenButton url={source} onNote={setNote} />
+      {note && <div className="line" role="status">{note}</div>}
+    </div>
+  );
+}
+
+// A web address shown on Home, with its Open button.
+function LinkLine({ label, url, strong }: { label: string; url: string; strong?: boolean }) {
+  const [note, setNote] = useState("");
+  return (
+    <div className={`line${strong ? "" : " muted"}`}>
+      {strong ? <b>{label}: {url}</b> : <>{label}: {url}</>} <OpenButton url={url} onNote={setNote} />
+      {note && <div className="line" role="status">{note}</div>}
+    </div>
+  );
+}
+
 function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } }; project: string; onClose: () => void }) {
   const [ask, setAsk] = useState<"live" | "back" | null>(null);
   const [shared, setShared] = useState("");
@@ -347,8 +380,8 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
     <section className={`panel ${f.stage === "failed" || f.stage === "refused" || f.stage === "not_signed_in" ? "amber" : ""}`} role="status" aria-label={S.onlineTitle}>
       <h2>{S.onlineTitle}</h2>
       <div className="line">{f.detail}</div>
-      {f.previewUrl && <div className="line muted">Preview: {f.previewUrl}</div>}
-      {f.productionUrl && <div className="line"><b>Live: {f.productionUrl}</b></div>}
+      {f.previewUrl && <LinkLine label={S.previewAddress} url={f.previewUrl} />}
+      {f.productionUrl && <LinkLine label={S.liveAddress} url={f.productionUrl} strong />}
       {f.stage === "ready" && f.canGoLive && ask !== "live" && <div className="row"><button className="btn primary" type="button" onClick={() => setAsk("live")}>{S.makeLive}</button></div>}
       {ask === "live" && f.previewUrl && (
         <div className="row" role="alert">
@@ -363,6 +396,7 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
           <div className="row">
             <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(String(e)))}>{S.savePicture}</button>
             <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(String(e)))}>{S.copyLink}</button>
+            <OpenButton url={f.card.url} onNote={setShared} />
           </div>
           {shared && <div className="line muted" role="status">{shared}</div>}
         </figure>
@@ -1153,7 +1187,7 @@ function Card() {
           <h2>{m.research.title}</h2>
           <div className="line">{m.research.answer}</div>
           <div className="line muted"><b>{S.researchNotes}:</b></div>
-          {m.research.notes.map((n, i) => <div className="line" key={i}>{n.text} <span className="muted">{n.source}</span></div>)}
+          {m.research.notes.map((n, i) => <ResearchNote key={i} text={n.text} source={n.source} />)}
           <div className="line muted">{S.researchFiled} {m.research.file}</div>
           <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.researchClosed" })}>{S.researchClose}</button></div>
         </section>

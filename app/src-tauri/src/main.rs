@@ -1739,12 +1739,24 @@ fn save_share_card(image: String, title: String) -> Result<String, String> {
     Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
-/// Copy link: only a web address, only on a press.
+/// Copy link: only a web address, only on a press. The address as checked is what is copied.
 #[tauri::command]
 fn copy_link(url: String) -> Result<(), String> {
-    if !share::is_web_link(&url) { return Err("that is not a web address".into()); }
+    let Some(url) = share::web_link(&url) else { return Err("that is not a web address".into()) };
     ax::write_clipboard(&url);
     Ok(())
+}
+
+/// Open a link in the person's own browser, through the Mac's own `open`: only from Home, only a plain web address
+/// (share::web_link), only the address as checked. The page calls this only from a button the person pressed (a test reads
+/// card.tsx for that); nothing the model wrote is ever opened by itself. The address is not logged.
+#[tauri::command]
+fn open_link(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
+    if window.label() != "card" { return Err("Links can only be opened from Companion's own window.".into()); }
+    let Some(url) = share::web_link(&url) else { return Err("That is not a plain web address, so it was not opened.".into()) };
+    let ok = std::process::Command::new("/usr/bin/open").arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+    log("link_opened", json!({ "ok": ok }));
+    if ok { Ok(()) } else { Err("The link could not be opened. Copy it into your browser instead.".into()) }
 }
 
 // ---------- Hold to talk keys (F18.3, the rules are in talkkeys.rs) ----------
@@ -2132,7 +2144,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
