@@ -1,0 +1,7 @@
+{
+  "name": "shipping-rules",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

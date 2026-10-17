@@ -1,0 +1,9 @@
+{
+  "name": "plant-likes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/next-build-check.js",
+    "test": "node --test"
+  }
+}

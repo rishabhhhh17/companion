@@ -123,7 +123,7 @@ app/src-tauri/       Rust shell: windows, hotkeys, Prompt help, the error explai
 app/                 Tauri 2 + React shell: native panels, runner link, cards, ask box, docking, tray, settings; scripts/ build the app, the engine inside it, the disk image and the release
 app/vendor/          Anthropic's Claude binary and the engine, staged at build time; never committed
 app/sample/          practice stuck moments, each broken one way on purpose (expected checks in evals/rescue-projects/practice.json)
-evals/               quality suites: prompt-help, show-me-how (voice latency, rescue projects still to come)
+evals/               quality suites (evals/README.md): rescue-projects, prompt-help, and the M11 sets, dry by default and spending only with --spend through one harness (evals/lib): fix-projects, loop-breaker, review-catch, explain, show-me-how (the aim eval's hard set); voice latency still to come
 relay/               (planned, Beta) Cloudflare Worker relay and the phone web app
 ```
 
@@ -140,6 +140,8 @@ relay/               (planned, Beta) Cloudflare Worker relay and the phone web a
 | Sandbox backstop | `cd runner && bun run scripts/real-sandbox.ts` prints the plan; add `--spend` to run it on the founder's key (about $0.10; only when asked) | The macOS sandbox under Companion's own checks, on the API key route: no write outside the project or in the home folder, no private file read, only the allowed registries reachable. `real-run.ts`, `e2e-plan.ts` and `real-sandbox-net.ts` are retired and start nothing |
 | Rescue projects eval | `cd evals/rescue-projects && bun test` (free, no model; part of `test-all.sh`) | Fifteen small projects broken in fifteen common ways (JavaScript, TypeScript, Bun, Python), plus the five practice stuck moments in `app/sample` (expected checks in `practice.json`): the locator must turn the real failing output into the exact file and line, with a readable message; the open Supabase table must be blocked by the database access check |
 | Prompt help eval | `cd evals/prompt-help && bun test` (free); `bun run run.ts --real` prints the plan, `--real --spend` runs it on the founder's key (only when asked) | The scorer and the 30 cases |
+| Eval sets, dry | `cd evals && ../runner/node_modules/.bin/tsc -p . && bun test ./lib ./fix-projects ./loop-breaker ./review-catch ./explain ./show-me-how` (free, no model, no network; part of `test-all.sh`) | The fix, loop breaker, review, Explain and hard pointing sets run end to end on stand ins: every case broken as it says, found, solvable and scored by checks; wrong fixes told apart; the spending caps, the cumulative stop; and, with stubbed queries, the real run harness under them (its guards, its stops, a refusal or stop failing the case, never a score, and request shapes only from `runner/src/models.ts`) |
+| Eval sets, paid | `bun run evals/<set>/run.ts --spend`, `cd runner && bun run scripts/eval-aim.ts --spend` (through the real run harness, the `companion-dev` Keychain item; only when the founder says go, after the smoke test) | See `evals/README.md` for each set's dry and paid command, the cost of each case and the order to run them in |
 | After adding a Tauri plugin or changing `tauri.conf.json` | `sh app/scripts/build-app.sh`, open the app, check it stays running | A plugin that fails to start crashes the app at launch while every test passes |
 
 Installs that tasks run use Node 20 or newer; under Claude's sandbox, Node 18 cannot reach the registry (it tries IPv6 first). Say so in plain words if a task fails that way.

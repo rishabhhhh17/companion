@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Table editor · Tablo</title><link rel="stylesheet" href="base.css"></head>
+<body>
+<header class="top">
+  <span class="brand">◆ Tablo</span><span class="muted">fern-and-moss / production</span>
+  <nav class="row"><a href="#">Home</a><a href="#" class="on">Table editor</a><a href="#">SQL editor</a><a href="#">Database</a><a href="#">Auth</a><a href="#">Storage</a><a href="#">Logs</a></nav>
+  <div class="right"><button>Connect</button><button class="icon" aria-label="Help">?</button><button class="icon" aria-label="Account">SR</button></div>
+</header>
+<div class="layout">
+  <aside class="side">
+    <div class="row" style="margin-bottom:8px"><select style="width:100%"><option>schema: public</option><option>schema: auth</option></select></div>
+    <button style="width:100%;margin-bottom:10px">New table</button>
+    <input placeholder="Search tables" style="width:100%;margin-bottom:8px">
+    <a href="#">profiles</a><a href="#" class="on">orders</a><a href="#" data-eval-target="table-notes">notes</a><a href="#">products</a><a href="#">reviews</a><a href="#">coupons</a><a href="#">newsletter</a>
+  </aside>
+  <main class="main">
+    <div class="banner"><span>🔓</span><span><b>Row level security is off for orders.</b> Anyone with your anon key can read and change every row.</span>
+      <span style="margin-left:auto" class="row"><button>Learn more</button><button class="primary" data-eval-target="enable-rls">Enable RLS</button></span></div>
+    <div class="row" style="margin-bottom:8px">
+      <button data-eval-target="filter">Filter</button><button>Sort</button><button class="primary" data-eval-target="insert-row">Insert row</button><button data-eval-target="insert-column">Insert column</button>
+      <span style="margin-left:auto" class="row"><button>Definition</button><button>Export</button><button class="icon" aria-label="Refresh">⟳</button></span>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table>
+        <tr><th><input type="checkbox" aria-label="Select all rows"></th><th>id</th><th>user_id</th><th>status</th><th>total_cents</th><th>created_at</th><th><button class="icon" aria-label="Add column" data-eval-target="add-column">+</button></th></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 1"></td><td>1</td><td class="muted">7f3a…e21</td><td><span class="chip">paid</span></td><td>4800</td><td class="muted">2026-10-01</td><td></td></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 2"></td><td>2</td><td class="muted">7f3a…e21</td><td><span class="chip">unpaid</span></td><td>2400</td><td class="muted">2026-10-03</td><td></td></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 3"></td><td>3</td><td class="muted">c901…44b</td><td><span class="chip">shipped</span></td><td>9600</td><td class="muted">2026-10-04</td><td></td></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 4"></td><td>4</td><td class="muted">c901…44b</td><td><span class="chip">unpaid</span></td><td>1800</td><td class="muted">2026-10-08</td><td></td></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 5"></td><td>5</td><td class="muted">a1b2…0f9</td><td><span class="chip">paid</span></td><td>3200</td><td class="muted">2026-10-09</td><td></td></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 6"></td><td>6</td><td class="muted">a1b2…0f9</td><td><span class="chip">refunded</span></td><td>2400</td><td class="muted">2026-10-11</td><td></td></tr>
+        <tr><td><input type="checkbox" aria-label="Select row 7"></td><td>7</td><td class="muted">d4e5…7c1</td><td><span class="chip">paid</span></td><td>5600</td><td class="muted">2026-10-14</td><td></td></tr>
+      </table>
+      <div class="row" style="padding:8px 10px;justify-content:space-between"><span class="muted">7 rows</span><span class="row"><button aria-label="Previous page">‹</button><span class="muted">Page 1 of 1</span><button aria-label="Next page">›</button></span></div>
+    </div>
+  </main>
+</div>
+</body></html>
