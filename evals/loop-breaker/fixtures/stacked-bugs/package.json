@@ -1,0 +1,7 @@
+{
+  "name": "mug-cart",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

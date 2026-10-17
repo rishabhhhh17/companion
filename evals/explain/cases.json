@@ -1,0 +1,552 @@
+[
+  {
+    "fix": "rescue-bad-json-config",
+    "mention": [
+      [
+        "comma"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The settings file had an extra comma after its last value, and that small slip stopped the app from reading it.",
+        "Taking the comma out makes the file valid again, so the app can read its port and start."
+      ],
+      "question": {
+        "text": "Why could the app not start?",
+        "options": [
+          "The settings file had a stray comma",
+          "The port number was wrong",
+          "The app was missing a package"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-bun-runtime-error",
+    "mention": [
+      [
+        "empty",
+        "nothing in"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The list was empty, so there was no first item to turn into capital letters, and the program crashed.",
+        "Now it checks that the list has something in it first, and gives an empty answer when it does not."
+      ],
+      "question": {
+        "text": "What made the program crash?",
+        "options": [
+          "It used a first item that was not there",
+          "The text was too long"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-failing-test",
+    "mention": [
+      [
+        "20"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The test expects 20 percent tax to be added, but the price was only getting 10 percent.",
+        "The price now gets 20 percent added, so 100 becomes 120, as the test expects."
+      ],
+      "question": {
+        "text": "How much tax should be added?",
+        "options": [
+          "20 percent",
+          "10 percent"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-missing-local-file",
+    "mention": [
+      [
+        "did not exist",
+        "missing",
+        "was not there"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The app loads a settings file that did not exist, so it stopped at its very first line.",
+        "An empty settings file is there now, so the app can load it and carry on."
+      ],
+      "question": {
+        "text": "Why did the app stop at once?",
+        "options": [
+          "A file it loads was missing",
+          "Its settings had a typo"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-python-name-error",
+    "mention": [
+      [
+        "spell",
+        "typo"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The greeting used a misspelled name, so Python did not know what it meant.",
+        "With the spelling fixed, the greeting uses the name it was given."
+      ],
+      "question": {
+        "text": "What was wrong with the greeting?",
+        "options": [
+          "A name in it was misspelled",
+          "It was missing a space"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-read-property-of-nothing",
+    "mention": [
+      [
+        "address"
+      ]
+    ],
+    "good": {
+      "why": [
+        "This person has no address saved, so there was no city to read and the app crashed.",
+        "Now it says unknown when there is no address, instead of crashing."
+      ],
+      "question": {
+        "text": "Why did the app crash?",
+        "options": [
+          "It looked for a city in an address that was not there",
+          "The city name was too long"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-rejected-promise",
+    "mention": [
+      [
+        "caught",
+        "handle",
+        "catch"
+      ]
+    ],
+    "good": {
+      "why": [
+        "Loading failed, and nothing was there to handle that, so the whole program crashed.",
+        "Now a failed load is caught and reported, so the program stays up and says what went wrong."
+      ],
+      "question": {
+        "text": "What happens now when loading fails?",
+        "options": [
+          "The problem is reported and the program keeps going",
+          "It tries again forever"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-syntax-missing-paren",
+    "mention": [
+      [
+        "bracket"
+      ]
+    ],
+    "good": {
+      "why": [
+        "A closing bracket was missing at the end of a line, so the code could not be read at all.",
+        "With the bracket added, the line is complete and the list prints."
+      ],
+      "question": {
+        "text": "Why could the code not run?",
+        "options": [
+          "A closing bracket was missing",
+          "A word was misspelled"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-ts-missing-property",
+    "mention": [
+      [
+        "email"
+      ]
+    ],
+    "good": {
+      "why": [
+        "Every user must have an email address, but this one was made without one, so the check refused it.",
+        "Giving the user an email makes it complete, so the check passes."
+      ],
+      "question": {
+        "text": "What was the user missing?",
+        "options": [
+          "An email address",
+          "A name"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-ts-unknown-import",
+    "mention": [
+      [
+        "did not exist",
+        "missing",
+        "not there"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The app uses a helpers file that did not exist yet, so the check could not find it.",
+        "The file is there now with the helper the app needs, so the app can use it."
+      ],
+      "question": {
+        "text": "Why did the check fail?",
+        "options": [
+          "A file the app needs was missing",
+          "The helper was too slow"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-ts-wrong-argument-count",
+    "mention": [
+      [
+        "two",
+        "both"
+      ]
+    ],
+    "good": {
+      "why": [
+        "Greeting someone needs two things, a name and the greeting words, but it was only given the name.",
+        "It now gets both, so the greeting can be built."
+      ],
+      "question": {
+        "text": "What was missing when greeting Sam?",
+        "options": [
+          "The greeting words",
+          "Sam's name"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-ts-wrong-type",
+    "mention": [
+      [
+        "text"
+      ],
+      [
+        "number"
+      ]
+    ],
+    "good": {
+      "why": [
+        "Doubling gives back a number, but the label must be text, so the check refused the mix.",
+        "The number is now turned into text before it becomes the label."
+      ],
+      "question": {
+        "text": "Why did the check refuse the label?",
+        "options": [
+          "It was a number where text was needed",
+          "It was empty"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-undefined-variable",
+    "mention": [
+      [
+        "quantity"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The total used a quantity that was never set anywhere, so the app did not know what to multiply by.",
+        "The quantity is now set to one, so the total can be worked out."
+      ],
+      "question": {
+        "text": "What did the total need that was missing?",
+        "options": [
+          "A quantity",
+          "A price"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "rescue-wrong-export-name",
+    "mention": [
+      [
+        "add"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The app asked the math file for sum, but the file only offers add, so nothing was found.",
+        "The app now asks for add, the name the math file really uses."
+      ],
+      "question": {
+        "text": "Why did the app find nothing?",
+        "options": [
+          "It asked for a name the math file does not have",
+          "The math file was empty"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "missing-setting-name",
+    "mention": [
+      [
+        "PUBLIC_SITE_NAME"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The code looked for the shop name under a setting called SITE_NAME, but your settings call it PUBLIC_SITE_NAME.",
+        "The code now reads PUBLIC_SITE_NAME, so the title shows your shop's name again."
+      ],
+      "question": {
+        "text": "Why was the shop name missing?",
+        "options": [
+          "The code looked under a different setting name",
+          "The shop name was never saved"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "wrong-api-route",
+    "mention": [
+      [
+        "address"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The page asked the server for your orders at an address the server does not answer.",
+        "The page now uses the address the server really answers at, so your orders load."
+      ],
+      "question": {
+        "text": "Why did the orders not load?",
+        "options": [
+          "The page asked at the wrong address",
+          "There were no orders yet"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "import-after-rename",
+    "mention": [
+      [
+        "renamed",
+        "old name",
+        "new name"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The card was renamed, but the profile page still looked for it under its old name.",
+        "The page now uses the new name, so it finds the card and shows the profile."
+      ],
+      "question": {
+        "text": "Why could the profile page not find the card?",
+        "options": [
+          "It still used the card's old name",
+          "The card had been deleted"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "supabase-open-table",
+    "mention": [
+      [
+        "anyone",
+        "everyone"
+      ],
+      [
+        "own"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The notes table had no protection, so anyone with your site's address could read everyone's notes.",
+        "Protection is on now, with a rule that lets each person see and change only their own notes."
+      ],
+      "question": {
+        "text": "Who can read a note now?",
+        "options": [
+          "Only the person who wrote it",
+          "Anyone with the site's address"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "changed-signature",
+    "mention": [
+      [
+        "together"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The price formatter was changed to take the amount and the currency together, but the cart still handed them over separately.",
+        "The cart now hands them over together, the way the formatter expects."
+      ],
+      "question": {
+        "text": "Why did the cart total break?",
+        "options": [
+          "The cart passed the amount the old way",
+          "The prices were wrong"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "next-client-component",
+    "mention": [
+      [
+        "browser"
+      ]
+    ],
+    "good": {
+      "why": [
+        "The like button remembers whether it was pressed, and that only works in the browser, not on the server.",
+        "Marking the button as browser only fixes that, while the page still loads the plants on the server."
+      ],
+      "question": {
+        "text": "Why must the like button run in the browser?",
+        "options": [
+          "It remembers presses while you use the page",
+          "It is too big for the server"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "vite-env-prefix",
+    "mention": [
+      [
+        "VITE_"
+      ]
+    ],
+    "good": {
+      "why": [
+        "Vite only hands settings to the page when their names start with VITE_, so the weather address never reached it.",
+        "The setting is now called VITE_API_URL, so the page gets it, and the password stays private."
+      ],
+      "question": {
+        "text": "Why could the page not see the weather address?",
+        "options": [
+          "Its name did not start with VITE_",
+          "The address was wrong"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "css-hidden-button",
+    "mention": [
+      [
+        "spell",
+        "typo"
+      ]
+    ],
+    "good": {
+      "why": [
+        "A spelling slip in the Checkout button's style name meant the style that shows it never applied.",
+        "With the name spelled right, the button shows again, and the button meant to stay hidden still does."
+      ],
+      "question": {
+        "text": "Why was the Checkout button hidden?",
+        "options": [
+          "Its style name was misspelled",
+          "It had been deleted"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "pagination-off-by-one",
+    "mention": [
+      [
+        "from 1",
+        "from 0",
+        "one page"
+      ]
+    ],
+    "good": {
+      "why": [
+        "Pages are numbered from 1, but the counting started from 0, so page 1 skipped the first five orders.",
+        "Counting now starts one page earlier, so page 1 shows the first orders."
+      ],
+      "question": {
+        "text": "Why did page 1 skip orders?",
+        "options": [
+          "Counting started from 0 while pages start at 1",
+          "Five orders were deleted"
+        ],
+        "correct": 0
+      }
+    }
+  },
+  {
+    "fix": "flask-wrong-status",
+    "mention": [
+      [
+        "refused"
+      ]
+    ],
+    "good": {
+      "why": [
+        "A signup with no email got the answer that means it worked, so the page thought it went through.",
+        "It now gets the answer that means it was refused, so the page can ask for an email."
+      ],
+      "question": {
+        "text": "What did the server wrongly tell the page?",
+        "options": [
+          "That the signup worked",
+          "That the server was down"
+        ],
+        "correct": 0
+      }
+    }
+  }
+]

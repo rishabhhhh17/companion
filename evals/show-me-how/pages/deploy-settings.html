@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Project settings · Deployo</title><link rel="stylesheet" href="base.css"></head>
+<body>
+<header class="top">
+  <span class="brand">▲ Deployo</span>
+  <span class="muted">sam-rivera / shop-site</span>
+  <nav class="row">
+    <a href="#">Overview</a><a href="#">Deployments</a><a href="#">Analytics</a><a href="#">Speed</a>
+    <a href="#" data-eval-target="nav-logs">Logs</a><a href="#">Storage</a><a href="#" class="on">Settings</a>
+  </nav>
+  <div class="right"><button>Feedback</button><button class="icon" aria-label="Notifications">🔔</button><button class="icon" aria-label="Account">SR</button></div>
+</header>
+<div class="layout">
+  <aside class="side">
+    <a href="#">General</a><a href="#">Build and Deployment</a><a href="#">Domains</a><a href="#" class="on">Environment Variables</a>
+    <a href="#">Git</a><a href="#">Integrations</a><a href="#">Deployment Protection</a><a href="#">Functions</a><a href="#">Cron Jobs</a>
+    <a href="#">Security</a><a href="#">Advanced</a>
+  </aside>
+  <main class="main">
+    <div class="banner"><span>⚠️</span><span>Your last deployment failed 4 minutes ago. Changes to variables apply to new deployments only.</span>
+      <span style="margin-left:auto" class="row"><button>View build</button><button class="primary" data-eval-target="redeploy">Redeploy</button></span></div>
+    <div class="card">
+      <h3>Environment Variables</h3>
+      <p class="muted" style="margin:0 0 10px">Keys and settings for Production, Preview and Development. Values are encrypted.</p>
+      <div class="row" style="margin-bottom:10px">
+        <input placeholder="Key, for example CLIENT_KEY" style="width:230px"><input placeholder="Value" style="width:260px">
+        <select><option>All Environments</option><option>Production</option><option>Preview</option></select>
+        <button data-eval-target="env-add">Add another</button><span style="margin-left:auto"></span><button>Import .env</button>
+        <button class="primary" data-eval-target="env-save">Save</button>
+      </div>
+      <div class="row" style="margin-bottom:8px"><input placeholder="Search variables" style="width:240px"><select><option>All Environments</option></select><span class="muted" style="margin-left:auto">Last updated 2 days ago</span></div>
+      <table>
+        <tr><th>Key</th><th>Value</th><th>Environments</th><th>Updated</th><th></th></tr>
+        <tr><td><code>DATABASE_URL</code></td><td class="muted">••••••••••••</td><td><span class="chip">All</span></td><td class="muted">Oct 12</td><td><button>Edit</button> <button class="icon" aria-label="More for DATABASE_URL">⋯</button></td></tr>
+        <tr><td><code>NEXT_PUBLIC_SITE_NAME</code></td><td class="muted">Fern and Moss</td><td><span class="chip">All</span></td><td class="muted">Oct 12</td><td><button>Edit</button> <button class="icon" aria-label="More for NEXT_PUBLIC_SITE_NAME">⋯</button></td></tr>
+        <tr><td><code>STRIPE_SECRET_KEY</code></td><td class="muted">••••••••••••</td><td><span class="chip">Production</span></td><td class="muted">Oct 9</td><td><button data-eval-target="env-edit-stripe">Edit</button> <button class="icon" aria-label="More for STRIPE_SECRET_KEY">⋯</button></td></tr>
+        <tr><td><code>STRIPE_PUBLISHABLE_KEY</code></td><td class="muted">pk_••••••••</td><td><span class="chip">All</span></td><td class="muted">Oct 9</td><td><button>Edit</button> <button class="icon" aria-label="More for STRIPE_PUBLISHABLE_KEY">⋯</button></td></tr>
+        <tr><td><code>RESEND_API_KEY</code></td><td class="muted">••••••••••••</td><td><span class="chip">Production</span></td><td class="muted">Sep 30</td><td><button>Edit</button> <button class="icon" aria-label="More for RESEND_API_KEY">⋯</button></td></tr>
+        <tr><td><code>SUPPORT_EMAIL</code></td><td class="muted">help@fernandmoss.example</td><td><span class="chip">All</span></td><td class="muted">Sep 30</td><td><button>Edit</button> <button class="icon" aria-label="More for SUPPORT_EMAIL">⋯</button></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Build settings</h3>
+      <div class="row" style="justify-content:space-between;margin:6px 0"><span>Build command <code class="muted">npm run build</code></span><button>Override</button></div>
+      <div class="row" style="justify-content:space-between;margin:6px 0"><span>Output folder <code class="muted">.next</code></span><button>Override</button></div>
+      <div class="row" style="justify-content:flex-end"><button>Cancel</button><button class="primary">Save</button></div>
+    </div>
+  </main>
+</div>
+</body></html>

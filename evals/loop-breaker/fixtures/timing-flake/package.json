@@ -1,0 +1,7 @@
+{
+  "name": "order-list",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,19 +1,35 @@
-// MANUAL, REAL CLAUDE (test login, small cost): how often does Claude's pointer land on the right thing?
-// Pages are rendered in the hidden browser, so the true position of every button is known from the page itself.
-// Scores: raw hit (the point is inside the target), and snapped hit (the clickable thing under the point IS the target,
-// which is what the Mac's Accessibility lookup gives us in the app). Run: bun run scripts/eval-aim.ts [count]
-import { homedir } from "node:os";
+// The aim eval: how often does Claude's pointer land on the right thing? Pages are rendered in the hidden browser (headless:
+// nothing is shown on the screen, and it is never the person's screen), so the true place of every target is known from
+// the page itself. Scores: raw hit (the point is inside the target), and snapped hit (the clickable thing under the point
+// IS the target, which is what the Mac's Accessibility lookup gives us in the app); see evals/show-me-how/score.ts.
+// Two sets: the basic generated dashboards (48 asks) and the hard set (evals/show-me-how: 40 asks on four synthetic busy
+// dashboards, made up products, local files only).
+// DRY by default: every page is rendered and every target checked, and nothing is asked of Claude, so nothing is spent.
+//   bun run scripts/eval-aim.ts [--set basic|hard|all] [count]
+//   bun run scripts/eval-aim.ts --spend [--vision-model id] [--lane computer_use] [--per-case 0.05] [--total 6]
+//     real Claude through the eval harness (evals/lib/harness.ts), refused until the real run harness is plugged in
+//   --real   the older opt in: open eight public websites instead (network; their asks are made from each page)
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { browserExecutable } from "../src/proof/browser.ts";
-import { createLanes, readSettings } from "../src/engines.ts";
 import { clickPoint, type Located } from "../src/lanes.ts";
+import { COMMON_HELP, parseArgs, realHarness } from "../../evals/lib/harness.ts";
+import { explainFailure, runSet } from "../../evals/lib/runset.ts";
+import { countOutcomes, type CaseResult } from "../../evals/lib/results.ts";
+import { FIND_ELEMENTS, hardPages } from "../../evals/show-me-how/hard.ts";
+import { scorePoint, type Element } from "../../evals/show-me-how/score.ts";
 
-// Default: the test plan login with a small model. To score the Computer Use lane instead (needs an API key in the
-// Keychain, costs a few cents), start it as:  COMPANION_ROUTE=api_key COMPANION_AIM=computer_use bun run scripts/eval-aim.ts
-process.env.COMPANION_ROUTE ??= "plan"; process.env.COMPANION_MODEL ??= "claude-haiku-4-5-20251001";
-if (process.env.COMPANION_ROUTE === "plan") process.env.CLAUDE_CONFIG_DIR = join(homedir(), "Library/Application Support/Companion-test-claude");
-const lanes = createLanes(readSettings(process.env as never));
+const argv = process.argv.slice(2);
+const want = Number(argv.find((a) => /^\d+$/.test(a))) || 999;
+let args: ReturnType<typeof parseArgs>;
+try { args = parseArgs(argv.filter((a) => !/^\d+$/.test(a)), { perCaseUsd: 0.05, totalUsd: 6 }); } catch (e) { explainFailure(e); }
+if (args.help) { console.log(`bun run scripts/eval-aim.ts [--set basic|hard|all] [count] [options]${COMMON_HELP}\n  --lane computer_use, --real`); process.exit(0); }
+const which = args.extra.set ?? "all";
+if (!["basic", "hard", "all"].includes(which)) explainFailure(new Error("--set is basic, hard or all"));
+const real = "real" in args.extra;
+const lane = args.extra.lane === "computer_use" ? "computer_use" : "default";
+// Refused before any page is rendered when spending is asked for but cannot happen yet.
+const harness = args.spend ? await realHarness().catch(explainFailure) : undefined;
 
 const css = (dark: boolean, dense: boolean) => `*{box-sizing:border-box}body{margin:0;font:${dense ? 12 : 15}px -apple-system,Helvetica,sans-serif;background:${dark ? "#111418" : "#f6f7f9"};color:${dark ? "#e7e9ec" : "#1b1f24"}}
 a{color:${dark ? "#7cb7ff" : "#0b57d0"};text-decoration:none}button,.btn{font:inherit;padding:${dense ? "3px 8px" : "8px 14px"};border-radius:6px;border:1px solid ${dark ? "#3a4048" : "#c9ced6"};background:${dark ? "#1d2229" : "#fff"};color:inherit;cursor:pointer}
@@ -42,51 +58,68 @@ const pages = (): Page[] => {
   return out;
 };
 
-const FIND = `() => { const sel = 'a,button,[role=button],input,select,summary'; const out = []; for (const e of document.querySelectorAll(sel)) { const r = e.getBoundingClientRect(); const t = (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().replace(/\\s+/g,' '); if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > innerHeight) continue; out.push({ t, x: r.x, y: r.y, w: r.width, h: r.height }); } return out; }`;
-
-const real = process.argv.includes("--real");
-const want = Number(process.argv.find((a) => /^\d+$/.test(a))) || 999;
 const SITES = ["https://github.com/login", "https://news.ycombinator.com", "https://en.wikipedia.org/wiki/Main_Page", "https://www.python.org", "https://vercel.com", "https://stripe.com", "https://supabase.com", "https://www.npmjs.com"];
 let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-const browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! });
-let n = 0, raw = 0, snapped = 0, none = 0, ms: number[] = [], cost = 0;
-const misses: string[] = [];
-const realPages: Page[] = [];
-if (real) for (const url of SITES) realPages.push({ name: new URL(url).host, html: url, asks: [] });
-for (const pg of real ? realPages : pages()) {
+const exe = browserExecutable();
+if (!exe) explainFailure(new Error("The hidden browser is not installed, so no page can be rendered. Install it from Companion first."));
+
+// Render every page once and keep what each ask needs: the picture, the controls on it, the target and the question.
+type Ask = { id: string; page: string; png: string; els: Element[]; target: Element; question: string; set: "basic" | "hard" | "real" };
+const asks: Ask[] = [];
+let leftOut = 0;
+const browser = await chromium.launch({ headless: true, executablePath: exe! });
+const list: { name: string; html: string; asks: { target: string; question: string }[]; set: Ask["set"]; byLabel: boolean }[] = real
+  ? SITES.map((url) => ({ name: new URL(url).host, html: url, asks: [], set: "real", byLabel: false }))
+  : [...(which !== "hard" ? pages().map((p) => ({ ...p, set: "basic" as const, byLabel: false })) : []), ...(which !== "basic" ? hardPages().map((p) => ({ ...p, set: "hard" as const, byLabel: true })) : [])];
+for (const pg of list) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
-  if (real) { try { await page.goto(pg.html, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(2500); } catch { await ctx.close(); continue; } } else await page.setContent(pg.html);
-  const els: { t: string; x: number; y: number; w: number; h: number }[] = await page.evaluate(`(${FIND})()`);
-  if (real) {
+  if (pg.set === "real") { try { await page.goto(pg.html, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(2500); } catch { await ctx.close(); continue; } } else await page.setContent(pg.html);
+  const els: Element[] = await page.evaluate(`(${FIND_ELEMENTS})()`);
+  if (pg.set === "real") {
     // Pick up to six links or buttons with short, unique visible text.
     const counts = new Map<string, number>(); for (const e of els) counts.set(e.t.toLowerCase(), (counts.get(e.t.toLowerCase()) ?? 0) + 1);
     const ok = els.filter((e) => e.t.length >= 3 && e.t.length <= 30 && counts.get(e.t.toLowerCase()) === 1 && e.w >= 20 && e.h >= 14 && e.x >= 0 && e.x + e.w <= 1280 && e.y + e.h <= 800).sort(() => rnd() - 0.5).slice(0, 6);
     pg.asks = ok.map((e) => ({ target: e.t, question: `Where is the "${e.t}" button or link?` }));
   }
-  const png = await page.screenshot({ type: "png" });
+  const png = (await page.screenshot({ type: "png" })).toString("base64");
   for (const ask of pg.asks) {
-    if (n >= want) break;
-    const target = els.find((e) => e.t.toLowerCase() === ask.target.toLowerCase()) ?? els.find((e) => e.t.toLowerCase().includes(ask.target.toLowerCase()));
-    if (!target) continue;
-    n++;
-    const t0 = Date.now();
-    const r: Located = await lanes.vision.locate({ image: { base64: png.toString("base64"), mediaType: "image/png", w: 1280, h: 800 }, question: ask.question, ocr: [] }, new AbortController().signal).catch(() => ({ point: null, costUsd: 0 }));
-    ms.push(Date.now() - t0); cost += r.costUsd;
-    // Scored on where the person would click: the last target of an answer with several (the ones before it are "look here").
-    const hit = clickPoint(r);
-    if (!hit) { none++; misses.push(`${pg.name}: "${ask.question}" -> no answer`); continue; }
-    const inside = (e: { x: number; y: number; w: number; h: number }) => hit.x >= e.x && hit.x <= e.x + e.w && hit.y >= e.y && hit.y <= e.y + e.h;
-    const rawHit = inside(target);
-    // What the Mac would report: the smallest clickable thing under the point.
-    const under = els.filter(inside).sort((a, b) => a.w * a.h - b.w * b.h)[0];
-    const snapHit = !!under && under.t === target.t && Math.abs(under.x - target.x) < 1 && Math.abs(under.y - target.y) < 1;
-    if (rawHit) raw++; if (snapHit) snapped++;
-    if (!rawHit) misses.push(`${pg.name}: "${ask.question}" wanted ${target.t} at (${Math.round(target.x)},${Math.round(target.y)}); got (${Math.round(hit.x)},${Math.round(hit.y)}) "${hit.targetText}"`);
+    if (asks.length >= want) break;
+    // A hard page names its target by label; the others by the words on it.
+    const target = pg.byLabel ? els.find((e) => e.id === ask.target) : els.find((e) => e.t.toLowerCase() === ask.target.toLowerCase()) ?? els.find((e) => e.t.toLowerCase().includes(ask.target.toLowerCase()));
+    if (!target) { leftOut++; console.log(`  ${pg.name}: no ${ask.target} on the page, so that ask is left out`); continue; }
+    asks.push({ id: `${pg.name}:${ask.target}`, page: pg.name, png, els, target, question: ask.question, set: pg.set });
   }
   await ctx.close();
 }
 await browser.close();
-ms.sort((a, b) => a - b);
-console.log(`\nquestions: ${n}\nraw hit rate: ${raw}/${n} = ${Math.round((100 * raw) / n)}%\nsnapped hit rate: ${snapped}/${n} = ${Math.round((100 * snapped) / n)}%\nno answer: ${none}\nmedian time: ${ms[Math.floor(ms.length / 2)]} ms; slowest: ${ms.at(-1)} ms\nestimated cost: $${cost.toFixed(2)}`);
-for (const m of misses) console.log("  miss:", m);
+
+const OUTCOMES = ["snapped", "raw_only", "missed", "no_answer", "rendered", "error", "not_started"];
+const summarize = (cases: CaseResult[]) => {
+  const asked = cases.filter((c) => ["snapped", "raw_only", "missed", "no_answer"].includes(c.outcome));
+  const ms = asked.map((c) => c.ms).sort((a, b) => a - b);
+  const by = (set: string) => { const xs = asked.filter((c) => c.detail?.set === set); return { asked: xs.length, snapped: xs.filter((c) => c.outcome === "snapped").length, raw: xs.filter((c) => c.outcome === "snapped" || c.outcome === "raw_only").length }; };
+  return { counts: countOutcomes(cases, OUTCOMES), rendered: cases.length, asked: asked.length, basic: by("basic"), hard: by("hard"), real: by("real"), medianMs: ms[Math.floor(ms.length / 2)] ?? 0, slowestMs: ms.at(-1) ?? 0, costUsd: Math.round(cases.reduce((s, c) => s + c.costUsd, 0) * 1e6) / 1e6 };
+};
+const zero = { in: 0, cacheRead: 0, out: 0 };
+try {
+  const { results } = await runSet({
+    set: "show-me-how", setDir: join(import.meta.dir, "..", "..", "evals", "show-me-how"), cases: asks, args, summarize, harness, models: { vision: args.models.vision, lane },
+    run: async (a, ctx): Promise<CaseResult> => {
+      const where = { set: a.set, page: a.page, target: { t: a.target.t, x: Math.round(a.target.x), y: Math.round(a.target.y) } };
+      if (ctx.mode === "dry") return { id: a.id, outcome: "rendered", costUsd: 0, turns: 0, tokens: zero, ms: 0, notes: [], detail: where };
+      const t0 = Date.now();
+      const vision = ctx.meter.vision(ctx.harness!.vision(args.models.vision, lane));
+      const r: Located = await vision.locate({ image: { base64: a.png, mediaType: "image/png", w: 1280, h: 800 }, question: a.question, ocr: [] }, new AbortController().signal).catch(() => ({ point: null, costUsd: 0 }));
+      // Scored on where the person would click: the last target of an answer with several (the ones before it are "look here").
+      const hit = clickPoint(r);
+      const s = scorePoint(hit, a.target, a.els);
+      const outcome = !hit ? "no_answer" : s.snapped ? "snapped" : s.raw ? "raw_only" : "missed";
+      return { id: a.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: zero, ms: Date.now() - t0, notes: outcome === "snapped" || !hit ? [] : [`wanted "${a.target.t}" at (${Math.round(a.target.x)},${Math.round(a.target.y)}); got (${Math.round(hit.x)},${Math.round(hit.y)}) "${hit.targetText}"`], detail: { ...where, hit: hit ? { x: Math.round(hit.x), y: Math.round(hit.y), text: hit.targetText } : null } };
+    },
+  });
+  const s = results.summary as ReturnType<typeof summarize>;
+  const pct = (n: number, of: number) => (of ? `${Math.round((100 * n) / of)}%` : "none");
+  if (results.mode === "dry") console.log(`\n${s.rendered} asks rendered${leftOut ? `; ${leftOut} left out because their target was not on the page` : ", every target found on its page"} (basic ${asks.filter((a) => a.set === "basic").length}, hard ${asks.filter((a) => a.set === "hard").length}${real ? `, public sites ${asks.filter((a) => a.set === "real").length}` : ""}). Nothing was asked of Claude.`);
+  else console.log(`\nasked: ${s.asked}\nsnapped hit rate: basic ${pct(s.basic.snapped, s.basic.asked)}, hard ${pct(s.hard.snapped, s.hard.asked)}${real ? `, public sites ${pct(s.real.snapped, s.real.asked)}` : ""}\nraw hit rate: basic ${pct(s.basic.raw, s.basic.asked)}, hard ${pct(s.hard.raw, s.hard.asked)}\nno answer: ${s.counts.no_answer}\nmedian time: ${s.medianMs} ms; slowest: ${s.slowestMs} ms\ncost: $${s.costUsd.toFixed(2)}`);
+} catch (e) { explainFailure(e); }

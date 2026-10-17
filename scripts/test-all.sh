@@ -4,6 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 echo "== runner"; (cd runner && bun run typecheck && bun test)
 echo "== rescue projects (does the hero find the real failing line?)"; (cd evals/rescue-projects && bun test)
+echo "== eval sets, dry (the whole pipeline on stand ins: no model, no cost, no network)"; (cd evals && ../runner/node_modules/.bin/tsc -p . && bun test ./lib ./fix-projects ./loop-breaker ./review-catch ./explain ./show-me-how)
 echo "== rust shell"; (cd app/src-tauri && cargo test)
 echo "== pages"; (cd app && bun run typecheck && bun test ./src)
 echo "== acknowledgements (licence notices match the dependencies)"; python3 scripts/make-acknowledgements.py --check

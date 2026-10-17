@@ -1,0 +1,839 @@
+[
+  {
+    "id": "rescue-bad-json-config",
+    "source": "rescue:bad-json-config",
+    "expect": "fix",
+    "split": "train",
+    "hard": true,
+    "say": "The settings file had a comma after the last value, which JSON does not allow, so I took it out.",
+    "fix": [
+      {
+        "edit": "config.json",
+        "old": "{ \"port\": 3000, }",
+        "new": "{ \"port\": 3000 }"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "json-config-port",
+        "kind": "accept",
+        "what": "config.json still says port 3000 and the app runs",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "json-config-port"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-bun-runtime-error",
+    "source": "rescue:bun-runtime-error",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "The list was empty, so there was no first item to make upper case. Now an empty list gives an empty answer.",
+    "fix": [
+      {
+        "edit": "app.ts",
+        "old": "return items[0].toUpperCase();",
+        "new": "return items.length ? items[0].toUpperCase() : '';"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "bun-first-safe",
+        "kind": "accept",
+        "what": "first() is still there and the program runs",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "bun-first-safe"
+        ]
+      }
+    ],
+    "needs": [
+      "bun"
+    ]
+  },
+  {
+    "id": "rescue-failing-test",
+    "source": "rescue:failing-test",
+    "expect": "fix",
+    "split": "train",
+    "hard": false,
+    "say": "The tax was added at 10 percent but the test expects 20 percent, so the price function now adds 20 percent.",
+    "fix": [
+      {
+        "edit": "price.js",
+        "old": "n * 1.1",
+        "new": "n * 1.2"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "withtax-20",
+        "kind": "accept",
+        "what": "withTax adds 20 percent for other amounts too",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "withtax-20"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-missing-local-file",
+    "source": "rescue:missing-local-file",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "The app loads a settings file that did not exist, so I added an empty one.",
+    "fix": [
+      {
+        "write": "settings.js",
+        "content": "module.exports = {};\n"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "settings-module",
+        "kind": "accept",
+        "what": "the app runs and settings is a module",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "settings-module"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-missing-setting",
+    "source": "rescue:missing-setting",
+    "expect": "ask",
+    "split": "train",
+    "hard": true,
+    "say": "SUPABASE_URL is not set. I need your Supabase project address to fix this: what is it? You can copy it from the Supabase dashboard, under Project Settings, then API. Put it in your settings as SUPABASE_URL.",
+    "fix": [],
+    "hidden": [
+      {
+        "name": "supabase-url-required",
+        "kind": "guard",
+        "what": "SUPABASE_URL is still required, and used when given",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "supabase-url-required"
+        ]
+      }
+    ],
+    "ask": {
+      "names": [
+        "SUPABASE_URL",
+        "Supabase"
+      ]
+    }
+  },
+  {
+    "id": "rescue-python-name-error",
+    "source": "rescue:python-name-error",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "The greeting used nme, a misspelling of name, so Python did not know it. I fixed the spelling.",
+    "fix": [
+      {
+        "edit": "app.py",
+        "old": "'Hello ' + nme",
+        "new": "'Hello ' + name"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "python-greet",
+        "kind": "accept",
+        "what": "greet says hello to the name it is given",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "python-greet"
+        ]
+      }
+    ],
+    "needs": [
+      "python3"
+    ]
+  },
+  {
+    "id": "rescue-read-property-of-nothing",
+    "source": "rescue:read-property-of-nothing",
+    "expect": "fix",
+    "split": "train",
+    "hard": false,
+    "say": "This user has no address saved, so there was no city to read. Now it says unknown instead of crashing.",
+    "fix": [
+      {
+        "edit": "app.js",
+        "old": "return user.address.city;",
+        "new": "return user.address ? user.address.city : 'unknown';"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "city-runs",
+        "kind": "accept",
+        "what": "city() is still there and the program runs",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "city-runs"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-rejected-promise",
+    "source": "rescue:rejected-promise",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "Loading failed and nothing caught the failure, so the program crashed. Now the failure is caught and reported.",
+    "fix": [
+      {
+        "edit": "app.js",
+        "old": "load().then(() => console.log('ok'));",
+        "new": "load().then(() => console.log('ok')).catch((e) => console.error('Could not load:', e.message));"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "promise-handled",
+        "kind": "accept",
+        "what": "the failure is reported and the program does not crash",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "promise-handled"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-syntax-missing-paren",
+    "source": "rescue:syntax-missing-paren",
+    "expect": "fix",
+    "split": "train",
+    "hard": false,
+    "say": "A closing bracket was missing at the end of the line, so the code could not be read. I added it.",
+    "fix": [
+      {
+        "edit": "app.js",
+        "old": "console.log(items.map((x) => x * 2);",
+        "new": "console.log(items.map((x) => x * 2));"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "paren-output",
+        "kind": "accept",
+        "what": "it prints the doubled list",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "paren-output"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-ts-missing-property",
+    "source": "rescue:ts-missing-property",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "Every user must have an email, but this one had none, so the type check failed. I gave Sam an email.",
+    "fix": [
+      {
+        "edit": "app.ts",
+        "old": "const u: User = { name: 'Sam' };",
+        "new": "const u: User = { name: 'Sam', email: 'sam@example.com' };"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "ts-user-email",
+        "kind": "accept",
+        "what": "the user is still Sam",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-user-email"
+        ]
+      }
+    ],
+    "needs": [
+      "bun",
+      "$TSC"
+    ]
+  },
+  {
+    "id": "rescue-ts-unknown-import",
+    "source": "rescue:ts-unknown-import",
+    "expect": "fix",
+    "split": "train",
+    "hard": false,
+    "say": "The app imports a helpers file that did not exist, so I made it with the helper function the app uses.",
+    "fix": [
+      {
+        "write": "helpers.ts",
+        "content": "export function helper() {\n  return 'helped';\n}\n"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "ts-helper",
+        "kind": "accept",
+        "what": "the program runs",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-helper"
+        ]
+      }
+    ],
+    "needs": [
+      "bun",
+      "$TSC"
+    ]
+  },
+  {
+    "id": "rescue-ts-wrong-argument-count",
+    "source": "rescue:ts-wrong-argument-count",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "greet needs a name and a greeting, but it was only given the name. Now it is given both.",
+    "fix": [
+      {
+        "edit": "app.ts",
+        "old": "console.log(greet('Sam'));",
+        "new": "console.log(greet('Sam', 'Hello'));"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "ts-greet",
+        "kind": "accept",
+        "what": "the greeting still names Sam",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-greet"
+        ]
+      }
+    ],
+    "needs": [
+      "bun",
+      "$TSC"
+    ]
+  },
+  {
+    "id": "rescue-ts-wrong-type",
+    "source": "rescue:ts-wrong-type",
+    "expect": "fix",
+    "split": "train",
+    "hard": false,
+    "say": "double gives back a number, but the label must be text, so the number is now turned into text first.",
+    "fix": [
+      {
+        "edit": "app.ts",
+        "old": "const label: string = double(4);",
+        "new": "const label: string = String(double(4));"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "ts-double",
+        "kind": "accept",
+        "what": "it still prints 8",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-double"
+        ]
+      }
+    ],
+    "needs": [
+      "bun",
+      "$TSC"
+    ]
+  },
+  {
+    "id": "rescue-undefined-variable",
+    "source": "rescue:undefined-variable",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "The total used a quantity that was never set, so I set it to one.",
+    "fix": [
+      {
+        "edit": "app.js",
+        "old": "const price = 10;",
+        "new": "const price = 10;\nconst quantity = 1;"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "total-number",
+        "kind": "accept",
+        "what": "the total is a number",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "total-number"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rescue-wrong-export-name",
+    "source": "rescue:wrong-export-name",
+    "expect": "fix",
+    "split": "test",
+    "hard": false,
+    "say": "The math file has a function called add, not sum, so the app now uses add.",
+    "fix": [
+      {
+        "edit": "app.mjs",
+        "old": "import { sum } from './math.mjs';\nconsole.log(sum(1, 2));",
+        "new": "import { add } from './math.mjs';\nconsole.log(add(1, 2));"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "sum-three",
+        "kind": "accept",
+        "what": "it prints 3",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "sum-three"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "missing-setting-name",
+    "source": "fixture:missing-setting-name",
+    "expect": "fix",
+    "split": "test",
+    "hard": true,
+    "say": "The code asked for SITE_NAME, but the settings file calls it PUBLIC_SITE_NAME, so the code now asks for that name.",
+    "fix": [
+      {
+        "edit": "lib/site.js",
+        "old": "need('SITE_NAME')",
+        "new": "need('PUBLIC_SITE_NAME')"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "site-title",
+        "kind": "accept",
+        "what": "the title uses the shop name from .env",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "site-title"
+        ]
+      },
+      {
+        "name": "site-missing-still-reported",
+        "kind": "guard",
+        "what": "a shop name that is really missing is still reported",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "site-missing-still-reported"
+        ]
+      }
+    ],
+    "where": {
+      "file": "lib/site.js",
+      "line": 5
+    },
+    "overlay": {
+      ".env": "PUBLIC_SITE_NAME=Fern and Moss\nPUBLIC_CURRENCY=USD\n"
+    }
+  },
+  {
+    "id": "wrong-api-route",
+    "source": "fixture:wrong-api-route",
+    "expect": "fix",
+    "split": "train",
+    "hard": true,
+    "say": "The page asked for /api/v1/orders, but the server answers at /api/orders, so the page now uses the server's address.",
+    "fix": [
+      {
+        "edit": "src/api.js",
+        "old": "const API_BASE = '/api/v1';",
+        "new": "const API_BASE = '/api';"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "orders-load",
+        "kind": "accept",
+        "what": "the orders page gets both orders",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "orders-load"
+        ]
+      },
+      {
+        "name": "routes-intact",
+        "kind": "guard",
+        "what": "the other routes still answer",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "routes-intact"
+        ]
+      }
+    ],
+    "where": {
+      "file": "src/api.js",
+      "line": 6
+    }
+  },
+  {
+    "id": "import-after-rename",
+    "source": "fixture:import-after-rename",
+    "expect": "fix",
+    "split": "test",
+    "hard": true,
+    "say": "UserCard was renamed to ProfileCard, but the profile page still loaded it by its old name. It now uses the new name.",
+    "fix": [
+      {
+        "edit": "pages/profile.js",
+        "old": "const { UserCard } = require('../components/UserCard');",
+        "new": "const { ProfileCard } = require('../components/ProfileCard');"
+      },
+      {
+        "edit": "pages/profile.js",
+        "old": "${UserCard(user)}",
+        "new": "${ProfileCard(user)}"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "profile-renders",
+        "kind": "accept",
+        "what": "the profile shows the card and the avatar",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "profile-renders"
+        ]
+      }
+    ],
+    "where": {
+      "file": "pages/profile.js",
+      "line": 2
+    }
+  },
+  {
+    "id": "supabase-open-table",
+    "source": "fixture:supabase-open-table",
+    "expect": "fix",
+    "split": "train",
+    "hard": true,
+    "say": "The notes table had no row level security, so anyone with the site's address could read every note. It is on now, and each person sees only their own notes.",
+    "fix": [
+      {
+        "write": "supabase/migrations/003_notes_rls.sql",
+        "content": "alter table public.notes enable row level security;\n\ncreate policy \"People can see and change their own notes\"\n  on public.notes for all\n  to authenticated\n  using (auth.uid() = user_id)\n  with check (auth.uid() = user_id);\n"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "rls-all-tables",
+        "kind": "accept",
+        "what": "Companion's own database check finds every table protected and no open rule",
+        "cmd": [
+          "bun",
+          "$HIDDEN/rls.ts"
+        ]
+      }
+    ],
+    "where": {
+      "file": "supabase/migrations/002_notes.sql",
+      "line": 1
+    }
+  },
+  {
+    "id": "changed-signature",
+    "source": "fixture:changed-signature",
+    "expect": "fix",
+    "split": "test",
+    "hard": true,
+    "say": "formatPrice now takes one object with the amount and the currency, but the cart still gave it two separate values. The cart now gives it the object.",
+    "fix": [
+      {
+        "edit": "src/cart.js",
+        "old": "formatPrice(total, currency)",
+        "new": "formatPrice({ amount: total, currency })"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "cart-currency",
+        "kind": "accept",
+        "what": "the cart shows the total in the currency it is given",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "cart-currency"
+        ]
+      },
+      {
+        "name": "format-price-object",
+        "kind": "guard",
+        "what": "formatPrice keeps its new one object form",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "format-price-object"
+        ]
+      }
+    ],
+    "where": {
+      "file": "src/money.js",
+      "line": 3
+    }
+  },
+  {
+    "id": "next-client-component",
+    "source": "fixture:next-client-component",
+    "expect": "fix",
+    "split": "train",
+    "hard": true,
+    "say": "The like button remembers whether it was pressed, which only works in the browser, so it is now marked as a client component. The page itself still loads the plants on the server.",
+    "fix": [
+      {
+        "edit": "components/LikeButton.jsx",
+        "old": "import { useState } from 'react';",
+        "new": "'use client';\n\nimport { useState } from 'react';"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "next-rules",
+        "kind": "accept",
+        "what": "the server and client component rules hold (a copy kept outside the project)",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "next-rules"
+        ]
+      },
+      {
+        "name": "page-stays-server",
+        "kind": "guard",
+        "what": "the page stays a server component that loads on the server",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "page-stays-server"
+        ]
+      }
+    ],
+    "where": {
+      "file": "components/LikeButton.jsx",
+      "line": 1
+    }
+  },
+  {
+    "id": "vite-env-prefix",
+    "source": "fixture:vite-env-prefix",
+    "expect": "fix",
+    "split": "test",
+    "hard": true,
+    "say": "Vite only gives the page settings whose names start with VITE_, so API_URL never reached the browser. It is now called VITE_API_URL, and the password stays private.",
+    "fix": [
+      {
+        "edit": ".env",
+        "old": "API_URL=",
+        "new": "VITE_API_URL="
+      },
+      {
+        "edit": ".env.example",
+        "old": "API_URL=",
+        "new": "VITE_API_URL="
+      },
+      {
+        "edit": "src/config.js",
+        "old": "import.meta.env.API_URL",
+        "new": "import.meta.env.VITE_API_URL"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "vite-forecast",
+        "kind": "accept",
+        "what": "the widget reaches the weather service in the browser",
+        "cmd": [
+          "node",
+          "--no-warnings",
+          "--experimental-loader",
+          "$HIDDEN/vite-loader.mjs",
+          "$HIDDEN/vite-checks.mjs",
+          "vite-forecast"
+        ]
+      },
+      {
+        "name": "vite-no-secret-exposed",
+        "kind": "guard",
+        "what": "the database password never reaches the browser",
+        "cmd": [
+          "node",
+          "--no-warnings",
+          "$HIDDEN/vite-checks.mjs",
+          "vite-no-secret-exposed"
+        ]
+      }
+    ],
+    "where": {
+      "file": "src/config.js",
+      "line": 5
+    },
+    "overlay": {
+      ".env": "API_URL=https://api.weather.example\nDATABASE_PASSWORD=not-a-real-password-eval-only\n"
+    }
+  },
+  {
+    "id": "css-hidden-button",
+    "source": "fixture:css-hidden-button",
+    "expect": "fix",
+    "split": "train",
+    "hard": true,
+    "say": "The Checkout button's class was spelled btn-primay, so the style that shows it never applied. I fixed the spelling.",
+    "fix": [
+      {
+        "edit": "index.html",
+        "old": "class=\"btn btn-primay\"",
+        "new": "class=\"btn btn-primary\""
+      }
+    ],
+    "hidden": [
+      {
+        "name": "checkout-visible",
+        "kind": "accept",
+        "what": "the Checkout button is shown",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "checkout-visible"
+        ]
+      },
+      {
+        "name": "delete-account-hidden",
+        "kind": "guard",
+        "what": "the Delete my account button stays hidden",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "delete-account-hidden"
+        ]
+      }
+    ],
+    "where": {
+      "file": "test/checkout.js",
+      "line": 7
+    }
+  },
+  {
+    "id": "pagination-off-by-one",
+    "source": "fixture:pagination-off-by-one",
+    "expect": "fix",
+    "split": "test",
+    "hard": true,
+    "say": "Pages are numbered from 1, but the code counted from 0, so page 1 skipped the first five orders. It now starts one page earlier.",
+    "fix": [
+      {
+        "edit": "src/paginate.js",
+        "old": "const start = page * size;",
+        "new": "const start = (page - 1) * size;"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "pages-right",
+        "kind": "accept",
+        "what": "page 2 and the last page hold the right orders",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "pages-right"
+        ]
+      },
+      {
+        "name": "page-count",
+        "kind": "guard",
+        "what": "twelve orders still make three pages",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "page-count"
+        ]
+      }
+    ],
+    "where": {
+      "file": "test/paginate.js",
+      "line": 8
+    }
+  },
+  {
+    "id": "flask-wrong-status",
+    "source": "fixture:flask-wrong-status",
+    "expect": "fix",
+    "split": "train",
+    "hard": true,
+    "say": "A missing email was answered with 200, which means it worked, so the page thought the signup went through. It now answers 400, which means it was refused.",
+    "fix": [
+      {
+        "edit": "app.py",
+        "old": "return jsonify(error=\"Please enter a valid email address.\"), 200",
+        "new": "return jsonify(error=\"Please enter a valid email address.\"), 400"
+      }
+    ],
+    "hidden": [
+      {
+        "name": "bad-email-400",
+        "kind": "accept",
+        "what": "a bad address is refused with 400",
+        "cmd": [
+          "python3",
+          "$HIDDEN/flask_checks.py",
+          "bad-email-400"
+        ]
+      },
+      {
+        "name": "good-signup-201",
+        "kind": "guard",
+        "what": "a good signup still answers 201",
+        "cmd": [
+          "python3",
+          "$HIDDEN/flask_checks.py",
+          "good-signup-201"
+        ]
+      }
+    ],
+    "needs": [
+      "python3:flask,pytest"
+    ]
+  }
+]

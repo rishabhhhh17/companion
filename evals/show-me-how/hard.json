@@ -1,0 +1,26 @@
+[
+  { "page": "deploy-settings", "asks": [
+    { "target": "env-add", "question": "I have a new API key. How do I add it to this project?" },
+    { "target": "env-edit-stripe", "question": "How do I change the Stripe secret key?" },
+    { "target": "env-save", "question": "I typed a new setting at the top. How do I keep it?" },
+    { "target": "nav-logs", "question": "Where can I see what went wrong when the site ran?" },
+    { "target": "redeploy", "question": "How do I put the latest version online again?" } ] },
+  { "page": "table-editor", "asks": [
+    { "target": "insert-row", "question": "How do I add a new order by hand?" },
+    { "target": "enable-rls", "question": "How do I stop strangers from reading this table?" },
+    { "target": "table-notes", "question": "Where is my notes table?" },
+    { "target": "add-column", "question": "How do I add another column to this table?" },
+    { "target": "filter", "question": "How do I show only the orders that are unpaid?" } ] },
+  { "page": "project-settings", "asks": [
+    { "target": "copy-public", "question": "Where do I copy the key that is safe to put in my app?" },
+    { "target": "tab-billing", "question": "Where can I see what I am paying for this?" },
+    { "target": "rename", "question": "How do I change the project's name?" },
+    { "target": "invite-member", "question": "How do I let my co-founder into this project?" },
+    { "target": "pause", "question": "How do I stop the project for now without losing anything?" } ] },
+  { "page": "repo-page", "asks": [
+    { "target": "code-btn", "question": "How do I download this project to my computer?" },
+    { "target": "tab-actions", "question": "Where can I see why the automatic checks failed?" },
+    { "target": "tab-issues", "question": "Where do people report bugs?" },
+    { "target": "add-file", "question": "How do I upload a picture to this project?" },
+    { "target": "branch", "question": "How do I look at the other version of the code, not main?" } ] }
+]

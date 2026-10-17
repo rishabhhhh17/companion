@@ -61,5 +61,10 @@ Built and unit tested with stubs only; nothing here has been seen on a real scre
 - **[verify]** on a real Mac with two displays: the labels and the mapping put the ring on the right display; how much time each extra display adds now that each one gets the careful read.
 - **[verify]** with a real model: how often it gives several targets, whether their order and marks are sensible, and the duplicate rule (16 px) on real answers.
 
+## The aim eval's hard set (17 Oct 2026, M11 wave 3, part A.5)
+- `evals/show-me-how/` adds 40 asks on four synthetic busy dashboards (a deploy settings page, a database table editor, a project settings page, a code host's repository page), each in light and dark, with every target labelled in the page (`data-eval-target`). They are made up products in local files, rendered in the hidden browser the way the aim eval already renders its pages: never a real website, never the person's screen, and the pictures are not kept.
+- A point is scored by the target's label, not its words, so a click on one of six Edit buttons is a miss unless it is the right one (`evals/show-me-how/score.ts`, shared with the aim eval).
+- `runner/scripts/eval-aim.ts` is now dry by default (it renders and checks every target, and asks Claude nothing). It spends only with `--spend`, through the eval harness (`evals/lib/harness.ts`), with a cap per ask and a total; until the real run harness is plugged in, `--spend` is refused. This replaces the old default, which called Claude on the test plan login straight away.
+
 ## Revisit if
 The internal eval of about 100 screenshots misses the ship bar: at least 80% hits, with a median under about 2.5 seconds from hotkey to pointer (targets, not sourced; section 14).
