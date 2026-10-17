@@ -21,6 +21,8 @@ import { lessonsFromProject } from "./lessongen.ts";
 import { Metrics } from "./metrics.ts";
 import { BrowserSetup, pretendInstaller } from "./proof/browsersetup.ts";
 import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
+import { Warmer } from "./warm.ts";
+import { resolveClaudeBinary } from "./sdkEngine.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -45,6 +47,8 @@ const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"
 const inflight = new Set<Promise<unknown>>();
 // The browser check's one time download: only on the person's press, ended by Stop everything, by the app closing, and by
 // this engine being ended by force (the installer ends with it).
+// The zero cost warm up (warm.ts): only the real engine has a Claude binary to read through.
+const warmer = new Warmer({ binary: () => (settings.engine === "sdk" ? resolveClaudeBinary(settings.claudeBin) : null) });
 const browser = new BrowserSetup({ emit: say, ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}), ...(settings.browserStubInstaller ? { installer: settings.browserStubInstaller } : {}) });
 
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
@@ -68,6 +72,9 @@ function dispatch(cmd: Command) {
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
+  // Home opened or the ask box got the keyboard: read the Claude binary through once (nothing is run or sent). How long it
+  // took goes to the log, never anything else.
+  if (cmd.type === "engine.warm") { void warmer.warm().then((r) => { if (r.read) process.stderr.write(`warm: read the Claude binary (${Math.round(r.bytes / 1048576)} MB) in ${r.ms} ms\n`); }); return; }
   if (cmd.type === "browser.check") { browser.status(); return; }
   if (cmd.type === "browser.install") { const p = browser.install().finally(() => inflight.delete(p)); inflight.add(p); return; }
   if (cmd.type === "doctor.check") { void doctor().then((items) => say({ type: "doctor.report", items })).catch((e: Error) => say({ type: "protocol.error", reason: `could not check this Mac: ${e.message}` })); return; }
@@ -79,7 +86,7 @@ function dispatch(cmd: Command) {
     return;
   }
   metrics.observeCommand(cmd);
-  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); }
+  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); }
   const work = cmd.type.startsWith("walk.") ? walks.handle(cmd as never) : cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);

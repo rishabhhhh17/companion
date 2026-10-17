@@ -118,3 +118,7 @@ export const fixError = (project: string, evidence: string, where?: { kind: stri
 
 /** The stand in project for lessons that need none (see runner/src/walk.ts). */
 export const NO_PROJECT = "no-project";
+
+// The zero cost warm up (runner/src/warm.ts): the engine reads the bundled Claude binary through once so the first task
+// starts sooner. Nothing is run, sent or spent, and it names no folder.
+export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" });
