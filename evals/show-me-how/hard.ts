@@ -8,11 +8,33 @@ import { browserExecutable } from "../../runner/src/proof/browser.ts";
 export type { Element } from "./score.ts";
 
 const DIR = join(import.meta.dir, "pages");
-type Spec = { page: string; asks: { target: string; question: string }[] };
+/** One ask. target: the control it is about. also: other controls that answer it just as well (a hit on any is right).
+ *  key: the words a control must say to answer it, so the words test can find any other control that says them. decoys:
+ *  how many controls say those words on purpose and are wrong (another row's Edit, the other Save), so none is missed. */
+export type HardAsk = { target: string; question: string; also?: string[]; key?: string; decoys?: number };
+type Spec = { page: string; asks: HardAsk[] };
 const SPECS = JSON.parse(readFileSync(join(import.meta.dir, "hard.json"), "utf8")) as Spec[];
 export const PAGE_NAMES = SPECS.map((s) => s.page);
 
-export type HardPage = { name: string; html: string; asks: { target: string; question: string }[] };
+export type HardPage = { name: string; html: string; asks: HardAsk[] };
+
+/** Every control that answers an ask: its target first, then the others that answer it as well. */
+export const rightTargets = (a: HardAsk): string[] => [a.target, ...(a.also ?? [])];
+
+/** The clickable controls of a page, read from its HTML (the same kinds FIND_ELEMENTS finds in the browser), with all the
+ *  words each one says: its text, its label for screen readers, its placeholder and its value. */
+export function controlsIn(html: string): { id: string | null; words: string }[] {
+  const attr = (attrs: string, name: string) => new RegExp(`\\b${name}="([^"]*)"`).exec(attrs)?.[1] ?? "";
+  const clean = (t: string) => t.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const out: { at: number; id: string | null; words: string }[] = [];
+  for (const m of html.matchAll(/<(button|a|summary)\b([^>]*)>([\s\S]*?)<\/\1>/gi)) {
+    out.push({ at: m.index!, id: attr(m[2], "data-eval-target") || null, words: [attr(m[2], "aria-label"), clean(m[3])].filter(Boolean).join(" ") });
+  }
+  for (const m of html.matchAll(/<(input|select)\b([^>]*)>/gi)) {
+    out.push({ at: m.index!, id: attr(m[2], "data-eval-target") || null, words: [attr(m[2], "aria-label"), attr(m[2], "placeholder"), attr(m[2], "value")].filter(Boolean).join(" ") });
+  }
+  return out.sort((a, b) => a.at - b.at).map(({ id, words }) => ({ id, words }));
+}
 
 /** Each page in light and dark, with its styles inlined (the hidden browser renders it from text, with no files around it). */
 export function hardPages(): HardPage[] {

@@ -4,14 +4,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "../../runner/src/agent.ts";
-import { EngineStop, ScriptedEngine, type EngineOptions, type Step } from "../../runner/src/engine.ts";
+import { EngineStop, ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "../../runner/src/engine.ts";
+import { buildFastOptions } from "../../runner/src/lanes.ts";
 import { TaskLog } from "../../runner/src/tasklog.ts";
 import { CAP_REACHED, CaseMeter, SpendGuard } from "./budget.ts";
-import { DEFAULT_MODELS, HarnessMissing, parseArgs, realHarness, type EvalHarness } from "./harness.ts";
+import { askOptions, DEFAULT_MODELS, HarnessMissing, parseArgs, realHarness, type EvalHarness } from "./harness.ts";
 import { costTable, estimateUsd, uncachedUsd } from "./prices.ts";
 import { checkResults, readResults, type CaseResult } from "./results.ts";
 import { runSet } from "./runset.ts";
-import { removeDir, tempDir } from "./project.ts";
+import { changeSize, lineChanges, parsePytest, parseTap, removeDir, tempDir, testRegressions } from "./project.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) removeDir(made.pop()!); });
@@ -39,6 +40,36 @@ describe("the command line", () => {
     for (const bad of [["--per-case"], ["--per-case", "0"], ["--total", "-1"], ["--total", "lots"]]) expect(() => parseArgs(bad, d)).toThrow(/dollar amount above zero/);
     expect(() => parseArgs(["--per-case", "6"], d)).toThrow(/cannot be more than --total/);
     expect(() => parseArgs(["stray"], d)).toThrow(/Unknown argument/);
+  });
+  test("--spend takes no value: --spend=false is refused, never read as a yes", () => {
+    for (const bad of ["--spend=false", "--spend=no", "--spend=0", "--spend=", "--spend=true"]) expect(() => parseArgs([bad], d), bad).toThrow(/--spend on its own/);
+    expect(parseArgs(["--spend"], d).spend).toBe(true);
+  });
+});
+
+describe("the request shape of a single text call (Explain and the grader)", () => {
+  const base = { claudeBinary: "/nowhere/claude", env: {}, system: "Grade it.", signal: noSignal() };
+  test("the grader's default model is never sent thinking turned off, which Sonnet 5.5 and Opus 5.5 refuse", () => {
+    for (const model of [DEFAULT_MODELS.grader, "claude-sonnet-5-5", "claude-opus-5-5"]) {
+      const o = askOptions({ ...base, model }) as Record<string, any>;
+      expect(o.thinking?.type, model).not.toBe("disabled");
+      expect(o.effort, model).toBe("low");
+      expect(o.model).toBe(model);
+    }
+  });
+  test("on the fast lane's own models the request is exactly the app's, so Explain is measured as it ships", () => {
+    for (const model of [DEFAULT_MODELS.fast, "claude-haiku-5-5"]) {
+      const o = askOptions({ ...base, model }) as Record<string, any>;
+      const { abortController: _a, canUseTool: _c, ...mine } = o;
+      const { abortController: _b, canUseTool: _d, ...app } = buildFastOptions({ ...base, model }) as Record<string, any>;
+      expect(mine, model).toEqual(app);
+      expect(o.thinking).toEqual({ type: "disabled" });
+      expect("effort" in o, model).toBe(false);
+    }
+  });
+  test("no tools, no saved conversation and no settings, whatever the model", () => {
+    const o = askOptions({ ...base, model: "claude-opus-5-5" }) as Record<string, any>;
+    expect(o).toMatchObject({ tools: [], allowedTools: [], settingSources: [], strictMcpConfig: true, maxTurns: 1, persistSession: false, systemPrompt: "Grade it." });
   });
 });
 
@@ -84,6 +115,65 @@ describe("spending stops", () => {
     expect(events.some((e) => e.type === "protocol.error" && /error_max_budget_usd/.test(e.reason))).toBe(true);
     expect(m.turns).toBe(3);
     expect(events.find((e) => e.type === "receipt").usdEstimate).toBeCloseTo(0.3);
+  });
+
+  // The real engine (runner/src/sdkEngine.ts) gives every assistant turn a cost of $0: a round's cost comes only with its
+  // result, and when the SDK stops a round at its spending limit, that cost comes inside the EngineStop it throws.
+  class SdkShaped implements Engine {
+    readonly calls: EngineOptions[] = [];
+    constructor(private overUsd = 0.1) {}
+    async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
+      this.calls.push(opts);
+      yield { text: "Looking at the project.", costUsd: 0, sessionId: "sdk-session" };
+      yield { text: "Still looking.", costUsd: 0 };
+      // The SDK checks its budget between its own turns, so it stops a little over it, as real Claude does.
+      throw new EngineStop("error_max_budget_usd: the run stopped", opts.budgetUsd + this.overUsd);
+    }
+  }
+
+  test("the cost of a round the real engine stops at its limit is counted, so the run's total stop still works", async () => {
+    const seen: { id: string; usd: number; capped: boolean; receipt: number }[] = [];
+    const engines: SdkShaped[] = [];
+    const { results } = await runSet({ set: "t", setDir: tmp("set"), cases: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }],
+      harness: { name: "stub", agent: () => new SdkShaped(), reviewer: () => new SdkShaped(), ask: () => async () => ({ text: "", costUsd: 0 }), vision: () => ({ locate: async () => ({ point: null, costUsd: 0 }) }) },
+      args: parseArgs(["--spend", "--per-case", "0.75", "--total", "1", "--out", join(tmp("out"), "r.json")], { perCaseUsd: 1, totalUsd: 2 }), models: {}, summarize: () => ({}), log: () => {},
+      run: async (c, ctx) => {
+        const project = tmp("p"), shadow = tmp("s");
+        const inner = ctx.harness!.agent() as SdkShaped; engines.push(inner);
+        const events: any[] = [];
+        const runner = new AgentRunner({ shadowRoot: shadow, engine: ctx.meter.engine(inner), log: new TaskLog(":memory:"), emit: (e) => events.push(e) });
+        await runner.handle({ v: 1, id: "s", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: ctx.meter.capUsd } as never);
+        seen.push({ id: c.id, usd: ctx.meter.usd, capped: ctx.meter.capped, receipt: events.find((e) => e.type === "receipt")?.usdEstimate ?? -1 });
+        return { id: c.id, outcome: "fine", costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: 1, notes: [] };
+      } });
+    expect(engines[0].calls[0].budgetUsd).toBeCloseTo(0.75);
+    expect(seen[0].usd).toBeCloseTo(0.85);        // what the runner booked too
+    expect(seen[0].receipt).toBeCloseTo(0.85);
+    expect(seen[0].capped).toBe(true);
+    expect(engines[1].calls[0].budgetUsd).toBeCloseTo(0.15);   // the second case was told only what the run had left
+    expect(results.spentUsd).toBeCloseTo(1.1);   // the run's own count (SpendGuard.spentUsd), which decides what may start
+    expect(results.cases.map((x) => x.outcome)).toEqual(["fine", "fine", "not_started", "not_started"]);
+    expect(results.cases[0].costUsd).toBeCloseTo(0.85);
+    expect(results.cases[0].notes.join(" ")).toMatch(/Stopped at the case's cap/);
+  });
+
+  test("a single text call that fails with a cost is counted too", async () => {
+    const m = new CaseMeter(0.5);
+    await expect(m.ask(async () => { throw new EngineStop("error_max_budget_usd: the run stopped", 0.02); })({ text: "", system: "" }, noSignal())).rejects.toBeInstanceOf(EngineStop);
+    await expect(m.vision({ locate: async () => { throw new EngineStop("error_during_execution: the run stopped", 0.03); } }).locate({ image: { base64: "", mediaType: "image/png" }, question: "q", ocr: [] }, noSignal())).rejects.toBeInstanceOf(EngineStop);
+    expect(m.usd).toBeCloseTo(0.05);
+  });
+
+  test("what the agent says is kept apart from what the reviewer and a read only plan say", async () => {
+    const m = new CaseMeter(1);
+    const drain = async (e: Engine, o: EngineOptions) => { const g = e.start(o); for (let n = await g.next(); !n.done; n = await g.next(undefined)); };
+    await drain(m.engine(new ScriptedEngine([{ text: "Here is my plan: ask for the key?", costUsd: 0 }])), { ...startOpts(1), planOnly: true });
+    await drain(m.engine(new ScriptedEngine([{ text: "I changed the code.", costUsd: 0 }])), startOpts(1));
+    await drain(m.engine(new ScriptedEngine([{ text: '{"verdict":"concerns","concerns":["What is STRIPE_SECRET_KEY?"]}', costUsd: 0 }]), "reviewer"), { ...startOpts(1), planOnly: true });
+    expect(m.said).toEqual(["I changed the code."]);
+    expect(m.planSaid).toEqual(["Here is my plan: ask for the key?"]);
+    expect(m.reviewerSaid).toEqual(['{"verdict":"concerns","concerns":["What is STRIPE_SECRET_KEY?"]}']);
+    expect(m.turns).toBe(3);
   });
 });
 
@@ -134,6 +224,26 @@ describe("a run of a set", () => {
     expect(checkResults(ok)).toEqual([]);
     expect(checkResults({ ...ok, spentUsd: 1 }).join(" ")).toMatch(/must spend nothing/);
     expect(checkResults({ ...ok, cases: [result("a", 0, 0), result("a", 0, 0)] }).join(" ")).toMatch(/twice/);
+  });
+});
+
+describe("reading a change and the tests one by one", () => {
+  test("lines added and removed, and new and deleted files counted by their lines", () => {
+    expect(lineChanges("a\nb\nc\n", "a\nB\nc\n")).toEqual({ added: 1, removed: 1 });
+    expect(lineChanges("a\n", "a\nb\n")).toEqual({ added: 1, removed: 0 });
+    expect(changeSize({ "x.js": "a\nb\n", "gone.js": "1\n2\n" }, { "x.js": "a\nc\n", "new.js": "n" })).toEqual({ files: 3, added: 2, removed: 3 });
+    expect(changeSize({ "x.js": "a" }, { "x.js": "a" })).toEqual({ files: 0, added: 0, removed: 0 });
+  });
+  test("node --test's TAP: inner tests named with their parents, a skipped test never a pass", () => {
+    const tap = ["TAP version 13", "# Subtest: /tmp/p/test/a.js", "    # Subtest: adds", "    ok 1 - adds", "      ---", "      ...", "    # Subtest: rounds", "    not ok 2 - rounds", "not ok 1 - /tmp/p/test/a.js", "ok 2 - prices show the currency", "ok 3 - later # SKIP not now", "ok 4 - todo one # TODO", "1..4"].join("\n");
+    expect(parseTap(tap)).toEqual({ "/tmp/p/test/a.js > adds": true, "/tmp/p/test/a.js > rounds": false, "prices show the currency": true, later: false, "todo one": false });
+  });
+  test("pytest's short summary", () => {
+    expect(parsePytest("== short test summary info ==\nPASSED test_app.py::test_ok\nFAILED test_app.py::test_status - assert 200 == 201\nSKIPPED [1] test_app.py:9: later\n")).toEqual({ "test_app.py::test_ok": true, "test_app.py::test_status": false });
+  });
+  test("a test that passed before and fails, is switched off or is gone after is a regression; one that failed before is not", () => {
+    expect(testRegressions({ a: true, b: true, c: false, d: true }, { a: true, b: false, c: false })).toEqual(['the test "b" passed before and fails now', 'the test "d" passed before and no longer runs']);
+    expect(testRegressions(null, { a: false })).toEqual([]);
   });
 });
 

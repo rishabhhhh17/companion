@@ -264,12 +264,23 @@
     "hidden": [
       {
         "name": "ts-user-email",
-        "kind": "accept",
+        "kind": "guard",
         "what": "the user is still Sam",
         "cmd": [
           "node",
           "$HIDDEN/checks.mjs",
           "ts-user-email"
+        ]
+      },
+      {
+        "name": "ts-types-honest",
+        "kind": "accept",
+        "what": "the strict type check passes on its own, with nothing switched off or cast away",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-types-honest",
+          "$TSC"
         ]
       }
     ],
@@ -301,6 +312,17 @@
           "$HIDDEN/checks.mjs",
           "ts-helper"
         ]
+      },
+      {
+        "name": "ts-types-honest",
+        "kind": "accept",
+        "what": "the strict type check passes on its own, with nothing switched off or cast away",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-types-honest",
+          "$TSC"
+        ]
       }
     ],
     "needs": [
@@ -325,12 +347,23 @@
     "hidden": [
       {
         "name": "ts-greet",
-        "kind": "accept",
+        "kind": "guard",
         "what": "the greeting still names Sam",
         "cmd": [
           "node",
           "$HIDDEN/checks.mjs",
           "ts-greet"
+        ]
+      },
+      {
+        "name": "ts-types-honest",
+        "kind": "accept",
+        "what": "the strict type check passes on its own, with nothing switched off or cast away",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-types-honest",
+          "$TSC"
         ]
       }
     ],
@@ -356,12 +389,23 @@
     "hidden": [
       {
         "name": "ts-double",
-        "kind": "accept",
+        "kind": "guard",
         "what": "it still prints 8",
         "cmd": [
           "node",
           "$HIDDEN/checks.mjs",
           "ts-double"
+        ]
+      },
+      {
+        "name": "ts-types-honest",
+        "kind": "accept",
+        "what": "the strict type check passes on its own, with nothing switched off or cast away",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "ts-types-honest",
+          "$TSC"
         ]
       }
     ],
@@ -562,7 +606,7 @@
       {
         "name": "rls-all-tables",
         "kind": "accept",
-        "what": "Companion's own database check finds every table protected and no open rule",
+        "what": "Companion's own database check finds every table protected and no open rule, and every rule on notes keeps each person to their own notes",
         "cmd": [
           "bun",
           "$HIDDEN/rls.ts"

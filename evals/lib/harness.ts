@@ -10,7 +10,7 @@
 // strictMcpConfig, CLAUDE_CODE_DISABLE_AUTO_MEMORY=1, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 and a check that system/init lists
 // only the expected tools). It plugs in at realHarness() below and nowhere else. Until it does, --spend refuses.
 import type { Engine, Usage } from "../../runner/src/engine.ts";
-import type { VisionLike } from "../../runner/src/lanes.ts";
+import { buildFastOptions, type VisionLike } from "../../runner/src/lanes.ts";
 import { MODELS } from "../../runner/src/models.ts";
 
 /** One text in, one text out, no tools: Explain's fast lane, and the model that grades Explain. */
@@ -24,11 +24,30 @@ export interface EvalHarness {
   agent(): Engine;
   /** The second model review, on the runner's reviewModel. The runner refuses every tool it asks for. */
   reviewer(): Engine;
-  /** A single text call with its own system prompt and no tools: Explain (wired as the app wires it, the fast lane with
-   *  raw: true, see runner/src/main.ts) and the grader. */
+  /** A single text call with its own system prompt and no tools: Explain and the grader. The real harness sends it with
+   *  askOptions() below and nothing else: on the fast lane's models (Haiku 4.5, Haiku 5.5) that is exactly the app's fast
+   *  lane request (runner/src/lanes.ts buildFastOptions, raw: true, as runner/src/main.ts wires Explain), so Explain is
+   *  measured as it ships. The fast lane turns thinking off, which Sonnet 5.5 and Opus 5.5 refuse with a 400 (wave 3
+   *  plan, part A); on those models (the grader's default) askOptions leaves thinking at the model's default and asks
+   *  for low effort instead. */
   ask(model: string): TextAsk;
-  /** Show me how's pointing lane: the default vision lane, or the experimental Computer Use one (API key route only). */
+  /** Show me how's pointing lane: the default vision lane, or the experimental Computer Use one (API key route only). The
+   *  app's vision lane also turns thinking off, so a paid aim eval on Sonnet 5.5 (its default) waits for the part A.1 fix
+   *  in the runner; the aim eval on Haiku 5.5 does not. */
   vision(model: string, lane?: "default" | "computer_use"): VisionLike;
+}
+
+/** Models that refuse thinking: {type: "disabled"} at every effort level the fast lane could use (checked against the
+ *  current Claude API notes on 17 Oct 2026, wave 3 plan part A). Haiku 4.5 and Haiku 5.5 (at its default effort) accept it. */
+export const REFUSES_THINKING_OFF = /^claude-(sonnet-5-5|opus-5-5|fable-5)/;
+
+/** The request for one text call: the app's fast lane request, except that a model which refuses thinking turned off
+ *  keeps its default thinking and is asked for low effort (the only control Opus 5.5 has; Sonnet 5.5 accepts it too). */
+export function askOptions(c: { claudeBinary: string; env: Record<string, string>; model: string; system: string; signal: AbortSignal }) {
+  const app = buildFastOptions(c);
+  if (!REFUSES_THINKING_OFF.test(c.model)) return app;
+  const { thinking: _off, ...rest } = app;
+  return { ...rest, effort: "low" as const };
 }
 
 export class HarnessMissing extends Error {}
@@ -72,7 +91,11 @@ export function parseArgs(argv: string[], defaults: { perCaseUsd: number; totalU
     const raw = argv[i];
     const [flag, inline] = raw.includes("=") ? [raw.slice(0, raw.indexOf("=")), raw.slice(raw.indexOf("=") + 1)] : [raw, undefined];
     const value = () => inline ?? argv[++i];
-    if (flag === "--spend") a.spend = true;
+    if (flag === "--spend") {
+      // A switch only. "--spend=false" must never be read as a yes, so any value after it is refused.
+      if (inline !== undefined) throw new Error("Use --spend on its own, with nothing after it. Leave it out for a dry run.");
+      a.spend = true;
+    }
     else if (flag === "--help" || flag === "-h") a.help = true;
     else if (flag === "--only") a.only = String(value() ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     else if (flag === "--per-case") a.perCaseUsd = money(flag, value());

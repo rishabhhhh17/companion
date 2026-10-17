@@ -3,7 +3,7 @@
 // accessibility lookup would, and (when the hidden browser is installed) that every target can be seen and clicked.
 import { describe, expect, test } from "bun:test";
 import { browserExecutable } from "../../runner/src/proof/browser.ts";
-import { FIND_ELEMENTS, hardPages, hiddenBrowser, PAGE_NAMES, type Element } from "./hard.ts";
+import { controlsIn, FIND_ELEMENTS, hardPages, hiddenBrowser, PAGE_NAMES, rightTargets, type Element } from "./hard.ts";
 import { scorePoint } from "./score.ts";
 
 const pages = hardPages();
@@ -15,8 +15,31 @@ describe("the pages and asks", () => {
     expect(pages.reduce((n, p) => n + p.asks.length, 0)).toBe(40);
     expect(new Set(pages.map((p) => p.name)).size).toBe(8);
   });
-  test("every target is labelled exactly once on its page", () => {
-    for (const p of pages) for (const a of p.asks) expect((p.html.match(new RegExp(`data-eval-target="${a.target}"`, "g")) ?? []).length, `${p.name}: ${a.target}`).toBe(1);
+  test("every target is labelled exactly once on its page, and so is every other control that answers the ask as well", () => {
+    for (const p of pages) for (const a of p.asks) for (const id of rightTargets(a)) expect((p.html.match(new RegExp(`data-eval-target="${id}"`, "g")) ?? []).length, `${p.name}: ${id}`).toBe(1);
+  });
+  test("asks with more than one right answer list them all: two ways to add a column, the key box or Add another, the name box or Rename", () => {
+    const also = Object.fromEntries(pages.filter((p) => !p.name.endsWith("-dark")).flatMap((p) => p.asks.filter((a) => a.also?.length).map((a) => [a.target, a.also])));
+    expect(also).toEqual({ "add-column": ["insert-column"], "env-add": ["env-key"], rename: ["project-name"] });
+  });
+  // The words test: every control on the page that says the ask's key words is either a right answer to it, or one of the
+  // decoys the ask is built around (the other Save button, the Edit buttons of other rows), counted here so none is missed.
+  test("no control that says an ask's key words is left out by accident", () => {
+    for (const p of pages.filter((x) => !x.name.endsWith("-dark"))) {
+      const controls = controlsIn(p.html);
+      for (const a of p.asks) {
+        expect(a.key, `${p.name}: ${a.target} needs its key words`).toBeTruthy();
+        const word = new RegExp(`\\b${a.key}\\b`, "i");
+        const saying = controls.filter((c) => word.test(c.words));
+        const others = saying.filter((c) => !c.id || !rightTargets(a).includes(c.id));
+        expect(others.length, `${p.name}: ${a.target} ("${a.key}"): ${others.map((o) => o.words).join(" | ")}`).toBe(a.decoys ?? 0);
+        expect(saying.length, `${p.name}: ${a.target}: the key words name the control`).toBeGreaterThan(0);
+      }
+    }
+  });
+  test("the words test sees inputs, labels for screen readers and placeholders, not only button text", () => {
+    const c = controlsIn('<button data-eval-target="a">Add <span>column</span></button><input placeholder="Key, for example X" data-eval-target="k"><button aria-label="More for X">⋯</button><a href="#">Logs</a><select><option>One</option></select>');
+    expect(c.map((x) => [x.id, x.words])).toEqual([["a", "Add column"], ["k", "Key, for example X"], [null, "More for X ⋯"], [null, "Logs"], [null, ""]]);
   });
   test("every page has its styles inlined and points at nothing outside it", () => {
     for (const p of pages) {
@@ -50,6 +73,12 @@ describe("scoring a point", () => {
   test("a point on the labelled control is a raw hit and a snapped hit", () => {
     expect(scorePoint({ x: 110, y: 150 }, target, els)).toEqual({ raw: true, snapped: true });
   });
+  test("where an ask has more than one right answer, a point on any of them is a hit", () => {
+    const both = [els[1], els[0]];
+    expect(scorePoint({ x: 110, y: 110 }, both, els)).toEqual({ raw: true, snapped: true });
+    expect(scorePoint({ x: 110, y: 150 }, both, els)).toEqual({ raw: true, snapped: true });
+    expect(scorePoint({ x: 250, y: 300 }, both, els)).toEqual({ raw: false, snapped: false });
+  });
   test("a point on another control with the same words is a miss: identity counts, not words", () => {
     expect(scorePoint({ x: 110, y: 110 }, target, els)).toEqual({ raw: false, snapped: false });
   });
@@ -71,11 +100,11 @@ const exe = browserExecutable();
         const page = await ctx.newPage();
         await page.setContent(p.html);
         const els: Element[] = await page.evaluate(`(${FIND_ELEMENTS})()`);
-        for (const a of p.asks) {
-          const t = els.find((e) => e.id === a.target);
-          expect(t, `${p.name}: ${a.target} is not found as a clickable control`).toBeDefined();
-          expect(t!.x >= 0 && t!.y >= 0 && t!.x + t!.w <= 1280 && t!.y + t!.h <= 800, `${p.name}: ${a.target} is off screen`).toBe(true);
-          expect(scorePoint({ x: t!.x + t!.w / 2, y: t!.y + t!.h / 2 }, t!, els).snapped, `${p.name}: ${a.target}`).toBe(true);
+        for (const a of p.asks) for (const id of rightTargets(a)) {
+          const t = els.find((e) => e.id === id);
+          expect(t, `${p.name}: ${id} is not found as a clickable control`).toBeDefined();
+          expect(t!.x >= 0 && t!.y >= 0 && t!.x + t!.w <= 1280 && t!.y + t!.h <= 800, `${p.name}: ${id} is off screen`).toBe(true);
+          expect(scorePoint({ x: t!.x + t!.w / 2, y: t!.y + t!.h / 2 }, t!, els).snapped, `${p.name}: ${id}`).toBe(true);
         }
         await ctx.close();
       }

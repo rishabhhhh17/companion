@@ -101,3 +101,89 @@ export function applySteps(dir: string, steps: FixStep[]): string[] {
   }
   return problems;
 }
+
+/** Every text file of the project (as listFiles sees it), for measuring a change afterwards. */
+export function fileTexts(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of listFiles(dir)) out[f] = readFileSync(join(dir, f), "utf8");
+  return out;
+}
+
+/** A text's lines; an empty text has none, and a last line break does not start another. */
+const linesOf = (t: string): string[] => (t === "" ? [] : (t.endsWith("\n") ? t.slice(0, -1) : t).split("\n"));
+
+/** Lines added and removed between two texts (a longest common run of lines; the eval's files are small). */
+export function lineChanges(before: string, after: string): { added: number; removed: number } {
+  if (before === after) return { added: 0, removed: 0 };
+  const a = linesOf(before), b = linesOf(after);
+  if (a.length * b.length > 4_000_000) return { added: b.length, removed: a.length };
+  let prev = new Array<number>(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const row = new Array<number>(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) row[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], row[j - 1]);
+    prev = row;
+  }
+  const same = prev[b.length];
+  return { added: b.length - same, removed: a.length - same };
+}
+
+/** How big a change was: the files it touched, and the lines it added and removed (M11 step 4 scores diff size). */
+export function changeSize(before: Record<string, string>, after: Record<string, string>): { files: number; added: number; removed: number } {
+  let files = 0, added = 0, removed = 0;
+  for (const f of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (before[f] === after[f]) continue;
+    const d = lineChanges(before[f] ?? "", after[f] ?? "");
+    files++; added += d.added; removed += d.removed;
+  }
+  return { files, added, removed };
+}
+
+/** Each test's result by name, from the project's own test command run once more with a reporter that names them:
+ *  `node --test` (TAP) and pytest (its short summary). Null when the project has neither, or it could not be read. A
+ *  skipped test counts as not passing, so switching a test off is never a pass. */
+export async function perTest(dir: string, timeoutMs = 60_000): Promise<Record<string, boolean> | null> {
+  let script = "";
+  try { script = String(JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.test ?? ""); } catch { /* no package list */ }
+  if (/^node(\s+--[\w-]+(=\S+)?)*\s+--test(\s|$)/.test(script) && !/[|&;<>`$]/.test(script)) {
+    const words = script.trim().split(/\s+/);
+    const r = await runCheck([words[0], "--test-reporter=tap", ...words.slice(1)], dir, {}, timeoutMs);
+    return r.timedOut ? null : parseTap(r.output);
+  }
+  if (listFiles(dir).some((f) => /(^|\/)test_[\w-]*\.py$|_test\.py$/.test(f)) && needMet("python3:pytest")) {
+    const r = await runCheck(["python3", "-m", "pytest", "-rA", "-q", "-p", "no:cacheprovider"], dir, {}, timeoutMs);
+    return r.timedOut ? null : parsePytest(r.output);
+  }
+  return null;
+}
+
+/** node --test's TAP: "ok 1 - name" and "not ok 2 - name", subtests indented above their parent. Only the innermost tests
+ *  are kept, named with their parents ("suite > test"). */
+export function parseTap(text: string): Record<string, boolean> {
+  const done: { depth: number; name: string; pass: boolean }[] = [];
+  for (const line of text.split("\n")) {
+    const m = /^(\s*)(not )?ok \d+ - (.*?)(\s+#\s*(SKIP|TODO)\b.*)?$/i.exec(line);
+    if (!m) continue;
+    const depth = m[1].length, name = m[3].trim(), pass = !m[2] && !m[4];
+    const kids: typeof done = [];
+    while (done.length && done[done.length - 1].depth > depth) kids.unshift(done.pop()!);
+    if (kids.length) for (const k of kids) done.push({ depth, name: `${name} > ${k.name}`, pass: k.pass });
+    else done.push({ depth, name, pass });
+  }
+  const out: Record<string, boolean> = {};
+  for (const t of done) out[t.name] = t.pass;
+  return out;
+}
+
+/** pytest -rA's short summary: "PASSED test_app.py::test_x", "FAILED test_app.py::test_y - AssertionError". */
+export function parsePytest(text: string): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  // A skipped test is listed by its place ("SKIPPED [1] test_app.py:9: why"), not its name, so it only shows as gone.
+  for (const m of text.matchAll(/^(PASSED|FAILED|ERROR|XFAIL|XPASS) (\S+)/gm)) out[m[2]] = m[1] === "PASSED" || m[1] === "XPASS";
+  return out;
+}
+
+/** The tests that passed before and do not pass now (failed, switched off or gone), in plain words. */
+export function testRegressions(before: Record<string, boolean> | null, after: Record<string, boolean> | null): string[] {
+  if (!before || !after) return [];
+  return Object.keys(before).filter((n) => before[n] && after[n] !== true).map((n) => `the test "${n}" passed before and ${n in after ? "fails now" : "no longer runs"}`);
+}

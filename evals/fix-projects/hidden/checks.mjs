@@ -2,9 +2,9 @@
 // Run in the project folder: node checks.mjs <name>. Exit 0 means the check passed. Each check tests behaviour (what the
 // code does), never the exact words of a fix, so any correct fix passes.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 const cwd = process.cwd();
 const need = createRequire(join(cwd, 'x.js'));
@@ -15,6 +15,12 @@ const out = (r) => `${r.stdout ?? ''}${r.stderr ?? ''}`;
 const runs = (r) => r.status === 0;
 // A file of the project, as it would be required fresh (a check may set the environment first).
 const fresh = (f) => { const p = need.resolve(join(cwd, f)); delete need.cache[p]; return need(p); };
+// Every file of the project, as relative paths (not node_modules or .git).
+const files = (d = cwd) => readdirSync(d).flatMap((n) => {
+  if (n === 'node_modules' || n === '.git') return [];
+  const p = join(d, n);
+  return statSync(p).isDirectory() ? files(p) : [relative(cwd, p)];
+});
 
 const checks = {
   // ---- the fifteen rescue projects ----
@@ -58,6 +64,19 @@ const checks = {
   'ts-helper': () => { ok(runs(run('bun', ['app.ts'])), 'bun app.ts must run'); },
   'ts-greet': () => { const r = run('bun', ['app.ts']); ok(runs(r) && /Sam/.test(out(r)), 'the greeting must name Sam'); },
   'ts-double': () => { const r = run('bun', ['app.ts']); ok(runs(r) && /\b8\b/.test(out(r)), 'double(4) must still print 8'); },
+  // The TypeScript cases are type errors only, so the program runs before the fix too. The types must really be right: the
+  // strict checker is run from here (the project's own check could be edited), and nothing may switch it off or cast it away.
+  'ts-types-honest': () => {
+    const tsc = process.argv[3];
+    ok(tsc, 'the checker is passed as the second argument');
+    for (const f of files().filter((x) => /\.(ts|tsx|mts|cts)$/.test(x))) {
+      const text = read(f);
+      ok(!/@ts-(ignore|expect-error|nocheck)\b/.test(text), `${f} must not switch the type checker off (@ts-ignore, @ts-expect-error, @ts-nocheck)`);
+      ok(!/\bas\s+any\b|:\s*any\b|<\s*any\s*>|\bas\s+unknown\s+as\b/.test(text), `${f} must not cast the types away (any, or as unknown as)`);
+    }
+    const r = run(tsc, ['--noEmit', '--strict', 'app.ts']);
+    ok(runs(r), `the strict type check must pass: ${out(r).trim().split('\n')[0] ?? ''}`);
+  },
   'total-number': () => { const r = run('node', ['app.js']); ok(runs(r) && Number.isFinite(Number(String(r.stdout).trim())), 'the total must be a number'); },
   'sum-three': () => { const r = run('node', ['app.mjs']); ok(runs(r) && String(r.stdout).trim() === '3', 'it must print 3'); },
 

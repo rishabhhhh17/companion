@@ -7,11 +7,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CaseMeter } from "../lib/budget.ts";
 import { DEFAULT_MODELS } from "../lib/harness.ts";
-import { applySteps, copyProject, needMet, removeDir } from "../lib/project.ts";
+import { applySteps, copyProject, needMet, removeDir, resolveCmd, runCheck } from "../lib/project.ts";
 import { scripted, stepsToTurns } from "../lib/session.ts";
 import type { FixStep } from "../lib/project.ts";
 import { FIX_ASK, fixPrompt, HIDDEN, loadCases, runFixCase, type LoadedCase } from "./pipeline.ts";
-import { askedFor, classify, summarize, summaryLine } from "./score.ts";
+import { askedFor, classify, lastMessage, summarize, summaryLine } from "./score.ts";
 
 const cases = loadCases();
 const byId = (id: string) => cases.find((c) => c.id === id)!;
@@ -58,6 +58,24 @@ describe("the case list", () => {
   test("settings files are never committed: a case's .env comes from its overlay", () => {
     for (const c of cases) expect(existsSync(join(c.src, ".env")), c.id).toBe(false);
   });
+  // An acceptance check that already passes on the broken project proves nothing, so "fixed" would rest on the project's own
+  // checks alone, which a fix can silence. A guard is the other way round: it checks something that works before the fix.
+  test("on the project as it is, before any fix, every acceptance check fails and every guard passes", async () => {
+    const wrong: string[] = [];
+    const queue = cases.filter(runnable);
+    const one = async (c: LoadedCase) => {
+      const dir = copyProject(c.src, c.files);
+      try {
+        for (const h of c.hidden) {
+          const r = await runCheck(resolveCmd(h.cmd, HIDDEN), dir);
+          if (h.kind === "accept" && r.pass) wrong.push(`${c.id}: the acceptance check ${h.name} passes with no fix`);
+          if (h.kind === "guard" && !r.pass) wrong.push(`${c.id}: the guard ${h.name} fails before any fix (${r.output.split("\n").at(-1)})`);
+        }
+      } finally { removeDir(dir); }
+    };
+    for (let i = 0; i < queue.length; i += 6) await Promise.all(queue.slice(i, i + 6).map(one));
+    expect(wrong).toEqual([]);
+  }, 120_000);
 });
 
 describe("the fix task is told what Point at the problem found", () => {
@@ -89,6 +107,10 @@ describe("dry: every case, start to finish, with the known good fix", () => {
       if (c.where) expect(r.detail?.locatedRight, JSON.stringify(r.detail?.found)).toBe(true);
       expect(r.costUsd).toBe(0);
       expect(r.turns).toBeGreaterThan(0);
+      // How big the change was, from the project before and after (M11 step 4 scores diff size).
+      const size = r.detail?.diff as { files: number; added: number; removed: number } | undefined;
+      expect(size, c.id).toBeDefined();
+      if (c.expect === "fix") expect(size!.files, c.id).toBeGreaterThan(0); else expect(size, c.id).toEqual({ files: 0, added: 0, removed: 0 });
     }, 180_000);
   }
 });
@@ -147,6 +169,53 @@ describe("wrong fixes are told apart from right ones", () => {
     expect(r.outcome).not.toBe("fixed");
   }, 60_000);
 
+  // TypeScript cases are type errors only, so the program runs before the fix too: a fix that silences the checker must not pass.
+  const ts1 = early(() => run(byId("rescue-ts-wrong-type"), { agent: turnsOf([{ edit: "app.ts", old: "const label: string = double(4);", new: "// @ts-ignore\nconst label: string = double(4);" }]) }));
+  test("silencing the type checker with @ts-ignore fools the project's check but not the hidden one", async () => {
+    const r = await ts1();
+    expect(r.detail?.finalVerdict).toBe("passed");
+    expect(r.outcome).toBe("not_fixed");
+    expect(r.detail?.proofFooled).toBe(true);
+  }, 60_000);
+  const ts2 = early(() => run(byId("rescue-ts-missing-property"), { agent: turnsOf([{ edit: "app.ts", old: "const u: User = { name: 'Sam' };", new: "const u: User = { name: 'Sam' } as any;" }]) }));
+  test("an 'as any' cast is not a fix either", async () => {
+    const r = await ts2();
+    expect(r.outcome).toBe("not_fixed");
+  }, 60_000);
+  const ts3 = early(() => run(byId("rescue-ts-wrong-argument-count"), { agent: turnsOf([{ write: "package.json", content: JSON.stringify({ name: "x", private: true, scripts: { typecheck: "echo all good" } }, null, 2) + "\n" }]) }));
+  test("changing the project's own check so it cannot fail is not a fix", async () => {
+    const r = await ts3();
+    expect(r.outcome).not.toBe("fixed");
+  }, 60_000);
+
+  // The open notes table: turning row level security on is not enough, the rules must keep each person to their own notes.
+  const rls1 = early(() => run(byId("supabase-open-table"), { agent: turnsOf([{ write: "supabase/migrations/003_notes_rls.sql", content: "alter table public.notes enable row level security;\n" }]) }));
+  test("row level security with no rule at all locks everyone out of their own notes: not fixed", async () => {
+    const r = await rls1();
+    expect(r.detail?.finalVerdict).toBe("passed");
+    expect(r.outcome).toBe("not_fixed");
+    expect(r.notes.join(" ")).toMatch(/own notes/);
+  }, 60_000);
+  const rls2 = early(() => run(byId("supabase-open-table"), { agent: turnsOf([{ write: "supabase/migrations/003_notes_rls.sql", content: "alter table public.notes enable row level security;\n\ncreate policy \"Signed in people can read notes\"\n  on public.notes for select\n  to authenticated\n  using (true);\n" }]) }));
+  test("a rule that lets every signed in person read every note is the same leak: not fixed", async () => {
+    const r = await rls2();
+    expect(r.detail?.finalVerdict).toBe("passed");
+    expect(r.outcome).toBe("not_fixed");
+  }, 60_000);
+  const rls3 = early(() => run(byId("supabase-open-table"), { agent: turnsOf([{ write: "supabase/migrations/003_notes_rls.sql", content: "alter table public.notes enable row level security;\n\ncreate policy \"Own notes\" on public.notes for select to authenticated using ((select auth.uid()) = user_id);\ncreate policy \"Add own notes\" on public.notes for insert to authenticated with check ((select auth.uid()) = user_id);\n" }]) }));
+  test("separate rules per action that each keep to the owner are a fix, written the way Supabase suggests", async () => {
+    expect((await rls3()).outcome).toBe("fixed");
+  }, 60_000);
+
+  // A test of the same check that passed before and fails after: the "tests" check failed before and after, so only the
+  // tests one by one show it.
+  const pt = early(() => run(byId("missing-setting-name"), { agent: turnsOf([{ edit: "lib/site.js", old: "need('SITE_NAME')", new: "need('PUBLIC_SITE_NAME')" }, { edit: "lib/site.js", old: "need('PUBLIC_CURRENCY')", new: "need('CURRENCY')" }]) }));
+  test("a fix that makes the failing test pass but breaks another test that passed is broke something", async () => {
+    const r = await pt();
+    expect(r.outcome).toBe("broke_something");
+    expect(r.notes.join(" ")).toMatch(/prices show the currency/);
+  }, 60_000);
+
   const r7 = early(() => run(byId("vite-env-prefix"), { agent: turnsOf([{ edit: "vite.config.js", old: "server: { port: 5173 },", new: "server: { port: 5173 },\n  envPrefix: ['VITE_', 'API_', 'DATABASE_']," }]) }));
   test("exposing every setting to the browser leaks the password, which breaks the guard", async () => {
     const r = await r7();
@@ -190,9 +259,21 @@ describe("the scorer", () => {
     expect(askedFor(["Set SUPABASE_URL."], ["SUPABASE_URL"])).toBe(false);
     expect(askedFor(["What colour do you like?"], ["SUPABASE_URL"])).toBe(false);
   });
+  test("the question and the name must be in one sentence: a question about something else does not count", () => {
+    expect(askedFor(["Why does the test fail? It needs STRIPE_SECRET_KEY, so I made a test key."], ["STRIPE_SECRET_KEY"])).toBe(false);
+    expect(askedFor(["This needs your own key. Can you add STRIPE_SECRET_KEY to your .env file? You can copy it from Stripe."], ["STRIPE_SECRET_KEY"])).toBe(true);
+    expect(askedFor(["Which rule is right: free shipping from $50, or only above $50?"], ["50"])).toBe(true);
+  });
+  test("only the agent's last message counts: a question it then went past is not stopping to ask", () => {
+    expect(askedFor(["What is your SUPABASE_URL?", "I used a placeholder address instead, so the app runs now."], ["SUPABASE_URL"])).toBe(false);
+    expect(askedFor(["I looked at the settings.", "SUPABASE_URL is missing. What is your Supabase project address?"], ["SUPABASE_URL", "Supabase"])).toBe(true);
+    expect(lastMessage([" ", "a", "", "b "])).toBe("b");
+    expect(lastMessage([])).toBe("");
+  });
   test("the summary counts outcomes, cost per fixed case and fooled checks", () => {
     const r = (id: string, outcome: string, costUsd: number, detail: Record<string, unknown> = {}) => ({ id, outcome, costUsd, turns: 4, tokens: { in: 0, cacheRead: 0, out: 0 }, ms: 1, notes: [], detail });
-    const s = summarize([r("a", "fixed", 0.2, { locatedRight: true }), r("b", "fixed", 0.2), r("c", "not_fixed", 0.2, { proofFooled: true, locatedRight: false }), r("d", "cannot_run", 0)]);
+    const s = summarize([r("a", "fixed", 0.2, { locatedRight: true, diff: { files: 1, added: 1, removed: 1 } }), r("b", "fixed", 0.2, { diff: { files: 2, added: 6, removed: 0 } }), r("c", "not_fixed", 0.2, { proofFooled: true, locatedRight: false }), r("d", "cannot_run", 0)]);
+    expect(s.medianLinesChanged).toBe(6);
     expect(s.counts).toMatchObject({ fixed: 2, not_fixed: 1, cannot_run: 1 });
     expect(s.ran).toBe(3);
     expect(s.costPerFixedUsd).toBeCloseTo(0.3);

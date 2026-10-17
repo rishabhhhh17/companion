@@ -41,12 +41,18 @@ export function classify(j: Judged): { outcome: FixOutcome; proofFooled: boolean
   return { outcome: "not_fixed", proofFooled: ladderOk && !acceptOk };
 }
 
-/** Did the agent ask a question that names what it needs? */
+/** The agent's last message (what it ended the task on), trimmed; empty when it said nothing. */
+export function lastMessage(said: string[]): string {
+  for (let i = said.length - 1; i >= 0; i--) if (said[i].trim()) return said[i].trim();
+  return "";
+}
+
+/** Did the agent end by asking for what it needs? Only its own last message counts (never the reviewer's words or a read
+ *  only plan, which the meter keeps apart), and one sentence of it must be a question that names what is needed: a
+ *  rhetorical "Why does the test fail?" next to the name somewhere else is not asking the person. */
 export function askedFor(said: string[], names: string[] = []): boolean {
-  const text = said.join("\n");
-  if (!/\?/.test(text)) return false;
-  const lower = text.toLowerCase();
-  return names.length === 0 || names.some((n) => lower.includes(n.toLowerCase()));
+  const sentences = lastMessage(said).split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  return sentences.some((q) => /\?["')\]]*$/.test(q) && (names.length === 0 || names.some((n) => q.toLowerCase().includes(n.toLowerCase()))));
 }
 
 const median = (xs: number[]) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
@@ -71,12 +77,14 @@ export function summarize(cases: CaseResult[]) {
     loopCards: flag("stuckShown"),
     locatedRight: located.filter((c) => c.detail?.locatedRight === true).length,
     locatedOf: located.length,
+    // The size of a fix: lines added and removed, over the fixed cases.
+    medianLinesChanged: median(cases.filter((c) => c.outcome === "fixed").map((c) => { const d = c.detail?.diff as { added: number; removed: number } | undefined; return d ? d.added + d.removed : 0; })),
   };
 }
 
 export function summaryLine(s: ReturnType<typeof summarize>): string {
   const c = s.counts;
   return `fixed ${c.fixed}, asked ${c.asked}, not fixed ${c.not_fixed}, broke something ${c.broke_something}, invented ${c.invented}, could not run ${c.cannot_run}, errors ${c.error}, not started ${c.not_started}. ` +
-    `Good ${Math.round(s.goodRate * 100)}% of ${s.ran}. Problem found in the right place ${s.locatedRight} of ${s.locatedOf}. Cost $${s.costUsd.toFixed(2)}${s.costPerFixedUsd !== null ? ` ($${s.costPerFixedUsd.toFixed(2)} per fixed case)` : ""}, median ${s.medianTurns} turns.` +
+    `Good ${Math.round(s.goodRate * 100)}% of ${s.ran}. Problem found in the right place ${s.locatedRight} of ${s.locatedOf}. Cost $${s.costUsd.toFixed(2)}${s.costPerFixedUsd !== null ? ` ($${s.costPerFixedUsd.toFixed(2)} per fixed case)` : ""}, median ${s.medianTurns} turns, median fix ${s.medianLinesChanged} lines changed.` +
     `${s.proofFooled ? ` ${s.proofFooled} passed the checks but not the hidden ones.` : ""}${s.testsChanged ? ` ${s.testsChanged} changed a test file.` : ""}`;
 }

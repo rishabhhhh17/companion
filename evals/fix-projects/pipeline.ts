@@ -9,7 +9,7 @@ import { shq } from "../../runner/src/proof/exec.ts";
 import type { Problem } from "../../protocol/index.ts";
 import type { CaseMeter } from "../lib/budget.ts";
 import type { EvalHarness, ModelRole } from "../lib/harness.ts";
-import { copyProject, needMet, removeDir, resolveCmd, runCheck, testPrint, testsChanged, type FixStep } from "../lib/project.ts";
+import { changeSize, copyProject, fileTexts, needMet, perTest, removeDir, resolveCmd, runCheck, testPrint, testRegressions, testsChanged, type FixStep } from "../lib/project.ts";
 import type { CaseResult } from "../lib/results.ts";
 import { AGENT, EvalSession, scripted, stepsToTurns } from "../lib/session.ts";
 import { askedFor, classify } from "./score.ts";
@@ -112,11 +112,14 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
   // The runner tells the engine which model each turn is for (Rescue's diagnosis has its own); the stand in plays every part.
   const inner = ctx.agent ?? (ctx.mode === "dry" ? dryAgent(c, flow) : ctx.harness!.agent());
   const engine = ctx.meter.engine(inner);
-  const reviewer = ctx.review ? ctx.meter.engine(ctx.mode === "dry" ? scripted([[{ text: '{"verdict":"approve","concerns":[]}', costUsd: 0 }]]) : ctx.harness!.reviewer()) : undefined;
+  const reviewer = ctx.review ? ctx.meter.engine(ctx.mode === "dry" ? scripted([[{ text: '{"verdict":"approve","concerns":[]}', costUsd: 0 }]]) : ctx.harness!.reviewer(), "reviewer") : undefined;
   const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "deny", onStuck: ctx.onStuck ?? "different" });
   try {
     const before = await runHidden(c, dir);
     const printBefore = testPrint(dir);
+    const textsBefore = fileTexts(dir);
+    // Each test by name, so a fix that breaks another test of the same failing check is seen (the check failed before too).
+    const testsBefore = await perTest(dir);
     // 1. Point at the problem: the project exactly as it is, no model, nothing changed.
     await s.run({ type: "problem.find", project: dir, agent: AGENT }, timeout);
     const found = s.last("problem.found");
@@ -149,9 +152,11 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     // 4. The hidden checks, and what broke that worked before.
     const after = await runHidden(c, dir);
     const changedTests = testsChanged(printBefore, testPrint(dir));
+    const diff = changeSize(textsBefore, fileTexts(dir));
     const regressions = [
       ...c.hidden.filter((h) => before.state[h.name] && !after.state[h.name]).map((h) => `${h.what} (worked before, fails now: ${after.why[h.name] ?? ""})`),
       ...rungsAfter.filter((r) => rungsBefore.has(r)).map((r) => `the project's own "${r}" check passed before and fails now`),
+      ...testRegressions(testsBefore, await perTest(dir)),
     ];
     const accept = c.hidden.filter((h) => h.kind === "accept").map((h) => ({ name: h.name, pass: after.state[h.name] }));
     const asked = askedFor(ctx.meter.said, c.ask?.names);
@@ -167,7 +172,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
         flow, found: { verdict: found.verdict, label: found.label, place, message: found.problem?.message }, locatedRight,
         proof: receipts.at(-1)?.proof ?? null, receipts: receipts.length, checks: during.filter((e) => e.type === "proof.result").length,
         stuckShown: during.some((e) => e.type === "loop.stuck"), finalVerdict: final?.verdict ?? null,
-        accept, regressions, proofFooled, testsChanged: changedTests, asked, approvalsAsked: s.approvalsAsked.length, capped: ctx.meter.capped,
+        accept, regressions, proofFooled, testsChanged: changedTests, diff, asked, approvalsAsked: s.approvalsAsked.length, capped: ctx.meter.capped,
         hard: c.hard, split: c.split,
       },
     };
