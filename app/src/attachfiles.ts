@@ -34,6 +34,15 @@ export async function addFiles(have: Attached[], files: FileLike[]): Promise<{ h
   return { have: list, notes };
 }
 
+/** The files a paste carries: its files, or else its file items (a picture copied from a screenshot can come only as an
+ *  item), or none for plain text, which the box then takes as typing. */
+export function pastedFiles<F extends FileLike>(d: { files?: ArrayLike<F> | null; items?: ArrayLike<{ kind: string; getAsFile(): F | null }> | null } | null | undefined): F[] {
+  if (!d) return [];
+  const files = Array.from(d.files ?? []);
+  if (files.length) return files;
+  return Array.from(d.items ?? []).filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is F => !!f);
+}
+
 /** The list without the chip at `i`. */
 export const removeFile = (have: Attached[], i: number): Attached[] => have.filter((_, n) => n !== i);
 

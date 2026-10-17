@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ATTACH } from "../../runner/src/attach.ts";
-import { addFiles, chipLabel, forRequest, removeFile, type FileLike } from "./attachfiles.ts";
+import { addFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
 
@@ -83,6 +83,17 @@ describe("adding files to the ask box", () => {
   });
 });
 
+describe("what a paste carries", () => {
+  test("the files in it, or else the file items (a picture copied from a screenshot), or nothing for plain text", () => {
+    const a = file("a.md", enc("a")), b = file("image.png", PNG, "image/png");
+    expect(pastedFiles({ files: [a], items: [] })).toEqual([a]);
+    expect(pastedFiles({ files: [], items: [{ kind: "string", getAsFile: () => null }, { kind: "file", getAsFile: () => b }] })).toEqual([b]);
+    expect(pastedFiles({ files: [], items: [{ kind: "string", getAsFile: () => null }] })).toEqual([]);
+    expect(pastedFiles({ files: [], items: [{ kind: "file", getAsFile: () => null }] })).toEqual([]);
+    expect(pastedFiles(null)).toEqual([]);
+  });
+});
+
 describe("the chips", () => {
   test("say what each one is, and one can be removed before sending", async () => {
     const { have } = await addFiles([], [file("notes.md", enc("x".repeat(2048))), file("shot.png", PNG)]);
@@ -112,7 +123,7 @@ describe("what goes with Start", () => {
 describe("Home takes files only from a drop or a paste the person makes", () => {
   test("a drop anywhere on Home, and a paste into the ask box, go through addFiles", () => {
     expect(card).toMatch(/onDrop=\{[^\n]*addDropped\(/);
-    expect(card).toMatch(/onPaste=\{[^\n]*clipboardData[^\n]*addDropped\(/);
+    expect(card).toMatch(/onPaste=\{[^\n]*pastedFiles\(e\.clipboardData\)[^\n]*addDropped\(/);
     expect(card).toMatch(/const addDropped = [^\n]*addFiles\(/);
   });
   test("a file dropped anywhere else in the window is never opened in place of Home", () => {

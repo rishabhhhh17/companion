@@ -21,7 +21,7 @@ import { DRAFT_KEY, askKey, draftToKeep } from "./askbox.ts";
 import { aboutCopy, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
-import { addFiles, chipLabel, forRequest, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
+import { addFiles, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -1157,7 +1157,7 @@ function Card() {
         <textarea ref={box} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
           onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); }}
           onFocus={() => warmSoon()}
-          onPaste={(e) => { const fs = e.clipboardData?.files; if (fs && fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
+          onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
           onKeyDown={(e) => {
             if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
             e.preventDefault();
