@@ -2,6 +2,7 @@
 
 - **Status:** Fixed. Founder decision; do not reopen without the founder. Updated 7 Oct 2026 after desk research.
 - **Date:** 2026-10-06
+- **Amended by F18 (17 Oct 2026):** home in the notch (a top center pill where there is no notch) and the character on any edge or corner. The rest of F04 stands.
 - **Source:** product_research.md section 1, decision 4
 - **Related:** F01, F07, F11, T01, T12
 
