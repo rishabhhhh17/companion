@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
-import { ehCopy, receiptCopy, rescueCopy, researchCopy } from "./copytext.ts";
+import { aboutCopy, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { S } from "./strings.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, { v: 1, id: "e", ...e } as never), from);
@@ -52,5 +52,18 @@ describe("Copy on replies and receipts", () => {
   });
   test("the card offers Copy on the receipt, a research answer, what Rescue found and an explained error", () => {
     for (const f of ["receiptCopy(m, project)", "researchCopy(m.research)", "rescueCopy(m.rescue)", "ehCopy(m)"]) expect(card, f).toContain(`<CopyButton text={${f}}`);
+  });
+  test("why it was done copies its points, and the question with its choices", () => {
+    expect(explainCopy({ checkpoint: "cp_1", bullets: ["The form had no address to send to.", "I gave it one."] })).toBe([S.explainTitle, "- The form had no address to send to.", "- I gave it one."].join("\n"));
+    const q = explainCopy({ checkpoint: "cp_1", bullets: ["One."], question: { text: "Where does the form send?", options: ["To /join", "Nowhere"], correct: 0 } });
+    expect(q.split("\n").slice(-3)).toEqual([`${S.explainCheck}: Where does the form send?`, "- To /join", "- Nowhere"]);
+    expect(explainCopy({ checkpoint: "cp_1", bullets: [`Used ${KEY}.`] })).not.toContain(KEY);
+  });
+  test("where you left off, and what the project is, copy as shown", () => {
+    expect(recapCopy({ lines: ["You fixed the signup page.", "The tests pass."] })).toBe([S.recapTitle, "You fixed the signup page.", "The tests pass."].join("\n"));
+    expect(aboutCopy({ project: "/p", about: "A small shop made with Next.js.", origin: "", needsInstall: false, installCommand: null, missing: [], missingCount: 0, example: null, notes: ["It uses Stripe."] })).toBe([S.aboutTitle, "A small shop made with Next.js.", "It uses Stripe."].join("\n"));
+  });
+  test("the card offers Copy on why it was done, where you left off, and what the project is", () => {
+    for (const f of ["explainCopy(e)", "recapCopy(m.recap)", "aboutCopy(m.about)"]) expect(card, f).toContain(`<CopyButton text={${f}}`);
   });
 });

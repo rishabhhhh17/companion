@@ -18,7 +18,7 @@ import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, t
 import { S } from "./strings.ts";
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, draftToKeep } from "./askbox.ts";
-import { ehCopy, receiptCopy, rescueCopy, researchCopy } from "./copytext.ts";
+import { aboutCopy, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { addFiles, chipLabel, forRequest, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
@@ -71,6 +71,7 @@ function ExplainBox({ e }: { e: Explain }) {
     <details className="explain">
       <summary>{S.explainTitle} <span className="muted">· {S.explainCost}</span></summary>
       <ul>{e.bullets.map((b, i) => <li className="line" key={i}>{b}</li>)}</ul>
+      <div className="row"><CopyButton text={explainCopy(e)} label={S.copyAnswer} /></div>
       {e.question && (
         <div>
           <div className="line"><b>{S.explainCheck}:</b> {e.question.text}</div>
@@ -1146,7 +1147,7 @@ function Card() {
             <div className="line">{S.aboutMissing} <b>{m.about.missing.join(", ")}</b>{m.about.missingCount > m.about.missing.length ? ` ${S.andMore.replace("{n}", String(m.about.missingCount - m.about.missing.length))}` : ""}. {m.about.example ? S.aboutMissingExample.replace("{file}", m.about.example) : S.aboutMissingHow}</div>
           )}
           {m.about.missingCount > 0 && !m.walk && <div className="row"><button className="btn" type="button" onClick={() => beginLesson(SETTINGS_LESSON_ID, false)}>{S.aboutSettingsLesson}</button></div>}
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
+          <div className="row"><CopyButton text={aboutCopy(m.about)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
       {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
@@ -1575,7 +1576,7 @@ function Card() {
           <h2>{S.recapTitle}</h2>
           {m.recap.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
           <div className="line muted">{S.recapSource}</div>
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
+          <div className="row"><CopyButton text={recapCopy(m.recap)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
         </section>
       )}
 
