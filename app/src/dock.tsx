@@ -4,6 +4,7 @@ import { invoke, listen } from "./tauri.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor, visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
+import { roamFrom, type Roam } from "./roam.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
@@ -40,10 +41,17 @@ function Dock() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Coming to what it is about (F18 item 2): the app moves the character and says which named state it is in (surface,
+  // travel, settle, visiting, return, home) and which way to face, so the founder's art can follow. The dot only hints.
+  const [roam, setRoam] = useState<Roam>({ phase: "home", toward: null });
+  useEffect(() => {
+    const off = listen("roam", (e) => setRoam(roamFrom(e.payload)));
+    return () => { off.then((f) => f()); };
+  }, []);
   const label = characterWords(m);
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
-  // A click opens or closes the card; dragging moves the character along the screen edge.
+  // A click opens or closes the card; dragging moves the character to any edge or corner of the screen.
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
   const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false }; (e.target as HTMLElement).setPointerCapture(e.pointerId); void invoke("char_click"); };
   const move = (e: React.PointerEvent) => {
@@ -61,6 +69,7 @@ function Dock() {
   return (
     <main className="dock">
       <button className="character" type="button" data-state={visualState(m)} data-motion={motionFor(visualState(m), reduced)} data-react={react?.r}
+        data-roam={roam.phase} data-toward={roam.toward ?? undefined}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>

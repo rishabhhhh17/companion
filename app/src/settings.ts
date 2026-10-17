@@ -162,6 +162,12 @@ export function presentationFrom(v: unknown): Presentation {
   return { hideFromSharing: o.hideFromSharing !== false, quietOnCalls: o.quietOnCalls !== false };
 }
 
+// ---- Come to what it is about (F18 item 2) ----
+/** On unless the person turns it off; the app keeps it (dock.json), because the app moves the character. */
+export function comeToFrom(v: unknown): boolean {
+  return !(typeof v === "object" && v !== null && (v as Record<string, unknown>).comeTo === false);
+}
+
 // ---- Show me on all screens ----
 /** Off unless the person turns it on: Show me looks only at the display under the mouse pointer (product doc sections 5
  *  and 10). On, the same press looks at every display, with the light on first and secrets covered on each. */

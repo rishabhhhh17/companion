@@ -4,6 +4,7 @@
 //! makeKeyAndOrderFront on a panel.
 
 mod docking;
+mod roam;
 mod fullscreen;
 mod anchor;
 mod updates;
@@ -61,7 +62,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use docking::{card_frame, choice, dock_frame, inside, pick, signature, snap, Prefs, Rect, Screen};
+use docking::{card_frame, choice, inside, pick, signature, snap_on, Prefs, Rect, Screen};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -73,6 +74,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 const DOCK: (f64, f64) = (160.0, 160.0);
 const CARD: (f64, f64) = (340.0, 150.0);
+/// The tallest the card grows (its page asks for its content's height). The character beside a window keeps clear of
+/// the card at this height, so the card growing as a result comes in never ends over it.
+const CARD_MAX_H: f64 = 520.0;
 
 static RUN: OnceLock<String> = OnceLock::new();
 static T0: OnceLock<u128> = OnceLock::new();
@@ -194,18 +198,34 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel
 }
 
-/// Place the card next to the character, keeping its top level with the character's top.
-fn place_card(d: &NSPanel, c: &NSPanel) {
-    let mtm = MainThreadMarker::new().unwrap();
+/// Where the card goes at a given height (top left points, with the primary display's height for AppKit): next to the
+/// character's home, not where it may be visiting beside a window (F18 item 2), with its top level with the
+/// character's top, inside the work area.
+fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> {
     let list = screens_now(mtm);
-    let Some(first) = list.first() else { return };
+    let first = list.first()?;
     let ph = first.frame[3];
-    let df = from_appkit(d.frame(), ph);
+    let df = roamer().home().unwrap_or_else(|| from_appkit(d.frame(), ph));
     let (cx, cy) = (df[0] + df[2] / 2.0, df[1] + df[3] / 2.0);
     let scr = list.iter().find(|s| cx >= s.frame[0] && cx < s.frame[0] + s.frame[2] && cy >= s.frame[1] && cy < s.frame[1] + s.frame[3]).unwrap_or(first);
     let edge = with_prefs(|p| choice(p, &scr.id).0);
-    let cf = card_frame(df, (CARD.0, CARD_H.load(Ordering::SeqCst) as f64), scr.work, edge);
+    Some((card_frame(df, (CARD.0, h), scr.work, edge), ph))
+}
+
+/// Place the card next to the character's home. The card does not follow the character to a window.
+fn place_card(d: &NSPanel, c: &NSPanel) {
+    let mtm = MainThreadMarker::new().unwrap();
+    let Some((cf, ph)) = card_spot(mtm, d, CARD_H.load(Ordering::SeqCst) as f64) else { return };
     c.setFrame_display(to_appkit(cf, ph), true);
+    // The card opened or grew. If at its tallest it could reach the character beside a window, the visit is planned
+    // again clear of it (or ends).
+    if let Some((room, _)) = card_spot(mtm, d, CARD_MAX_H) { roam_card_moved(mtm, room); }
+}
+
+/// Where our card can reach at its tallest while it is up, for the character to keep clear of. Nothing while it is
+/// closed: if it opens later, place_card plans the visit again.
+fn card_room(mtm: MainThreadMarker) -> Vec<Rect> {
+    with_panels(|d, c| if c.isVisible() { card_spot(mtm, d, CARD_MAX_H).map(|(r, _)| r) } else { None }).flatten().into_iter().collect()
 }
 
 // ---------- screens and docking glue (the maths is in docking.rs, tested) ----------
@@ -217,8 +237,9 @@ static SIG: Mutex<String> = Mutex::new(String::new());
 static LAST_DRAG: Mutex<(f64, f64, f64, f64)> = Mutex::new((0.0, 0.0, 0.0, 0.0)); // x, y, work x, work width
 
 fn with_prefs<R>(f: impl FnOnce(&mut Prefs) -> R) -> R {
-    let mut g = PREFS.lock().unwrap();
-    let p = g.get_or_insert_with(|| std::fs::read_to_string(prefs_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default());
+    let mut g = PREFS.lock().unwrap_or_else(|e| e.into_inner());
+    // The careful reader: a place saved before F18 reads back unchanged, and one bad entry never loses the others.
+    let p = g.get_or_insert_with(|| Prefs::from_text(std::fs::read_to_string(prefs_path()).ok().as_deref()));
     f(p)
 }
 fn save_prefs() { with_prefs(|p| { let _ = logfile::write_atomic(&prefs_path(), serde_json::to_string(p).unwrap_or_default().as_bytes()); }); }
@@ -249,7 +270,15 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
         if p.last_screen != target.id { p.last_screen = target.id.clone(); }
         choice(p, &target.id)
     });
-    let f = dock_frame(target.work, DOCK, edge, pct);
+    // On its edge, inside the work area, out of the clear zone at the top centre (the notch island).
+    let f = docking::place(&target, DOCK, edge, pct);
+    // This is home now. A drag or a display change also ends any visit beside a window, with no trip back, and stops a
+    // trip that was under way where it is.
+    ROAM_GEN.fetch_add(1, Ordering::SeqCst);
+    roamer().placed_home(f);
+    *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
+    *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner()) = edge;
+    if let Some(app) = APP.get() { if roam_phase() != roam::Phase::Home { roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, f, f, None, edge)); } }
     with_panels(|d, c| {
         d.setFrame_display(to_appkit(f, ph), true);
         if c.isVisible() { place_card(d, c); }
@@ -257,15 +286,17 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     if !quiet { log("redock", json!({ "reason": reason, "how": how, "screen": target.id, "frame": f, "inside_work": inside(f, target.work) })); }
 }
 
-/// Dragging the character: it snaps to the nearer side edge of the display under the cursor.
+/// Dragging the character: it snaps to the nearest edge or corner of the display under the cursor.
 #[tauri::command]
 fn drag_dock(app: AppHandle, x: f64, y: f64) {
+    // While the person drags it nothing else moves it (F18 item 2).
+    DRAG_AT.store(now() as u64, Ordering::SeqCst);
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let list = screens_now(mtm);
         let Some(first) = list.first() else { return };
         let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
-        let (edge, pct) = snap(target.work, DOCK, x, y);
+        let (edge, pct) = snap_on(&target, DOCK, x, y);
         *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
         with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); });
         apply_dock(mtm, "drag", true);
@@ -274,11 +305,207 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
 
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
+    DRAG_AT.store(0, Ordering::SeqCst);
     save_prefs();
     let _ = app.run_on_main_thread(|| {
         let (x, y, wx, ww) = *LAST_DRAG.lock().unwrap();
         log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen), "last_pointer": [x, y], "work_x_and_width": [wx, ww] })));
     });
+}
+
+// ---------- the companion comes to what it is about (F18 item 2; the rules are in roam.rs, tested) ----------
+
+static ROAM: Mutex<roam::Roamer> = Mutex::new(roam::Roamer::new());
+fn roamer() -> std::sync::MutexGuard<'static, roam::Roamer> { ROAM.lock().unwrap_or_else(|e| e.into_inner()) }
+/// Each trip takes a number; a newer trip, a drag or a display change stops an older one where it is.
+static ROAM_GEN: AtomicU64 = AtomicU64::new(0);
+/// Where the character is right now (top left points), for the pointer check while it travels.
+static ROAM_AT: Mutex<Option<Rect>> = Mutex::new(None);
+/// The edge home is on, and the named state the character's page was last told.
+static HOME_EDGE: Mutex<docking::Edge> = Mutex::new(docking::Edge::Right);
+static ROAM_PHASE: Mutex<roam::Phase> = Mutex::new(roam::Phase::Home);
+/// When the person last dragged the character (ms since 1970), 0 once they let go.
+static DRAG_AT: AtomicU64 = AtomicU64::new(0);
+
+fn roam_phase() -> roam::Phase { *ROAM_PHASE.lock().unwrap_or_else(|e| e.into_inner()) }
+/// Tells the character's page the named state (surface, travel, settle, visiting, return, home) and which way to face,
+/// so the founder's art can follow (F18 item 4). The placeholder dot only hints at them.
+fn roam_say(app: &AppHandle, phase: roam::Phase, toward: &str) {
+    *ROAM_PHASE.lock().unwrap_or_else(|e| e.into_inner()) = phase;
+    let _ = app.emit_to("dock", "roam", json!({ "phase": phase.name(), "toward": toward }));
+}
+
+/// A drag in progress (a drag the page never ended counts for a second and a half after its last move).
+fn dragging() -> bool { let t = DRAG_AT.load(Ordering::SeqCst); t != 0 && (now() as u64).saturating_sub(t) < 1500 }
+/// Never while the person drags it, never while the pointer is over it. Only the mouse position is read (no
+/// permission, never keys).
+fn roam_blocked() -> bool {
+    if dragging() { return true; }
+    let Some(at) = *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) else { return false };
+    let p = macos_see::pointer();
+    p.x >= at[0] && p.x < at[0] + at[2] && p.y >= at[1] && p.y < at[1] + at[3]
+}
+/// The Mac's own Reduce motion setting (Accessibility, Display). Read with no permission.
+fn reduce_motion() -> bool { NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion() }
+
+/// Something about a place on screen is up: the character comes beside the window it is in, unless the setting is off,
+/// Companion is hidden, the place has no confirmed window (a menu, a dialog, the desktop), or there is no room outside
+/// the window; then any older visit ends. Main thread.
+fn roam_to(app: &AppHandle, mtm: MainThreadMarker, an: Option<&anchor::Anchor>, target: Rect) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let going = (|| {
+        if !with_prefs(|p| p.come_to) || HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return None; }
+        let an = an?;
+        let list = screens_now(mtm);
+        let screen = roam::display_of(&list, target)?;
+        let home = roamer().home()?;
+        // Never over our own card, at the height it can grow to.
+        let avoid = card_room(mtm);
+        match roam::plan(&roam::Ask { screen, window: an.bounds, target, size: DOCK, avoid: &avoid, home }) {
+            roam::Plan::Go { spot, side } => Some(roam::Visit { anchor: an.clone(), target, spot, side }),
+            roam::Plan::Stay(why) => { log("roam_stay", json!({ "why": format!("{why:?}") })); None }
+        }
+    })();
+    match going {
+        Some(v) => { log("roam_go", json!({ "side": format!("{:?}", v.side) })); roamer().begin(v); }
+        None => { if roamer().visit().is_none() { return; } roamer().end(); }
+    }
+    roam_kick(app);
+}
+
+/// The card opened or grew (place_card) and at its tallest reaches `room`: the rule decides whether the character
+/// beside a window moves clear of it or goes home, and the trip starts. Main thread.
+fn roam_card_moved(mtm: MainThreadMarker, room: Rect) {
+    let Some(target) = roamer().visit().map(|v| v.target) else { return };
+    let list = screens_now(mtm);
+    let Some(screen) = roam::display_of(&list, target) else { return };
+    let Some(p) = roamer().card_moved(room, screen, DOCK) else { return };
+    log("roam_card_moved", json!({ "now": match p { roam::Plan::Go { side, .. } => format!("{side:?}"), roam::Plan::Stay(why) => format!("{why:?}") } }));
+    if let Some(app) = APP.get() { roam_kick(app); }
+}
+
+/// A result about another app's window (the error explainer, Prompt help): the character comes beside that app's front
+/// window while the card shows the result. Window owners and sizes only, never content.
+pub(crate) fn roam_beside_window_of(app: &AppHandle, pid: i32) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(bounds) = roam::front_window_of(&fullscreen::sys::on_screen_windows(), pid) else { return };
+        let an = anchor::Anchor { pid, bounds, front_pid: pid };
+        roam_to(&a, MainThreadMarker::new().unwrap(), Some(&an), bounds);
+    });
+}
+
+/// Ends any visit (Stop everything, the setting turned off): the character goes home.
+fn roam_end(app: &AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || { if roamer().visit().is_some() { roamer().end(); roam_kick(&a); } });
+}
+
+/// Starts the trip the rules ask for, if any (after a new visit, and on every tick). Main thread.
+fn roam_kick(app: &AppHandle) {
+    // Nothing waiting (nearly every tick): the pointer is not even read.
+    if !roamer().pending() { return; }
+    let mv = roamer().next_move(roam_blocked());
+    if let Some(mv) = mv { roam_animate(app, mv, reduce_motion()); }
+}
+
+/// Each tick: is the visit still right (its window there and unchanged, its app in front, a ring or the card up, the
+/// setting on, Companion not hidden)? If not it goes home; when hidden, at once with no trip. Then a trip still wanted
+/// starts (one held back by the pointer or a drag starts as soon as they are gone).
+fn roam_tick(app: &AppHandle, wins: &[fullscreen::Win], front_pid: i32) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let up = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || card_visible();
+    let hidden = HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst);
+    let on = with_prefs(|p| p.come_to);
+    let ended = roamer().tick(&roam::TickIn { now: now() as u64, on, hidden, up, wins, ours: std::process::id() as i32, front_pid });
+    if let Some(why) = ended {
+        log("roam_home", json!({ "why": format!("{why:?}") }));
+        if why == roam::EndWhy::Hidden { roam_home_now(app); }
+    }
+    roam_kick(app);
+}
+
+/// Home at once, with no trip (Companion was hidden, so nobody would see it travel).
+fn roam_home_now(app: &AppHandle) {
+    let Some(home) = roamer().home() else { return };
+    let gen = ROAM_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    roamer().placed_home(home);
+    roam_set(app, home, gen);
+    let edge = *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner());
+    roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, home, home, None, edge));
+}
+
+/// One trip through the named states (roam::steps), telling the character's page each one. With reduced motion it
+/// appears in place. A newer trip, a drag or a display change stops it where it is. Main thread (it reads the screens),
+/// the trip itself runs on its own thread.
+fn roam_animate(app: &AppHandle, mv: roam::Move, reduced: bool) {
+    let gen = ROAM_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let from = ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()).unwrap_or(mv.to);
+    let side = if mv.out { roamer().visit().map(|v| v.side) } else { None };
+    let edge = *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner());
+    // The top of the screens it travels between, so the arc never rises into a menu bar.
+    let ceiling = MainThreadMarker::new().map(|mtm| screens_now(mtm).iter()
+        .filter(|s| [from, mv.to].iter().any(|r| { let (x, y) = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0); x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3] }))
+        .map(|s| s.work[1]).fold(f64::INFINITY, f64::min)).filter(|c| c.is_finite()).unwrap_or(from[1].min(mv.to[1]));
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let d = (mv.to[0] - from[0]).hypot(mv.to[1] - from[1]);
+        for (phase, ms) in roam::steps(mv.out, reduced, roam::travel_ms(d)) {
+            if ROAM_GEN.load(Ordering::SeqCst) != gen { return; }
+            roam_say(&app, phase, roam::facing(phase, from, mv.to, side, edge));
+            match phase {
+                roam::Phase::Travel | roam::Phase::Return => { if !roam_fly(&app, from, mv.to, ms, ceiling, gen) { return; } }
+                roam::Phase::Surface | roam::Phase::Settle => std::thread::sleep(Duration::from_millis(ms)),
+                roam::Phase::Visiting | roam::Phase::Home => roam_set(&app, mv.to, gen),
+            }
+        }
+    });
+}
+
+/// The trip itself: the arrow's arc and easing, about sixty steps a second. It holds still while the pointer is over
+/// the character or the person drags it, and stops (false) when a newer trip takes over.
+fn roam_fly(app: &AppHandle, from: Rect, to: Rect, ms: u64, ceiling: f64, gen: u64) -> bool {
+    let up = roam::bends_up(from, to, ceiling);
+    let total = ms.max(1) as f64;
+    let (mut done, mut last) = (0.0f64, std::time::Instant::now());
+    loop {
+        std::thread::sleep(Duration::from_millis(16));
+        if ROAM_GEN.load(Ordering::SeqCst) != gen { return false; }
+        let dt = last.elapsed().as_secs_f64() * 1000.0;
+        last = std::time::Instant::now();
+        // Held still (the time does not count), looking a few times a second rather than every frame.
+        if roam_blocked() { std::thread::sleep(Duration::from_millis(84)); last = std::time::Instant::now(); continue; }
+        done = (done + dt).min(total);
+        roam_set(app, roam::arc_at(from, to, roam::ease(done / total), up), gen);
+        if done >= total { return true; }
+    }
+}
+
+/// Puts the character at `r` (top left points) unless a newer trip took over. It only moves the panel: never orders it
+/// in or gives it the keyboard.
+fn roam_set(app: &AppHandle, r: Rect, gen: u64) {
+    let _ = app.run_on_main_thread(move || {
+        if ROAM_GEN.load(Ordering::SeqCst) != gen { return; }
+        *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
+        let mtm = MainThreadMarker::new().unwrap();
+        let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        with_panels(|d, _| d.setFrame_display(to_appkit(r, ph), true));
+    });
+}
+
+/// Settings: whether the character comes to what it is about (on unless turned off). Kept in `dock.json`.
+#[tauri::command]
+fn dock_settings() -> Value { json!({ "comeTo": with_prefs(|p| p.come_to) }) }
+
+/// Settings: turns it on or off. Only from the card. Off sends a visiting character home.
+#[tauri::command]
+fn set_come_to(app: AppHandle, window: tauri::WebviewWindow, on: bool) -> Result<Value, String> {
+    if window.label() != "card" { return Err("This can only be changed from the card.".into()); }
+    with_prefs(|p| p.come_to = on);
+    save_prefs();
+    if !on { roam_end(&app); }
+    log("come_to_set", json!({ "on": on }));
+    Ok(json!({ "comeTo": on }))
 }
 
 /// A page that has just loaded asks for the status messages it missed.
@@ -403,7 +630,7 @@ fn toggle_card(app: AppHandle) {
 /// The card page tells us how tall its content is; we resize the panel to fit.
 #[tauri::command]
 fn resize_card(app: AppHandle, height: f64) {
-    let h = height.clamp(150.0, 520.0);
+    let h = height.clamp(CARD.1, CARD_MAX_H);
     CARD_H.store(h as u64, Ordering::SeqCst);
     let _ = app.run_on_main_thread(move || { with_panels(|d, c| if c.isVisible() { place_card(d, c) }); });
 }
@@ -556,7 +783,7 @@ fn showme_stop(app: &AppHandle) {
     let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false));
     showme_stop_rest(app);
 }
-fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); showme_pending().end(); }
+fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); showme_pending().end(); roam_end(app); }
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 /// `all_screens`: the person's setting to include every display, not only the one under the pointer (off unless turned on).
@@ -638,12 +865,16 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     // an ordinary window the ring is soft and says it is a guess.
     let exact = exact && watched.window().is_some();
     let clip = watched.window().map(|an| json!({ "x": an.bounds[0] - d.x, "y": an.bounds[1] - d.y, "w": an.bounds[2], "h": an.bounds[3] }));
+    let anchored = watched.window().cloned();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-        // The flight starts at the character, wherever it is docked, or at the last target of the same answer on this display.
-        let dock_at = with_panels(|dock, _| { let f = dock.frame(); (f.origin.x + f.size.width / 2.0, primary_h - (f.origin.y + f.size.height / 2.0)) }).unwrap_or((d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let from = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y)).unwrap_or(dock_at);
+        // The flight starts at the last target of the same answer on this display, or else where the character is now,
+        // read before it sets off: it follows the arrow to the window.
+        let here = roam::arrow_start(with_panels(|dock, _| from_appkit(dock.frame(), primary_h)), (d.x + d.w - 40.0, d.y + d.h / 2.0));
+        let from = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y)).unwrap_or(here);
+        // The character comes beside the window the ring is in (F18 item 2); a ring with no confirmed window leaves it home.
+        roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
         let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
             "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)) });
         let ak = coords::rect_to_appkit(d, primary_h);
@@ -872,7 +1103,8 @@ fn presentation_now() -> presentation::Settings {
 /// Best effort (see presentation.rs). Companion's own capture leaves its own windows out by process either way.
 fn apply_sharing(s: &presentation::Settings) {
     let t = objc2_app_kit::NSWindowSharingType(presentation::sharing_type(s));
-    with_panels(|_, card| card.setSharingType(t));
+    // F18: the character too, wherever it is (at home or beside a window).
+    with_panels(|dock, card| { card.setSharingType(t); dock.setSharingType(t); });
     OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setSharingType(t); } });
 }
 
@@ -1499,6 +1731,8 @@ fn tick(app: &AppHandle) {
     // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.
     let sig = signature(&screens_now(mtm));
     if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } { apply_dock(mtm, "screens_changed", false); }
+    // The character beside a window goes home when its window changed, its app left the front, or nothing about it is up.
+    roam_tick(app, &wins, front_pid);
     let act = active(mtm);
     let fr = front();
     // Take the wheel: the editor or terminal came to the front while a plan runs, so ask it to pause.
@@ -1640,7 +1874,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

@@ -13,6 +13,19 @@
 ## What stays
 Every AGENTS.md rule. In particular: the home and the character are non activating panels and never take keyboard focus by themselves (rule 9); the screen is touched only on a hotkey with the light first (rule 5); nothing reads key events (rule 8); presentation mode and hiding from screen sharing apply to the home and the character (rule 7, M11).
 
+## Settled in the build (item 2, 17 Oct 2026)
+These are build details, not new founder decisions; the founder can change any of them.
+- **Where it lives.** Any of the four edges with a position along it; the two ends of each edge are the corners, and dragging near a corner (within 140 points of both edges) puts it exactly in the corner. Saved per display in `dock.json` as before. A place saved before F18 (left or right with a height) reads back unchanged, so nobody's character moves. It stays inside the work area and out of a clear zone at the top centre of every display (360 by 120 points below the menu bar: a notch of about 190 points plus a margin each side), left for the island of item 1; on the top edge it slides to the nearer side of that zone.
+- **When it comes.** When a ring is drawn in a confirmed window (Point at the problem, a step of a Show me answer or a lesson, a your turn ring) and when a result is about another app's window (the error explainer, Prompt help). Not for a ring with no confirmed window under it (a menu, a dialog, the desktop): it stays home.
+- **Where it goes.** Beside the window, outside it, on the side with the most room, level with the target, never over the target, the window, the clear zone or Companion's card, and only on the display the target is on. When there is no room outside the window (a window that fills the screen) it stays home, and it stays home when home is already about as near.
+- **The card.** It keeps clear of the card at the tallest the card can grow (520 points), not only its height when the trip starts, so the card growing as a result comes in never ends over it. If the card opens after the trip was planned, or could now reach the character, the visit is planned again from the same window: one move to a clear spot, or home when there is none.
+- **The arrow.** The arrow leaves from where the character is when the ring is drawn (home, or wherever it is on its way), and the character follows it to the window. The arrow is not held back for the trip, so the ring, its words and the watch of its window stay in step. A later step of the same answer flies from the last target, as before.
+- **When it goes back.** When neither a ring nor the card has been up for a second and a half; at once when the window moves, closes or is covered, another app comes to the front, the setting is turned off or Stop everything is pressed; with no trip when Companion is hidden. A drag or a display change gives it a new home and ends the visit.
+- **Motion.** A short arc, 0.3 to 0.7 seconds, with the arrow's easing and bend. It never moves while the person drags it or while the pointer is over it (it holds still and goes on when the pointer leaves). Named states for the art: surface, travel, settle, visiting, return, home, each with the way to face. With reduced motion it appears in place.
+- **Setting.** "Come to what it is about", on unless turned off. The card stays by home (item 1 moves the card under the notch).
+- **Screen sharing.** "Hide from screen sharing" now covers the character too, as this record says.
+
+
 ## Settled in the build (17 Oct 2026, item 3)
 Details inside item 3, not changes to it.
 - Option and Space is registered through the same global shortcut plugin as every other hotkey: the Mac's hot key service reports the keys going down and coming up. Nothing reads key events and nothing asks for Input Monitoring.
@@ -23,6 +36,7 @@ Details inside item 3, not changes to it.
 - Key repeats while the keys are held restart nothing. A let go that never arrives cannot leave hold to talk stuck, and the microphone still closes after a minute.
 - The old Control, Option, Command and V is dropped, not kept as a second binding: nobody has used hold to talk yet (F17), and a hotkey that no hint names would take a key from other apps for nothing.
 
+
 ## Open, to settle on a real Mac
-How the island looks and behaves around the notch, in full screen apps, and on a second display; the hands on session checks it.
+How the island looks and behaves around the notch, in full screen apps, and on a second display; the hands on session checks it. For item 2: how the trip feels at 60 steps a second on a real panel (and on a second display); whether the 360 by 120 clear zone matches the island once it is built; whether staying home for a window that fills the screen is right (most people keep their browser that way, so the character would rarely come); whether the arrow leaving from the character as it sets off reads well, or whether the founder would rather the character arrive first and then point (that would delay the ring, its words and its watch by up to a second); and that the card, opening or growing, never ends over the character beside a window.
 Hold to talk: whether macOS refuses Option and Space when another app (ChatGPT, Raycast, Alfred, Superwhisper) holds it, or lets both have it (a launch blocker, see T13); whether letting go of Option before Space still ends the hold; and whether the press repeats while held (T13 open items).

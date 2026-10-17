@@ -79,6 +79,8 @@ fn read_and_send(app: &AppHandle, mut session: ReadSession, gen: u64, pid: i32, 
             let req = format!("eh_{}", now_ms());
             note(bundle, ms, text.chars().count(), rung);
             say(app, "thinking", json!({ "app": name, "req": req }));
+            // The character comes beside the window the error was in while the card explains it (F18 item 2).
+            crate::roam_beside_window_of(app, pid);
             if app.state::<crate::runner::Runner>().send(&errorsel::command(&req, bundle, &text, &crate::current_project())).is_err() {
                 say(app, "error", json!({ "why": "no_engine" }));
             }
