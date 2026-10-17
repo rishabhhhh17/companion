@@ -325,6 +325,8 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <h3>{S.exportLogsTitle}</h3>
       <div className="line muted">{S.exportLogsHelp}</div>
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
+      <div className="line muted">{S.reportHelp}</div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => setExported(S.reportOpened(String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
       {step === "idle" && <div className="row"><button className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
       {step !== "idle" && (

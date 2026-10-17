@@ -90,6 +90,7 @@ The folder starts in M1 with only `secrets` (the Keychain key) and `supervisor` 
 | `account` | Plus entitlements (sent to the runner, see the entitlements seam in section 5) and billing handoff to the merchant of record | M10 |
 | `platform` | `macos` and `windows` implementations behind traits used by every module above | M2, Windows in M11 |
 | `app` | Tray, launch at login (SMAppService), updater, single instance; opens the Terminal sign in (the runner's `.command` file, through `open`) | M2, hardened M9 |
+| `report` (`report.rs`, M11) | Report a problem (Settings): saves the support log (`logexport`, the same file as Save a log for support) and shows it in Finder, then opens an email draft in the person's own mail app, or the report page set in `report.json` (an email address or an https page, empty until the founder fills it in; with neither the draft has no recipient), with only Companion's version and the Mac's version filled in (each only digits and dots, else "unknown"). The draft's words are the page's own (`strings.ts`), plain and short, checked before anything is written. No log content, name, folder or project goes into the address, and nothing is sent: the person attaches the file and sends it | M11 |
 | `commands` | The short list of Tauri commands the UI may call | M2 |
 
 ### Runner: `runner/src/`

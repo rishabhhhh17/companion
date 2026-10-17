@@ -29,6 +29,7 @@ mod redact;
 mod showme;
 mod pointat;
 mod share;
+mod report;
 mod yourturn;
 mod wipe;
 mod logexport;
@@ -1446,9 +1447,33 @@ fn open_permission_page(which: String) -> Result<(), String> {
 /// Finder. Nothing is sent anywhere: the person decides whether to share it.
 #[tauri::command]
 async fn export_logs() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(|| {
+    tauri::async_runtime::spawn_blocking(write_support_log).await.map_err(|_| "The export stopped.".to_string())?
+}
+
+fn cmd_out(c: &str, a: &[&str]) -> String { std::process::Command::new(c).args(a).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default() }
+
+/// Report a problem (Settings, report.rs): saves the same support log as export_logs and shows it in Finder, then opens an
+/// email draft (or the report page set in report.json) with only Companion's version and the Mac's version filled in. The
+/// subject and words are the page's own (strings.ts), with {version} and {macos} filled in here. Only from Home, only on the
+/// person's press. Nothing is sent: the person attaches the file and sends it themselves. Returns the saved file's name.
+#[tauri::command]
+async fn report_problem(window: tauri::WebviewWindow, subject: String, body: String) -> Result<String, String> {
+    if window.label() != "card" { return Err("A report can only be started from Companion's own window.".into()); }
+    let cfg = report::parse_config(include_str!("../report.json"));
+    // The words are checked before anything is written, so a refusal leaves nothing behind.
+    report::address(&cfg, &subject, &body, "0", "0")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = write_support_log()?;
+        let to = report::address(&cfg, &subject, &body, env!("CARGO_PKG_VERSION"), &cmd_out("/usr/bin/sw_vers", &["-productVersion"]))?;
+        let ok = std::process::Command::new("/usr/bin/open").arg(&to).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+        log("report_opened", json!({ "ok": ok, "page": !cfg.page.is_empty() }));
+        if ok { Ok(name) } else { Err(format!("The log was saved as {name} in your Downloads folder, but no email or report page could be opened. Send the file to the person running the beta yourself.")) }
+    }).await.map_err(|_| "The report stopped.".to_string())?
+}
+
+/// The support log itself (blocking): written to Downloads under a new name and shown in Finder. Returns its file name.
+fn write_support_log() -> Result<String, String> {
         let (home, data) = (home_dir(), data_dir());
-        let cmd_out = |c: &str, a: &[&str]| std::process::Command::new(c).args(a).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
         let perms = permissions::current();
         let word = |k: &str| permissions::support_words(match k { "screen_recording" => perms.screen_recording, "accessibility" => perms.accessibility, _ => perms.microphone });
         let pj = projects::load(&projects_path());
@@ -1480,7 +1505,6 @@ async fn export_logs() -> Result<String, String> {
         std::io::Write::write_all(&mut f, text.as_bytes()).map_err(|e| format!("Could not save the log ({e})."))?;
         let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).status();   // shows the file in Finder
         Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
-    }).await.map_err(|_| "The export stopped.".to_string())?
 }
 
 /// A practice project (the first run's unless the page names another on the list): copied into a new folder in the home
@@ -2144,7 +2168,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

@@ -293,6 +293,12 @@ export const S = {
   exportLogsHelp: "Saves a text file in your Downloads folder that you can send me: Companion's version, your Mac's, which permissions are allowed, and Companion's own activity log with times. It holds no project content, nothing you typed or said, and nothing from your screen, and keys and your name and folders are covered. Nothing is sent for you.",
   exportLogs: "Save a log for support",
   exportLogsDone: "Saved {name} in your Downloads folder.",
+  // Report a problem: the same log, then an email draft (or the report page) with only the two versions filled in (report.rs).
+  reportButton: "Report a problem",
+  reportHelp: "Saves the same log, then opens an email in your mail app with only Companion's version and your Mac's version filled in. Attach the log file to it yourself. Nothing is sent for you.",
+  reportSubject: "Companion problem report",
+  reportBody: "Companion {version} on macOS {macos}.\n\nWhat happened:\n\n\nWhat you expected instead:\n\n\nPlease attach the log file Companion just saved in your Downloads folder. Its name starts with companion-logs.",
+  reportOpened: (name: string) => `Saved ${name} in your Downloads folder and opened an email. Attach that file, then send it yourself.`,
   deleteEverything: "Delete everything…",
   deleteSure: "Delete everything Companion keeps?",
   deleteExplain: "This removes the list above from this Mac and cannot be undone. The undo snapshots go too, so earlier changes could no longer be undone. Your projects' own files are never touched. macOS will ask you once more before anything is deleted. Companion opens again afterwards, as if it were new.",

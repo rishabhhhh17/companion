@@ -8,6 +8,7 @@ Nothing here is published by an agent. Each step that goes public is yours to ru
 2. **A public place for release files.** The source repo is private, and a private repo's release files cannot be downloaded by your friends. Make a second, **public** repo that holds only release files (no source), for example `companion-releases`. Updates and the installer are fetched from there.
 3. **The update key**, once: `sh app/scripts/make-update-key.sh https://github.com/<you>/companion-releases/releases/latest/download/latest.json`. The private key goes into your Keychain only. Commit the changed `app/src-tauri/updater.json` (it holds the public key and the address). Until you do, the app says "Updates are not set up in this build yet" and nothing is checked.
    - If the private key is lost, installed copies can never update again and people must reinstall. If it leaks, someone could push a fake update. Back it up like a password.
+4. **Where problem reports go**, once: put your email address (or an https page for reports) in `app/src-tauri/report.json`. Until you do, Report a problem opens an email with no recipient and the person types one in.
 
 ## Every release
 

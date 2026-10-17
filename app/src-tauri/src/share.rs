@@ -28,7 +28,7 @@ pub fn check_jpeg(bytes: &[u8]) -> Result<(), String> {
 pub fn is_web_link(s: &str) -> bool { web_link(s).is_some() }
 
 /// Characters that change how text looks without showing (right to left overrides, zero width spaces, a soft hyphen).
-fn hidden_char(c: char) -> bool { matches!(c, '\u{ad}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}') }
+pub fn hidden_char(c: char) -> bool { matches!(c, '\u{ad}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}') }
 
 fn parsed(s: &str) -> Option<tauri::Url> {
     if !(s.starts_with("https://") || s.starts_with("http://")) || s.len() >= 2048 { return None; }
