@@ -5,6 +5,8 @@ import { at, bend, burst, confetti, CONFETTI_S, ease, flightMs, RING_MS } from "
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
+import { playful, reducedMotion } from "./motion.ts";
+import { reactionsOn } from "./reactions.ts";
 
 // mark: a hand drawn ring, arrow, underline or box for a confirmed target (marks.ts); a guess never gets one. flyMs: how
 // long the flight takes (a step of a multi step answer flies for its lead in). fadeMs: how long the mark stays (its line).
@@ -24,7 +26,7 @@ function show(p: Point) {
   // A ring that waits for the person's click stays until they click, press Do it for me, or close it. Any other goes ten
   // seconds after this draw was ordered, the flight included, so it never outlives the shell's watch of its window (rule 22).
   if (!p.hold) timer = setTimeout(clear, RING_MS);
-  const reduced = p.reduced ?? matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = p.reduced ?? reducedMotion();
   const cx = p.rect.x + p.rect.w / 2, cy = p.rect.y + p.rect.h / 2;
   const { rx, ry } = ringRadii(p.rect);
   const color = p.exact ? "#ff9a2e" : "#ffb020";
@@ -94,9 +96,10 @@ function show(p: Point) {
 void listen("overlay-point", (e) => show(e.payload as Point));
 void listen("overlay-clear", () => clear());
 
-// The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion).
+// The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion
+// or with reactions turned off; the green ring and the tick show either way).
 function celebrate(rect: { x: number; y: number; w: number; h: number }) {
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = reducedMotion();
   clearTimeout(timer); clearTimeout(markTimer);
   svg.querySelectorAll("path").forEach((a) => a.remove());
   svg.querySelectorAll("g.mark").forEach((g) => g.remove());
@@ -105,7 +108,7 @@ function celebrate(rect: { x: number; y: number; w: number; h: number }) {
   const cx = rect.x + rect.w / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
   svg.appendChild(el("path", { d: `M${cx - 9} ${ty - 14} l6 6 l12 -13`, fill: "none", stroke: "#1e8a4c", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
   cap.textContent = "That's it."; 
-  if (!reduced) {
+  if (playful(reactionsOn(), reduced)) {
     const dots = burst(rect).map((d, i) => { const c = el("circle", { cx: d.x, cy: d.y, r: d.r, fill: i % 2 ? "#ff9a2e" : "#1e8a4c" }); svg.appendChild(c); return { c, d }; });
     const t0 = performance.now();
     const step = (now: number) => {
@@ -120,8 +123,9 @@ void listen("overlay-celebrate", (e) => celebrate((e.payload as { rect: { x: num
 
 
 // The big celebration (proof passed on a fix, or the site went live): confetti from the character, once, then gone.
-// It draws in its own layer and never clears anything else on the overlay.
+// It draws in its own layer and never clears anything else on the overlay. None with reactions off or reduced motion.
 function party(o: { x: number; y: number }) {
+  if (!playful(reactionsOn(), reducedMotion())) return;
   const layer = el("g", { class: "party" });
   svg.appendChild(layer);
   const bits = confetti(36, o.x > innerWidth / 2).map((p) => {
@@ -153,7 +157,7 @@ const RED = "#ff6b6b", INKC = "#f2efe6";
 const HAND = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
 function drawDiagram(d: Laid, dockX: number) {
   clear();
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = reducedMotion();
   const pad = 26;
   const W = Math.max(d.width + pad * 2, 380);
   const perLine = Math.floor((W - pad * 2) / 8.6);   // letters that fit a line at the sizes used below
@@ -210,6 +214,6 @@ function drawDiagram(d: Laid, dockX: number) {
       }, t0);
     }));
   }
-  timer = setTimeout(() => { g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, 15_000);
+  timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, 15_000);
 }
 void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number }; drawDiagram(p.diagram, p.dockX); });

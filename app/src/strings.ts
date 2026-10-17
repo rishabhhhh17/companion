@@ -511,4 +511,8 @@ export const S = {
   islandWorkingOn: (what: string) => `Working on ${what}`,
   islandNeedsYou: (what: string) => `Needs you: ${what}`,
   islandDone: (what: string) => `Done: ${what}`,
+  // What Home says out loud for VoiceOver (a11y.ts), politely, without moving the keyboard.
+  saidPlan: (n: number) => `The plan is ready: ${n} ${n === 1 ? "step" : "steps"}. Check it, then start it.`,
+  saidDone: (what: string, proof: string) => (what ? `Done: ${what}. ${proof}` : `Done. ${proof}`),
+  saidNotDone: (what: string) => (what ? `Not done: ${what}. A check failed.` : "Not done. A check failed."),
 } as const;

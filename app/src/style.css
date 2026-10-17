@@ -1,5 +1,7 @@
-:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #d9d9de; --edge: #767680; --accent: #ff9a2e; --amber: #ffb020; --danger: #c0392b; --ok: #1e8a4c; font: 14px -apple-system, "SF Pro Text", sans-serif; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #a8a8ad; --line: #3a3a3e; --edge: #8e8e96; --danger: #ff7a6e; --ok: #4cc27f; } }
+/* Text and focus colours meet WCAG AA in both themes (a11y.test.ts computes each pair from these tokens). --accent-line:
+   the accent where it is a line that must stand out on the page (the open tab), darker in light so it reaches 3 to 1. */
+:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #d9d9de; --edge: #767680; --accent: #ff9a2e; --accent-line: #b25f00; --amber: #ffb020; --danger: #c0392b; --ok: #1e8a4c; font: 14px -apple-system, "SF Pro Text", sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #a8a8ad; --line: #3a3a3e; --edge: #8e8e96; --accent-line: #ff9a2e; --danger: #ff7a6e; --ok: #4cc27f; } }
 @media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-width: 2px; } }
 html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; }
 /* What a person may want to copy (an error, a path, a plan step) can be selected. */
@@ -23,7 +25,7 @@ button { font: inherit; }
 .character[data-motion="scan"] { animation: scan 1.6s ease-in-out infinite; }
 .character[data-motion="glow"] { animation: glow 1.8s ease-in-out infinite; }
 .character[data-motion="droop"] { animation: droop 3s ease-in-out infinite; }
-.badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--amber); color: #000; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+.badge { position: absolute; top: -4px; right: -4px; min-width: 20px; min-height: 20px; box-sizing: border-box; padding: 0 5px; border-radius: 10px; background: var(--amber); color: #000; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
 @keyframes breathe { 50% { transform: scale(1.04); } }
 @keyframes swirl { to { transform: rotate(360deg); } }
 @keyframes busy { 50% { transform: translateY(-4px) scale(1.03); } }
@@ -41,6 +43,8 @@ button { font: inherit; }
 .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
+/* The main button keeps its own colour under the pointer (the plain hover tint would put black words on dark grey). */
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, #000 12%, var(--accent)); }
 .btn.danger { color: var(--danger); }
 .panel { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
 .panel.amber { border-color: var(--amber); }
@@ -96,7 +100,7 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 .tabs { display: flex; gap: 2px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .tab { position: relative; font: inherit; font-size: 13px; padding: 5px 9px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--muted); cursor: pointer; border-radius: 6px 6px 0 0; }
 .tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, var(--bg)); }
-.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent-line); font-weight: 600; }
 .tabdot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--amber); vertical-align: middle; }
 @media (forced-colors: active) { .tab[aria-selected="true"] { border-bottom-color: Highlight; } .tabdot { forced-color-adjust: none; border: 1px solid CanvasText; } }
 
