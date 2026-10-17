@@ -251,6 +251,18 @@ export const S = {
   updatesAuto: "Check once a day",
   updatesBusy: "Wait until the current task is finished, then install.",
   updatesReady: "A new version is ready. Open Settings to install it.",
+  // What changed, shown once on Now after an update (whatsnew.ts). One entry per version, newest at the top, a few short
+  // plain sentences each. A test fails if the app's version (tauri.conf.json) has none.
+  whatsNew: {
+    "0.1.0": [
+      "Home now drops down from the top of your screen, around the notch, with tabs for Now, What I did, Learn, Memory and Settings.",
+      "The character can live on any edge or corner of a screen, and comes next to the window it is pointing at.",
+      "Hold Option and Space to talk. You can pick other keys in Settings.",
+      "Links open in your browser when you press Open, and What I did has a search.",
+    ],
+  },
+  whatsNewTitle: (version: string) => `What changed in version ${version}`,
+  whatsNewClose: "Got it",
   numbersTitle: "Beta numbers",
   numbersHelp: "Off by default. When on, Companion counts how often things happen (never words, names, files or anything from your screen), keeps the counts only on this Mac, and sends nothing. You can read them, copy them to send to the person running the beta, and erase them.",
   numbersOn: "Count how I use Companion",

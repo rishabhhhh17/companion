@@ -29,7 +29,7 @@ describe("Home's tabs", () => {
     expect(panelsIn("every")).toEqual(["notes"]);
   });
   test("Now holds what the card showed while working; the rest go to their own tabs", () => {
-    for (const p of ["ask", "urgent", "task", "proof", "receipt", "promptHelp", "errorHelp", "showMe", "point", "drive", "ship", "voice"] as Panel[]) expect(PANEL_TAB[p], p).toBe("now");
+    for (const p of ["ask", "urgent", "task", "proof", "receipt", "promptHelp", "errorHelp", "showMe", "point", "drive", "ship", "voice", "whatsNew"] as Panel[]) expect(PANEL_TAB[p], p).toBe("now");
     expect(PANEL_TAB.history).toBe("did");
     for (const p of ["lessons", "walk", "practice"] as Panel[]) expect(PANEL_TAB[p], p).toBe("learn");
     expect(PANEL_TAB.memory).toBe("memory");

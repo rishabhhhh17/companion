@@ -13,7 +13,7 @@ Nothing here is published by an agent. Each step that goes public is yours to ru
 
 0. `sh scripts/audit.sh` (known problems in Rust, runner and page dependencies) and `python3 scripts/make-acknowledgements.py --check` (licence notices up to date). Both must be clean.
 
-1. Raise `version` in `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml`.
+1. Raise `version` in `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml`, and write what changed for that version in `whatsNew` in `app/src/strings.ts` (a few short plain sentences; Home shows them once after the update, and a page test fails until the new version has some).
 2. `COMPANION_SIGN_ID="Developer ID Application: ..." sh app/scripts/release.sh` (build, sign, notarize, staple, disk image).
 3. `sh app/scripts/build-update.sh "what changed, in plain words"` makes the update files from the finished app and prints the one command that publishes them. Check them, then run it.
 4. The first friends install the disk image by hand. After that, installed copies find new versions by themselves (once a day, if on) and install only when the person presses Install and nothing is running.

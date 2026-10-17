@@ -18,6 +18,7 @@ import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, t
 import { S } from "./strings.ts";
 import { webLink } from "./links.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
+import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -503,6 +504,20 @@ function Card() {
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
+  // What changed after an update (whatsnew.ts): worked out once when the page starts, then shown on Now until closed. The
+  // version counts as seen once Home has been open with it showing, or it was closed, so it shows once. Kept on this Mac only.
+  const [news, setNews] = useState<{ show: Release[]; remember: string } | null>(null);
+  const newsNow = useRef(news); newsNow.current = news;
+  const rememberVersion = (v: string) => { try { localStorage.setItem(SEEN_VERSION_KEY, v); } catch { /* storage may be unavailable */ } };
+  useEffect(() => {
+    void invoke("update_status").then((v) => {
+      let seen: string | null = null;
+      try { seen = localStorage.getItem(SEEN_VERSION_KEY); } catch { /* storage may be unavailable */ }
+      const w = whatsNew(seen, String((v as { version?: unknown } | null)?.version ?? ""));
+      if (w.show.length && w.remember) setNews({ show: w.show, remember: w.remember });
+      else if (w.remember) rememberVersion(w.remember);
+    }).catch(() => {});
+  }, []);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
   // The first run: shown until finished, remembered only on this Mac.
@@ -639,6 +654,7 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
+      if (newsNow.current) rememberVersion(newsNow.current.remember);   // what changed has been on screen once
       // Coming back after a break: ask what happened while away. Only Companion's own history is used.
       const last = lastSeen();
       if (last && project && Date.now() - last >= AWAY_MS) void send(askRecap(project, new Date(last).toISOString()));
@@ -911,6 +927,17 @@ function Card() {
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
       {!project && <div className="notice">{S.folderNone}</div>}
       </>}
+      {show("whatsNew") && news && (
+        <section className="panel" role="status" aria-label={S.whatsNewTitle(news.show[0].version)}>
+          {news.show.map((r) => (
+            <div key={r.version}>
+              <h2>{S.whatsNewTitle(r.version)}</h2>
+              {r.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
+            </div>
+          ))}
+          <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(news.remember); setNews(null); }}>{S.whatsNewClose}</button></div>
+        </section>
+      )}
       {show("settings") && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
       {show("practice") && m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
