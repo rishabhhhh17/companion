@@ -6,9 +6,12 @@ export const PROTOCOL_VERSION = 1 as const;
 
 export type Envelope = { v: 1; id: string; ts?: string; project?: string; agent?: string };
 
+// files and images: what the person dragged onto Home or pasted into the ask box (runner/src/attach.ts has the rules, and
+// the engine checks them again): text and code files, secrets already hidden, and PNG or JPEG pictures. Sent only with Start.
 export type AgentStart = Envelope & {
   type: "agent.start"; project: string; agent: string; mode: "drive" | "rescue" | "research" | "ship";
   prompt: string; model: string; budgetUsd: number; offTheRecord?: boolean;
+  files?: { name: string; text: string }[]; images?: { name: string; mediaType: "image/png" | "image/jpeg"; base64: string }[];
 };
 // A follow up on the agent's last task (text: what is still wrong), or Try again (retry: the same request again, with
 // what failed). Either runs as a new checked task that carries on the last task's conversation. It names the project, so the
@@ -257,10 +260,13 @@ const screensOk: Check = (m) => {
     && typeof (s as any).ref === "string" && (s as any).ref.length > 0 && isNum((s as any).w) && isNum((s as any).h) && typeof (s as any).label === "string");
   return ok ? null : '"screens" must be a list of 1 to 4 pictures, each with ref, w, h and label';
 };
+const named = (o: unknown, field: string): boolean => typeof o === "object" && o !== null && !Array.isArray(o) && typeof (o as any).name === "string" && (o as any).name.length > 0 && typeof (o as any)[field] === "string";
+const filesOk: Check = opt("files", (m) => (Array.isArray(m.files) && m.files.every((f) => named(f, "text")) ? null : '"files" must be a list of files, each with name and text'));
+const imagesOk: Check = opt("images", (m) => (Array.isArray(m.images) && m.images.every((p) => named(p, "base64") && ["image/png", "image/jpeg"].includes((p as any).mediaType)) ? null : '"images" must be a list of PNG or JPEG pictures, each with name, mediaType and base64'));
 const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
 const COMMANDS: Record<string, Check[]> = {
-  "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd")],
+  "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk],
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],

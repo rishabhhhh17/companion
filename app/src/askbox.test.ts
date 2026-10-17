@@ -29,6 +29,15 @@ describe("the ask box keys", () => {
   });
 });
 
+describe("words from hold to talk", () => {
+  test("sent by themselves, they go with the folder and settings of now, not of when the setting was last changed", () => {
+    const heard = card.slice(card.indexOf('ev.stage === "heard"'), card.indexOf('dispatch({ type: "ui.voiceClosed" })'));
+    expect(heard).toContain("setTimeout(() => submitNow.current(), 0)");
+    expect(heard).not.toMatch(/setTimeout\(\(\) => submit\(\)/);
+    expect(card).toContain("const submitNow = useRef(submit); submitNow.current = submit;");
+  });
+});
+
 describe("the draft kept on this Mac", () => {
   test("what is typed is kept, as typed, with its new lines", () => {
     expect(draftToKeep("Make the signup button blue\nand bigger", false)).toBe("Make the signup button blue\nand bigger");

@@ -2174,13 +2174,17 @@ fn main() {
             let mtm = MainThreadMarker::new().unwrap();
             let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
             let mk = |label: &str, page: &str, size: (f64, f64)| {
-                WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
+                let b = WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
                     .visible(false)
                     .focused(false)
                     .decorations(false)
                     .accept_first_mouse(true)
-                    .inner_size(size.0, size.1)
-                    .build()
+                    .inner_size(size.0, size.1);
+                // Files into the ask box: Home's page reads a file the person drops on it (attachfiles.ts), so Tauri's own
+                // drop handler, which would keep the file from the page, is off for Home only. The page stops a drop from
+                // ever opening the file in its place. Nothing is read here and no path reaches the shell.
+                let b = if label == "card" { b.disable_drag_drop_handler() } else { b };
+                b.build()
             };
             let dock_w = mk("dock", "dock.html", DOCK)?;
             let card_w = mk("card", "card.html", CARD)?;

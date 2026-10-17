@@ -36,6 +36,11 @@ button { font: inherit; }
 .row { display: flex; align-items: center; gap: 8px; margin: 6px 0;  flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .ask { display: flex; gap: 6px; margin: 8px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: 1px solid var(--edge); border-radius: 6px; max-width: 100%; }
+.chip .line { margin: 0; }
+.chip .btn { padding: 1px 8px; }
+main.card.dropping { outline: 2px dashed var(--edge); outline-offset: -4px; }
 .ask textarea { flex: 1; min-width: 0; font: inherit; font-size: 14px; line-height: 1.35; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; resize: none; max-height: 160px; overflow-y: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
 .ask input, .row input[type="text"], .row input[type="search"] { flex: 1; min-width: 0; font-size: 14px; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
 .btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); cursor: pointer; }

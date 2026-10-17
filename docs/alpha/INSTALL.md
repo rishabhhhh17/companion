@@ -33,6 +33,7 @@ For everything else, hold **Control + Option + Command** and press:
 ## The card, in short
 Open it by clicking the character or pressing K. Buttons you will use:
 - **Start / Plan it / Rescue it**: give Companion a task, or have it read the project and say what is wrong.
+- **Adding a file**: drag a text or code file, or a PNG or JPEG picture, onto the card, or paste one into the ask box. It shows as a chip you can remove, and goes only with **Start**. Settings and key files such as `.env` are never read. A picture is looked at by Claude first, which costs a little.
 - **Show me**: type what you are trying to do on screen; it points at the next click and waits for your own click. **Do it for me** presses it only when that is safe (never anything that sends, pays, deletes or publishes).
 - **Draw it**: a hand drawn sketch of why something broke, from your project.
 - **Lessons**: guided step by step lessons (install Claude Code, get a project out of Bolt or Replit, add a setting on Vercel, connect Lovable to GitHub, allow Companion's permissions). **They are drafts written from the makers' help pages and nobody has tried them yet, so tell me when a step is wrong.**

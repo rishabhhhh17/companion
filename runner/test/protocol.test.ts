@@ -202,3 +202,22 @@ describe("a follow up or Try again (agent.send)", () => {
     expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "loop.stuck", agent: "builder-1", index: 0, title: "Fix the signup page", failure: { label: "Running the tests", detail: "1 failed" }, options: [] })).ok).toBe(true);
   });
 });
+
+describe("files added to a request (agent.start files and images)", () => {
+  const start = (o: Record<string, unknown>) => parseCommand(JSON.stringify({ v: 1, id: "c", type: "agent.start", project: "/p", agent: "builder-1", mode: "drive", prompt: "Fix it", model: "m", budgetUsd: 1, ...o })).ok;
+  test("a request may carry text files and pictures, each named", () => {
+    expect(start({})).toBe(true);
+    expect(start({ files: [{ name: "notes.md", text: "Use blue." }] })).toBe(true);
+    expect(start({ images: [{ name: "shot.png", mediaType: "image/png", base64: "iVBORw0KGgo=" }] })).toBe(true);
+    expect(start({ files: [], images: [] })).toBe(true);
+  });
+  test("anything else is refused before the engine looks at it", () => {
+    expect(start({ files: "notes.md" })).toBe(false);
+    expect(start({ files: [{ name: "notes.md" }] })).toBe(false);
+    expect(start({ files: [{ text: "x" }] })).toBe(false);
+    expect(start({ files: [{ name: "", text: "x" }] })).toBe(false);
+    expect(start({ images: [{ name: "a.gif", mediaType: "image/gif", base64: "R0lG" }] })).toBe(false);
+    expect(start({ images: [{ name: "a.png", mediaType: "image/png" }] })).toBe(false);
+    expect(start({ images: [null] })).toBe(false);
+  });
+});

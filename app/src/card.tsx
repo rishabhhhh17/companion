@@ -21,6 +21,7 @@ import { DRAFT_KEY, askKey, draftToKeep } from "./askbox.ts";
 import { ehCopy, receiptCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
+import { addFiles, chipLabel, forRequest, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -531,6 +532,22 @@ function Card() {
   const warmedAt = useRef(0);
   const warmSoon = () => { const t = Date.now(); if (t - warmedAt.current < 60_000) return; warmedAt.current = t; void send(warmEngine()).catch(() => {}); };
   const [project, setProject] = useState("");
+  // Files into the ask box (attachfiles.ts): dragged onto Home or pasted into the box, read on this Mac, shown as chips that
+  // can be removed, and sent only with Start. Kept while Home is closed, not kept on disk, dropped for a new folder.
+  const [attached, setAttached] = useState<Attached[]>([]);
+  const attachedNow = useRef(attached); attachedNow.current = attached;
+  const [attachNotes, setAttachNotes] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); void addFiles(attachedNow.current, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); }); };
+  const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); };
+  useEffect(() => { clearAttached(); }, [project]);
+  // A file dropped on Home outside the drop handling must never be opened in place of Home's page.
+  useEffect(() => {
+    const stopOpen = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", stopOpen);
+    window.addEventListener("drop", stopOpen);
+    return () => { window.removeEventListener("dragover", stopOpen); window.removeEventListener("drop", stopOpen); };
+  }, []);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
@@ -794,7 +811,8 @@ function Card() {
         homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
         setBox(ev.text);
         if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); clearBox(); }
-        else if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
+        // With files added, the words wait in the box for Start: they never go with files by themselves.
+        else if (autoSend && attachedNow.current.length === 0 && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submitNow.current(), 0);
         else setTimeout(() => box.current?.focus(), 30);
         dispatch({ type: "ui.voiceClosed" });
       }
@@ -885,9 +903,11 @@ function Card() {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
     dispatch({ type: "ui.undoClosed" });
-    void send(startTask(project, prompt, off)); setOff(false);
-    clearBox();
+    void send(startTask(project, prompt, off, forRequest(attached))); setOff(false);
+    clearBox(); clearAttached();
   };
+  // The words from hold to talk send through this, so they always go with the current folder and settings.
+  const submitNow = useRef(submit); submitNow.current = submit;
 
   // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
   const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
@@ -919,8 +939,11 @@ function Card() {
   };
 
   return (
-    <main className="card" ref={root}
+    <main className={`card${dragging ? " dropping" : ""}`} ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
+      onDragOver={(e) => { if (!onboarded || !Array.from(e.dataTransfer?.types ?? []).includes("Files")) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
+      onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
@@ -1128,6 +1151,7 @@ function Card() {
         <textarea ref={box} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
           onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); }}
           onFocus={() => warmSoon()}
+          onPaste={(e) => { const fs = e.clipboardData?.files; if (fs && fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
           onKeyDown={(e) => {
             if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
             e.preventDefault();
@@ -1136,6 +1160,21 @@ function Card() {
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
       <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
+      {dragging && <div className="line" role="status">{S.attachDrop}</div>}
+      {attached.length > 0 && (
+        <div className="chips" role="list" aria-label={S.attachTitle}>
+          {attached.map((a, i) => (
+            <span className="chip" role="listitem" key={`${i}:${a.name}`}>
+              <span className="line">{chipLabel(a)}</span>
+              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => setAttached((l) => removeFile(l, i))}>{S.attachRemoveShort}</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
+      {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
+      {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
+      {attached.length === 0 && <div className="line muted">{S.attachHint}</div>}
       {!working && (
         <div className="row">
           <button className="btn primary" type="button" onClick={submit}>{S.start}</button>
