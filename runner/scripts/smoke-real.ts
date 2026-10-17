@@ -220,7 +220,7 @@ export const SMOKE_CASES: Case[] = [
       await Bun.sleep(1500);
       const saved = added(before, conversations(ctx.configDir));
       const memory = existsSync(join(project, ".companion", "project.md"));
-      ctx.note(`receipt: ${r.of("receipt").length}; private.txt = ${JSON.stringify(read(join(project, "private.txt")).trim())}; saved conversations: ${saved.length}; project memory written: ${memory}`);
+      ctx.note(`receipt: ${r.of("receipt").length}; private.txt = ${JSON.stringify(read(join(project, "private.txt")).trim())}; saved conversations: ${saved.length}; project memory written: ${memory}; errors: ${JSON.stringify(r.of("protocol.error").map((e) => e.reason))}`);
       return r.of("receipt").length === 1 && read(join(project, "private.txt")).trim() === "ok" && saved.length === 0 && !memory && !inHomeClaude(project);
     },
   },
