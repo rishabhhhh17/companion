@@ -165,6 +165,7 @@ export const SMOKE_CASES: Case[] = [
         const body = JSON.parse(String(init.body));
         problems = requestProblems(body.model, { thinking: body.thinking, effort: body.output_config?.effort, tools: body.tools, tool_choice: body.tool_choice, temperature: body.temperature, lastRole: body.messages.at(-1)?.role, betas: String((init.headers as Record<string, string>)["anthropic-beta"] ?? "").split(",").filter(Boolean), via: "api" });
         if (problems.length) throw new Error(`refused before sending: ${problems.join("; ")}`);
+        ctx.meter.assertRoom();   // never after a stop, or with no room left
         const res = await fetch(url, { ...init, signal: ctx.signal });
         calls++;
         ctx.meter.settle(`aim-${calls}`, estimateUsd(body.model, (await res.clone().json().catch(() => null))?.usage));   // throws at a stop

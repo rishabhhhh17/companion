@@ -12,7 +12,7 @@ import { API_URL, ComputerUseVision, withFallback } from "../src/aim.ts";
 import { VisionLane, clickPoint, type Located, type VisionLike } from "../src/lanes.ts";
 import { MODELS, estimateUsd } from "../src/models.ts";
 import { release as releaseShotDrive } from "../src/ramdisk.ts";
-import { parseArgs, runCases, type CaseCtx } from "./realrun-harness.ts";
+import { isHarnessStop, parseArgs, runCases, type CaseCtx } from "./realrun-harness.ts";
 
 const argv = process.argv.slice(2);
 const harnessArgs = parseArgs(argv.filter((a) => a !== "--real" && !/^\d+$/.test(a)));
@@ -24,9 +24,11 @@ function lanesFor(ctx: CaseCtx): { vision: VisionLike } {
   const classic = new VisionLane({ claudeBinary: ctx.claudeBinary, env: ctx.env, model: visionModel, queryFn: ctx.guard({ tools: [], model: visionModel }) as never });
   if (!aimLane) return { vision: classic };
   let n = 0;
-  // The pointing lane calls the Messages API itself: only that address, metered from each answer's usage.
+  // The pointing lane calls the Messages API itself: only that address, never after a stop or with no room left, and
+  // metered from each answer's usage.
   const fetchFn = (async (url: string, init: RequestInit) => {
     if (url !== API_URL) throw new Error("only the Messages API may be called");
+    ctx.meter.assertRoom();
     const res = await fetch(url, { ...init, signal: ctx.signal });
     ctx.meter.settle(`aim-${++n}`, estimateUsd(aimModel, (await res.clone().json().catch(() => null))?.usage));
     return res;
@@ -68,13 +70,15 @@ const real = argv.includes("--real");
 const want = Number(argv.find((a) => /^\d+$/.test(a))) || 999;
 const SITES = ["https://github.com/login", "https://news.ycombinator.com", "https://en.wikipedia.org/wiki/Main_Page", "https://www.python.org", "https://vercel.com", "https://stripe.com", "https://supabase.com", "https://www.npmjs.com"];
 let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-async function score(): Promise<boolean> {
+async function score(run: CaseCtx): Promise<boolean> {
   const browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! });
+  run.onCleanup(() => browser.close().catch(() => {}));
   let n = 0, raw = 0, snapped = 0, none = 0, ms: number[] = [], cost = 0;
-  const misses: string[] = [];
+  const misses: string[] = [], errors: string[] = [];
   const realPages: Page[] = [];
   if (real) for (const url of SITES) realPages.push({ name: new URL(url).host, html: url, asks: [] });
   for (const pg of real ? realPages : pages()) {
+    if (run.signal.aborted) break;
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     if (real) { try { await page.goto(pg.html, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(2500); } catch { await ctx.close(); continue; } } else await page.setContent(pg.html);
@@ -87,12 +91,18 @@ async function score(): Promise<boolean> {
     }
     const png = await page.screenshot({ type: "png" });
     for (const ask of pg.asks) {
-      if (n >= want) break;
+      if (n >= want || run.signal.aborted) break;
       const target = els.find((e) => e.t.toLowerCase() === ask.target.toLowerCase()) ?? els.find((e) => e.t.toLowerCase().includes(ask.target.toLowerCase()));
       if (!target) continue;
       n++;
       const t0 = Date.now();
-      const r: Located = await lanes.vision.locate({ image: { base64: png.toString("base64"), mediaType: "image/png", w: 1280, h: 800 }, question: ask.question, ocr: [] }, new AbortController().signal).catch(() => ({ point: null, costUsd: 0 }));
+      // A refusal or a spending stop ends the eval (it is never "no answer"); any other error is counted apart from the misses.
+      let r: Located;
+      try { r = await lanes.vision.locate({ image: { base64: png.toString("base64"), mediaType: "image/png", w: 1280, h: 800 }, question: ask.question, ocr: [] }, run.signal); }
+      catch (e) {
+        if (isHarnessStop(e) || run.signal.aborted) { await ctx.close(); throw e; }
+        errors.push(`${pg.name}: "${ask.question}" -> ${(e as Error)?.message ?? String(e)}`); continue;
+      }
       ms.push(Date.now() - t0); cost += r.costUsd;
       // Scored on where the person would click: the last target of an answer with several (the ones before it are "look here").
       const hit = clickPoint(r);
@@ -108,15 +118,20 @@ async function score(): Promise<boolean> {
     await ctx.close();
   }
   await browser.close();
+  if (run.signal.aborted || run.refusals.length) { console.log(`\nStopped after ${n} questions, so nothing is scored: ${run.refusals[0] ?? "the case was stopped"}`); return false; }
+  // Scored on the questions that got an answer (a point, or "nothing to point at"); an error is not a miss.
+  const answered = n - errors.length;
   ms.sort((a, b) => a - b);
-  console.log(`\nquestions: ${n}\nraw hit rate: ${raw}/${n} = ${Math.round((100 * raw) / n)}%\nsnapped hit rate: ${snapped}/${n} = ${Math.round((100 * snapped) / n)}%\nno answer: ${none}\nmedian time: ${ms[Math.floor(ms.length / 2)]} ms; slowest: ${ms.at(-1)} ms\nestimated cost: $${cost.toFixed(2)}`);
+  console.log(`\nquestions: ${n}; answered: ${answered}\nraw hit rate: ${raw}/${answered} = ${Math.round((100 * raw) / answered)}%\nsnapped hit rate: ${snapped}/${answered} = ${Math.round((100 * snapped) / answered)}%\nno answer: ${none}\nmedian time: ${ms[Math.floor(ms.length / 2)]} ms; slowest: ${ms.at(-1)} ms\nestimated cost: $${cost.toFixed(2)}`);
   for (const m of misses) console.log("  miss:", m);
-  return n > 0;
+  for (const e of errors) console.log("  error (not scored):", e);
+  if (errors.length) run.note(`${errors.length} questions ended in an error, not an answer: they are listed above and left out of the rates`);
+  return answered > 0 && errors.length === 0;
 }
 
 const count = Math.min(want, real ? SITES.length * 6 : 48);
 process.exit(await runCases("Aim eval", [{
   name: "aim", what: `${count} questions on ${real ? "real web pages" : "drawn pages"}; scored on where the person would click`,
   models: [aimLane ? `${aimModel} (computer use, falling back to ${visionModel})` : visionModel], estimateUsd: Math.max(0.01, count * 0.006), capUsd: 1, timeoutS: 1800,
-  async run(ctx) { lanes = lanesFor(ctx); ctx.onCleanup(() => releaseShotDrive()); return score(); },
+  async run(ctx) { lanes = lanesFor(ctx); ctx.onCleanup(() => releaseShotDrive()); return score(ctx); },
 }], harnessArgs, { totalUsd: 1, perCaseUsd: 1 }));

@@ -48,6 +48,9 @@ type Rule = {
   /** The computer use tool shapes it takes on the Claude API, as far as the notes say. Companion only ever sends the toolset. */
   computer: string[];
   price: Price;
+  /** A second rate card for long prompts: above `over` prompt tokens (input, cache reads and cache writes together), the
+   *  whole request is priced at `price`. */
+  long?: { over: number; price: Price };
   quick: SdkThinking;
   agent: SdkThinking;
 };
@@ -62,7 +65,8 @@ const RULES: Record<string, Rule> = {
   "claude-sonnet-5-5": { off: "between_tools", budget: false, adaptive: true, effort: "high", forcedTools: false, prefill: false, sampling: false, computer: [TOOLSET], price: { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 }, quick: QUICK_ADAPTIVE, agent: { effort: "medium" } },
   // Haiku 5.5 takes "disabled" at high effort or below, but the notes say to use effort as the lever, and the bundled Claude
   // Code marks it as refusing thinking off (read from its model table, not run), so short answers use adaptive at low effort.
-  "claude-haiku-5-5": { off: "up_to_high", budget: false, adaptive: true, effort: "medium", forcedTools: true, prefill: false, sampling: false, computer: [TOOLSET], price: { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }, quick: QUICK_ADAPTIVE, agent: { effort: "medium" } },
+  // Two rate cards, chosen by prompt length: a prompt over 100K tokens costs five times as much, in and out.
+  "claude-haiku-5-5": { off: "up_to_high", budget: false, adaptive: true, effort: "medium", forcedTools: true, prefill: false, sampling: false, computer: [TOOLSET], price: { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }, long: { over: 100_000, price: { in: 0.5, out: 2.5, cacheRead: 0.05, cacheWrite: 0.625 } }, quick: QUICK_ADAPTIVE, agent: { effort: "medium" } },
   "claude-haiku-4-5": { off: "always", budget: true, adaptive: false, effort: null, forcedTools: true, prefill: true, sampling: true, computer: ["computer_20250124"], price: { in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 }, quick: { thinking: { type: "disabled" } }, agent: {} },
   // The previous generation, for testers who switch to them. Their own defaults for working sessions are kept.
   "claude-opus-5": { off: "up_to_high", budget: false, adaptive: true, effort: "high", forcedTools: true, prefill: false, sampling: false, computer: [TOOLSET, "computer_20251124"], price: { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 }, quick: QUICK_ADAPTIVE, agent: {} },
@@ -101,10 +105,13 @@ export function computerToolFor(model: string): typeof TOOLSET | null {
 
 type UsageLike = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | null | undefined;
 const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
-/** What a reply cost by its token counts, at this model's list price. An estimate: always labelled as one where it is shown. */
+/** What a reply cost by its token counts, at this model's list price (the long prompt card when its prompt is over the
+ *  line). One request's usage at a time: the card is chosen per request. An estimate: always labelled as one where shown. */
 export function estimateUsd(model: string, u: UsageLike): number {
   if (!u || typeof u !== "object") return 0;
-  const p = ruleOf(model)?.price ?? UNKNOWN_PRICE;
+  const r = ruleOf(model);
+  const prompt = n(u.input_tokens) + n(u.cache_read_input_tokens) + n(u.cache_creation_input_tokens);
+  const p = r ? (r.long && prompt > r.long.over ? r.long.price : r.price) : UNKNOWN_PRICE;
   return (n(u.input_tokens) * p.in + n(u.output_tokens) * p.out + n(u.cache_read_input_tokens) * p.cacheRead + n(u.cache_creation_input_tokens) * p.cacheWrite) / 1e6;
 }
 

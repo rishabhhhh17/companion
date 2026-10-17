@@ -322,8 +322,8 @@ describe("a reply that begins with thinking (the 5.5 models)", () => {
     expect(r.text).toBe("Better prompt");
   });
   test("estimates use the model the lane runs on", async () => {
-    const fast = await new FastLane({ ...cfg, model: "claude-haiku-5-5", queryFn: fake([{ type: "assistant", message: { content: [{ type: "text", text: "ok" }], usage: { input_tokens: 1_000_000, output_tokens: 0 } } }]) }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal);
-    expect(fast.costUsd).toBeCloseTo(0.1, 6);   // Haiku 5.5: $0.10 a million input tokens
+    const fast = await new FastLane({ ...cfg, model: "claude-haiku-5-5", queryFn: fake([{ type: "assistant", message: { content: [{ type: "text", text: "ok" }], usage: { input_tokens: 100_000, output_tokens: 0 } } }]) }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal);
+    expect(fast.costUsd).toBeCloseTo(0.01, 6);   // Haiku 5.5: $0.10 a million input tokens, for a prompt of 100K tokens or fewer
     const lane = new VisionLane({ ...cfg, model: "claude-opus-5-5", tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: fake([{ ...point, message: { ...point.message, usage: { input_tokens: 1_000_000, output_tokens: 0 } } }]) });
     expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png", w: 100, h: 100 }, question: "q", ocr: [] }, cfg.signal)).costUsd).toBeCloseTo(4, 6);
   });

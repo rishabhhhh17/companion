@@ -4,10 +4,17 @@
 // - The key is read in code from the Keychain item named by COMPANION_KEYCHAIN_SERVICE (companion-dev by default here),
 //   through runner/src/keychain.ts. It is never printed: everything said passes through hideKey().
 // - Claude Code gets a throwaway CLAUDE_CONFIG_DIR at a non default path, explicit settingSources, strictMcpConfig true,
-//   CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1, and never bypassPermissions. checkOptions()
-//   refuses to start a query that misses any of these.
+//   CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1, and never bypassPermissions. Its environment
+//   is built from a short plain one (minimalEnv), so no shell setting changes what is sent. checkOptions() refuses to start
+//   a query that misses any of these.
 // - system/init must list only the tools the case expects (checkInit); anything else stops the run there.
-// - A per case and a total dollar stop end the run (SpendMeter), counting money still in flight.
+// - A per case and a total dollar stop (SpendMeter). In process queries are counted while they run, from the token counts
+//   of each reply; a stop aborts the query in flight, ends the case at once, and no new query starts after it. A runner
+//   process (real-verify) books a round only when its result arrives, so a round in flight is not seen until then: there
+//   each task's own budget is the hard bound, cut to the room left under the stops before it is sent, and a task cut
+//   short counts its whole budget (see realKit in real-verify.ts).
+// - Every refusal and every stop fails its case with the reason, even when product code turned it into its own message:
+//   a run the harness ended is never scored as quality.
 // - A dry run is the default: it prints the plan and spends nothing. --spend is required to spend.
 // Tested with stubbed queries in runner/test/realrun-harness.test.ts. NOT YET RUN AGAINST REAL CLAUDE.
 import { Database } from "bun:sqlite";
@@ -15,6 +22,7 @@ import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
+import { minimalEnv } from "../src/env.ts";
 import { DEFAULT_REF, getApiKey, type KeychainRef } from "../src/keychain.ts";
 import { buildChildEnv } from "../src/safety.ts";
 import { resolveClaudeBinary } from "../src/sdkEngine.ts";
@@ -67,13 +75,15 @@ const sum = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 
 const usd = (n: number) => `$${n.toFixed(n > 0 && n < 0.01 ? 4 : 2)}`;
 
 /** What a run has spent, by Companion's estimate: settled amounts (Claude Code's own cost figure for a finished query) plus
- *  money still in flight (from the token counts so far). Over a case's stop or the total stop, it throws SpendStop. */
+ *  money still in flight (from the token counts so far). Over a case's stop or the total stop, it throws SpendStop, and
+ *  tells onStop first (runCases ends the case on it, so a caller that swallows the error cannot carry on spending). */
 export class SpendMeter {
   private caseSettled = 0;
   private totalSettled = 0;
   private inflight = new Map<string, number>();
   private caseCap: number;
   caseName = "";
+  onStop?: (e: SpendStop) => void;
   constructor(public readonly perCaseUsd: number, public readonly totalUsd: number) { this.caseCap = perCaseUsd; }
   startCase(name: string, capUsd?: number) {
     this.caseName = name; this.caseSettled = 0; this.inflight.clear();
@@ -92,9 +102,22 @@ export class SpendMeter {
     this.caseSettled += a; this.totalSettled += a;
     this.check();
   }
+  /** Before anything new starts: a stop when a stop was passed, or when no more than `need` dollars of room is left. */
+  assertRoom(need = 0) {
+    this.check();
+    if (this.remaining() > need) return;
+    const total = this.totalUsd - this.totalSpent <= this.caseCap - this.caseSpent;
+    this.fail(total
+      ? new SpendStop(`the total spending stop of ${usd(this.totalUsd)} leaves no room for more (spent about ${usd(this.totalSpent)})`, "total")
+      : new SpendStop(`this case's spending stop of ${usd(this.caseCap)} leaves no room for more (spent about ${usd(this.caseSpent)})`, "case"));
+  }
   private check() {
-    if (this.overTotal()) throw new SpendStop(`the total spending stop of ${usd(this.totalUsd)} was reached (spent about ${usd(this.totalSpent)})`, "total");
-    if (this.overCase()) throw new SpendStop(`this case's spending stop of ${usd(this.caseCap)} was reached (spent about ${usd(this.caseSpent)})`, "case");
+    if (this.overTotal()) this.fail(new SpendStop(`the total spending stop of ${usd(this.totalUsd)} was reached (spent about ${usd(this.totalSpent)})`, "total"));
+    if (this.overCase()) this.fail(new SpendStop(`this case's spending stop of ${usd(this.caseCap)} was reached (spent about ${usd(this.caseSpent)})`, "case"));
+  }
+  private fail(e: SpendStop): never {
+    try { this.onStop?.(e); } catch { /* a listener must not hide the stop */ }
+    throw e;
   }
 }
 
@@ -110,11 +133,14 @@ export function makeThrowawayConfigDir(root: string = tmpdir()): string {
   return d;
 }
 
-/** The environment for Claude Code on the API key route, exactly as the runner builds it, with this run's own folder in
- *  place of any CLAUDE_CONFIG_DIR the shell set. buildChildEnv strips account switching variables and sets the two
- *  safety switches; this checks they are there. */
+/** The environment for Claude Code on the API key route, built as the runner builds it, from the short plain environment an
+ *  app opened from Finder has (minimalEnv keeps PATH, HOME, the locale, proxies and certificates, and drops everything else,
+ *  so a Claude Code setting in the founder's shell, such as CLAUDE_CODE_EFFORT_LEVEL, never changes what a case sends), with
+ *  this run's own folder for Claude Code's files. buildChildEnv adds the key and sets the two safety switches; this checks
+ *  they are there. */
 export function harnessEnv(o: { apiKey: string; configDir: string; parent?: Record<string, string | undefined> }): Record<string, string> {
-  const { CLAUDE_CONFIG_DIR: _shell, ...parent } = o.parent ?? process.env;
+  const parent = minimalEnv(o.parent ?? process.env);
+  delete parent.CLAUDE_CONFIG_DIR;
   const env = buildChildEnv(parent, { route: "api_key", apiKey: o.apiKey, configDir: o.configDir });
   if (env.CLAUDE_CONFIG_DIR !== o.configDir || env.CLAUDE_CODE_DISABLE_AUTO_MEMORY !== "1" || env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB !== "1") throw new Error("the environment for Claude Code is not the one this harness requires");
   return env;
@@ -130,6 +156,13 @@ export const AGENT_TOOLS: readonly string[] = [
   "Task", "Agent", "Bash", "BashOutput", "KillShell", "KillBash", "TaskOutput", "TaskStop", "Glob", "Grep", "LS", "Read", "Edit", "MultiEdit", "Write",
   "NotebookEdit", "NotebookRead", "WebFetch", "WebSearch", "TodoWrite", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion", "Skill", "SlashCommand",
   "ToolSearch", "Monitor", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList",
+];
+
+/** Claude Code settings read from the environment that change what is sent (effort, thinking, output length, extra body
+ *  fields, the model behind a lane) or what it costs (prompt caching). The app never sets them; a real run must not either. */
+export const REQUEST_CHANGERS: readonly string[] = [
+  "CLAUDE_CODE_EFFORT_LEVEL", "CLAUDE_CODE_EXTRA_BODY", "MAX_THINKING_TOKENS", "CLAUDE_CODE_MAX_OUTPUT_TOKENS", "CLAUDE_CODE_SUBAGENT_MODEL",
+  "DISABLE_PROMPT_CACHING", "DISABLE_INTERLEAVED_THINKING",
 ];
 
 /** Every reason the options must not start Claude. Never repeats a value (a value could be the key). */
@@ -151,7 +184,9 @@ export function checkOptions(options: Record<string, any>, ex: { claudeBinary: s
     else if (isDefaultClaudeDir(dir)) p.push("CLAUDE_CONFIG_DIR is the default ~/.claude");
     else if (!ex.configDirs.map((d) => resolve(d)).includes(resolve(dir))) p.push("CLAUDE_CONFIG_DIR is not this run's own folder");
     if (!env.ANTHROPIC_API_KEY) p.push("there is no API key in Claude Code's environment (this is the API key route)");
-    for (const k of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"]) if (env[k]) p.push(`${k} is set`);
+    for (const k of ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"]) if (env[k]) p.push(`${k} is set`);
+    // Anything else that changes the request or the account behind the options' back (Claude Code reads these over its flags).
+    for (const k of Object.keys(env).sort()) if (env[k] !== undefined && (REQUEST_CHANGERS.includes(k) || (k.startsWith("ANTHROPIC_") && k !== "ANTHROPIC_API_KEY"))) p.push(`${k} is set in Claude Code's environment`);
   }
   const model = typeof options.model === "string" ? options.model : "";
   if (!model) p.push("no model is named");
@@ -178,18 +213,28 @@ export function checkInit(m: Ev, ex: { tools: readonly string[] | "agent"; model
 }
 
 export class HarnessRefusal extends Error {}
+/** A refusal or a spending stop: the harness ended it, so it is never a quality result and never swallowed. */
+export const isHarnessStop = (e: unknown): boolean => e instanceof HarnessRefusal || e instanceof SpendStop;
 
-/** The SDK's query, checked: the options before Claude starts, system/init when it arrives, and the money as it is spent.
- *  Any failure aborts the query (its process ends) and throws. A continued conversation books only its own round
- *  (Claude Code's cost figure carries on from the saved conversation's total; `sessions` remembers it). */
-export function guardQuery(real: QueryFn, o: { meter: SpendMeter; expect: Expect; onInit?: (m: Ev) => void; onMessage?: (m: Ev) => void; sessions?: Map<string, number>; signal?: AbortSignal; label?: string }): QueryFn {
+/** The SDK's query, checked: the options before Claude starts, the room left under the stops, system/init when it arrives,
+ *  and the money as it is spent. Any failure aborts the query (its process ends), is told to onRefusal (runCases fails the
+ *  case on it), and throws. After a stop nothing new starts, so product code that turns the error into its own message
+ *  cannot carry on spending. A continued conversation books only its own round (Claude Code's cost figure carries on from
+ *  the saved conversation's total; `sessions` remembers it). */
+export function guardQuery(real: QueryFn, o: { meter: SpendMeter; expect: Expect; onInit?: (m: Ev) => void; onMessage?: (m: Ev) => void; onRefusal?: (e: Error) => void; sessions?: Map<string, number>; signal?: AbortSignal; label?: string }): QueryFn {
   let n = 0;
   const sessions = o.sessions ?? new Map<string, number>();
+  const refuse = (e: unknown): never => {
+    if (e instanceof Error && isHarnessStop(e)) { try { o.onRefusal?.(e); } catch { /* a listener must not hide the refusal */ } }
+    throw e;
+  };
   return (params) => {
     const options: Record<string, any> = { ...(params.options ?? {}) };
     const problems = checkOptions(options, o.expect);
-    if (problems.length) throw new HarnessRefusal(`Not started: ${problems.join("; ")}`);
+    if (problems.length) refuse(new HarnessRefusal(`Not started: ${problems.join("; ")}`));
+    // Not told: the stop that ended the case was told already, and a case that has ended is not failed by what comes after.
     if (o.signal?.aborted) throw new HarnessRefusal("Not started: the case was already stopped");
+    try { o.meter.assertRoom(); } catch (e) { refuse(e); }
     const ac: AbortController = options.abortController ?? new AbortController();
     options.abortController = ac;
     if (o.signal) o.signal.addEventListener("abort", () => ac.abort(), { once: true });
@@ -207,12 +252,12 @@ export function guardQuery(real: QueryFn, o: { meter: SpendMeter; expect: Expect
           if (m?.session_id) sessionId = String(m.session_id);
           if (m?.type === "system" && m.subtype === "init") {
             const p = checkInit(m, o.expect);
-            if (p.length) throw stop(new HarnessRefusal(`Stopped at system/init: ${p.join("; ")}`));
+            if (p.length) refuse(stop(new HarnessRefusal(`Stopped at system/init: ${p.join("; ")}`)));
             o.onInit?.(m);
           } else if (m?.type === "assistant" && m.message?.usage) {
             // One reply can arrive as several messages repeating the same usage: counted once per message id.
             usage.set(String(m.message.id ?? `m${usage.size}`), m.message.usage);
-            try { o.meter.pending(key, live()); } catch (e) { throw stop(e); }
+            try { o.meter.pending(key, live()); } catch (e) { refuse(stop(e)); }
           } else if (m?.type === "result") {
             const total = Number(m.total_cost_usd);
             const known = Number.isFinite(total) && total >= 0;
@@ -220,7 +265,7 @@ export function guardQuery(real: QueryFn, o: { meter: SpendMeter; expect: Expect
             const spent = known ? (total >= before ? total - before : total) : live();
             if (known && sessionId && total > 0) sessions.set(sessionId, total);
             settled = true;
-            try { o.meter.settle(key, spent); } catch (e) { throw stop(e); }
+            try { o.meter.settle(key, spent); } catch (e) { refuse(stop(e)); }
           }
           o.onMessage?.(m);
           yield m;
@@ -236,13 +281,14 @@ export function guardQuery(real: QueryFn, o: { meter: SpendMeter; expect: Expect
 
 // ---------- the runner process (real-verify drives the runner exactly as the app starts it) ----------
 
-/** What a script answers on the person's behalf so a run never waits forever: approval cards are denied (unless the
- *  scenario checks the allow path), a loop card is answered (stop, unless asked to try a different way), and the shared
- *  files question is answered yes (the project is a throwaway folder). Returns null for everything else. */
+/** What a script answers on the person's behalf so a run never waits forever: approval cards are denied (a scenario that
+ *  checks the allow path names the one card it allows: `allow`), a loop card is answered (stop, unless asked to try a
+ *  different way), and the shared files question is answered yes (the project is a throwaway folder). Returns null for
+ *  everything else. */
 let answerN = 0;
-export function autoAnswer(e: Ev, o: { loopChoice?: "stop" | "different"; approve?: "allow" | "deny" } = {}): Ev | null {
+export function autoAnswer(e: Ev, o: { loopChoice?: "stop" | "different"; allow?: (e: Ev) => boolean } = {}): Ev | null {
   const id = `auto-${++answerN}`;
-  if (e?.type === "approval.request") return { v: 1, id, type: "approval.resolve", approval: String(e.approval), decision: o.approve ?? "deny", scope: "once" };
+  if (e?.type === "approval.request") return { v: 1, id, type: "approval.resolve", approval: String(e.approval), decision: o.allow?.(e) === true ? "allow" : "deny", scope: "once" };
   if (e?.type === "loop.stuck") return { v: 1, id, type: "loop.choose", agent: String(e.agent), choice: o.loopChoice ?? "stop" };
   if (e?.type === "memory.agents_ask") return { v: 1, id, type: "memory.agents", project: String(e.project), answer: "yes" };
   return null;
@@ -270,6 +316,10 @@ export function spawnRunner(o: { env: Record<string, string>; engineDir?: string
   };
 }
 
+/** A scenario that checks the allow path: only an approval card whose command matches `only` is answered yes (after
+ *  `afterMs`, as a person would take a moment); every other card is denied at once and noted with its command. */
+export type ApproveRule = { only: RegExp; afterMs?: number };
+
 /** Reads the runner's events, answers what must be answered (autoAnswer), and records it. The key, when given, is handed
  *  over the pipe first, as the Mac app hands it (COMPANION_KEY_SOURCE=app); it is never in the runner's environment. */
 export class RunnerDriver {
@@ -278,7 +328,15 @@ export class RunnerDriver {
   private answered: string[] = [];
   eventUsd = 0;   // spent by work the ledger does not hold (Draw it for me, the error explainer), as the events say
   private t0 = Date.now();
-  constructor(private proc: Proc, private o: { key?: string; loopChoice?: "stop" | "different"; approve?: { decision: "allow" | "deny"; afterMs?: number }; onEvent?: (e: Ev) => void }) {}
+  constructor(private proc: Proc, private o: { key?: string; loopChoice?: "stop" | "different"; approve?: ApproveRule; onEvent?: (e: Ev) => void }) {}
+  /** The command an approval card is about, from the tool event the runner sent just before it ("Running: git init"). */
+  private commandOf(e: Ev): string {
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const t = this.events[i];
+      if (t.type === "agent.tool" && t.toolUseId === e.toolUseId) return String(t.summary ?? "").replace(/^Running: /, "").trim();
+    }
+    return "";
+  }
   start() {
     if (this.o.key) this.proc.write(JSON.stringify({ v: 1, type: "auth.key", key: this.o.key }));
     void this.pump();
@@ -292,11 +350,13 @@ export class RunnerDriver {
         e.at = Date.now() - this.t0;
         this.events.push(e);
         if ((e.type === "diagram.ready" || e.type === "error.explained") && Number(e.usdEstimate) > 0) this.eventUsd += Number(e.usdEstimate);
-        const a = autoAnswer(e, { loopChoice: this.o.loopChoice, approve: this.o.approve?.decision });
+        const rule = this.o.approve;
+        const a = autoAnswer(e, { loopChoice: this.o.loopChoice, allow: rule ? (x) => rule.only.test(this.commandOf(x)) : undefined });
         if (a) {
           if (e.type === "loop.stuck") this.stuck.push(e);
-          const wait = e.type === "approval.request" ? this.o.approve?.afterMs ?? 0 : 0;
-          this.answered.push(`${e.type} answered: ${a.type} ${a.choice ?? a.decision ?? a.answer ?? ""}${wait ? ` after ${wait} ms` : ""}`.trim());
+          const wait = a.decision === "allow" ? rule?.afterMs ?? 0 : 0;
+          const about = e.type === "approval.request" ? ` (${a.decision === "allow" ? "allowed" : "denied"}: ${this.commandOf(e) || String(e.title ?? "")})` : "";
+          this.answered.push(`${e.type} answered: ${a.type} ${a.choice ?? a.decision ?? a.answer ?? ""}${wait ? ` after ${wait} ms` : ""}${about}`.trim());
           if (wait) setTimeout(() => this.send(a), wait); else this.send(a);
         }
         try { this.o.onEvent?.(e); } catch { /* a watcher must not stop the pump */ }
@@ -337,7 +397,10 @@ export function ledgerSpent(dataDir: string): number {
 // ---------- running the cases ----------
 
 export type CaseCtx = {
+  /** signal: aborted when the case ends, and at the first refusal or spending stop, so a case's own loops can end. */
   name: string; env: Record<string, string>; configDir: string; claudeBinary: string; meter: SpendMeter; signal: AbortSignal; key: string;
+  /** Every refusal and stop so far in this case, in words. Any one fails the case, whatever the case itself returns. */
+  refusals: readonly string[];
   /** The SDK's query, guarded for this case (tools expected at system/init, and any extra folder Claude Code may use). */
   guard: (e: { tools: Expect["tools"]; model?: string; configDirs?: string[] }, more?: { onInit?: (m: Ev) => void; onMessage?: (m: Ev) => void }) => QueryFn;
   note: (s: string) => void;
@@ -351,6 +414,8 @@ export type RunDeps = {
   readKey?: (ref: KeychainRef) => Promise<string | null>; query?: QueryFn; claudeBinary?: () => string; out?: (line: string) => void;
   tmpRoot?: string; keyRef?: KeychainRef; parentEnv?: Record<string, string | undefined>; keepFiles?: boolean; defaultTimeoutS?: number;
 };
+
+const reasonOf = (e: unknown) => (e instanceof SpendStop ? `stopped: ${e.message}` : e instanceof HarnessRefusal ? `refused by the harness: ${e.message}` : (e as Error)?.message ?? String(e));
 
 /** Runs the cases: a dry run prints the plan only; --spend runs each case with the key route, the checks and the stops. */
 export async function runCases(title: string, cases: Case[], args: Args, deps: RunDeps): Promise<number> {
@@ -397,10 +462,16 @@ export async function runCases(title: string, cases: Case[], args: Args, deps: R
       const cleanups: (() => void | Promise<void>)[] = [];
       const folders: string[] = [];
       const t0 = Date.now();
+      // The first refusal or spending stop ends the case at once: product code that swallows it (Prompt help turns it into
+      // its own error message, the aim eval into "no answer") cannot go on spending, or report a refusal as a quality result.
+      const stops: Error[] = [];
+      const refusals: string[] = [];
+      const stopCase = (e: Error) => { if (!stops.includes(e)) { stops.push(e); refusals.push(e.message); } if (!ac.signal.aborted) ac.abort(); };
+      meter.onStop = stopCase;
       say(`\n=== ${c.name}`);
       const ctx: CaseCtx = {
-        name: c.name, env, configDir, claudeBinary, meter, signal: ac.signal, key,
-        guard: (e, more) => guardQuery(real, { meter, sessions, signal: ac.signal, label: c.name, expect: { tools: e.tools, model: e.model, claudeBinary, configDirs: [configDir, ...(e.configDirs ?? [])] }, ...more }),
+        name: c.name, env, configDir, claudeBinary, meter, signal: ac.signal, key, refusals,
+        guard: (e, more) => guardQuery(real, { meter, sessions, signal: ac.signal, label: c.name, onRefusal: stopCase, expect: { tools: e.tools, model: e.model, claudeBinary, configDirs: [configDir, ...(e.configDirs ?? [])] }, ...more }),
         note: (s) => say(`    ${s}`),
         onCleanup: (fn) => { cleanups.push(fn); },
         scratch: (label) => { const d = realpathSync(mkdtempSync(join(root, `companion-realrun-${label}-`))); folders.push(d); return d; },
@@ -410,17 +481,26 @@ export async function runCases(title: string, cases: Case[], args: Args, deps: R
       let verdict: { pass: boolean; why?: string };
       try {
         const timeout = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error(`timed out after ${limitS} s`)), limitS * 1000); });
-        const pass = await Promise.race([c.run(ctx), timeout]);
+        // Listening before the case starts, so a stop in its first steps is heard.
+        const stopped = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(stops[0] ?? new Error("the case was stopped")), { once: true }));
+        stopped.catch(() => {});
+        const running = c.run(ctx);
+        running.catch(() => {});   // an error after the case has ended (it was stopped or timed out) is not a crash
+        const pass = await Promise.race([running, timeout, stopped]);
         verdict = { pass };
       } catch (e) {
-        verdict = { pass: false, why: e instanceof SpendStop ? `stopped: ${e.message}` : (e as Error)?.message ?? String(e) };
+        verdict = { pass: false, why: reasonOf(e) };
       } finally {
         clearTimeout(timer);
         ac.abort();   // ends anything of this case still running
         for (const fn of cleanups.reverse()) { try { await fn(); } catch { /* cleaning up must not stop the run */ } }
         if (!deps.keepFiles) for (const d of folders) rmSync(d, { recursive: true, force: true });
       }
-      // A stop reached inside product code (which turns errors into its own messages) is still a stop.
+      // A refusal or stop is never a pass, even when product code turned it into its own message and the case went on.
+      if (stops.length) {
+        if (verdict.pass) verdict = { pass: false, why: reasonOf(stops[0]) };
+        for (const e of stops.slice(1)) say(`    also: ${reasonOf(e)}`);
+      }
       if (verdict.pass && (meter.overCase() || meter.overTotal())) verdict = { pass: false, why: "a spending stop was reached" };
       if (meter.overTotal()) { totalStopped = true; if (!/total spending stop/.test(verdict.why ?? "")) verdict.why = `${verdict.why ?? "failed"}; the total spending stop was reached`; }
       if (!verdict.pass) failed++;
@@ -429,6 +509,7 @@ export async function runCases(title: string, cases: Case[], args: Args, deps: R
       say(`=== ${row}`);
     }
   } finally {
+    meter.onStop = undefined;
     if (deps.keepFiles) say(`Claude Code's folder for this run was kept at ${configDir}`);
     else rmSync(configDir, { recursive: true, force: true });
   }

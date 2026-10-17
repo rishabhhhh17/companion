@@ -141,7 +141,17 @@ describe("cost estimates use each model's own price", () => {
     expect(estimateUsd("claude-sonnet-5-5", u)).toBeCloseTo(12, 6);
     expect(estimateUsd("claude-opus-5-5", u)).toBeCloseTo(24, 6);
     expect(estimateUsd("claude-haiku-4-5-20251001", u)).toBeCloseTo(6, 6);
-    expect(estimateUsd("claude-haiku-5-5", u)).toBeCloseTo(0.6, 6);
+  });
+  test("Haiku 5.5 has two rate cards: a prompt over 100K tokens is priced at the higher one", () => {
+    // $0.10 / $0.50 a million at 100K prompt tokens or fewer; $0.50 / $2.50 above (cache reads 0.1x, cache writes 1.25x the input rate).
+    expect(estimateUsd("claude-haiku-5-5", { input_tokens: 100_000, output_tokens: 1_000_000 })).toBeCloseTo(0.01 + 0.5, 6);
+    expect(estimateUsd("claude-haiku-5-5", { input_tokens: 150_000, output_tokens: 1_000 })).toBeCloseTo(0.075 + 0.0025, 6);
+    // The prompt is everything sent in, cached or not.
+    expect(estimateUsd("claude-haiku-5-5", { input_tokens: 10_000, cache_read_input_tokens: 95_000 })).toBeCloseTo(0.005 + 0.00475, 6);
+    expect(estimateUsd("claude-haiku-5-5", { input_tokens: 1_000, cache_creation_input_tokens: 120_000 })).toBeCloseTo(0.0005 + 0.075, 6);
+    expect(estimateUsd("claude-haiku-5-5", u)).toBeCloseTo(3, 6);
+    // Haiku 4.5 is one price at any length.
+    expect(estimateUsd("claude-haiku-4-5", { input_tokens: 150_000 })).toBeCloseTo(0.15, 6);
   });
   test("cache reads and writes are priced as such", () => {
     expect(estimateUsd("claude-sonnet-5-5", { cache_read_input_tokens: 1_000_000 })).toBeCloseTo(0.2, 6);

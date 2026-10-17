@@ -14,8 +14,16 @@ Everything below is built and tested with fakes, but nobody has run it against r
 | B. Real checks | `bun run scripts/real-verify.ts --spend` | about $3.51 | its own stop per scenario (at most $1.50), $12 in all |
 | C. Prompt help eval | `bun run ../evals/prompt-help/run.ts --real --spend` (again with `COMPANION_FAST_MODEL=claude-haiku-5-5`) | about $0.08 each | $0.40 |
 | D. Aim eval | `bun run scripts/eval-aim.ts --spend` (again with `COMPANION_AIM=computer_use`) | about $0.29 each | $1 |
+| E. Sandbox backstop | `bun run scripts/real-sandbox.ts --spend` | about $0.10 | $0.20 a case, $0.40 in all |
 
-Each script prints PASS or FAIL per case, what it saw, and what it spent (Companion's estimate, from Claude Code's own cost figure and the token counts). A run that reaches a stop ends there and says so. Every rule for real runs (the bundled binary, the key read in code and never printed, a throwaway Claude Code folder, explicit `settingSources`, `strictMcpConfig`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, never `bypassPermissions`, the `system/init` check, the spending stops) lives in `runner/scripts/realrun-harness.ts`.
+Each script prints PASS or FAIL per case, what it saw, and what it spent (Companion's estimate, from Claude Code's own cost figure and the token counts). Every rule for real runs (the bundled binary, the key read in code and never printed, a throwaway Claude Code folder, a short plain environment so no shell setting changes the request, explicit `settingSources`, `strictMcpConfig`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, never `bypassPermissions`, the `system/init` check, the spending stops) lives in `runner/scripts/realrun-harness.ts`.
+
+What a FAIL means, and how the stops work:
+- A refusal by the harness (an option or a `system/init` that breaks a rule) or a spending stop fails its case with the reason, even when the product code turned it into its own message. The case ends at once and nothing new starts after it, so a stop never becomes a 0% hit rate or an empty rewrite. The evals print no score for a run that did not finish cleanly, and list a lane error apart from the misses.
+- In process cases (A, C, D, E) are counted while they run, from each reply's token counts. B drives runner processes, and a runner books a round only when that round's result arrives, so a round still running is not seen until then. In B the hard bound is each task's own budget: it is cut to the room left under the stops before the command is sent, and a task cut short (Stop everything, a spending stop, a time limit, the end of a scenario) counts its whole budget, less what the runner booked. So `stop-everything` shows about its $0.40 budget as spent even if the real figure is lower. The small Explain and diagram calls a runner makes in the background are not bounded this way.
+- In B, `approve-after-wait` says yes only to `git init` in its throwaway project; every other approval card is denied and noted with its command.
+
+Retired on 17 Oct 2026: `real-run.ts`, `e2e-plan.ts` and `real-sandbox-net.ts` started real Claude on the old plan route test login with no dry run and no stops. They now start nothing and name what replaced them (A, B and E).
 
 ## Unproven until a real Claude run
 
@@ -31,6 +39,7 @@ Each script prints PASS or FAIL per case, what it saw, and what it spent (Compan
 | Off the record writes no saved conversation and no memory | `runner/test/engine-privacy.test.ts` (still owed) | A: `off-the-record`; B: `memory` | No new conversation file, memory unchanged, the log does not mention the private words |
 | The engine books what each round cost, not the running total again | `runner/test/engine-cost.test.ts` (still owed) | A: compare each case's receipt with what the harness booked; B: the ledger | The two agree within a cent |
 | The real engine: the safety hook asks before every tool and its answer is final | `runner/src/sdkEngine.ts` (UNPROVEN) | B: `house-rule-and-undo` (a blocked edit), `approve-after-wait` (a card answered yes after five seconds), `research` (look only tools) | Blocked edits stay blocked; the allowed command runs once |
+| The operating system sandbox under Companion's own checks holds on the API key route: no write outside the project or in the home folder, no read of a private file, no site off the allow list, while package downloads from the allowed registries work | `runner/src/sandbox.ts` (shown once on the plan route test login, before the key route) | E: `sandbox-files`, `sandbox-network` | No write happened, the private file's word is not in the report, example.com fails, left-pad installs |
 | Stop everything during a real task (real Claude throws when stopped) | M11 plan step 3 (never run) | B: `stop-everything` | Idle within 10 s, no error |
 | The loop breaker on a single task never leaves a run waiting; how often a different approach rescues a task | T07 (not yet proven), M11 plan step 7 | B: `loop-breaker` (answers stop); again with `--loop-different`; the loop breaker eval set for rates | A receipt arrives, the test file is untouched; any loop card is noted |
 | Explain on a real key, from the real change | T10 (16 Oct 2026, not yet tried) | B: `explain`; M11 plan step 11 scores it | One or two lines about the change, never about the prompt |
@@ -39,7 +48,7 @@ Each script prints PASS or FAIL per case, what it saw, and what it spent (Compan
 | The second model review on Opus 5.5 | M11 plan step 9 | B: `second-model-review`; the seeded risky diffs for the catch rate | The harmless change passes; the exposed live key is stopped |
 | The whole loop on broken sample projects | M10 plan | B: `practice` and `rescue`; then the fix eval (M11 plan step 4) | Fixed with proof, tests untouched |
 | Haiku 5.5 in place of Haiku 4.5 for the fast lane (Haiku 4.5 may retire after 15 Oct 2026) | `runner/src/models.ts`, M11 plan step 11 | A: `fast-haiku55`; C with `COMPANION_FAST_MODEL=claude-haiku-5-5` | It holds the Prompt help score at a lower cost |
-| The list prices behind every estimate | `runner/src/models.ts` | A and B: the estimate in each case against Claude Code's own cost figure in the summary | Close; a large gap means a price in the table is wrong |
+| The list prices behind every estimate (Haiku 5.5 has two rate cards: a prompt over 100K tokens is priced five times higher) | `runner/src/models.ts` | A and B: the estimate in each case against Claude Code's own cost figure in the summary | Close; a large gap means a price in the table is wrong |
 | The engine staged inside the installed app | `runner/scripts/real-verify.ts` | B again with `COMPANION_ENGINE_DIR` set to the staged engine | The same results |
 
 ## Known gaps: unproven, and no script covers them yet

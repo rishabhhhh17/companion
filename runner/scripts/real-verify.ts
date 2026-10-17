@@ -11,6 +11,11 @@
 // Every rule for real runs is in realrun-harness.ts. A task that fails the same way three times shows the loop card
 // (loop.stuck); it is answered and noted, so no scenario waits forever, and each scenario has its own time limit.
 // Since 17 Oct 2026 this runs on the API key route; the older test plan login is no longer used here.
+// Money: a runner books a round only when that round's result arrives, so a round still running is not seen by the
+// spending watcher. The hard bound is each task's own budget (the runner passes it to Claude Code as its spending limit):
+// before a command is sent, its budget is cut to the room left under the case's and the run's stops, and a task that is
+// cut short (Stop everything, a spending stop, a time limit, the end of a scenario) counts its whole budget, less what
+// the runner booked for it. A small Explain or diagram call the runner makes in the background is not bounded this way.
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseCommand } from "../../protocol/index.ts";
@@ -23,7 +28,7 @@ import { FastLane } from "../src/lanes.ts";
 import { MODELS } from "../src/models.ts";
 import { SdkEngine, SessionTotals } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
-import { RunnerDriver, ledgerSpent, parseArgs, runCases, spawnRunner, type Case, type CaseCtx } from "./realrun-harness.ts";
+import { RunnerDriver, ledgerSpent, parseArgs, runCases, spawnRunner, type ApproveRule, type Case, type CaseCtx, type Proc } from "./realrun-harness.ts";
 
 type Ev = Record<string, any>;
 const CHEAP = "claude-haiku-4-5-20251001";
@@ -36,7 +41,9 @@ export type Live = {
   ready(): Promise<boolean>; usd(): number; stop(): void;
 };
 /** What a scenario is given: runners, folders, the models, and the case's own context. */
-export type RunnerOpts = { approve?: { decision: "allow" | "deny"; afterMs?: number } };
+export type RunnerOpts = { approve?: ApproveRule };
+/** The one command approve-after-wait allows: git init in the throwaway project, alone (a cd into it first is fine). */
+export const GIT_INIT_ONLY = /^(cd [^;&|`$()<>\n]+ && )?git init( [^;&|`$()<>\n]+)?$/;
 export type Kit = { runner(project: string, env?: Record<string, string>, o?: RunnerOpts): Live; scratch(label: string): string; agentModel: string; diagnoseModel: string; reviewModel: string; cheap: boolean; ctx: CaseCtx };
 export type Scenario = { name: string; what: string; estimateUsd: number; capUsd: number; timeoutS: number; inProcess?: boolean; run(kit: Kit, note: (s: string) => void): Promise<boolean> };
 
@@ -76,13 +83,15 @@ export const SCENARIOS: Scenario[] = [
       const blocked = r.of("agent.tool").filter((e) => e.outcome === "blocked").map((e) => e.summary);
       const price = readFileSync(join(dir, "pricing.txt"), "utf8"), hello = existsSync(join(dir, "hello.txt"));
       note(`blocked: ${JSON.stringify(blocked)}; pricing.txt = "${price}"; hello.txt exists = ${hello}; proof = ${rec.proof}; cost = ${rec.usdEstimate}`);
-      if (!(price === "Haircut: 20" && hello && blocked.length > 0)) { note("rule or task did not behave"); return false; }
+      const behaved = price === "Haircut: 20" && hello && blocked.length > 0;
+      if (!behaved) note("rule or task did not behave");
+      // Undo is checked either way: it costs nothing, and the task has already been paid for.
       const n = r.events.length;
       r.send({ v: 1, id: "u", type: "checkpoint.restore", project: dir, checkpoint: rec.checkpoint });
       await r.until((e) => e.type === "checkpoint.restored" || e.type === "protocol.error", 20_000, n);
       const undone = !existsSync(join(dir, "hello.txt")) && readFileSync(join(dir, "pricing.txt"), "utf8") === "Haircut: 20";
       note(`after Undo: hello.txt gone = ${!existsSync(join(dir, "hello.txt"))}`);
-      return undone;
+      return behaved && undone;
     },
   },
   {
@@ -346,10 +355,10 @@ export const SCENARIOS: Scenario[] = [
     },
   },
   {
-    name: "approve-after-wait", what: "an approval card answered yes after a wait lets the command run once, and the task finishes", estimateUsd: 0.1, capUsd: 0.6, timeoutS: 300,
+    name: "approve-after-wait", what: "an approval card for git init answered yes after a wait lets it run once, and the task finishes; any other card is denied", estimateUsd: 0.1, capUsd: 0.6, timeoutS: 300,
     async run(kit, note) {
       const dir = kit.scratch("approve"); put(dir, { "notes.txt": "start" });
-      const r = kit.runner(dir, {}, { approve: { decision: "allow", afterMs: 5000 } }); if (!await r.ready()) return false;
+      const r = kit.runner(dir, {}, { approve: { only: GIT_INIT_ONLY, afterMs: 5000 } }); if (!await r.ready()) return false;
       r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Run the shell command git init in this folder (I want this folder to be a git repository), then create a file README.md containing the word hello. Then stop.", model: kit.agentModel, budgetUsd: 0.5 });
       const rec = await r.until((e) => e.type === "receipt", 240_000);
       const asked = r.of("approval.request"), resolved = r.of("approval.resolved");
@@ -426,40 +435,87 @@ export const SCENARIOS: Scenario[] = [
   },
 ];
 
-/** The kit a real run gives each scenario: runner processes on the key route, watched for spending. */
-export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | "different" }): Kit {
+// The states in which a task of the runner may have a Claude round in flight (see busy below).
+const WORKING = new Set(["thinking", "working", "checking", "listening"]);
+
+/** The kit a real run gives each scenario: runner processes on the key route, watched for spending. `spawn` is for tests
+ *  (a stand in that never starts Claude). */
+export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | "different"; spawn?: (o: { env: Record<string, string>; engineDir?: string }) => Proc }): Kit {
   const runner = (project: string, env: Record<string, string> = {}, ro: RunnerOpts = {}): Live => {
     const data = ctx.scratch("data");
     // The runner gets a short, plain environment (no Claude Code folder, no account switching variables from the shell),
     // its own throwaway data folder (Claude Code's folder is inside it, as in the app), and the key over the pipe only.
     // Its own daily limit is set to this case's stop, a second stop inside the runner.
-    const proc = spawnRunner({ engineDir: process.env.COMPANION_ENGINE_DIR, env: {
+    const proc = (o.spawn ?? spawnRunner)({ engineDir: process.env.COMPANION_ENGINE_DIR, env: {
       ...minimalEnv(process.env), COMPANION_DATA: data, COMPANION_ROUTE: "api_key", COMPANION_KEY_SOURCE: "app",
       COMPANION_DAILY_CEILING_USD: String(Math.max(0.01, Math.round(ctx.meter.caseStop * 100) / 100)), ...(o.cheap ? { COMPANION_MODEL: CHEAP } : {}), ...env,
     } });
     const d = new RunnerDriver(proc, { key: ctx.key, loopChoice: o.loopChoice, approve: ro.approve }).start();
     const meterKey = `runner-${data}`;
     const spent = () => ledgerSpent(data) + d.eventUsd;
+
+    // Money a round may be spending that the runner has not booked yet (it books a round when its result arrives). Each
+    // task sent with a budget is remembered with the ledger at that moment; while it may have a round in flight, what is
+    // left of its budget counts as spent. A task cut short keeps that amount for good, since its last round may never be
+    // booked at all.
+    const tasks = new Map<string, { budget: number; ledgerAt: number }>();
+    let cutUsd = 0;
+    const lastState = (agent: string) => { for (let i = d.events.length - 1; i >= 0; i--) { const e = d.events[i]; if (e.type === "agent.state" && e.agent === agent) return String(e.state); } return undefined; };
+    const waitingOnCard = (agent: string) => {
+      const asked = d.events.filter((e) => e.type === "approval.request" && e.agent === agent).map((e) => e.approval);
+      return asked.some((a) => !d.events.some((e) => e.type === "approval.resolved" && e.approval === a));
+    };
+    // Busy: heard nothing since it was sent, working, or waiting on an approval card (Claude Code waits with its round open).
+    const busy = (agent: string) => { const s = lastState(agent); return s === undefined || WORKING.has(s) || (s === "needsYou" && waitingOnCard(agent)); };
+    const unbooked = (t: { budget: number; ledgerAt: number }) => Math.max(0, t.budget - Math.max(0, ledgerSpent(data) - t.ledgerAt));
+    const flight = () => cutUsd + [...tasks].filter(([a]) => busy(a)).reduce((s, [, t]) => s + unbooked(t), 0);
+    const cut = (why: string) => {
+      for (const [a, t] of [...tasks]) {
+        if (!busy(a)) continue;
+        const left = unbooked(t);
+        cutUsd += left; tasks.delete(a);
+        if (left > 0) ctx.note(`${a} was cut short (${why}): its whole budget is counted as spent, $${left.toFixed(2)} more than the runner booked, since its last round is not reported`);
+      }
+    };
+    const end = (why: string) => { cut(why); d.stop(); };
+
     let stopped = false;
     const watch = setInterval(() => {
-      try { ctx.meter.pending(meterKey, spent()); }
-      catch (e) { if (!stopped) { stopped = true; ctx.note(`SPENDING STOP: ${(e as Error).message}; the runner was stopped`); try { d.send({ v: 1, id: "spend-stop", type: "agent.interruptAll", reason: "spending stop" }); } catch { /* ended */ } d.stop(); } }
+      try { ctx.meter.pending(meterKey, spent() + flight()); }
+      catch (e) { if (!stopped) { stopped = true; ctx.note(`SPENDING STOP: ${(e as Error).message}; the runner was stopped`); cut("a spending stop"); try { d.send({ v: 1, id: "spend-stop", type: "agent.interruptAll", reason: "spending stop" }); } catch { /* ended */ } d.stop(); } }
     }, 1000);
     let readyP: Promise<boolean> | undefined;
     ctx.onCleanup(async () => {
       clearInterval(watch);
-      d.stop();
+      end("the scenario ended");
       await Bun.sleep(1600);   // the runner finishes its receipts and books them before it ends
       for (const line of d.log()) ctx.note(line);
       for (const s of d.stuck) ctx.note(`the fix loop breaker stopped a task (loop.stuck): ${s.failure?.label}: ${String(s.failure?.detail ?? "").slice(0, 120)}`);
-      try { ctx.meter.settle(meterKey, spent()); } catch { /* the stop is reported by the case */ }
+      try { ctx.meter.settle(meterKey, spent() + cutUsd); } catch { /* the stop is reported by the case */ }
     });
     return {
       project, data, events: d.events,
-      send: (c) => { const line = checkedCommand(c); d.send(JSON.parse(line)); },
+      send: (c) => {
+        let cmd = c;
+        if (typeof c.budgetUsd === "number") {
+          // Never more than the room left under the stops: then the task's own spending limit is the hard bound.
+          ctx.meter.pending(meterKey, spent() + flight());
+          ctx.meter.assertRoom(0.01);
+          const room = Math.floor(ctx.meter.remaining() * 100) / 100;
+          if (room < c.budgetUsd) { cmd = { ...c, budgetUsd: room }; ctx.note(`${c.type}: its budget was cut from $${c.budgetUsd} to $${room}, the room left under the stops`); }
+        }
+        if (c.type === "agent.interruptAll") cut("Stop everything");
+        const line = checkedCommand(cmd);
+        if (typeof cmd.budgetUsd === "number") {
+          const prev = tasks.get(String(cmd.agent));
+          if (prev && busy(String(cmd.agent))) cutUsd += unbooked(prev);   // replaced while it may still be running
+          tasks.set(String(cmd.agent), { budget: cmd.budgetUsd, ledgerAt: ledgerSpent(data) });
+        }
+        d.send(JSON.parse(line));
+      },
       of: (t) => d.of(t), until: (p, ms, from) => d.until(p, ms, from),
       ready: () => (readyP ??= d.ready({ auth: true }, 30_000)),
-      usd: spent, stop: () => d.stop(),
+      usd: () => spent() + flight(), stop: () => end("its runner was stopped"),
     };
   };
   return { runner, scratch: (l) => ctx.scratch(l), agentModel: o.cheap ? CHEAP : MODELS.agent, diagnoseModel: o.cheap ? CHEAP : MODELS.diagnose, reviewModel: o.cheap ? CHEAP : MODELS.review, cheap: o.cheap, ctx };

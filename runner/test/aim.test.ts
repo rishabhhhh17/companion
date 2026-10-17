@@ -123,6 +123,37 @@ describe("the lane", () => {
     expect(res2).toMatchObject({ type: "tool_result", tool_use_id: "toolu_k1", toolset_name: "computer", is_error: true });   // nothing is ever pressed
     expect(r.costUsd).toBeCloseTo(2 * (1500 * 2e-6 + 40 * 10e-6), 6);
   });
+  test("the instruction written beside the screenshot request is kept when the click comes with no words", async () => {
+    const first = reply([thinking, { type: "text", text: "Click Deploy" }, shot("toolu_s1")]);
+    const s = fake(ok(first), ok(reply([click([640, 312])])));
+    const r = await new ComputerUseVision({ apiKey: async () => "k", fetchFn: s.f, model: MODEL }).locate({ image: img, question: "q", ocr }, ac());
+    expect(r.point?.caption).toBe("Click Deploy");
+  });
+  test("a second round that fails keeps what the first round cost: the error carries it, and the fallback adds it", async () => {
+    const roundOne = 1500 * 2e-6 + 40 * 10e-6;
+    for (const second of [{ body: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }, status: 529 }, { body: { type: "error", error: { type: "invalid_request_error", message: "bad" } }, status: 400 }]) {
+      const s = fake(ok(reply([shot()])), second);
+      let caught: any;
+      try { await new ComputerUseVision({ apiKey: async () => "k", fetchFn: s.f, model: MODEL }).locate({ image: img, question: "q", ocr }, ac()); } catch (e) { caught = e; }
+      expect(caught).toBeInstanceOf(Error);
+      expect(caught.costUsd).toBeCloseTo(roundOne, 6);
+      const s2 = fake(ok(reply([shot()])), second);
+      const lane = withFallback(new ComputerUseVision({ apiKey: async () => "k", fetchFn: s2.f, model: MODEL }), { locate: async () => ({ point: { x: 1, y: 2, targetText: "a", confidence: 0.9, caption: "c" }, costUsd: 0.01 }) });
+      const r = await lane.locate({ image: img, question: "q", ocr }, ac());
+      expect(r.point?.x).toBe(1);
+      expect(r.costUsd).toBeCloseTo(0.01 + roundOne, 6);
+    }
+  });
+  test("a second round that never answers (the time limit) keeps the first round's cost too", async () => {
+    let n = 0;
+    const f = (async (_u: string, init: RequestInit) => {
+      if (++n === 1) return new Response(JSON.stringify(reply([shot()])), { status: 200 });
+      return new Promise((_, no) => init.signal!.addEventListener("abort", () => no(new Error("aborted"))));
+    }) as unknown as typeof fetch;
+    let caught: any;
+    try { await new ComputerUseVision({ apiKey: async () => "k", fetchFn: f, model: MODEL, timeoutMs: 50 }).locate({ image: img, question: "q", ocr }, ac()); } catch (e) { caught = e; }
+    expect(caught?.costUsd).toBeCloseTo(1500 * 2e-6 + 40 * 10e-6, 6);
+  });
   test("two rounds at most: a second screenshot request is no point, not a third call", async () => {
     const s = fake(ok(reply([shot()])), ok(reply([shot("toolu_s2")])));
     const r = await new ComputerUseVision({ apiKey: async () => "k", fetchFn: s.f, model: MODEL }).locate({ image: img, question: "q", ocr }, ac());
