@@ -25,7 +25,7 @@
 ## What Companion keeps on your Mac
 **Beta numbers** are off until you turn them on in Settings. When on, Companion keeps counts per day on your Mac (how often a thing happened; never words, names, files or anything from your screen). It sends nothing. You can read them, copy them to send to the founder, and erase them.
 
-Task history and spending, undo snapshots of your projects, receipt pictures, memory notes, the speech model, a hidden browser, settings and a small activity log (what happened, never what was typed, said or on screen). **Settings** lists them with sizes. **Delete everything** removes them and your saved key.
+Task history and spending, undo snapshots of your projects, receipt pictures, memory notes, the speech model, a hidden browser, settings, the words in the ask box that you have not sent yet (so they are still there when Companion opens again; gone once you send them, never kept off the record, and never when they look like a key or a password) and a small activity log (what happened, never what was typed, said or on screen). **Settings** lists them with sizes. **Delete everything** removes them and your saved key.
 
 ## If you send a log
 **Settings, Save a log for support** writes a text file with no project content, nothing typed or said and nothing from your screen; your name, folders and keys are covered. You decide whether to send it.

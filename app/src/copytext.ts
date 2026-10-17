@@ -1,0 +1,34 @@
+// Copy on replies and receipts: the text a Copy button puts on the clipboard, the same lines the card shows. Anything that
+// looks like a key or a password is hidden again first (the clipboard can be read by every app), as on the card.
+import { blockedNote, ehLines, formatUsd, receiptProofWords, type Model, type RescueCard, type ResearchCard } from "./model.ts";
+import { redact } from "../../runner/src/redact.ts";
+import { S } from "./strings.ts";
+
+const lines = (l: (string | null | undefined | false)[]) => redact(l.filter((x): x is string => typeof x === "string" && x.length > 0).join("\n"));
+
+/** The receipt as the card shows it: what changed, what cannot be undone, the proof, what was not done, commands and cost. */
+export function receiptCopy(m: Model, project: string): string {
+  const r = m.receipt;
+  if (!r) return "";
+  const changed = r.changed.length === 0 ? [S.nothingChanged] : r.changed.map((c) => `${(S as Record<string, unknown>)[c.kind] ?? c.kind}: ${c.file}`);
+  return lines([
+    S.receiptTitle, ...changed,
+    r.notUndoable.length > 0 && `${S.cannotUndo}: ${r.notUndoable.join("; ")}`,
+    r.changed.length > 0 && receiptProofWords(m),
+    blockedNote(m, project),
+    `${r.commands} ${S.commands} · ${S.cost}: ${formatUsd(r.usdEstimate)}`,
+  ]);
+}
+
+/** A research answer, its notes with where each came from, and where it was filed. */
+export function researchCopy(r: ResearchCard): string {
+  return lines([r.title, r.answer, r.notes.length > 0 && `${S.researchNotes}:`, ...r.notes.map((n) => `- ${n.text} (${n.source})`), `${S.researchFiled} ${r.file}`]);
+}
+
+/** What Rescue found, as shown. */
+export function rescueCopy(r: RescueCard): string {
+  return lines([S.rescueTitle, r.summary, r.works.length > 0 && `${S.rescueWorks}: ${r.works.join("; ")}`, `${S.rescueBroken}: ${r.broken}`, r.evidence.length > 0 && `${S.rescueChecks}:`, ...r.evidence.map((e) => `${e.label}: ${e.status}${e.detail ? ` ${e.detail}` : ""}`)]);
+}
+
+/** An explained error: its sentences and where it is in the project. */
+export function ehCopy(m: Model): string { return m.eh ? lines(ehLines(m)) : ""; }

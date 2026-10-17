@@ -17,6 +17,8 @@ import { useModel } from "./useModel.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { webLink } from "./links.ts";
+import { DRAFT_KEY, askKey, draftToKeep } from "./askbox.ts";
+import { ehCopy, receiptCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import "./style.css";
@@ -351,6 +353,21 @@ function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => vo
   return <button className="btn" type="button" onClick={() => void invoke("open_link", { url: l.url }).then(() => onNote("")).catch((e) => onNote(String(e)))}>{S.openSite(l.host)}</button>;
 }
 
+// Copy: puts what the card shows on the clipboard, only on a press (copytext.ts hides anything that looks like a key again
+// first). Says so when the clipboard could not be used, so a failure is never silent.
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  if (!text) return null;
+  const copy = () => {
+    setState("idle");
+    void (navigator.clipboard?.writeText(text) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
+  };
+  return <>
+    <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : S.copy}</button>
+    {state === "failed" && <span className="line" role="status">{S.copyFailed}</span>}
+  </>;
+}
+
 // One research note and where it came from. Its source was written by the model, so it opens only on a press, and the
 // button names the site it really goes to.
 function ResearchNote({ text, source }: { text: string; source: string }) {
@@ -499,7 +516,14 @@ function Card() {
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
   useEffect(() => { if (document.hasFocus() && (!document.activeElement || document.activeElement === document.body)) document.getElementById(tabId(home.tab))?.focus(); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
-  const box = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
+  // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
+  const offNow = useRef(false);
+  const keepDraft = (text: string) => { try { const d = draftToKeep(text, offNow.current); if (d === null) localStorage.removeItem(DRAFT_KEY); else localStorage.setItem(DRAFT_KEY, d); } catch { /* storage may be unavailable */ } };
+  const fitBox = () => { const el = box.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 160)}px`; };
+  const setBox = (text: string) => { if (!box.current) return; box.current.value = text; fitBox(); keepDraft(text); };
+  const clearBox = () => setBox("");
   const [project, setProject] = useState("");
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
@@ -520,10 +544,20 @@ function Card() {
   }, []);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
+  // Turning off the record on drops the kept draft at once; turning it off again keeps what is in the box. Not at start,
+  // so the draft from last time is not dropped before it is put back.
+  const offWas = useRef(false);
+  useEffect(() => { offNow.current = off; if (off === offWas.current) return; offWas.current = off; keepDraft(box.current?.value ?? ""); }, [off]);
   // The first run: shown until finished, remembered only on this Mac.
   const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });
   const pendingPrompt = useRef<string | null>(null);
-  useEffect(() => { if (onboarded && pendingPrompt.current && box.current) { box.current.value = pendingPrompt.current; box.current.focus(); pendingPrompt.current = null; } }, [onboarded]);
+  useEffect(() => {
+    if (!onboarded || !box.current) return;
+    if (pendingPrompt.current) { setBox(pendingPrompt.current); box.current.focus(); pendingPrompt.current = null; return; }
+    let kept = "";
+    try { kept = localStorage.getItem(DRAFT_KEY) ?? ""; } catch { /* storage may be unavailable */ }
+    if (kept && !box.current.value) { box.current.value = kept; fitBox(); }
+  }, [onboarded]);
   const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
   // The "remembered" toast stays for ten seconds after the last new line.
   useEffect(() => {
@@ -751,8 +785,8 @@ function Card() {
       const ev = e.payload as { type?: string; stage?: string; text?: string };
       if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
         homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
-        if (box.current) box.current.value = ev.text;
-        if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (box.current) box.current.value = ""; }
+        setBox(ev.text);
+        if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); clearBox(); }
         else if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
         else setTimeout(() => box.current?.focus(), 30);
         dispatch({ type: "ui.voiceClosed" });
@@ -845,7 +879,7 @@ function Card() {
     if (!prompt || !project) return;
     dispatch({ type: "ui.undoClosed" });
     void send(startTask(project, prompt, off)); setOff(false);
-    if (box.current) box.current.value = "";
+    clearBox();
   };
 
   // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
@@ -866,7 +900,7 @@ function Card() {
     if (!c || !project) return;
     dispatch({ type: "ui.researchRequested" });
     void send(c);
-    if (box.current) box.current.value = "";
+    clearBox();
   };
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
@@ -874,7 +908,7 @@ function Card() {
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(planDrive(project, goal, off)); setOff(false);
-    if (box.current) box.current.value = "";
+    clearBox();
   };
 
   return (
@@ -1084,10 +1118,16 @@ function Card() {
       <div hidden={!show("ask")}>
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
-        <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
-          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); setAskMode("task"); if (box.current) box.current.value = ""; } } else submit(); } }} />
+        <textarea ref={box} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
+          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); }}
+          onKeyDown={(e) => {
+            if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
+            e.preventDefault();
+            if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
+          }} />
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
+      <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
       {!working && (
         <div className="row">
           <button className="btn primary" type="button" onClick={submit}>{S.start}</button>
@@ -1249,7 +1289,7 @@ function Card() {
           <div className="line muted"><b>{S.researchNotes}:</b></div>
           {m.research.notes.map((n, i) => <ResearchNote key={i} text={n.text} source={n.source} />)}
           <div className="line muted">{S.researchFiled} {m.research.file}</div>
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.researchClosed" })}>{S.researchClose}</button></div>
+          <div className="row"><CopyButton text={researchCopy(m.research)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.researchClosed" })}>{S.researchClose}</button></div>
         </section>
       )}
 
@@ -1263,6 +1303,7 @@ function Card() {
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
           <div className="row">
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
+            <CopyButton text={rescueCopy(m.rescue)} label={S.copyAnswer} />
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
           </div>
         </section>
@@ -1307,6 +1348,7 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
+          <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
             <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
           )}
@@ -1445,6 +1487,7 @@ function Card() {
           )}
           <div className="row">
             {["ready", "unexplained"].includes(m.eh.stage) && pointsOnScreen(m.eh.where) && project && m.eh.project === project && <button className="btn" type="button" onClick={() => pointProblem(project, m.eh!.where)}>{S.pointWhere}</button>}
+            {m.eh.stage === "ready" && <CopyButton text={ehCopy(m)} label={S.copyAnswer} />}
             {["ready", "unexplained"].includes(m.eh.stage) && m.eh.evidence && project && m.eh.project === project && <button className="btn primary" type="button" disabled={working} onClick={() => { dispatch({ type: "ui.undoClosed" }); void send(fixError(project, m.eh!.evidence!, m.eh!.where)); void invoke("eh_dismiss"); }}>{S.ehFix}</button>}
             <button className="btn" type="button" onClick={() => { void invoke("eh_dismiss"); dispatch({ type: "ui.ehClosed" }); }}>{["reading", "thinking", "consent"].includes(m.eh.stage) ? S.planCancel : S.ehClose}</button>
           </div>
