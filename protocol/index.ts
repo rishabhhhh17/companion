@@ -186,7 +186,7 @@ export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; 
 export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
 // already: after a pause, the person is first asked "Did you already do this?" and nothing is pointed at until they answer
 // (Yes and No come back as walk.answer). Absent on every other step.
-export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[] };
+export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[]; link?: string };
 export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number };
 export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
 // The step stays as it is: the project does not show its result yet (say: what is not there, in plain words). Not a failure.
@@ -348,7 +348,8 @@ const EVENTS: Record<string, Check[]> = {
   "bisect.undone": [str("project"), str("checkpoint"), bool("ok"), list("reverted")],
   "error.explained": [str("req"), bool("ok"), list("sentences"), (m) => (typeof m.excerpt === "string" && typeof m.evidence === "string" ? null : 'missing text fields "excerpt" and "evidence"'), num("usdEstimate")],
   "walk.lessons": [str("project"), list("lessons")],
-  "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
+  // link: the one web page the step is about, shown as an Open button and opened only on the person's press.
+  "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask"), opt("link", str("link"))],
   "walk.ask": [str("walk"), num("index")],
   "walk.help": [str("walk"), str("say")],
   "walk.wait": [str("walk"), num("index"), str("say")],

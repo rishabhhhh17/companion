@@ -532,6 +532,9 @@ function Card() {
   const warmedAt = useRef(0);
   const warmSoon = () => { const t = Date.now(); if (t - warmedAt.current < 60_000) return; warmedAt.current = t; void send(warmEngine()).catch(() => {}); };
   const [project, setProject] = useState("");
+  // What opening a lesson step's page said, if it could not open it (links.ts); a new step starts with none.
+  const [lessonNote, setLessonNote] = useState("");
+  useEffect(() => { setLessonNote(""); }, [m.walk?.id, m.walk?.index, m.walk?.variant]);
   // Files into the ask box (attachfiles.ts): dragged onto Home or pasted into the box, read on this Mac, shown as chips that
   // can be removed, and sent only with Start. Kept while Home is closed, not kept on disk, dropped for a new folder.
   const [attached, setAttached] = useState<Attached[]>([]);
@@ -1085,6 +1088,8 @@ function Card() {
           {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
             <div className="line"><b>{m.walk.say}</b></div>
+            {m.walk.link && <div className="row"><OpenButton url={m.walk.link} onNote={setLessonNote} /></div>}
+            {m.walk.link && lessonNote && <div className="line" role="status">{lessonNote}</div>}
           </>}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
           {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}

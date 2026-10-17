@@ -10,6 +10,7 @@
       "id": "signin",
       "say": "Open github.com and sign in. You can make a free account there if you do not have one.",
       "find": "the sign in button on github.com",
+      "link": "https://github.com",
       "check": {
         "kind": "ask"
       }

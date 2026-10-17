@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { webLink } from "./links.ts";
+import { initial, reduce, type Model } from "./model.ts";
 
 describe("which links get an Open button", () => {
   test("a plain web address, shown by the real name of its site", () => {
@@ -35,5 +36,22 @@ describe("a link opens only when the person presses its button", () => {
     expect(uses.length).toBe(1);
     expect(uses[0].f).toBe("card.tsx");
     expect(uses[0].l).toMatch(/onClick=\{\(\) => [^}]*invoke\("open_link"/);
+  });
+});
+
+describe("a lesson step's page", () => {
+  const run = (events: Record<string, unknown>[]) => events.reduce<Model>((x, e) => reduce(x, e as never), initial());
+  const step = (over: Record<string, unknown> = {}) => ({ type: "walk.step", walk: "w1", project: "no-project", lesson: "cursor-install", title: "Install Cursor", index: 0, total: 6, variant: "main", say: "Go to cursor.com/download.", find: "the download button", ask: true, ...over });
+  const started = { type: "ui.walkRequested", walk: "w1" };
+  test("a step that names its page keeps it, so Learn can offer Open", () => {
+    expect(run([started, step({ link: "https://cursor.com/download" })]).walk?.link).toBe("https://cursor.com/download");
+  });
+  test("no page, or anything that is not a plain web address, gives no button", () => {
+    expect(run([started, step()]).walk?.link).toBeUndefined();
+    for (const link of ["javascript:alert(1)", "file:///etc/passwd", "https://u:p@x.com", 5]) expect(run([started, step({ link })]).walk?.link).toBeUndefined();
+  });
+  test("Learn shows the Open button for the step's page", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("{m.walk.link && <div className=\"row\"><OpenButton url={m.walk.link} onNote={setLessonNote} /></div>}");
   });
 });
