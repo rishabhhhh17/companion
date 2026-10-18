@@ -45,6 +45,9 @@ Commands and edge cases are in technical_research.md section 6. Rules a coding a
 - No task starts in the project while a search, a Point at the problem check, an install or a ship step runs on it (`run` refuses, changing nothing). Before this, the ask box could start a task mid search, which wrote into the project while its packages were being copied.
 - A Python virtual environment is still not copied into the checks of earlier versions; a Python project whose checks need one may fail every version the same way and be reported as already failing. Not fixed here. (Fixed 18 Oct 2026: each copy borrows the virtual environment by one link, the requirement files decide which versions can use it, and a step that could not run says nothing; see T07.)
 
+## Fixed 18 Oct 2026 (tested with a stand in git that fails on purpose)
+- Reading a file back from a saved version (`readFiles`, used by the proof ladder's test guard and package check, Which task broke it and the receipts) reads only files, tries a failed read once more, and then fails with the file's name. It used to take whatever a failed read printed (nothing, or the start of the file) as the file's text, so one bad read on a busy Mac could make an unchanged project look broken, or hide a test file a task deleted.
+
 ## Open [verify] items
 - None marked [verify]. A fresh Mac's `/usr/bin/git` stub would block the first checkpoint (pitfall 12; T04).
 
