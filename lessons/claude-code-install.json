@@ -18,6 +18,7 @@
       "id": "paste",
       "say": "Copy the install command from Claude Code's own page (code.claude.com) and paste it into Terminal. It runs a program from the internet, so only use that page.",
       "find": "the Terminal window",
+      "link": "https://code.claude.com",
       "check": {
         "kind": "ask"
       }

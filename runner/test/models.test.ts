@@ -47,9 +47,11 @@ describe("switching the small lanes' models for testing", () => {
     const lanes = createLanes({ ...readSettings({ COMPANION_ROUTE: "plan", COMPANION_CLAUDE_BIN: "/bin/ls", ...env }) }, { queryFn: queryFn as any, tmpDrive: { ensure: async () => "/tmp", wipe: async () => {} } });
     await lanes.fast.run({ text: "hi", raw: true }, () => {}, new AbortController().signal);
     await lanes.vision.locate({ image: { mediaType: "image/png", base64: "AAAA", w: 10, h: 10 }, question: "where", ocr: [] }, new AbortController().signal);
+    // Pictures added to a request are looked at on the vision lane's model too.
+    await lanes.describe({ images: [{ mediaType: "image/png", base64: "AAAA" }], question: "match this" }, new AbortController().signal);
     return asked;
   };
-  test("without a setting, each lane uses its default", async () => expect(await run({})).toEqual([MODELS.fast, MODELS.vision]));
-  test("with the settings, each lane uses the one given", async () => expect(await run({ COMPANION_FAST_MODEL: "fast-x", COMPANION_VISION_MODEL: "vision-y" })).toEqual(["fast-x", "vision-y"]));
-  test("the agent's own model setting does not change the small lanes", async () => expect(await run({ COMPANION_MODEL: "agent-z" })).toEqual([MODELS.fast, MODELS.vision]));
+  test("without a setting, each lane uses its default", async () => expect(await run({})).toEqual([MODELS.fast, MODELS.vision, MODELS.vision]));
+  test("with the settings, each lane uses the one given", async () => expect(await run({ COMPANION_FAST_MODEL: "fast-x", COMPANION_VISION_MODEL: "vision-y" })).toEqual(["fast-x", "vision-y", "vision-y"]));
+  test("the agent's own model setting does not change the small lanes", async () => expect(await run({ COMPANION_MODEL: "agent-z" })).toEqual([MODELS.fast, MODELS.vision, MODELS.vision]));
 });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { askedByVoice, followVoiceShowMe, lineAnswers, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, VOICE_ASK_MS, type VoiceQuestion } from "./speech.ts";
 import { initial, type Model } from "./model.ts";
+import { KEYS_START, setKeysNow, type Keys } from "./keys.ts";
 import { S } from "./strings.ts";
 
 const walk = (o: Record<string, unknown> = {}) => ({ id: "w1", index: 0, variant: "main", stage: "step", say: "Open settings.", ...o }) as never;
@@ -12,6 +13,21 @@ describe("what is said", () => {
     expect(lineFor({ walk: walk(), showme: null })).toEqual({ key: "walk:w1:0:main", text: "Open settings." });
     expect(lineFor({ walk: walk({ index: 1 }), showme: null })?.key).toBe("walk:w1:1:main");
     expect(lineFor({ walk: walk({ variant: "instead" }), showme: null })?.key).toBe("walk:w1:0:instead");
+  });
+  test("a lesson names the keys in use when it is said, not when it arrived", () => {
+    const say = "Press Control, Option, Command and F in Companion.";
+    const moved: Keys = { using: { ...KEYS_START.using, problem: "control-option-command-p" }, picked: { ...KEYS_START.picked, problem: "control-option-command-p" } };
+    expect(lineFor({ walk: walk({ say }), showme: null }, moved)?.text).toBe("Press Control, Option, Command and P in Companion.");
+    expect(lineFor({ walk: walk({ say, stage: "already" }), showme: null }, moved)?.text).toBe(`Press Control, Option, Command and P in Companion. ${S.lessonAlready}`);
+    expect(lineFor({ walk: walk({ stage: "help", note: say }), showme: null }, moved)?.text).toBe("Press Control, Option, Command and P in Companion.");
+    // By default the keys in use now, so a change in Settings is said from then on, under the same key (not said twice).
+    setKeysNow(moved);
+    try { expect(lineFor({ walk: walk({ say }), showme: null })).toEqual({ key: "walk:w1:0:main", text: "Press Control, Option, Command and P in Companion." }); }
+    finally { setKeysNow(KEYS_START); }
+    // A job without keys: never keys that do not work, and where to pick others.
+    const off = lineFor({ walk: walk({ say }), showme: null }, { ...moved, using: { ...moved.using, problem: null } })?.text ?? "";
+    expect(off).not.toContain("Control, Option, Command and F");
+    expect(off).toContain(S.keyHintOff.replace("{job}", "Point at the problem"));
   });
   test("asking 'did that work' keeps the step's key, so the step is not said twice", () => {
     expect(lineFor({ walk: walk({ stage: "asking" }), showme: null })?.key).toBe("walk:w1:0:main");

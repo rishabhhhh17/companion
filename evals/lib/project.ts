@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { couldNotStart, NO_ROOM_WAITS_MS } from "../../runner/src/proof/ladder.ts";
 import { isTestFile } from "../../runner/src/proof/testguard.ts";
 
 export const REPO = realpathSync(join(import.meta.dir, "..", ".."));
@@ -45,15 +46,32 @@ export function resolveCmd(cmd: string[], hidden: string): string[] {
 
 export type CheckRun = { pass: boolean; code: number | null; output: string; timedOut: boolean };
 
-/** Runs one check in the project, for real, with a plain environment and a time limit. */
-export async function runCheck(cmd: string[], cwd: string, env: Record<string, string> = {}, timeoutMs = 60_000): Promise<CheckRun> {
-  const p = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: cwd, NO_COLOR: "1", PYTHONDONTWRITEBYTECODE: "1", ...env } });
+/** Runs one check in the project, for real, with a plain environment and a time limit. A check this Mac had no room to
+ *  start (every process slot in use: starting it fails, or it says "spawn ... EAGAIN") is run again after a moment, twice,
+ *  as the proof ladder does (`waitsMs`), so a busy Mac is never what a case's result says. */
+export async function runCheck(cmd: string[], cwd: string, env: Record<string, string> = {}, timeoutMs = 60_000, waitsMs: number[] = NO_ROOM_WAITS_MS): Promise<CheckRun> {
+  let r = await runOnce(cmd, cwd, env, timeoutMs);
+  for (const ms of waitsMs) {
+    if (!r.noRoom) break;
+    await Bun.sleep(ms);
+    r = await runOnce(cmd, cwd, env, timeoutMs);
+  }
+  const { noRoom: _, ...run } = r;
+  return run;
+}
+async function runOnce(cmd: string[], cwd: string, env: Record<string, string>, timeoutMs: number): Promise<CheckRun & { noRoom: boolean }> {
+  let p: ReturnType<typeof Bun.spawn>;
+  try { p = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: cwd, NO_COLOR: "1", PYTHONDONTWRITEBYTECODE: "1", ...env } }); }
+  catch (e) {
+    if ((e as { code?: string }).code !== "EAGAIN") throw e;
+    return { pass: false, code: null, output: String((e as Error).message), timedOut: false, noRoom: true };
+  }
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; p.kill(); }, timeoutMs);
-  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const [out, err] = await Promise.all([new Response(p.stdout as ReadableStream).text(), new Response(p.stderr as ReadableStream).text()]);
   const code = await p.exited;
   clearTimeout(timer);
-  return { pass: code === 0 && !timedOut, code, output: (out + "\n" + err).trim().slice(-2000), timedOut };
+  return { pass: code === 0 && !timedOut, code, output: (out + "\n" + err).trim().slice(-2000), timedOut, noRoom: couldNotStart({ code, signal: null, stdout: out, stderr: err, timedOut, ms: 0 }) };
 }
 
 /** Every file of the project (not node_modules or .git), as relative paths. */

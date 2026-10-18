@@ -16,11 +16,16 @@ const NOT_THEIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".
 const MAX_FILE = 2_000_000;
 const LINE_MAX = 200;
 const MESSAGE_MAX = 200;
+// Only the end of very large output is read: the error is at the end, and every caller already passes only the end of a
+// check's output (16 KB at most) or a selection (6,000 characters). Without it, some text (a long run with no line breaks)
+// cost time with the square of its length.
+const TEXT_MAX = 64 * 1024;
 
 type Place = { path: string; line: number; column?: number; at: number; message?: string; declared?: boolean };
 
 // path:line:col, path:line, path(line,col), with or without file://
-const AT = /(?:file:\/\/)?((?:\.{0,2}\/)?[\w@~+.-][^\s()"'<>|,:]*\.[A-Za-z0-9]{1,6})(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
+// A path is at most 400 characters: an unbounded one was tried, and given up, from every place in a long line without a dot.
+const AT = /(?:file:\/\/)?((?:\.{0,2}\/)?[\w@~+.-][^\s()"'<>|,:]{0,400}\.[A-Za-z0-9]{1,6})(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))/g;
 const PY = /File "([^"]+)", line (\d+)/g;
 const ESLINT_FILE = /^((?:\/|\.{1,2}\/|[\w@-]+\/)\S*\.[A-Za-z0-9]{1,6})\s*$/;
 const ESLINT_ROW = /^\s+(\d+):(\d+)\s+error\s+(.+?)(?:\s{2,}\S+)?\s*$/;
@@ -193,7 +198,7 @@ const FAILED_IMPORT = /Failed to resolve import ["']([^"'\n]+)["'] from ["']([^"
  *  not a check Companion ran) a path that is not in the project as written may still be matched to one file that is (see
  *  looseFile), and a failed import is found by the line that imports it. */
 export function locateProblem(output: string, project: string, from: string, opts: { loose?: boolean } = {}): Problem | null {
-  const text = output.replace(ANSI, "").replace(/\r/g, "");
+  const text = output.slice(-TEXT_MAX).replace(ANSI, "").replace(/\r/g, "");
   let root: string;
   try { root = realpathSync(project); } catch { return null; }
   let files: string[] | null = null;

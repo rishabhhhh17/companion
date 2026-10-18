@@ -127,11 +127,11 @@ export class CheckpointStore {
     return e;
   }
 
-  private async git(args: string[], opts: { index?: string; allowFail?: boolean } = {}): Promise<string> {
+  private async git(args: string[], opts: { index?: string } = {}): Promise<string> {
     const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: GIT_TIMEOUT_MS });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     const code = await p.exited;
-    if (code !== 0 && !opts.allowFail) throw new Error(`git ${args.join(" ")} failed: ${err.trim()}`);
+    if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${err.trim()}`);
     return out;
   }
 
@@ -314,17 +314,38 @@ export class CheckpointStore {
     return files;
   }
 
-  // Text of selected files as they were at a checkpoint (for comparing before and after).
+  // Text of selected files as they were at a checkpoint (for comparing before and after). Only files (blobs) are read.
   private async readFilesNow(id: string, keep: (p: string) => boolean, maxBytes: number): Promise<Record<string, string>> {
     const m = this.readMeta(id);
     if (!m) throw new Error(`Unknown checkpoint: ${id}`);
-    const names = (await this.git(["ls-tree", "-r", "--name-only", "-z", m.commit])).split("\0").filter((n) => n && keep(n)).slice(0, 2000);
+    const names: string[] = [];
+    for (const row of (await this.git(["ls-tree", "-r", "-z", m.commit])).split("\0")) {
+      const tab = row.indexOf("\t");
+      if (tab < 0 || row.slice(0, tab).split(" ")[1] !== "blob") continue;
+      const n = row.slice(tab + 1);
+      if (keep(n)) names.push(n);
+      if (names.length >= 2000) break;
+    }
     const out: Record<string, string> = {};
     for (const n of names) {
-      const text = await this.git(["cat-file", "blob", `${m.commit}:${n}`], { allowFail: true });
+      const text = await this.readBlob(m.commit, n);
       if (text.length <= maxBytes) out[n] = text;
     }
     return out;
+  }
+
+  /** One saved file's text. git can fail now and then on a busy Mac: a read that failed is tried once more, and then is an
+   *  error. Text from a failed read is never taken as the file's, because empty or cut off text would make the checks judge
+   *  wrongly (a test file "emptied" that was not, a deleted one missed, packages "not installed" in a project that needs none). */
+  private async readBlob(commit: string, path: string): Promise<string> {
+    let why = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let r: { out: string; err: string; code: number };
+      try { r = await this.gitFull(["cat-file", "blob", `${commit}:${path}`]); } catch (e) { why = String((e as Error).message ?? e).split("\n")[0]; continue; }   // git could not even be started
+      if (r.code === 0) return r.out;
+      why = r.err.trim().split("\n")[0] ?? "";
+    }
+    throw new Error(`Could not read ${path} from the saved version (${why || "git stopped"}).`);
   }
 
   private async exportNow(id: string, dir: string): Promise<void> {

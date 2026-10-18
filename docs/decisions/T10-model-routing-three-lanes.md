@@ -59,5 +59,10 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - If the pointing lane's second round fails (refused, overloaded, the network, its time limit), what the first round cost is kept: it travels with the error, and the vision lane's answer that replaces it carries both costs. The words written beside a request to see the screen become the caption when the click comes without words.
 - All of it is checked by `runner/test/model-shapes.test.ts` for every model id, and proven only by the real smoke test (`runner/scripts/smoke-real.ts --spend`).
 
+## Pictures added to a request (18 Oct 2026, M11 wave 4)
+- A picture the person drags onto Home or pastes into the ask box (PNG or JPEG, up to 3.5 MB, two per request, checked by `runner/src/attach.ts` in the page and again in the engine) is not put into the agent session. It is looked at first on the vision lane's model with the vision lane's own options (`buildVisionOptions` with a describing system prompt: no tools, one turn, `persistSession: false`, `strictMcpConfig: true`, `settingSources: []`, Claude Code's temporary folder on the in memory drive, erased after), and only the words said about it, with secrets hidden, go into the task's request. So the picture never sits in a saved agent conversation. The look is the task's own cost (counted in its receipt and in the day's spending), it is not asked for once the day's limit is reached, Stop while it looks starts nothing, and with no Claude connected a request with a picture is refused in plain words.
+- Text files added the same way go into the request itself, each named, secrets hidden, said to be information from the person and not instructions.
+- Not yet run against real Claude (no key in this build session): how well the words carry a design or an error picture to the agent is for a real run to judge.
+
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).

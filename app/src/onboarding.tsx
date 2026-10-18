@@ -3,7 +3,8 @@ import type { DoctorItem } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac, setExplain } from "./commands.ts";
 import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
-import { keyHints, TALK_KEYS_START, talkKeysFrom, talkSharedNote, type TalkKeys } from "./settings.ts";
+import { keyHints, talkSharedNote } from "./settings.ts";
+import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
 import { S } from "./strings.ts";
 
@@ -14,9 +15,9 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, setAu
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   const [key, setKey] = useState("");
   const [keyNote, setKeyNote] = useState("");
-  // The hold to talk keys in use (the person may have picked others, or another app may hold the default).
-  const [talk, setTalk] = useState<TalkKeys>(TALK_KEYS_START);
-  useEffect(() => { void invoke("talk_keys").then((v) => setTalk(talkKeysFrom(v))).catch(() => {}); }, []);
+  // The keys every job uses now (the person may have picked others, or another app may hold the usual ones). The card
+  // asks the app for them when it opens.
+  const keys = useKeys();
   const ok = connected === "api_key" || connected === "plan";
   const ctx = { connected: ok, project };
   const go = (to: Step | null) => { if (to) setStep(to); };
@@ -85,8 +86,8 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, setAu
         <div className="row">{FIRST_TASKS.map((t) => <button key={t.label} className="btn" type="button" onClick={() => { finish(); useTask(t.prompt); }}>{t.label}</button>)}</div>
         <h2>{S.keysTitle}</h2>
         <div className="line muted">{S.keysHelp}</div>
-        {keyHints(talk).map((l, i) => <div className="line" key={i}>{l}</div>)}
-        {talkSharedNote(talk) && <div className="line muted">{talkSharedNote(talk)}</div>}
+        {keyHints(keys).map((l, i) => <div className="line" key={i}>{l}</div>)}
+        {talkSharedNote(keys) && <div className="line muted">{talkSharedNote(keys)}</div>}
       </>)}
       <div className="row">
         {back(step) && <button className="btn" type="button" onClick={() => go(back(step))}>{S.obBack}</button>}
