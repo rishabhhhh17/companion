@@ -4,6 +4,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { clip, redact } from "./redact.ts";
+import { isEnvFile } from "./secretfiles.ts";
 
 export const MAX_NODES = 6;
 const MAX_EDGES = 8;
@@ -60,9 +61,9 @@ export function parseDiagram(raw: string): Diagram | null {
 }
 
 const SKIP = new Set(["node_modules", ".git", "dist", "build", ".next", ".vercel", ".companion", "coverage", "venv", "env", "vendor", "target", "__pycache__", "site-packages"]);
-// Settings, key and credential files are never sent, whatever their name looks like.
-export const isEnvFile = (p: string) => /(^|\/)\.env/i.test(p) || /(^|\/)[^/]*\.env$/i.test(p)
-  || /(^|\/)(id_(rsa|dsa|ecdsa|ed25519)|\.npmrc|\.netrc|\.pgpass|\.pypirc|credentials(\.[a-z]+)?|secrets?(\.[a-z]+)?|[^/]*\.(pem|key|p12|pfx|jks|keystore)|[^/]*\.tfstate(\.backup)?|[^/]*\.tfvars)$/i.test(p);
+// Settings, key and credential files are never sent, whatever their name looks like (the rule lives in secretfiles.ts,
+// shared with files added to a request; kept exported here for the modules that already take it from this one).
+export { isEnvFile };
 
 // The lines around the failing line, from a file that is really inside the project and is not a settings or key file.
 function around(project: string, file: string, line: number, radius = 8): string {

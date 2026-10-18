@@ -53,19 +53,25 @@ export const stepsLine = (steps: Step[]): string => steps.map((s) => s.target.ca
 
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-/** How long a line stays (an estimate): as long as the Mac's voice takes to say it (about three words a second), or as
- *  long as it takes to read when nothing is said. */
-export function lineMs(text: string, speaking: boolean): number {
+/** The slowest speed Settings offers (voiceset.rs SPEEDS). */
+const SLOWEST = 0.5;
+/** What the speed does to a spoken line's time: slower is longer. Faster never makes it shorter (an estimate: how fast the
+ *  Mac's voice really goes at each speed needs a real Mac, and a line cut off by the next one is worse than a short pause).
+ *  Anything odd is normal speed. */
+const slowdown = (speed: number) => (Number.isFinite(speed) && speed > 0 ? 1 / Math.min(1, Math.max(SLOWEST, speed)) : 1);
+/** How long a line stays (an estimate): as long as the Mac's voice takes to say it (about three words a second at the
+ *  normal speed; `speed` is the one picked in Settings), or as long as it takes to read when nothing is said. */
+export function lineMs(text: string, speaking: boolean, speed = 1): number {
   const n = words(text);
-  return Math.round(speaking ? clamp(400 + n * 340, 1200, 8000) : clamp(900 + n * 260, 1500, 6000));
+  return Math.round(speaking ? clamp(400 + n * 340, 1200, 8000) * slowdown(speed) : clamp(900 + n * 260, 1500, 6000));
 }
 
 /** When each step starts, in ms after the answer arrived: one after another, each after the last one's lead in, its line
  *  and a short pause. */
-export function startTimes(steps: Step[], speaking: boolean): number[] {
+export function startTimes(steps: Step[], speaking: boolean, speed = 1): number[] {
   const at: number[] = [];
   let t = 0;
-  for (const s of steps) { at.push(t); t += LEAD_MS + lineMs(s.text, speaking) + AFTER_MS; }
+  for (const s of steps) { at.push(t); t += LEAD_MS + lineMs(s.text, speaking, speed) + AFTER_MS; }
   return at;
 }
 
@@ -101,8 +107,9 @@ export function answerPlayer(timers: Timers = realTimers) {
   let line: unknown;
   const cancelLine = () => { if (line !== undefined) { timers.clear(line); line = undefined; } };
   return {
-    /** Plays a new answer; whatever was playing or waiting to be said before it is dropped. */
-    start(steps: Step[], act: Actions, speaking: boolean) { this.hush(); stop = play(steps, act, speaking, timers); },
+    /** Plays a new answer; whatever was playing or waiting to be said before it is dropped. `speed`: the one picked in
+     *  Settings, so each spoken line is said whole before the next step's line. */
+    start(steps: Step[], act: Actions, speaking: boolean, speed = 1) { this.hush(); stop = play(steps, act, speaking, timers, speed); },
     /** Says a line after a pause, unless it is hushed or replaced first. One line waits at a time. */
     sayLater(say: () => void, ms: number) { cancelLine(); line = timers.set(() => { line = undefined; say(); }, ms); },
     cancelLine,
@@ -113,7 +120,7 @@ export function answerPlayer(timers: Timers = realTimers) {
 
 /** Plays the steps in order. Each next step is scheduled only once the one before it was shown, so a step that could not
  *  be drawn stops the rest. Returns the stop switch (Stop everything, Esc, a new question). */
-export function play(steps: Step[], act: Actions, speaking: boolean, timers: Timers = realTimers): () => void {
+export function play(steps: Step[], act: Actions, speaking: boolean, timers: Timers = realTimers, speed = 1): () => void {
   let stopped = false;
   let timer: unknown;
   const run = async (i: number) => {
@@ -122,7 +129,7 @@ export function play(steps: Step[], act: Actions, speaking: boolean, timers: Tim
     let ok = true;
     if (s.draw) { try { ok = await act.aim(s); } catch { ok = false; } } else act.words(s);
     if (stopped || !ok || i + 1 >= steps.length) return;
-    timer = timers.set(() => { void run(i + 1); }, LEAD_MS + lineMs(s.text, speaking) + AFTER_MS);
+    timer = timers.set(() => { void run(i + 1); }, LEAD_MS + lineMs(s.text, speaking, speed) + AFTER_MS);
   };
   void run(0);
   return () => { stopped = true; if (timer !== undefined) timers.clear(timer); };

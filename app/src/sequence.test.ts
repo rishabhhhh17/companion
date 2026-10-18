@@ -78,6 +78,51 @@ describe("timing", () => {
     expect(at[2]).toBe(at[1] + LEAD_MS + lineMs("Second", false) + AFTER_MS);
     expect(LEAD_MS).toBe(900); expect(AFTER_MS).toBe(350);
   });
+  // Found in review, 18 Oct 2026: the gaps were timed for the Mac's normal speaking speed. At the slowest speed an 8 word
+  // step needs about 5.3 s but got about 4.4 s, and the next step's line cut it off (the Mac's voice stops what it is saying).
+  test("at a slower speed a spoken line lasts longer, and the next step waits for it", () => {
+    const eight = "Type your email in the box up there";
+    expect(lineMs(eight, true, 0.5)).toBe(2 * lineMs(eight, true, 1));
+    expect(lineMs(eight, true, 0.75)).toBeGreaterThan(lineMs(eight, true, 1));
+    // From a line's start to the next step's line: its time, the pause and the next lead in. About 5.3 s are needed at half speed.
+    expect(lineMs(eight, true, 1) + AFTER_MS + LEAD_MS).toBeLessThan(5300);   // what it got before
+    expect(lineMs(eight, true, 0.5) + AFTER_MS + LEAD_MS).toBeGreaterThan(5300);
+    expect(lineMs("word ".repeat(200), true, 0.5)).toBeLessThanOrEqual(16_000);
+    const s = planSteps([tg({ caption: eight }), tg({ caption: "Then click Save" }), tg({ caption: "Done" })]);
+    const slow = startTimes(s, true, 0.5), normal = startTimes(s, true, 1);
+    expect(slow[1]).toBe(LEAD_MS + lineMs(eight, true, 0.5) + AFTER_MS);
+    expect(slow[1]).toBeGreaterThan(normal[1]);
+    expect(slow[2] - slow[1]).toBeGreaterThan(normal[2] - normal[1]);
+    expect(startTimes(s, true)).toEqual(normal);   // no speed given: normal speed, as before
+  });
+  test("a faster speed never shortens a line, a line only read ignores the speed, and an odd speed is normal speed", () => {
+    // How fast the Mac's voice really goes at each speed needs a real Mac; a line cut off is worse than a short pause.
+    const t = "Click the blue Deploy button at the top";
+    expect(lineMs(t, true, 1.5)).toBe(lineMs(t, true, 1));
+    expect(lineMs(t, true, 1.25)).toBe(lineMs(t, true, 1));
+    expect(lineMs(t, false, 0.5)).toBe(lineMs(t, false, 1));
+    for (const odd of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 0.1]) expect(lineMs(t, true, odd)).toBeLessThanOrEqual(lineMs(t, true, 0.5));
+    for (const odd of [0, -1, Number.NaN]) expect(lineMs(t, true, odd)).toBe(lineMs(t, true, 1));
+    expect(lineMs(t, true, 0.1)).toBe(lineMs(t, true, 0.5));   // never slower than the slowest offered
+  });
+});
+
+describe("the player waits as long as a line takes at the picked speed (fake timers)", () => {
+  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+  test("at half speed the second step comes when its line has been said, not at the normal time", async () => {
+    clock.useFakeTimers();
+    try {
+      const log: string[] = [];
+      const p = answerPlayer({ set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) });
+      const s = planSteps([tg({ caption: "Type your email in the box up there" }), tg({ caption: "Click Save" })]);
+      p.start(s, { aim: async (x) => { log.push(`aim ${x.index}`); return true; }, words: () => {} }, true, 0.5);
+      await flush();
+      clock.advanceTimersByTime(startTimes(s, true, 1)[1]); await flush();
+      expect(log).toEqual(["aim 0"]);   // the normal time has passed: still saying the first line
+      clock.advanceTimersByTime(startTimes(s, true, 0.5)[1] - startTimes(s, true, 1)[1]); await flush();
+      expect(log).toEqual(["aim 0", "aim 1"]);
+    } finally { clock.useRealTimers(); }
+  });
 });
 
 describe("playing them in order (fake timers)", () => {

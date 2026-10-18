@@ -28,6 +28,8 @@ const ALLOWED: &[&str] = &[
     "bisect.start", "bisect.undo",
     // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
     "teach.try", "teach.check",
+    // The zero cost warm up when Home opens or the ask box gets the keyboard (runner/src/warm.ts). Names nothing.
+    "engine.warm",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -184,12 +186,17 @@ pub struct Shared {
     tx: Mutex<Option<SyncSender<String>>>,
     child: Mutex<Option<Child>>,
     quitting: AtomicBool,
-    last_event_ms: AtomicU64,
+    /// How many events have been read from the engine, from any start of it. The Stop key's check counts an event read
+    /// after the Stop was sent as the engine's answer: a count, so the clock and the moment the engine started play no part.
+    events_read: AtomicU64,
+    /// How many Stop key checks have ended, and how many of them found the engine not answering and stopped it by force.
+    stop_checks: AtomicU64,
+    forced_stops: AtomicU64,
 }
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> { m.lock().unwrap_or_else(|e| e.into_inner()) }   // one panic must never poison everything after it
 
 impl Shared {
-    pub fn new() -> Arc<Shared> { Arc::new(Shared { tx: Mutex::new(None), child: Mutex::new(None), quitting: AtomicBool::new(false), last_event_ms: AtomicU64::new(0) }) }
+    pub fn new() -> Arc<Shared> { Arc::new(Shared { tx: Mutex::new(None), child: Mutex::new(None), quitting: AtomicBool::new(false), events_read: AtomicU64::new(0), stop_checks: AtomicU64::new(0), forced_stops: AtomicU64::new(0) }) }
     /// Queue one line for the engine. Never waits: a full queue or a missing engine is an immediate, plain error.
     pub fn send_line(&self, line: String) -> Result<(), String> {
         match lock(&self.tx).as_ref() {
@@ -216,7 +223,6 @@ pub fn supervise(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Child> +
                     let (tx, rx) = sync_channel::<String>(QUEUE);
                     *lock(&shared.tx) = Some(tx);
                     *lock(&shared.child) = Some(child);
-                    shared.last_event_ms.store(now_ms(), Ordering::SeqCst);
                     if starts > 1 { emit(serde_json::json!({ "v": 1, "id": format!("app-restarted-{starts}"), "type": "app.runner_restarted" })); }
                     // A thread of its own does the writing, so a stuck engine can only ever stall this thread.
                     if let Some(mut w) = stdin {
@@ -228,7 +234,7 @@ pub fn supervise(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Child> +
                             let n = match out.read(&mut chunk) { Ok(0) | Err(_) => break, Ok(n) => n };
                             for line in split_lines(&mut buf, &chunk[..n]) {
                                 if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                                    shared.last_event_ms.store(now_ms(), Ordering::SeqCst);
+                                    shared.events_read.fetch_add(1, Ordering::SeqCst);
                                     on_type(v.get("type").and_then(Value::as_str).unwrap_or("?"));   // the type only, never the content
                                     emit(v);
                                 }
@@ -264,6 +270,7 @@ impl Runner {
     /// Tell every page, and remember it for pages that load later.
     pub fn publish(app: &AppHandle, v: Value) {
         remember(&mut lock(&app.state::<Runner>().sticky), &v);
+        crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         let _ = app.emit("runner-event", v);
     }
 
@@ -297,15 +304,19 @@ impl Runner {
 
     /// The Stop key. It must work even when the engine is stuck, so if the stop cannot be delivered, or the engine does not
     /// answer a moment later, the engine is stopped by force and started again.
+    /// The check runs on a thread of its own, so the Stop key never waits for it, and ends as soon as the engine answers.
     pub fn stop_everything(&self, reason: &str) -> Result<(), String> {
-        let sent_at = now_ms();
+        let read_before = self.shared.events_read.load(Ordering::SeqCst);
         let r = self.send(&serde_json::json!({ "v": 1, "id": format!("kill-{}", std::process::id()), "type": "agent.interruptAll", "reason": reason }));
         if r.is_err() { self.shared.kill(); return r; }
-        let _ = self.send(&serde_json::json!({ "v": 1, "id": format!("ping-{sent_at}"), "type": "runner.ping" }));   // a healthy engine always answers this
+        let _ = self.send(&serde_json::json!({ "v": 1, "id": format!("ping-{}", now_ms()), "type": "runner.ping" }));   // a healthy engine always answers this
         let (shared, wait) = (self.shared.clone(), self.timing.heartbeat);
         std::thread::spawn(move || {
-            std::thread::sleep(wait);
-            if shared.last_event_ms.load(Ordering::SeqCst) < sent_at && !shared.quitting.load(Ordering::SeqCst) { shared.kill(); }
+            let until = Instant::now() + wait;
+            let answered = || shared.events_read.load(Ordering::SeqCst) > read_before;
+            while !answered() && Instant::now() < until && !shared.quitting.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(20).min(wait)); }
+            if !answered() && !shared.quitting.load(Ordering::SeqCst) { shared.forced_stops.fetch_add(1, Ordering::SeqCst); shared.kill(); }
+            shared.stop_checks.fetch_add(1, Ordering::SeqCst);
         });
         Ok(())
     }
@@ -374,6 +385,14 @@ mod tests {
             assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t} must not accept another folder");
             assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t} must not work before a folder is chosen");
         }
+    }
+    #[test]
+    fn a_page_may_ask_the_engine_to_get_ready_and_it_names_no_folder() {
+        // The zero cost warm up (runner/src/warm.ts): Home opened or the ask box got the keyboard. It names nothing.
+        let w = json!({ "v": 1, "id": "w", "type": "engine.warm" });
+        assert!(check_command(&w).is_ok());
+        assert!(!PROJECT_BOUND.contains(&"engine.warm"));
+        assert!(check_project(&w, "").is_ok());
     }
     #[test]
     fn a_page_can_never_send_text_to_be_explained_as_if_it_was_read_from_another_app() {
@@ -621,7 +640,9 @@ mod tests {
     }
     #[test]
     fn an_engine_that_keeps_crashing_is_given_up_on_with_a_plain_message() {
-        let r = rig("exit 1", quick());
+        // An engine that ran less than `healthy` counts as having crashed at once. A busy Mac can make even `exit 1` take a
+        // while to start and end, so here only a run of half a minute would count as healthy.
+        let r = rig("exit 1", Timing { healthy: Duration::from_secs(30), ..quick() });
         assert!(wait_for(|| kinds(&r).iter().any(|k| k == "app.runner_down") && r.events.lock().unwrap().iter().any(|e| e["reason"].as_str().is_some_and(|m| m.contains("keeps stopping"))), 5000));
         let n = r.spawns.load(Ordering::SeqCst);
         assert!(n <= 6, "it kept restarting: {n}");
@@ -637,12 +658,16 @@ mod tests {
     }
     #[test]
     fn sending_never_waits_even_when_the_engine_stops_reading() {
-        let r = rig("sleep 20", Timing { healthy: Duration::from_secs(60), ..quick() });
+        // The engine never reads (it sleeps 60 seconds). Sending that waited for it would wait until it ended, so the sends
+        // run on their own thread and must all be done well before then; and a full queue must be reported, which only
+        // sending that does not wait can do. No upper bound is read from the clock for the sending itself.
+        let r = rig("sleep 60", Timing { healthy: Duration::from_secs(120), ..quick() });
         assert!(wait_for(|| r.shared.send_line("{}".into()).is_ok(), 3000));
         let line = format!("{{\"pad\":\"{}\"}}", "x".repeat(8000));
-        let t0 = Instant::now();
-        let results: Vec<_> = (0..2000).map(|_| r.shared.send_line(line.clone())).collect();
-        assert!(t0.elapsed() < Duration::from_millis(500), "sending waited: {:?}", t0.elapsed());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let shared = r.shared.clone();
+        std::thread::spawn(move || { let results: Vec<_> = (0..2000).map(|_| shared.send_line(line.clone())).collect(); let _ = tx.send(results); });
+        let results = rx.recv_timeout(Duration::from_secs(30)).expect("sending waited for an engine that does not read");
         assert!(results.iter().any(|x| x.as_ref().is_err_and(|m| m.contains("not answering"))), "a full queue was never reported");
         r.shared.quitting.store(true, Ordering::SeqCst); r.shared.kill();
     }
@@ -650,26 +675,38 @@ mod tests {
     fn stop_everything_forces_a_stuck_engine_to_stop_and_it_comes_back() {
         // An engine that never answers anything.
         let shared = Shared::new(); let spawns = Arc::new(AtomicUsize::new(0)); let s2 = spawns.clone();
-        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh("sleep 30") }), Arc::new(|_| {}), Arc::new(|_| {}), Timing { healthy: Duration::from_secs(60), ..quick() });
-        let runner = Runner::with_shared(shared.clone(), Timing { healthy: Duration::from_secs(60), ..quick() });
+        // The engine is given two seconds to answer before it is forced to stop. The Stop key must not wait for that: when it
+        // comes back, the stuck engine is still running (shown by what happened, not by the clock, so a busy Mac cannot fail
+        // it). A Stop that waited for the answer would come back to an engine already stopped.
+        let t = Timing { healthy: Duration::from_secs(60), heartbeat: Duration::from_secs(2), ..quick() };
+        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh("sleep 30") }), Arc::new(|_| {}), Arc::new(|_| {}), t);
+        let runner = Runner::with_shared(shared.clone(), t);
         assert!(wait_for(|| runner.send(&json!({})).is_ok(), 3000));
-        std::thread::sleep(Duration::from_millis(50));
-        let t0 = Instant::now();
         assert!(runner.stop_everything("test").is_ok());
-        assert!(t0.elapsed() < Duration::from_millis(100), "the Stop key waited");
-        assert!(wait_for(|| spawns.load(Ordering::SeqCst) >= 2, 4000), "a stuck engine was never forced to restart");
+        let running = lock(&shared.child).as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+        assert!(running && spawns.load(Ordering::SeqCst) == 1, "the Stop key waited for the engine");
+        assert!(wait_for(|| spawns.load(Ordering::SeqCst) >= 2, 15_000), "a stuck engine was never forced to restart");
+        assert_eq!((shared.stop_checks.load(Ordering::SeqCst), shared.forced_stops.load(Ordering::SeqCst)), (1, 1));
         runner.shut_down();
     }
     #[test]
     fn stop_everything_leaves_a_healthy_engine_alone() {
-        // This engine answers every line it is sent, like the real one does.
+        // This engine answers every line it is sent, like the real one does, and a second late, as a busy Mac can make it
+        // (later than the 150 ms the other tests allow). What is checked is the order of events, not the clock: once its
+        // answer has been read, the Stop key's check ends at once and leaves the engine alone. The thirty seconds it is
+        // given here (three in the app) are only the test's own limit; an engine that never answered would be forced.
         let shared = Shared::new(); let spawns = Arc::new(AtomicUsize::new(0)); let s2 = spawns.clone();
-        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh(r#"while read l; do echo '{"v":1,"id":"p","type":"runner.pong"}'; done"#) }), Arc::new(|_| {}), Arc::new(|_| {}), Timing { healthy: Duration::from_secs(60), ..quick() });
-        let runner = Runner::with_shared(shared.clone(), Timing { healthy: Duration::from_secs(60), ..quick() });
+        let t = Timing { healthy: Duration::from_secs(120), heartbeat: Duration::from_secs(30), ..quick() };
+        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh(r#"while read l; do sleep 1; echo '{"v":1,"id":"p","type":"runner.pong"}'; done"#) }), Arc::new(|_| {}), Arc::new(|_| {}), t);
+        let runner = Runner::with_shared(shared.clone(), t);
         assert!(wait_for(|| runner.send(&json!({})).is_ok(), 3000));
+        let read_before = shared.events_read.load(Ordering::SeqCst);
         runner.stop_everything("test").unwrap();
-        std::thread::sleep(Duration::from_millis(500));
+        assert!(wait_for(|| shared.stop_checks.load(Ordering::SeqCst) == 1, 60_000), "the Stop key's check never ended");
+        assert!(shared.events_read.load(Ordering::SeqCst) > read_before, "the check ended before the engine answered");
+        assert_eq!(shared.forced_stops.load(Ordering::SeqCst), 0, "a healthy engine was stopped by force");
         assert_eq!(spawns.load(Ordering::SeqCst), 1, "a healthy engine was restarted");
+        assert!(lock(&shared.child).as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None))), "the engine is not running");
         runner.shut_down();
     }
     #[test]
@@ -683,9 +720,13 @@ mod tests {
         supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh("trap '' HUP; sleep 30") }), Arc::new(|_| {}), Arc::new(|_| {}), quick());
         let runner = Runner::with_shared(shared.clone(), quick());
         assert!(wait_for(|| runner.send(&json!({})).is_ok(), 3000));
-        let t0 = Instant::now();
-        runner.shut_down();
-        assert!(t0.elapsed() < Duration::from_secs(2), "quitting hung for {:?}", t0.elapsed());
+        // The engine would sleep on for 30 seconds: quitting must be over long before, and must have ended it. Run on its own
+        // thread, so a quit that hung fails here instead of hanging the tests; no upper bound comes from the clock otherwise.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let quitter = Runner::with_shared(shared.clone(), quick());
+        std::thread::spawn(move || { quitter.shut_down(); let _ = tx.send(()); });
+        rx.recv_timeout(Duration::from_secs(20)).expect("quitting hung on an engine that ignores the closed pipe");
+        assert!(wait_for(|| lock(&shared.child).as_mut().is_none_or(|c| !matches!(c.try_wait(), Ok(None))), 10_000), "the engine was left running");
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(spawns.load(Ordering::SeqCst), 1, "it restarted the engine while quitting");
         assert!(runner.send(&json!({})).is_err());

@@ -6,9 +6,12 @@ export const PROTOCOL_VERSION = 1 as const;
 
 export type Envelope = { v: 1; id: string; ts?: string; project?: string; agent?: string };
 
+// files and images: what the person dragged onto Home or pasted into the ask box (runner/src/attach.ts has the rules, and
+// the engine checks them again): text and code files, secrets already hidden, and PNG or JPEG pictures. Sent only with Start.
 export type AgentStart = Envelope & {
   type: "agent.start"; project: string; agent: string; mode: "drive" | "rescue" | "research" | "ship";
   prompt: string; model: string; budgetUsd: number; offTheRecord?: boolean;
+  files?: { name: string; text: string }[]; images?: { name: string; mediaType: "image/png" | "image/jpeg"; base64: string }[];
 };
 // A follow up on the agent's last task (text: what is still wrong), or Try again (retry: the same request again, with
 // what failed). Either runs as a new checked task that carries on the last task's conversation. It names the project, so the
@@ -90,7 +93,10 @@ export type ErrorExplain = Envelope & { type: "error.explain"; req: string; app:
 // themselves (try), then asks for the proof ladder on their own change (check). Each names the task's receipt checkpoint.
 export type TeachTry = Envelope & { type: "teach.try"; project: string; checkpoint: string };
 export type TeachCheck = Envelope & { type: "teach.check"; project: string; agent: string; checkpoint: string };
-export type Command = BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// A zero cost warm up (runner/src/warm.ts), sent by the page when Home opens or the ask box gets the keyboard: the engine
+// reads the bundled Claude binary through once so the first task starts sooner. Nothing is run, sent or spent. Names nothing.
+export type EngineWarm = Envelope & { type: "engine.warm" };
+export type Command = EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -180,7 +186,7 @@ export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; 
 export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
 // already: after a pause, the person is first asked "Did you already do this?" and nothing is pointed at until they answer
 // (Yes and No come back as walk.answer). Absent on every other step.
-export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[] };
+export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[]; link?: string };
 export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number };
 export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
 // The step stays as it is: the project does not show its result yet (say: what is not there, in plain words). Not a failure.
@@ -254,14 +260,18 @@ const screensOk: Check = (m) => {
     && typeof (s as any).ref === "string" && (s as any).ref.length > 0 && isNum((s as any).w) && isNum((s as any).h) && typeof (s as any).label === "string");
   return ok ? null : '"screens" must be a list of 1 to 4 pictures, each with ref, w, h and label';
 };
+const named = (o: unknown, field: string): boolean => typeof o === "object" && o !== null && !Array.isArray(o) && typeof (o as any).name === "string" && (o as any).name.length > 0 && typeof (o as any)[field] === "string";
+const filesOk: Check = opt("files", (m) => (Array.isArray(m.files) && m.files.every((f) => named(f, "text")) ? null : '"files" must be a list of files, each with name and text'));
+const imagesOk: Check = opt("images", (m) => (Array.isArray(m.images) && m.images.every((p) => named(p, "base64") && ["image/png", "image/jpeg"].includes((p as any).mediaType)) ? null : '"images" must be a list of PNG or JPEG pictures, each with name, mediaType and base64'));
 const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
 const COMMANDS: Record<string, Check[]> = {
-  "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd")],
+  "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk],
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
   "runner.ping": [],
+  "engine.warm": [],
   "ship.preview": [str("project")],
   "ship.live": [str("project"), str("url"), (m) => (m.confirm === true ? null : 'going live needs "confirm": true')],
   "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
@@ -338,7 +348,8 @@ const EVENTS: Record<string, Check[]> = {
   "bisect.undone": [str("project"), str("checkpoint"), bool("ok"), list("reverted")],
   "error.explained": [str("req"), bool("ok"), list("sentences"), (m) => (typeof m.excerpt === "string" && typeof m.evidence === "string" ? null : 'missing text fields "excerpt" and "evidence"'), num("usdEstimate")],
   "walk.lessons": [str("project"), list("lessons")],
-  "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask")],
+  // link: the one web page the step is about, shown as an Open button and opened only on the person's press.
+  "walk.step": [str("walk"), str("project"), str("lesson"), str("title"), num("index"), num("total"), oneOf("variant", ["main", "instead"]), str("say"), str("find"), bool("ask"), opt("link", str("link"))],
   "walk.ask": [str("walk"), num("index")],
   "walk.help": [str("walk"), str("say")],
   "walk.wait": [str("walk"), num("index"), str("say")],

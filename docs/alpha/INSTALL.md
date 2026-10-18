@@ -28,15 +28,19 @@ For everything else, hold **Control + Option + Command** and press:
 - **F**: find what is wrong in your project and point at it. If the place is on another monitor, it looks there too.
 - **S**: ask about something on your screen (it looks once, with a light first).
 - **R**: rewrite the prompt you are typing in another app so it is clearer (then **A** to put it back, or Esc to drop it).
+- **E**: explain an error you selected in any app (Terminal, a browser, a builder's chat) in plain words, and find it in your project.
 - **K**: open the ask box. **X**: stop everything, always (it also silences spoken replies and stops listening).
+
+These are the usual keys. You can change any of them in **Settings**, under Keys to remember: press Change next to one and pick from a short list of keys that are free on your Mac, or press Reset to the usual keys. If another app already uses some of them when Companion opens, Companion says which and uses its usual keys or none for those until you pick others. Stop everything is also always in the Companion icon in the menu bar.
 
 ## The card, in short
 Open it by clicking the character or pressing K. Buttons you will use:
 - **Start / Plan it / Rescue it**: give Companion a task, or have it read the project and say what is wrong.
+- **Adding a file**: drag a text or code file, or a PNG or JPEG picture, onto the card, or paste one into the ask box. It shows as a chip you can remove, and goes only with **Start**. Settings and key files such as `.env` are never read. A picture is looked at by Claude first, which costs a little.
 - **Show me**: type what you are trying to do on screen; it points at the next click and waits for your own click. **Do it for me** presses it only when that is safe (never anything that sends, pays, deletes or publishes).
 - **Draw it**: a hand drawn sketch of why something broke, from your project.
 - **Lessons**: guided step by step lessons (install Claude Code, get a project out of Bolt or Replit, add a setting on Vercel, connect Lovable to GitHub, allow Companion's permissions). **They are drafts written from the makers' help pages and nobody has tried them yet, so tell me when a step is wrong.**
-- **Settings**: permissions with a Walk me through it button, the keys to remember (and other keys for talking, if you need them), **Your Claude key** (replace it or remove it; removing asks first), **Speak to me** (spoken replies with your Mac's own voice, off until you turn it on), Updates, Beta numbers (counts on your Mac only, off until you turn them on), Save a log for support, Delete everything.
+- **Settings**: permissions with a Walk me through it button, the keys to remember (and other keys for talking, if you need them), **Your Claude key** (replace it or remove it; removing asks first), **Talking and listening** (the microphone, the language you speak, Speak to me and Answer out loud when I ask by voice, both off until you turn them on, the voice and its speed), Updates, Beta numbers (counts on your Mac only, off until you turn them on), Save a log for support, Report a problem (saves the same log and opens an email with only the two versions filled in; you attach the log and send it), Delete everything.
 
 ## If something goes wrong
 - **Settings, Save a log for support** writes a text file in your Downloads folder. It holds no project content, nothing you typed or said and nothing from your screen. Send it to me.

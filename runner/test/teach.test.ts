@@ -2,6 +2,7 @@
 // what changed" (ring the first changed line) and "your turn" (the same change made in two places). Plain code, no model.
 import { describe, expect, test } from "bun:test";
 import { changeTarget, diffForExplain, hunksOf, repeatedChange, revertHunk, taskHunks, teachable, turnChange } from "../src/teach.ts";
+import { costsAtMost } from "./cost.ts";
 
 const lines = (...l: string[]) => l.join("\n") + "\n";
 
@@ -41,10 +42,11 @@ describe("cutting a change into the places that changed", () => {
   test("a very large change still comes back, as one place", () => {
     const a = Array.from({ length: 3000 }, (_, i) => `old ${i}`).join("\n");
     const b = Array.from({ length: 3000 }, (_, i) => `new ${i}`).join("\n");
-    const t0 = Date.now();
     const h = hunksOf("big.txt", a, b);
-    expect(Date.now() - t0).toBeLessThan(3000);
     expect(h.length).toBe(1);
+    // The line by line search gives up after a set number of edits, so its cost has a ceiling (about 28 references today,
+    // see cost.ts), far from what a full search of 6,000 edits would cost. Measured in processor time, never on the clock.
+    costsAtMost("a 3,000 line change", 100, () => hunksOf("big.txt", a, b));
     expect(h[0].before.length).toBe(3000);
   });
 });

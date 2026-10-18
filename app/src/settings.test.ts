@@ -159,119 +159,157 @@ describe("Show me on all screens", () => {
   });
 });
 
-import { keyHints, TALK_DEFAULT, TALK_KEYS_START, talkCanPick, talkCost, talkKeysFrom, talkKeysLine, talkLabel, talkNotFreeLine, talkProblem, talkSharedNote, voiceHint } from "./settings.ts";
+import { keyChangedLine, keyHints, keyRows, pickerLines, resetLine, TALK_DEFAULT, talkCost, talkSharedNote, voiceHint } from "./settings.ts";
+import { chordLabel, choicesFrom, KEY_DEFAULTS, KEYS_START, type Choices, type Job, type Keys } from "./keys.ts";
 import { S } from "./strings.ts";
-describe("hold to talk keys (F18.3)", () => {
-  const all = ["option-space", "option-return", "control-return"];
-  test("Option and Space until the app says otherwise", () => {
-    expect(TALK_DEFAULT).toBe("option-space");
-    expect(TALK_KEYS_START).toEqual({ using: "option-space", picked: "option-space", choices: all, free: all });
-    expect(talkLabel("option-space")).toBe("Option and Space");
-    expect(talkLabel("control-space")).toBe("");
+// Keys to remember (M11 wave 4): every job, its keys, and Change for a short list of free keys; hold to talk (F18.3) is one of them.
+describe("the Keys section in Settings", () => {
+  const set = (job: Job, using: string | null, picked?: string): Keys => ({ using: { ...KEYS_START.using, [job]: using }, picked: { ...KEYS_START.picked, [job]: picked ?? using ?? KEY_DEFAULTS[job] } });
+  const list = (job: Job, free: string[], ours: Record<string, string> = {}): Choices => choicesFrom({ action: job, choices: job === "talk" ? ["option-space", "option-return", "control-return"] : [KEY_DEFAULTS[job], "control-option-command-j", "control-option-command-l"], free, ours }, job);
+  test("one row for every job, in the order the hints use, with its name and the keys it uses now", () => {
+    const rows = keyRows(KEYS_START);
+    expect(rows.map((r) => r.job)).toEqual(["card", "problem", "showme", "read", "accept", "explain", "talk", "stop"]);
+    expect(rows.map((r) => r.name)).toEqual(["Open the ask box", "Point at the problem", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Hold to talk", "Stop everything"]);
+    expect(rows[0].keys).toBe("Control, Option, Command and K");
+    expect(rows.find((r) => r.job === "talk")!.keys).toBe("Option and Space");
+    expect(rows.filter((r) => r.problem)).toEqual([]);
+    expect(keyRows(set("card", "control-option-command-j"))[0].keys).toBe("Control, Option, Command and J");
   });
-  test("what the app answers is read safely: an unknown answer keeps the default, a clear none means hold to talk is off", () => {
-    expect(talkKeysFrom({ using: "option-return", picked: "option-return", choices: all, free: all })).toEqual({ using: "option-return", picked: "option-return", choices: all, free: all });
-    expect(talkKeysFrom({ using: null, picked: "option-space", choices: all, free: ["option-return"] })).toEqual({ using: null, picked: "option-space", choices: all, free: ["option-return"] });
-    expect(talkKeysFrom({ using: "option-space", picked: "control-return", choices: ["control-return", "control-space", 7], free: ["option-space", "control-space", 7] })).toEqual({ using: "option-space", picked: "control-return", choices: ["control-return"], free: ["option-space"] });
-    for (const junk of [undefined, null, "x", 3, {}, { using: "control-space" }, { using: 1, picked: [], choices: "all" }]) expect(talkKeysFrom(junk), String(junk)).toEqual(TALK_KEYS_START);
+  test("hold to talk on Option and Space warns about the apps that share it without notice; on other keys, what to do if talking does nothing", () => {
+    expect(keyRows(KEYS_START).find((r) => r.job === "talk")!.line).toBe(S.talkKeysNowDefault);
+    expect(S.talkKeysNowDefault).toBe("Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs. If one of them stops opening, or talking does nothing, press Change and pick other keys.");
+    expect(keyRows(set("talk", "control-return")).find((r) => r.job === "talk")!).toMatchObject({ line: S.talkKeysNow, problem: false });
+    // Every other job on the keys it should have needs no line, except use a suggestion, whose keys work only at one moment.
+    for (const r of keyRows(KEYS_START).filter((r) => r.job !== "talk" && r.job !== "accept")) expect(r.line, r.job).toBe("");
   });
-  test("which keys can be picked: a clear empty list means none is free, but a missing one never claims another app has keys", () => {
-    expect(talkKeysFrom({ using: null, picked: "option-space", choices: all, free: [] }).free).toEqual([]);
-    for (const free of [undefined, "all", 7, null]) expect(talkKeysFrom({ using: "option-space", picked: "option-space", choices: all, free }).free, String(free)).toEqual(all);
-    const off = talkKeysFrom({ using: null, picked: "option-space", choices: all, free: ["option-return", "control-return"] });
-    expect(all.map((id) => talkCanPick(off, id))).toEqual([false, true, true]);
-    // The keys in use are Companion's own, so they can always be picked again (that keeps them after a fall back).
-    expect(talkCanPick({ using: "option-space", picked: "option-return", choices: all, free: [] }, "option-space")).toBe(true);
-    expect(talkCanPick(TALK_KEYS_START, "control-space")).toBe(false);
+  test("use a suggestion says its keys work only while a Prompt help suggestion shows", () => {
+    expect(keyRows(KEYS_START).find((r) => r.job === "accept")!).toMatchObject({ line: S.keysAcceptWhen, problem: false });
+    expect(S.keysAcceptWhen).toBe("These keys work only while a Prompt help suggestion shows.");
+    expect(keyRows(set("accept", "control-option-command-u")).find((r) => r.job === "accept")!.line).toBe(S.keysAcceptWhen);
+    // A problem says the problem instead.
+    expect(keyRows(set("accept", null)).find((r) => r.job === "accept")!.problem).toBe(true);
   });
-  test("one plain reason for keys that cannot be picked, unless the line above already says it", () => {
-    expect(talkNotFreeLine(TALK_KEYS_START)).toBe("");
-    expect(talkNotFreeLine({ ...TALK_KEYS_START, free: ["option-space", "option-return"] })).toBe(S.talkKeysNotFree);
-    expect(S.talkKeysNotFree).toBe("Keys you cannot pick are already used by another app.");
-    // Hold to talk is off on Option and Space: the line above names it, so only another chord that is taken adds the reason.
-    expect(talkNotFreeLine({ using: null, picked: "option-space", choices: all, free: ["option-return", "control-return"] })).toBe("");
-    expect(talkNotFreeLine({ using: null, picked: "option-space", choices: all, free: ["option-return"] })).toBe(S.talkKeysNotFree);
-    expect(talkNotFreeLine({ using: "option-space", picked: "option-return", choices: all, free: ["option-space", "control-return"] })).toBe("");
+  test("after a change, one line says what the job uses now", () => {
+    expect(keyChangedLine("showme", set("showme", "control-option-command-j"))).toBe("Show me how now uses Control, Option, Command and J.");
+    expect(keyChangedLine("talk", set("talk", "control-return"))).toBe("Hold to talk now uses Control and Return.");
+    expect(keyChangedLine("stop", set("stop", null))).toBe("");
+    expect(keyChangedLine("stop", set("stop", null))).not.toContain("—");
   });
-  test("the hint names the keys in use, and says where to pick keys when another app holds them", () => {
-    expect(voiceHint(TALK_KEYS_START)).toStartWith("Hold Option and Space, talk, and let go.");
-    expect(voiceHint({ ...TALK_KEYS_START, using: "control-return", picked: "control-return" })).toStartWith("Hold Control and Return, talk, and let go.");
-    const off = voiceHint({ ...TALK_KEYS_START, using: null });
+  test("a job without keys says plainly which keys another app has, and Stop everything points to the menu bar icon", () => {
+    const off = keyRows(set("showme", null)).find((r) => r.job === "showme")!;
+    expect(off).toMatchObject({ keys: S.keysNone, problem: true, line: "Another app is already using Control, Option, Command and S, so these keys do not work right now. Press Change to pick other keys." });
+    const stop = keyRows(set("stop", null, "control-option-command-l")).find((r) => r.job === "stop")!;
+    expect(stop).toMatchObject({ keys: S.keysNone, problem: true, line: "Another app is already using Control, Option, Command and L, so the key for Stop everything does not work right now. Stop everything is still in the menu bar icon. Press Change to pick other keys." });
+    const talk = keyRows(set("talk", null)).find((r) => r.job === "talk")!;
+    expect(talk).toMatchObject({ problem: true, line: "Another app is already using Option and Space, so hold to talk is off. Press Change to pick other keys." });
+  });
+  test("a job on its usual keys because another app has the ones picked says so, and how to keep them", () => {
+    const fell = keyRows(set("explain", "control-option-command-e", "control-option-command-j")).find((r) => r.job === "explain")!;
+    expect(fell).toMatchObject({ keys: "Control, Option, Command and E", problem: true, line: "Another app is already using Control, Option, Command and J, so Companion uses Control, Option, Command and E for this for now. Keep them, or press Change to pick others." });
+    const talk = keyRows(set("talk", "option-space", "option-return")).find((r) => r.job === "talk")!;
+    expect(talk.line).toBe("Another app is already using Option and Return, so hold to talk uses Option and Space for now. Keep them, or press Change to pick others.");
+    for (const r of [...keyRows(set("stop", null)), fell, talk]) expect(r.line).not.toContain("—");
+  });
+  test("the picker says once why some keys cannot be pressed, unless the row already says it", () => {
+    expect(pickerLines(list("card", ["control-option-command-k", "control-option-command-j", "control-option-command-l"]), KEYS_START)).toEqual([]);
+    expect(pickerLines(list("card", ["control-option-command-k", "control-option-command-j"]), KEYS_START)).toEqual([S.keysNotFree]);
+    expect(S.keysNotFree).toBe("Keys you cannot pick are already used by another app.");
+    expect(pickerLines(list("card", ["control-option-command-k", "control-option-command-l"], { "control-option-command-j": "showme" }), KEYS_START)).toEqual([S.keysOurs]);
+    // Off on Option and Space: the row names it, so only another chord that is taken adds the reason.
+    expect(pickerLines(list("talk", ["option-return", "control-return"]), set("talk", null))).toEqual([]);
+    expect(pickerLines(list("talk", ["option-return"]), set("talk", null))).toEqual([S.keysNotFree]);
+  });
+  test("use a suggestion's keys another app took since show as taken, with the reason", () => {
+    // Not registered while no result shows, so the app tries them; macOS refused them, so they are not in the free list.
+    expect(pickerLines(list("accept", ["control-option-command-j", "control-option-command-l"]), KEYS_START)).toEqual([S.keysNotFree]);
+    expect(pickerLines(list("accept", ["control-option-command-a", "control-option-command-j", "control-option-command-l"]), KEYS_START)).toEqual([]);
+  });
+  test("when the keys another app held at launch are free again, the picker says so instead of a stale reason", () => {
+    expect(pickerLines(list("talk", ["option-space", "option-return", "control-return"]), set("talk", null))).toEqual(["Option and Space are free again. Press them to use them again, or pick others."]);
+  });
+  test("Reset says what it did, and names any job that kept its keys because another app has the usual ones", () => {
+    expect(resetLine({ ...KEYS_START, kept: [] })).toBe(S.keysResetDone);
+    // Also true of a job that had no keys and still has none, so the words do not claim it kept any.
+    expect(resetLine({ ...KEYS_START, kept: ["stop", "showme", "nobody", 7] })).toBe("These could not go back to their usual keys, because another app is using them: Stop everything, Show me how.");
+    expect(resetLine(null)).toBe(S.keysResetDone);
+  });
+  test("the hold to talk hint names the keys in use, and says where to pick keys when another app holds them", () => {
+    expect(voiceHint(KEYS_START)).toStartWith("Hold Option and Space, talk, and let go.");
+    expect(voiceHint(set("talk", "control-return"))).toStartWith("Hold Control and Return, talk, and let go.");
+    const off = voiceHint(set("talk", null));
     expect(off).toContain(S.keysTitle); expect(off).not.toMatch(/Option and|Control and/);
-    expect(keyHints()).toContain(voiceHint(TALK_KEYS_START));
-    expect(keyHints({ ...TALK_KEYS_START, using: "option-return", picked: "option-return" })).toContain(voiceHint({ ...TALK_KEYS_START, using: "option-return", picked: "option-return" }));
-  });
-  test("Settings says which keys hold to talk uses, covers keys another app shares without notice, and says plainly when another app has the ones picked", () => {
-    // macOS does not refuse keys another app took without asking for them alone, so Alfred, Raycast and ChatGPT may share
-    // Option and Space with no notice at launch. The line says what that looks like and what to do.
-    expect(talkKeysLine(TALK_KEYS_START)).toEqual({ text: "Hold to talk uses Option and Space. Alfred, Raycast and ChatGPT also use these keys unless you changed theirs. If one of them stops opening, or talking does nothing, pick others:", problem: false });
-    expect(talkKeysLine({ ...TALK_KEYS_START, using: "control-return", picked: "control-return" })).toEqual({ text: "Hold to talk uses Control and Return. If talking does nothing, or another app stops reacting to these keys, pick others:", problem: false });
-    const off = talkKeysLine({ ...TALK_KEYS_START, using: null, free: ["option-return", "control-return"] });
-    expect(off.problem).toBe(true); expect(off.text).toBe("Another app is already using Option and Space, so hold to talk is off. Pick other keys:");
-    const fell = talkKeysLine({ using: "option-space", picked: "option-return", choices: all, free: all });
-    expect(fell.problem).toBe(true); expect(fell.text).toBe("Another app is already using Option and Return, so hold to talk uses Option and Space for now. Keep them, or pick others:");
-    for (const l of [off, fell, talkKeysLine(TALK_KEYS_START)]) expect(l.text).not.toContain("—");
-  });
-  test("when the keys another app held at launch are free again, Settings says so instead of a stale reason", () => {
-    const back = talkKeysLine({ using: null, picked: "option-space", choices: all, free: all });
-    expect(back).toEqual({ text: "Hold to talk is off because another app was using Option and Space when Companion opened. They are free now: press them to turn hold to talk back on, or pick others:", problem: true });
-    expect(talkNotFreeLine({ using: null, picked: "option-space", choices: all, free: all })).toBe("");
+    expect(keyHints()).toContain(voiceHint(KEYS_START));
   });
   test("the first run warns about apps that share Option and Space, only while hold to talk uses them", () => {
-    expect(talkSharedNote(TALK_KEYS_START)).toBe("Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs. If one of them stops opening, or talking does nothing, pick other keys in Settings, under Keys to remember.");
-    expect(talkSharedNote(TALK_KEYS_START)).toContain(S.keysTitle);
-    expect(talkSharedNote({ ...TALK_KEYS_START, using: "option-return", picked: "option-return" })).toBe("");
-    expect(talkSharedNote({ ...TALK_KEYS_START, using: null })).toBe("");
+    expect(talkSharedNote(KEYS_START)).toBe("Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs. If one of them stops opening, or talking does nothing, pick other keys in Settings, under Keys to remember.");
+    expect(talkSharedNote(set("talk", "option-return"))).toBe("");
+    expect(talkSharedNote(set("talk", null))).toBe("");
+    expect(TALK_DEFAULT).toBe("option-space");
   });
-  test("the picker says what each other choice gives up while it is hold to talk", () => {
+  test("the picker says what each other hold to talk choice gives up", () => {
     expect(talkCost("option-space")).toBe("");
     expect(talkCost("option-return")).toBe("Option and Return: while picked, it no longer adds a new line in Messages and other apps.");
     expect(talkCost("control-return")).toBe("Control and Return: while picked, it no longer adds a line break in text boxes.");
-    expect(talkCost("control-space")).toBe("");
+    expect(talkCost("control-option-command-j")).toBe("");
+    expect(chordLabel("option-return")).toBe("Option and Return");
   });
-  test("every reason the app can give for not changing the keys is said in plain words", () => {
-    const rs = readFileSync(new URL("../src-tauri/src/talkkeys.rs", import.meta.url), "utf8");
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-    const set = main.slice(main.indexOf("fn set_talk_keys"), main.indexOf("\n}\n", main.indexOf("fn set_talk_keys")));
-    const codes = [...rs.matchAll(/Problem::\w+ => "([a-z_]+)"/g), ...set.matchAll(/Err\("([a-z_]+)"\.into\(\)\)/g)].map((m) => m[1]);
-    expect(codes.sort()).toEqual(["not_card", "not_saved", "taken", "unknown"]);
-    expect(talkProblem("taken")).toBe("Another app is already using those keys. Pick other keys.");
-    expect(talkProblem("not_saved")).toBe("Could not save that on this Mac. Try again.");
-    for (const c of codes) expect(talkProblem(c), c).not.toBe("");
-    expect(talkProblem("Error: something odd")).toBe(talkProblem("unknown"));
-  });
-  test("Settings shows the picker under the keys, the app has its commands, and only the card may change or check the keys", () => {
+  test("Settings shows every row, Change opens the short list, and Reset is there", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    const row = card.slice(card.indexOf("function TalkKeysRow"), card.indexOf("\n}\n", card.indexOf("function TalkKeysRow")));
-    expect(row).toContain('invoke("set_talk_keys", { id })');
-    expect(row).toContain("aria-pressed={talk.using === id}");
-    expect(row).toContain("disabled={busy || !talkCanPick(talk, id)}");
-    expect(row).toContain("talkNotFreeLine(talk)");
-    expect(row).toContain("talkCost(id)");
-    expect(row).toContain("talkProblem(");
-    expect(row).toContain("talkKeysFrom(");
-    const settings = card.slice(card.indexOf("function SettingsPanel"));
-    const panel = settings.slice(0, settings.indexOf("\n}\n"));
-    expect(panel).toContain('invoke("talk_keys")');
-    expect(panel).toContain("keyHints(talk)");
-    expect(panel.indexOf("<TalkKeysRow")).toBeGreaterThan(panel.indexOf("keyHints(talk)"));
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-    for (const c of ["talk_keys", "set_talk_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
-    const body = (name: string) => main.slice(main.indexOf(`fn ${name}(`), main.indexOf("\n}\n", main.indexOf(`fn ${name}(`)));
-    const set = body("set_talk_keys");
-    expect(set).toContain('if window.label() != "card" { return Err("not_card".into()); }');
-    expect(set.indexOf('window.label() != "card"')).toBeLessThan(set.indexOf("talkkeys::switch("));
-    expect(set).toContain("Ok(talk_state(&app))");
-    // Reading the keys tries the free ones (talkkeys::free), so it is card only too, and one change or check at a time.
-    const get = body("talk_keys");
-    expect(get).toContain('if window.label() != "card" { return Err("not_card".into()); }');
-    expect(get.indexOf("TALK_SWITCH.lock()")).toBeLessThan(get.indexOf("talk_state(&app)"));
-    expect(body("talk_state")).toContain("talkkeys::free(using,");
+    const fn = (name: string) => card.slice(card.indexOf(`function ${name}`), card.indexOf("\n}\n", card.indexOf(`function ${name}`)));
+    const section = fn("KeysSection");
+    expect(section).toContain("keyRows(keys)");
+    expect(section).toContain('invoke("reset_keys")');
+    expect(section).toContain("aria-expanded={open === r.job}");
+    expect(section).toContain("S.keysChangeFor(r.name)");
+    expect(section).toContain("<KeyPicker");
+    const picker = fn("KeyPicker");
+    expect(picker).toContain('invoke("key_choices", { action: job })');
+    expect(picker).toContain('invoke("set_key", { action: job, id })');
+    expect(picker).toContain("disabled={busy || !canPick(c, id)}");
+    expect(picker).toContain("aria-pressed={keys.using[job] === id}");
+    expect(picker).toContain("pickerLines(c, keys)");
+    expect(picker).toContain("talkCost(id)");
+    expect(picker).toContain("keyProblem(");
+    // The app's answer becomes the keys every line on the page names, and the row says what changed.
+    expect(picker).toContain("const k = keysFrom(v); setKeysNow(k); onDone(k);");
+    // A change is said in one line, and the keyboard goes back to the row's Change button once the list closes (it was on
+    // a button in the list, which is gone), so a keyboard or VoiceOver user does not lose their place.
+    expect(section).toContain("keyChangedLine(");
+    expect(section).toContain('role="status"');
+    // It goes there only by the rule every move of the keyboard in Home follows (focus.ts takeIfLost: Home has the keyboard
+    // and nothing in it does), never by a focus of its own, so it never pulls the keyboard from a box the person went to.
+    expect(section).toMatch(/takeIfLost\(\(\) => changeButtons\.current\[job\]\)/);
+    expect(section).not.toMatch(/\.focus\(/);
+    // Keys another app took since the list was asked for: the list is asked for again, so they show as taken.
+    expect(picker).toMatch(/if \(code === "taken"\) load\(\)/);
+    // Nothing on the page reads key presses to learn keys: it only offers the list the app sends.
+    for (const f of [section, picker]) expect(f).not.toMatch(/onKey(Down|Up|Press)/);
+    const panel = fn("SettingsPanel");
+    expect(panel).toContain("<KeysSection keys={keys} />");
+    expect(panel).toContain('invoke("key_map")');
   });
-  test("the first run also names the keys in use and the apps that may share them", () => {
+  test("the app has the commands, only the card may try or change keys, and one change or check at a time", () => {
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    for (const c of ["key_map", "key_choices", "set_key", "reset_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+    for (const c of ["talk_keys", "set_talk_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
+    const body = (name: string) => main.slice(main.indexOf(`fn ${name}(`), main.indexOf("\n}\n", main.indexOf(`fn ${name}(`)));
+    for (const c of ["key_choices", "set_key", "reset_keys"]) {
+      const b = body(c);
+      expect(b, c).toContain('if window.label() != "card" { return Err("not_card".into()); }');
+      expect(b.indexOf('window.label() != "card"'), c).toBeLessThan(b.indexOf("KEYS_SWITCH.lock()"));
+    }
+    expect(body("key_choices")).toContain("keymap::free(a,");
+    expect(body("set_key")).toContain("keymap::switch(a,");
+    expect(body("reset_keys")).toContain("keymap::reset(&picked,");
+    // Every reason the app can give is a code the page puts into words.
+    const rs = readFileSync(new URL("../src-tauri/src/keymap.rs", import.meta.url), "utf8");
+    const codes = new Set([...rs.matchAll(/NotChanged::\w+ => "([a-z_]+)"/g), ...["key_choices", "set_key", "reset_keys"].flatMap((c) => [...body(c).matchAll(/Err\("([a-z_]+)"\.into\(\)\)/g)])].map((m) => m[1]));
+    expect([...codes].sort()).toEqual(["in_use", "not_card", "not_saved", "taken", "unknown"]);
+  });
+  test("the first run names the keys in use and the apps that may share hold to talk's", () => {
     const ob = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ob).toContain('invoke("talk_keys")');
-    expect(ob).toContain("keyHints(talk)");
-    expect(ob.indexOf("talkSharedNote(talk)")).toBeGreaterThan(ob.indexOf("keyHints(talk)"));
+    expect(ob).toContain("useKeys()");
+    expect(ob).toContain("keyHints(keys)");
+    expect(ob.indexOf("talkSharedNote(keys)")).toBeGreaterThan(ob.indexOf("keyHints(keys)"));
   });
 });

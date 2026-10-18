@@ -578,6 +578,28 @@ describe("Home from the keyboard alone (part 2)", () => {
       expect(line, box).toMatch(/e\.key === "Escape"\) \{ e\.stopPropagation\(\); [^}]*focusBack\(/);
     }
   });
+  test("taking a file off the ask box gives the keyboard back to the box, and what was added or taken away is said", () => {
+    // The Remove button goes with its chip, so the keyboard would fall out of Home: it goes back to the box (focus.ts).
+    const remove = card.split("\n").find((l) => l.includes("aria-label={S.attachRemove(a.name)}"))!;
+    expect(remove).toContain("focusBack(askId)");
+    expect(remove).not.toContain(".focus(");
+    expect(remove).toContain("setAttachSaid(S.attachRemoved(a.name))");
+    expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
+    // One polite line, there before anything is added, says what a paste or a drop added.
+    expect(card).toContain('<div className="sr" role="status">{attachSaid}</div>');
+    expect(card).toMatch(/setAttachSaid\(addedLine\(r\.have\.slice\(before\.length\)\)\)/);
+  });
+  test("Copy keeps its name and says Copied, or why it could not, on a polite line that is there first", () => {
+    const btn = card.slice(card.indexOf("function CopyButton("), card.indexOf("function ResearchNote("));
+    expect(btn).toContain("aria-label={label}");
+    expect(btn).toContain('<span className={state === "failed" ? "line" : "sr"} role="status">{state === "copied" ? S.copied : state === "failed" ? S.copyFailed : ""}</span>');
+    expect(btn).not.toMatch(/state === "failed" && </);
+  });
+  test("the count of a search in What I did is said from the first search on", () => {
+    const panel = card.slice(card.indexOf("function HistoryPanel("), card.indexOf("function MemoryList("));
+    expect(panel).toMatch(/\{items\.length > 0 && <div className=\{filtering \? "line muted" : "sr"\} role="status" aria-live="polite">/);
+    expect(panel).not.toMatch(/\{filtering && <div[^>]*role="status"/);
+  });
   test("each settings row is a named group, so VoiceOver and the keyboard know where they are", () => {
     const settings = card.slice(card.indexOf("function SettingsPanel"), card.indexOf("\n}\n", card.indexOf("function SettingsPanel")));
     expect(settings.match(/<Group title=\{S\.\w+\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
@@ -700,6 +722,8 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       expect(ratio(c(colourIn(one(".character:focus-visible")!.decl.outline)!), bg), "the character's focus ring").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".btn")!.decl.border)!), bg), "a button's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".ask input, .row input[type=\"text\"]")!.decl.border)!), bg), "a text box's edge").toBeGreaterThanOrEqual(3);
+      expect(ratio(c(colourIn(one(".ask textarea")!.decl.border)!), bg), "the ask box's edge").toBeGreaterThanOrEqual(3);
+      expect(ratio(c(colourIn(one('.row input[type="search"]')!.decl.border)!), bg), "the search box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(one('.tab[aria-selected="true"]')!.decl["border-bottom-color"]), bg), "the open tab's line").toBeGreaterThanOrEqual(3);
     });
     test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {

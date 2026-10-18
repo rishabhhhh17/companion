@@ -271,6 +271,18 @@ mod tests {
         assert!(!m.data.join("runner/spending.json").exists());
     }
     #[test]
+    fn the_keys_picked_in_settings_are_listed_as_a_setting_and_removed_with_everything_else() {
+        // keymap.rs keeps every job's keys in one file, and reads hold to talk's from before when there is no new one yet.
+        let m = mac("keys");
+        for f in [crate::keymap::FILE, crate::keymap::OLD_TALK_FILE] { write(m.data.join(f), "{}").unwrap(); }
+        let g = items(&m.home, &m.data);
+        let settings = &g.iter().find(|i| i.id == "settings").unwrap().paths;
+        for f in [crate::keymap::FILE, crate::keymap::OLD_TALK_FILE] { assert!(settings.iter().any(|p| p.ends_with(f)), "{f}"); }
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        for f in [crate::keymap::FILE, crate::keymap::OLD_TALK_FILE] { assert!(!m.data.join(f).exists(), "{f}"); }
+    }
+    #[test]
     fn everything_is_grouped_in_the_persons_words_and_dev_json_is_not_among_it() {
         let m = mac("group");
         let g = items(&m.home, &m.data);

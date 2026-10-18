@@ -10,6 +10,7 @@
       "id": "download",
       "say": "Go to cursor.com/download and press the download button for macOS.",
       "find": "the macOS download button on cursor.com/download",
+      "link": "https://cursor.com/download",
       "check": {
         "kind": "ask"
       }

@@ -13,14 +13,41 @@ export const WINDOW = 14;
 export type Verdict = "good" | "bad" | "skip" | "cancelled";
 
 /** How a check of an earlier version stands against the step that fails now. A version that failed at an earlier step never
- *  got that far, so it says nothing either way ("skip"). A step that was not there yet (no tests then) cannot have failed. */
-export function classify(res: LadderResult | null, target: Rung): Verdict {
+ *  got that far, so it says nothing either way ("skip"). A step that was not there yet (no tests then) cannot have failed. A
+ *  step that is there but could not run (a package not installed, pytest finding no tests: see couldNotRun) says nothing
+ *  either: read as a pass, it would move the search past the version that broke it, onto an innocent task.
+ *  The checks step is several checks tried in order (a lint, a type check, a build). With `check`, the one that fails now,
+ *  only that check counts: failed is bad, could not run is skip, passed is good whatever else could not run, and not tried
+ *  is skip when another check failed first (it never got there) and good otherwise (it was not set up yet). A step this Mac
+ *  had no room to start (the ladder's noRoom) says nothing about the code either. */
+export function classify(res: LadderResult | null, target: Rung, check?: string): Verdict {
   if (!res) return "skip";
   if (res.verdict === "cancelled") return "cancelled";
   const at = res.steps.find((s) => s.rung === target);
-  if (at?.status === "failed") return "bad";
-  if (at) return "good";
-  return res.verdict === "failed" ? "skip" : "good";
+  if (!at) return res.verdict === "failed" ? "skip" : "good";
+  if (target === "checks" && check) {
+    const c = res.checks?.find((x) => x.name === check);
+    if (c) return c.status === "failed" ? "bad" : c.status === "passed" ? "good" : "skip";
+    return at.status === "failed" ? "skip" : "good";
+  }
+  if (at.status === "failed") return res.noRoom && res.failedAt?.rung === target ? "skip" : "bad";
+  return couldNotRun(res, target, check) ? "skip" : "good";
+}
+
+/** Whether the step that fails now (and for the checks step, `check`, the check that fails now) was there in this version
+ *  but could not run, and why: "missing" when a package it needs is not installed, "other" for anything else (pytest
+ *  finding no tests, a page never opened, no room on this Mac to start it). Only that step's own reason: what could not run
+ *  elsewhere says nothing about it. For the checks step with no `check` known, any check that could not run makes it unclear. */
+export function couldNotRun(res: LadderResult | null, target: Rung, check?: string): "missing" | "other" | null {
+  if (!res) return null;
+  if (target === "checks") {
+    const mine = (res.checks ?? []).filter((c) => !check || c.name === check);
+    if (mine.some((c) => c.status === "missing")) return "missing";
+    if (mine.some((c) => c.status === "not_started")) return "other";
+  }
+  if (res.noRoom && res.failedAt?.rung === target) return "other";
+  const u = res.unclear?.find((x) => x.rung === target);
+  return u ? (u.missing ? "missing" : "other") : null;
 }
 
 /** One task that changed the project: the saved version from before it and the last one saved after it. */
@@ -67,21 +94,99 @@ export type SearchOptions = {
 };
 
 // The files that decide which packages a version needs. Lockfiles are compared whole; a package.json only by its package
-// lists, so a change to its scripts or name does not stop an earlier version being checked.
-const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "pnpm-workspace.yaml", "bun.lock", "bun.lockb"]);
+// lists, so a change to its scripts or name does not stop an earlier version being checked. A Python project's requirement
+// files, Pipfile, setup.py and lockfiles are compared whole too; its pyproject.toml and setup.cfg without the parts that only
+// set up tools or describe the project (pythonPackageText).
+const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "pnpm-workspace.yaml", "bun.lock", "bun.lockb", "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "setup.py"]);
 const PACKAGE_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "bundleDependencies", "bundledDependencies", "overrides", "resolutions", "workspaces", "pnpm", "packageManager"];
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-/** A package.json at any depth (workspaces have their own). */
-export const isManifest = (path: string) => baseName(path) === "package.json";
-export const isLockfile = (path: string) => LOCKFILES.has(baseName(path));
+/** requirements.txt and its kin (requirements-dev.txt, dev-requirements.txt, constraints.txt, requirements/base.txt), and
+ *  pip-tools' inputs (requirements.in), which a pyproject.toml can name as its package list. */
+const isRequirements = (path: string) => { const b = baseName(path); return /^(?:requirements|constraints)[\w.-]*\.(?:txt|in)$/.test(b) || /^[\w.-]+-requirements\.(?:txt|in)$/.test(b) || /(?:^|\/)requirements\/[^/]+\.(?:txt|in)$/.test(path); };
+/** A package.json at any depth (workspaces have their own), and a Python project's pyproject.toml or setup.cfg. */
+export const isManifest = (path: string) => ["package.json", "pyproject.toml", "setup.cfg"].includes(baseName(path));
+export const isLockfile = (path: string) => LOCKFILES.has(baseName(path)) || isRequirements(path);
 
 const canonical = (v: unknown): unknown => (Array.isArray(v) ? v.map(canonical) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])])) : v);
 
+// The parts of a pyproject.toml or setup.cfg that never change which packages are installed: the settings of tools that only
+// check or format code, and what the project is called and says about itself. Everything else counts, a section Companion
+// does not know included, so a package list kept by some other tool is never missed. (A project's own commands, its
+// scripts and entry points, count: an editable install of the project makes them in the virtual environment.)
+const PY_TOOL_SECTION = /^(?:tool[.:])?(?:ruff|black|isort|mypy|pytest|coverage|pylint|pyright|flake8|bandit|codespell|pydocstyle|pycodestyle|autopep8|yapf|djlint|commitizen|semantic_release|bumpversion|towncrier|interrogate|vulture)(?:$|[.:-])/i;
+const PY_ABOUT_SECTION = /^(?:metadata|project\.urls)$/;
+const PY_ABOUT_KEYS = new Set(["name", "version", "description", "readme", "authors", "maintainers", "license", "license-files", "keywords", "classifiers", "urls", "homepage", "repository", "documentation"]);
+
+/** What in a pyproject.toml (TOML) or setup.cfg (INI) decides the packages, as one string: each kept setting with the lines it
+ *  spans, comments and blank lines left out, settings and sections in a fixed order. Read just enough, never fully parsed:
+ *  anything it cannot place is kept, so two files that differ in their packages never get the same text. */
+export function pythonPackageText(text: string, ini: boolean): string {
+  type Entry = { key: string; lines: string[] };
+  const sections: { name: string; entries: Entry[] }[] = [];
+  let section = { name: "", entries: [] as Entry[] };
+  sections.push(section);
+  const seen = new Map<string, number>();
+  let depth = 0, inMultiline = false, entry: Entry | null = null;
+  for (const raw of text.split(/\r?\n/)) {
+    let line = raw.trim();
+    const continues = inMultiline || depth > 0 || (ini && /^\s/.test(raw) && entry !== null);
+    if (!continues) {
+      if (!line || line.startsWith("#") || (ini && line.startsWith(";"))) continue;
+      const head = /^\[\[?\s*([^\]]+?)\s*\]\]?$/.exec(ini ? line : line.replace(/\s+#.*$/, ""));
+      if (head) {
+        const name = head[1].replace(/["'\s]/g, "");
+        const n = (seen.get(name) ?? 0) + 1;   // each [[table]] of an array of tables is its own section
+        seen.set(name, n);
+        section = { name: n > 1 ? `${name}#${n}` : name, entries: [] };
+        sections.push(section);
+        entry = null;
+        continue;
+      }
+      const kv = /^("[^"]*"|'[^']*'|[A-Za-z0-9_.-]+)\s*[=:]/.exec(line);
+      entry = { key: kv ? kv[1].replace(/["']/g, "") : line, lines: [] };
+      section.entries.push(entry);
+    }
+    if (!line) continue;
+    if (!ini) {
+      // Outside multi-line strings ("""), ordinary strings are blanked (same length) to count brackets and to find a
+      // comment that is not inside a string. Inside one, nothing counts.
+      const pieces = line.split(/("""|''')/);
+      let offset = 0, cut = -1;
+      for (let i = 0; i < pieces.length && cut < 0; i++) {
+        const p = pieces[i];
+        if (i % 2 === 1) inMultiline = !inMultiline;
+        else if (!inMultiline) {
+          const masked = p.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, (m) => `"${"x".repeat(m.length - 2)}"`);
+          const hash = masked.indexOf("#");
+          for (const ch of hash >= 0 ? masked.slice(0, hash) : masked) { if (ch === "[" || ch === "{") depth++; else if (ch === "]" || ch === "}") depth = Math.max(0, depth - 1); }
+          if (hash >= 0) cut = offset + hash;   // the rest of the line is a comment
+        }
+        offset += p.length;
+      }
+      if (cut >= 0) line = line.slice(0, cut).trimEnd();
+    }
+    if (line && entry) entry.lines.push(line);
+  }
+  // A file this reading could not follow to its end (a bracket or a multi-line string left open) is compared whole.
+  if (depth !== 0 || inMultiline) return JSON.stringify({ whole: text });
+  const base = (name: string) => name.replace(/#\d+$/, "");
+  const kept = sections
+    .filter((s) => !PY_TOOL_SECTION.test(base(s.name)) && !PY_ABOUT_SECTION.test(base(s.name)))
+    .map((s) => ({ name: s.name, entries: s.entries.filter((e) => !((base(s.name) === "project" || base(s.name) === "tool.poetry") && PY_ABOUT_KEYS.has(e.key))) }))
+    .filter((s) => s.entries.length > 0)
+    .map((s) => [s.name, s.entries.map((e) => e.lines.join("\n")).sort()] as const)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return JSON.stringify(kept);
+}
+
 /** What a version's installed packages have to match, as one string: the package lists of every package.json (text that
- *  cannot be read as JSON is kept as it is) and an id of each lockfile's content. Two versions with the same key can be
- *  checked with the same installed packages. */
+ *  cannot be read as JSON is kept as it is), what decides the packages in each pyproject.toml and setup.cfg, and an id of
+ *  each lockfile's (and requirement file's) content. Two versions with the same key can be checked with the same installed
+ *  packages (node_modules, or the project's own virtual environment). */
 export function packagesKey(manifests: Record<string, string>, locks: Record<string, string>): string {
   const lists = Object.keys(manifests).sort().map((path) => {
+    const name = baseName(path);
+    if (name === "pyproject.toml" || name === "setup.cfg") return [path, { python: pythonPackageText(manifests[path], name === "setup.cfg") }];
     let j: unknown;
     try { j = JSON.parse(manifests[path]); } catch { return [path, { unreadable: manifests[path] }]; }
     const o = j && typeof j === "object" && !Array.isArray(j) ? (j as Record<string, unknown>) : {};

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { characterWords, initial, reduce, visualState, type Model } from "./model.ts";
+import { S } from "./strings.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()): Model => events.reduce<Model>((m, e) => reduce(m, e), from);
 
@@ -19,6 +20,26 @@ describe("hold to talk in the pages", () => {
     const m = run([{ type: "app.voice", stage: "heard", message: "", text: "how do I deploy" }]);
     expect(m.voice!.text).toBe("how do I deploy");
     expect(run([{ type: "ui.voiceClosed" }], m).voice).toBeNull();
+  });
+});
+
+describe("the microphone in use, in one plain line", () => {
+  test("a picked microphone that is not connected: the default listens, said once as a notice", () => {
+    const m = run([{ type: "app.voice", stage: "listening", message: "Listening.", micMissing: "AirPods Pro", micUsing: "MacBook Pro Microphone" }]);
+    expect(m.notice).toBe(S.micUsingDefault("AirPods Pro", "MacBook Pro Microphone"));
+    expect(m.voice?.stage).toBe("listening");
+    expect(run([{ type: "app.voice", stage: "listening", message: "Listening." }]).notice).toBeNull();
+  });
+  test("another microphone took over while talking, or the one in use went away: said, and the words are still kept", () => {
+    const m = run([{ type: "app.voice", stage: "heard", message: "", text: "deploy it", micSwitched: "MacBook Pro Microphone" }]);
+    expect(m.notice).toBe(S.micSwitched("MacBook Pro Microphone"));
+    expect(m.voice?.text).toBe("deploy it");
+    expect(run([{ type: "app.voice", stage: "silent", message: "x", micLost: true }]).notice).toBe(S.micLost);
+    // Another one took over and then went away too: the line says it went away, never that the other one listened.
+    expect(run([{ type: "app.voice", stage: "heard", message: "", text: "deploy", micSwitched: "MacBook Pro Microphone", micLost: true }]).notice).toBe(S.micLost);
+  });
+  test("odd values are ignored, never shown", () => {
+    expect(run([{ type: "app.voice", stage: "listening", message: "x", micMissing: 5, micSwitched: {} }]).notice).toBeNull();
   });
 });
 

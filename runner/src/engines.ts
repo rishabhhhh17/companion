@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "./engine.ts";
 import { DEFAULT_REF, resolveAuth, type KeychainRef } from "./keychain.ts";
 import { ComputerUseVision, withFallback } from "./aim.ts";
-import { FastLane, StubFast, VisionLane, type FastLike, type VisionLike } from "./lanes.ts";
+import { FastLane, StubFast, VisionLane, type DescribeReq, type FastLike, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS } from "./models.ts";
@@ -95,8 +95,9 @@ export function createEngine(s: Settings, deps: EngineDeps = {}): Engine {
 }
 
 // The two small lanes, created per request so they always use the current sign in.
-export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLike; vision: VisionLike } {
-  if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) } };
+export type Describe = (req: DescribeReq, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
+export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLike; vision: VisionLike; describe: Describe } {
+  if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) }, describe: async () => { throw new Error("pictures cannot be looked at in this mode"); } };
   const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });
   const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
   // The Computer Use lane needs the person's own API key, so it is never used on a plan sign in; any failure falls back.
@@ -106,5 +107,7 @@ export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLik
   return {
     fast: { run: async (req, onDelta, signal) => new FastLane({ ...(await lane()), model: s.fastModel ?? MODELS.fast }).run(req, onDelta, signal) },
     vision,
+    // Pictures added to a request (attach.ts): looked at on the vision lane's model, the way Show me looks at a screen picture.
+    describe: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).describe(req, signal),
   };
 }

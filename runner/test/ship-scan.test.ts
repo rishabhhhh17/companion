@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fingerprint, scanFiles, scanProject, type Finding } from "../src/ship/scan.ts";
+import { growsGently } from "./cost.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -114,9 +115,11 @@ describe("scanning a real folder", () => {
     expect(r.skipped).toBeGreaterThanOrEqual(2);
   });
   test("a folder that does not exist is nothing to scan, not a crash", () => expect(scanProject("/nowhere/at/all")).toEqual({ findings: [], scanned: 0, skipped: 0, unreadablePublic: 0 }));
-  test("a project with a thousand files finishes quickly", () => {
-    const d = tmp(); for (let i = 0; i < 1000; i++) put(d, { [`src/f${i}.js`]: `export const n${i} = ${i};` });
-    const t0 = Date.now(); const r = scanProject(d);
-    expect(r.scanned).toBe(1000); expect(Date.now() - t0).toBeLessThan(3000);
+  test("a project with a thousand files is scanned in time that grows in step with its size", () => {
+    const files = (n: number) => { const d = tmp(); for (let i = 0; i < n; i++) put(d, { [`src/f${i}.js`]: `export const n${i} = ${i};` }); return d; };
+    const [few, many] = [files(125), files(1000)];
+    expect(scanProject(many).scanned).toBe(1000);
+    // Measured in processor time, never on the clock (cost.ts).
+    growsGently("scanning a project's files", 8, 20, () => scanProject(few), () => scanProject(many));
   });
 });

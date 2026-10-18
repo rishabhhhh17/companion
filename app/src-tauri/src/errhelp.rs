@@ -32,7 +32,7 @@ fn say(app: &AppHandle, stage: &str, extra: Value) {
 }
 fn note(bundle: &str, ms: u64, chars: usize, outcome: &str) { crate::log("explain_error", errorsel::log_line(bundle, ms, chars, outcome)); }
 
-/// The hotkey (Control, Option, Command and E). Runs on its own thread: waking another app's text can take a few seconds.
+/// The hotkey (Control, Option, Command and E unless changed in Settings, keymap.rs). Runs on its own thread: waking another app's text can take a few seconds.
 pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
     let app = app.clone();
     std::thread::spawn(move || {

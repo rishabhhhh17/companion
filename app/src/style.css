@@ -15,7 +15,7 @@ html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: no
 .line, .error, .notice, h2 { user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
 :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-button { font: inherit; }
+button, select { font: inherit; }
 .muted { color: var(--muted); font-size: calc(12rem / 14); }
 
 /* The character: a simple shape, one per state. Motion is named by the model so reduced motion can freeze it. */
@@ -45,7 +45,16 @@ button { font: inherit; }
 .row { display: flex; align-items: center; gap: 8px; margin: 6px 0;  flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .ask { display: flex; gap: 6px; margin: 8px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: 1px solid var(--edge); border-radius: 6px; max-width: 100%; }
+.chip .line { margin: 0; }
+.chip .btn { padding: 1px 8px; }
+main.card.dropping { outline: 2px dashed var(--edge); outline-offset: -4px; }
+/* The ask box grows with what is typed (card.tsx fitBox) up to a few lines, then scrolls. Its size, its cap and the search
+   box in What I did are in rem, so they follow the text size. */
+.ask textarea { flex: 1; min-width: 0; font: inherit; font-size: 1rem; line-height: 1.35; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; resize: none; max-height: calc(160rem / 14); overflow: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
 .ask input, .row input[type="text"] { flex: 1; min-width: 0; font-size: 1rem; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
+.row input[type="search"] { flex: 1; min-width: 0; font-size: 1rem; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
 .btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); cursor: pointer; }
 .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }

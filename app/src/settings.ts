@@ -1,6 +1,7 @@
 // Settings page helpers: plain words only, so they can be tested without a screen.
 import { keyLooksRight } from "./onboarding.ts";
 import { S } from "./strings.ts";
+import { canPick, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import type { Spending } from "./model.ts";
 
 export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number };
@@ -82,63 +83,64 @@ export function limitFromText(text: string, min: number, max: number): number | 
   return Number.isFinite(n) && n >= min && n <= max ? n : null;
 }
 
-// ---- hold to talk keys (F18.3) ----
-/** Two keys held while talking. The app keeps the choice and registers it (app/src-tauri/src/talkkeys.rs): `using` is the
- *  chord registered now (null when another app holds it), `picked` the one the person chose, `choices` the short list, and
- *  `free` the chords on it macOS let Companion register just now (talkkeys::free; the one in use always counts). */
-export type TalkKeys = { using: string | null; picked: string; choices: string[]; free: string[] };
-export const TALK_DEFAULT = "option-space";
-const TALK_NAMES: Record<string, string> = S.talkKeyNames;
+// ---- keys (M11 wave 4): every job's keys, each changeable; hold to talk (F18.3) is one of them ----
+// The app keeps and registers them (app/src-tauri/src/keymap.rs); keys.ts holds the keys in use on the page.
+export const TALK_DEFAULT = KEY_DEFAULTS.talk;
 const TALK_COSTS: Record<string, string> = S.talkKeyCosts;
-const TALK_IDS = Object.keys(TALK_NAMES);
-export const TALK_KEYS_START: TalkKeys = { using: TALK_DEFAULT, picked: TALK_DEFAULT, choices: TALK_IDS, free: TALK_IDS };
-const knownChord = (v: unknown): v is string => typeof v === "string" && TALK_IDS.includes(v);
-/** "Option and Space"; empty for anything not on the list. */
-export const talkLabel = (id: string): string => TALK_NAMES[id] ?? "";
-/** What the app answered, read safely. Only a clear none means hold to talk is off, and only a clear list says which keys
- *  are free; an answer that cannot be read keeps the default and every chord free, so the page never claims another app
- *  holds keys when it does not know (pressing a chord still tries it, and says so if another app has it). */
-export function talkKeysFrom(v: unknown): TalkKeys {
-  const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
-  if (o.using !== null && !knownChord(o.using)) return TALK_KEYS_START;
-  const choices = Array.isArray(o.choices) ? o.choices.filter(knownChord) : [];
-  const free = Array.isArray(o.free) ? o.free.filter(knownChord) : TALK_IDS;
-  return { using: o.using, picked: knownChord(o.picked) ? o.picked : TALK_DEFAULT, choices: choices.length > 0 ? choices : TALK_IDS, free };
-}
-/** Whether a chord's button can be pressed: free on this Mac, or the keys hold to talk already uses (pressing them keeps them). */
-export const talkCanPick = (t: TalkKeys, id: string): boolean => knownChord(id) && (t.using === id || t.free.includes(id));
-/** One plain reason under the buttons when some cannot be pressed. Not when the only one is the chord the line above already
- *  says another app has (hold to talk off, or fallen back from it). */
-export function talkNotFreeLine(t: TalkKeys): string {
-  const said = t.using !== t.picked ? t.picked : null;
-  return t.choices.some((id) => id !== said && !talkCanPick(t, id)) ? S.talkKeysNotFree : "";
-}
-/** What a chord gives up while it is hold to talk, said beside the picker; empty for the default and anything not listed. */
+const jobName = (j: Job): string => (S.keyJobs as Record<Job, string>)[j];
+/** What a hold to talk chord gives up while it is hold to talk, said beside the picker; empty for the default and anything else. */
 export const talkCost = (id: string): string => TALK_COSTS[id] ?? "";
 /** The hold to talk hint: the keys in use, or where to pick keys when another app holds them. */
-export const voiceHint = (t: TalkKeys): string => (t.using ? S.voiceHint.replace("{keys}", talkLabel(t.using)) : S.voiceHintOff);
+export const voiceHint = (k: Keys = keysNow()): string => keyHint("talk", S.voiceHint, k, S.voiceHintOff);
 /** The first run's warning that Alfred, Raycast and ChatGPT may share Option and Space with no notice (macOS lets both
  *  have them unless the other app took them alone), only while hold to talk uses them. */
-export const talkSharedNote = (t: TalkKeys): string => (t.using === TALK_DEFAULT ? S.talkKeysShared : "");
-/** The line above the picker in Settings. `problem` when hold to talk is off or not on the keys the person picked. */
-export function talkKeysLine(t: TalkKeys): { text: string; problem: boolean } {
-  // Off since launch, but the free check just now found the picked keys free again (the other app let go of them).
-  if (!t.using && talkCanPick(t, t.picked)) return { text: S.talkKeysOffFreeNow.replace("{keys}", talkLabel(t.picked)), problem: true };
-  if (!t.using) return { text: S.talkKeysOff.replace("{keys}", talkLabel(t.picked)), problem: true };
-  if (t.using !== t.picked) return { text: S.talkKeysFellBack.replace("{picked}", talkLabel(t.picked)).replace("{using}", talkLabel(t.using)), problem: true };
-  if (t.using === TALK_DEFAULT) return { text: S.talkKeysNowDefault, problem: false };
-  return { text: S.talkKeysNow.replace("{keys}", talkLabel(t.using)), problem: false };
-}
-/** Why the keys did not change, from the code the app sends (talkkeys.rs Problem, and set_talk_keys in main.rs). */
-export function talkProblem(code: string): string {
-  if (code === "taken") return S.talkKeysTaken;
-  if (code === "not_saved") return S.talkKeysNotSaved;
-  return S.talkKeysFailed;
-}
+export const talkSharedNote = (k: Keys = keysNow()): string => (k.using.talk === TALK_DEFAULT ? S.talkKeysShared : "");
 
-/** Every hotkey a person can press at any time, in words (shown at the end of the first run and in Settings), with the
- * hold to talk keys in use. The keys named here are checked against the ones the app registers (hotkeys.test.ts). */
-export const keyHints = (talk: TalkKeys = TALK_KEYS_START): string[] => [S.cardHint, S.pointHint, S.showMeKeyHint, S.phKeyHint, S.errKeyHint, voiceHint(talk), S.stopHint];
+/** Every hotkey a person can press at any time, in words, with the keys in use now (shown at the end of the first run).
+ *  hotkeys.test.ts checks that each names the keys keymap.rs registers for its job. */
+export const keyHints = (k: Keys = keysNow()): string[] => [
+  keyHint("card", S.cardHint, k), keyHint("problem", S.pointHint, k), keyHint("showme", S.showMeKeyHint, k),
+  keyHint("read", S.phKeyHint, k), keyHint("explain", S.errKeyHint, k), voiceHint(k), keyHint("stop", S.stopHint, k),
+];
+
+/** One row of Keys to remember in Settings: the job, its keys now, and a line when something needs saying. `problem` when
+ *  the job has no keys, or is not on the ones the person picked. */
+export type KeyRow = { job: Job; name: string; keys: string; line: string; problem: boolean };
+export function keyRows(k: Keys = keysNow()): KeyRow[] {
+  return JOBS.map((job) => {
+    const using = k.using[job], picked = k.picked[job];
+    const row = (line: string, problem: boolean): KeyRow => ({ job, name: jobName(job), keys: using ? chordLabel(using) : S.keysNone, line, problem });
+    if (!using) return row((job === "stop" ? S.keysStopOff : job === "talk" ? S.talkKeysOff : S.keysOff).replace("{keys}", chordLabel(picked)), true);
+    if (using !== picked) return row((job === "talk" ? S.talkKeysFellBack : S.keysFellBack).replace("{picked}", chordLabel(picked)).replace("{using}", chordLabel(using)), true);
+    if (job === "talk") return row(using === TALK_DEFAULT ? S.talkKeysNowDefault : S.talkKeysNow, false);
+    // Registered only while a Prompt help suggestion shows (keymap.rs armed_only), so say when they work.
+    if (job === "accept") return row(S.keysAcceptWhen, false);
+    return row("", false);
+  });
+}
+/** The lines under a job's short list once Change is pressed: its picked keys free again (another app let go since
+ *  launch), and one plain reason each for keys another app has and keys another job has. Not for the keys the row above
+ *  already names. */
+export function pickerLines(c: Choices, k: Keys = keysNow()): string[] {
+  const out: string[] = [];
+  const using = k.using[c.job], picked = k.picked[c.job];
+  if (!using && canPick(c, picked)) out.push(S.keysFreeNow.replace("{keys}", chordLabel(picked)));
+  const said = using !== picked ? picked : null;
+  if (c.choices.some((id) => id !== said && !c.ours[id] && !canPick(c, id))) out.push(S.keysNotFree);
+  if (c.choices.some((id) => c.ours[id])) out.push(S.keysOurs);
+  return out;
+}
+/** The one line after a change in Settings: what the job uses now. Empty when it has no keys (the row says why). */
+export const keyChangedLine = (job: Job, k: Keys = keysNow()): string => {
+  const id = k.using[job];
+  return id ? S.keysChanged(jobName(job), chordLabel(id)) : "";
+};
+/** What Reset to the usual keys says, from the app's answer: each job that kept its keys because another app has its usual ones. */
+export function resetLine(v: unknown): string {
+  const raw = typeof v === "object" && v !== null ? (v as { kept?: unknown }).kept : undefined;
+  const kept = (Array.isArray(raw) ? raw : []).filter((j): j is Job => JOBS.includes(j as Job));
+  return kept.length ? S.keysResetKept(kept.map(jobName).join(", ")) : S.keysResetDone;
+}
 
 /** The exact words Settings sends to remove the key (the app checks the same words, keystore::REMOVE_PHRASE). */
 export const REMOVE_KEY_PHRASE = "remove the key";
