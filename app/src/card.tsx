@@ -1,5 +1,8 @@
-import { StrictMode, useEffect, useReducer, useRef, useState } from "react";
+import { StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
+import { ConfirmStep } from "./confirm.tsx";
+import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn, comeToFrom } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
@@ -19,12 +22,13 @@ import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyPro
 import { useKeys } from "./useKeys.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { TEXT_SIZES, applyTextSize, setTextSize, textSize, type TextSize } from "./textsize.ts";
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
-import { addFiles, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
+import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -88,6 +92,13 @@ function ExplainBox({ e }: { e: Explain }) {
   );
 }
 
+// A settings row with a name: VoiceOver says which row it is in, and the keyboard is put back on the row when a control in
+// it goes away (focus.ts).
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  const id = useId();
+  return <div role="group" aria-labelledby={id}><h3 id={id}>{title}</h3>{children}</div>;
+}
+
 // The daily spending limit: today's spend for this project against the limit, and a way to change it within the bounds.
 function SpendingRow({ project, spending }: { project: string; spending: Spending | null }) {
   const [text, setText] = useState("");
@@ -98,8 +109,7 @@ function SpendingRow({ project, spending }: { project: string; spending: Spendin
   const value = limitFromText(text, min, max);
   const save = () => { if (!project || value === null) return; setSent(value); void send(setSpendingLimit(project, value)); };
   return (
-    <>
-      <h3>{S.spendingTitle}</h3>
+    <Group title={S.spendingTitle}>
       <div className="line muted">{S.spendingHelp}</div>
       {!project && <div className="line muted">{S.spendingNoProject}</div>}
       {s && <div className="line" role="status">{spendingLine(s)}</div>}
@@ -114,7 +124,7 @@ function SpendingRow({ project, spending }: { project: string; spending: Spendin
       {project && text.trim() !== "" && value === null && <div className="line muted">{S.spendingRange.replace("{min}", String(min)).replace("{max}", String(max))}</div>}
       {s && sent !== null && !s.problem && s.limitUsd === sent && <div className="line muted" role="status">{S.spendingSaved}</div>}
       {s?.problem && <div className="error" role="alert">{s.problem}</div>}
-    </>
+    </Group>
   );
 }
 
@@ -136,35 +146,35 @@ function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; worki
     void invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE }).then(() => { setNote(S.keyRemovedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("confirmRemove"); });
   };
   const cancel = () => { setKey(""); setProblem(""); setStep("idle"); };
+  const replaceId = useId(), removeId = useId();
   return (
-    <>
-      <h3>{S.keyTitle}</h3>
+    <Group title={S.keyTitle}>
       <div className="line">{keyStatus(keySaved)}</div>
       {note && <div className="line" role="status">{note}</div>}
       {step === "idle" && <div className="row">
-        <button className="btn" type="button" onClick={() => { setNote(""); setStep("replace"); }}>{keySaved ? S.keyReplace : S.keyAdd}</button>
-        {keySaved && <button className="btn danger" type="button" disabled={working} onClick={() => { setNote(""); setStep("confirmRemove"); }}>{S.keyRemove}</button>}
+        <button id={replaceId} className="btn" type="button" onClick={() => { setNote(""); setStep("replace"); }}>{keySaved ? S.keyReplace : S.keyAdd}</button>
+        {keySaved && <button id={removeId} className="btn danger" type="button" disabled={working} onClick={() => { setNote(""); setStep("confirmRemove"); }}>{S.keyRemove}</button>}
       </div>}
       {step === "idle" && keySaved && working && <div className="line muted">{S.keyBusy}</div>}
       {step === "replace" && (<>
         <div className="line muted">{S.keyNewHelp}</div>
         <div className="row">
-          <input type="password" autoComplete="off" spellCheck={false} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(); if (e.key === "Escape") { e.stopPropagation(); cancel(); } }} />
+          <input type="password" autoComplete="off" spellCheck={false} ref={focusIfLost} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(); if (e.key === "Escape") { e.stopPropagation(); cancel(); focusBack(replaceId); } }} />
           <button className="btn primary" type="button" onClick={save}>{S.keySaveNew}</button>
-          <button className="btn" type="button" onClick={cancel}>{S.planCancel}</button>
+          <button className="btn" type="button" onClick={() => { cancel(); focusBack(replaceId); }}>{S.planCancel}</button>
         </div>
       </>)}
       {step === "confirmRemove" && (
-        <div className="line" role="alert">
+        <ConfirmStep className="line" label={S.keyRemoveSure} back={removeId} onCancel={cancel}>
           <div className="line">{S.keyRemoveSure}</div>
           <div className="row">
             <button className="btn danger" type="button" disabled={working} onClick={remove}>{S.keyRemoveYes}</button>
-            <button className="btn" type="button" onClick={cancel}>{S.planCancel}</button>
+            <button className="btn" type="button" data-cancel onClick={cancel}>{S.planCancel}</button>
           </div>
-        </div>
+        </ConfirmStep>
       )}
       {problem && <div className="error" role="alert">{problem}</div>}
-    </>
+    </Group>
   );
 }
 
@@ -174,15 +184,14 @@ function PresentationRow() {
   const [p, setP] = useState<Presentation>(PRESENTATION_DEFAULT);
   useEffect(() => { void invoke("presentation_settings").then((v) => setP(presentationFrom(v))).catch(() => {}); }, []);
   const change = (next: Presentation) => { setP(next); void invoke("set_presentation", { hideFromSharing: next.hideFromSharing, quietOnCalls: next.quietOnCalls }).then((v) => setP(presentationFrom(v))).catch(() => {}); };
-  return (<>
-    <h3>{S.presentationTitle}</h3>
+  return (<Group title={S.presentationTitle}>
     <div className="line muted">{S.hideFromSharingHelp}</div>
     <div className="line muted">{S.quietOnCallsHelp}</div>
     <div className="row">
       <button className="btn" type="button" aria-pressed={p.hideFromSharing} onClick={() => change({ ...p, hideFromSharing: !p.hideFromSharing })}>{S.hideFromSharingSetting}: {p.hideFromSharing ? "on" : "off"}</button>
       <button className="btn" type="button" aria-pressed={p.quietOnCalls} onClick={() => change({ ...p, quietOnCalls: !p.quietOnCalls })}>{S.quietOnCallsSetting}: {p.quietOnCalls ? "on" : "off"}</button>
     </div>
-  </>);
+  </Group>);
 }
 
 // Come to what it is about (F18 item 2): on unless turned off. The app keeps it (dock.json), because the app moves the
@@ -198,6 +207,18 @@ function ComeToRow() {
   </>);
 }
 
+// Text size (textsize.ts): every word in Home follows one root size. Standard is the usual size and the way back.
+function TextSizeRow() {
+  const [size, setSize] = useState<TextSize>(textSize);
+  const pick = (s: TextSize) => { setSize(s); setTextSize(s); applyTextSize(s); };
+  return (
+    <Group title={S.textSizeTitle}>
+      <div className="line muted">{S.textSizeHelp}</div>
+      <div className="row">{TEXT_SIZES.map((s) => <button key={s} className="btn" type="button" aria-pressed={s === size} onClick={() => pick(s)}>{S.textSizes[s]}</button>)}</div>
+    </Group>
+  );
+}
+
 // Keys to remember (M11 wave 4): every job with its keys, and Change for a short list of keys free on this Mac (the app
 // tries each when Change is pressed, keymap::free). The app registers new keys at once and keeps them only if they work,
 // saved on this Mac (keymap.rs); Reset puts every job back on its usual keys. Nothing here reads key presses: the person
@@ -210,20 +231,25 @@ function KeysSection({ keys }: { keys: Keys }) {
   const changeButtons = useRef<Partial<Record<Job, HTMLButtonElement | null>>>({});
   const openNow = useRef(open);
   openNow.current = open;
+  // The row whose list just closed from inside it (a key picked, or its Cancel).
+  const closedFrom = useRef<Job | null>(null);
   const close = (job: Job, changed: Keys | null) => {
     if (changed) setNote(keyChangedLine(job, changed));
     // A late answer, after another job's list was opened, neither closes that list nor moves the keyboard.
     if (openNow.current !== job) return;
+    closedFrom.current = job;
     setOpen(null);
-    if (document.hasFocus()) changeButtons.current[job]?.focus();
   };
+  // The button the keyboard was on went with the list, so the keyboard goes back to the row's Change button, only by the
+  // rule every move in Home follows (focus.ts takeIfLost: Home has the keyboard and nothing in it does). Never when the
+  // person has gone on to another control, another app or a box.
+  useLayoutEffect(() => { const job = closedFrom.current; closedFrom.current = null; if (job && open === null) takeIfLost(() => changeButtons.current[job]); }, [open]);
   const reset = () => {
     if (busy) return;
     setBusy(true); setNote(""); setOpen(null);
     void invoke("reset_keys").then((v) => { setKeysNow(keysFrom(v)); setNote(resetLine(v)); }).catch((e) => setNote(keyProblem(String(e)))).finally(() => setBusy(false));
   };
   return (<>
-    <h3>{S.keysTitle}</h3>
     <div className="line muted">{S.keysSettingsHelp}</div>
     {keyRows(keys).map((r) => (
       <div key={r.job}>
@@ -291,7 +317,6 @@ function VoiceRows() {
   const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch((e) => setProblem(voiceProblem(String(e)))); };
   const heard = (r: unknown) => { const o = (r ?? {}) as { said?: boolean; why?: string; sound?: Sound }; setTried(o.said === false && o.why === "sound" ? soundLine(o.sound ?? "muted") : o.said === false && o.why === "quiet" ? S.voiceQuietNow : ""); };
   return (<>
-    <h3>{S.voiceSettingsTitle}</h3>
     <div className="line muted">{S.voiceSettingsHelp}</div>
     <div className="row">
       <select aria-label={S.micPickLabel} value={v.mic ?? ""} onChange={(e) => change({ mic: e.target.value || null })}>
@@ -373,6 +398,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   // The permission page is where the person changes things; coming back should show the new state.
   useEffect(() => { const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
   const busy = useRef(false);   // a second click while macOS is asking must not start a second delete
+  const deleteId = useId();
   const remove = () => {
     if (busy.current) return;
     busy.current = true; setStep("deleting"); setProblem("");
@@ -381,7 +407,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   return (
     <section className="panel" aria-label={S.settingsTitle}>
       <h2>{S.settingsTitle}</h2>
-      <h3>{S.settingsPermissions}</h3>
+      <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
       {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
         const r = permissionRow(k, perms[k]);
@@ -392,9 +418,12 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
           </div>
         );
       })}
+      </Group>
+      <Group title={S.keysTitle}>
       <KeysSection keys={keys} />
+      </Group>
       {inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
-      <h3>{S.settingsChoices}</h3>
+      <Group title={S.settingsChoices}>
       <div className="row">
         <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
         <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
@@ -406,13 +435,18 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <div className="row"><button className="btn" type="button" aria-pressed={allScreens} onClick={() => { const v = !allScreens; setAllScreensState(v); setAllScreens(v); }}>{S.allScreensSetting}: {allScreens ? "on" : "off"}</button></div>
       <ComeToRow />
       <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
+      </Group>
+      <TextSizeRow />
       <SpendingRow project={project} spending={spending} />
-      <h3>{S.settingsKept}</h3>
+      <Group title={S.settingsKept}>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
+      </Group>
+      <Group title={S.voiceSettingsTitle}>
       <VoiceRows />
+      </Group>
       <PresentationRow />
-      <h3>{S.updatesTitle}</h3>
+      <Group title={S.updatesTitle}>
       <div className="line muted">{S.updatesHelp}</div>
       <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
       {up.stage === "found" && up.notes && <div className="line muted">{up.notes}</div>}
@@ -422,7 +456,8 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
         <button className="btn" type="button" aria-pressed={upAuto} onClick={() => { const v = !upAuto; setUpAuto(v); try { localStorage.setItem("companion.updateAuto", v ? "1" : "0"); } catch { /* storage may be unavailable */ } }}>{S.updatesAuto}: {upAuto ? "on" : "off"}</button>
       </div>}
       {up.stage === "found" && !canInstall(working) && <div className="line muted">{S.updatesBusy}</div>}
-      <h3>{S.numbersTitle}</h3>
+      </Group>
+      <Group title={S.numbersTitle}>
       <div className="line muted">{S.numbersHelp}</div>
       <div className="row">
         <button className="btn" type="button" aria-pressed={!!nums?.enabled} disabled={!nums} onClick={() => void send(metricsSet(!nums?.enabled))}>{S.numbersOn}: {nums?.enabled ? "on" : "off"}</button>
@@ -431,27 +466,30 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
         <button className="btn" type="button" onClick={() => { setShowNums(false); void send(metricsErase()); }}>{S.numbersErase}</button>
       </div>
       {nums && showNums && numbersLines(nums).map((l, i) => <div className="line" key={i}>{l}</div>)}
-      <h3>{S.acknowledgements}</h3>
+      </Group>
+      <Group title={S.acknowledgements}>
       <div className="line muted">{S.acknowledgementsHelp}</div>
       <div className="row"><button className="btn" type="button" onClick={() => void invoke("open_acknowledgements").catch(() => {})}>{S.acknowledgements}</button></div>
-      <h3>{S.exportLogsTitle}</h3>
+      </Group>
+      <Group title={S.exportLogsTitle}>
       <div className="line muted">{S.exportLogsHelp}</div>
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
       <div className="line muted">{S.reportHelp}</div>
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => setExported(S.reportOpened(String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
-      {step === "idle" && <div className="row"><button className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
+      </Group>
+      {step === "idle" && <div className="row"><button id={deleteId} className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
       {step !== "idle" && (
-        <div className="line" role="alert">
+        <ConfirmStep className="line" label={S.deleteSure} back={deleteId} onCancel={() => { if (step !== "deleting") setStep("idle"); }}>
           <b>{S.deleteSure}</b>
           <div className="line">{S.deleteExplain}</div>
           {inv && inv.projectsWithNotes > 0 && <label className="check"><input type="checkbox" checked={withProjects} onChange={(e) => setWithProjects(e.target.checked)} /> {S.deleteProjects.replace("{n}", String(inv.projectsWithNotes))}</label>}
           <div className="row">
             <button className="btn danger" type="button" disabled={step === "deleting"} onClick={remove}>{step === "deleting" ? S.deleting : S.deleteYes}</button>
-            <button className="btn" type="button" disabled={step === "deleting"} onClick={() => setStep("idle")}>{S.planCancel}</button>
+            <button className="btn" type="button" data-cancel disabled={step === "deleting"} onClick={() => setStep("idle")}>{S.planCancel}</button>
           </div>
           {problem && <div className="error" role="alert">{problem}</div>}
-        </div>
+        </ConfirmStep>
       )}
       <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>
     </section>
@@ -480,9 +518,10 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     if (ok === null) { setState("failed"); return; }
     void invoke("copy_text", { text: ok }).catch(() => navigator.clipboard?.writeText(ok) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
   };
+  // The button keeps its name, so VoiceOver hears Copied or the failure on a polite line that is there before either.
   return <>
     <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : S.copy}</button>
-    {state === "failed" && <span className="line" role="status">{S.copyFailed}</span>}
+    <span className={state === "failed" ? "line" : "sr"} role="status">{state === "copied" ? S.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
 }
 
@@ -512,6 +551,7 @@ function LinkLine({ label, url, strong }: { label: string; url: string; strong?:
 function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } }; project: string; onClose: () => void }) {
   const [ask, setAsk] = useState<"live" | "back" | null>(null);
   const [shared, setShared] = useState("");
+  const liveId = useId(), rollId = useId();
   const busy = ["checking_gates", "deploying", "checking_preview"].includes(f.stage);
   return (
     <section className={`panel ${f.stage === "failed" || f.stage === "refused" || f.stage === "not_signed_in" ? "amber" : ""}`} role="status" aria-label={S.onlineTitle}>
@@ -519,13 +559,13 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
       <div className="line">{f.detail}</div>
       {f.previewUrl && <LinkLine label={S.previewAddress} url={f.previewUrl} />}
       {f.productionUrl && <LinkLine label={S.liveAddress} url={f.productionUrl} strong />}
-      {f.stage === "ready" && f.canGoLive && ask !== "live" && <div className="row"><button className="btn primary" type="button" onClick={() => setAsk("live")}>{S.makeLive}</button></div>}
+      {f.stage === "ready" && f.canGoLive && ask !== "live" && <div className="row"><button id={liveId} className="btn primary" type="button" onClick={() => setAsk("live")}>{S.makeLive}</button></div>}
       {ask === "live" && f.previewUrl && (
-        <div className="row" role="alert">
+        <ConfirmStep className="row" label={S.liveSure} back={liveId} onCancel={() => setAsk(null)}>
           <span className="line">{S.liveSure}</span>
           <button className="btn primary" type="button" onClick={() => { void send(shipLive(project, f.previewUrl!)); setAsk(null); }}>{S.liveYes}</button>
-          <button className="btn" type="button" onClick={() => setAsk(null)}>{S.planCancel}</button>
-        </div>
+          <button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button>
+        </ConfirmStep>
       )}
       {f.stage === "live" && f.card && (
         <figure className="receipt-shot">
@@ -538,13 +578,13 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
           {shared && <div className="line muted" role="status">{shared}</div>}
         </figure>
       )}
-      {f.stage === "live" && ask !== "back" && <div className="row"><button className="btn" type="button" onClick={() => setAsk("back")}>{S.rollBack}</button></div>}
+      {f.stage === "live" && ask !== "back" && <div className="row"><button id={rollId} className="btn" type="button" onClick={() => setAsk("back")}>{S.rollBack}</button></div>}
       {ask === "back" && (
-        <div className="row" role="alert">
+        <ConfirmStep className="row" label={S.rollSure} back={rollId} onCancel={() => setAsk(null)}>
           <span className="line">{S.rollSure}</span>
           <button className="btn primary" type="button" onClick={() => { void send(shipRollback(project)); setAsk(null); }}>{S.rollYes}</button>
-          <button className="btn" type="button" onClick={() => setAsk(null)}>{S.planCancel}</button>
-        </div>
+          <button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button>
+        </ConfirmStep>
       )}
       {!busy && <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>}
     </section>
@@ -571,7 +611,7 @@ function HistoryPanel({ items, q, setQ }: { items: HistoryItem[]; q: HistoryQuer
           {filtering && <button className="btn" type="button" onClick={() => setQ(NO_FILTER)}>{S.historyClear}</button>}
         </div>
       )}
-      {filtering && <div className="line muted" role="status" aria-live="polite">{shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch}</div>}
+      {items.length > 0 && <div className={filtering ? "line muted" : "sr"} role="status" aria-live="polite">{filtering ? (shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch) : ""}</div>}
       {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
       {shown.map((h) => (
         <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
@@ -584,36 +624,38 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sure, setSure] = useState(false);
+  // Each line's Edit button, so the keyboard goes back to it after the line is saved or Esc puts the box away.
+  const base = useId(), editId = (line: string) => `${base}-edit-${line}`, eraseId = `${base}-erase`;
+  const save = (id: string) => { void send(editLine(project, scope, id, text)); setEditing(null); focusBack(editId(id)); };
   return (
-    <div>
+    <div role="group" aria-label={title}>
       <h2>{title}</h2>
       {lines.length === 0 && <div className="line muted">{S.memoryEmpty}</div>}
       {lines.map((l) => (
         <div className="line" key={l.id}>
           {editing === l.id ? (
             <div className="row">
-              <input type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { void send(editLine(project, scope, l.id, text)); setEditing(null); } if (e.key === "Escape") { e.stopPropagation(); setEditing(null); } }} />
-              <button className="btn" type="button" onClick={() => { void send(editLine(project, scope, l.id, text)); setEditing(null); }}>{S.memorySave}</button>
+              <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(l.id); if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
+              <button className="btn" type="button" onClick={() => save(l.id)}>{S.memorySave}</button>
             </div>
           ) : (
             <>
               {l.text} <span className="muted">· {S.memoryFrom} {l.source}{l.date ? `, ${l.date}` : ""}</span>
               <span className="row">
-                <button className="btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
+                <button id={editId(l.id)} className="btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
                 <button className="btn danger" type="button" aria-label={`${S.memoryForget}: ${l.text}`} onClick={() => void send(forgetLine(project, scope, l.id))}>{S.memoryForget}</button>
               </span>
             </>
           )}
         </div>
       ))}
-      {lines.length > 0 && !sure && <div className="row"><button className="btn" type="button" aria-label={`${S.memoryErase}: ${title}`} onClick={() => setSure(true)}>{S.memoryErase}</button></div>}
+      {lines.length > 0 && !sure && <div className="row"><button id={eraseId} className="btn" type="button" aria-label={`${S.memoryErase}: ${title}`} onClick={() => setSure(true)}>{S.memoryErase}</button></div>}
       {sure && (
-        <div className="row" role="alert">
+        <ConfirmStep className="row" label={S.memoryEraseSure} back={eraseId} onCancel={() => setSure(false)}>
           <span className="line">{S.memoryEraseSure}</span>
           <button className="btn danger" type="button" onClick={() => { void send(eraseMemory(project, scope)); setSure(false); }}>{S.memoryEraseYes}</button>
-          <button className="btn" type="button" onClick={() => setSure(false)}>{S.planCancel}</button>
-        </div>
+          <button className="btn" type="button" data-cancel onClick={() => setSure(false)}>{S.planCancel}</button>
+        </ConfirmStep>
       )}
     </div>
   );
@@ -635,20 +677,32 @@ function Card() {
     homeDispatch({ type: "need", need: needNow, typing: typing(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus()) });
   }, [needNow?.key ?? ""]);
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
-  useEffect(() => { if (document.hasFocus() && (!document.activeElement || document.activeElement === document.body)) document.getElementById(tabId(home.tab))?.focus(); }, [home.tab]);
+  useEffect(() => { takeIfLost(() => document.getElementById(tabId(home.tab))); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
   // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
   const offNow = useRef(false);
   const keepDraft = (text: string) => { try { const d = draftToKeep(text, offNow.current); if (d === null) localStorage.removeItem(DRAFT_KEY); else localStorage.setItem(DRAFT_KEY, d); } catch { /* storage may be unavailable */ } };
-  const fitBox = () => { const el = box.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 160)}px`; };
+  const fitBox = () => { const el = box.current; if (!el) return; el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
   const setBox = (text: string) => { if (!box.current) return; box.current.value = text; fitBox(); keepDraft(text); };
   const clearBox = () => setBox("");
   // The zero cost warm up: when Home opens or the box gets the keyboard, the engine reads the Claude binary through so
   // the first task starts sooner (runner/src/warm.ts). Nothing is run or sent. At most once a minute from here.
   const warmedAt = useRef(0);
   const warmSoon = () => { const t = Date.now(); if (t - warmedAt.current < 60_000) return; warmedAt.current = t; void send(warmEngine()).catch(() => {}); };
+  // VoiceOver hears each new question, the loop card, a finished task and an error once, politely, on one line (a11y.ts),
+  // with the tab it is on when that is not the open one (the tab open when it came: Home moves there after). It is Home's
+  // only live line for these; the keyboard is never moved for it. The line empties once what it said is gone, so nothing
+  // old is left there.
+  const tabNow = useRef(home.tab); tabNow.current = home.tab;
+  const heard = useRef<string[]>([]), line = useRef<LiveLine>(EMPTY_LINE);
+  const [news, setNews] = useState("");
+  useEffect(() => { const n = liveLine(line.current, heard.current, m, tabNow.current); heard.current = n.said; line.current = n.line; setNews(n.line.text); }, [m]);
+  // When the control with the keyboard goes away (pressed, closed, answered), the keyboard stays near where it was (focus.ts).
+  useEffect(() => { const el = root.current; if (!el) return; return keepFocus(el, () => document.getElementById(tabId(tabNow.current))); }, []);
+  // The buttons that open a step or a box, so the keyboard goes back to them when it closes.
+  const linkId = useId(), undoId = useId(), bisectUndoId = useId(), askId = useId();
   const [project, setProject] = useState("");
   // What opening a lesson step's page said, if it could not open it (links.ts); a new step starts with none.
   const [lessonNote, setLessonNote] = useState("");
@@ -659,8 +713,10 @@ function Card() {
   const attachedNow = useRef(attached); attachedNow.current = attached;
   const [attachNotes, setAttachNotes] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
-  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); void addFiles(attachedNow.current, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); }); };
-  const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); };
+  // What was just added or taken away, said politely for VoiceOver (the chips show it to everyone else).
+  const [attachSaid, setAttachSaid] = useState("");
+  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); const before = attachedNow.current; void addFiles(before, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); setAttachSaid(addedLine(r.have.slice(before.length))); }); };
+  const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); setAttachSaid(""); };
   // What Start sent, kept in memory only until the engine says the task began (askbox.ts sentOutcome). If it says no
   // instead (a file it will not take, no Claude for a picture, something else working, the daily limit), or Stop came
   // before the task began, the words and the files are put back, never over anything typed or added since, so the person
@@ -699,8 +755,8 @@ function Card() {
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
   // What changed after an update (whatsnew.ts): worked out once when the page starts, then shown on Now until closed. The
   // version counts as seen once Home has been open with it showing, or it was closed, so it shows once. Kept on this Mac only.
-  const [news, setNews] = useState<{ show: Release[]; remember: string } | null>(null);
-  const newsNow = useRef(news); newsNow.current = news;
+  const [changes, setChanges] = useState<{ show: Release[]; remember: string } | null>(null);
+  const changesNow = useRef(changes); changesNow.current = changes;
   const rememberVersion = (v: string) => { try { localStorage.setItem(SEEN_VERSION_KEY, v); } catch { /* storage may be unavailable */ } };
   useEffect(() => {
     // Read as the page starts: a first run finished later on is a first install, not an update from an older version.
@@ -709,7 +765,7 @@ function Card() {
       let seen: string | null = null;
       try { seen = localStorage.getItem(SEEN_VERSION_KEY); } catch { /* storage may be unavailable */ }
       const w = whatsNew(seen, String((v as { version?: unknown } | null)?.version ?? ""), undefined, { usedBefore });
-      if (w.show.length && w.remember) setNews({ show: w.show, remember: w.remember });
+      if (w.show.length && w.remember) setChanges({ show: w.show, remember: w.remember });
       else if (w.remember) rememberVersion(w.remember);
     }).catch(() => {});
   }, []);
@@ -900,7 +956,7 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
-      if (newsNow.current) rememberVersion(newsNow.current.remember);   // what changed has been on screen once
+      if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
       warmSoon();
       // Coming back after a break: ask what happened while away. Only Companion's own history is used.
       const last = lastSeen();
@@ -1151,7 +1207,10 @@ function Card() {
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      {/* Read when VoiceOver reaches it, not said by itself: the cost changes on every turn, and what needs the person is
+          said once on the live line below. */}
+      <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && (<>
@@ -1167,15 +1226,14 @@ function Card() {
           );
         })}
       </div>
-      <div className="sr" role="status" aria-live="polite">{home.said}</div>
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any tab): on every tab. */}
       {show("notes") && <>
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
-      {m.error && <div className="error" role="alert">{m.error}</div>}
+      {m.error && <div className="error">{m.error}</div>}
       </>}
       <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
       {show("folder") && <>
-      <div className="row" aria-label={S.folderLabel}>
+      <div className="row" role="group" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
         {recent.length > 1 && (
@@ -1186,26 +1244,26 @@ function Card() {
         )}
       </div>
       {copying && <div className="line muted" role="status">{S.copying}</div>}
-      {!linkOpen ? !copying && <div className="row"><button className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
+      {!linkOpen ? !copying && <div className="row"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
         <div className="row">
-          <input aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); } }} />
+          <input ref={focusIfLost} aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); focusBack(linkId); } }} />
           <button className="btn primary" type="button" onClick={openLink}>{S.openLinkGo}</button>
-          <button className="btn" type="button" onClick={() => setLinkOpen(false)}>{S.planCancel}</button>
+          <button className="btn" type="button" onClick={() => { setLinkOpen(false); focusBack(linkId); }}>{S.planCancel}</button>
         </div>
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
       {!project && <div className="notice">{S.folderNone}</div>}
       </>}
-      {show("whatsNew") && news && (
-        <section className="panel" role="status" aria-label={S.whatsNewTitle(news.show[0].version)}>
-          {news.show.map((r) => (
+      {show("whatsNew") && changes && (
+        <section className="panel" role="status" aria-label={S.whatsNewTitle(changes.show[0].version)}>
+          {changes.show.map((r) => (
             <div key={r.version}>
               <h2>{S.whatsNewTitle(r.version)}</h2>
               {r.lines.map((l, i) => <div className="line" key={i}>{keysIn(l, keys)}</div>)}
             </div>
           ))}
-          <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(news.remember); setNews(null); }}>{S.whatsNewClose}</button></div>
+          <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
       {show("settings") && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
@@ -1356,7 +1414,7 @@ function Card() {
       <div hidden={!show("ask")}>
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
-        <textarea ref={box} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
+        <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
           onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); if (!e.currentTarget.value) fromVoice.current = false; }}
           onFocus={() => warmSoon()}
           onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
@@ -1374,13 +1432,14 @@ function Card() {
           {attached.map((a, i) => (
             <span className="chip" role="listitem" key={`${i}:${a.name}`}>
               <span className="line">{chipLabel(a)}</span>
-              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => setAttached((l) => removeFile(l, i))}>{S.attachRemoveShort}</button>
+              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</button>
             </span>
           ))}
         </div>
       )}
       {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
       {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
+      <div className="sr" role="status">{attachSaid}</div>
       {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
       {attached.length === 0 && <div className="line muted">{S.attachHint}</div>}
       {!working && (
@@ -1405,7 +1464,7 @@ function Card() {
 
       {show("urgent") && <div ref={urgent}>
       {m.agentsAsk && (
-        <section className="panel amber" role="alert" aria-label={S.agentsTitle}>
+        <section className="panel amber" aria-label={S.agentsTitle}>
           <h2>{S.agentsTitle}</h2>
           <div className="line">{S.agentsAsk} {m.agentsAsk.join(" and ")}. {S.agentsAskEnd}</div>
           <div className="row">
@@ -1415,7 +1474,7 @@ function Card() {
         </section>
       )}
       {m.approvals.map((a) => (
-        <section className="panel amber" key={a.id} role="alert" aria-label={S.needsYouTitle}>
+        <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>
           <h2>{S.needsYouTitle}</h2>
           <div className="line">{a.title}</div>
           <div className="row">
@@ -1565,7 +1624,7 @@ function Card() {
       )}
 
       {show("task") && m.task && m.task.lines.length > 0 && (
-        <section className="panel" aria-live="polite">
+        <section className="panel">
           <h2>{m.task.label || "Task"}</h2>
           {/* The latest one or two steps, in plain words: never the raw command. */}
           {activityNow(m).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" || l.outcome === "denied" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</div>)}
@@ -1614,14 +1673,14 @@ function Card() {
             </div>
           )}
           {m.receipt.changed.length > 0 && !m.undo && project && (
-            <div className="row"><button className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
+            <div className="row"><button id={undoId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
           )}
           {m.undo?.stage === "confirm" && project && (
-            <div className="line"><div>{S.undoSure}</div>
+            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.undoYes}</button>
-                <button className="btn" type="button" onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
-              </div></div>
+                <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
+              </div></ConfirmStep>
           )}
           {m.undo?.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
@@ -1714,15 +1773,15 @@ function Card() {
             </details>
           )}
           {m.bisect.undoStage === "confirm" && m.bisect.task && project && (
-            <div className="line"><div>{S.bisectUndoSure(m.bisect.changedCount ?? m.bisect.changed?.length ?? 0)}</div>
+            <ConfirmStep className="line" label={S.bisectUndoSure(m.bisect.changedCount ?? m.bisect.changed?.length ?? 0)} back={bisectUndoId} onCancel={() => dispatch({ type: "ui.bisectUndoCancelled" })}><div>{S.bisectUndoSure(m.bisect.changedCount ?? m.bisect.changed?.length ?? 0)}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.bisectUndoSent" }); void send(undoOneTask(project, m.bisect!.task!.checkpoint)); }}>{S.bisectUndoYes}</button>
-                <button className="btn" type="button" onClick={() => dispatch({ type: "ui.bisectUndoCancelled" })}>{S.bisectUndoNo}</button>
-              </div></div>
+                <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.bisectUndoCancelled" })}>{S.bisectUndoNo}</button>
+              </div></ConfirmStep>
           )}
           <div className="row">
             {m.bisect.stage === "running" && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
-            {m.bisect.stage === "done" && m.bisect.outcome === "found" && m.bisect.undo === "safe" && !m.bisect.undoStage && project && <button className="btn danger" type="button" onClick={() => dispatch({ type: "ui.bisectUndoAsked" })}>{S.bisectUndo}</button>}
+            {m.bisect.stage === "done" && m.bisect.outcome === "found" && m.bisect.undo === "safe" && !m.bisect.undoStage && project && <button id={bisectUndoId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.bisectUndoAsked" })}>{S.bisectUndo}</button>}
             {m.bisect.stage === "done" && m.bisect.undoStage !== "working" && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.bisectClosed" })}>{S.bisectClose}</button>}
           </div>
         </section>
@@ -1820,4 +1879,6 @@ function Card() {
     </main>
   );
 }
+// The saved text size is on the page before Home first draws, so nothing jumps.
+applyTextSize(textSize());
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);

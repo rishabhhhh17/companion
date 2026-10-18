@@ -12,6 +12,8 @@ export const S = {
   attachPicture: "picture",
   attachRemove: (name: string) => `Remove ${name}`,
   attachRemoveShort: "Remove",
+  attachAdded: (names: string) => `Added ${names}.`,
+  attachRemoved: (name: string) => `Removed ${name}.`,
   attachHidden: (name: string) => `Some parts of ${name} looked like keys or passwords, so they were hidden.`,
   attachUnreadable: (name: string) => `${name} could not be read, so it was not added.`,
   attachStartOnly: "Added files go only with Start. The other buttons leave them out.",
@@ -285,6 +287,9 @@ export const S = {
   comeToSetting: "Come to what it is about",
   comeToHelp: "On unless you turn it off. When Companion points at something in a window, or has an answer about one, the character moves next to that window, never on top of it, and goes back to its place when you are done. It stays put while you drag it or your pointer is on it.",
   dragHint: "To give the character a new place, drag it to any edge or corner of a screen. Each screen keeps its own place.",
+  textSizeTitle: "Text size",
+  textSizeHelp: "Makes the words in Home bigger. Standard is the usual size. The status at the top of the screen and the character keep their size.",
+  textSizes: { standard: "Standard", large: "Large", larger: "Larger", largest: "Largest" },
   quietOnCallsSetting: "Quiet during calls",
   quietOnCallsHelp: "On unless you turn it off. While a call app such as Zoom, Teams or FaceTime is in front, Companion does not speak and the character does not react. It checks only which app is in front, never what is on your screen or what is said. A call in a web browser looks like any other web page, so it is not noticed.",
   settingsButton: "Settings",
@@ -614,7 +619,6 @@ export const S = {
   // Home in the notch (F18): the card under the island, in tabs, and the island's own words.
   homeLabel: "Home",
   homeTabs: { now: "Now", did: "What I did", learn: "Learn", memory: "Memory", settings: "Settings" },
-  homeShown: (tab: string, why: string) => `Showing ${tab}: ${why}.`,
   homeWaiting: (tab: string, why: string) => `${why}, on ${tab}.`,
   homeTabWaiting: "something here needs you",
   homeHistoryNone: "Nothing yet. Each task you start shows here, with what it changed and whether it was checked.",
@@ -636,4 +640,8 @@ export const S = {
   islandWorkingOn: (what: string) => `Working on ${what}`,
   islandNeedsYou: (what: string) => `Needs you: ${what}`,
   islandDone: (what: string) => `Done: ${what}`,
+  // What Home says out loud for VoiceOver (a11y.ts), politely, without moving the keyboard.
+  saidPlan: (n: number) => `The plan is ready: ${n} ${n === 1 ? "step" : "steps"}. Check it, then start it.`,
+  saidDone: (what: string, proof: string) => (what ? `Done: ${what}. ${proof}` : `Done. ${proof}`),
+  saidNotDone: (what: string) => (what ? `Not done: ${what}. A check failed.` : "Not done. A check failed."),
 } as const;

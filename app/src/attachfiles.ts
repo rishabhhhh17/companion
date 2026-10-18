@@ -66,6 +66,9 @@ export function blocksDrop(types: ArrayLike<string> | null | undefined, target: 
   return tag !== "TEXTAREA" && tag !== "INPUT";
 }
 
+/** What was just added, in one line VoiceOver says (the chips show it to everyone else); nothing when nothing was. */
+export const addedLine = (added: Attached[]): string => (added.length ? S.attachAdded(added.map((a) => a.name).join(", ")) : "");
+
 /** The list without the chip at `i`. */
 export const removeFile = (have: Attached[], i: number): Attached[] => have.filter((_, n) => n !== i);
 

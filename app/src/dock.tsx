@@ -5,26 +5,23 @@ import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./r
 import { characterWords, motionFor, visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
+import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
 import "./style.css";
 
-const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-
 function Dock() {
   const [m] = useModel();
-  const [reduced, setReduced] = useState(reducedQuery.matches);
-  useEffect(() => {
-    const f = () => setReduced(reducedQuery.matches);
-    reducedQuery.addEventListener("change", f);
-    return () => reducedQuery.removeEventListener("change", f);
-  }, []);
-  // Reactions: short one off moves when something happens; the big one also sends confetti from the character.
+  // The Mac's Reduce motion setting, through the one helper (motion.ts): the state's own motion stops with it.
+  const [reduced, setReduced] = useState(reducedMotion);
+  useEffect(() => watchReducedMotion(setReduced), []);
+  // Reactions: short one off moves when something happens; the big one also sends confetti from the character. None with
+  // reactions turned off or when the Mac asks for less motion.
   const [react, setReact] = useState<{ r: Reaction; id: number } | null>(null);
   const reactor = useRef(new Reactor());
   const seq = useRef(0);
   useEffect(() => {
     const off = listen("runner-event", async (e) => {
-      if (!reactionsOn()) return;
+      if (!playful(reactionsOn(), reducedMotion())) return;
       const r = reactionFor(e.payload as never);
       if (!r) return;
       // Quiet during calls (rule 7): the app says only whether it should be quiet (a call app is in front), nothing more.
@@ -37,7 +34,7 @@ function Dock() {
       setReact(null);
       requestAnimationFrame(() => setReact({ r: got, id }));
       setTimeout(() => setReact((c) => (c?.id === id ? null : c)), LENGTH_MS[got]);
-      if (got === "party" && !reducedQuery.matches) void invoke("celebrate");
+      if (got === "party") void invoke("celebrate");
     });
     return () => { off.then((f) => f()); };
   }, []);

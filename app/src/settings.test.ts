@@ -276,7 +276,10 @@ describe("the Keys section in Settings", () => {
     // a button in the list, which is gone), so a keyboard or VoiceOver user does not lose their place.
     expect(section).toContain("keyChangedLine(");
     expect(section).toContain('role="status"');
-    expect(section).toMatch(/changeButtons\.current\[[a-z.]+\]\?\.focus\(\)/);
+    // It goes there only by the rule every move of the keyboard in Home follows (focus.ts takeIfLost: Home has the keyboard
+    // and nothing in it does), never by a focus of its own, so it never pulls the keyboard from a box the person went to.
+    expect(section).toMatch(/takeIfLost\(\(\) => changeButtons\.current\[job\]\)/);
+    expect(section).not.toMatch(/\.focus\(/);
     // Keys another app took since the list was asked for: the list is asked for again, so they show as taken.
     expect(picker).toMatch(/if \(code === "taken"\) load\(\)/);
     // Nothing on the page reads key presses to learn keys: it only offers the list the app sends.

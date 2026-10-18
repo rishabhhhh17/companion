@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ATTACH, checkAttachments } from "../../runner/src/attach.ts";
-import { addFiles, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
+import { addFiles, addedLine, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
 
@@ -167,6 +167,16 @@ describe("the chips", () => {
     expect(chipLabel(have[1])).toBe(`shot.png, ${S.attachPicture}`);
     expect(removeFile(have, 0).map((a) => a.name)).toEqual(["shot.png"]);
     expect(removeFile(have, 5).length).toBe(2);
+  });
+  test("what was just added is said in one line for VoiceOver, and nothing when nothing was", async () => {
+    const { have } = await addFiles([], [file("notes.md", enc("x")), file("shot.png", PNG)]);
+    expect(addedLine(have)).toBe(S.attachAdded("notes.md, shot.png"));
+    expect(addedLine(have)).toBe("Added notes.md, shot.png.");
+    expect(addedLine([])).toBe("");
+    // Only the new ones: a second paste says only what it added, and a refused file is said by its own line, not here.
+    const more = await addFiles(have, [file("app.js", enc("x")), file(".env", enc("A=1"))]);
+    expect(addedLine(more.have.slice(have.length))).toBe(S.attachAdded("app.js"));
+    expect(S.attachRemoved("notes.md")).toBe("Removed notes.md.");
   });
 });
 

@@ -6,6 +6,19 @@ The founder said on 17 Oct 2026: keep doing everything that does not need the ke
 1. Keys: every Companion hotkey can be changed in Settings (chords only, nothing reads key events), with the "another app uses these keys" check, building on talkkeys.rs.
 2. Voice: pick the Mac voice and its speed, choose the microphone with a fallback when it disappears, follow Bluetooth changes, show the words when the Mac is muted, and bias speech to text toward the project's own words (file and package names, on the Mac only).
 3. Accessibility: VoiceOver labels, keyboard only use of every card and tab, reduced motion everywhere, contrast.
+   Built and tested as text on m11/a11y (`app/src/a11y.test.ts`, `motion.test.ts`). Still open:
+   - Text size: built as a Settings row on 18 Oct 2026 (`app/src/textsize.ts`): Standard, Large, Larger, Largest, with Standard the size Home always had. Every size in `style.css` is now in rem from one root size, so every word in Home follows the choice, and no fixed height cuts words off (both checked in `a11y.test.ts`). Only Home follows it: the island is the notch's size and its words are cut to fit, and the character's window is fixed; the pointer's captions on the screen keep their size too. The Mac's own text size setting probably does not reach Home, because the pages run in WKWebView with their own sizes **[verify]**; the row is the way to bigger words until a real Mac shows otherwise.
+   - Still needs a real Mac. None of these have been tried yet:
+     - VoiceOver says each new question, loop card, pause, plan, finished task and error once, politely, on the live line, and the keyboard does not move.
+     - VoiceOver reads each Settings row's group name, each tab with "something here needs you" when it waits, the character's name and state, and the island's one line.
+     - The focus ring shows when moving with Tab and does not show after a mouse click (WKWebView's own `:focus-visible`).
+     - Each "are you sure" step keeps Tab inside it, Esc closes it, and the keyboard goes back to the button that opened it.
+     - Reduce motion turned on, then off, while Companion runs: the pages follow at once, and the character's next trip follows too.
+     - Increase contrast: the muted words and lines turn darker, and nothing gets harder to read.
+     - Larger text in System Settings: check whether Home changes at all. That settles the **[verify]** in the text size item above.
+     - Text size set to Largest: every tab, card and Settings row can still be read and used at Home's 380 point width, nothing is cut off, and Home scrolls when it is taller than 640 points.
+     - What came in from main on 18 Oct 2026: the microphone, voice, language and task lists grow with the text size; the ask box grows to its cap at each size, then scrolls; VoiceOver hears Copied after Copy, the number of matches in a search, and each file added or taken off; after a key is picked in Settings the keyboard is back on that row's Change button; taking a file off puts the keyboard back in the ask box.
+     - While Home has the keyboard, whether VoiceOver also reads the character's own status line (its window has a live line of its own for its state), and whether that is too much next to Home's line.
 4. Small gaps: links open directly (web links only, after a check), a "what changed" card after an update, a bug report button (opens a prefilled report; the person attaches the exported log themselves), files dragged or pasted into the ask box (read on the Mac, secrets hidden, capped), a multi line ask box whose draft survives, copyable replies, search in What I did, and a zero cost warm up so the first reply is faster.
 5. Which task broke it for Python projects, and tests that do not fail when the Mac is busy.
 

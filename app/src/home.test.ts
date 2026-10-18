@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
 import { PANEL_TAB, PLACES, TABS, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, need, panelsIn, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S } from "./strings.ts";
+import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -153,15 +154,16 @@ describe("what Companion says about itself shows on every tab", () => {
 
 describe("the Home reducer", () => {
   const go = (s: HomeState, ...a: Parameters<typeof homeReduce>[1][]) => a.reduce(homeReduce, s);
-  test("starts on Now", () => { expect(homeStart().tab).toBe("now"); expect(homeStart().said).toBe(""); });
+  test("starts on Now", () => { expect(homeStart().tab).toBe("now"); expect(homeStart().needKey).toBe(""); });
   test("the person picks a tab", () => {
     expect(go(homeStart(), { type: "pick", tab: "settings" }).tab).toBe("settings");
     expect(go(homeStart(), { type: "pick", tab: "learn" }, { type: "pick", tab: "did" }).tab).toBe("did");
   });
-  test("a new need shows its tab and says so for VoiceOver", () => {
+  test("a new need shows its tab and says so for VoiceOver, on Home's one live line (a11y.ts)", () => {
     const s = go(homeStart(), { type: "pick", tab: "settings" }, { type: "need", need: { key: "approval:ap_1", tab: "now", why: S.needsYouTitle } });
     expect(s.tab).toBe("now");
-    expect(s.said).toBe(S.homeShown("Now", S.needsYouTitle));
+    // What the live line says, from the tab that was open when the need came.
+    expect(liveLine(EMPTY_LINE, [], run([...task(), approval()]), "settings").line.text).toBe(S.homeWaiting("Now", `${S.needsYouTitle}: git push sends your work to a remote`));
   });
   test("the same need does not pull the person back once they chose another tab; the next one does", () => {
     const n = { key: "approval:ap_1", tab: "now" as const, why: S.needsYouTitle };
@@ -181,7 +183,7 @@ describe("the Home reducer", () => {
     const n = { key: "approval:ap_1", tab: "now" as const, why: S.needsYouTitle };
     const s = go(homeStart(), { type: "pick", tab: "settings" }, { type: "need", need: n, typing: true });
     expect(s.tab).toBe("settings");
-    expect(s.said).toBe(S.homeWaiting("Now", S.needsYouTitle));
+    expect(newsOf(run([...task(), approval()]), s.tab)[0].text).toBe(S.homeWaiting("Now", `${S.needsYouTitle}: git push sends your work to a remote`));
     // Once noticed it does not pull them later either; a new need while not typing does.
     expect(go(s, { type: "need", need: n }).tab).toBe("settings");
     expect(go(s, { type: "need", need: { ...n, key: "approval:ap_2" } }).tab).toBe("now");
@@ -199,16 +201,21 @@ describe("the Home reducer", () => {
     expect(card).toMatch(/homeDispatch\(\{ type: "need", need: needNow, typing: typing\(/);
   });
   test("a need already on its tab is not announced again", () => {
-    const s = go(homeStart(), { type: "need", need: { key: "approval:ap_1", tab: "now", why: S.needsYouTitle } });
-    expect(s.said).toBe("");
+    const s = go(homeStart(), { type: "pick", tab: "learn" }, { type: "need", need: { key: "walk:w1:0:step", tab: "learn", why: S.lessonsTitle } });
+    expect(s.tab).toBe("learn");
+    expect(newsOf(run(walkStep()), s.tab), "its own panel says it").toEqual([]);
+    // A question on Now while Now is open: just the question, no tab.
+    expect(newsOf(run([...task(), approval()]), "now")[0].text).toBe(`${S.needsYouTitle}: git push sends your work to a remote`);
   });
   test("the ask box hotkey shows Now (the box is there); a click on the island keeps the tab", () => {
     expect(go(homeStart(), { type: "pick", tab: "settings" }, { type: "opened", keyboard: true }).tab).toBe("now");
     expect(go(homeStart(), { type: "pick", tab: "settings" }, { type: "opened", keyboard: false }).tab).toBe("settings");
   });
-  test("picking a tab clears the last announcement (VoiceOver reads the tab itself)", () => {
+  test("picking a tab says nothing more on the live line (VoiceOver reads the tab itself)", () => {
     const s = go(homeStart(), { type: "pick", tab: "settings" }, { type: "need", need: { key: "k", tab: "now", why: "x" } }, { type: "pick", tab: "did" });
-    expect(s.said).toBe("");
+    expect(s.tab).toBe("did");
+    const m = run([...task(), approval()]), a = liveLine(EMPTY_LINE, [], m, "settings");
+    expect(liveLine(a.line, a.said, m, s.tab).line).toBe(a.line);
   });
 });
 
@@ -229,8 +236,8 @@ describe("the tabs from the keyboard", () => {
     expect(card).toMatch(/aria-selected=\{t === home\.tab\}/);
     expect(card).toMatch(/tabIndex=\{t === home\.tab \? 0 : -1\}/);
     expect(card).toMatch(/onKeyDown=\{[^\n]*tabKey\(/);
-    // A tab shown by itself is said out loud, since the keyboard focus does not move there.
-    expect(card).toMatch(/aria-live="polite"[^\n]*\{home\.said\}/);
+    // A tab shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
+    expect(card).toContain("liveLine(line.current, heard.current, m, tabNow.current)");
   });
 });
 

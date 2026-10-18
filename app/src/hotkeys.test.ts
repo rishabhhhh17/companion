@@ -168,7 +168,7 @@ describe("every hint names the keys in use", () => {
     expect(walkPanel).not.toMatch(/\{m\.walk\.(say|note)\}|\{h\.say\}/);
     expect(card).toContain("const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys);");
     // What changed after an update names the usual talk keys; the card fills in the keys in use each time it draws.
-    const news = card.slice(card.indexOf('{show("whatsNew") && news && ('), card.indexOf("</section>", card.indexOf('{show("whatsNew") && news && (')));
+    const news = card.slice(card.indexOf('{show("whatsNew") && changes && ('), card.indexOf("</section>", card.indexOf('{show("whatsNew") && changes && (')));
     expect(news).toContain("{keysIn(l, keys)}");
     expect(news).not.toMatch(/>\{l\}</);
   });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DoctorItem } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac, setExplain } from "./commands.ts";
@@ -6,6 +6,7 @@ import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyL
 import { keyHints, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
+import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
 
 type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; startPractice: () => void; onDone: () => void };
@@ -34,9 +35,19 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, setAu
     void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
   };
   useEffect(() => { if (step === "permissions") void send(checkMac()); }, [step]);
+  // After Continue, Back or Skip (the person's own press; nothing else changes the step) the keyboard goes to the new step's
+  // heading, so VoiceOver reads where they are. By the rule a question follows: Home has the keyboard, nobody is typing.
+  const box = useRef<HTMLElement>(null), shown = useRef(step);
+  useLayoutEffect(() => {
+    if (shown.current === step) return;   // the first run just opened: nothing was pressed yet
+    shown.current = step;
+    const a = document.activeElement as HTMLElement | null, h = box.current?.querySelector<HTMLElement>("h2");
+    if (!h || !shouldTakeFocus(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus())) return;
+    h.setAttribute("tabindex", "-1"); h.focus();
+  }, [step]);
   const n = STEPS.indexOf(step) + 1;
   return (
-    <section className="panel" aria-label={S.obTitle}>
+    <section className="panel" aria-label={S.obTitle} ref={box}>
       <div className="line muted">Step {n} of {STEPS.length}</div>
       {step === "welcome" && (<>
         <h2>{S.obTitle}</h2><div className="line">{S.obWelcome1}</div><div className="line">{S.obWelcome2}</div>
