@@ -466,7 +466,7 @@ mod tests {
         let h = &main[main.find("generate_handler![").unwrap()..];
         let h = &h[..h.find(']').unwrap()];
         let cmds: Vec<&str> = h["generate_handler![".len()..].split(',').map(str::trim).collect();
-        for c in ["toggle_card", "island_click", "island_alert", "island_state", "resize_card", "key_map", "key_choices", "set_key", "reset_keys", "dock_settings", "set_come_to", "drag_dock", "drop_dock", "close_card"] {
+        for c in ["toggle_card", "island_click", "island_alert", "island_state", "resize_card", "key_map", "key_choices", "set_key", "reset_keys", "settings_get", "settings_set", "settings_reset", "settings_migrate", "drag_dock", "drop_dock", "close_card"] {
             assert_eq!(cmds.iter().filter(|x| **x == c).count(), 1, "{c} is a command once");
         }
         // Hidden from screen sharing: the island, Home (the card), the ring overlay and the character.

@@ -50,6 +50,7 @@ mod keymap;
 mod visibility;
 mod wheel;
 mod presentation;
+mod settings;
 
 mod runner;
 mod instance;
@@ -725,19 +726,184 @@ fn roam_set(app: &AppHandle, r: Rect, gen: u64) {
     });
 }
 
-/// Settings: whether the character comes to what it is about (on unless turned off). Kept in `dock.json`.
-#[tauri::command]
-fn dock_settings() -> Value { json!({ "comeTo": with_prefs(|p| p.come_to) }) }
-
-/// Settings: turns it on or off. Only from the card. Off sends a visiting character home.
-#[tauri::command]
-fn set_come_to(app: AppHandle, window: tauri::WebviewWindow, on: bool) -> Result<Value, String> {
-    if window.label() != "card" { return Err("This can only be changed from the card.".into()); }
+/// Settings: whether the character comes to what it is about (on unless turned off), the registry's character.comeTo
+/// (settings.rs), kept in `dock.json` as before. Changed only through settings_set (card only). Off sends a visiting
+/// character home.
+fn come_to_set(app: &AppHandle, on: bool) {
     with_prefs(|p| p.come_to = on);
     save_prefs();
-    if !on { roam_end(&app); }
-    log("come_to_set", json!({ "on": on }));
-    Ok(json!({ "comeTo": on }))
+    if !on { roam_end(app); }
+}
+
+// ---------- Settings: the registry (settings.rs, T16) ----------
+//
+// One list of every setting (protocol/settings.json). Pages never write a file: every change comes here (settings_set,
+// settings_reset, settings_migrate, card only), is checked, is kept in its store (settings.json, or the file it always
+// had: dock.json, presentation.json, keys.json, voice.json; the engine's own three through its own commands), is
+// applied, and every window is told ("settings-changed"). What the engine applies from settings.json reaches it as
+// settings.apply, the first line it reads after every start. The activity log names the setting, never its value.
+
+struct SettingsNow { file: settings::File, problems: Vec<settings::Problem> }
+static SETTINGS: Mutex<Option<SettingsNow>> = Mutex::new(None);
+fn with_settings<R>(f: impl FnOnce(&mut SettingsNow) -> R) -> R {
+    let mut g = SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
+    let s = g.get_or_insert_with(|| {
+        let (file, problems) = settings::load(settings::registry(), &data_dir());
+        if !problems.is_empty() { log("settings_problems", json!({ "count": problems.len(), "damaged": problems.iter().any(|p| p.code == "damaged") })); }
+        SettingsNow { file, problems }
+    });
+    f(s)
+}
+fn project_opt() -> Option<String> { let p = current_project(); (!p.is_empty()).then_some(p) }
+fn settings_snapshot(changed: &[String]) -> Value {
+    let project = project_opt();
+    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now() };
+    with_settings(|s| settings::snapshot(settings::registry(), &s.file, project.as_deref(), &w, &s.problems, changed))
+}
+/// Tells every window (card, dock, overlay, island) what is in force now.
+fn settings_told(app: &AppHandle, changed: &[String]) { let _ = app.emit("settings-changed", settings_snapshot(changed)); }
+fn settings_line() -> String {
+    let project = project_opt();
+    with_settings(|s| settings::apply_line(settings::registry(), &s.file, project.as_deref(), &format!("set-{}", now())))
+}
+/// The engine's settings again (after a change it applies, or another project). If it is not running it is given them
+/// when it starts.
+fn send_settings(app: &AppHandle) { let _ = app.state::<runner::Runner>().send_line(settings_line()); }
+
+/// What the page shows and reads: every value in force, the usual ones, the project, and the problems found.
+#[tauri::command]
+fn settings_get() -> Value { settings_snapshot(&[]) }
+
+/// Changes one setting. Only from the card. The error is a code the page puts in words; nothing changed then.
+#[tauri::command]
+fn settings_set(app: AppHandle, window: tauri::WebviewWindow, key: String, value: Value) -> Result<Value, String> {
+    settings::only_card(window.label())?;
+    let changed = setting_change(&app, &key, &value).map_err(|c| { log("setting_not_changed", json!({ "key": key, "why": c })); c.to_string() })?;
+    log("setting_changed", json!({ "key": key }));
+    settings_told(&app, &changed);
+    Ok(settings_snapshot(&changed))
+}
+
+fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<String>, &'static str> {
+    let r = settings::registry();
+    let d = r.get(key).ok_or("unknown")?;
+    let one = vec![key.to_string()];
+    match d.store.as_str() {
+        "settings" => {
+            let project = project_opt();
+            let changed = with_settings(|s| -> Result<bool, &'static str> {
+                let mut next = s.file.clone();
+                let changed = settings::set(r, &mut next, key, value, project.as_deref())?;
+                if changed { settings::save(&data_dir(), &next)?; s.file = next; }
+                Ok(changed)
+            })?;
+            if !changed { return Ok(vec![]); }
+            setting_applied(app, key);
+            if settings::needs_apply(d) { send_settings(app); }
+            Ok(one)
+        }
+        "dock" => {
+            let v = settings::validate(d, value)?;
+            let next = with_prefs(|p| settings::dock_with(p, key, &v)).ok_or("unknown")?;
+            come_to_set(app, next.come_to);
+            Ok(one)
+        }
+        "presentation" => {
+            let v = settings::validate(d, value)?;
+            let next = settings::presentation_with(&presentation_now(), key, &v).ok_or("unknown")?;
+            presentation_set(app, next)?;
+            Ok(one)
+        }
+        "spending" | "memory" | "metrics" => {
+            let v = settings::validate(d, value)?;
+            let cmd = settings::runner_command(key, &v, &current_project(), &format!("set-{}", now())).ok_or("unknown")?;
+            app.state::<runner::Runner>().send(&cmd).map_err(|_| "engine")?;
+            Ok(one)
+        }
+        "voice" => {
+            if !value.is_object() { return Err("custom"); }
+            let before = voice_now();
+            let next = voiceset::parse(Some(&value.to_string()));
+            voice_save(&before, &next)?;
+            Ok(one)
+        }
+        "keys" => {
+            if !value.is_object() { return Err("custom"); }
+            let (wanted, damaged) = keymap::parse(Some(&json!({ "keys": value }).to_string()), None);
+            if damaged { return Err("custom"); }
+            if !keys_restore(app, &wanted).is_empty() { return Err("keysTaken"); }
+            Ok(one)
+        }
+        _ => Err("unknown"),
+    }
+}
+
+/// What the shell does itself when a setting kept in settings.json changes.
+fn setting_applied(app: &AppHandle, key: &str) {
+    let off = |k: &str| with_settings(|s| settings::value_of(settings::registry(), &s.file, k, None)) == Some(json!(false));
+    // Speak to me or Answer out loud turned off: silence at once.
+    if (key == "talk.speak" || key == "talk.speakReplies") && off(key) { speech_off(app); }
+}
+
+/// Puts one setting, a section or everything back to its usual value, in every store. Never a protective setting in a
+/// section or everything. Only from the card.
+#[tauri::command]
+fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>) -> Result<Value, String> {
+    settings::only_card(window.label())?;
+    let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
+        (Some(k), None, false) => settings::Which::Key(k),
+        (None, Some(s), false) => settings::Which::Section(s),
+        (None, None, true) => settings::Which::All,
+        _ => return Err("unknown".into()),
+    };
+    let r = settings::registry();
+    let targets = settings::reset_targets(r, which)?;
+    let project = project_opt();
+    let mut changed = with_settings(|s| -> Result<Vec<String>, &'static str> {
+        let mut next = s.file.clone();
+        let c = settings::reset(r, &mut next, which, project.as_deref())?;
+        if next != s.file { settings::save(&data_dir(), &next)?; s.file = next; }
+        Ok(c)
+    })?;
+    for k in &changed { setting_applied(&app, k); }
+    if changed.iter().any(|k| r.get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }
+    let mut problems: Vec<&'static str> = vec![];
+    for d in targets {
+        let done = match d.store.as_str() {
+            "dock" | "presentation" => {
+                let now_v = settings::dock_value(&with_prefs(|p| p.clone()), &d.key).or_else(|| settings::presentation_value(&presentation_now(), &d.key));
+                if now_v.is_some_and(|v| v != d.default) { setting_change(&app, &d.key, &d.default).map(|_| true) } else { Ok(false) }
+            }
+            // The engine's own: its command with the usual value (the engine answers with its new state).
+            "spending" | "memory" | "metrics" => setting_change(&app, &d.key, &d.default).map(|_| true),
+            "keys" => if keys_picked() != keymap::Map::DEFAULT { keys_to_usual(&app).map(|_| true) } else { Ok(false) },
+            "voice" => { let before = voice_now(); if before != voiceset::Saved::default() { voice_save(&before, &voiceset::Saved::default()).map(|_| true) } else { Ok(false) } }
+            _ => Ok(false),
+        };
+        match done { Ok(true) => changed.push(d.key.clone()), Ok(false) => {}, Err(c) => problems.push(c) }
+    }
+    log("settings_reset", json!({ "which": match which { settings::Which::Key(_) => "one", settings::Which::Section(_) => "section", settings::Which::All => "all" }, "changed": changed.len(), "problems": problems }));
+    settings_told(&app, &changed);
+    let mut v = settings_snapshot(&changed);
+    v["notReset"] = json!(problems);
+    Ok(v)
+}
+
+/// The choices the pages kept before the registry, read by the card with today's meaning and sent once. Only from the card.
+#[tauri::command]
+fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, values: Value) -> Result<Value, String> {
+    settings::only_card(window.label())?;
+    let values = values.as_object().cloned().ok_or("custom")?;
+    let written = with_settings(|s| -> Result<Vec<String>, &'static str> {
+        let mut next = s.file.clone();
+        let w = settings::migrate(settings::registry(), &mut next, &from, &values)?;
+        settings::save(&data_dir(), &next)?;
+        s.file = next;
+        Ok(w)
+    })?;
+    log("settings_migrated", json!({ "from": from, "written": written.len() }));
+    settings_told(&app, &written);
+    Ok(settings_snapshot(&written))
 }
 
 /// A page that has just loaded asks for the status messages it missed.
@@ -923,6 +1089,9 @@ fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = Some(folder.clone());
     log("project_changed", json!({}));
     let _ = app.emit("project-changed", &folder);
+    // This project's own settings: to the engine (the line names the folder), and to the pages.
+    send_settings(&app);
+    settings_told(&app, &[]);
     Ok(folder)
 }
 
@@ -1269,7 +1438,8 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
                     *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     log("your_turn_hit", json!({ "misses": w.misses }));
                     let r = json!({ "x": target.x - display.x, "y": target.y - display.y, "w": target.w, "h": target.h });
-                    let _ = app.emit_to("overlay", "overlay-celebrate", json!({ "rect": r }));
+                    // The overlay only listens (its capability), so it is given the settings in force with the event.
+                    let _ = app.emit_to("overlay", "overlay-celebrate", json!({ "rect": r, "settings": settings_snapshot(&[]) }));
                     say_showme(&app, "your_turn_done", "That's it.", json!({}));
                     std::thread::sleep(Duration::from_millis(1400));
                     if alive() { hide_overlay(&app); }
@@ -1378,20 +1548,14 @@ fn apply_sharing(s: &presentation::Settings) {
 /// whether a camera is on) is looked at, and only at the moment something would be said or a reaction would play.
 fn quiet() -> bool { presentation::quiet(&presentation_now(), &front_id(), || presentation::CAMERA_CHECK_ON && presentation::mac::camera_in_use()) }
 
-#[tauri::command]
-fn presentation_settings() -> Value { presentation::to_json(&presentation_now()) }
-
-/// Settings: both switches at once. Only from the card. Saved in Companion's own folder, applied at once.
-#[tauri::command]
-fn set_presentation(app: AppHandle, window: tauri::WebviewWindow, hide_from_sharing: bool, quiet_on_calls: bool) -> Result<Value, String> {
-    if window.label() != "card" { return Err("This can only be changed from the card.".into()); }
-    let s = presentation::Settings { hide_from_sharing, quiet_on_calls };
-    logfile::write_atomic(&presentation_path(), presentation::to_json(&s).to_string().as_bytes()).map_err(|_| "Could not save that setting.".to_string())?;
+/// Settings: hide from screen sharing and quiet during calls (the registry's sharing.hide and calls.quiet), kept in
+/// `presentation.json` in Companion's own folder as before, applied at once. Changed only through settings_set.
+fn presentation_set(app: &AppHandle, s: presentation::Settings) -> Result<(), &'static str> {
+    logfile::write_atomic(&presentation_path(), presentation::to_json(&s).to_string().as_bytes()).map_err(|_| "notSaved")?;
     *PRESENTATION.lock().unwrap_or_else(|e| e.into_inner()) = Some(s);
     let _ = app.run_on_main_thread(move || apply_sharing(&s));
-    log("presentation_set", json!({ "hide": hide_from_sharing, "quiet": quiet_on_calls }));
-    if s.quiet_on_calls && quiet() { speech_off(&app); }
-    Ok(presentation::to_json(&s))
+    if s.quiet_on_calls && quiet() { speech_off(app); }
+    Ok(())
 }
 
 /// For the character: should it hold back its reaction right now?
@@ -1469,20 +1633,26 @@ fn voice_speed(window: tauri::WebviewWindow) -> Result<f64, String> {
 /// Settings: pick a voice, a speed, a microphone and a language. Only from the card, only what is on this Mac now (or what
 /// was already picked), saved in voice.json in Companion's folder. The error is a code the page turns into words.
 #[tauri::command]
-fn set_voice_settings(window: tauri::WebviewWindow, voice: Option<String>, speed: f64, mic: Option<String>, language: String) -> Result<Value, String> {
+fn set_voice_settings(app: AppHandle, window: tauri::WebviewWindow, voice: Option<String>, speed: f64, mic: Option<String>, language: String) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }
     let voices = speak::mac::voices();
     let (inputs, _) = voice_mac::inputs();
     let before = voice_now();
     let ask = voiceset::Ask { voice: voice.as_deref(), speed, mic: mic.as_deref(), language: &language };
     let next = voiceset::apply(&before, &ask, &voices, &inputs).map_err(|c| { log("voice_not_set", json!({ "why": c })); c.to_string() })?;
-    let _ = std::fs::create_dir_all(data_dir());
-    logfile::write_atomic(&voice_path(), voiceset::to_json(&next).to_string().as_bytes()).map_err(|_| "not_saved".to_string())?;
-    if next.mic != before.mic { *MIC_NOTE.lock().unwrap_or_else(|e| e.into_inner()) = voiceset::MicNote::new(); }
-    *VOICE_SET.lock().unwrap_or_else(|e| e.into_inner()) = Some(next.clone());
+    voice_save(&before, &next).map_err(|_| "not_saved".to_string())?;
     // Whether each was picked, never which voice or microphone.
     log("voice_set", json!({ "voice": next.voice.is_some(), "speed": next.speed, "mic": next.mic.is_some(), "language": next.language }));
+    settings_told(&app, &["talk.voice".to_string()]);
     Ok(voice_state(&next, &voices))
+}
+/// Keeps the voice settings in voice.json (Settings, and Reset and Undo through the registry).
+fn voice_save(before: &voiceset::Saved, next: &voiceset::Saved) -> Result<(), &'static str> {
+    let _ = std::fs::create_dir_all(data_dir());
+    logfile::write_atomic(&voice_path(), voiceset::to_json(next).to_string().as_bytes()).map_err(|_| "notSaved")?;
+    if next.mic != before.mic { *MIC_NOTE.lock().unwrap_or_else(|e| e.into_inner()) = voiceset::MicNote::new(); }
+    *VOICE_SET.lock().unwrap_or_else(|e| e.into_inner()) = Some(next.clone());
+    Ok(())
 }
 
 /// Silence, at once. Also part of Stop everything.
@@ -1722,7 +1892,7 @@ fn celebrate(app: AppHandle) {
         let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
-        let _ = a.emit_to("overlay", "overlay-party", json!({ "x": cx - d.x, "y": (primary_h - cy) - d.y }));
+        let _ = a.emit_to("overlay", "overlay-party", json!({ "x": cx - d.x, "y": (primary_h - cy) - d.y, "settings": settings_snapshot(&[]) }));
     });
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(1700));
@@ -1988,6 +2158,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
             // The old hold to talk keys no longer reach it, so a hold still going on them is ended here, not left open.
             if a == keymap::Action::Talk && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
             log("key_set", json!({ "action": a.id(), "id": keymap::id(wanted) }));
+            settings_told(&app, &["keys.hotkeys".to_string()]);
             Ok(keymap::state_json(&keys_using(), &next))
         }
         Err(p) => { log("key_not_set", json!({ "action": a.id(), "id": keymap::id(wanted), "why": p.code() })); Err(p.code().into()) }
@@ -1999,6 +2170,12 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
 #[tauri::command]
 fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }
+    let v = keys_to_usual(&app).map_err(str::to_string)?;
+    settings_told(&app, &["keys.hotkeys".to_string()]);
+    Ok(v)
+}
+/// Every job back on its usual keys (Settings' own Reset, and Reset this section or Reset all). Main thread.
+fn keys_to_usual(app: &AppHandle) -> Result<Value, &'static str> {
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let (picked, using) = (keys_picked(), keys_using());
     let registered = keymap::ACTIONS.map(key_registered);
@@ -2013,15 +2190,39 @@ fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, Str
             *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = done.picked;
             for a in keymap::ACTIONS { set_key_using(a, done.using[a.index()]); }
             let talk = keymap::Action::Talk.index();
-            if using[talk] != done.using[talk] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
+            if using[talk] != done.using[talk] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
             let kept: Vec<&str> = done.kept.iter().map(|a| a.id()).collect();
             log("keys_reset", json!({ "kept": kept }));
             let mut v = keymap::state_json(&done.using, &done.picked);
             v["kept"] = json!(kept);
             Ok(v)
         }
-        Err(p) => { log("keys_not_reset", json!({ "why": p.code() })); Err(p.code().into()) }
+        Err(p) => { log("keys_not_reset", json!({ "why": p.code() })); Err(p.code()) }
     }
+}
+
+/// Undo after a reset: each job back on the keys it had, one at a time, through the same switch as Change (the new keys
+/// are registered before the old ones go, and kept only if they work). Coming back from the usual keys no two jobs can
+/// want the same keys. The jobs that could not have their keys back are named. Main thread.
+fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
+    let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    let gs = app.global_shortcut();
+    let mut failed = vec![];
+    for a in keymap::ACTIONS {
+        let (picked, want) = (keys_picked(), wanted.get(a));
+        if picked.get(a) == want { continue; }
+        let (before, was) = (key_registered(a), key_using(a));
+        let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));
+        match keymap::switch(a, want, before, keep, &picked, &key_others(a, &picked), |c| gs.register(keymap::shortcut(c)).is_ok(), save_keys, |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())) {
+            Ok(next) => {
+                *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
+                set_key_using(a, Some(want));
+                if a == keymap::Action::Talk && was != Some(want) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
+            }
+            Err(_) => failed.push(a),
+        }
+    }
+    failed
 }
 
 // ---------- Hold to talk ----------
@@ -2273,7 +2474,7 @@ fn start_runner(app: &AppHandle) {
             // An engine that has just (re)started knows no question, so an answer is not coming: what was seen is forgotten.
             if t == "runner.hello" { showme_pending().end(); }
             WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_runner_event(t);
-        } }));
+        } }, || Some(settings_line())));
     match result {
         Ok(()) => log("runner_started", json!({})),
         Err(e) => {
@@ -2362,7 +2563,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

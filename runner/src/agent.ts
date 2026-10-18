@@ -47,6 +47,12 @@ import { drawReceipt } from "./proof/picture.ts";
 import { attachmentsBlock, checkAttachments, type Picture, type TextFile } from "./attach.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
+import type { RunnerSettings } from "./settings.ts";
+import { defaultOf } from "../../protocol/settings.ts";
+
+/** The stand in for "no folder chosen" (the app's NO_PROJECT): the settings for every project (Explain, pausing, the daily
+ *  limit) work with it, reading and writing no folder (profile only memory, nothing spent). */
+export const NO_PROJECT = "no-project";
 
 // Point at the problem and Rescue, when the last Vercel deploy is what failed.
 const DEPLOY_FAILED = "Your last Vercel deploy failed";
@@ -99,6 +105,8 @@ export type RunnerOptions = {
   // never the project), each deleted as soon as it has been checked. Without it, off. run: how a Python project's Python is
   // asked where it imports code from (runCommand; tests pass a stand in). detect: how the project is read (detectProject).
   bisect?: { workDir: string; run?: (command: string, o: RunOptions) => Promise<RunResult>; detect?: (dir: string) => Detected };
+  // What the shell applied from the settings registry (settings.apply, T16). Without it, every setting is its usual value.
+  settings?: RunnerSettings;
 };
 
 /** A private copy made for checking an earlier version starts with this; anything left by a run that was cut off is swept. */
@@ -244,6 +252,8 @@ export class AgentRunner {
   private memories = new Map<string, MemoryStore>();
   private memoryFor(project: string): MemoryStore | null {
     if (!this.o.memoryDir) return null;
+    // No folder chosen: only the profile and the settings for every project, never a folder named after the stand in.
+    if (project === NO_PROJECT) return new MemoryStore({ project: "", profileDir: this.o.memoryDir });
     const key = resolve(project);
     let m = this.memories.get(key);
     if (!m) { m = new MemoryStore({ project: key, profileDir: this.o.memoryDir }); this.memories.set(key, m); }
@@ -354,7 +364,7 @@ export class AgentRunner {
   private room(project: string): number { return this.dailyLimitUsd - this.ledger.spentToday(project); }
   // The Settings row: the daily limit against what this project spent today. A new limit is used only once it is kept.
   private spendingState(project: string, problem?: string) {
-    const spent = Math.round(this.ledger.spentToday(project) * 1e6) / 1e6;
+    const spent = project === NO_PROJECT ? 0 : Math.round(this.ledger.spentToday(project) * 1e6) / 1e6;
     this.emit({ type: "spending.state", project, limitUsd: this.dailyLimitUsd, spentUsd: spent, minUsd: MIN_DAILY_LIMIT_USD, maxUsd: MAX_DAILY_LIMIT_USD, ...(problem ? { problem } : {}) } as never);
   }
   private setDailyLimit(cmd: Extract<Command, { type: "spending.set" }>) {
@@ -370,6 +380,8 @@ export class AgentRunner {
   private dailyLimit(agent: string) { this.fail("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.", agent); }
 
   private now() { return (this.o.now ?? (() => new Date()))(); }
+  /** A setting's value in force (settings.apply), read when a task starts. */
+  private setting<T>(key: string, project?: string): T { return (this.o.settings?.get(key, project) ?? defaultOf(key)) as T; }
   private emit<T extends Omit<Event, "v" | "id">>(e: T) {
     this.o.emit({ v: PROTOCOL_VERSION, id: `e${++this.counter}`, ts: this.now().toISOString(), ...e } as unknown as Event);
   }
@@ -620,6 +632,8 @@ export class AgentRunner {
 
   private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
     const prior = opts.priorUsd ?? 0;
+    // Read once, as the task starts: a change in Settings reaches the next task, never this one.
+    const maxTurns = this.setting<number>("work.maxTurns", cmd.project);
     const room = this.room(cmd.project) + prior;
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -653,7 +667,7 @@ export class AgentRunner {
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       const gen = this.o.engine.start({
-        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled,
+        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled, maxTurns,
         ...(offRecord ? { offTheRecord: true } : {}),
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
         toolDone: (id, shell) => { if (id) this.watchers.get(cmd.agent)?.end(id); this.noteShell(session, shell); },
@@ -874,6 +888,7 @@ export class AgentRunner {
     const room = this.room(spec.project);
     if (room <= 0) { this.dailyLimit(spec.agent); return; }
     const budget = Math.min(spec.budgetUsd, room);
+    const maxTurns = this.setting<number>("work.maxTurns", spec.project);
     const abort = new AbortController();
     const recalled = this.learnAndRecall(spec.project, spec.said ?? "", spec.offTheRecord, false);
     this.sessions.set(spec.agent, newSession(spec.agent, abort));
@@ -897,7 +912,7 @@ export class AgentRunner {
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
       // Off the record there is no saved conversation, so nothing is ever continued.
-      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, authorize, memory: recalled, ...(spec.offTheRecord ? { offTheRecord: true } : {}) });
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}) });
       try {
         let next = await gen.next();
         while (!next.done) {

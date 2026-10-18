@@ -28,6 +28,8 @@ export type EngineOptions = {
   memory?: string;
   // Off the record: the engine saves no conversation, so there is nothing to continue later (never pass resumeSession).
   offTheRecord?: boolean;
+  // Most turns this session may take (the setting "Most turns in one task", work.maxTurns, read when the task started).
+  maxTurns?: number;
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DoctorItem } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
-import { addMemory, checkMac, setExplain } from "./commands.ts";
-import { canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
+import { addMemory, checkMac } from "./commands.ts";
+import { changeSetting } from "./settingsStore.ts";
+import { canContinue, commandsFor, settingsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
 import { keyHints, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
 
-type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; setAutoSend: (on: boolean) => void; useTask: (prompt: string) => void; startPractice: () => void; onDone: () => void };
+type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; useTask: (prompt: string) => void; startPractice: () => void; onDone: () => void };
 
-export function Onboarding({ doctor, connected, project, send, pickFolder, setAutoSend, useTask, startPractice, onDone }: Props) {
+export function Onboarding({ doctor, connected, project, send, pickFolder, useTask, startPractice, onDone }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   const [key, setKey] = useState("");
@@ -23,8 +24,8 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, setAu
   const ctx = { connected: ok, project };
   const go = (to: Step | null) => { if (to) setStep(to); };
   const finish = () => {
-    for (const c of commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command, (on) => setExplain(project, on) as Command)) void send(c);
-    setAutoSend(answers.autoSend);
+    for (const c of commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command)) void send(c);
+    for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);
     onDone();
   };
   const saveKey = () => {

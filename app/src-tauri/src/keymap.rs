@@ -879,15 +879,20 @@ mod tests {
         let save = body("fn save_keys(");
         assert!(save.find("write_atomic(").unwrap() < save.find("remove_file(").unwrap() && save.contains("if ok {"), "{save}");
         // Every change or check is a sync command (the main thread, like the plugin's own work), card only, one at a time.
-        for c in ["fn key_choices(", "fn set_key(", "fn reset_keys("] {
+        // Reset and the registry's Reset and Undo (settings_reset, settings_set, T16) go through keys_to_usual and
+        // keys_restore, which take the same one at a time lock; the registry's commands check the window first too.
+        for c in ["fn key_choices(", "fn set_key(", "fn reset_keys(", "fn settings_set(", "fn settings_reset("] {
             let at = main.find(c).unwrap();
             assert!(main[..at].trim_end().ends_with("#[tauri::command]"), "{c} must be a plain sync command");
             let b = body(c);
-            assert!(b.find("window.label() != \"card\"").unwrap() < b.find("KEYS_SWITCH.lock()").unwrap(), "{c}");
+            let check = b.find("window.label() != \"card\"").or_else(|| b.find("settings::only_card(window.label())?")).unwrap_or_else(|| panic!("{c} checks no window"));
+            let work = ["KEYS_SWITCH.lock()", "keys_to_usual(", "setting_change("].iter().filter_map(|w| b.find(w)).min().unwrap_or_else(|| panic!("{c}"));
+            assert!(check < work, "{c}");
         }
+        for c in ["fn keys_to_usual(", "fn keys_restore("] { assert!(body(c).contains("KEYS_SWITCH.lock()"), "{c}"); }
         assert!(body("fn arm_now(").contains("KEYS_SWITCH.lock()") && body("fn arm_result_keys(").contains("run_on_main_thread"));
         // New hold to talk keys end a hold still going on the old ones.
-        for c in ["fn set_key(", "fn reset_keys("] { let b = body(c); assert!(b.contains("TALK_HELD.lock()") && b.contains("VoiceMsg::Cancel"), "{c}"); }
+        for c in ["fn set_key(", "fn keys_to_usual(", "fn keys_restore("] { let b = body(c); assert!(b.contains("TALK_HELD.lock()") && b.contains("VoiceMsg::Cancel"), "{c}"); }
         // Only the keys in use reach a job, and the one notice comes from these rules.
         assert!(body("fn key_action(").contains("key_using(*a)"));
         assert!(main.contains("keymap::launch_notice(&launch.started, launch.damaged)"));
@@ -897,8 +902,9 @@ mod tests {
         assert!(start.contains("keymap::start(&picked,") && start.contains("|c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())"), "{start}");
         assert!(body("fn set_key(").contains("let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
         assert!(body("fn set_key(").contains("keymap::switch(a, wanted, before, keep, &picked, &key_others(a, &picked),"));
-        assert!(body("fn reset_keys(").contains("keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),"));
-        assert!(body("fn reset_keys(").contains("let registered = keymap::ACTIONS.map(key_registered);"));
+        assert!(body("fn keys_to_usual(").contains("keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),"));
+        assert!(body("fn keys_restore(").contains("let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
+        assert!(body("fn keys_to_usual(").contains("let registered = keymap::ACTIONS.map(key_registered);"));
         assert!(line("fn key_registered(").contains("{ keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)) }"));
         assert!(body("fn key_others(").contains("keymap::others(a, &keys_using(), picked)"));
         assert!(body("fn key_choices(").contains("keymap::free(a, key_registered(a), &key_others(a, &keys_picked()),"));

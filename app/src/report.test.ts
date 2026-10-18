@@ -23,6 +23,6 @@ describe("Report a problem", () => {
     expect(S.reportOpened("companion-logs-2026-10-17-1530.txt")).toContain("send it yourself");
   });
   test("Settings starts it with exactly those words and nothing else from the page", () => {
-    expect(card).toContain('invoke("report_problem", { subject: S.reportSubject, body: S.reportBody })');
+    expect(readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8")).toContain('invoke("report_problem", { subject: S.reportSubject, body: S.reportBody })');
   });
 });

@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { ROAM_PHASES, roamFrom } from "./roam.ts";
-import { comeToFrom } from "./settings.ts";
+import { defOf } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
 import { bend, ease } from "./pointer.ts";
 
@@ -54,21 +54,16 @@ describe("the character page", () => {
 });
 
 describe("Come to what it is about", () => {
-  test("is on unless the app clearly says off", () => {
-    expect(comeToFrom({ comeTo: false })).toBe(false);
-    expect(comeToFrom({ comeTo: true })).toBe(true);
-    for (const junk of [undefined, null, "off", 0, {}, { comeTo: "no" }, { comeTo: 0 }]) expect(comeToFrom(junk)).toBe(true);
+  test("is on unless turned off, kept by the app in dock.json (the registry's character.comeTo, T16)", () => {
+    expect(defOf("character.comeTo")).toMatchObject({ kind: "switch", default: true, store: "dock", applies: ["shell"] });
   });
-  test("Settings has the switch, kept by the app, and the hint for dragging it anywhere", () => {
-    const card = read("./card.tsx");
-    const settings = card.slice(card.indexOf("function SettingsPanel"));
-    expect(card).toContain('invoke("dock_settings")');
-    expect(card).toContain('invoke("set_come_to", { on: next })');
-    expect(settings).toContain("<ComeToRow");
-    const row = card.slice(card.indexOf("function ComeToRow"), card.indexOf("\n}\n", card.indexOf("function ComeToRow")));
-    for (const s of ["S.comeToSetting", "S.comeToHelp", "S.dragHint"]) expect(row).toContain(s);
+  test("Settings has the switch, changed only through the shell, and the hint for dragging it anywhere", () => {
+    const page = read("./settingsPage.tsx");
+    expect(page).toContain("home: <div className=\"line muted\">{S.dragHint}</div>,");
+    expect(S.set["character.comeTo"].label).toBe(S.comeToSetting);
     const main = read("../src-tauri/src/main.rs");
-    for (const c of ["dock_settings", "set_come_to"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+    for (const c of ["settings_get", "settings_set"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+    for (const c of ["dock_settings", "set_come_to"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
   });
   test("the words say what it does, in plain words", () => {
     expect(S.comeToSetting).toBe("Come to what it is about");

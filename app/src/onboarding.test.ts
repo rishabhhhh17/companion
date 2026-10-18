@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { addMemory } from "./commands.ts";
-import { back, canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, keyLooksRight, next, QUESTIONS, STEPS } from "./onboarding.ts";
-import { setExplain } from "./commands.ts";
+import { back, canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, keyLooksRight, next, QUESTIONS, settingsFor, STEPS } from "./onboarding.ts";
+import { readFileSync } from "node:fs";
 
 describe("moving through the first run", () => {
   test("the steps go in order, and the first and last have nowhere to go", () => {
@@ -26,14 +26,19 @@ describe("the questions", () => {
     const e = effectsOf({ ...DEFAULT_ANSWERS, short: true, autoSend: true });
     expect(e.some((x) => /short/i.test(x))).toBe(true); expect(e.some((x) => /straight away/i.test(x))).toBe(true);
   });
-  test("answers become lines in the profile with their source, and the explain setting", () => {
-    const cmds = commandsFor({ explain: false, short: true, plain: true, autoSend: false }, "/p", (scope, text, source) => addMemory("/p", scope, text, source), (on) => setExplain("/p", on)) as any[];
-    expect(cmds[0]).toMatchObject({ type: "explain.set", enabled: false });
+  test("answers become lines in the profile with their source, and settings changed through the shell", () => {
+    const cmds = commandsFor({ explain: false, short: true, plain: true, autoSend: false }, "/p", (scope, text, source) => addMemory("/p", scope, text, source)) as any[];
+    expect(cmds.some((c) => c.type === "explain.set")).toBe(false);
+    expect(settingsFor({ explain: false, short: true, plain: true, autoSend: true })).toEqual([["explain.on", false], ["talk.autoSend", true]]);
+    // Explain and auto send are settings (T16): the first run changes them the way Settings does, never by its own command.
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);");
+    expect(ui).not.toContain("setExplain");
     expect(cmds.filter((c) => c.type === "memory.add").map((c) => c.text)).toEqual(["Prefers short answers", "Prefers plain words, no jargon"]);
     expect(cmds.every((c) => c.type !== "memory.add" || c.source === "your answer at setup")).toBe(true);
   });
   test("saying no to everything adds nothing to the profile", () => {
-    const cmds = commandsFor({ explain: true, short: false, plain: false, autoSend: false }, "/p", (s, t, so) => addMemory("/p", s, t, so), (on) => setExplain("/p", on)) as any[];
+    const cmds = commandsFor({ explain: true, short: false, plain: false, autoSend: false }, "/p", (s, t, so) => addMemory("/p", s, t, so)) as any[];
     expect(cmds.filter((c) => c.type === "memory.add")).toEqual([]);
   });
 });

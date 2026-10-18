@@ -1,0 +1,756 @@
+//! The settings registry (T16): one list of every setting a person can change (`protocol/settings.json`, read here with
+//! include_str!, and by the pages and the engine through `protocol/settings.ts`), the rules for what each value may be,
+//! and Companion's own settings file, `settings.json` in the data folder. This module is plain code with no window, no
+//! Keychain and no network: main.rs does the reading, writing and telling the pages.
+//!
+//! Rules that never bend here:
+//!  - Only the shell writes settings.json (pages call `settings_set`, card only). It is written whole and atomically, owner
+//!    only (0600). Only values that differ from the usual one are kept, so putting a setting back means removing it.
+//!  - Names this version does not know, and fields it does not know, are kept untouched, so going back a version loses nothing.
+//!  - A project's values are kept under a hash of its folder ("p_" and 12 hex of its sha256), never under the path.
+//!  - A file that is not JSON is moved aside as settings.damaged.json and Companion starts on the usual values. One bad
+//!    value falls back to its usual value; both are listed as problems, never thrown.
+//!  - Protective settings (lists a person adds protections to) are never touched by Reset this section or Reset all.
+//!  - The values are checked with the same rules as `protocol/settings.ts`; both run `protocol/fixtures/settings-cases.jsonl`.
+//!  - Refusals are codes (the same as settings.ts); the pages put them in words.
+use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+pub const REGISTRY_TEXT: &str = include_str!("../../../protocol/settings.json");
+pub const FILE: &str = "settings.json";
+pub const DAMAGED: &str = "settings.damaged.json";
+/// The one migration so far: the choices the pages kept in their own storage before the registry.
+pub const PAGE_STORAGE_MARK: &str = "pageStorage.v1";
+/// The stores the engine keeps itself, reached only through its own commands (spending.set, explain.set, memory.pause,
+/// metrics.set), which only the shell sends.
+pub const RUNNER_STORES: &[&str] = &["spending", "memory", "metrics"];
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics"];
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+const UNITS: &[&str] = &["dollars", "seconds", "minutes", "percent", "count", "words"];
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+const MAPS: &[&str] = &["isOn", "notOff", "isOne", "notZero", "textSize"];
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+const APPLIES: &[&str] = &["shell", "runner", "pages"];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind { Switch, Choice, Number, Text, List, Custom }
+impl Kind {
+    fn from(s: &str) -> Option<Kind> {
+        Some(match s { "switch" => Kind::Switch, "choice" => Kind::Choice, "number" => Kind::Number, "text" => Kind::Text, "list" => Kind::List, "custom" => Kind::Custom, _ => return None })
+    }
+}
+
+/// One setting, as the registry describes it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Def {
+    pub key: String, pub section: String, pub kind: Kind, pub default: Value,
+    pub options: Vec<String>, pub min: f64, pub max: f64, pub step: f64, pub unit: String,
+    pub max_length: usize, pub max_items: usize, pub item_max_length: usize, pub allowed_items: Option<Vec<String>>,
+    pub project: bool, pub applies: Vec<String>, pub store: String, pub live: bool, pub protective: bool,
+    pub floor: Option<String>, pub renamed_from: Vec<String>, pub from_page: Option<(String, String)>,
+}
+impl Def {
+    pub fn applies_to(&self, who: &str) -> bool { self.applies.iter().any(|a| a == who) }
+    pub fn runner_store(&self) -> bool { RUNNER_STORES.contains(&self.store.as_str()) }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Registry { pub version: u64, pub sections: Vec<String>, pub defs: Vec<Def>, problems: Vec<String> }
+impl Registry {
+    pub fn get(&self, key: &str) -> Option<&Def> { self.defs.iter().find(|d| d.key == key) }
+    pub fn in_section(&self, section: &str) -> Vec<&Def> { self.defs.iter().filter(|d| d.section == section).collect() }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+fn key_ok(k: &str) -> bool {
+    let parts: Vec<&str> = k.split('.').collect();
+    parts.len() >= 2 && parts.iter().all(|p| p.chars().next().is_some_and(|c| c.is_ascii_lowercase()) && p.chars().all(|c| c.is_ascii_alphabetic()))
+}
+
+/// Reads a registry. What cannot even be read as a definition is a problem in `check_registry`, never a panic.
+pub fn parse_registry(text: &str) -> Result<Registry, String> {
+    let v: Value = serde_json::from_str(text).map_err(|e| format!("the registry is not JSON: {e}"))?;
+    let mut problems = vec![];
+    let strs = |v: Option<&Value>| -> Vec<String> { v.and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+    let sections = strs(v.get("sections"));
+    let mut defs = vec![];
+    for d in v.get("settings").and_then(Value::as_array).cloned().unwrap_or_default() {
+        let s = |k: &str| d.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let n = |k: &str| d.get(k).and_then(Value::as_f64).unwrap_or(f64::NAN);
+        let u = |k: &str| d.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
+        let key = s("key");
+        let Some(kind) = Kind::from(&s("kind")) else { problems.push(format!("{key}: its kind does not exist")); continue };
+        let page = d.get("from").map(|f| f.get("pageStorage").map(|p| (p.get("name").and_then(Value::as_str).unwrap_or("").to_string(), p.get("map").and_then(Value::as_str).unwrap_or("").to_string())).unwrap_or_default());
+        let scope = s("scope");
+        if scope != "app" && scope != "project" { problems.push(format!("{key}: scope must be app or project")); }
+        if !d.get("live").is_some_and(Value::is_boolean) { problems.push(format!("{key}: live must be true or false")); }
+        if d.get("protective").is_some_and(|p| !p.is_boolean()) { problems.push(format!("{key}: protective must be true or false")); }
+        if d.get("floor").is_some_and(|f| !f.as_str().is_some_and(|t| !t.is_empty())) { problems.push(format!("{key}: floor must name its words")); }
+        defs.push(Def {
+            key: key.clone(), section: s("section"), kind, default: d.get("default").cloned().unwrap_or(Value::Null),
+            options: strs(d.get("options")), min: n("min"), max: n("max"), step: n("step"), unit: s("unit"),
+            max_length: u("maxLength"), max_items: u("maxItems"), item_max_length: d.get("item").and_then(|i| i.get("maxLength")).and_then(Value::as_u64).unwrap_or(0) as usize,
+            allowed_items: d.get("allowedItems").map(|a| strs(Some(a))),
+            project: scope == "project", applies: strs(d.get("applies")), store: s("store"), live: d.get("live").and_then(Value::as_bool).unwrap_or(false),
+            protective: d.get("protective").and_then(Value::as_bool).unwrap_or(false), floor: d.get("floor").and_then(Value::as_str).map(str::to_string),
+            renamed_from: strs(d.get("renamedFrom")), from_page: page,
+        });
+    }
+    Ok(Registry { version: v.get("version").and_then(Value::as_u64).unwrap_or(0), sections, defs, problems })
+}
+
+/// Everything wrong with a registry, in developer words (empty when it is fine): the same checks as settings.ts.
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+pub fn check_registry(r: &Registry) -> Vec<String> {
+    let mut out = r.problems.clone();
+    if r.version != 1 { out.push("version must be 1".into()); }
+    let mut seen_sections = std::collections::BTreeSet::new();
+    if r.sections.is_empty() || !r.sections.iter().all(|s| seen_sections.insert(s.clone()) && s.chars().next().is_some_and(|c| c.is_ascii_lowercase()) && s.chars().all(|c| c.is_ascii_alphabetic())) { out.push("sections must be unique lowerCamel names".into()); }
+    let mut keys = std::collections::BTreeSet::new();
+    for d in &r.defs {
+        let mut bad = |m: &str| out.push(format!("{}: {m}", d.key));
+        if !key_ok(&d.key) { bad("the name must be dotted lowerCamel"); }
+        if !keys.insert(d.key.clone()) { bad("the name is used twice"); }
+        for old in &d.renamed_from { if !key_ok(old) || r.defs.iter().any(|x| &x.key == old) { bad("an old name is not usable"); } }
+        if !r.sections.contains(&d.section) { bad("its section does not exist"); }
+        let mut uniq = std::collections::BTreeSet::new();
+        if d.applies.is_empty() || !d.applies.iter().all(|a| APPLIES.contains(&a.as_str()) && uniq.insert(a.clone())) { bad("applies must name shell, runner or pages"); }
+        if !STORES.contains(&d.store.as_str()) { bad("its store does not exist"); }
+        if d.protective && d.kind != Kind::List { bad("only a list can be protective"); }
+        if d.kind == Kind::Custom {
+            if d.store != "keys" && d.store != "voice" { bad("custom is only for the editors that already exist"); }
+            if !d.default.is_null() { bad("a custom setting's usual value lives in its own store"); }
+            continue;
+        }
+        if d.store == "keys" || d.store == "voice" { bad("that store has its own editor"); }
+        if d.runner_store() && (d.applies != ["runner"] || d.project) { bad("the engine's own stores are applied by the engine, for every project"); }
+        if d.kind == Kind::Choice { let mut u = std::collections::BTreeSet::new(); if d.options.len() < 2 || !d.options.iter().all(|o| !o.is_empty() && u.insert(o.clone())) { bad("a choice needs two or more different options"); } }
+        if d.kind == Kind::Number {
+            if !(d.min.is_finite() && d.max.is_finite() && d.step.is_finite() && d.min < d.max && d.step > 0.0) { bad("a number needs min below max and a step above 0"); }
+            else { let n = (d.max - d.min) / d.step; if (n - n.round()).abs() > 1e-9 { bad("the step must fit from min to max"); } }
+            if !UNITS.contains(&d.unit.as_str()) { bad("a number needs a unit"); }
+        }
+        if d.kind == Kind::Text && d.max_length == 0 { bad("text needs a maxLength"); }
+        if d.kind == Kind::List {
+            if d.max_items == 0 { bad("a list needs maxItems"); }
+            match &d.allowed_items {
+                Some(a) => { let mut u = std::collections::BTreeSet::new(); if a.is_empty() || !a.iter().all(|x| u.insert(x.clone())) { bad("allowedItems must be different words"); } }
+                None => if d.item_max_length == 0 { bad("a list needs item.maxLength or allowedItems"); },
+            }
+        }
+        if let Some((name, map)) = &d.from_page {
+            if name.is_empty() || !MAPS.contains(&map.as_str()) { bad("its migration names a map that does not exist"); }
+            if d.store != "settings" { bad("only settings kept in settings.json migrate from page storage"); }
+        }
+        match validate(d, &d.default) { Ok(v) if same(&v, &d.default) => {}, _ => bad("its usual value does not pass its own rules") }
+    }
+    out
+}
+
+/// The registry that ships with this version. A broken one is a build mistake the tests catch, so it is read once.
+pub fn registry() -> &'static Registry {
+    static R: OnceLock<Registry> = OnceLock::new();
+    R.get_or_init(|| parse_registry(REGISTRY_TEXT).expect("protocol/settings.json is part of the build"))
+}
+
+// ---------- what a value may be (the same rules as protocol/settings.ts) ----------
+
+/// Two values are the same setting value: numbers compared as numbers (80 and 80.0), everything else exactly.
+pub fn same(a: &Value, b: &Value) -> bool {
+    match (a.as_f64(), b.as_f64()) { (Some(x), Some(y)) if a.is_number() && b.is_number() => x == y, _ => a == b }
+}
+fn half(x: f64) -> f64 { (x + 0.5).floor() }
+/// A number on its nearest step from min, tidied to ten places, never past max. Written as a whole number when it is one.
+pub fn snap(v: f64, min: f64, step: f64, max: f64) -> Value {
+    let n = (half((min + half((v - min) / step) * step) * 1e10) / 1e10).min(max);
+    if n.fract() == 0.0 && n.abs() < 9.0e15 { json!(n as i64) } else { json!(n) }
+}
+fn one_line(v: &Value, max: usize) -> Result<String, &'static str> {
+    let Some(s) = v.as_str() else { return Err("notText") };
+    if s.chars().any(|c| { let n = c as u32; n <= 0x1f || (0x7f..=0x9f).contains(&n) || n == 0x2028 || n == 0x2029 }) { return Err("notOneLine"); }
+    let t = s.trim_matches(' ');
+    if t.chars().count() > max { return Err("tooLong"); }
+    if !t.is_empty() && crate::redact::is_sensitive(t) { return Err("secret"); }
+    Ok(t.to_string())
+}
+
+/// Checks one value against its definition and gives it back tidied (trimmed, on its step). The error is a code.
+pub fn validate(d: &Def, v: &Value) -> Result<Value, &'static str> {
+    match d.kind {
+        Kind::Switch => v.as_bool().map(Value::Bool).ok_or("notSwitch"),
+        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s)).map(|s| json!(s)).ok_or("notChoice"),
+        Kind::Number => {
+            let Some(n) = v.as_f64().filter(|_| v.is_number()) else { return Err("notNumber") };
+            if !n.is_finite() { return Err("notNumber"); }
+            if n < d.min { return Err("tooLow"); }
+            if n > d.max { return Err("tooHigh"); }
+            Ok(snap(n, d.min, d.step, d.max))
+        }
+        Kind::Text => one_line(v, d.max_length).map(Value::String),
+        Kind::List => {
+            let Some(items) = v.as_array() else { return Err("notList") };
+            if items.len() > d.max_items { return Err("tooMany"); }
+            let mut out: Vec<String> = vec![];
+            for item in items {
+                let one = match &d.allowed_items {
+                    Some(allowed) => { let Some(s) = item.as_str() else { return Err("notText") }; if !allowed.iter().any(|a| a == s) { return Err("notAllowed"); } s.to_string() }
+                    None => { let s = one_line(item, d.item_max_length)?; if s.is_empty() { return Err("empty"); } s }
+                };
+                if out.contains(&one) { return Err("duplicate"); }
+                out.push(one);
+            }
+            Ok(json!(out))
+        }
+        Kind::Custom => Err("custom"),
+    }
+}
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+pub fn validate_key(r: &Registry, key: &str, v: &Value) -> Result<Value, &'static str> {
+    r.get(key).ok_or("unknown").and_then(|d| validate(d, v))
+}
+
+// ---------- the settings file ----------
+
+/// What settings.json holds. `values` are the app's values, `projects` each project's (under its hash), `migrated` the
+/// migrations already run, `extra` any other field (kept as it is).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct File { pub values: Map<String, Value>, pub projects: Map<String, Value>, pub migrated: Vec<String>, pub extra: Map<String, Value> }
+
+/// Something wrong with what was read: the whole file (`damaged`, key None) or one value (`badValue`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Problem { pub key: Option<String>, pub code: &'static str }
+impl Problem { pub fn to_json(&self) -> Value { json!({ "key": self.key, "code": self.code }) } }
+
+/// The key a project's values are kept under: "p_" and the first 12 hex of the sha256 of its folder path.
+pub fn project_key(path: &str) -> String {
+    let h = Sha256::digest(path.as_bytes());
+    let hex: String = h.iter().map(|b| format!("{b:02x}")).collect();
+    format!("p_{}", &hex[..12])
+}
+
+/// Keeps a value only when it is valid and not the usual one. A bad one is listed. Unknown names stay as they are.
+fn clean(r: &Registry, m: &Map<String, Value>, project: bool, problems: &mut Vec<Problem>) -> Map<String, Value> {
+    let mut out = Map::new();
+    for (k, v) in m {
+        let Some(d) = r.get(k) else { out.insert(k.clone(), v.clone()); continue };
+        if d.store != "settings" || d.kind == Kind::Custom || d.project != project { continue; }   // never kept here
+        match validate(d, v) {
+            Ok(n) => { if !same(&n, &d.default) { out.insert(k.clone(), n); } }
+            Err(_) => problems.push(Problem { key: Some(k.clone()), code: "badValue" }),
+        }
+    }
+    // An old name read once into the new one, when the new one is not set yet.
+    for d in &r.defs {
+        for old in &d.renamed_from {
+            if let Some(v) = out.remove(old) {
+                if out.contains_key(&d.key) || d.store != "settings" || d.project != project { continue; }
+                if let Ok(n) = validate(d, &v) { if !same(&n, &d.default) { out.insert(d.key.clone(), n); } }
+            }
+        }
+    }
+    out
+}
+
+/// Reads the file's text (None when there is none). Ok(None) is a missing file; Err is a damaged one.
+pub fn parse_file(r: &Registry, text: Option<&str>) -> (File, Vec<Problem>, bool) {
+    let Some(text) = text else { return (File::default(), vec![], false) };
+    let damaged = || (File::default(), vec![Problem { key: None, code: "damaged" }], true);
+    let Ok(Value::Object(top)) = serde_json::from_str::<Value>(text) else { return damaged() };
+    let obj = |k: &str| match top.get(k) { None => Some(Map::new()), Some(Value::Object(m)) => Some(m.clone()), Some(_) => None };
+    let (Some(values), Some(projects)) = (obj("values"), obj("projects")) else { return damaged() };
+    let mut problems = vec![];
+    let values = clean(r, &values, false, &mut problems);
+    let mut kept = Map::new();
+    for (p, m) in projects {
+        match m { Value::Object(m) => { let c = clean(r, &m, true, &mut problems); if !c.is_empty() { kept.insert(p, Value::Object(c)); } } other => { kept.insert(p, other); } }
+    }
+    let migrated = top.get("migrated").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let extra = top.into_iter().filter(|(k, _)| !["version", "values", "projects", "migrated"].contains(&k.as_str())).collect();
+    (File { values, projects: kept, migrated, extra }, problems, false)
+}
+
+pub fn to_json(f: &File) -> Value {
+    let mut o = f.extra.clone();
+    o.insert("version".into(), json!(1));
+    o.insert("values".into(), Value::Object(f.values.clone()));
+    o.insert("projects".into(), Value::Object(f.projects.iter().filter(|(_, v)| !v.as_object().is_some_and(Map::is_empty)).map(|(k, v)| (k.clone(), v.clone())).collect()));
+    o.insert("migrated".into(), json!(f.migrated));
+    Value::Object(o)
+}
+
+pub fn path(dir: &Path) -> PathBuf { dir.join(FILE) }
+
+/// Reads settings.json from Companion's folder. A damaged one is moved aside as settings.damaged.json (kept for support,
+/// removed by Delete everything) and Companion starts on the usual values.
+pub fn load(r: &Registry, dir: &Path) -> (File, Vec<Problem>) {
+    let p = path(dir);
+    let text = match std::fs::read(&p) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => Some(String::new()),
+        Ok(b) => Some(String::from_utf8(b).unwrap_or_default()),
+    };
+    let (f, problems, damaged) = parse_file(r, text.as_deref());
+    if damaged { let _ = std::fs::rename(&p, dir.join(DAMAGED)); }
+    (f, problems)
+}
+
+/// Writes the whole file at once (owner only). The error is the code the page puts in words.
+pub fn save(dir: &Path, f: &File) -> Result<(), &'static str> {
+    std::fs::create_dir_all(dir).map_err(|_| "notSaved")?;
+    crate::logfile::write_atomic(&path(dir), to_json(f).to_string().as_bytes()).map_err(|_| "notSaved")
+}
+
+// ---------- reading and changing values ----------
+
+fn project_map<'a>(f: &'a File, project: Option<&str>) -> Option<&'a Map<String, Value>> {
+    project.filter(|p| !p.is_empty()).and_then(|p| f.projects.get(&project_key(p))).and_then(Value::as_object)
+}
+
+/// The value in force for a setting kept in settings.json: the project's (for a project setting), else the app's, else
+/// the usual one. A project setting with no folder chosen is its usual value.
+pub fn value_of(r: &Registry, f: &File, key: &str, project: Option<&str>) -> Option<Value> {
+    let d = r.get(key)?;
+    let v = if d.project { project_map(f, project).and_then(|m| m.get(key)) } else { f.values.get(key) };
+    Some(v.cloned().unwrap_or_else(|| d.default.clone()))
+}
+
+/// Every setting kept in settings.json, with its value in force.
+pub fn effective(r: &Registry, f: &File, project: Option<&str>) -> Map<String, Value> {
+    r.defs.iter().filter(|d| d.store == "settings" && d.kind != Kind::Custom).filter_map(|d| value_of(r, f, &d.key, project).map(|v| (d.key.clone(), v))).collect()
+}
+
+/// Checks a change before anything is written: the setting exists, is not one with its own editor, and the value passes.
+pub fn check<'a>(r: &'a Registry, key: &str, v: &Value) -> Result<(&'a Def, Value), &'static str> {
+    let d = r.get(key).ok_or("unknown")?;
+    Ok((d, validate(d, v)?))
+}
+
+/// Changes one setting kept in settings.json. Returns whether its value in force changed. A value equal to the usual one
+/// is removed, never stored. A project setting needs a folder.
+pub fn set(r: &Registry, f: &mut File, key: &str, v: &Value, project: Option<&str>) -> Result<bool, &'static str> {
+    let (d, n) = check(r, key, v)?;
+    if d.store != "settings" { return Err("notHere"); }
+    let before = value_of(r, f, key, project);
+    let map = if d.project {
+        let p = project.filter(|p| !p.is_empty() && *p != crate::runner::NO_PROJECT).ok_or("noProject")?;
+        let e = f.projects.entry(project_key(p)).or_insert_with(|| json!({}));
+        if !e.is_object() { *e = json!({}); }
+        e.as_object_mut().unwrap()
+    } else { &mut f.values };
+    if same(&n, &d.default) { map.remove(key); } else { map.insert(key.to_string(), n); }
+    Ok(before != value_of(r, f, key, project))
+}
+
+/// What a reset covers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Which<'a> { Key(&'a str), Section(&'a str), All }
+
+/// The settings a reset puts back, in every store: one setting, a section, or everything. Protective ones are never in a
+/// section or everything, and a protective one alone is refused (only its own control removes an item).
+pub fn reset_targets<'a>(r: &'a Registry, which: Which) -> Result<Vec<&'a Def>, &'static str> {
+    match which {
+        Which::Key(k) => { let d = r.get(k).ok_or("unknown")?; if d.protective { Err("protective") } else { Ok(vec![d]) } }
+        Which::Section(s) => { if !r.sections.iter().any(|x| x == s) { return Err("unknown"); } Ok(r.in_section(s).into_iter().filter(|d| !d.protective).collect()) }
+        Which::All => Ok(r.defs.iter().filter(|d| !d.protective).collect()),
+    }
+}
+
+/// Puts the settings kept in settings.json back to their usual values (removing them). One setting or a section: the
+/// app's value and this project's. Everything: the app's and every project's. Names this version does not know stay.
+/// Returns the settings whose value in force changed.
+pub fn reset(r: &Registry, f: &mut File, which: Which, project: Option<&str>) -> Result<Vec<String>, &'static str> {
+    let targets: Vec<Def> = reset_targets(r, which)?.into_iter().filter(|d| d.store == "settings" && d.kind != Kind::Custom).cloned().collect();
+    let before = effective(r, f, project);
+    for d in &targets {
+        f.values.remove(&d.key);
+        if which == Which::All {
+            for (_, m) in f.projects.iter_mut() { if let Some(m) = m.as_object_mut() { m.remove(&d.key); } }
+        } else if let Some(p) = project.filter(|p| !p.is_empty()) {
+            if let Some(m) = f.projects.get_mut(&project_key(p)).and_then(Value::as_object_mut) { m.remove(&d.key); }
+        }
+    }
+    f.projects.retain(|_, v| !v.as_object().is_some_and(Map::is_empty));
+    let after = effective(r, f, project);
+    Ok(targets.iter().filter(|d| before.get(&d.key) != after.get(&d.key)).map(|d| d.key.clone()).collect())
+}
+
+/// Takes the choices the pages kept before the registry (the card reads them with today's meaning and sends them once).
+/// Only settings that came from there, only ones not already set, only valid values; the mark is recorded and a second
+/// run is refused. Returns the settings written.
+pub fn migrate(r: &Registry, f: &mut File, from: &str, values: &Map<String, Value>) -> Result<Vec<String>, &'static str> {
+    if from != PAGE_STORAGE_MARK { return Err("unknownMigration"); }
+    if f.migrated.iter().any(|m| m == from) { return Err("alreadyMigrated"); }
+    let mut written = vec![];
+    for (k, v) in values {
+        let Some(d) = r.get(k) else { continue };
+        if d.from_page.is_none() || d.store != "settings" || d.project || f.values.contains_key(k) { continue; }
+        let Ok(n) = validate(d, v) else { continue };
+        if !same(&n, &d.default) { f.values.insert(k.clone(), n); written.push(k.clone()); }
+    }
+    f.migrated.push(from.to_string());
+    Ok(written)
+}
+
+/// The line the engine reads first after every start (and after each change it applies): every setting kept here that
+/// the engine applies and that is not its usual value, and the current project's own. Each replaces the one before, so a
+/// setting put back reaches the engine as a missing name.
+pub fn apply_line(r: &Registry, f: &File, project: Option<&str>, id: &str) -> String {
+    let runner = |d: &&Def| d.store == "settings" && d.kind != Kind::Custom && d.applies_to("runner");
+    let values: Map<String, Value> = r.defs.iter().filter(runner).filter(|d| !d.project).filter_map(|d| f.values.get(&d.key).map(|v| (d.key.clone(), v.clone()))).collect();
+    let mut line = json!({ "v": 1, "id": id, "type": "settings.apply", "values": values });
+    if let Some(p) = project.filter(|p| !p.is_empty() && *p != crate::runner::NO_PROJECT) {
+        let pv: Map<String, Value> = r.defs.iter().filter(runner).filter(|d| d.project).filter_map(|d| project_map(f, Some(p)).and_then(|m| m.get(&d.key)).map(|v| (d.key.clone(), v.clone()))).collect();
+        line["project"] = json!(p);
+        line["projectValues"] = Value::Object(pv);
+    }
+    line.to_string()
+}
+
+/// Whether a change to this setting must reach the engine as a new settings.apply line.
+pub fn needs_apply(d: &Def) -> bool { d.store == "settings" && d.applies_to("runner") }
+
+/// The engine's own command for a setting it keeps itself, with a value already checked. `project` is the folder in
+/// use, or the stand in when none is chosen (these apply to every project, and the engine reads no folder for them).
+pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<Value> {
+    let p = if project.is_empty() { crate::runner::NO_PROJECT } else { project };
+    Some(match key {
+        "spend.dailyLimit" => json!({ "v": 1, "id": id, "type": "spending.set", "project": p, "limitUsd": v.as_f64()? }),
+        "explain.on" => json!({ "v": 1, "id": id, "type": "explain.set", "project": p, "enabled": v.as_bool()? }),
+        "memory.paused" => json!({ "v": 1, "id": id, "type": "memory.pause", "project": p, "paused": v.as_bool()? }),
+        "numbers.on" => json!({ "v": 1, "id": id, "type": "metrics.set", "enabled": v.as_bool()? }),
+        _ => return None,
+    })
+}
+
+/// Only Home's own window may change settings (as with every other change in Settings).
+pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card" { Ok(()) } else { Err("not_card") } }
+
+// ---------- the stores that stay where they were (wrapped) ----------
+
+/// dock.json: "Come to what it is about".
+pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> { (key == "character.comeTo").then(|| json!(p.come_to)) }
+pub fn dock_with(p: &crate::docking::Prefs, key: &str, v: &Value) -> Option<crate::docking::Prefs> {
+    (key == "character.comeTo").then(|| v.as_bool()).flatten().map(|b| crate::docking::Prefs { come_to: b, ..p.clone() })
+}
+/// presentation.json: hide from screen sharing and quiet during calls.
+pub fn presentation_value(s: &crate::presentation::Settings, key: &str) -> Option<Value> {
+    match key { "sharing.hide" => Some(json!(s.hide_from_sharing)), "calls.quiet" => Some(json!(s.quiet_on_calls)), _ => None }
+}
+pub fn presentation_with(s: &crate::presentation::Settings, key: &str, v: &Value) -> Option<crate::presentation::Settings> {
+    let b = v.as_bool()?;
+    match key { "sharing.hide" => Some(crate::presentation::Settings { hide_from_sharing: b, ..*s }), "calls.quiet" => Some(crate::presentation::Settings { quiet_on_calls: b, ..*s }), _ => None }
+}
+/// keys.json and voice.json have their own editors; their values are shown whole so Reset and Undo can work on them.
+pub fn keys_value(m: &crate::keymap::Map) -> Value { crate::keymap::to_json(m)["keys"].clone() }
+pub fn voice_value(s: &crate::voiceset::Saved) -> Value { crate::voiceset::to_json(s) }
+
+/// What the wrapped stores hold now, read by main.rs.
+pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved }
+
+/// What every page is told ("settings-changed", and settings_get's answer): each value in force the shell keeps (the
+/// engine's own three come from its events), each setting's usual value (for keys and voice, their own usual ones),
+/// the project (its folder, or empty), the migrations done, the problems found when the file was read, and what changed.
+pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, problems: &[Problem], changed: &[String]) -> Value {
+    let mut values = Map::new();
+    let mut usual = Map::new();
+    for d in &r.defs {
+        if d.runner_store() { usual.insert(d.key.clone(), d.default.clone()); continue; }
+        let v = match d.store.as_str() {
+            "settings" => value_of(r, f, &d.key, project),
+            "dock" => dock_value(&w.dock, &d.key),
+            "presentation" => presentation_value(&w.presentation, &d.key),
+            "keys" => Some(keys_value(&w.keys)),
+            "voice" => Some(voice_value(&w.voice)),
+            _ => None,
+        };
+        if let Some(v) = v { values.insert(d.key.clone(), v); }
+        let u = match d.store.as_str() { "keys" => keys_value(&crate::keymap::Map::DEFAULT), "voice" => voice_value(&crate::voiceset::Saved::default()), _ => d.default.clone() };
+        usual.insert(d.key.clone(), u);
+    }
+    json!({
+        "values": values, "usual": usual, "project": project.unwrap_or(""), "migrated": f.migrated,
+        "problems": problems.iter().map(Problem::to_json).collect::<Vec<_>>(), "changed": changed,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cases() -> Vec<Value> { include_str!("../../../protocol/fixtures/settings-cases.jsonl").lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).expect("a case is JSON")).collect() }
+    fn def_from(v: &Value) -> Def {
+        let text = json!({ "version": 1, "sections": [v["section"].clone()], "settings": [v] }).to_string();
+        parse_registry(&text).unwrap().defs.remove(0)
+    }
+    fn dir(name: &str) -> PathBuf { let d = std::env::temp_dir().join(format!("companion-settings-{name}-{}", std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d }
+    /// A registry for tests only, with a protective list and a project setting, so reset rules can be shown.
+    fn test_registry() -> Registry {
+        parse_registry(r#"{ "version": 1, "sections": ["work", "checks"], "settings": [
+            { "key": "work.maxTurns", "section": "work", "kind": "number", "default": 80, "min": 20, "max": 200, "step": 10, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+            { "key": "work.fun", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "from": { "pageStorage": { "name": "companion.fun", "map": "notOff" } } },
+            { "key": "work.size", "section": "work", "kind": "choice", "default": "standard", "options": ["standard", "large"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "from": { "pageStorage": { "name": "companion.size", "map": "textSize" } } },
+            { "key": "checks.mustSee", "section": "checks", "kind": "list", "default": [], "maxItems": 5, "item": { "maxLength": 80 }, "scope": "project", "applies": ["runner"], "store": "settings", "live": false },
+            { "key": "checks.rules", "section": "checks", "kind": "list", "default": [], "maxItems": 50, "item": { "maxLength": 200 }, "scope": "project", "applies": ["runner"], "store": "settings", "live": false, "protective": true },
+            { "key": "checks.limit", "section": "checks", "kind": "number", "default": 10, "min": 1, "max": 500, "step": 0.01, "unit": "dollars", "scope": "app", "applies": ["runner"], "store": "spending", "live": true }
+        ] }"#).unwrap()
+    }
+
+    #[test]
+    fn the_shipped_registry_reads_and_every_definition_is_valid() {
+        let r = registry();
+        assert_eq!(check_registry(r), Vec::<String>::new());
+        assert_eq!(r.sections.first().map(String::as_str), Some("keys"));
+        assert!(r.get("work.maxTurns").is_some_and(|d| d.applies == ["runner"] && !d.live && d.store == "settings"));
+        assert_eq!(check_registry(&test_registry()), Vec::<String>::new());
+    }
+    #[test]
+    fn a_broken_registry_is_caught() {
+        let broken = |patch: &str| { let mut v: Value = serde_json::from_str(REGISTRY_TEXT).unwrap(); let p: Value = serde_json::from_str(patch).unwrap(); let d = v["settings"].as_array_mut().unwrap().iter_mut().find(|d| d["key"] == "work.maxTurns").unwrap(); for (k, x) in p.as_object().unwrap() { d[k] = x.clone(); } check_registry(&parse_registry(&v.to_string()).unwrap()) };
+        for patch in [r#"{"default": 500}"#, r#"{"min": 200, "max": 20}"#, r#"{"step": 7}"#, r#"{"section": "nowhere"}"#, r#"{"store": "cloud"}"#, r#"{"kind": "slider"}"#, r#"{"applies": []}"#, r#"{"key": "Work.max_turns"}"#, r#"{"protective": true}"#, r#"{"unit": "miles"}"#] {
+            assert!(!broken(patch).is_empty(), "{patch} was not caught");
+        }
+    }
+    #[test]
+    fn validation_matches_every_shared_case() {
+        let r = registry();
+        let mut n = 0;
+        for c in cases() {
+            if c.get("migrate").is_some() { continue; }
+            n += 1;
+            let got = match c.get("def") { Some(d) => validate(&def_from(d), &c["value"]), None => validate_key(r, c["key"].as_str().unwrap(), &c["value"]) };
+            match got {
+                Ok(v) => { assert!(c["ok"] == true, "{c} was accepted as {v}"); assert!(same(&v, &c["normalized"]) || v == c["normalized"], "{c}: got {v}"); }
+                Err(code) => { assert!(c["ok"] == false, "{c} was refused: {code}"); assert_eq!(code, c["reason"].as_str().unwrap(), "{c}"); }
+            }
+        }
+        assert!(n >= 50, "only {n} cases");
+    }
+    #[test]
+    fn a_whole_number_is_written_as_one() {
+        assert_eq!(snap(124.0, 20.0, 10.0, 200.0).to_string(), "120");
+        assert_eq!(snap(10.004, 1.0, 0.01, 500.0).to_string(), "10");
+        assert_eq!(snap(10.006, 1.0, 0.01, 500.0).as_f64(), Some(10.01));
+    }
+    #[test]
+    fn a_missing_file_gives_the_usual_values() {
+        let r = registry();
+        let d = dir("missing");
+        let (f, problems) = load(r, &d);
+        assert_eq!(f, File::default());
+        assert!(problems.is_empty());
+        let e = effective(r, &f, None);
+        assert_eq!(e["work.maxTurns"], json!(80));
+        assert_eq!(e["fun.reactions"], json!(true));
+        assert_eq!(e["display.textSize"], json!("standard"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn a_damaged_file_is_kept_aside_and_companion_starts_on_the_usual_values() {
+        let r = registry();
+        let d = dir("damaged");
+        std::fs::write(d.join(FILE), "{ not json").unwrap();
+        let (f, problems) = load(r, &d);
+        assert_eq!(f, File::default());
+        assert_eq!(problems, vec![Problem { key: None, code: "damaged" }]);
+        assert!(!d.join(FILE).exists());
+        assert_eq!(std::fs::read_to_string(d.join(DAMAGED)).unwrap(), "{ not json");
+        for bad in ["[]", "7", r#"{"values": 3}"#, r#"{"projects": []}"#] { assert!(parse_file(r, Some(bad)).2, "{bad}"); }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn one_bad_value_falls_back_to_its_usual_value_and_is_listed() {
+        let r = registry();
+        let (f, problems, damaged) = parse_file(r, Some(r#"{"version":1,"values":{"work.maxTurns":5000,"fun.reactions":false}}"#));
+        assert!(!damaged);
+        assert_eq!(problems, vec![Problem { key: Some("work.maxTurns".into()), code: "badValue" }]);
+        assert_eq!(value_of(r, &f, "work.maxTurns", None), Some(json!(80)));
+        assert_eq!(value_of(r, &f, "fun.reactions", None), Some(json!(false)));
+    }
+    #[test]
+    fn names_and_fields_this_version_does_not_know_survive_a_write() {
+        let r = registry();
+        let text = r#"{"version":1,"values":{"later.setting":{"a":1},"fun.reactions":false},"projects":{"p_000000000000":{"later.project":7}},"migrated":["pageStorage.v1","later.v2"],"comment":"kept"}"#;
+        let (mut f, _, _) = parse_file(r, Some(text));
+        set(r, &mut f, "work.maxTurns", &json!(120), None).unwrap();
+        let back = to_json(&f);
+        assert_eq!(back["values"]["later.setting"], json!({"a":1}));
+        assert_eq!(back["values"]["work.maxTurns"], json!(120));
+        assert_eq!(back["projects"]["p_000000000000"]["later.project"], json!(7));
+        assert_eq!(back["migrated"], json!(["pageStorage.v1", "later.v2"]));
+        assert_eq!(back["comment"], json!("kept"));
+        let d = dir("roundtrip");
+        save(&d, &f).unwrap();
+        let (again, problems) = load(r, &d);
+        assert_eq!(again, f);
+        assert!(problems.is_empty());
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; assert_eq!(std::fs::metadata(path(&d)).unwrap().permissions().mode() & 0o777, 0o600); }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn a_value_equal_to_its_usual_one_is_not_stored() {
+        let r = registry();
+        let mut f = File::default();
+        assert!(set(r, &mut f, "work.maxTurns", &json!(120), None).unwrap());
+        assert!(f.values.contains_key("work.maxTurns"));
+        assert!(set(r, &mut f, "work.maxTurns", &json!(80), None).unwrap());
+        assert!(!f.values.contains_key("work.maxTurns"));
+        assert!(!set(r, &mut f, "work.maxTurns", &json!(80.0), None).unwrap(), "no change");
+        assert_eq!(set(r, &mut f, "work.maxTurns", &json!(5000), None), Err("tooHigh"));
+        assert_eq!(set(r, &mut f, "keys.hotkeys", &json!({}), None), Err("custom"));
+        assert_eq!(set(r, &mut f, "character.comeTo", &json!(false), None), Err("notHere"));
+        assert_eq!(set(r, &mut f, "no.suchThing", &json!(1), None), Err("unknown"));
+        // A parsed file drops a usual value too.
+        let (g, _, _) = parse_file(r, Some(r#"{"values":{"work.maxTurns":80}}"#));
+        assert!(g.values.is_empty());
+    }
+    #[test]
+    fn reset_puts_back_one_a_section_or_everything_and_never_a_protective_list() {
+        let r = test_registry();
+        let (site, other) = ("/Users/me/site", "/Users/me/other");
+        let mut f = File::default();
+        set(&r, &mut f, "work.maxTurns", &json!(120), None).unwrap();
+        set(&r, &mut f, "work.fun", &json!(false), None).unwrap();
+        set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), Some(site)).unwrap();
+        set(&r, &mut f, "checks.mustSee", &json!(["Hello"]), Some(other)).unwrap();
+        set(&r, &mut f, "checks.rules", &json!(["never edit .env"]), Some(site)).unwrap();
+        assert_eq!(reset(&r, &mut f, Which::Key("work.maxTurns"), None).unwrap(), vec!["work.maxTurns".to_string()]);
+        assert_eq!(value_of(&r, &f, "work.fun", None), Some(json!(false)), "one reset leaves the others");
+        assert_eq!(reset(&r, &mut f, Which::Key("checks.rules"), Some(site)), Err("protective"));
+        // A section: this project's values in it, never the protective list.
+        assert_eq!(reset(&r, &mut f, Which::Section("checks"), Some(site)).unwrap(), vec!["checks.mustSee".to_string()]);
+        assert_eq!(value_of(&r, &f, "checks.rules", Some(site)), Some(json!(["never edit .env"])));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!(["Hello"])), "another project is left alone by a section");
+        // Everything: the app's and every project's, still never the protective list; the migration mark stays.
+        f.migrated.push(PAGE_STORAGE_MARK.into());
+        reset(&r, &mut f, Which::All, Some(site)).unwrap();
+        assert_eq!(value_of(&r, &f, "work.fun", None), Some(json!(true)));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!([])));
+        assert_eq!(value_of(&r, &f, "checks.rules", Some(site)), Some(json!(["never edit .env"])));
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        // The engine's own store is in a reset's targets (main.rs sends its command), and the protective one is not.
+        let all: Vec<&str> = reset_targets(&r, Which::All).unwrap().iter().map(|d| d.key.as_str()).collect();
+        assert!(all.contains(&"checks.limit") && !all.contains(&"checks.rules"));
+        assert_eq!(reset_targets(&r, Which::Section("nowhere")).err(), Some("unknown"));
+    }
+    #[test]
+    fn a_project_setting_needs_a_folder_and_is_kept_under_its_hash_never_its_path() {
+        let r = test_registry();
+        let mut f = File::default();
+        assert_eq!(set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), None), Err("noProject"));
+        assert_eq!(set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), Some(crate::runner::NO_PROJECT)), Err("noProject"));
+        set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), Some("/Users/me/Secret Client Site")).unwrap();
+        let text = to_json(&f).to_string();
+        assert!(!text.contains("Secret Client Site") && !text.contains("/Users/me"), "{text}");
+        let k = project_key("/Users/me/Secret Client Site");
+        assert!(k.starts_with("p_") && k.len() == 14 && k[2..].chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(text.contains(&k));
+        assert_eq!(project_key("/a"), project_key("/a"));
+        assert_ne!(project_key("/a"), project_key("/b"));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some("/Users/me/other")), Some(json!([])));
+    }
+    #[test]
+    fn migration_takes_only_unset_valid_values_once() {
+        let r = test_registry();
+        let mut f = File::default();
+        set(&r, &mut f, "work.size", &json!("large"), None).unwrap();
+        let mut given = Map::new();
+        given.insert("work.fun".into(), json!(false));          // written
+        given.insert("work.size".into(), json!("standard"));    // already set: left as it is
+        given.insert("work.maxTurns".into(), json!(120));       // did not come from page storage: ignored
+        given.insert("later.thing".into(), json!(1));           // unknown: ignored
+        assert_eq!(migrate(&r, &mut f, PAGE_STORAGE_MARK, &given).unwrap(), vec!["work.fun".to_string()]);
+        assert_eq!(value_of(&r, &f, "work.size", None), Some(json!("large")));
+        assert_eq!(value_of(&r, &f, "work.maxTurns", None), Some(json!(80)));
+        assert!(!f.values.contains_key("later.thing"));
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        assert_eq!(migrate(&r, &mut f, PAGE_STORAGE_MARK, &given), Err("alreadyMigrated"));
+        assert_eq!(migrate(&r, &mut f, "other.v1", &given), Err("unknownMigration"));
+        // An invalid value is dropped, never stored.
+        let mut g = File::default();
+        let mut bad = Map::new();
+        bad.insert("work.fun".into(), json!("off"));
+        bad.insert("work.size".into(), json!("enormous"));
+        assert!(migrate(&r, &mut g, PAGE_STORAGE_MARK, &bad).unwrap().is_empty());
+        assert!(g.values.is_empty());
+        // The real registry: every setting that came from page storage is in settings.json and app wide.
+        for d in registry().defs.iter().filter(|d| d.from_page.is_some()) { assert!(d.store == "settings" && !d.project, "{}", d.key); }
+    }
+    #[test]
+    fn the_engine_is_given_only_what_it_applies() {
+        let r = test_registry();
+        let mut f = File::default();
+        set(&r, &mut f, "work.maxTurns", &json!(120), None).unwrap();
+        set(&r, &mut f, "work.fun", &json!(false), None).unwrap();
+        set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), Some("/Users/me/site")).unwrap();
+        let line: Value = serde_json::from_str(&apply_line(&r, &f, Some("/Users/me/site"), "s1")).unwrap();
+        assert_eq!(line["type"], "settings.apply");
+        assert_eq!(line["v"], 1);
+        assert_eq!(line["values"], json!({ "work.maxTurns": 120 }));
+        assert_eq!(line["project"], "/Users/me/site");
+        assert_eq!(line["projectValues"], json!({ "checks.mustSee": ["Welcome"] }));
+        let none: Value = serde_json::from_str(&apply_line(&r, &File::default(), None, "s2")).unwrap();
+        assert_eq!(none["values"], json!({}));
+        assert!(none.get("project").is_none());
+        let np: Value = serde_json::from_str(&apply_line(&r, &f, Some(crate::runner::NO_PROJECT), "s3")).unwrap();
+        assert!(np.get("project").is_none());
+        // The shipped registry: the engine's own stores are never in the line (they reach it through their own commands).
+        let mut g = File::default();
+        set(registry(), &mut g, "work.maxTurns", &json!(150), None).unwrap();
+        set(registry(), &mut g, "fun.reactions", &json!(false), None).unwrap();
+        let l: Value = serde_json::from_str(&apply_line(registry(), &g, None, "s4")).unwrap();
+        assert_eq!(l["values"], json!({ "work.maxTurns": 150 }));
+    }
+    #[test]
+    fn the_engines_own_settings_go_to_it_as_its_own_commands() {
+        let c = runner_command("spend.dailyLimit", &json!(25), "", "i").unwrap();
+        assert_eq!((c["type"].as_str(), c["project"].as_str(), c["limitUsd"].as_f64()), (Some("spending.set"), Some(crate::runner::NO_PROJECT), Some(25.0)));
+        assert_eq!(runner_command("explain.on", &json!(false), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "explain.set", "project": "/p", "enabled": false }));
+        assert_eq!(runner_command("memory.paused", &json!(true), "/p", "i").unwrap()["type"], "memory.pause");
+        assert_eq!(runner_command("numbers.on", &json!(true), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "metrics.set", "enabled": true }));
+        assert!(runner_command("fun.reactions", &json!(true), "/p", "i").is_none());
+        assert!(runner_command("explain.on", &json!("yes"), "/p", "i").is_none());
+        // Every one of the engine's own settings in the registry has its command.
+        for d in registry().defs.iter().filter(|d| d.runner_store()) { assert!(runner_command(&d.key, &d.default, "", "i").is_some(), "{}", d.key); }
+    }
+    #[test]
+    fn only_homes_own_window_may_change_settings() {
+        assert!(only_card("card").is_ok());
+        for w in ["dock", "overlay", "island", "", "Card"] { assert_eq!(only_card(w), Err("not_card"), "{w}"); }
+        // Every command that changes settings checks the window first (main.rs).
+        let main = include_str!("main.rs");
+        for c in ["fn settings_set(", "fn settings_reset(", "fn settings_migrate("] {
+            let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing"));
+            let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
+            assert!(body.contains("settings::only_card(window.label())?"), "{c} does not check the window");
+        }
+    }
+    #[test]
+    fn the_wrapped_stores_read_and_change_through_their_own_files() {
+        let p = crate::docking::Prefs::default();
+        assert_eq!(dock_value(&p, "character.comeTo"), Some(json!(true)));
+        let off = dock_with(&p, "character.comeTo", &json!(false)).unwrap();
+        assert!(!off.come_to);
+        assert_eq!(off.per_screen, p.per_screen);
+        assert!(dock_with(&p, "character.comeTo", &json!("no")).is_none());
+        let s = crate::presentation::Settings::default();
+        assert_eq!(presentation_value(&s, "sharing.hide"), Some(json!(true)));
+        let q = presentation_with(&s, "calls.quiet", &json!(false)).unwrap();
+        assert!(q.hide_from_sharing && !q.quiet_on_calls);
+        assert!(presentation_with(&s, "sharing.hide", &json!(1)).is_none());
+        // What every page is told: values the shell keeps, usual values, never the engine's own three as values.
+        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default() };
+        let snap = snapshot(registry(), &File::default(), Some("/p"), &w, &[], &["calls.quiet".to_string()]);
+        assert_eq!(snap["values"]["character.comeTo"], json!(false));
+        assert_eq!(snap["values"]["calls.quiet"], json!(false));
+        assert_eq!(snap["values"]["keys.hotkeys"], json!({}));
+        assert_eq!(snap["usual"]["keys.hotkeys"], json!({}));
+        assert_eq!(snap["values"]["talk.voice"], snap["usual"]["talk.voice"]);
+        assert!(snap["values"].get("spend.dailyLimit").is_none());
+        assert_eq!(snap["usual"]["spend.dailyLimit"], json!(10));
+        assert_eq!(snap["changed"], json!(["calls.quiet"]));
+        assert_eq!(snap["project"], "/p");
+    }
+}

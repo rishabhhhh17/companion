@@ -1,6 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
-import { PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
+import { NO_PROJECT, PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
@@ -485,7 +485,9 @@ export function reduce(m: Model, e: Ev): Model {
     // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's
     // card always comes after the step's receipt.
     case "receipt": return { ...m, stuck: null, ...(m.practice?.stage === "fixing" && (m.task?.label ?? "").includes(PRACTICE_LABEL) ? { practice: { ...m.practice, stage: e.proof === "passed" ? ("done" as const) : ("failed" as const) } } : {}), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}) } };
-    case "memory.state": return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
+    // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
+    // from it (settingsStore.ts), never a project's memory for the Memory tab.
+    case "memory.state": if (e.project === NO_PROJECT) return m; return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
     case "memory.refused": return { ...m, memoryNote: String(e.reason) };
     case "memory.exported": return { ...m, exported: String(e.text ?? "") };
     case "memory.saved": {

@@ -53,8 +53,8 @@ describe("Home's tabs", () => {
   });
   test("the card shows each part only on its own tab", () => {
     for (const p of Object.keys(PANEL_TAB)) expect(card, p).toContain(`show("${p}")`);
-    // The settings rows are the same SettingsPanel as before, now on the Settings tab instead of behind a button.
-    expect(card).toMatch(/\{show\("settings"\) && <SettingsPanel /);
+    // The settings rows (the registry's Settings page, T16) are on the Settings tab.
+    expect(card).toMatch(/\{show\("settings"\) && <SettingsPage /);
     expect(card).not.toMatch(/\bsettingsOpen\b/);
     expect(card).not.toMatch(/\blessonsOpen\b/);
   });

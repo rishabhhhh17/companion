@@ -7,6 +7,7 @@ import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
 import { playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
+import { startSettings, takeSnapshot } from "./settingsStore.ts";
 
 // mark: a hand drawn ring, arrow, underline or box for a confirmed target (marks.ts); a guess never gets one. flyMs: how
 // long the flight takes (a step of a multi step answer flies for its lead in). fadeMs: how long the mark stays (its line).
@@ -93,6 +94,9 @@ function show(p: Point) {
   requestAnimationFrame(step);
 }
 
+// The settings in force (reactions), kept in step with every change (settingsStore.ts). The overlay only listens: the
+// shell sends the settings with every change and with each celebration.
+startSettings({ ask: false });
 void listen("overlay-point", (e) => show(e.payload as Point));
 void listen("overlay-clear", () => clear());
 
@@ -119,7 +123,7 @@ function celebrate(rect: { x: number; y: number; w: number; h: number }) {
     requestAnimationFrame(step);
   }
 }
-void listen("overlay-celebrate", (e) => celebrate((e.payload as { rect: { x: number; y: number; w: number; h: number } }).rect));
+void listen("overlay-celebrate", (e) => { const p = e.payload as { rect: { x: number; y: number; w: number; h: number }; settings?: unknown }; takeSnapshot(p.settings); celebrate(p.rect); });
 
 
 // The big celebration (proof passed on a fix, or the site went live): confetti from the character, once, then gone.
@@ -145,7 +149,7 @@ function party(o: { x: number; y: number }) {
   };
   requestAnimationFrame(step);
 }
-void listen("overlay-party", (e) => party(e.payload as { x: number; y: number }));
+void listen("overlay-party", (e) => { const p = e.payload as { x: number; y: number; settings?: unknown }; takeSnapshot(p.settings); party(p); });
 
 
 // Draw it for me: the diagram as a hand drawn sketch on a soft dark card. Boxes and arrows are drawn as a pen would make

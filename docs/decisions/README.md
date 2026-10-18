@@ -50,6 +50,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [T13](T13-voice-on-device-whisper.md) | Voice transcribed on the device with Whisper | M0 spike (f) |
 | [T14](T14-local-data-markdown-and-sqlite.md) | Local data in markdown files and SQLite | M1 |
 | [T15](T15-connectors-and-scheduled-tasks.md) | Connectors, folder watching and scheduled tasks | M12 |
+| [T16](T16-settings-registry.md) | One settings registry (`protocol/settings.json`) read by the shell, the pages and the engine; `settings.json` kept by the shell only | M11 customize core; a real Mac check is still owed |
 
 Still pending, written in the T records as options only (nothing is built for them until the founder decides):
 - T12: what to do if Claude Code keeps received screenshots on disk (spike (e) checks).
