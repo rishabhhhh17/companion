@@ -227,6 +227,12 @@ impl Pending {
     pub fn is_on(&self) -> bool { self.cur.is_some() }
 }
 
+/// Rule 22: a ring is solid only on a confirmed target inside a known window. Nothing else, no setting, makes it solid.
+pub fn solid(exact: bool, has_window: bool) -> bool { exact && has_window }
+/// When Companion is only guessing (point.guesses): the usual soft ring called a guess, or, with words only, no ring at
+/// all and the place said in words. A confirmed target is drawn either way.
+pub fn said_in_words(exact: bool, has_window: bool, guesses: &Value) -> bool { guesses.as_str() == Some("wordsOnly") && !solid(exact, has_window) }
+
 /// The hand drawn mark a target asked for, passed to the overlay only when it is one of the four known kinds.
 pub fn mark_name(m: Option<&str>) -> Option<&'static str> { ["ring", "arrow", "underline", "box"].into_iter().find(|k| Some(*k) == m) }
 
@@ -244,6 +250,28 @@ pub fn pointing_extra(req: &str, step: u32, of: u32, hold: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_guess_is_never_drawn_solid_and_with_words_only_it_is_not_drawn_at_all() {
+        // point.guesses, usual softRing (today: a soft ring called a guess). Solid needs a confirmed target in a known window,
+        // whatever the setting says; words only takes away the soft ring too, never a confirmed one.
+        for g in [serde_json::json!("softRing"), serde_json::json!("wordsOnly"), serde_json::json!(null), serde_json::json!("solid")] {
+            assert!(!solid(false, true) && !solid(true, false) && !solid(false, false), "{g}");
+            assert!(solid(true, true));
+            assert!(!said_in_words(true, true, &g), "{g}: a confirmed target is always drawn");
+        }
+        for (exact, window) in [(false, true), (true, false), (false, false)] {
+            assert!(!said_in_words(exact, window, &serde_json::json!("softRing")), "the usual: the soft ring, as today");
+            assert!(said_in_words(exact, window, &serde_json::json!("wordsOnly")));
+            assert!(!said_in_words(exact, window, &serde_json::json!("solid")), "an odd value is the usual");
+        }
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        assert!(body("fn draw_pointer_with(").contains("showme::solid(exact, watched.window().is_some())"));
+        for f in ["fn showme_aim(", "fn point_problem("] {
+            assert!(body(f).contains("showme::said_in_words("), "{f} must say a guess in words when asked to");
+            assert!(body(f).contains("setting_now(\"point.guesses\")"), "{f}");
+        }
+    }
     use crate::snap::How;
     use std::cell::RefCell;
 

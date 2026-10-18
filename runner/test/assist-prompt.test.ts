@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { AssistService, ImageStore, type FastLike } from "../src/lanes.ts";
 import { StreamRestorer } from "../src/prompthelp.ts";
 import type { Event } from "../../protocol/index.ts";
+import { RunnerSettings } from "../src/settings.ts";
 
 type Req = { text: string; system?: string; extra?: string };
 function mk(replies: string[], opts: { deltas?: string[][] } = {}) {
@@ -155,5 +156,52 @@ describe("streaming without showing markers", () => {
     const shown = r.events.filter((e) => e.type === "assist.prompt.delta").map((e: any) => e.text).join("");
     expect(shown).not.toContain("KEEP");
     expect(shown).toContain("`a()`");
+  });
+});
+
+// M11 area 5 (Settings, the registry T16): Use project info in Prompt help (ph.useProjectInfo) and Give the suggestion back
+// by (ph.handBack), applied by the shell's settings.apply and read on each request. The usual values are today's.
+describe("Prompt help settings", () => {
+  const withSettings = (values: Record<string, unknown>) => {
+    const s = new RunnerSettings();
+    s.apply({ v: 1, id: "s", type: "settings.apply", values });
+    const events: Event[] = [];
+    const calls: Req[] = [];
+    const fast = { async run(req: Req, onDelta: (t: string) => void) { calls.push(req); onDelta("Better"); return { text: "Better", costUsd: 0.001 }; } } as unknown as FastLike;
+    const svc = new AssistService({ fast, vision: { locate: async () => ({ point: null, costUsd: 0 }) }, images: new ImageStore(), emit: (e) => events.push(e), memory: () => "- Prefers short answers", settings: s });
+    const ask = (extra: Record<string, unknown> = {}) => svc.handle({ v: 1, id: "c", type: "assist.prompt", req: "ph", app: "com.openai.codex", target: "chat", text: "do it", style: "full", ...extra } as never);
+    const done = () => events.find((e) => e.type === "assist.prompt.done") as any;
+    return { calls, ask, done };
+  };
+  const folder = () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-ph-")));
+    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "studio-site", dependencies: { react: "19" } }));
+    return d;
+  };
+  test("project info is sent by default, and not at all when it is turned off; what Companion remembers is left to its own setting", async () => {
+    const d = folder();
+    const on = withSettings({});
+    await on.ask({ project: d });
+    expect(on.calls[0].extra).toContain("studio-site");
+    const off = withSettings({ "ph.useProjectInfo": false });
+    await off.ask({ project: d });
+    expect(off.calls[0].extra ?? "").not.toContain("studio-site");
+    expect(off.calls[0].extra ?? "").not.toMatch(/Project information/);
+    expect(off.calls[0].extra).toContain("Prefers short answers");
+  });
+  test("the suggestion goes back by paste by default, by copy when chosen, and a terminal always gets copy", async () => {
+    const usual = withSettings({}); await usual.ask();
+    expect(usual.done().handback).toBe("paste");
+    const copy = withSettings({ "ph.handBack": "copy" }); await copy.ask();
+    expect(copy.done().handback).toBe("copy");
+    const term = withSettings({ "ph.handBack": "paste" }); await term.ask({ app: "com.apple.Terminal", target: "other" });
+    expect(term.done().handback).toBe("copy");
+  });
+  test("a value the rules refuse is the usual one", async () => {
+    const odd = withSettings({ "ph.handBack": "clipboard", "ph.useProjectInfo": "no" });
+    const d = folder();
+    await odd.ask({ project: d });
+    expect(odd.done().handback).toBe("paste");
+    expect(odd.calls[0].extra).toContain("studio-site");
   });
 });

@@ -30,6 +30,28 @@ pub const CAMERA_CHECK_ON: bool = false;
 
 pub fn is_call_app(bundle: &str) -> bool { !bundle.is_empty() && CALL_APPS.iter().any(|c| c.eq_ignore_ascii_case(bundle)) }
 
+/// Apps that count as a call (calls.apps in Settings): each built in one on or off, and up to this many added with Add the
+/// app in front. Only bundle ids are kept and compared (rule 7).
+pub const MAX_ADDED: usize = 20;
+/// The list in force from the setting's value: the built in ones it holds, and its first twenty others. A value the
+/// setting's rules refuse is the built in seven (today).
+pub fn call_apps_from(v: &Value) -> Vec<String> {
+    let ok = crate::settings::registry().get("calls.apps").and_then(|d| crate::settings::validate(d, v).ok());
+    let Some(list) = ok.as_ref().and_then(Value::as_array) else { return CALL_APPS.iter().map(|s| s.to_string()).collect() };
+    let mut added = 0;
+    list.iter().filter_map(Value::as_str).filter(|id| {
+        if CALL_APPS.iter().any(|c| c.eq_ignore_ascii_case(id)) { return true; }
+        added += 1;
+        added <= MAX_ADDED
+    }).map(str::to_string).collect()
+}
+/// Whether the app in front is one of these (macOS ignores case in ids).
+pub fn is_call_app_in(apps: &[String], bundle: &str) -> bool { !bundle.is_empty() && apps.iter().any(|c| c.eq_ignore_ascii_case(bundle)) }
+/// `quiet`, with the apps from Settings.
+pub fn quiet_with(s: &Settings, apps: &[String], front_bundle: &str, camera_in_use: impl FnOnce() -> bool) -> bool {
+    s.quiet_on_calls && (is_call_app_in(apps, front_bundle) || camera_in_use())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Settings { pub hide_from_sharing: bool, pub quiet_on_calls: bool }
 impl Default for Settings { fn default() -> Self { Settings { hide_from_sharing: true, quiet_on_calls: true } } }
@@ -111,6 +133,34 @@ mod tests {
         for s in [Settings::default(), Settings { hide_from_sharing: false, quiet_on_calls: false }, Settings { hide_from_sharing: true, quiet_on_calls: false }] {
             assert_eq!(parse(Some(&to_json(&s).to_string())), s);
         }
+    }
+    #[test]
+    fn the_apps_that_count_as_a_call_are_the_seven_built_in_ones_unless_changed() {
+        // calls.apps, usual the seven built in ids: exactly today's answers.
+        let usual = call_apps_from(&json!(CALL_APPS));
+        assert_eq!(usual, CALL_APPS.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        for b in ["us.zoom.xos", "US.ZOOM.XOS", "com.apple.FaceTime", "com.skype.skype", "com.apple.Safari", "us.zoom", "", "zoom"] {
+            assert_eq!(is_call_app_in(&usual, b), is_call_app(b), "{b:?}");
+        }
+        // A built in one turned off no longer counts; an app added with Add the app in front does.
+        let mine = call_apps_from(&json!(["com.apple.FaceTime", "com.example.calls"]));
+        assert!(!is_call_app_in(&mine, "us.zoom.xos"));
+        assert!(is_call_app_in(&mine, "com.example.calls") && is_call_app_in(&mine, "COM.EXAMPLE.CALLS"));
+        assert!(quiet_with(&Settings::default(), &mine, "com.example.calls", || false));
+        assert!(!quiet_with(&Settings::default(), &mine, "us.zoom.xos", || false));
+        assert!(!quiet_with(&Settings { quiet_on_calls: false, ..Settings::default() }, &mine, "com.example.calls", || false), "the switch still turns it off");
+        // At most 20 added apps count, whatever the list holds; a list the rules refuse is the built in seven.
+        let many: Vec<String> = (0..27).map(|i| format!("com.example.app{i}")).collect();
+        let kept = call_apps_from(&json!(many));
+        assert_eq!(kept.len(), MAX_ADDED);
+        assert!(is_call_app_in(&kept, "com.example.app19") && !is_call_app_in(&kept, "com.example.app20"));
+        for odd in [json!(null), json!("us.zoom.xos"), json!([1, 2]), json!(["a\nb"])] { assert_eq!(call_apps_from(&odd), usual, "{odd}"); }
+        assert!(call_apps_from(&json!([])).is_empty(), "every one turned off: nothing counts as a call");
+        // Only the id of the app in front is compared: quiet() in main.rs gives it the list from the setting.
+        let main = include_str!("main.rs");
+        let q = &main[main.find("fn quiet() -> bool").unwrap()..];
+        let q = &q[..q.find('\n').unwrap()];
+        assert!(q.contains("presentation::quiet_with(&presentation_now(), &presentation::call_apps_from(&setting_now(\"calls.apps\")), &front_id()"), "{q}");
     }
     #[test]
     fn the_camera_is_not_looked_at_until_a_real_mac_shows_it_never_asks_for_a_permission() {

@@ -1,17 +1,19 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { at, bend, burst, confetti, CONFETTI_S, ease, flightMs, RING_MS } from "./pointer.ts";
+import { at, bend, burst, captionStyle, confetti, CONFETTI_S, ease, flightMs, ringLook, ringMsOf } from "./pointer.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
 import { playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
-import { startSettings, takeSnapshot } from "./settingsStore.ts";
+import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
 
 // mark: a hand drawn ring, arrow, underline or box for a confirmed target (marks.ts); a guess never gets one. flyMs: how
 // long the flight takes (a step of a multi step answer flies for its lead in). fadeMs: how long the mark stays (its line).
-type Point = { clip?: { x: number; y: number; w: number; h: number } | null; rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean; mark?: string | null; flyMs?: number | null; fadeMs?: number | null };
+// ringMs: how long a ring that does not wait stays (How long a ring stays in Settings), the time the shell watches it by.
+// settings: the settings in force, sent with the ring because the overlay only listens (its colour, lettering and pace).
+type Point = { clip?: { x: number; y: number; w: number; h: number } | null; rect: { x: number; y: number; w: number; h: number }; from: { x: number; y: number }; caption: string; exact: boolean; reduced?: boolean; hold?: boolean; mark?: string | null; flyMs?: number | null; fadeMs?: number | null; ringMs?: number | null; settings?: unknown };
 const svg = document.getElementById("s")!;
 const cap = document.getElementById("cap") as HTMLElement;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -24,13 +26,16 @@ function clear() { svg.replaceChildren(); cap.classList.remove("on"); clearTimeo
 
 function show(p: Point) {
   clear();
-  // A ring that waits for the person's click stays until they click, press Do it for me, or close it. Any other goes ten
-  // seconds after this draw was ordered, the flight included, so it never outlives the shell's watch of its window (rule 22).
-  if (!p.hold) timer = setTimeout(clear, RING_MS);
+  // A ring that waits for the person's click stays until they click, press Do it for me, or close it. Any other goes the
+  // time the shell sent after this draw was ordered, the flight included, so it never outlives the shell's watch of its
+  // window (rule 22).
+  if (!p.hold) timer = setTimeout(clear, ringMsOf(p.ringMs));
   const reduced = p.reduced ?? reducedMotion();
   const cx = p.rect.x + p.rect.w / 2, cy = p.rect.y + p.rect.h / 2;
   const { rx, ry } = ringRadii(p.rect);
-  const color = p.exact ? "#ff9a2e" : "#ffb020";
+  // Ring colour in Settings, for a confirmed target; a guess keeps its soft dashed look whatever the colour (rule 22).
+  const look = ringLook(setting("point.colour"), p.exact);
+  const color = look.stroke;
   // The ring and arrow are drawn only inside the window they were confirmed in (nothing lands on a different app).
   let layer: Element = svg;
   if (p.clip) {
@@ -44,14 +49,20 @@ function show(p: Point) {
   // fades and the steady ring takes over. Every point of it is inside the window (marks.ts), and the clip above holds too.
   const kind = markFor(p.mark, p.exact);
   const strokes = kind ? markStrokes(kind, p.rect, p.clip ?? null, p.caption, { x: 0, y: 0, w: innerWidth, h: innerHeight }) : null;
-  const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": p.exact ? 4 : 3, "stroke-dasharray": p.exact ? "" : "8 6", class: "ring", opacity: reduced && !strokes ? 1 : 0 });
+  // High contrast: a dark edge under the ring and the marks, so a white ring shows on any app.
+  const halo = look.halo ? el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: look.halo, "stroke-width": look.width + 4, class: "ring", opacity: reduced && !strokes ? 1 : 0 }) : null;
+  if (halo) layer.appendChild(halo);
+  const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": look.width, "stroke-dasharray": look.dash, class: "ring", "data-main": 1, opacity: reduced && !strokes ? 1 : 0 });
   layer.appendChild(ring);
   const arrow = el("path", { d: "M0 0 L-14 -26 L0 -18 L14 -26 Z", fill: color, stroke: "#111", "stroke-width": 2, "stroke-linejoin": "round" });
   const place = (x: number, y: number, angle: number) => arrow.setAttribute("transform", `translate(${x} ${y}) rotate(${angle})`);
   layer.appendChild(arrow);
   const drawMark = (paths: string[]) => {
     const g = el("g", { class: "mark" });
-    for (const d of paths) g.appendChild(el("path", { d, fill: "none", stroke: color, "stroke-width": 3.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    for (const d of paths) {
+      if (look.halo) g.appendChild(el("path", { d, fill: "none", stroke: look.halo, "stroke-width": 7.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      g.appendChild(el("path", { d, fill: "none", stroke: color, "stroke-width": 3.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    }
     layer.appendChild(g);
     if (kind === "arrow") arrow.remove();   // the drawn arrow points at it; the flying one would be a second arrow
     if (!reduced) {
@@ -63,25 +74,28 @@ function show(p: Point) {
       }
     }
     markTimer = setTimeout(() => {
-      ring.setAttribute("opacity", "1");
+      ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1");
       if (reduced) { g.remove(); return; }
       g.style.transition = "opacity .5s"; g.style.opacity = "0";
       markTimer = setTimeout(() => g.remove(), 550);
     }, fadeMs(p.fadeMs));
   };
   const land = () => {
-    if (strokes) drawMark(strokes); else ring.setAttribute("opacity", "1");
+    if (strokes) drawMark(strokes); else { ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1"); }
     place(cx, cy - ry - 4, 0);
     const side = cx > innerWidth / 2 ? -1 : 1;
     cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
+    // Ring lettering and the text size picked in Settings; plain at the usual size is the caption as it always was.
+    const cs = captionStyle(setting("point.lettering"), setting("display.textSize"));
+    cap.style.font = cs.font; cap.style.maxWidth = `${cs.maxWidth}px`;
     const box = p.clip ?? { x: 0, y: 0, w: innerWidth, h: innerHeight };   // the words stay inside the window too
-    cap.style.left = `${Math.max(box.x + 8, Math.min(box.x + box.w - 320, side > 0 ? cx + rx + 12 : cx - rx - 12 - 300))}px`;
-    cap.style.top = `${Math.max(box.y + 8, Math.min(box.y + box.h - 60, cy - 18))}px`;
+    cap.style.left = `${Math.max(box.x + 8, Math.min(box.x + box.w - cs.reserveW, side > 0 ? cx + rx + 12 : cx - rx - 12 - cs.maxWidth))}px`;
+    cap.style.top = `${Math.max(box.y + 8, Math.min(box.y + box.h - cs.reserveH, cy - 18))}px`;
     cap.classList.add("on");
   };
   if (reduced) { land(); return; }
   const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy);
-  const dur = typeof p.flyMs === "number" && Number.isFinite(p.flyMs) ? Math.min(1600, Math.max(300, p.flyMs)) : flightMs(dist);
+  const dur = typeof p.flyMs === "number" && Number.isFinite(p.flyMs) ? Math.min(1600, Math.max(300, p.flyMs)) : flightMs(dist, setting("point.pace"));
   const lift = bend(dist), mx = (p.from.x + cx) / 2, my = (p.from.y + cy) / 2 - lift;
   const t0 = performance.now();
   const step = (now: number) => {
@@ -97,7 +111,7 @@ function show(p: Point) {
 // The settings in force (reactions), kept in step with every change (settingsStore.ts). The overlay only listens: the
 // shell sends the settings with every change and with each celebration.
 startSettings({ ask: false });
-void listen("overlay-point", (e) => show(e.payload as Point));
+void listen("overlay-point", (e) => { const p = e.payload as Point; takeSnapshot(p.settings); show(p); });
 void listen("overlay-clear", () => clear());
 
 // The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion
@@ -107,8 +121,10 @@ function celebrate(rect: { x: number; y: number; w: number; h: number }) {
   clearTimeout(timer); clearTimeout(markTimer);
   svg.querySelectorAll("path").forEach((a) => a.remove());
   svg.querySelectorAll("g.mark").forEach((g) => g.remove());
-  const ring = svg.querySelector("ellipse");
-  if (ring) { ring.setAttribute("opacity", "1"); ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); ring.classList.remove("ring"); }
+  // The ring itself (not the dark edge under a high contrast one) turns green, and nothing pulses any more.
+  const ring = svg.querySelector("ellipse[data-main]") ?? svg.querySelector("ellipse");
+  svg.querySelectorAll("ellipse").forEach((e) => e.classList.remove("ring"));
+  if (ring) { ring.setAttribute("opacity", "1"); ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); }
   const cx = rect.x + rect.w / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
   svg.appendChild(el("path", { d: `M${cx - 9} ${ty - 14} l6 6 l12 -13`, fill: "none", stroke: "#1e8a4c", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
   cap.textContent = "That's it."; 
@@ -159,7 +175,13 @@ void listen("overlay-party", (e) => { const p = e.payload as { x: number; y: num
 type Laid = { nodes: { id: string; label: string; x: number; y: number; w: number; h: number; broken: boolean }[]; edges: { from: string; to: string; label?: string; points: [number, number][]; broken: boolean }[]; width: number; height: number; caption: string; reason: string };
 const RED = "#ff6b6b", INKC = "#f2efe6";
 const HAND = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
-function drawDiagram(d: Laid, dockX: number) {
+/** How long the picture stays, as the shell sent it (How long Draw it for me stays in Settings): a time in ms, or null to keep
+ *  it until it is closed. Nothing usable is the usual 15 seconds. */
+function diagramMsOf(v: unknown): number | null {
+  if (v === null) return null;
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(60_000, Math.max(5_000, v)) : 15_000;
+}
+function drawDiagram(d: Laid, dockX: number, ms: number | null) {
   clear();
   const reduced = reducedMotion();
   const pad = 26;
@@ -218,6 +240,7 @@ function drawDiagram(d: Laid, dockX: number) {
       }, t0);
     }));
   }
-  timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, 15_000);
+  // It fades after its time; one kept until closed stays until Close in Home or Stop everything (the shell clears it).
+  if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, ms);
 }
-void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number }; drawDiagram(p.diagram, p.dockX); });
+void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number; ms?: number | null }; drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });

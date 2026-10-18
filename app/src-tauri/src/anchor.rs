@@ -55,10 +55,21 @@ pub fn check_watched(w: &Watched, wins: &[Win], ours: i32, front_pid: i32, x: f6
 }
 
 /// How often a ring that does not wait for a click checks its window, and for how long at most. The overlay takes such a
-/// ring away by itself ten seconds after the draw was ordered (overlay.ts, RING_MS, the flight included); the watch starts
-/// at the same moment and lasts half a second longer, so no part of the ring's life goes unwatched.
+/// ring away by itself a set time after the draw was ordered (How long a ring stays in Settings, point.ringSeconds, 5 to
+/// 30 seconds, usual 10; the flight included), and the shell sends it that time with the ring; the watch starts at the
+/// same moment and lasts half a second longer, worked out from the same setting, so no part of the ring's life goes
+/// unwatched (rule 22).
 pub const WATCH_POLL_MS: u64 = 250;
-pub const WATCH_MAX_MS: u64 = 10_500;
+/// The usual ring time (pointer.ts RING_MS), used for anything the setting's rules refuse.
+pub const RING_MS: u64 = 10_000;
+/// How long a ring that does not wait for a click stays, from the setting's value.
+pub fn ring_ms(v: &serde_json::Value) -> u64 {
+    crate::settings::registry().get("point.ringSeconds").and_then(|d| crate::settings::validate(d, v).ok()).and_then(|n| n.as_f64()).map(|s| (s * 1000.0).round() as u64).unwrap_or(RING_MS)
+}
+/// How long its window is watched (and the overlay kept busy): the ring's time and half a second.
+pub fn watch_ms(ring_ms: u64) -> u64 { ring_ms + 500 }
+/// The number of looks that cover the whole watch.
+pub fn watch_polls(ring_ms: u64) -> u32 { watch_ms(ring_ms).div_ceil(WATCH_POLL_MS) as u32 }
 
 /// Watches a ring that does not wait for a click (a step of a multi step answer, Point at the problem's line or error)
 /// while it is up. Each turn: `wait`, then stop quietly if the ring is no longer the current one (`alive` false: a newer
@@ -216,15 +227,32 @@ mod tests {
         assert_eq!(looks, 2);
     }
     #[test]
-    fn its_time_covers_the_overlays_own_ten_seconds_with_the_flight_included() {
-        // The overlay takes such a ring away ten seconds after the draw was ordered, not after it landed (the flight takes
-        // 0.3 to 1.6 s), so this watch, which starts when the draw is ordered, covers the ring's whole life with a margin.
+    fn its_time_covers_the_overlays_own_ring_time_with_the_flight_included_for_every_allowed_value() {
+        // How long a ring stays (point.ringSeconds, 5 to 30 seconds, usual 10). The overlay takes such a ring away that long
+        // after the draw was ordered, not after it landed (the flight takes 0.3 to 2.1 s), and the shell sends it that time
+        // with the ring, so this watch, which starts when the draw is ordered, always covers the ring's whole life with half
+        // a second to spare. Worked out from the same setting, for every value it can have.
         assert!(WATCH_POLL_MS <= 250, "four times a second, like the your turn ring");
-        assert!((10_300..=11_000).contains(&WATCH_MAX_MS));
+        for secs in 5..=30u64 {
+            let ring = ring_ms(&serde_json::json!(secs));
+            assert_eq!(ring, secs * 1000, "{secs}");
+            assert_eq!(watch_ms(ring), secs * 1000 + 500, "{secs}");
+            assert!(u64::from(watch_polls(ring)) * WATCH_POLL_MS >= watch_ms(ring), "{secs}: the polls cover the watch");
+        }
+        // The usual value is today's: a ten second ring watched for ten and a half.
+        assert_eq!(RING_MS, 10_000);
+        assert_eq!(ring_ms(&serde_json::json!(10)), 10_000);
+        assert_eq!(watch_ms(RING_MS), 10_500);
+        // Anything the rules refuse is the usual ten seconds; a value between steps goes on its step.
+        for odd in [serde_json::json!(4), serde_json::json!(31), serde_json::json!(0), serde_json::json!("10"), serde_json::json!(null), serde_json::json!(-1)] {
+            assert_eq!(ring_ms(&odd), RING_MS, "{odd}");
+        }
+        assert_eq!(ring_ms(&serde_json::json!(12.4)), 12_000);
+        // The overlay counts from the order, with the time the shell sent (pointer.ts ringMsOf keeps it inside 5 to 30 s).
         let overlay = include_str!("../../src/overlay.ts");
         let show = &overlay[overlay.find("function show(").unwrap()..overlay.find("void listen(\"overlay-point\"").unwrap()];
         let land = &show[show.find("const land =").unwrap()..show.find("if (reduced) { land(); return; }").unwrap()];
-        assert!(show.contains("setTimeout(clear, RING_MS)"), "the overlay counts its ten seconds from the order");
+        assert!(show.contains("setTimeout(clear, ringMsOf(p.ringMs))"), "the overlay counts the ring's time from the order");
         assert!(!land.contains("setTimeout(clear"), "not from landing");
         let pointer = include_str!("../../src/pointer.ts");
         assert!(pointer.contains("export const RING_MS = 10_000;"));
@@ -243,6 +271,10 @@ mod tests {
         }
         assert!(body("fn draw_pointer_with(").contains("anchor::watched_for("));
         assert!(body("fn your_turn(").contains("anchor::check_watched("), "the ring waiting for a click too");
-        assert!(body("fn draw_pointer_with(").contains("now() as u64 + anchor::WATCH_MAX_MS"), "confetti waits as long as the watch");
+        let draw = body("fn draw_pointer_with(");
+        assert!(draw.contains("anchor::ring_ms(&setting_now(\"point.ringSeconds\"))"), "the ring's time comes from the setting");
+        assert!(draw.contains("now() as u64 + anchor::watch_ms(ring)"), "confetti waits as long as the watch");
+        assert!(draw.contains("\"ringMs\": ring"), "the overlay is sent the same time");
+        assert!(body("fn watch_ring(").contains("anchor::watch_polls(ring)"), "the watch lasts the ring's time plus half a second");
     }
 }

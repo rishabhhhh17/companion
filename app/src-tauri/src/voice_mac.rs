@@ -123,10 +123,16 @@ impl Open {
     }
 }
 
+/// How many samples the open microphone keeps: room for the hold's whole cap and ten seconds more (voice.rs
+/// buffer_samples), set as the keys go down. A memory guard only: the cap itself closes the microphone.
+static BUFFER_ROOM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(16_000 * 4 * 70 * 2);
+pub fn set_buffer_room(n: usize) { BUFFER_ROOM.store(n, std::sync::atomic::Ordering::SeqCst); }
+fn buffer_room() -> usize { BUFFER_ROOM.load(std::sync::atomic::Ordering::SeqCst) }
+
 fn collect<T: SizedSample + 'static>(dev: &cpal::Device, cfg: cpal::StreamConfig, buf: Arc<Mutex<Vec<f32>>>, trouble: Arc<Trouble>, to_f32: fn(T) -> f32) -> Result<cpal::Stream, String> {
     // The most serious problem waiting wins (voiceset::replaces): a microphone that went away is never hidden behind an overload.
     let on_error = move |e: cpal::Error| { let k = format!("{:?}", e.kind()); trouble.report(&k); };
-    dev.build_input_stream(cfg, move |data: &[T], _| { if let Ok(mut b) = buf.lock() { if b.len() < 16_000 * 4 * 70 * 2 { b.extend(data.iter().map(|s| to_f32(*s))); } } }, on_error, None).map_err(|e| e.to_string())
+    dev.build_input_stream(cfg, move |data: &[T], _| { if let Ok(mut b) = buf.lock() { if b.len() < buffer_room() { b.extend(data.iter().map(|s| to_f32(*s))); } } }, on_error, None).map_err(|e| e.to_string())
 }
 
 fn open(dev: &cpal::Device) -> Result<Open, String> {

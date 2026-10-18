@@ -36,7 +36,30 @@ static STATE: Mutex<State> = Mutex::new(State { consent: None, deny: rules::Deny
 
 fn data_file() -> PathBuf { PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app/prompt_help.json") }
 fn load_consent() -> rules::Consent { std::fs::read_to_string(data_file()).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|v| rules::Consent::from_json(&v)).unwrap_or_default() }
-fn save_consent(c: &rules::Consent) { if let Some(d) = data_file().parent() { let _ = std::fs::create_dir_all(d); } let _ = crate::logfile::write_atomic(&data_file(), c.to_json().to_string().as_bytes()); }
+fn save_consent(c: &rules::Consent) { let _ = try_save_consent(c); }
+fn try_save_consent(c: &rules::Consent) -> Result<(), &'static str> {
+    if let Some(d) = data_file().parent() { let _ = std::fs::create_dir_all(d); }
+    crate::logfile::write_atomic(&data_file(), c.to_json().to_string().as_bytes()).map_err(|_| "notSaved")
+}
+
+/// Settings (ph.appAnswers): the answers kept for each app, as prompt_help.json holds them.
+pub fn apps_value() -> Value {
+    let mut st = st();
+    if st.consent.is_none() { st.consent = Some(load_consent()); }
+    st.consent.as_ref().map(|c| c.to_json()).unwrap_or_else(|| json!({ "apps": {} }))
+}
+/// Settings changes one answer, forgets one or all (never the apps never to read), or adds the app in front to never read
+/// (`front`: only its bundle id). The rules are in prompthelp.rs (`Consent::change`); nothing changes unless it is saved.
+pub fn apps_change(v: &Value, front: &str) -> Result<(), &'static str> {
+    let op = rules::apps_op(v)?;
+    let mut st = st();
+    if st.consent.is_none() { st.consent = Some(load_consent()); }
+    let mut next = st.consent.clone().unwrap_or_default();
+    next.change(&op, front)?;
+    try_save_consent(&next)?;
+    st.consent = Some(next);
+    Ok(())
+}
 fn now_ms() -> u128 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0) }
 
 /// Tell the pages what stage Prompt help is in. Never any of the person's text except what the page needs to show.
@@ -59,7 +82,8 @@ pub fn target_kind(bundle: &str) -> &'static str {
 }
 
 fn send_prompt(app: &AppHandle, bundle: &str, text: &str, answer: Option<&str>) {
-    let mut cmd = json!({ "v": 1, "id": format!("ph{}", now_ms()), "type": "assist.prompt", "req": format!("ph_{}", now_ms()), "app": bundle, "target": target_kind(bundle), "text": text, "style": "full" });
+    // Prompt help rewrites (ph.style in Settings): a full rewrite unless the person chose a light touch.
+    let mut cmd = json!({ "v": 1, "id": format!("ph{}", now_ms()), "type": "assist.prompt", "req": format!("ph_{}", now_ms()), "app": bundle, "target": target_kind(bundle), "text": text, "style": rules::style_of(&crate::setting_now("ph.style")) });
     // The folder the person chose gives Prompt help what the project is (its stack and purpose) and what Companion remembers.
     { let project = crate::current_project(); if !project.is_empty() { cmd["project"] = json!(project); } }
     if let (Some(a), Some(o)) = (answer, cmd.as_object_mut()) { o.insert("answer".into(), json!(a)); o.insert("noQuestion".into(), json!(true)); }
@@ -143,6 +167,7 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
             c.record(&bundle, choice);
             save_consent(c);
         }
+        crate::settings_told(&app, &["ph.appAnswers".to_string()]);   // Settings shows the new answer
         if choice == rules::Choice::Never { say(&app, "refused", json!({ "message": rules::ReadVerdict::RefusedByYou.plain() })); return; }
         // Ask the rules again so "once" is used up by this one read.
         let ok = { let mut st = st(); st.consent.as_mut().unwrap().decide(&bundle) == rules::Decision::Allow };

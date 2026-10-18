@@ -1,6 +1,6 @@
 // Spoken replies, page side: the switch (off unless turned on) and which line, if any, goes with what the card shows.
 // The Mac side says it with the built in voice and refuses anything unsafe; nothing here makes a sound.
-import { LEAD_MS } from "./sequence.ts";
+import { leadMs } from "./sequence.ts";
 import { receiptProofWords, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { keysIn, keysNow, type Keys } from "./keys.ts";
@@ -13,9 +13,10 @@ type Walk = { id: string; index: number; variant: string; stage: string; say: st
 type ShowMe = { stage: string; message: string; req?: string; step?: number; of?: number } | null;
 
 /** The one line to say for what is on the card right now, with a key so the same thing is said once. delayMs: wait this
- *  long before saying it (a step of a multi step answer is said when its pointer lands). A lesson's words name the usual
- *  keys; they are said with the keys in use (`k`, the keys now unless given), as the card shows them. */
-export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow()): { key: string; text: string; delayMs?: number } | null {
+ *  long before saying it (a step of a multi step answer is said when its pointer lands, after the lead in at the chosen
+ *  pace). A lesson's words name the usual keys; they are said with the keys in use (`k`, the keys now unless given), as
+ *  the card shows them. */
+export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), pace?: unknown): { key: string; text: string; delayMs?: number } | null {
   const w = m.walk;
   if (w) {
     // While a lesson is on, only the lesson speaks (its ring's caption says nearly the same thing).
@@ -23,18 +24,40 @@ export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow()):
     // After a pause: the step, then the question. Its own key, so "No, show me" says the step again as a step to do.
     if (w.stage === "already") return w.say ? { key: `walk:${w.id}:${w.index}:already`, text: `${keysIn(w.say, k)} ${S.lessonAlready}` } : null;
     if (w.stage === "help" && w.note) return { key: `walk:${w.id}:${w.index}:help`, text: keysIn(w.note, k) };
-    if (w.stage === "done") return { key: `walk:${w.id}:done`, text: "All done. Every step is finished." };
+    if (w.stage === "done") return { key: `walk:${w.id}:done`, text: S.lessonDone };
     return null;
   }
   const s = m.showme;
   if (!s || !s.message) return null;
   const seq = typeof s.of === "number" && s.of > 1 && typeof s.step === "number";
   const key = `show:${s.req ?? ""}:${s.stage}${seq ? `:${s.step}` : ""}`;
-  const lead = seq ? { delayMs: LEAD_MS } : {};
+  const lead = seq ? { delayMs: leadMs(pace) } : {};
   if (s.stage === "pointing") return { key, text: s.message, ...lead };
   if (s.stage === "pointing_roughly") return { key, text: `I think it is here. ${s.message}`, ...lead };
   if (["not_sure", "needs_permission", "error", "window_changed"].includes(s.stage)) return { key, text: s.message };
   return null;
+}
+
+// ---- Also say out loud (speak.alsoSay in Settings; nothing more unless chosen) ----
+/** The extra short lines Speak to me may say: when something needs the person (a question to answer, the loop card, a
+ *  pause, a plan) and when a task ends, with what its proof really says (never passed for a check that was skipped).
+ *  Fixed words only, never anything from the task or the question, so nothing secret looking is ever in them; the Mac
+ *  side still refuses anything that looks secret and stays quiet during calls. Each has its own key, said once. */
+export function alsoSayLines(m: Model, project: string, items: readonly string[]): { key: string; text: string }[] {
+  const out: { key: string; text: string }[] = [];
+  const n = S.alsoSay.needsYou;
+  if (items.includes("needsYou")) {
+    if (m.approvals.length) out.push({ key: `needs:approval:${m.approvals[0].id}`, text: n.approval });
+    else if (m.agentsAsk) out.push({ key: "needs:agents", text: n.agents });
+    else if (m.stuck) out.push({ key: `needs:stuck:${m.stuck.index}:${m.stuck.title}`, text: n.stuck });
+    else if (m.paused) out.push({ key: `needs:paused:${m.paused.reason}`, text: n.paused });
+    else if (m.plan) out.push({ key: `needs:plan:${m.plan.agent}:${m.plan.steps.length}`, text: n.plan });
+  }
+  if (items.includes("taskDone") && m.receipt?.checkpoint) {
+    const d = S.alsoSay.taskDone, p = m.receipt.proof;
+    out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: p === "passed" ? d.passed : p === "passed_with_gaps" ? d.gaps : p === "failed" ? d.failed : d.none });
+  }
+  return out;
 }
 
 // ---- answers said out loud for a question asked by voice (M11 wave 4, item 2; off by default, T13) ----

@@ -6,8 +6,9 @@ import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
-import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
-import { askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
+import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
+import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
+import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
@@ -459,7 +460,7 @@ function Card() {
   const sayIt = (text: string, whole: boolean) => void invoke("speak", { text, whole, rest: S.speakRest }).then((r) => { const n = spokenNote(r); if (n) dispatch({ type: "app.notice", message: n }); }).catch(() => {});
   const answersVoice = (key: string) => lineByVoice(voiceAsked.current, key, Date.now());
   const saidKey = useRef("");
-  const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys);
+  const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys, setting("point.pace"));
   useEffect(() => {
     if (!spoken || spoken.key === saidKey.current) return;
     const when = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: answersVoice(spoken.key) });
@@ -480,8 +481,21 @@ function Card() {
     for (const x of all) seenReplies.current.add(x.key);
     if (!r || !repliesOn() || !askedByVoice(voiceAsked.current, r.kind, Date.now())) return;
     voiceAsked.current = null;   // one answer per question
+    alsoSaid.current.add(r.key);   // said whole as the answer: not again as a short line
     sayIt(r.text, true);
   }, [replyKeys]);
+  // Also say out loud (speak.alsoSay, nothing unless chosen): with Speak to me on, a short fixed line when something needs
+  // the person or a task ends, each once. Runs after the answer above, so an answer said whole is not said again. What was
+  // already on Home when Speak to me was off is never said late.
+  const alsoSaid = useRef(new Set<string>());
+  const also = alsoSayLines(m, project, (setting("speak.alsoSay") as string[] | undefined) ?? []);
+  const alsoKeys = also.map((l) => l.key).join("|");
+  useEffect(() => {
+    if (!speechOn()) { for (const l of also) alsoSaid.current.add(l.key); return; }
+    const fresh = also.filter((l) => !alsoSaid.current.has(l.key));
+    for (const l of also) alsoSaid.current.add(l.key);
+    if (fresh.length) sayIt(fresh[0].text, false);
+  }, [alsoKeys]);
   // Another project: its answers are numbered and named on their own (its first task ends with cp_0001 again), and a
   // question asked by voice about the old project is not answered by anything in the new one.
   useEffect(() => {
@@ -592,14 +606,18 @@ function Card() {
       // each line is said whole before the next step's line cuts in (sequence.ts lineMs).
       const speaking = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: voiceShowMe(voiceAsked.current, req, Date.now()) }).say;
       const speed = spokenSpeed();
+      // Pace of step by step pointing (point.pace): the lead in, the pause and how long each line is read for.
+      const pace = setting("point.pace");
       const aim = (s: Step) => invoke("showme_aim", {
         req, x: s.target.x, y: s.target.y, ocrId: s.target.ocrId ?? null, targetText: s.target.targetText, caption: s.target.caption,
         mark: s.target.mark ?? null, screen: s.target.screen ?? 1, step: s.index + 1, of: s.total, hold: s.hold,
-        flyMs: s.total > 1 ? LEAD_MS : null, fadeMs: lineMs(s.text, speaking, speed),
+        flyMs: s.total > 1 ? leadMs(pace) : null, fadeMs: lineMs(s.text, speaking, speed, pace),
       }).then((r) => {
         const out = r as { ok?: boolean; why?: string } | undefined;
         // The window the picture was taken of changed: nothing more is drawn over it (rule 22). Say so in words.
         if (out?.ok === false && out.why === "window_changed") dispatch({ type: "app.showme", stage: "window_changed", message: S.sequenceWindowChanged });
+        // Only a guess, and the person asked for words then (point.guesses): the shell drew nothing; say where to look.
+        if (out?.ok === false && out.why === "guess") { words({ ...s, text: guessWords(s.target.targetText, s.target.caption) }); return true; }
         return out?.ok !== false;
       }, () => false);
       const words = (s: Step) => {
@@ -607,7 +625,7 @@ function Card() {
         // The last step said in words ends it: what was seen is forgotten. Before that, only the pointer is taken away.
         if (s.index === s.total - 1) void invoke("showme_clear").then(say); else void invoke("showme_hide").then(say);
       };
-      player.current.start(steps, { aim, words }, speaking, speed);
+      player.current.start(steps, { aim, words }, speaking, speed, pace);
       if (steps.some((s) => s.draw)) setWalk((w) => (w ? { ...w, steps: [...w.steps, stepsLine(steps)] } : w));
     });
     return () => { off.then((f) => f()); player.current.hush(); };
@@ -991,7 +1009,7 @@ function Card() {
         <section className={`panel ${m.diagram.stage === "none" ? "amber" : ""}`} role="status" aria-label={S.drawTitle}>
           <h2>{S.drawTitle}</h2>
           {m.diagram.stage === "asking" && <div className="line">{S.drawing}</div>}
-          {m.diagram.stage === "shown" && <><div className="line"><b>{m.diagram.brokenReason}</b></div><div className="line">{m.diagram.caption}</div><div className="line muted">{S.drawShown}</div></>}
+          {m.diagram.stage === "shown" && <><div className="line"><b>{m.diagram.brokenReason}</b></div><div className="line">{m.diagram.caption}</div><div className="line muted">{setting("drawIt.seconds") === "untilClosed" ? S.drawShownUntilClosed : S.drawShown}</div></>}
           {m.diagram.stage === "none" && <div className="line">{m.diagram.reason}</div>}
           {m.diagram.stage !== "asking" && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.diagramClosed" }); }}>{S.pointClose}</button></div>}
         </section>

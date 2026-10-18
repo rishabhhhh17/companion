@@ -94,7 +94,9 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
     let (app, choice) = (app.clone(), choice.to_string());
     std::thread::spawn(move || {
         let Some((pid, bundle, name)) = awaiting().take() else { return };
-        if !phelp::shared_answer(&bundle, &choice) {
+        let may = phelp::shared_answer(&bundle, &choice);
+        crate::settings_told(&app, &["ph.appAnswers".to_string()]);   // Settings shows the new answer
+        if !may {
             if choice == "never" { say(&app, "refused", json!({ "why": ReadVerdict::RefusedByYou.code() })); }
             return;
         }

@@ -30,7 +30,13 @@ pub const PAGE_STORAGE_MARK: &str = "pageStorage.v1";
 /// metrics.set), which only the shell sends.
 pub const RUNNER_STORES: &[&str] = &["spending", "memory", "metrics"];
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
-const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics"];
+const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "promptHelpApps", "spending", "memory", "metrics"];
+/// The stores with their own editor, shown by a custom row: the keys, the voice, and the per app answers (prompt_help.json).
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+pub const EDITOR_STORES: &[&str] = &["keys", "voice", "promptHelpApps"];
+/// The one custom setting that holds protections a person added (apps never to read): never reset, only its own controls.
+#[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
+pub const PROTECTIVE_EDITOR: &str = "promptHelpApps";
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
 const UNITS: &[&str] = &["dollars", "seconds", "minutes", "percent", "count", "words"];
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
@@ -122,13 +128,13 @@ pub fn check_registry(r: &Registry) -> Vec<String> {
         let mut uniq = std::collections::BTreeSet::new();
         if d.applies.is_empty() || !d.applies.iter().all(|a| APPLIES.contains(&a.as_str()) && uniq.insert(a.clone())) { bad("applies must name shell, runner or pages"); }
         if !STORES.contains(&d.store.as_str()) { bad("its store does not exist"); }
-        if d.protective && d.kind != Kind::List { bad("only a list can be protective"); }
+        if d.protective && d.kind != Kind::List && !(d.kind == Kind::Custom && d.store == PROTECTIVE_EDITOR) { bad("only a list (or the per app answers) can be protective"); }
         if d.kind == Kind::Custom {
-            if d.store != "keys" && d.store != "voice" { bad("custom is only for the editors that already exist"); }
+            if !EDITOR_STORES.contains(&d.store.as_str()) { bad("custom is only for the editors that already exist"); }
             if !d.default.is_null() { bad("a custom setting's usual value lives in its own store"); }
             continue;
         }
-        if d.store == "keys" || d.store == "voice" { bad("that store has its own editor"); }
+        if EDITOR_STORES.contains(&d.store.as_str()) { bad("that store has its own editor"); }
         if d.runner_store() && (d.applies != ["runner"] || d.project) { bad("the engine's own stores are applied by the engine, for every project"); }
         if d.kind == Kind::Choice { let mut u = std::collections::BTreeSet::new(); if d.options.len() < 2 || !d.options.iter().all(|o| !o.is_empty() && u.insert(o.clone())) { bad("a choice needs two or more different options"); } }
         if d.kind == Kind::Number {
@@ -508,8 +514,9 @@ pub fn keys_from(v: &Value) -> Result<crate::keymap::Map, &'static str> {
     if damaged { Err("custom") } else { Ok(m) }
 }
 
-/// What the wrapped stores hold now, read by main.rs.
-pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved }
+/// What the wrapped stores hold now, read by main.rs. `ph_apps`: the per app answers as prompt_help.json keeps them
+/// (prompthelp.rs `Consent::to_json`).
+pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved, pub ph_apps: Value }
 
 /// What every page is told ("settings-changed", and settings_get's answer): each value in force the shell keeps (the
 /// engine's own three come from its events), each setting's usual value (for keys and voice, their own usual ones),
@@ -525,10 +532,11 @@ pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, prob
             "presentation" => presentation_value(&w.presentation, &d.key),
             "keys" => Some(keys_value(&w.keys)),
             "voice" => Some(voice_value(&w.voice)),
+            "promptHelpApps" => Some(w.ph_apps.clone()),
             _ => None,
         };
         if let Some(v) = v { values.insert(d.key.clone(), v); }
-        let u = match d.store.as_str() { "keys" => keys_value(&crate::keymap::Map::DEFAULT), "voice" => voice_value(&crate::voiceset::Saved::default()), _ => d.default.clone() };
+        let u = match d.store.as_str() { "keys" => keys_value(&crate::keymap::Map::DEFAULT), "voice" => voice_value(&crate::voiceset::Saved::default()), "promptHelpApps" => crate::prompthelp::Consent::default().to_json(), _ => d.default.clone() };
         usual.insert(d.key.clone(), u);
     }
     json!({
@@ -813,7 +821,7 @@ mod tests {
         // Fake stores: come to off, quiet during calls off, other keys for Stop everything, another voice.
         let stop = keymap::choices(keymap::Action::Stop)[1];
         let voice = crate::voiceset::Saved { voice: Some(crate::voiceset::Named { id: "v".into(), name: "Ava".into(), lang: "en-US".into() }), speed: 1.25, ..Default::default() };
-        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice };
+        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice, ph_apps: json!({ "apps": { "com.example.chat": "always" } }) };
         let mut f = File::default();
         set(registry(), &mut f, "fun.reactions", &json!(false), None).unwrap();
         let snap = snapshot(registry(), &f, None, &w, &[], &[]);
@@ -824,7 +832,7 @@ mod tests {
         assert_eq!(reset_plan(registry(), Which::Section("sharing"), values, usual, &[]).unwrap(), vec!["calls.quiet".to_string()]);
         assert!(reset_plan(registry(), Which::Key("sharing.hide"), values, usual, &[]).unwrap().is_empty(), "already usual");
         // Every store at its usual value: nothing to reset.
-        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default() };
+        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default(), ph_apps: json!({ "apps": {} }) };
         let s2 = snapshot(registry(), &File::default(), None, &plain, &[], &[]);
         assert!(reset_plan(registry(), Which::All, s2["values"].as_object().unwrap(), s2["usual"].as_object().unwrap(), &[]).unwrap().is_empty());
     }
@@ -939,11 +947,20 @@ mod tests {
         for w in ["dock", "overlay", "island", "", "Card"] { assert_eq!(only_card(w), Err("not_card"), "{w}"); }
         // Every command that changes settings checks the window first (main.rs).
         let main = include_str!("main.rs");
-        for c in ["fn settings_set(", "fn settings_reset(", "fn settings_migrate("] {
+        for c in ["fn settings_set(", "fn settings_reset(", "fn settings_migrate(", "fn front_app(", "fn app_names("] {
             let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing"));
             let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
             assert!(body.contains("settings::only_card(window.label())?"), "{c} does not check the window");
         }
+        // The per app answers change only through settings_set and prompthelp.rs's rules, with the id of the app in front.
+        let at = main.find("fn setting_change(").unwrap();
+        let change = &main[at..at + main[at..].find("\n}\n").unwrap()];
+        assert!(change.contains("\"promptHelpApps\" => {") && change.contains("phelp::apps_change(value, &front_id())?"), "{change}");
+        // The app in front, for Add the app in front: its id and name only, never Companion itself.
+        let at = main.find("fn front_app(").unwrap();
+        let front = &main[at..at + main[at..].find("\n}\n").unwrap()];
+        assert!(front.contains("front_id()") && front.contains("dev.companion") && !front.contains("on_screen_windows"), "{front}");
+        for c in ["front_app", "app_names"] { assert!(main.contains(&format!(", {c},")) || main.contains(&format!(", {c}]")), "{c} is not a command"); }
     }
     #[test]
     fn the_shell_resets_and_puts_back_only_through_these_rules() {
@@ -976,7 +993,7 @@ mod tests {
         assert!(q.hide_from_sharing && !q.quiet_on_calls);
         assert!(presentation_with(&s, "sharing.hide", &json!(1)).is_none());
         // What every page is told: values the shell keeps, usual values, never the engine's own three as values.
-        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default() };
+        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default(), ph_apps: json!({ "apps": { "com.example.chat": "never" } }) };
         let snap = snapshot(registry(), &File::default(), Some("/p"), &w, &[], &["calls.quiet".to_string()]);
         assert_eq!(snap["values"]["character.comeTo"], json!(false));
         assert_eq!(snap["values"]["calls.quiet"], json!(false));
@@ -987,5 +1004,61 @@ mod tests {
         assert_eq!(snap["usual"]["spend.dailyLimit"], json!(10));
         assert_eq!(snap["changed"], json!(["calls.quiet"]));
         assert_eq!(snap["project"], "/p");
+        // The per app answers (prompt_help.json) are shown whole, with their own usual value: no answers kept.
+        assert_eq!(snap["values"]["ph.appAnswers"], json!({ "apps": { "com.example.chat": "never" } }));
+        assert_eq!(snap["usual"]["ph.appAnswers"], json!({ "apps": {} }));
+    }
+
+    // ---- area 5: pointing, talking and other apps ----
+    #[test]
+    fn the_per_app_answers_are_never_reset_from_their_row_a_section_or_everything() {
+        // Never entries the person added are protections (the built in never list cannot change at all): only the
+        // editor's own Forget, after an inline confirm, removes one. So no reset ever touches the answers.
+        let r = registry();
+        let d = r.get("ph.appAnswers").unwrap();
+        assert!(d.protective && d.kind == Kind::Custom && d.store == "promptHelpApps" && d.applies == ["shell"]);
+        assert_eq!(reset_targets(r, Which::Key("ph.appAnswers")).err(), Some("protective"));
+        let mut values = Map::new();
+        values.insert("ph.appAnswers".into(), json!({ "apps": { "com.example.chat": "always", "com.example.notes": "never" } }));
+        values.insert("ph.style".into(), json!("light"));
+        let mut usual = Map::new();
+        usual.insert("ph.appAnswers".into(), json!({ "apps": {} }));
+        for which in [Which::All, Which::Section("otherApps")] {
+            let plan = reset_plan(r, which, &values, &usual, &[]).unwrap();
+            assert_eq!(plan, vec!["ph.style".to_string()], "{which:?}");
+        }
+        // And it is never kept in settings.json, whatever a file says.
+        let (f, _, _) = parse_file(r, Some(r#"{"version":1,"values":{"ph.appAnswers":{"apps":{"x":"always"}}}}"#));
+        assert!(f.values.get("ph.appAnswers").is_none());
+        assert_eq!(set(r, &mut File::default(), "ph.appAnswers", &json!({ "op": "forgetAll" }), None), Err("custom"));
+    }
+    #[test]
+    fn custom_and_protective_stay_narrow() {
+        let patched = |key: &str, patch: &str| { let mut v: Value = serde_json::from_str(REGISTRY_TEXT).unwrap(); let p: Value = serde_json::from_str(patch).unwrap(); let d = v["settings"].as_array_mut().unwrap().iter_mut().find(|d| d["key"] == key).unwrap(); for (k, x) in p.as_object().unwrap() { d[k] = x.clone(); } check_registry(&parse_registry(&v.to_string()).unwrap()) };
+        assert!(!patched("point.colour", r#"{"protective": true}"#).is_empty(), "a choice is never protective");
+        assert!(!patched("ph.style", r#"{"store": "promptHelpApps"}"#).is_empty(), "a plain setting never uses an editor's store");
+        assert!(!patched("ph.appAnswers", r#"{"store": "settings"}"#).is_empty(), "a custom row only for a store with its own editor");
+        assert!(!patched("talk.voice", r#"{"protective": true}"#).is_empty(), "only the per app answers among the editors protect");
+    }
+    #[test]
+    fn the_area_five_settings_keep_todays_behaviour_as_their_usual_values() {
+        let r = registry();
+        let usual = |k: &str| r.get(k).unwrap_or_else(|| panic!("{k} missing")).default.clone();
+        assert_eq!(usual("point.ringSeconds"), json!(10));
+        assert_eq!(usual("point.yourTurnSeconds"), json!(90));
+        assert_eq!(usual("talk.maxHold"), json!("60"));
+        assert_eq!(usual("drawIt.seconds"), json!("15"));
+        assert_eq!(usual("point.guesses"), json!("softRing"));
+        assert_eq!(usual("ph.style"), json!("full"));
+        assert_eq!(usual("pointat.editor"), json!("editorInFront"));
+        assert_eq!(usual("calls.apps"), json!(crate::presentation::CALL_APPS));
+        // The ones the shell applies say so; the engine gets only its own two in the settings line.
+        for k in ["point.ringSeconds", "point.yourTurnSeconds", "talk.maxHold", "drawIt.seconds", "point.guesses", "ph.style", "pointat.editor", "calls.apps", "ph.appAnswers"] {
+            assert!(r.get(k).unwrap().applies_to("shell"), "{k}");
+        }
+        let mut f = File::default();
+        for (k, v) in [("ph.useProjectInfo", json!(false)), ("ph.handBack", json!("copy")), ("ph.style", json!("light")), ("talk.maxHold", json!("30"))] { set(r, &mut f, k, &v, None).unwrap(); }
+        let line: Value = serde_json::from_str(&apply_line(r, &f, None, "x")).unwrap();
+        assert_eq!(line["values"], json!({ "ph.useProjectInfo": false, "ph.handBack": "copy" }));
     }
 }

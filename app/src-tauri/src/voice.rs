@@ -1,10 +1,26 @@
 //! Hold to talk. The rules live here as plain code so they can be tested without a microphone:
-//! the microphone is open only while the key is held, never longer than a minute, a quick tap does nothing,
+//! the microphone is open only while the key is held, never longer than its cap (a minute unless changed in Settings,
+//! talk.maxHold: 30 seconds, a minute or 2 minutes; there is always one), a quick tap does nothing,
 //! silence is told apart from a blocked microphone, and the words that come back are tidied before they are shown.
 
 pub const TARGET_RATE: u32 = 16_000;
 pub const MIN_HOLD_MS: u64 = 300;
 pub const MAX_HOLD_MS: u64 = 60_000;
+/// The longest cap Settings offers. No hold is ever longer, whatever is asked.
+pub const MAX_EVER_MS: u64 = 120_000;
+
+/// The cap from the setting's value (30, 60 or 120 seconds); anything else is a minute. Never none, never longer than two minutes.
+pub fn max_hold_ms(v: &serde_json::Value) -> u64 {
+    match v.as_str() { Some("30") => 30_000, Some("60") => 60_000, Some("120") => 120_000, _ => MAX_HOLD_MS }.min(MAX_EVER_MS)
+}
+/// What the person is told when the cap closed the microphone.
+pub fn stopped_words(cap_ms: u64) -> String {
+    let when = match cap_ms { 60_000 => "a minute".to_string(), ms if ms % 60_000 == 0 => format!("{} minutes", ms / 60_000), ms => format!("{} seconds", ms / 1000) };
+    format!("I stopped listening after {when}. Hold the keys and talk again.")
+}
+/// How many samples the recorder keeps room for: the cap and ten seconds more, at up to four channels of 32 kHz (70
+/// seconds' room for the usual minute, as before).
+pub fn buffer_samples(cap_ms: u64) -> usize { 16_000 * 4 * 2 * ((cap_ms.min(MAX_EVER_MS) / 1000) as usize + 10) }
 pub const AUTO_SEND_MIN_WORDS: usize = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,14 +31,18 @@ pub enum Step { Start, Stop, Ignore }
 
 /// What the key does in each phase. Key presses that repeat while held do nothing.
 #[derive(Debug)]
-pub struct Hold { pub phase: Phase, since_ms: u64 }
+pub struct Hold { pub phase: Phase, since_ms: u64, cap_ms: u64 }
 
 impl Hold {
-    pub fn new() -> Hold { Hold { phase: Phase::Idle, since_ms: 0 } }
-    pub fn down(&mut self, now_ms: u64) -> Step {
+    pub fn new() -> Hold { Hold { phase: Phase::Idle, since_ms: 0, cap_ms: MAX_HOLD_MS } }
+    pub fn down(&mut self, now_ms: u64) -> Step { self.down_for(now_ms, MAX_HOLD_MS) }
+    /// The keys went down with this cap (read from Settings at that moment, kept until they come up).
+    pub fn down_for(&mut self, now_ms: u64, cap_ms: u64) -> Step {
         if self.phase != Phase::Idle { return Step::Ignore; }
-        self.phase = Phase::Listening; self.since_ms = now_ms; Step::Start
+        self.phase = Phase::Listening; self.since_ms = now_ms; self.cap_ms = cap_ms.clamp(1, MAX_EVER_MS); Step::Start
     }
+    /// The cap in force for this hold.
+    pub fn cap(&self) -> u64 { self.cap_ms }
     /// Key released. A very short tap is dropped; anything longer is sent to be understood.
     pub fn up(&mut self, now_ms: u64) -> (Step, bool) {
         if self.phase != Phase::Listening { return (Step::Ignore, false); }
@@ -31,7 +51,7 @@ impl Hold {
         (Step::Stop, long_enough)
     }
     /// The microphone is closed by force once the limit is reached, whatever the key is doing.
-    pub fn too_long(&self, now_ms: u64) -> bool { self.phase == Phase::Listening && now_ms.saturating_sub(self.since_ms) >= MAX_HOLD_MS }
+    pub fn too_long(&self, now_ms: u64) -> bool { self.phase == Phase::Listening && now_ms.saturating_sub(self.since_ms) >= self.cap_ms }
     pub fn finished(&mut self) { self.phase = Phase::Idle; }
     /// Stop everything: the microphone closes at once, from any phase.
     pub fn cancel(&mut self) -> bool { let was = self.phase == Phase::Listening; self.phase = Phase::Idle; was }
@@ -90,6 +110,52 @@ pub fn should_auto_send(enabled: bool, transcript: &str) -> bool { enabled && wo
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hold_to_talk_always_has_a_cap_and_it_is_a_minute_unless_changed() {
+        // talk.maxHold: 30, 60 or 120 seconds, usual 60 (today). There is always a cap: anything else is a minute.
+        assert_eq!(MAX_HOLD_MS, 60_000);
+        assert_eq!(max_hold_ms(&serde_json::json!("60")), 60_000);
+        assert_eq!(max_hold_ms(&serde_json::json!("30")), 30_000);
+        assert_eq!(max_hold_ms(&serde_json::json!("120")), 120_000);
+        for odd in [serde_json::json!("0"), serde_json::json!("none"), serde_json::json!(120), serde_json::json!(null), serde_json::json!("600")] {
+            assert_eq!(max_hold_ms(&odd), MAX_HOLD_MS, "{odd}");
+        }
+        for v in ["30", "60", "120"] { let ms = max_hold_ms(&serde_json::json!(v)); assert!(ms > 0 && ms <= MAX_EVER_MS, "{v}"); }
+    }
+    #[test]
+    fn the_microphone_is_closed_at_the_cap_chosen_when_the_keys_went_down() {
+        let mut h = Hold::new();
+        assert_eq!(h.down_for(1_000, 30_000), Step::Start);
+        assert!(!h.too_long(30_999));
+        assert!(h.too_long(31_000));
+        let mut long = Hold::new();
+        long.down_for(0, 120_000);
+        assert!(!long.too_long(119_999) && long.too_long(120_000));
+        // A cap past two minutes is never used, whatever is asked.
+        let mut odd = Hold::new();
+        odd.down_for(0, 10 * 60_000);
+        assert!(odd.too_long(MAX_EVER_MS));
+        // Pressed the usual way, it is still a minute.
+        let mut usual = Hold::new();
+        usual.down(0);
+        assert!(!usual.too_long(59_999) && usual.too_long(60_000));
+    }
+    #[test]
+    fn the_words_and_the_recording_room_follow_the_cap() {
+        assert_eq!(stopped_words(60_000), "I stopped listening after a minute. Hold the keys and talk again.");
+        assert_eq!(stopped_words(30_000), "I stopped listening after 30 seconds. Hold the keys and talk again.");
+        assert_eq!(stopped_words(120_000), "I stopped listening after 2 minutes. Hold the keys and talk again.");
+        // The microphone's buffer holds the cap plus ten seconds: 70 seconds' room for a minute, as before.
+        assert_eq!(buffer_samples(60_000), 16_000 * 4 * 70 * 2);
+        assert!(buffer_samples(120_000) >= 16_000 * 4 * 130 * 2);
+        let main = include_str!("main.rs");
+        let w = &main[main.find("fn voice_worker(").unwrap()..];
+        let w = &w[..w.find("\n}\n").unwrap()];
+        assert!(w.contains("voice::max_hold_ms(&setting_now(\"talk.maxHold\"))"), "read when the keys go down");
+        assert!(w.contains("hold.down_for(t, cap)"));
+        assert!(w.contains("voice::stopped_words("));
+        assert!(include_str!("voice_mac.rs").contains("buffer_room()"), "the recorder keeps room for the whole cap");
+    }
 
     #[test]
     fn holding_starts_releasing_stops_and_repeats_do_nothing() {

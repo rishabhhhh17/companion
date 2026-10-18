@@ -5,7 +5,13 @@
 use crate::coords::{Pt, R};
 
 pub const POLL_MS: u64 = 16;
+/// How long a your turn ring waits for the click unless changed (point.yourTurnSeconds in Settings, 30 to 300 seconds).
+/// The mouse is read only while the ring is up, so this is also the longest it is read for one ring.
 pub const WAIT_MS: u64 = 90_000;
+/// The wait from the setting's value; anything its rules refuse is the usual 90 seconds.
+pub fn wait_ms(v: &serde_json::Value) -> u64 {
+    crate::settings::registry().get("point.yourTurnSeconds").and_then(|d| crate::settings::validate(d, v).ok()).and_then(|n| n.as_f64()).map(|s| (s * 1000.0).round() as u64).unwrap_or(WAIT_MS)
+}
 /// A click this close to the ring still counts: people aim at the middle, not the edge.
 const REACH: f64 = 10.0;
 
@@ -98,6 +104,24 @@ pub fn may_press(role: &str, texts: &[String], in_dialog: bool, ours: bool) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_your_turn_ring_waits_as_long_as_the_setting_says_and_ninety_seconds_unless_changed() {
+        // point.yourTurnSeconds: 30 to 300 seconds in steps of 15, usual 90 (today). The mouse is read only while the ring
+        // is up, so this is also how long the mouse may be read for one ring.
+        assert_eq!(WAIT_MS, 90_000);
+        assert_eq!(wait_ms(&serde_json::json!(90)), 90_000);
+        assert_eq!(wait_ms(&serde_json::json!(30)), 30_000);
+        assert_eq!(wait_ms(&serde_json::json!(300)), 300_000);
+        assert_eq!(wait_ms(&serde_json::json!(100)), 105_000, "on its step");
+        for odd in [serde_json::json!(15), serde_json::json!(301), serde_json::json!(86_400), serde_json::json!("90"), serde_json::json!(null)] {
+            assert_eq!(wait_ms(&odd), WAIT_MS, "{odd}");
+        }
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn your_turn(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("yourturn::wait_ms(&setting_now(\"point.yourTurnSeconds\"))"), "read when the ring goes up");
+        assert!(f.contains("t0.elapsed().as_millis() < wait as u128"), "and the loop that reads the mouse ends then");
+    }
     const T: R = R { x: 500.0, y: 300.0, w: 120.0, h: 36.0 };
     fn p(x: f64, y: f64) -> Pt { Pt { x, y } }
 

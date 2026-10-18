@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { aimDecision, flightMs, LOW_CONFIDENCE, notSureWords, RING_MS } from "./pointer.ts";
+import { aimDecision, flightMs, LOW_CONFIDENCE, notSureWords, RING_MS, ringMsOf } from "./pointer.ts";
 
 describe("the pointer's flight", () => {
   test("short hops are not too quick to follow, long ones not too slow", () => {
@@ -29,16 +29,18 @@ describe("how long a ring that does not wait stays (rule 22)", () => {
   const overlay = readFileSync(new URL("./overlay.ts", import.meta.url), "utf8");
   const show = overlay.slice(overlay.indexOf("function show("), overlay.indexOf('void listen("overlay-point"'));
   const land = show.slice(show.indexOf("const land ="), show.indexOf("if (reduced) { land(); return; }"));
-  test("the overlay counts its ten seconds from when the draw was ordered, the flight included", () => {
+  test("the overlay counts the ring's time from when the draw was ordered, the flight included", () => {
     expect(RING_MS).toBe(10_000);
-    expect(show).toContain("if (!p.hold) timer = setTimeout(clear, RING_MS);");
-    expect(show.indexOf("setTimeout(clear, RING_MS)")).toBeLessThan(show.indexOf("const land ="));
+    expect(show).toContain("if (!p.hold) timer = setTimeout(clear, ringMsOf(p.ringMs));");
+    expect(show.indexOf("setTimeout(clear, ringMsOf(p.ringMs))")).toBeLessThan(show.indexOf("const land ="));
     expect(land).not.toContain("setTimeout(clear");
   });
-  test("the shell watches it for longer than that, with a margin, however long the flight", () => {
+  test("the shell watches it half a second longer than the time it sends, however long the flight", () => {
+    // How long a ring stays is a setting (point.ringSeconds, 5 to 30 s); the shell sends the time with the ring and watches
+    // its window for that time and half a second (anchor.rs watch_ms, tested for every value there).
     const anchor = readFileSync(new URL("../src-tauri/src/anchor.rs", import.meta.url), "utf8");
-    const watchMs = Number(/WATCH_MAX_MS: u64 = ([\d_]+);/.exec(anchor)![1].replace(/_/g, ""));
-    expect(watchMs).toBeGreaterThanOrEqual(RING_MS + 300);
-    expect(flightMs(1e9)).toBeLessThan(RING_MS);   // the flight is part of the ten seconds, never on top of them
+    expect(anchor).toContain("pub fn watch_ms(ring_ms: u64) -> u64 { ring_ms + 500 }");
+    for (let s = 5; s <= 30; s++) expect(ringMsOf(s * 1000)).toBe(s * 1000);
+    expect(flightMs(1e9, "slower")).toBeLessThan(ringMsOf(5000));   // the flight is part of the ring's time, never on top of it
   });
 });

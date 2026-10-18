@@ -17,6 +17,24 @@ pub fn choose_editor(front_bundle: &str, installed: impl Fn(&str) -> bool) -> Op
     EDITORS.iter().position(|e| e.0 == front_bundle).or_else(|| EDITORS.iter().position(|e| installed(e.0)))
 }
 
+/// Which editor opens the failing file: one picked in Settings (Open files in, pointat.editor) or today's order.
+/// `missing`: the picked one is not on this Mac, so today's order was used, and the person is told.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pick { pub editor: Option<usize>, pub missing: Option<&'static str> }
+
+/// editorInFront (the usual): the editor in front, else the first installed, else the Mac's default (today). cursor,
+/// vscode, windsurf: that one when it is installed, else today's order. macDefault: the Mac's own default (`open -t`).
+pub fn choose_editor_for(pref: &str, front_bundle: &str, installed: impl Fn(&str) -> bool) -> Pick {
+    let chosen = match pref { "cursor" => Some(0), "vscode" => Some(1), "windsurf" => Some(2), "macDefault" => return Pick { editor: None, missing: None }, _ => None };
+    match chosen {
+        Some(i) if installed(EDITORS[i].0) => Pick { editor: Some(i), missing: None },
+        Some(i) => Pick { editor: choose_editor(front_bundle, installed), missing: Some(EDITORS[i].2) },
+        None => Pick { editor: choose_editor(front_bundle, installed), missing: None },
+    }
+}
+/// The words in front of what was opened, when the picked editor is not on this Mac.
+pub fn missing_words(name: &str) -> String { format!("{name} is not on this Mac, so I used another editor. ") }
+
 fn encode_path(p: &str) -> String {
     let mut out = String::new();
     for b in p.bytes() {
@@ -196,6 +214,33 @@ mod tests {
         let page = vec![b("Saved", 100.0, 100.0, 50.0), b("Save", 300.0, 100.0, 40.0), b("Cancel", 400.0, 100.0, 50.0)];
         assert_eq!(find_text(&page, "Save").unwrap().rect.x, 296.0);
         assert!(find_text(&page, "Pay").is_none());
+    }
+    #[test]
+    fn open_files_in_the_chosen_editor_or_fall_back_to_todays_order_and_say_so() {
+        // pointat.editor, usual editorInFront: exactly today's choice.
+        let all = |_: &str| true;
+        for (front, installed) in [("com.exafunction.windsurf", "all"), ("com.apple.Safari", "vscode"), ("com.apple.Safari", "none")] {
+            let inst = |b: &str| installed == "all" || (installed == "vscode" && b == "com.microsoft.VSCode");
+            assert_eq!(choose_editor_for("editorInFront", front, inst), Pick { editor: choose_editor(front, inst), missing: None });
+        }
+        // A chosen editor wins over the one in front, when it is on this Mac.
+        assert_eq!(choose_editor_for("cursor", "com.microsoft.VSCode", all), Pick { editor: Some(0), missing: None });
+        assert_eq!(choose_editor_for("vscode", "com.todesktop.230313mzl4w4u92", all), Pick { editor: Some(1), missing: None });
+        assert_eq!(choose_editor_for("windsurf", "", all), Pick { editor: Some(2), missing: None });
+        // Not on this Mac: today's order, and the person is told which one was missing.
+        let only_code = |b: &str| b == "com.microsoft.VSCode";
+        assert_eq!(choose_editor_for("cursor", "com.apple.Safari", only_code), Pick { editor: Some(1), missing: Some("Cursor") });
+        assert_eq!(choose_editor_for("windsurf", "com.apple.Safari", |_| false), Pick { editor: None, missing: Some("Windsurf") });
+        // The Mac's default: never an editor link, even with Cursor in front.
+        assert_eq!(choose_editor_for("macDefault", "com.todesktop.230313mzl4w4u92", all), Pick { editor: None, missing: None });
+        // Anything else is today's choice.
+        assert_eq!(choose_editor_for("emacs", "com.exafunction.windsurf", all), Pick { editor: Some(2), missing: None });
+        assert_eq!(missing_words("Cursor"), "Cursor is not on this Mac, so I used another editor. ");
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn point_problem(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("pointat::choose_editor_for(setting_now(\"pointat.editor\").as_str().unwrap_or(\"\"), &front_id(), editor_installed)"));
+        assert!(f.contains("pick.missing.map(pointat::missing_words)"), "a missing editor is said");
     }
     #[test]
     fn the_editor_in_front_wins_then_the_first_installed() {

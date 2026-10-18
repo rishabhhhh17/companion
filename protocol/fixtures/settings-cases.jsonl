@@ -57,6 +57,37 @@
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["build"], "ok": false, "reason": "notAllowed"}
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "lint"], "ok": false, "reason": "duplicate"}
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "test", "x"], "ok": false, "reason": "tooMany"}
+{"key": "point.ringSeconds", "value": 5, "ok": true, "normalized": 5}
+{"key": "point.ringSeconds", "value": 30, "ok": true, "normalized": 30}
+{"key": "point.ringSeconds", "value": 12.4, "ok": true, "normalized": 12}
+{"key": "point.ringSeconds", "value": 4, "ok": false, "reason": "tooLow"}
+{"key": "point.ringSeconds", "value": 31, "ok": false, "reason": "tooHigh"}
+{"key": "point.ringSeconds", "value": "10", "ok": false, "reason": "notNumber"}
+{"key": "point.yourTurnSeconds", "value": 30, "ok": true, "normalized": 30}
+{"key": "point.yourTurnSeconds", "value": 300, "ok": true, "normalized": 300}
+{"key": "point.yourTurnSeconds", "value": 100, "ok": true, "normalized": 105}
+{"key": "point.yourTurnSeconds", "value": 15, "ok": false, "reason": "tooLow"}
+{"key": "point.yourTurnSeconds", "value": 301, "ok": false, "reason": "tooHigh"}
+{"key": "talk.maxHold", "value": "120", "ok": true, "normalized": "120"}
+{"key": "talk.maxHold", "value": 120, "ok": false, "reason": "notChoice"}
+{"key": "talk.maxHold", "value": "0", "ok": false, "reason": "notChoice"}
+{"key": "talk.maxHold", "value": "none", "ok": false, "reason": "notChoice"}
+{"key": "drawIt.seconds", "value": "untilClosed", "ok": true, "normalized": "untilClosed"}
+{"key": "drawIt.seconds", "value": "5", "ok": false, "reason": "notChoice"}
+{"key": "point.guesses", "value": "solid", "ok": false, "reason": "notChoice"}
+{"key": "point.colour", "value": "highContrast", "ok": true, "normalized": "highContrast"}
+{"key": "ph.handBack", "value": "type", "ok": false, "reason": "notChoice"}
+{"key": "ph.useProjectInfo", "value": "off", "ok": false, "reason": "notSwitch"}
+{"key": "speak.alsoSay", "value": ["taskDone", "needsYou"], "ok": true, "normalized": ["taskDone", "needsYou"]}
+{"key": "speak.alsoSay", "value": [], "ok": true, "normalized": []}
+{"key": "speak.alsoSay", "value": ["everything"], "ok": false, "reason": "notAllowed"}
+{"key": "speak.alsoSay", "value": ["taskDone", "taskDone"], "ok": false, "reason": "duplicate"}
+{"key": "calls.apps", "value": ["us.zoom.xos", " com.example.call "], "ok": true, "normalized": ["us.zoom.xos", "com.example.call"]}
+{"key": "calls.apps", "value": [], "ok": true, "normalized": []}
+{"key": "calls.apps", "value": ["com.example.app0", "com.example.app1", "com.example.app2", "com.example.app3", "com.example.app4", "com.example.app5", "com.example.app6", "com.example.app7", "com.example.app8", "com.example.app9", "com.example.app10", "com.example.app11", "com.example.app12", "com.example.app13", "com.example.app14", "com.example.app15", "com.example.app16", "com.example.app17", "com.example.app18", "com.example.app19", "com.example.app20", "com.example.app21", "com.example.app22", "com.example.app23", "com.example.app24", "com.example.app25", "com.example.app26", "com.example.app27"], "ok": false, "reason": "tooMany"}
+{"key": "calls.apps", "value": ["us.zoom.xos", "us.zoom.xos"], "ok": false, "reason": "duplicate"}
+{"key": "calls.apps", "value": ["two\nlines"], "ok": false, "reason": "notOneLine"}
+{"key": "ph.appAnswers", "value": {"op": "forgetAll"}, "ok": false, "reason": "custom"}
 {"migrate": "isOn", "raw": "on", "value": true}
 {"migrate": "isOn", "raw": "off", "value": false}
 {"migrate": "isOn", "raw": "yes", "value": false}

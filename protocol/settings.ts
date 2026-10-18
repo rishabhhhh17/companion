@@ -7,7 +7,7 @@ import registryJson from "./settings.json";
 
 export type Kind = "switch" | "choice" | "number" | "text" | "list" | "custom";
 export type Applies = "shell" | "runner" | "pages";
-export type Store = "settings" | "dock" | "presentation" | "keys" | "voice" | "spending" | "memory" | "metrics";
+export type Store = "settings" | "dock" | "presentation" | "keys" | "voice" | "promptHelpApps" | "spending" | "memory" | "metrics";
 export type Unit = "dollars" | "seconds" | "minutes" | "percent" | "count" | "words";
 export type MapName = "isOn" | "notOff" | "isOne" | "notZero" | "textSize";
 export type Def = {
@@ -24,7 +24,11 @@ export type Checked = { ok: true; value: unknown } | { ok: false; reason: Reason
 
 export const REGISTRY: Registry = registryJson as unknown as Registry;
 export const KINDS: readonly Kind[] = ["switch", "choice", "number", "text", "list", "custom"];
-export const STORES: readonly Store[] = ["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics"];
+export const STORES: readonly Store[] = ["settings", "dock", "presentation", "keys", "voice", "promptHelpApps", "spending", "memory", "metrics"];
+/** The stores with their own editor, shown by a custom row: the keys, the voice, and the per app answers (prompt_help.json). */
+export const EDITOR_STORES: readonly Store[] = ["keys", "voice", "promptHelpApps"];
+/** The one custom setting that holds protections a person added (apps never to read): never reset, only its own controls. */
+export const PROTECTIVE_EDITOR: Store = "promptHelpApps";
 export const UNITS: readonly Unit[] = ["dollars", "seconds", "minutes", "percent", "count", "words"];
 /** The stores the engine keeps itself (spending.json, memory-settings.json, metrics.json), changed only by the shell. */
 export const RUNNER_STORES: readonly Store[] = ["spending", "memory", "metrics"];
@@ -207,14 +211,14 @@ export function checkRegistry(r: Registry): string[] {
     if (!Array.isArray(d.applies) || d.applies.length === 0 || d.applies.some((a) => !["shell", "runner", "pages"].includes(a)) || new Set(d.applies).size !== d.applies.length) bad("applies must name shell, runner or pages");
     if (!STORES.includes(d.store)) bad("its store does not exist");
     if (typeof d.live !== "boolean") bad("live must be true or false");
-    if (d.protective !== undefined && (typeof d.protective !== "boolean" || (d.protective && d.kind !== "list"))) bad("only a list can be protective");
+    if (d.protective !== undefined && (typeof d.protective !== "boolean" || (d.protective && d.kind !== "list" && !(d.kind === "custom" && d.store === PROTECTIVE_EDITOR)))) bad("only a list (or the per app answers) can be protective");
     if (d.floor !== undefined && (typeof d.floor !== "string" || !d.floor)) bad("floor must name its words");
     if (d.kind === "custom") {
-      if (d.store !== "keys" && d.store !== "voice") bad("custom is only for the editors that already exist");
+      if (!EDITOR_STORES.includes(d.store)) bad("custom is only for the editors that already exist");
       if (d.default !== null) bad("a custom setting's usual value lives in its own store");
       continue;
     }
-    if (d.store === "keys" || d.store === "voice") bad("that store has its own editor");
+    if (EDITOR_STORES.includes(d.store)) bad("that store has its own editor");
     if (RUNNER_STORES.includes(d.store) && (d.applies.join() !== "runner" || d.scope !== "app")) bad("the engine's own stores are applied by the engine, for every project");
     if (d.kind === "choice" && (!Array.isArray(d.options) || d.options.length < 2 || new Set(d.options).size !== d.options.length || d.options.some((o) => typeof o !== "string" || !o))) bad("a choice needs two or more different options");
     if (d.kind === "number") {

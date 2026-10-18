@@ -3,13 +3,16 @@
 // shown and said, a short pause, then the next. Only the last one waits for the person's click. A target below the
 // confidence line is said in words and never drawn (F17 4.2). The Mac side snaps and draws each one, and refuses when the
 // window the picture was taken of has changed (rule 22); then the rest are not shown.
-import { aimDecision, notSureWords } from "./pointer.ts";
+import { aimDecision, notSureWords, paceFactor } from "./pointer.ts";
 
 export const MAX_TARGETS = 5;
 /** Before each line: the pointer flies to its target. */
 export const LEAD_MS = 900;
 /** After each line, before the next target. */
 export const AFTER_MS = 350;
+/** The lead in and the pause at the chosen pace (point.pace; normal is the two above). */
+export const leadMs = (pace?: unknown): number => Math.round(LEAD_MS * paceFactor(pace));
+export const afterMs = (pace?: unknown): number => Math.round(AFTER_MS * paceFactor(pace));
 
 export type Mark = "ring" | "arrow" | "underline" | "box";
 export type Target = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: Mark; screen?: number };
@@ -60,18 +63,19 @@ const SLOWEST = 0.5;
  *  Anything odd is normal speed. */
 const slowdown = (speed: number) => (Number.isFinite(speed) && speed > 0 ? 1 / Math.min(1, Math.max(SLOWEST, speed)) : 1);
 /** How long a line stays (an estimate): as long as the Mac's voice takes to say it (about three words a second at the
- *  normal speed; `speed` is the one picked in Settings), or as long as it takes to read when nothing is said. */
-export function lineMs(text: string, speaking: boolean, speed = 1): number {
-  const n = words(text);
-  return Math.round(speaking ? clamp(400 + n * 340, 1200, 8000) * slowdown(speed) : clamp(900 + n * 260, 1500, 6000));
+ *  normal speed; `speed` is the one picked in Settings), or as long as it takes to read when nothing is said, at the
+ *  chosen pace. A faster pace never shortens a spoken line: the voice still needs its time. */
+export function lineMs(text: string, speaking: boolean, speed = 1, pace?: unknown): number {
+  const n = words(text), f = paceFactor(pace);
+  return Math.round(speaking ? clamp(400 + n * 340, 1200, 8000) * slowdown(speed) * Math.max(1, f) : clamp(900 + n * 260, 1500, 6000) * f);
 }
 
 /** When each step starts, in ms after the answer arrived: one after another, each after the last one's lead in, its line
  *  and a short pause. */
-export function startTimes(steps: Step[], speaking: boolean, speed = 1): number[] {
+export function startTimes(steps: Step[], speaking: boolean, speed = 1, pace?: unknown): number[] {
   const at: number[] = [];
   let t = 0;
-  for (const s of steps) { at.push(t); t += LEAD_MS + lineMs(s.text, speaking, speed) + AFTER_MS; }
+  for (const s of steps) { at.push(t); t += leadMs(pace) + lineMs(s.text, speaking, speed, pace) + afterMs(pace); }
   return at;
 }
 
@@ -109,7 +113,7 @@ export function answerPlayer(timers: Timers = realTimers) {
   return {
     /** Plays a new answer; whatever was playing or waiting to be said before it is dropped. `speed`: the one picked in
      *  Settings, so each spoken line is said whole before the next step's line. */
-    start(steps: Step[], act: Actions, speaking: boolean, speed = 1) { this.hush(); stop = play(steps, act, speaking, timers, speed); },
+    start(steps: Step[], act: Actions, speaking: boolean, speed = 1, pace?: unknown) { this.hush(); stop = play(steps, act, speaking, timers, speed, pace); },
     /** Says a line after a pause, unless it is hushed or replaced first. One line waits at a time. */
     sayLater(say: () => void, ms: number) { cancelLine(); line = timers.set(() => { line = undefined; say(); }, ms); },
     cancelLine,
@@ -120,7 +124,7 @@ export function answerPlayer(timers: Timers = realTimers) {
 
 /** Plays the steps in order. Each next step is scheduled only once the one before it was shown, so a step that could not
  *  be drawn stops the rest. Returns the stop switch (Stop everything, Esc, a new question). */
-export function play(steps: Step[], act: Actions, speaking: boolean, timers: Timers = realTimers, speed = 1): () => void {
+export function play(steps: Step[], act: Actions, speaking: boolean, timers: Timers = realTimers, speed = 1, pace?: unknown): () => void {
   let stopped = false;
   let timer: unknown;
   const run = async (i: number) => {
@@ -129,7 +133,7 @@ export function play(steps: Step[], act: Actions, speaking: boolean, timers: Tim
     let ok = true;
     if (s.draw) { try { ok = await act.aim(s); } catch { ok = false; } } else act.words(s);
     if (stopped || !ok || i + 1 >= steps.length) return;
-    timer = timers.set(() => { void run(i + 1); }, LEAD_MS + lineMs(s.text, speaking, speed) + AFTER_MS);
+    timer = timers.set(() => { void run(i + 1); }, leadMs(pace) + lineMs(s.text, speaking, speed, pace) + afterMs(pace));
   };
   void run(0);
   return () => { stopped = true; if (timer !== undefined) timers.clear(timer); };

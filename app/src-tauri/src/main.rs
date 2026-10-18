@@ -102,9 +102,12 @@ fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 static TURN: Mutex<Option<(coords::R, String)>> = Mutex::new(None);
 static TURN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// Until when a pointer (ring, caption) is on the overlay, in ms since 1970: confetti waits. A pointer that fades by
-/// itself after 10 s frees it then; one waiting for a click holds it until the overlay is hidden.
+/// itself frees it half a second after its ring time (10 s unless changed, point.ringSeconds); one waiting for a click,
+/// or a Draw it for me picture kept until closed, holds it until the overlay is hidden.
 static OVERLAY_BUSY_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn overlay_busy() -> bool { (now() as u64) < OVERLAY_BUSY_UNTIL.load(std::sync::atomic::Ordering::SeqCst) }
+/// A Draw it for me picture kept until it is closed (drawIt.seconds) is on the overlay: a new picture may replace it.
+static DIAGRAM_KEPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Each celebration takes a number, so an older one's tidy up never cuts a newer one short.
 static PARTY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn turn_cancel() { TURN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None; }
@@ -755,9 +758,14 @@ fn with_settings<R>(f: impl FnOnce(&mut SettingsNow) -> R) -> R {
     f(s)
 }
 fn project_opt() -> Option<String> { let p = current_project(); (!p.is_empty()).then_some(p) }
+/// The value in force of a setting kept in settings.json (the usual one when it is not set), for the shell's own readers.
+fn setting_now(key: &str) -> Value {
+    let project = project_opt();
+    with_settings(|s| settings::value_of(settings::registry(), &s.file, key, project.as_deref())).unwrap_or(Value::Null)
+}
 fn settings_snapshot(changed: &[String]) -> Value {
     let project = project_opt();
-    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now() };
+    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now(), ph_apps: phelp::apps_value() };
     with_settings(|s| settings::snapshot(settings::registry(), &s.file, project.as_deref(), &w, &s.problems, changed))
 }
 /// Tells every window (card, dock, overlay, island) what is in force now.
@@ -826,6 +834,13 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
             let v = settings::validate(d, value)?;
             let cmd = settings::runner_command(key, &v, &current_project(), &format!("set-{}", now())).ok_or("unknown")?;
             app.state::<runner::Runner>().send(&cmd).map_err(|_| "engine")?;
+            Ok(one)
+        }
+        // The per app answers (Prompt help and the error explainer, prompt_help.json): one operation from the editor, under
+        // prompthelp.rs's rules (the built in never list cannot change; loosening a never needs the inline confirm). Only the
+        // id of the app in front is read, for "Add the app in front to never read".
+        "promptHelpApps" => {
+            phelp::apps_change(value, &front_id())?;
             Ok(one)
         }
         // Undo after a reset: the voice and the keys come back whole, exactly as the page was shown them (settings.rs).
@@ -913,6 +928,32 @@ fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, 
     log("settings_migrated", json!({ "from": from, "written": written.len() }));
     settings_told(&app, &written);
     Ok(settings_snapshot(&written))
+}
+
+/// Settings' "Add the app in front" (Apps that count as a call, and Apps Prompt help may read): the id and name of the app
+/// in front. Home is a panel that never takes the keyboard, so the app in front is the one the person was using. Only its
+/// id and name are read, never anything in it (rule 7). Companion itself is refused. Only from the card.
+#[tauri::command]
+fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
+    settings::only_card(window.label())?;
+    let id = front_id();
+    if id.is_empty() || id.starts_with("dev.companion") { return Err("ownApp".into()); }
+    Ok(json!({ "id": id, "name": front() }))
+}
+
+/// The names of apps by their ids, for the lists in Settings (an app that is not on this Mac keeps its id). Names only.
+/// Only from the card.
+#[tauri::command]
+fn app_names(window: tauri::WebviewWindow, ids: Vec<String>) -> Result<Value, String> {
+    settings::only_card(window.label())?;
+    let ws = NSWorkspace::sharedWorkspace();
+    let mut out = serde_json::Map::new();
+    for id in ids.into_iter().take(64) {
+        let name = ws.URLForApplicationWithBundleIdentifier(&objc2_foundation::NSString::from_str(&id))
+            .and_then(|u| u.lastPathComponent()).map(|n| n.to_string().trim_end_matches(".app").to_string()).filter(|n| !n.is_empty());
+        if let Some(n) = name { out.insert(id, json!(n)); }
+    }
+    Ok(Value::Object(out))
 }
 
 /// A page that has just loaded asks for the status messages it missed.
@@ -1192,6 +1233,7 @@ fn say_showme(app: &AppHandle, stage: &str, message: &str, extra: Value) {
 
 fn hide_overlay(app: &AppHandle) {
     OVERLAY_BUSY_UNTIL.store(0, std::sync::atomic::Ordering::SeqCst);
+    DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to("overlay", "overlay-clear", ());
     let _ = app.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
 }
@@ -1294,18 +1336,25 @@ struct Look { mark: Option<&'static str>, fly_ms: Option<u64>, fade_ms: Option<u
 
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
 /// The ring is clipped to the window under it. What it belongs to (that window, or with none the app in front) is handed
-/// back so the caller can watch it (`your_turn` for a ring that waits for a click, `watch_ring` for one that does not).
-fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) -> anchor::Watched { draw_pointer_with(app, d, rect, caption, exact, hold, Look::default()) }
-fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look) -> anchor::Watched {
-    // The overlay takes a ring that does not wait away ten seconds after this order (the flight included); the watch and
-    // this busy time last a little longer, so confetti never plays over it and no part of it goes unwatched.
-    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + anchor::WATCH_MAX_MS }, std::sync::atomic::Ordering::SeqCst);
+/// back so the caller can watch it (`your_turn` for a ring that waits for a click, `watch_ring` for one that does not),
+/// with how long a ring that does not wait stays (How long a ring stays, point.ringSeconds).
+fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) -> (anchor::Watched, u64) { draw_pointer_with(app, d, rect, caption, exact, hold, Look::default()) }
+fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look) -> (anchor::Watched, u64) {
+    // The overlay takes a ring that does not wait away this long after this order (the flight included; it is sent the
+    // same number); the watch and this busy time last half a second longer, so confetti never plays over it and no part
+    // of it goes unwatched.
+    let ring = anchor::ring_ms(&setting_now("point.ringSeconds"));
+    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + anchor::watch_ms(ring) }, std::sync::atomic::Ordering::SeqCst);
+    DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);   // a ring is never replaced by a new picture
     let a = app.clone();
     let caption2 = caption.to_string();
     let watched = anchor::watched_for(anchor_for(rect), front_pid());
     // Rule 22: a solid ring only where the window it sits in is confirmed. Over a menu, a dialog or anything that is not
     // an ordinary window the ring is soft and says it is a guess.
-    let exact = exact && watched.window().is_some();
+    let exact = showme::solid(exact, watched.window().is_some());
+    // The overlay only listens (its capability), so it is given the settings in force with the ring (its colour, lettering
+    // and pace).
+    let shown = settings_snapshot(&[]);
     let clip = watched.window().map(|an| json!({ "x": an.bounds[0] - d.x, "y": an.bounds[1] - d.y, "w": an.bounds[2], "h": an.bounds[3] }));
     let anchored = watched.window().cloned();
     let _ = app.run_on_main_thread(move || {
@@ -1318,12 +1367,12 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         // The character comes beside the window the ring is in (F18 item 2); a ring with no confirmed window leaves it home.
         roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
         let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
-            "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)) });
+            "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)), "ringMs": ring, "settings": shown });
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
     });
-    watched
+    (watched, ring)
 }
 
 /// What the person is told when a ring went away because its window changed (moved, closed, covered, another app in front).
@@ -1332,15 +1381,16 @@ const RING_WINDOW_CHANGED: &str = "The window changed, so I took the ring away. 
 /// A ring that does not wait for a click (a step in the middle of a multi step answer, Point at the problem's line or
 /// error) is watched while it is up, like the your turn ring: if its window moves, closes, is covered or another app comes
 /// to the front, it goes away at once and the page is told (rule 22). It stops by itself when a newer ring, Stop or Esc
-/// takes it away, or after the overlay's own ten seconds. Window owners and sizes only, no permission, never content.
-fn watch_ring(app: &AppHandle, target: coords::R, an: anchor::Watched, showme_req: Option<String>) {
+/// takes it away, or after the ring's own time (`ring`) and half a second. Window owners and sizes only, no permission,
+/// never content.
+fn watch_ring(app: &AppHandle, target: coords::R, an: anchor::Watched, ring: u64, showme_req: Option<String>) {
     use std::sync::atomic::Ordering::SeqCst;
     let gen = POINT_GEN.load(SeqCst);
     let alive = move || POINT_GEN.load(SeqCst) == gen && overlay_busy();
     let app = app.clone();
     std::thread::spawn(move || {
         let c = target.center();
-        let polls = (anchor::WATCH_MAX_MS / anchor::WATCH_POLL_MS) as u32;
+        let polls = anchor::watch_polls(ring);
         let v = anchor::watch(&an, std::process::id() as i32, c.x, c.y, polls, alive,
             || (fullscreen::sys::on_screen_windows(), front_pid()), || std::thread::sleep(Duration::from_millis(anchor::WATCH_POLL_MS)));
         let Some(v) = v else { return };
@@ -1376,13 +1426,21 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
         return json!({ "ok": false, "why": "window_changed" });
     }
     POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);   // a point_problem still on its way must not draw over this
+    // When Companion is only guessing (point.guesses), words only: nothing is drawn, the page says where to look. What was
+    // seen is kept for the steps after this one (as a step said in words below the confidence line), and an earlier step's
+    // ring goes. A confirmed target is drawn either way, and a guess is never drawn solid.
+    if showme::said_in_words(s.exact, anchor_for(s.rect).is_some(), &setting_now("point.guesses")) {
+        log("showme_guess_in_words", json!({ "step": step, "of": of }));
+        turn_cancel(); hide_overlay(&app);
+        return json!({ "ok": false, "why": "guess" });
+    }
     if !last { showme_pending().pointed(&req, s.rect.center()); }
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact, "step": step, "of": of, "screen": screen.unwrap_or(1) }));
     let look = Look { mark: showme::mark_name(mark.as_deref()), fly_ms, fade_ms, from: if step.unwrap_or(1) > 1 { from } else { None } };
-    let watched = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look);
+    let (watched, ring) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look);
     // The ring goes away the moment its window changes (or, with no window under it, another app comes to the front): the
     // last step's while it waits for the click, the others while they are up.
-    if hold { your_turn(&app, display, s.rect, &target_text); } else { watch_ring(&app, s.rect, watched, Some(req.clone())); }
+    if hold { your_turn(&app, display, s.rect, &target_text); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
     say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, showme::pointing_extra(&req, step.unwrap_or(1), of.unwrap_or(1), hold));
     json!({ "ok": true })
 }
@@ -1427,7 +1485,10 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
         // The window it was confirmed in, or with none under it (a menu, a dialog, the desktop) the app in front.
         let watched = anchor::watched_for(anchor_for(target), front_pid());
         let (mut polls, tc) = (0u32, target.center());
-        while alive() && t0.elapsed().as_millis() < yourturn::WAIT_MS as u128 {
+        // How long it waits for the click (point.yourTurnSeconds, usual 90 s), read as the ring goes up. The mouse is read
+        // only inside this loop, while the ring is up.
+        let wait = yourturn::wait_ms(&setting_now("point.yourTurnSeconds"));
+        while alive() && t0.elapsed().as_millis() < wait as u128 {
             std::thread::sleep(Duration::from_millis(yourturn::POLL_MS));
             polls += 1;
             // Four times a second: is the ring still on the window it was confirmed in (or the same app in front)? If not,
@@ -1555,7 +1616,7 @@ fn apply_sharing(s: &presentation::Settings) {
 
 /// Quiet during calls: a known call app is in front (and, once verified, a camera is in use). Only the front app's id (and
 /// whether a camera is on) is looked at, and only at the moment something would be said or a reaction would play.
-fn quiet() -> bool { presentation::quiet(&presentation_now(), &front_id(), || presentation::CAMERA_CHECK_ON && presentation::mac::camera_in_use()) }
+fn quiet() -> bool { presentation::quiet_with(&presentation_now(), &presentation::call_apps_from(&setting_now("calls.apps")), &front_id(), || presentation::CAMERA_CHECK_ON && presentation::mac::camera_in_use()) }
 
 /// Settings: hide from screen sharing and quiet during calls (the registry's sharing.hide and calls.quiet), kept in
 /// `presentation.json` in Companion's own folder as before, applied at once. Changed only through settings_set.
@@ -1842,19 +1903,26 @@ fn wipe_helper_mode() -> bool {
 
 // ---------- Draw it for me ----------
 
-/// Draws a diagram the page laid out, beside the dock's screen edge, for a short while. It replaces any pointer and
-/// leaves with Stop everything or the Close button. Nothing here looks at the screen.
+/// Draws a diagram the page laid out, beside the dock's screen edge, for as long as How long Draw it for me stays says
+/// (drawIt.seconds: 10, 15 or 30 seconds, or until it is closed). It replaces any pointer and leaves with Stop everything
+/// or the Close button; one kept until closed also goes when Companion is hidden. Nothing here looks at the screen.
 #[tauri::command]
 fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
     use std::sync::atomic::Ordering::SeqCst;
     diagram::validate(&diagram)?;
     // Never over a ring the person is meant to click, never over a pointer in use, and never while the dock is hidden
     // (a full screen app is in front, or the person hid it): the sketch would land on top of what they chose not to share.
-    if TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || overlay_busy() { return Err("busy".into()); }
+    // A picture kept until closed may be replaced by a new one (it is only waiting for Close).
+    if TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || (overlay_busy() && !DIAGRAM_KEPT.load(SeqCst)) { return Err("busy".into()); }
     if HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return Err("hidden".into()); }
     point_cancel();
     let gen = POINT_GEN.load(SeqCst);
-    OVERLAY_BUSY_UNTIL.store(now() as u64 + 16_500, SeqCst);
+    // One setting drives both sides: the page fades the picture after its time, and the shell tidies up a second later
+    // (busy half a second more). Until closed: no timer here at all.
+    let chosen = setting_now("drawIt.seconds");
+    let timing = diagram::timing(&chosen);
+    OVERLAY_BUSY_UNTIL.store(if timing.busy_ms == u64::MAX { u64::MAX } else { now() as u64 + timing.busy_ms }, SeqCst);
+    DIAGRAM_KEPT.store(timing.hide_after_ms.is_none(), SeqCst);
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -1867,13 +1935,22 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
         let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
-        let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x }));
+        let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x, "ms": diagram::shown_ms(&chosen) }));
         let _ = tx.send(true);
     });
-    if !rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false) { OVERLAY_BUSY_UNTIL.store(0, SeqCst); return Err("no_screen".into()); }
+    if !rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false) { OVERLAY_BUSY_UNTIL.store(0, SeqCst); DIAGRAM_KEPT.store(false, SeqCst); return Err("no_screen".into()); }
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(16_000));
-        if POINT_GEN.load(SeqCst) == gen { hide_overlay(&app); }
+        match timing.hide_after_ms {
+            Some(after) => { std::thread::sleep(Duration::from_millis(after)); if POINT_GEN.load(SeqCst) == gen { hide_overlay(&app); } }
+            // Kept until closed: Close or Stop everything takes it away (hide_overlay, which also ends this). It never stays
+            // over what the person chose not to share: when Companion is hidden (a full screen app, or hidden from the menu
+            // bar) it goes too.
+            None => loop {
+                std::thread::sleep(Duration::from_millis(250));
+                if POINT_GEN.load(SeqCst) != gen || !overlay_busy() { return; }
+                if HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { hide_overlay(&app); return; }
+            },
+        }
     });
     Ok(())
 }
@@ -1942,14 +2019,17 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
             let column = problem.get("column").and_then(Value::as_u64).map(|c| c as u32);
             let file = match pointat::file_in_project(std::path::Path::new(&project), rel) { Ok(f) => f, Err(e) => { say_showme(&app, "error", &format!("I could not open that file: {e}."), json!({})); return; } };
             let short = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let editor = pointat::choose_editor(&front_id(), editor_installed);
-            let (ok, name, bundle) = match editor.and_then(|i| pointat::editor_link(i, &file, line.max(1), column).map(|l| (i, l))) {
+            // Open files in (pointat.editor): the editor in front unless another was picked; one not on this Mac falls back
+            // to that order, and the person is told.
+            let pick = pointat::choose_editor_for(setting_now("pointat.editor").as_str().unwrap_or(""), &front_id(), editor_installed);
+            let note = pick.missing.map(pointat::missing_words).unwrap_or_default();
+            let (ok, name, bundle) = match pick.editor.and_then(|i| pointat::editor_link(i, &file, line.max(1), column).map(|l| (i, l))) {
                 Some((i, link)) => (std::process::Command::new("/usr/bin/open").arg(&link).status().map(|s| s.success()).unwrap_or(false), pointat::EDITORS[i].2.to_string(), Some(pointat::EDITORS[i].0.to_string())),
                 None => (std::process::Command::new("/usr/bin/open").arg("-t").arg(&file).status().map(|s| s.success()).unwrap_or(false), "your text editor".to_string(), None),
             };
-            log("point_open", json!({ "editor": name, "ok": ok }));
-            if !ok { say_showme(&app, "error", &format!("I could not open {short} in {name}."), json!({})); return; }
-            opened = Some((format!("Opened {short} at line {line} in {name}."), bundle));
+            log("point_open", json!({ "editor": name, "ok": ok, "fell_back": pick.missing.is_some() }));
+            if !ok { say_showme(&app, "error", &format!("{note}I could not open {short} in {name}."), json!({})); return; }
+            opened = Some((format!("{note}Opened {short} at line {line} in {name}."), bundle));
         }
         // Give the editor a moment to come forward and draw the line.
         if let Some((_, Some(bundle))) = &opened {
@@ -1995,16 +2075,21 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         }
         if !alive() { return; }
         log("point_found", json!({ "kind": kind, "found": found.is_some(), "exact": found.map(|f| f.exact) }));
+        let what = match kind { "line" => "the line", "button" => "that button", _ => "that error" };
+        let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
         match (found, display) {
+            // Only guessing where it is, and the person asked for words then (point.guesses): no ring at all.
+            (Some(f), Some(_)) if showme::said_in_words(f.exact, anchor_for(f.rect).is_some(), &setting_now("point.guesses")) => {
+                log("point_guess_in_words", json!({ "kind": kind }));
+                say_showme(&app, "opened", &format!("{lead}I am only guessing where {what} is on your screen, so I did not draw a ring. {cap}"), json!({}));
+            }
             (Some(f), Some(d)) => {
                 let button = kind == "button";
-                let watched = draw_pointer(&app, d, f.rect, &cap, f.exact, button);
+                let (watched, ring) = draw_pointer(&app, d, f.rect, &cap, f.exact, button);
                 say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
-                if button { your_turn(&app, d, f.rect, &label); } else { watch_ring(&app, f.rect, watched, None); }
+                if button { your_turn(&app, d, f.rect, &label); } else { watch_ring(&app, f.rect, watched, ring, None); }
             }
             _ => {
-                let what = match kind { "line" => "the line", "button" => "that button", _ => "that error" };
-                let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
                 say_showme(&app, "opened", &format!("{lead}I could not spot {what} on your screen. {cap}"), json!({}));
             }
         }
@@ -2280,16 +2365,20 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
         if speech.is_some() && hold.phase == voice::Phase::Idle && last_used.elapsed() > Duration::from_secs(300) { speech = None; }
-        // The microphone is closed by force after a minute, whatever the key is doing.
+        // The microphone is closed by force at its cap (a minute unless changed, Longest hold to talk), whatever the key is doing.
         if hold.too_long(now() as u64) {
             if let Some(r) = rec.take() { let _ = r.finish(); }
             listening(false);
+            let cap = hold.cap();
             hold.cancel();
-            say_voice(&app, "error", "I stopped listening after a minute. Hold the keys and talk again.", json!({}));
+            say_voice(&app, "error", &voice::stopped_words(cap), json!({}));
         }
         match msg {
             Ok(VoiceMsg::Down(t)) => {
-                if hold.down(t) != voice::Step::Start { continue; }
+                // The cap is read as the keys go down and kept for this hold (there is always one, at most two minutes).
+                let cap = voice::max_hold_ms(&setting_now("talk.maxHold"));
+                if hold.down_for(t, cap) != voice::Step::Start { continue; }
+                voice_mac::set_buffer_room(voice::buffer_samples(cap));
                 if !voice_mac::model_ready(&data) { hold.cancel(); say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); continue; }
                 match voice_mac::mic_status() {
                     voice_mac::Mic::NotAsked => { hold.cancel(); voice_mac::ask_for_mic(); say_voice(&app, "needs_mic", "Allow the microphone in the box macOS shows, then hold the keys again.", json!({})); continue; }
@@ -2572,7 +2661,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
