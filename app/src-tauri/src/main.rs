@@ -51,6 +51,7 @@ mod visibility;
 mod wheel;
 mod presentation;
 mod settings;
+mod houserules;
 
 mod runner;
 mod instance;
@@ -757,7 +758,8 @@ fn with_settings<R>(f: impl FnOnce(&mut SettingsNow) -> R) -> R {
 fn project_opt() -> Option<String> { let p = current_project(); (!p.is_empty()).then_some(p) }
 fn settings_snapshot(changed: &[String]) -> Value {
     let project = project_opt();
-    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now() };
+    let rules = project.as_deref().filter(|p| *p != runner::NO_PROJECT).map(|p| houserules::read(std::path::Path::new(p))).unwrap_or(Ok(None));
+    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now(), rules };
     with_settings(|s| settings::snapshot(settings::registry(), &s.file, project.as_deref(), &w, &s.problems, changed))
 }
 /// Tells every window (card, dock, overlay, island) what is in force now.
@@ -827,6 +829,17 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
             let cmd = settings::runner_command(key, &v, &current_project(), &format!("set-{}", now())).ok_or("unknown")?;
             app.state::<runner::Runner>().send(&cmd).map_err(|_| "engine")?;
             Ok(one)
+        }
+        // House rules: the project's own .companion/rules.txt, written only on the row's Save, every line it does not
+        // understand kept exactly (houserules.rs). The engine reads the file itself before each action.
+        "rules" => {
+            let project = project_opt().filter(|p| p != runner::NO_PROJECT).ok_or("noProject")?;
+            let dir = std::path::Path::new(&project);
+            let old = houserules::read(dir).map_err(|_| houserules::UNREADABLE)?;
+            match houserules::change(d, old.as_deref(), value)? {
+                None => Ok(vec![]),
+                Some(text) => { houserules::write(dir, &text)?; Ok(one) }
+            }
         }
         // Undo after a reset: the voice and the keys come back whole, exactly as the page was shown them (settings.rs).
         "voice" => {
