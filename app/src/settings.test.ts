@@ -93,13 +93,13 @@ describe("replacing and removing the key in Settings", () => {
     expect(main).toMatch(/generate_handler!\[[^\]]*\bremove_api_key\b/);
   });
   test("the Settings key box is a password box that the page empties, and removing asks first", () => {
-    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const card = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     const keys = card.slice(card.indexOf("function KeySection"), card.indexOf("\n}\n", card.indexOf("function KeySection")));
     expect(keys).toMatch(/<input type="password" autoComplete="off"/);
     expect(keys).toContain('invoke("save_api_key"');
     expect(keys).toContain('invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE })');
     expect(keys).toContain("S.keyRemoveSure");
-    expect(card.slice(card.indexOf("function SettingsPanel"))).toContain("<KeySection");
+    expect(readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8")).toContain('{fixedShown("key") && inv && <KeySection keySaved={inv.keySaved}');
   });
 });
 
@@ -123,21 +123,18 @@ describe("permission lessons", () => {
   });
 });
 
-import { PRESENTATION_DEFAULT, presentationFrom } from "./settings.ts";
+import { defOf } from "../../protocol/settings.ts";
 describe("screen sharing and calls (rule 7)", () => {
-  test("both are on unless the app clearly says off", () => {
-    expect(PRESENTATION_DEFAULT).toEqual({ hideFromSharing: true, quietOnCalls: true });
-    expect(presentationFrom({ hideFromSharing: false, quietOnCalls: true })).toEqual({ hideFromSharing: false, quietOnCalls: true });
-    for (const junk of [undefined, null, "off", 3, { hideFromSharing: "no", quietOnCalls: 0 }]) expect(presentationFrom(junk)).toEqual({ hideFromSharing: true, quietOnCalls: true });
+  test("both are on unless turned off, kept by the app in presentation.json (the registry, T16)", () => {
+    for (const k of ["sharing.hide", "calls.quiet"]) expect(defOf(k), k).toMatchObject({ kind: "switch", default: true, store: "presentation", applies: ["shell"], section: "sharing" });
   });
-  test("Settings shows both switches, and the app has the commands they use, kept in the app (not the page)", () => {
-    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    const row = card.slice(card.indexOf("function PresentationRow"), card.indexOf("\n}\n", card.indexOf("function PresentationRow")));
-    expect(row).toContain('invoke("presentation_settings")');
-    expect(row).toContain('invoke("set_presentation", { hideFromSharing: next.hideFromSharing, quietOnCalls: next.quietOnCalls })');
-    expect(card.slice(card.indexOf("function SettingsPanel"))).toContain("<PresentationRow");
+  test("Settings shows both switches as registry rows, and the app keeps them (not the page)", () => {
+    expect(S.set["sharing.hide"].label).toBe(S.hideFromSharingSetting);
+    expect(S.set["calls.quiet"].label).toBe(S.quietOnCallsSetting);
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-    for (const c of ["presentation_settings", "set_presentation", "quiet_now", "showme_hide"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+    for (const c of ["settings_set", "quiet_now", "showme_hide"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
+    for (const c of ["presentation_settings", "set_presentation"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
+    expect(main).toContain("fn presentation_set(app: &AppHandle, s: presentation::Settings)");
   });
   test("reactions and confetti ask the app first, so they stay quiet during a call", () => {
     const dock = readFileSync(new URL("./dock.tsx", import.meta.url), "utf8");
@@ -155,7 +152,8 @@ describe("Show me on all screens", () => {
     const starts = card.split("\n").filter((l) => l.includes('invoke("showme_start"'));
     expect(starts.length).toBeGreaterThanOrEqual(3);
     for (const l of starts) expect(l.slice(l.indexOf('invoke("showme_start"'))).toMatch(/^invoke\("showme_start", \{ question[^;]*, allScreens: allScreensOn\(\) \}\)/);
-    expect(card.slice(card.indexOf("function SettingsPanel"))).toContain("S.allScreensSetting");
+    expect(defOf("showme.allScreens")).toMatchObject({ kind: "switch", default: false, section: "pointing" });
+    expect(S.set["showme.allScreens"].label).toBe(S.allScreensSetting);
   });
 });
 
@@ -254,7 +252,7 @@ describe("the Keys section in Settings", () => {
     expect(chordLabel("option-return")).toBe("Option and Return");
   });
   test("Settings shows every row, Change opens the short list, and Reset is there", () => {
-    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const card = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     const fn = (name: string) => card.slice(card.indexOf(`function ${name}`), card.indexOf("\n}\n", card.indexOf(`function ${name}`)));
     const section = fn("KeysSection");
     expect(section).toContain("keyRows(keys)");
@@ -284,8 +282,8 @@ describe("the Keys section in Settings", () => {
     expect(picker).toMatch(/if \(code === "taken"\) load\(\)/);
     // Nothing on the page reads key presses to learn keys: it only offers the list the app sends.
     for (const f of [section, picker]) expect(f).not.toMatch(/onKey(Down|Up|Press)/);
-    const panel = fn("SettingsPanel");
-    expect(panel).toContain("<KeysSection keys={keys} />");
+    const panel = fn("SettingsPage");
+    expect(fn("SettingRow")).toContain("<KeysSection keys={keys} />");
     expect(panel).toContain('invoke("key_map")');
   });
   test("the app has the commands, only the card may try or change keys, and one change or check at a time", () => {
@@ -296,11 +294,15 @@ describe("the Keys section in Settings", () => {
     for (const c of ["key_choices", "set_key", "reset_keys"]) {
       const b = body(c);
       expect(b, c).toContain('if window.label() != "card" { return Err("not_card".into()); }');
-      expect(b.indexOf('window.label() != "card"'), c).toBeLessThan(b.indexOf("KEYS_SWITCH.lock()"));
+      // Reset goes through keys_to_usual, which the registry's Reset uses too (T16); it takes the same lock.
+      const work = c === "reset_keys" ? b.indexOf("keys_to_usual(") : b.indexOf("KEYS_SWITCH.lock()");
+      expect(work, c).toBeGreaterThan(-1);
+      expect(b.indexOf('window.label() != "card"'), c).toBeLessThan(work);
     }
+    expect(body("keys_to_usual")).toContain("KEYS_SWITCH.lock()");
     expect(body("key_choices")).toContain("keymap::free(a,");
     expect(body("set_key")).toContain("keymap::switch(a,");
-    expect(body("reset_keys")).toContain("keymap::reset(&picked,");
+    expect(body("keys_to_usual")).toContain("keymap::reset(&picked,");
     // Every reason the app can give is a code the page puts into words.
     const rs = readFileSync(new URL("../src-tauri/src/keymap.rs", import.meta.url), "utf8");
     const codes = new Set([...rs.matchAll(/NotChanged::\w+ => "([a-z_]+)"/g), ...["key_choices", "set_key", "reset_keys"].flatMap((c) => [...body(c).matchAll(/Err\("([a-z_]+)"\.into\(\)\)/g)])].map((m) => m[1]));

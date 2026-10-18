@@ -825,9 +825,13 @@ mod tests {
     }
     #[test]
     fn the_setting_is_kept_by_the_app_changed_only_from_the_card_and_the_character_hides_from_sharing_too() {
-        let set = body(MAIN, "fn set_come_to(");
-        assert!(set.contains("window.label() != \"card\"") && set.contains("save_prefs()"));
-        for c in ["dock_settings", "set_come_to"] { assert!(MAIN.contains(&format!(", {c},")) || MAIN.contains(&format!(", {c}]")), "{c} is not a command"); }
+        // Kept in dock.json, changed only through the registry (settings_set, card only, T16); off sends it home.
+        let set = body(MAIN, "fn come_to_set(");
+        assert!(set.contains("save_prefs()") && set.contains("if !on { roam_end(app); }"));
+        assert!(body(MAIN, "fn settings_set(").contains("settings::only_card(window.label())?"));
+        assert!(body(MAIN, "fn setting_change(").contains("come_to_set(app, next.come_to)"));
+        for c in ["settings_get", "settings_set", "settings_reset"] { assert!(MAIN.contains(&format!(", {c},")) || MAIN.contains(&format!(", {c}]")), "{c} is not a command"); }
+        for c in ["dock_settings", "set_come_to"] { assert!(!MAIN.contains(&format!(", {c},")) && !MAIN.contains(&format!(", {c}]")), "{c} is still a command"); }
         assert!(body(MAIN, "fn apply_sharing(").contains("dock.setSharingType(t)"), "F18: hiding from screen sharing applies to the character");
     }
 

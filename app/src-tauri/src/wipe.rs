@@ -283,6 +283,19 @@ mod tests {
         for f in [crate::keymap::FILE, crate::keymap::OLD_TALK_FILE] { assert!(!m.data.join(f).exists(), "{f}"); }
     }
     #[test]
+    fn the_settings_file_and_its_damaged_copy_are_settings_and_go_with_everything_else() {
+        // settings.rs (T16) keeps every choice in settings.json, and moves a damaged one aside for support.
+        let m = mac("registry");
+        for f in [crate::settings::FILE, crate::settings::DAMAGED] { write(m.data.join(f), "{}").unwrap(); }
+        let g = items(&m.home, &m.data);
+        let settings = &g.iter().find(|i| i.id == "settings").unwrap().paths;
+        for f in [crate::settings::FILE, crate::settings::DAMAGED] { assert!(settings.iter().any(|p| p.ends_with(f)), "{f}"); }
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        for f in [crate::settings::FILE, crate::settings::DAMAGED] { assert!(!m.data.join(f).exists(), "{f}"); }
+        assert!(m.data.join("dev.json").exists(), "the developer's own file stays");
+    }
+    #[test]
     fn everything_is_grouped_in_the_persons_words_and_dev_json_is_not_among_it() {
         let m = mac("group");
         let g = items(&m.home, &m.data);

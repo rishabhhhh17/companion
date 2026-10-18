@@ -5,7 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { AGENT, checkMyChange, pointChange, tryNextOne } from "./commands.ts";
 import { canOfferTurn, initial, receiptProofWords, reduce, teachActions, teachLines, type Model } from "./model.ts";
-import { setYourTurn, yourTurnOn } from "./settings.ts";
+import { yourTurnOn } from "./settings.ts";
+import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -61,25 +62,28 @@ describe("your turn", () => {
     Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true, writable: true });
     try { f(); } finally { if (had) Object.defineProperty(globalThis, "localStorage", had); else delete (globalThis as { localStorage?: unknown }).localStorage; }
   };
-  test("it is off unless the person turns it on, and off again when they turn it off", () => {
+  test("it is off unless the person turns it on (teach.yourTurn in the registry, T16)", () => {
     const kept = new Map<string, string>();
-    withStorage({ getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => { kept.set(k, String(v)); }, removeItem: (k: string) => { kept.delete(k); } }, () => {
-      expect(yourTurnOn()).toBe(false);
-      setYourTurn(true);
-      expect(yourTurnOn()).toBe(true);
-      setYourTurn(false);
-      expect(yourTurnOn()).toBe(false);
-      kept.set("companion.yourTurn", "yes");   // anything but the exact word is off
-      expect(yourTurnOn()).toBe(false);
+    withStorage({ getItem: (k: string) => kept.get(k) ?? null }, () => {
+      try {
+        expect(yourTurnOn()).toBe(false);
+        // Before the one migration, the old page storage still decides, with its old meaning.
+        kept.set("companion.yourTurn", "on");
+        expect(yourTurnOn()).toBe(true);
+        kept.set("companion.yourTurn", "yes");   // anything but the exact word is off
+        expect(yourTurnOn()).toBe(false);
+        // After it, the shell's value does.
+        takeSnapshot({ values: { "teach.yourTurn": true }, migrated: ["pageStorage.v1"] });
+        expect(yourTurnOn()).toBe(true);
+        takeSnapshot({ values: {}, migrated: ["pageStorage.v1"] });
+        expect(yourTurnOn()).toBe(false);
+      } finally { _resetForTests(); }
     });
   });
-  test("with page storage that fails, it stays off and turning it on does not throw", () => {
+  test("with page storage that fails, it stays off", () => {
     const broken = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
-    withStorage(broken, () => {
-      expect(() => setYourTurn(true)).not.toThrow();
-      expect(yourTurnOn()).toBe(false);
-    });
-    withStorage(undefined, () => { setYourTurn(true); expect(yourTurnOn()).toBe(false); });
+    withStorage(broken, () => expect(yourTurnOn()).toBe(false));
+    withStorage(undefined, () => expect(yourTurnOn()).toBe(false));
   });
   test("the commands are valid protocol and name the project and the fix", () => {
     const t = tryNextOne("/Users/me/site", "cp_1"), c = checkMyChange("/Users/me/site", "cp_1");

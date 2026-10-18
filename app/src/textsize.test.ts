@@ -2,7 +2,8 @@
 // root size. What the stylesheet does with it is checked in a11y.test.ts (part 4).
 import { describe, expect, test } from "bun:test";
 import { S } from "./strings.ts";
-import { TEXT_SIZES, TEXT_SIZE_DEFAULT, applyTextSize, setTextSize, textSize, textSizeFrom } from "./textsize.ts";
+import { TEXT_SIZES, TEXT_SIZE_DEFAULT, applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
+import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 
 function withStorage(storage: unknown, f: () => void) {
   const had = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -20,23 +21,23 @@ describe("the text size choice", () => {
     for (const s of TEXT_SIZES) expect(textSizeFrom(s)).toBe(s);
     for (const v of [null, undefined, "", "huge", "Large", 3, {}]) expect(textSizeFrom(v), String(v)).toBe("standard");
   });
-  test("kept in this Mac's page storage, and read back", () => {
+  test("kept by the shell (display.textSize, T16); the old page storage is read only until the one migration", () => {
     const st = memory();
     withStorage(st, () => {
-      expect(textSize(), "nothing saved yet").toBe("standard");
-      setTextSize("larger");
-      expect(textSize()).toBe("larger");
-      expect([...st.m.keys()]).toEqual(["companion.textSize"]);
-      st.m.set("companion.textSize", "enormous");
-      expect(textSize(), "a damaged value").toBe("standard");
+      try {
+        expect(textSize(), "nothing saved yet").toBe("standard");
+        st.m.set("companion.textSize", "larger");
+        expect(textSize(), "before the migration, the old choice").toBe("larger");
+        st.m.set("companion.textSize", "enormous");
+        expect(textSize(), "a damaged value").toBe("standard");
+        takeSnapshot({ values: { "display.textSize": "largest" }, migrated: ["pageStorage.v1"] });
+        expect(textSize(), "after it, the shell's").toBe("largest");
+      } finally { _resetForTests(); }
     });
   });
   test("with no page storage it stays Standard and nothing breaks", () => {
     const broken = { getItem: () => { throw new Error("no storage"); }, setItem: () => { throw new Error("no storage"); } };
-    withStorage(broken, () => {
-      expect(textSize()).toBe("standard");
-      expect(() => setTextSize("largest")).not.toThrow();
-    });
+    withStorage(broken, () => expect(textSize()).toBe("standard"));
     withStorage(undefined, () => expect(textSize()).toBe("standard"));
   });
   test("put on the page as one mark on the root, which style.css sizes everything from", () => {

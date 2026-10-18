@@ -24,6 +24,10 @@ describe("the memory page's state", () => {
     expect(m.memory).toMatchObject({ paused: true, problems: ["The memory file could not be read."] });
     expect(m.memory!.projectLines[0].text).toBe("Uses React");
   });
+  test("the stand in project Settings asks with no folder chosen never becomes the Memory tab's state", () => {
+    const m = run([{ type: "memory.state", project: "no-project", paused: true, projectLines: [], profileLines: [line("m_2", "Prefers short answers")], problems: [] }]);
+    expect(m.memory).toBeNull();
+  });
   test("a refusal is shown in plain words, and a new state clears it", () => {
     const refused = run([{ type: "memory.refused", project: "/p", reason: "Health is never saved." }]);
     expect(refused.memoryNote).toBe("Health is never saved.");

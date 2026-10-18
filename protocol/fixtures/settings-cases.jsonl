@@ -1,0 +1,79 @@
+{"key": "fun.reactions", "value": true, "ok": true, "normalized": true}
+{"key": "fun.reactions", "value": false, "ok": true, "normalized": false}
+{"key": "fun.reactions", "value": "on", "ok": false, "reason": "notSwitch"}
+{"key": "fun.reactions", "value": 1, "ok": false, "reason": "notSwitch"}
+{"key": "talk.speak", "value": null, "ok": false, "reason": "notSwitch"}
+{"key": "display.textSize", "value": "large", "ok": true, "normalized": "large"}
+{"key": "display.textSize", "value": "huge", "ok": false, "reason": "notChoice"}
+{"key": "display.textSize", "value": 2, "ok": false, "reason": "notChoice"}
+{"key": "display.textSize", "value": "Large", "ok": false, "reason": "notChoice"}
+{"key": "spend.dailyLimit", "value": 25, "ok": true, "normalized": 25}
+{"key": "spend.dailyLimit", "value": 10.004, "ok": true, "normalized": 10}
+{"key": "spend.dailyLimit", "value": 10.006, "ok": true, "normalized": 10.01}
+{"key": "spend.dailyLimit", "value": 500, "ok": true, "normalized": 500}
+{"key": "spend.dailyLimit", "value": 1, "ok": true, "normalized": 1}
+{"key": "spend.dailyLimit", "value": 0.5, "ok": false, "reason": "tooLow"}
+{"key": "spend.dailyLimit", "value": 501, "ok": false, "reason": "tooHigh"}
+{"key": "spend.dailyLimit", "value": "25", "ok": false, "reason": "notNumber"}
+{"key": "spend.dailyLimit", "value": true, "ok": false, "reason": "notNumber"}
+{"key": "work.maxTurns", "value": 120, "ok": true, "normalized": 120}
+{"key": "work.maxTurns", "value": 124, "ok": true, "normalized": 120}
+{"key": "work.maxTurns", "value": 125, "ok": true, "normalized": 130}
+{"key": "work.maxTurns", "value": 80.0, "ok": true, "normalized": 80}
+{"key": "work.maxTurns", "value": 200, "ok": true, "normalized": 200}
+{"key": "work.maxTurns", "value": 20, "ok": true, "normalized": 20}
+{"key": "work.maxTurns", "value": 500, "ok": false, "reason": "tooHigh"}
+{"key": "work.maxTurns", "value": 19, "ok": false, "reason": "tooLow"}
+{"key": "work.maxTurns", "value": null, "ok": false, "reason": "notNumber"}
+{"key": "keys.hotkeys", "value": {}, "ok": false, "reason": "custom"}
+{"key": "talk.voice", "value": null, "ok": false, "reason": "custom"}
+{"key": "no.suchThing", "value": true, "ok": false, "reason": "unknown"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "  hello  ", "ok": true, "normalized": "hello"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "", "ok": true, "normalized": ""}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "Sign up", "ok": true, "normalized": "Sign up"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "hello world!", "ok": false, "reason": "tooLong"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "a\nb", "ok": false, "reason": "notOneLine"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "a\u2028b", "ok": false, "reason": "notOneLine"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "tab\there", "ok": false, "reason": "notOneLine"}
+{"def": {"key": "test.text", "section": "work", "kind": "text", "default": "", "maxLength": 10, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": 5, "ok": false, "reason": "notText"}
+{"def": {"key": "test.longText", "section": "work", "kind": "text", "default": "", "maxLength": 200, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "sk-ant-api03-abcdefghijklmnopqrstuvwx", "ok": false, "reason": "secret"}
+{"def": {"key": "test.longText", "section": "work", "kind": "text", "default": "", "maxLength": 200, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "password: hunter2go", "ok": false, "reason": "secret"}
+{"def": {"key": "test.longText", "section": "work", "kind": "text", "default": "", "maxLength": 200, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "4111 1111 1111 1111", "ok": false, "reason": "secret"}
+{"def": {"key": "test.longText", "section": "work", "kind": "text", "default": "", "maxLength": 200, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "my token AKIAABCDEFGHIJKLMNOP", "ok": false, "reason": "secret"}
+{"def": {"key": "test.longText", "section": "work", "kind": "text", "default": "", "maxLength": 200, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "Sign up today for free", "ok": true, "normalized": "Sign up today for free"}
+{"def": {"key": "test.longText", "section": "work", "kind": "text", "default": "", "maxLength": 200, "scope": "app", "applies": ["pages"], "store": "settings", "live": true}, "value": "Welcome back, Sam", "ok": true, "normalized": "Welcome back, Sam"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["a", " b "], "ok": true, "normalized": ["a", "b"]}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": [], "ok": true, "normalized": []}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["a", "b", "c", "d"], "ok": false, "reason": "tooMany"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["a", "a"], "ok": false, "reason": "duplicate"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["a", " a"], "ok": false, "reason": "duplicate"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["a", ""], "ok": false, "reason": "empty"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": "a", "ok": false, "reason": "notList"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["toolongvalue!"], "ok": false, "reason": "tooLong"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["a\nb"], "ok": false, "reason": "notOneLine"}
+{"def": {"key": "test.list", "section": "checks", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 10}, "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": [1], "ok": false, "reason": "notText"}
+{"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint"], "ok": true, "normalized": ["lint"]}
+{"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["test", "lint"], "ok": true, "normalized": ["test", "lint"]}
+{"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["build"], "ok": false, "reason": "notAllowed"}
+{"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "lint"], "ok": false, "reason": "duplicate"}
+{"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "test", "x"], "ok": false, "reason": "tooMany"}
+{"migrate": "isOn", "raw": "on", "value": true}
+{"migrate": "isOn", "raw": "off", "value": false}
+{"migrate": "isOn", "raw": "yes", "value": false}
+{"migrate": "isOn", "raw": null, "absent": true}
+{"migrate": "notOff", "raw": "off", "value": false}
+{"migrate": "notOff", "raw": "on", "value": true}
+{"migrate": "notOff", "raw": "x", "value": true}
+{"migrate": "notOff", "raw": null, "absent": true}
+{"migrate": "isOne", "raw": "1", "value": true}
+{"migrate": "isOne", "raw": "0", "value": false}
+{"migrate": "isOne", "raw": "true", "value": false}
+{"migrate": "isOne", "raw": null, "absent": true}
+{"migrate": "notZero", "raw": "0", "value": false}
+{"migrate": "notZero", "raw": "1", "value": true}
+{"migrate": "notZero", "raw": "", "value": true}
+{"migrate": "notZero", "raw": null, "absent": true}
+{"migrate": "textSize", "raw": "large", "value": "large"}
+{"migrate": "textSize", "raw": "largest", "value": "largest"}
+{"migrate": "textSize", "raw": "enormous", "value": "standard"}
+{"migrate": "textSize", "raw": null, "absent": true}

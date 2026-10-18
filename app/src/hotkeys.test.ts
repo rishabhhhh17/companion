@@ -221,11 +221,11 @@ describe("every hint names the keys in use", () => {
 describe("the hints are shown where a person looks", () => {
   test("at the end of the first run, and every job with its keys in Settings", () => {
     const onboarding = read("./onboarding.tsx");
-    const card = read("./card.tsx");
+    const page = read("./settingsPage.tsx");
     expect(onboarding).toContain("keyHints(keys)");
     expect(onboarding).toContain("S.keysTitle");
-    const settings = body(card, "function SettingsPanel");
-    expect(settings).toContain("<KeysSection");
-    expect(body(card, "function KeysSection")).toContain("keyRows(keys)");
+    // Settings (settingsPage.tsx, T16): the keys row of the registry embeds the keys editor.
+    expect(body(page, "function SettingRow")).toContain('d.key === "keys.hotkeys" ? <KeysSection keys={keys} />');
+    expect(body(page, "function KeysSection")).toContain("keyRows(keys)");
   });
 });

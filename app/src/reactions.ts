@@ -2,6 +2,8 @@
 // momentum, never affection: a nod when a check passes, a short wince when one fails, a cheer when work is proven,
 // and one bigger celebration for the two moments that matter most, checks passing on a fix and going live.
 // All of it can be switched off with one setting.
+import { setting } from "./settingsStore.ts";
+
 export type Reaction = "nod" | "wince" | "cheer" | "party";
 type Ev = { type?: string; status?: string; verdict?: string; stage?: string; made?: boolean; rung?: string; proof?: string; inPlan?: boolean; changed?: unknown[] };
 
@@ -42,7 +44,6 @@ export class Reactor {
   }
 }
 
-// The one setting, shared by the character and the card (both pages read the same storage). On unless turned off.
-const KEY = "companion.reactions";
-export function reactionsOn(): boolean { try { return localStorage.getItem(KEY) !== "off"; } catch { return true; } }
-export function setReactions(on: boolean): void { try { localStorage.setItem(KEY, on ? "on" : "off"); } catch { /* storage may be unavailable */ } }
+// The one setting (fun.reactions in the registry, T16), read by the character, the overlay and Home through settingsStore.ts.
+// On unless turned off. Changed only in Settings, through the shell.
+export const reactionsOn = (): boolean => setting("fun.reactions") === true;

@@ -23,6 +23,7 @@ import { BrowserSetup, pretendInstaller } from "./proof/browsersetup.ts";
 import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
 import { Warmer } from "./warm.ts";
 import { resolveClaudeBinary } from "./sdkEngine.ts";
+import { RunnerSettings } from "./settings.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -41,7 +42,9 @@ const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(set
 const spending = new SpendingStore(join(settings.data, SPENDING_FILE));
 // The person's own Vercel tool: Ship deploys through it, and Point at the problem and Rescue read a failed deploy's build log through it (read only).
 const vercel = new VercelCli();
-const runner = new AgentRunner({ shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+// The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts.
+const runnerSettings = new RunnerSettings();
+const runner = new AgentRunner({ settings: runnerSettings, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
 const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject });
 const inflight = new Set<Promise<unknown>>();
@@ -72,6 +75,8 @@ function dispatch(cmd: Command) {
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
+  // The settings line from the shell: each value checked again, names (never values) in the answer.
+  if (cmd.type === "settings.apply") { say({ type: "settings.applied", ...runnerSettings.apply(cmd) }); return; }
   // Home opened or the ask box got the keyboard: read the Claude binary through once (nothing is run or sent). How long it
   // took goes to the log, never anything else.
   if (cmd.type === "engine.warm") { void warmer.warm().then((r) => { if (r.read) process.stderr.write(`warm: read the Claude binary (${Math.round(r.bytes / 1048576)} MB) in ${r.ms} ms\n`); }); return; }

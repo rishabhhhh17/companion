@@ -3,26 +3,27 @@ import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
-import { reactionsOn, setReactions } from "./reactions.ts";
-import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn, comeToFrom } from "./settings.ts";
+import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
-import { askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, setReplies, setSpeech, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
-import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, spokenSpeed, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
+import { askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
+import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
 import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, HistoryItem, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
+import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
-import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
+import { autoCheckDue, found, isBusy } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
-import { TEXT_SIZES, applyTextSize, setTextSize, textSize, type TextSize } from "./textsize.ts";
+import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
+import { SettingsPage } from "./settingsPage.tsx";
+import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
@@ -33,8 +34,6 @@ import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 // Beta numbers: a fixed name, counted only if the person turned numbers on.
-// An update the daily check found, kept so Settings can offer Install without asking again.
-let foundUpdate: UpdateState | null = null;
 const SESSION_GAP_MS = 30 * 60 * 1000;
 const count = (name: string) => { void send(metricsNote(name)); };
 // When the person last used the card. Kept only on this Mac, in this page's own storage.
@@ -89,410 +88,6 @@ function ExplainBox({ e }: { e: Explain }) {
         </div>
       )}
     </details>
-  );
-}
-
-// A settings row with a name: VoiceOver says which row it is in, and the keyboard is put back on the row when a control in
-// it goes away (focus.ts).
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  const id = useId();
-  return <div role="group" aria-labelledby={id}><h3 id={id}>{title}</h3>{children}</div>;
-}
-
-// The daily spending limit: today's spend for this project against the limit, and a way to change it within the bounds.
-function SpendingRow({ project, spending }: { project: string; spending: Spending | null }) {
-  const [text, setText] = useState("");
-  const [sent, setSent] = useState<number | null>(null);
-  useEffect(() => { if (project) void send(showSpending(project)); }, [project]);
-  const s = spending && spending.project === project ? spending : null;
-  const min = s?.minUsd ?? 1, max = s?.maxUsd ?? 500;
-  const value = limitFromText(text, min, max);
-  const save = () => { if (!project || value === null) return; setSent(value); void send(setSpendingLimit(project, value)); };
-  return (
-    <Group title={S.spendingTitle}>
-      <div className="line muted">{S.spendingHelp}</div>
-      {!project && <div className="line muted">{S.spendingNoProject}</div>}
-      {s && <div className="line" role="status">{spendingLine(s)}</div>}
-      {project && (
-        <div className="row">
-          <input type="text" inputMode="decimal" autoComplete="off" value={text} placeholder={s ? String(s.limitUsd) : ""} aria-label={S.spendingLabel}
-            onChange={(e) => { setText(e.target.value); setSent(null); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); save(); } }} />
-          <button className="btn" type="button" disabled={value === null} onClick={save}>{S.spendingSave}</button>
-        </div>
-      )}
-      {project && text.trim() !== "" && value === null && <div className="line muted">{S.spendingRange.replace("{min}", String(min)).replace("{max}", String(max))}</div>}
-      {s && sent !== null && !s.problem && s.limitUsd === sent && <div className="line muted" role="status">{S.spendingSaved}</div>}
-      {s?.problem && <div className="error" role="alert">{s.problem}</div>}
-    </Group>
-  );
-}
-
-/// The person's own key: replace it (same checks as the first run, the box emptied at once) or remove it (asked first).
-function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; working: boolean; onChanged: () => void }) {
-  const [step, setStep] = useState<"idle" | "replace" | "confirmRemove" | "working">("idle");
-  const [key, setKey] = useState("");
-  const [note, setNote] = useState("");
-  const [problem, setProblem] = useState("");
-  const save = () => {
-    const r = submitKey(key);
-    setKey("");   // emptied at once, whatever happens next; nothing on the page keeps a copy
-    if (!r.send) { setProblem(r.problem ?? ""); return; }
-    setProblem(""); setStep("working");
-    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("replace"); });
-  };
-  const remove = () => {
-    setProblem(""); setStep("working");
-    void invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE }).then(() => { setNote(S.keyRemovedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("confirmRemove"); });
-  };
-  const cancel = () => { setKey(""); setProblem(""); setStep("idle"); };
-  const replaceId = useId(), removeId = useId();
-  return (
-    <Group title={S.keyTitle}>
-      <div className="line">{keyStatus(keySaved)}</div>
-      {note && <div className="line" role="status">{note}</div>}
-      {step === "idle" && <div className="row">
-        <button id={replaceId} className="btn" type="button" onClick={() => { setNote(""); setStep("replace"); }}>{keySaved ? S.keyReplace : S.keyAdd}</button>
-        {keySaved && <button id={removeId} className="btn danger" type="button" disabled={working} onClick={() => { setNote(""); setStep("confirmRemove"); }}>{S.keyRemove}</button>}
-      </div>}
-      {step === "idle" && keySaved && working && <div className="line muted">{S.keyBusy}</div>}
-      {step === "replace" && (<>
-        <div className="line muted">{S.keyNewHelp}</div>
-        <div className="row">
-          <input type="password" autoComplete="off" spellCheck={false} ref={focusIfLost} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(); if (e.key === "Escape") { e.stopPropagation(); cancel(); focusBack(replaceId); } }} />
-          <button className="btn primary" type="button" onClick={save}>{S.keySaveNew}</button>
-          <button className="btn" type="button" onClick={() => { cancel(); focusBack(replaceId); }}>{S.planCancel}</button>
-        </div>
-      </>)}
-      {step === "confirmRemove" && (
-        <ConfirmStep className="line" label={S.keyRemoveSure} back={removeId} onCancel={cancel}>
-          <div className="line">{S.keyRemoveSure}</div>
-          <div className="row">
-            <button className="btn danger" type="button" disabled={working} onClick={remove}>{S.keyRemoveYes}</button>
-            <button className="btn" type="button" data-cancel onClick={cancel}>{S.planCancel}</button>
-          </div>
-        </ConfirmStep>
-      )}
-      {problem && <div className="error" role="alert">{problem}</div>}
-    </Group>
-  );
-}
-
-// Screen sharing and calls (rule 7): both on unless turned off. The app keeps them (presentation.rs), so they hold from
-// the moment Companion starts, before any page has loaded.
-function PresentationRow() {
-  const [p, setP] = useState<Presentation>(PRESENTATION_DEFAULT);
-  useEffect(() => { void invoke("presentation_settings").then((v) => setP(presentationFrom(v))).catch(() => {}); }, []);
-  const change = (next: Presentation) => { setP(next); void invoke("set_presentation", { hideFromSharing: next.hideFromSharing, quietOnCalls: next.quietOnCalls }).then((v) => setP(presentationFrom(v))).catch(() => {}); };
-  return (<Group title={S.presentationTitle}>
-    <div className="line muted">{S.hideFromSharingHelp}</div>
-    <div className="line muted">{S.quietOnCallsHelp}</div>
-    <div className="row">
-      <button className="btn" type="button" aria-pressed={p.hideFromSharing} onClick={() => change({ ...p, hideFromSharing: !p.hideFromSharing })}>{S.hideFromSharingSetting}: {p.hideFromSharing ? "on" : "off"}</button>
-      <button className="btn" type="button" aria-pressed={p.quietOnCalls} onClick={() => change({ ...p, quietOnCalls: !p.quietOnCalls })}>{S.quietOnCallsSetting}: {p.quietOnCalls ? "on" : "off"}</button>
-    </div>
-  </Group>);
-}
-
-// Come to what it is about (F18 item 2): on unless turned off. The app keeps it (dock.json), because the app moves the
-// character; and how to give the character a new place.
-function ComeToRow() {
-  const [on, setOn] = useState(true);
-  useEffect(() => { void invoke("dock_settings").then((v) => setOn(comeToFrom(v))).catch(() => {}); }, []);
-  const change = (next: boolean) => { setOn(next); void invoke("set_come_to", { on: next }).then((v) => setOn(comeToFrom(v))).catch(() => {}); };
-  return (<>
-    <div className="line muted">{S.comeToHelp}</div>
-    <div className="row"><button className="btn" type="button" aria-pressed={on} onClick={() => change(!on)}>{S.comeToSetting}: {on ? "on" : "off"}</button></div>
-    <div className="line muted">{S.dragHint}</div>
-  </>);
-}
-
-// Text size (textsize.ts): every word in Home follows one root size. Standard is the usual size and the way back.
-function TextSizeRow() {
-  const [size, setSize] = useState<TextSize>(textSize);
-  const pick = (s: TextSize) => { setSize(s); setTextSize(s); applyTextSize(s); };
-  return (
-    <Group title={S.textSizeTitle}>
-      <div className="line muted">{S.textSizeHelp}</div>
-      <div className="row">{TEXT_SIZES.map((s) => <button key={s} className="btn" type="button" aria-pressed={s === size} onClick={() => pick(s)}>{S.textSizes[s]}</button>)}</div>
-    </Group>
-  );
-}
-
-// Keys to remember (M11 wave 4): every job with its keys, and Change for a short list of keys free on this Mac (the app
-// tries each when Change is pressed, keymap::free). The app registers new keys at once and keeps them only if they work,
-// saved on this Mac (keymap.rs); Reset puts every job back on its usual keys. Nothing here reads key presses: the person
-// picks from the list. Hold to talk's other chords each say what they give up.
-function KeysSection({ keys }: { keys: Keys }) {
-  const [open, setOpen] = useState<Job | null>(null);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  // Each row's Change button, so the keyboard can go back to it when the list closes (the button it was on is gone).
-  const changeButtons = useRef<Partial<Record<Job, HTMLButtonElement | null>>>({});
-  const openNow = useRef(open);
-  openNow.current = open;
-  // The row whose list just closed from inside it (a key picked, or its Cancel).
-  const closedFrom = useRef<Job | null>(null);
-  const close = (job: Job, changed: Keys | null) => {
-    if (changed) setNote(keyChangedLine(job, changed));
-    // A late answer, after another job's list was opened, neither closes that list nor moves the keyboard.
-    if (openNow.current !== job) return;
-    closedFrom.current = job;
-    setOpen(null);
-  };
-  // The button the keyboard was on went with the list, so the keyboard goes back to the row's Change button, only by the
-  // rule every move in Home follows (focus.ts takeIfLost: Home has the keyboard and nothing in it does). Never when the
-  // person has gone on to another control, another app or a box.
-  useLayoutEffect(() => { const job = closedFrom.current; closedFrom.current = null; if (job && open === null) takeIfLost(() => changeButtons.current[job]); }, [open]);
-  const reset = () => {
-    if (busy) return;
-    setBusy(true); setNote(""); setOpen(null);
-    void invoke("reset_keys").then((v) => { setKeysNow(keysFrom(v)); setNote(resetLine(v)); }).catch((e) => setNote(keyProblem(String(e)))).finally(() => setBusy(false));
-  };
-  return (<>
-    <div className="line muted">{S.keysSettingsHelp}</div>
-    {keyRows(keys).map((r) => (
-      <div key={r.job}>
-        <div className="row">
-          <span className="line"><b>{r.name}:</b> {r.keys}</span>
-          <button className="btn" type="button" ref={(b) => { changeButtons.current[r.job] = b; }} disabled={busy} aria-expanded={open === r.job} aria-label={S.keysChangeFor(r.name)} onClick={() => { setNote(""); setOpen(open === r.job ? null : r.job); }}>{S.keysChange}</button>
-        </div>
-        {r.line && <div className={r.problem ? "line" : "line muted"} role={r.problem ? "alert" : undefined}>{r.line}</div>}
-        {open === r.job && <KeyPicker job={r.job} keys={keys} onDone={(changed) => close(r.job, changed)} />}
-      </div>
-    ))}
-    <div className="row"><button className="btn" type="button" disabled={busy} onClick={reset}>{S.keysReset}</button></div>
-    {note && <div className="line" role="status">{note}</div>}
-  </>);
-}
-
-// One job's short list, asked of the app when Change is pressed. Only keys the app says are free on this Mac and that no
-// other job has can be pressed (keys.ts canPick); the app counts the keys registered for the job as free, so the keys in
-// use after a fall back can be pressed again to keep them.
-function KeyPicker({ job, keys, onDone }: { job: Job; keys: Keys; onDone: (changed: Keys | null) => void }) {
-  const [c, setC] = useState<Choices | null>(null);
-  const [problem, setProblem] = useState("");
-  const [busy, setBusy] = useState(false);
-  const live = useRef(true);
-  const load = () => { void invoke("key_choices", { action: job }).then((v) => { if (live.current) setC(choicesFrom(v, job)); }).catch((e) => { if (live.current) setProblem(keyProblem(String(e))); }); };
-  useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, [job]);
-  const pick = (id: string) => {
-    if (busy) return;
-    setBusy(true); setProblem("");
-    void invoke("set_key", { action: job, id }).then((v) => { const k = keysFrom(v); setKeysNow(k); onDone(k); })
-      .catch((e) => {
-        const code = String(e);
-        setProblem(keyProblem(code));
-        // Another app took them since the list was asked for: ask again, so they show as taken.
-        if (code === "taken") load();
-      })
-      .finally(() => setBusy(false));
-  };
-  return (<div>
-    {!c && !problem && <div className="line muted" role="status">{S.keysChecking}</div>}
-    {c && (<>
-      <div className="row" role="group" aria-label={S.keysPickFor((S.keyJobs as Record<Job, string>)[job])}>
-        {c.choices.map((id) => <button key={id} className={keys.using[job] === id ? "btn primary" : "btn"} type="button" disabled={busy || !canPick(c, id)} aria-pressed={keys.using[job] === id} aria-describedby={talkCost(id) ? `key-cost-${id}` : undefined} onClick={() => pick(id)}>{chordLabel(id)}</button>)}
-        <button className="btn" type="button" onClick={() => onDone(null)}>{S.planCancel}</button>
-      </div>
-      {pickerLines(c, keys).map((l) => <div className="line muted" key={l}>{l}</div>)}
-      {c.choices.map((id) => talkCost(id) && <div className="line muted" id={`key-cost-${id}`} key={id}>{talkCost(id)}</div>)}
-    </>)}
-    {problem && <div className="error" role="alert">{problem}</div>}
-  </div>);
-}
-
-// Talking and listening (M11 wave 4, item 2): the microphone, the language, Speak to me, Answer out loud, the voice and its
-// speed. The app lists the Mac's voices and microphones and keeps the choices on this Mac (voiceset.rs, voice.json); one
-// that is away says so, and when the Mac's sound is off it says spoken lines are shown as words only. Read again whenever
-// the card comes back to the front (headphones may have been switched on or off meanwhile).
-function VoiceRows() {
-  const [v, setV] = useState<VoiceSettings>(VOICE_START);
-  const [speak, setSpeak] = useState(speechOn);
-  const [replies, setRepliesState] = useState(repliesOn);
-  const [problem, setProblem] = useState("");
-  const [tried, setTried] = useState("");
-  const load = () => void invoke("voice_settings").then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch(() => {});
-  useEffect(() => { load(); const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
-  const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch((e) => setProblem(voiceProblem(String(e)))); };
-  const heard = (r: unknown) => { const o = (r ?? {}) as { said?: boolean; why?: string; sound?: Sound }; setTried(o.said === false && o.why === "sound" ? soundLine(o.sound ?? "muted") : o.said === false && o.why === "quiet" ? S.voiceQuietNow : ""); };
-  return (<>
-    <div className="line muted">{S.voiceSettingsHelp}</div>
-    <div className="row">
-      <select aria-label={S.micPickLabel} value={v.mic ?? ""} onChange={(e) => change({ mic: e.target.value || null })}>
-        <option value="">{S.micPickLabel}: {micDefaultLabel(v)}</option>
-        {v.mic && v.micMissing && <option value={v.mic}>{S.micPickLabel}: {S.notConnected(v.micMissing)}</option>}
-        {v.inputs.map((i) => <option key={i.id} value={i.id}>{S.micPickLabel}: {i.name}</option>)}
-      </select>
-    </div>
-    <div className="line muted">{S.micHelp}</div>
-    {micLine(v) && <div className="line" role="status">{micLine(v)}</div>}
-    <div className="row">
-      <select aria-label={S.voiceLanguageLabel} value={v.language} onChange={(e) => change({ language: e.target.value })}>
-        {v.languages.map((l) => <option key={l} value={l}>{S.voiceLanguageLabel}: {languageLabel(l)}</option>)}
-      </select>
-    </div>
-    <div className="line muted">{S.voiceLanguageHelp}</div>
-    <div className="line muted">{S.voiceWordsHelp}</div>
-    <div className="line muted">{S.speakHelp}</div>
-    <div className="line muted">{S.speakRepliesHelp}</div>
-    <div className="row">
-      <button className="btn" type="button" aria-pressed={speak} onClick={() => { const x = !speak; setSpeak(x); setSpeech(x); if (!x) void invoke("speak_stop"); }}>{S.speakSetting}: {speak ? "on" : "off"}</button>
-      <button className="btn" type="button" aria-pressed={replies} onClick={() => { const x = !replies; setRepliesState(x); setReplies(x); if (!x) void invoke("speak_stop"); }}>{S.speakRepliesSetting}: {replies ? "on" : "off"}</button>
-    </div>
-    <div className="row">
-      <select aria-label={S.voicePickLabel} value={v.voice ?? ""} onChange={(e) => change({ voice: e.target.value || null })}>
-        <option value="">{S.voicePickLabel}: {S.voiceMacDefault}</option>
-        {v.voice && v.voiceMissing && <option value={v.voice}>{S.voicePickLabel}: {S.notOnThisMac(v.voiceMissing)}</option>}
-        {v.voices.map((x) => <option key={x.id} value={x.id}>{S.voicePickLabel}: {voiceLabel(x)}</option>)}
-      </select>
-      <button className="btn" type="button" onClick={() => void invoke("speak", { text: S.voiceSample }).then(heard).catch(() => {})}>{S.voiceTry}</button>
-    </div>
-    {voiceLine(v) && <div className="line" role="status">{voiceLine(v)}</div>}
-    <div className="line muted">{S.voiceMoreHelp}</div>
-    <div className="row" role="group" aria-label={S.voiceSpeedGroup}>
-      {v.speeds.map((n) => <button key={n} className={v.speed === n ? "btn primary" : "btn"} type="button" aria-pressed={v.speed === n} onClick={() => change({ speed: n })}>{speedLabel(n)}</button>)}
-    </div>
-    {soundLine(v.sound) && <div className="line" role="status">{soundLine(v.sound)}</div>}
-    {tried && tried !== soundLine(v.sound) && <div className="line" role="status">{tried}</div>}
-    {problem && <div className="error" role="alert">{problem}</div>}
-  </>);
-}
-
-function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, yourTurn, setYourTurnOn, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; yourTurn: boolean; setYourTurnOn: (v: boolean) => void; onClose: () => void }) {
-  const [inv, setInv] = useState<Inventory | null>(null);
-  const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
-  const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
-  const [withProjects, setWithProjects] = useState(false);
-  const [problem, setProblem] = useState("");
-  const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState("");
-  const [allScreens, setAllScreensState] = useState(allScreensOn);
-  // The keys every job uses now, asked again each time Settings opens.
-  const keys = useKeys();
-  useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, []);
-  const [up, setUp] = useState<UpdateState>(foundUpdate ?? { stage: "idle" });
-  const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
-  const [upAuto, setUpAuto] = useState(() => { try { return localStorage.getItem("companion.updateAuto") !== "0"; } catch { return true; } });
-  useEffect(() => { void invoke("update_status").then((v) => setUpInfo(v as { configured: boolean; version: string })).catch(() => {}); }, []);
-  const checkNow = () => {
-    setUp({ stage: "checking" });
-    void invoke("check_update").then((v) => {
-      try { localStorage.setItem("companion.updateChecked", String(Date.now())); } catch { /* storage may be unavailable */ }
-      const r = v as { available: boolean; version?: string; notes?: string };
-      foundUpdate = r.available ? { stage: "found", version: r.version ?? "", notes: r.notes ?? "" } : null;
-      setUp(foundUpdate ?? { stage: "none" });
-    }).catch((e) => setUp({ stage: "failed", reason: String(e) }));
-  };
-  const installNow = () => { if (!canInstall(working)) return; setUp({ stage: "installing" }); foundUpdate = null; void invoke("install_update").catch((e) => setUp({ stage: "failed", reason: String(e) })); };
-  const [nums, setNums] = useState<NumbersSummary | null>(null);
-  const [showNums, setShowNums] = useState(false);
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    void send(metricsShow());
-    const off = listen("runner-event", (e) => { const ev = e.payload as { type?: string } & Partial<NumbersSummary>; if (ev.type === "metrics.summary") setNums({ enabled: !!ev.enabled, totals: ev.totals ?? {}, rates: ev.rates ?? {} }); });
-    return () => { off.then((f) => f()); };
-  }, []);
-  const load = () => { void invoke("data_inventory").then((v) => setInv(v as Inventory)); void invoke("permission_overview").then((v) => setPerms(v as Record<PermissionKind, PermissionState>)); };
-  useEffect(load, []);
-  // The permission page is where the person changes things; coming back should show the new state.
-  useEffect(() => { const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
-  const busy = useRef(false);   // a second click while macOS is asking must not start a second delete
-  const deleteId = useId();
-  const remove = () => {
-    if (busy.current) return;
-    busy.current = true; setStep("deleting"); setProblem("");
-    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects }).catch((e) => { busy.current = false; setProblem(String(e)); setStep("confirm"); });
-  };
-  return (
-    <section className="panel" aria-label={S.settingsTitle}>
-      <h2>{S.settingsTitle}</h2>
-      <Group title={S.settingsPermissions}>
-      <div className="line muted">{S.settingsPermissionsHelp}</div>
-      {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
-        const r = permissionRow(k, perms[k]);
-        return (
-          <div className="line" key={k}>
-            <b>{r.label}:</b> {r.state}.{r.todo ? ` ${r.todo}` : ""} <span className="muted">{r.why}</span>
-            {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button> <button className="btn" type="button" onClick={() => onLesson(permissionLesson(k))}>{S.settingsWalkMe}</button></>}
-          </div>
-        );
-      })}
-      </Group>
-      <Group title={S.keysTitle}>
-      <KeysSection keys={keys} />
-      </Group>
-      {inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
-      <Group title={S.settingsChoices}>
-      <div className="row">
-        <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
-        <button className="btn" type="button" aria-pressed={explainOn} disabled={!project} onClick={() => void send(setExplain(project, !explainOn))}>{S.explainSetting}: {explainOn ? "on" : "off"}</button>
-        <button className="btn" type="button" aria-pressed={autoSend} onClick={() => setAutoSend(!autoSend)}>{S.voiceAutoSendShort}: {autoSend ? "on" : "off"}</button>
-        <button className="btn" type="button" aria-pressed={yourTurn} onClick={() => setYourTurnOn(!yourTurn)}>{S.yourTurnSetting}: {yourTurn ? "on" : "off"}</button>
-      </div>
-      <div className="line muted">{S.yourTurnHelp}</div>
-      <div className="line muted">{S.allScreensHelp}</div>
-      <div className="row"><button className="btn" type="button" aria-pressed={allScreens} onClick={() => { const v = !allScreens; setAllScreensState(v); setAllScreens(v); }}>{S.allScreensSetting}: {allScreens ? "on" : "off"}</button></div>
-      <ComeToRow />
-      <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
-      </Group>
-      <TextSizeRow />
-      <SpendingRow project={project} spending={spending} />
-      <Group title={S.settingsKept}>
-      {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
-      {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
-      </Group>
-      <Group title={S.voiceSettingsTitle}>
-      <VoiceRows />
-      </Group>
-      <PresentationRow />
-      <Group title={S.updatesTitle}>
-      <div className="line muted">{S.updatesHelp}</div>
-      <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
-      {up.stage === "found" && up.notes && <div className="line muted">{up.notes}</div>}
-      {upInfo.configured && <div className="row">
-        <button className="btn" type="button" disabled={up.stage === "checking" || up.stage === "installing"} onClick={checkNow}>{S.updatesCheck}</button>
-        {up.stage === "found" && <button className="btn primary" type="button" disabled={!canInstall(working)} onClick={installNow}>{S.updatesInstall}</button>}
-        <button className="btn" type="button" aria-pressed={upAuto} onClick={() => { const v = !upAuto; setUpAuto(v); try { localStorage.setItem("companion.updateAuto", v ? "1" : "0"); } catch { /* storage may be unavailable */ } }}>{S.updatesAuto}: {upAuto ? "on" : "off"}</button>
-      </div>}
-      {up.stage === "found" && !canInstall(working) && <div className="line muted">{S.updatesBusy}</div>}
-      </Group>
-      <Group title={S.numbersTitle}>
-      <div className="line muted">{S.numbersHelp}</div>
-      <div className="row">
-        <button className="btn" type="button" aria-pressed={!!nums?.enabled} disabled={!nums} onClick={() => void send(metricsSet(!nums?.enabled))}>{S.numbersOn}: {nums?.enabled ? "on" : "off"}</button>
-        <button className="btn" type="button" onClick={() => { setShowNums((v) => !v); void send(metricsShow()); }}>{S.numbersShow}</button>
-        {nums && showNums && <button className="btn" type="button" onClick={() => { setCopied(false); void (navigator.clipboard?.writeText(numbersLines(nums).join("\n")) ?? Promise.reject(new Error("no clipboard"))).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }).catch(() => {}); }}>{copied ? S.numbersCopied : S.numbersCopy}</button>}
-        <button className="btn" type="button" onClick={() => { setShowNums(false); void send(metricsErase()); }}>{S.numbersErase}</button>
-      </div>
-      {nums && showNums && numbersLines(nums).map((l, i) => <div className="line" key={i}>{l}</div>)}
-      </Group>
-      <Group title={S.acknowledgements}>
-      <div className="line muted">{S.acknowledgementsHelp}</div>
-      <div className="row"><button className="btn" type="button" onClick={() => void invoke("open_acknowledgements").catch(() => {})}>{S.acknowledgements}</button></div>
-      </Group>
-      <Group title={S.exportLogsTitle}>
-      <div className="line muted">{S.exportLogsHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
-      <div className="line muted">{S.reportHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => setExported(S.reportOpened(String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
-      {exported && <div className="line" role="status">{exported}</div>}
-      </Group>
-      {step === "idle" && <div className="row"><button id={deleteId} className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
-      {step !== "idle" && (
-        <ConfirmStep className="line" label={S.deleteSure} back={deleteId} onCancel={() => { if (step !== "deleting") setStep("idle"); }}>
-          <b>{S.deleteSure}</b>
-          <div className="line">{S.deleteExplain}</div>
-          {inv && inv.projectsWithNotes > 0 && <label className="check"><input type="checkbox" checked={withProjects} onChange={(e) => setWithProjects(e.target.checked)} /> {S.deleteProjects.replace("{n}", String(inv.projectsWithNotes))}</label>}
-          <div className="row">
-            <button className="btn danger" type="button" disabled={step === "deleting"} onClick={remove}>{step === "deleting" ? S.deleting : S.deleteYes}</button>
-            <button className="btn" type="button" data-cancel disabled={step === "deleting"} onClick={() => setStep("idle")}>{S.planCancel}</button>
-          </div>
-          {problem && <div className="error" role="alert">{problem}</div>}
-        </ConfirmStep>
-      )}
-      <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>
-    </section>
   );
 }
 
@@ -910,14 +505,16 @@ function Card() {
   useEffect(() => { void invoke("voice_speed").then((x) => noteSpeed(voiceSettingsFrom({ speed: x }))).catch(() => {}); }, []);
   // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
   useEffect(() => {
-    let last: number | null = null, enabled = true;
-    try { const v = localStorage.getItem("companion.updateChecked"); last = v ? Number(v) : null; enabled = localStorage.getItem("companion.updateAuto") !== "0"; } catch { /* storage may be unavailable */ }
-    void invoke("update_status").then((v) => {
-      if (!autoCheckDue({ configured: !!(v as { configured?: boolean }).configured, enabled, lastMs: last, nowMs: Date.now() })) return;
+    let last: number | null = null;
+    try { const v = localStorage.getItem("companion.updateChecked"); last = v ? Number(v) : null; } catch { /* storage may be unavailable */ }
+    // The switch is read once the shell has said what is in force (settingsStore.ts), never from an old copy.
+    void settingsReady().then(() => invoke("update_status")).then((v) => {
+      const enabled = setting("updates.daily") === true;
+      if (!autoCheckDue({ configured: !!(v as { configured?: boolean } | undefined)?.configured, enabled, lastMs: last, nowMs: Date.now() })) return;
       return invoke("check_update").then((r) => {
         try { localStorage.setItem("companion.updateChecked", String(Date.now())); } catch { /* storage may be unavailable */ }   // a failed or offline check is tried again next time
         const f = r as { available?: boolean; version?: string; notes?: string };
-        if (f.available) { foundUpdate = { stage: "found", version: f.version ?? "", notes: f.notes ?? "" }; dispatch({ type: "app.notice", message: S.updatesReady }); }
+        if (f.available) { found.update = { stage: "found", version: f.version ?? "", notes: f.notes ?? "" }; dispatch({ type: "app.notice", message: S.updatesReady }); }
       });
     }).catch(() => {});
   }, []);
@@ -1036,7 +633,7 @@ function Card() {
   }, []);
   // Your turn (off unless turned on in Settings): the person asked to make the second of two identical changes themselves.
   // Once the engine has put that place back, it is rung the same way Point at the problem rings a line (light first).
-  const [yourTurn, setYourTurnState] = useState(yourTurnOn);
+  const yourTurn = useSetting("teach.yourTurn") === true;
   const teachWant = useRef("");
   useEffect(() => {
     const off = listen("runner-event", (e) => {
@@ -1050,9 +647,17 @@ function Card() {
   const tryTheNextOne = (checkpoint: string) => { if (!project) return; pressed(); teachWant.current = checkpoint; dispatch({ type: "ui.teachAsked", checkpoint }); void send(tryNextOne(project, checkpoint)); };
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
-  const [fun, setFun] = useState(reactionsOn);
-  const [autoSend, setAutoSend] = useState(() => { try { return localStorage.getItem("companion.voiceAutoSend") === "1"; } catch { return false; } });
-  useEffect(() => { try { localStorage.setItem("companion.voiceAutoSend", autoSend ? "1" : "0"); } catch { /* storage may be unavailable */ } }, [autoSend]);
+  const fun = useSetting("fun.reactions") === true;
+  // Hold to talk sends by itself only when turned on (talk.autoSend); changed here, on Now and in the first run, always
+  // through the shell (settingsStore.ts).
+  const autoSend = useSetting("talk.autoSend") === true;
+  const setAutoSend = (on: boolean) => { void changeSetting("talk.autoSend", on); };
+  const explainOn = useSetting("explain.on") === true;
+  // Text size follows the setting in force, from the shell's first answer on.
+  const size = useSetting("display.textSize");
+  useEffect(() => { applyTextSize(textSizeFrom(size)); }, [size]);
+  // The one migration of the choices kept in this page's storage before the registry: Home only, once (settingsStore.ts).
+  useEffect(() => { void migrateFromPageStorage(); }, []);
   useEffect(() => {
     const off = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; stage?: string; text?: string };
@@ -1212,7 +817,7 @@ function Card() {
       <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
+      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && (<>
       <div className="tabs" role="tablist" aria-label={S.homeLabel}>
         {TABS.map((t) => {
@@ -1266,7 +871,7 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
-      {show("settings") && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
+      {show("settings") && <SettingsPage working={isBusy(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
       {show("practice") && m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
@@ -1863,9 +1468,9 @@ function Card() {
           <MemoryList title={S.memoryProject} scope="project" lines={m.memory.projectLines} project={project} />
           <MemoryList title={S.memoryProfile} scope="profile" lines={m.memory.profileLines} project={project} />
           <div className="row">
-            <button className="btn" type="button" onClick={() => void send(pauseMemory(project, !m.memory!.paused))}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
-            <button className="btn" type="button" aria-pressed={m.explainOn} onClick={() => void send(setExplain(project, !m.explainOn))}>{S.explainSetting}: {m.explainOn ? "on" : "off"}</button>
-            <button className="btn" type="button" aria-pressed={fun} onClick={() => { setReactions(!fun); setFun(!fun); }}>{S.reactionsSetting}: {fun ? "on" : "off"}</button>
+            <button className="btn" type="button" onClick={() => void changeSetting("memory.paused", !m.memory!.paused)}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
+            <button className="btn" type="button" role="switch" aria-checked={explainOn} onClick={() => void changeSetting("explain.on", !explainOn)}>{S.explainSetting}: {explainOn ? S.on : S.off}</button>
+            <button className="btn" type="button" role="switch" aria-checked={fun} onClick={() => void changeSetting("fun.reactions", !fun)}>{S.reactionsSetting}: {fun ? S.on : S.off}</button>
             <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
             <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>
             <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.memoryClosed" }); pickTab("now"); }}>{S.memoryClose}</button>
@@ -1879,6 +1484,9 @@ function Card() {
     </main>
   );
 }
-// The saved text size is on the page before Home first draws, so nothing jumps.
+// Settings (settingsStore.ts): asked for once, kept in step with every change. The saved text size is on the page before
+// Home first draws, so nothing jumps (until the shell answers, the choice kept in this page's own storage before the
+// registry is used, with the same meaning).
+startSettings();
 applyTextSize(textSize());
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);

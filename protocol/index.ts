@@ -96,7 +96,12 @@ export type TeachCheck = Envelope & { type: "teach.check"; project: string; agen
 // A zero cost warm up (runner/src/warm.ts), sent by the page when Home opens or the ask box gets the keyboard: the engine
 // reads the bundled Claude binary through once so the first task starts sooner. Nothing is run, sent or spent. Names nothing.
 export type EngineWarm = Envelope & { type: "engine.warm" };
-export type Command = EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+// The settings the engine applies (the registry, protocol/settings.json, T16): only the shell sends it, as the first line
+// after every start, after each change the engine applies, and when the project folder changes. values: every setting the
+// engine applies that is not its usual value (a missing name is its usual value); projectValues: the named project's own.
+// Each one replaces the one before. The engine checks every value again and keeps them in memory only.
+export type SettingsApply = Envelope & { type: "settings.apply"; values: Record<string, unknown>; project?: string; projectValues?: Record<string, unknown> };
+export type Command = SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -220,7 +225,9 @@ export type BisectUndone = Envelope & { type: "bisect.undone"; project: string; 
 // The error explainer's answer: two plain sentences (none when it could not be explained, with reason), where it lives in the
 // project when that could be confirmed, the first error line, and the selection with secrets hidden (the evidence for Fix it).
 export type ErrorExplained = Envelope & { type: "error.explained"; req: string; project?: string; ok: boolean; sentences: string[]; where?: Problem; excerpt: string; evidence: string; reason?: string; usdEstimate: number };
-export type Event = BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// What the engine took from settings.apply (names only) and what it refused (each then at its usual value), never values.
+export type SettingsApplied = Envelope & { type: "settings.applied"; accepted: string[]; refused: string[] };
+export type Event = SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -272,6 +279,7 @@ const COMMANDS: Record<string, Check[]> = {
   "drive.approve": [str("agent"), list("steps")],
   "runner.ping": [],
   "engine.warm": [],
+  "settings.apply": [obj("values"), opt("project", str("project")), opt("projectValues", obj("projectValues"))],
   "ship.preview": [str("project")],
   "ship.live": [str("project"), str("url"), (m) => (m.confirm === true ? null : 'going live needs "confirm": true')],
   "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
@@ -332,6 +340,7 @@ const EVENTS: Record<string, Check[]> = {
   "runner.hello": [str("runnerVersion"), str("sdk")],
   "tasks.list": [str("project"), list("tasks")],
   "runner.pong": [],
+  "settings.applied": [list("accepted"), list("refused")],
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail"), needsOk],

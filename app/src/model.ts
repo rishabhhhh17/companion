@@ -1,6 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
-import { PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
+import { NO_PROJECT, PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
@@ -178,6 +178,7 @@ const LOOKS_TECHNICAL = /(\b[A-Z][A-Za-z]*(Error|Exception)\b|\bE[A-Z]{3,}\b|\ba
 const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.test(r.trim()) && !LOOKS_TECHNICAL.test(r);
 export function plainError(reason: string): string {
   if (/error_max_budget_usd/.test(reason)) return "Stopped: the spending limit for this task was reached. Nothing more was run.";
+  if (/error_max_turns/.test(reason)) return S.turnsStopped(S.set["work.maxTurns"].label);
   if (/^daily_limit/.test(reason)) return "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.";
   if (/unknown approval/i.test(reason)) return "That question is not waiting for an answer any more.";
   const nc = /Not connected:.*$/.exec(reason);
@@ -485,7 +486,9 @@ export function reduce(m: Model, e: Ev): Model {
     // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's
     // card always comes after the step's receipt.
     case "receipt": return { ...m, stuck: null, ...(m.practice?.stage === "fixing" && (m.task?.label ?? "").includes(PRACTICE_LABEL) ? { practice: { ...m.practice, stage: e.proof === "passed" ? ("done" as const) : ("failed" as const) } } : {}), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}) } };
-    case "memory.state": return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
+    // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
+    // from it (settingsStore.ts), never a project's memory for the Memory tab.
+    case "memory.state": if (e.project === NO_PROJECT) return m; return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
     case "memory.refused": return { ...m, memoryNote: String(e.reason) };
     case "memory.exported": return { ...m, exported: String(e.text ?? "") };
     case "memory.saved": {
@@ -581,6 +584,7 @@ export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
     case "not_done": return "Not done";
     case "interrupted": return "Stopped";
     case "error_max_budget_usd": return "Stopped at the spending limit";
+    case "error_max_turns": return S.historyTurns;
     case "running": return "Running";
     default: return "Something went wrong";
   }
@@ -755,7 +759,7 @@ export function driveWords(m: Model): string | null {
   const f = m.drive?.finished;
   if (!f) return null;
   if (f.status === "done") return `All ${f.total} steps are done`;
-  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : f.status === "daily_limit" ? "the daily limit for this project was reached" : "a check failed";
+  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : f.status === "error_max_turns" ? S.driveTurns(S.set["work.maxTurns"].label) : f.status === "daily_limit" ? "the daily limit for this project was reached" : "a check failed";
   return `Stopped after ${f.completed} of ${f.total} steps: ${why}`;
 }
 

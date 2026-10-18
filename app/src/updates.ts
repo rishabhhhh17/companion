@@ -1,6 +1,8 @@
 // Updates on the card: what to say, and when the daily check is due. The check itself and the install are in the Mac
 // side (updates.rs); nothing happens without a press except the daily check, which only looks and never installs.
 export const DAY_MS = 24 * 60 * 60 * 1000;
+/** An update the daily check found, kept so Settings can offer Install without asking again. In memory only. */
+export const found: { update: UpdateState | null } = { update: null };
 export type UpdateState =
   | { stage: "idle" }
   | { stage: "checking" }

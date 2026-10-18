@@ -4,10 +4,10 @@ import { LEAD_MS } from "./sequence.ts";
 import { receiptProofWords, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { keysIn, keysNow, type Keys } from "./keys.ts";
-export const SPEECH_KEY = "companion.speak";
+import { setting } from "./settingsStore.ts";
 
-export function speechOn(): boolean { try { return localStorage.getItem(SPEECH_KEY) === "1"; } catch { return false; } }
-export function setSpeech(on: boolean) { try { localStorage.setItem(SPEECH_KEY, on ? "1" : "0"); } catch { /* storage may be unavailable */ } }
+// Speak to me: talk.speak in the registry (T16), off unless turned on, read through settingsStore.ts.
+export const speechOn = (): boolean => setting("talk.speak") === true;
 
 type Walk = { id: string; index: number; variant: string; stage: string; say: string; note?: string } | null;
 type ShowMe = { stage: string; message: string; req?: string; step?: number; of?: number } | null;
@@ -38,9 +38,8 @@ export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow()):
 }
 
 // ---- answers said out loud for a question asked by voice (M11 wave 4, item 2; off by default, T13) ----
-export const REPLIES_KEY = "companion.speakReplies";
-export function repliesOn(): boolean { try { return localStorage.getItem(REPLIES_KEY) === "1"; } catch { return false; } }
-export function setReplies(on: boolean) { try { localStorage.setItem(REPLIES_KEY, on ? "1" : "0"); } catch { /* storage may be unavailable */ } }
+// Answer out loud: talk.speakReplies in the registry, read the same way.
+export const repliesOn = (): boolean => setting("talk.speakReplies") === true;
 
 /** How long after a question asked by voice was sent its answer still counts as the answer to it. */
 export const VOICE_ASK_MS = 10 * 60 * 1000;

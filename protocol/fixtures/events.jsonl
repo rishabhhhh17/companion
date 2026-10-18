@@ -89,3 +89,4 @@
 {"v":1,"id":"e104","type":"teach.result","project":"p_9f2c","checkpoint":"cp_0042","verdict":"failed","same":false,"label":"Running the tests","detail":"1 failed","problem":{"kind":"line","file":"src/b.js","line":2,"lineText":"return title(user.name);","message":"Cannot read properties of undefined","from":"tests"}}
 {"v":1,"id":"e105","type":"teach.step","project":"p_9f2c","checkpoint":"cp_0042","rung":"tests","label":"Running the tests","status":"running","detail":"","ms":0}
 {"v":1,"id":"eg1","type":"walk.step","walk":"c43","project":"no-project","lesson":"cursor-install","title":"Install Cursor and open your project","index":0,"total":6,"variant":"main","say":"Go to cursor.com/download and press the download button for macOS.","find":"the macOS download button on cursor.com/download","ask":true,"link":"https://cursor.com/download"}
+{"v":1,"id":"es1","type":"settings.applied","accepted":["work.maxTurns"],"refused":[]}

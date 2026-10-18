@@ -16,13 +16,16 @@ pub const PROTOCOL_VERSION: i64 = 1;
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
     "assist.prompt", "assist.locate", "assist.image", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
-    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "recap.ask", "explain.set", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
+    // Not here: memory.pause, explain.set, spending.set and metrics.set. Those are settings (settings.rs, T16): the page asks
+    // the shell (settings_set), the shell checks the value and sends the engine's own command itself. settings.apply is
+    // the shell's own line too.
+    "memory.list", "memory.forget", "memory.edit", "memory.erase", "memory.export", "memory.agents", "recap.ask", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
     "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop",
-    "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
+    "metrics.note", "metrics.show", "metrics.erase",
     // The browser check's one time download, on the person's press, and asking whether it is set up. They name no folder
     // or address (the engine always downloads Playwright's own browser into Companion's own folder), so not project bound.
     "browser.check", "browser.install",
-    "spending.show", "spending.set",
+    "spending.show",
     // Which task broke it: checks earlier saved versions in a private copy, then undoes just that task on a yes. Both name the
     // project, so both are project bound. error.explain is not here: only the hotkey flow (errhelp.rs) sends it.
     "bisect.start", "bisect.undo",
@@ -72,8 +75,10 @@ pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
     if !PROJECT_BOUND.contains(&t) { return Ok(()); }
     match v.get("project").and_then(Value::as_str) {
-        // Lessons that need no project (installing a tool, leaving a builder) use this stand in name and read nothing.
-        Some(NO_PROJECT) if t.starts_with("walk.") => Ok(()),
+        // Lessons that need no project (installing a tool, leaving a builder) use this stand in name and read nothing. The
+        // settings page shows the daily limit, Explain and pausing (for every project) before a folder is chosen: the engine
+        // reads no folder for these with the stand in (profile only memory, nothing spent).
+        Some(NO_PROJECT) if t.starts_with("walk.") || t == "spending.show" || t == "memory.list" => Ok(()),
         Some(p) if !current.is_empty() && p == current => Ok(()),
         _ => Err("that command may only name the project folder you chose".into()),
     }
@@ -209,7 +214,15 @@ impl Shared {
 
 /// Runs the engine for as long as the app lives: start it, read its lines, and start it again when it stops.
 /// `spawn` and `emit` are passed in so this can be tested with pretend engines.
+#[cfg(test)]
 pub fn supervise(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync>, emit: Arc<dyn Fn(Value) + Send + Sync>, on_type: Arc<dyn Fn(&str) + Send + Sync>, t: Timing) -> std::thread::JoinHandle<()> {
+    supervise_first(shared, spawn, emit, on_type, Arc::new(|| None), t)
+}
+
+/// The same, with the line the engine must read first after every start (the settings, settings.rs `apply_line`, worked
+/// out fresh each time). It is queued on the new engine's own queue before that queue is made the one everything else is
+/// sent to, so no page command can ever reach a new engine before it.
+pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync>, emit: Arc<dyn Fn(Value) + Send + Sync>, on_type: Arc<dyn Fn(&str) + Send + Sync>, first_line: Arc<dyn Fn() -> Option<String> + Send + Sync>, t: Timing) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let (mut failures, mut starts) = (0u32, 0u32);
         loop {
@@ -221,6 +234,7 @@ pub fn supervise(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Child> +
                     starts += 1;
                     let (stdout, stdin) = (child.stdout.take(), child.stdin.take());
                     let (tx, rx) = sync_channel::<String>(QUEUE);
+                    if let Some(line) = first_line() { let _ = tx.try_send(line); }
                     *lock(&shared.tx) = Some(tx);
                     *lock(&shared.child) = Some(child);
                     if starts > 1 { emit(serde_json::json!({ "v": 1, "id": format!("app-restarted-{starts}"), "type": "app.runner_restarted" })); }
@@ -274,8 +288,9 @@ impl Runner {
         let _ = app.emit("runner-event", v);
     }
 
-    /// Start the engine and keep it running. Each event line goes to the pages as "runner-event".
-    pub fn start(&self, app: &AppHandle, loc: &Locations, on_type: impl Fn(&str) + Send + Sync + 'static) -> Result<(), String> {
+    /// Start the engine and keep it running. Each event line goes to the pages as "runner-event". `first_line` is what the
+    /// engine reads first after every start (the settings).
+    pub fn start(&self, app: &AppHandle, loc: &Locations, on_type: impl Fn(&str) + Send + Sync + 'static, first_line: impl Fn() -> Option<String> + Send + Sync + 'static) -> Result<(), String> {
         std::fs::create_dir_all(&loc.data).map_err(|e| e.to_string())?;
         let loc = loc.clone();
         let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
@@ -290,12 +305,14 @@ impl Runner {
         let spawn2: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = { let first = first.clone(); let again = spawn.clone(); Arc::new(move || match lock(&first).take() { Some(c) => Ok(c), None => again() }) };
         let a = app.clone();
         let emit: Arc<dyn Fn(Value) + Send + Sync> = Arc::new(move |v| Runner::publish(&a, v));
-        supervise(self.shared.clone(), spawn2, emit, Arc::new(on_type), self.timing);
+        supervise_first(self.shared.clone(), spawn2, emit, Arc::new(on_type), Arc::new(first_line), self.timing);
         Ok(())
     }
 
     /// Write one command line to the engine. Never waits.
     pub fn send(&self, cmd: &Value) -> Result<(), String> { self.shared.send_line(cmd.to_string()) }
+    /// Write one line the shell made itself (the settings, settings.rs `apply_line`), exactly as it is. Never waits.
+    pub fn send_line(&self, line: String) -> Result<(), String> { self.shared.send_line(line) }
 
     /// Hands the engine the key, or tells it there is none (after the key was removed). The line goes out exactly as
     /// `handoff_line` wrote it: the engine takes it only when it starts `{"v":1,"type":"auth.key"`, and turning it into a
@@ -363,8 +380,32 @@ mod tests {
 
     #[test]
     fn allows_the_commands_pages_need() {
-        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "spending.set"] {
+        for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "memory.list", "metrics.show"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
+        }
+    }
+    #[test]
+    fn settings_reach_the_engine_only_from_the_shell_never_from_a_page() {
+        // The registry (settings.rs, T16) is the only way to change these: the shell checks the value, then sends the
+        // engine's own command itself. A page may still ask to be shown them (spending.show, memory.list, metrics.show).
+        for t in ["settings.apply", "spending.set", "explain.set", "memory.pause", "metrics.set"] {
+            assert!(check_command(&json!({ "v": 1, "id": "c", "type": t, "project": "/Users/me/site" })).is_err(), "{t} must not come from a page");
+        }
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let line = fixtures.lines().find(|l| l.contains("\"settings.apply\"")).expect("a settings.apply fixture");
+        assert!(check_command(&serde_json::from_str(line).unwrap()).is_err());
+    }
+    #[test]
+    fn with_no_folder_chosen_the_settings_page_may_still_ask_for_the_limit_and_memory() {
+        // The daily limit, Explain and pausing are for every project, so Settings shows them before a folder is chosen.
+        let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p });
+        for t in ["spending.show", "memory.list"] {
+            assert!(check_project(&c(t, NO_PROJECT), "").is_ok(), "{t}");
+            assert!(check_project(&c(t, NO_PROJECT), "/Users/me/site").is_ok(), "{t}");
+            assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t}");
+        }
+        for t in ["memory.forget", "memory.erase", "memory.add", "memory.export", "tasks.list", "agent.start", "spending.set"] {
+            assert!(check_project(&c(t, NO_PROJECT), "").is_err(), "{t} must not take the stand in");
         }
     }
     #[test]
@@ -619,6 +660,30 @@ mod tests {
         assert!(lines[0].contains(r#""key":"sk-ant-test-not-a-real-key""#));
         assert_eq!(lines[1], r#"{"v":1,"type":"auth.key","key":null}"#);
         r.shared.quitting.store(true, Ordering::SeqCst); r.shared.kill();
+        let _ = std::fs::remove_file(&out);
+    }
+    #[test]
+    fn the_settings_line_is_the_first_the_engine_reads_after_every_start() {
+        // Each start of the engine writes the first line it reads to a file and stops, so the supervisor starts it again.
+        // A page command sent the moment the engine is up must never come first: the settings line is queued before the
+        // engine can be reached at all (supervise_first).
+        let out = std::env::temp_dir().join(format!("companion-first-line-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        let script: &'static str = Box::leak(format!("read -r a; printf '%s\\n' \"$a\" >> '{}'; sleep 0.2", out.display()).into_boxed_str());
+        let shared = Shared::new(); let spawns = Arc::new(AtomicUsize::new(0)); let s2 = spawns.clone();
+        let n = Arc::new(AtomicUsize::new(0)); let n2 = n.clone();
+        let first: Arc<dyn Fn() -> Option<String> + Send + Sync> = Arc::new(move || Some(format!(r#"{{"v":1,"id":"s{}","type":"settings.apply","values":{{}}}}"#, n2.fetch_add(1, Ordering::SeqCst))));
+        supervise_first(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh(script) }), Arc::new(|_| {}), Arc::new(|_| {}), first, Timing { give_up_after: 10, ..quick() });
+        // Keep sending a page command as fast as possible, from before the engine is even up.
+        let stop = Arc::new(AtomicBool::new(false));
+        let (sh2, st2) = (shared.clone(), stop.clone());
+        let pusher = std::thread::spawn(move || { while !st2.load(Ordering::SeqCst) { let _ = sh2.send_line(r#"{"v":1,"id":"p","type":"runner.ping"}"#.into()); std::thread::sleep(Duration::from_millis(1)); } });
+        assert!(wait_for(|| std::fs::read_to_string(&out).is_ok_and(|t| t.lines().count() >= 2), 10_000), "the engine was not started twice");
+        stop.store(true, Ordering::SeqCst); let _ = pusher.join();
+        shared.quitting.store(true, Ordering::SeqCst); shared.kill();
+        let got = std::fs::read_to_string(&out).unwrap();
+        for (i, l) in got.lines().enumerate() { assert!(l.contains(r#""type":"settings.apply""#), "start {i} read first: {l}"); }
+        assert!(spawns.load(Ordering::SeqCst) >= 2);
         let _ = std::fs::remove_file(&out);
     }
     #[test]

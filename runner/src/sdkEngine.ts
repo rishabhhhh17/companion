@@ -46,6 +46,8 @@ export type SdkConfig = {
   memory?: string;
   // Off the record: no saved conversation (Claude Code writes none to disk). Such a session cannot be continued later.
   offTheRecord?: boolean;
+  // Most turns (work.maxTurns, T16); 80 when none is given, as before.
+  maxTurns?: number;
 };
 
 export function buildSdkOptions(c: SdkConfig) {
@@ -84,7 +86,7 @@ export function buildSdkOptions(c: SdkConfig) {
     canUseTool: async () => ({ behavior: "deny" as const, message: "Companion decides in its safety hook, not here." }),
     sandbox: sandboxSettings(homedir()),
     maxBudgetUsd: c.budgetUsd,
-    maxTurns: 80,
+    maxTurns: c.maxTurns ?? 80,
     model: c.model,
     // Effort stated for the model, never left to a default that differs by model (models.ts): medium on the 5.5 models,
     // nothing extra on Haiku 4.5 (it takes no effort) or on a model the table does not know. Thinking stays adaptive.
@@ -130,7 +132,7 @@ export class SdkEngine implements Engine {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; queryFn?: typeof realQuery; totals?: SessionTotals }) {}
 
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone, memory: opts.memory, offTheRecord: opts.offTheRecord });
+    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone, memory: opts.memory, offTheRecord: opts.offTheRecord, maxTurns: opts.maxTurns });
     const q = (this.o.queryFn ?? realQuery)({ prompt: opts.prompt, options: options as never });
     const totals = this.o.totals ?? SHARED_TOTALS;
     // A continued conversation starts from what it had already cost, so that is not booked again.

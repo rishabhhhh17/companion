@@ -269,7 +269,8 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
     expect(all, all.join("\n")).toEqual([]);
   });
   test("the reader really reads the pages (it finds their controls)", () => {
-    const { els } = elements(read("./card.tsx"));
+    // Home is card.tsx and, since the settings registry (T16), its Settings tab in settingsPage.tsx.
+    const els = [...elements(read("./card.tsx")).els, ...elements(read("./settingsPage.tsx")).els];
     expect(els.filter((e) => e.tag === "button").length).toBeGreaterThan(150);
     expect(els.filter((e) => e.tag === "input").length).toBeGreaterThan(8);
     expect(els.some((e) => lit(e.props.get("role")) === "tab")).toBe(true);
@@ -503,7 +504,8 @@ describe("where the keyboard goes when its control goes away (part 2)", () => {
 });
 
 describe("Home from the keyboard alone (part 2)", () => {
-  const card = read("./card.tsx");
+  // Home: card.tsx and its Settings tab (settingsPage.tsx, T16).
+  const card = read("./card.tsx") + "\n" + read("./settingsPage.tsx");
   // Every "are you sure" in Home: it takes the keyboard to its safe choice, keeps Tab inside, Esc takes it away, and
   // the keyboard goes back to the button that opened it.
   const SURE = ["S.deleteSure", "S.keyRemoveSure", "S.memoryEraseSure", "S.liveSure", "S.rollSure", "S.undoSure", "S.bisectUndoSure("];
@@ -601,11 +603,24 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(panel).not.toMatch(/\{filtering && <div[^>]*role="status"/);
   });
   test("each settings row is a named group, so VoiceOver and the keyboard know where they are", () => {
-    const settings = card.slice(card.indexOf("function SettingsPanel"), card.indexOf("\n}\n", card.indexOf("function SettingsPanel")));
-    expect(settings.match(/<Group title=\{S\.\w+\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
-    const g = card.slice(card.indexOf("function Group"), card.indexOf("\n}\n", card.indexOf("function Group")));
+    const page = read("./settingsPage.tsx");
+    // Each setting is a group named by its own label; each section is named by its title; the fixed parts are Groups.
+    const row = page.slice(page.indexOf("function SettingRow("), page.indexOf("\n}\n", page.indexOf("function SettingRow(")));
+    expect(row).toContain('<div role="group" aria-labelledby={labelId} className="setting">');
+    expect(row).toContain('<span className="line" id={labelId}><b>{r.label}</b></span>');
+    const sec = page.slice(page.indexOf("function SettingsSection("), page.indexOf("\n}\n", page.indexOf("function SettingsSection(")));
+    expect(sec).toMatch(/<section aria-labelledby=\{headId\}[^>]*>\s*<h3 id=\{headId\}>\{title\}<\/h3>/);
+    const settings = page.slice(page.indexOf("export function SettingsPage("));
+    expect(settings.match(/<Group title=\{S\.[\w.]+\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(5);
+    const g = page.slice(page.indexOf("function Group"), page.indexOf("\n}\n", page.indexOf("function Group")));
     expect(g).toMatch(/role="group" aria-labelledby=\{id\}/);
     expect(g).toMatch(/<h3 id=\{id\}>/);
+    // Switches say on or off to VoiceOver; choices are a radio group the arrows move through.
+    expect(row).toContain('role="switch" aria-checked={value === true}');
+    const choice = page.slice(page.indexOf("function ChoiceControl("), page.indexOf("\n}\n", page.indexOf("function ChoiceControl(")));
+    expect(choice).toContain('role="radiogroup" aria-labelledby={labelId}');
+    expect(choice).toContain('role="radio" aria-checked={o.id === value} tabIndex={i === at ? 0 : -1}');
+    for (const k of ["ArrowRight", "ArrowLeft", "Home", "End"]) expect(choice).toContain(k);
   });
   test("the first run's steps: after Continue or Back the keyboard goes to the new step's heading", () => {
     const ob = read("./onboarding.tsx");
@@ -801,13 +816,10 @@ describe("Home stays usable with bigger text (part 4)", () => {
     const draw = card.indexOf("createRoot(");
     expect(card.indexOf("applyTextSize(textSize());"), "before the first draw").toBeGreaterThan(-1);
     expect(card.indexOf("applyTextSize(textSize());")).toBeLessThan(draw);
-    const row = body(card, "TextSizeRow");
-    expect(row).toContain("Group, { title: S.textSizeTitle");
-    expect(row).toContain("TEXT_SIZES.map(");
-    expect(row).toContain('"aria-pressed": s === size');
-    expect(row).toContain("setTextSize(s)");
-    expect(row).toContain("applyTextSize(s)");
-    expect(body(card, "SettingsPanel")).toContain("TextSizeRow");
+    // Settings changes it through the registry (display.textSize, a choice row); Home follows what is in force.
+    expect(card).toContain('const size = useSetting("display.textSize");');
+    expect(card).toContain("useEffect(() => { applyTextSize(textSizeFrom(size)); }, [size]);");
+    expect(read("./settingsPage.tsx")).toContain('case "choice": return <ChoiceControl');
     // Only Home: the character's window and the island keep their sizes.
     for (const f of ["./dock.tsx", "./island.tsx", "./overlay.ts"]) expect(read(f), f).not.toContain("applyTextSize");
   });

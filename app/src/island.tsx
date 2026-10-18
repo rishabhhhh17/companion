@@ -1,5 +1,6 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { startSettings } from "./settingsStore.ts";
 import { invoke, listen } from "./tauri.ts";
 import { islandAlert, islandLine, islandWord } from "./home.ts";
 import { visualState } from "./model.ts";
@@ -47,4 +48,6 @@ function Island() {
     </main>
   );
 }
+// The settings in force, kept in step with every change (settingsStore.ts), so the island reads them the same way.
+startSettings();
 createRoot(document.getElementById("root")!).render(<StrictMode><Island /></StrictMode>);

@@ -1,7 +1,6 @@
 // The first run, as plain decisions: which step comes next, what each answer changes, and what a key must look like.
 // Nothing here touches the screen, so every rule can be tested.
 import type { Command } from "../../protocol/index.ts";
-import { editLine, setExplain } from "./commands.ts";
 
 export const STEPS = ["welcome", "connect", "folder", "questions", "permissions", "first"] as const;
 export type Step = (typeof STEPS)[number];
@@ -28,14 +27,19 @@ export const QUESTIONS: { key: keyof Answers; ask: string; yes: string; no: stri
   { key: "autoSend", ask: "When you talk to me, should I send it as soon as you let go?", yes: "Yes, send it", no: "No, let me check it first", yesEffect: "Spoken requests of three words or more are sent straight away.", noEffect: "Your words wait in the box until you press Start." },
 ];
 
+/// What the answers change in Settings (the registry, T16): Explain for every project, and auto send. Sent through the
+/// shell like any other change in Settings.
+export function settingsFor(a: Answers): [string, boolean][] {
+  return [["explain.on", a.explain], ["talk.autoSend", a.autoSend]];
+}
+
 export function effectsOf(a: Answers): string[] {
   return QUESTIONS.map((q) => (a[q.key] ? q.yesEffect : q.noEffect));
 }
 
-/// What the answers change, as commands for the engine (lines in your profile, with the source "your answer at setup")
-/// and a local setting for auto send.
-export function commandsFor(a: Answers, project: string, add: (scope: "profile", text: string, source: string) => Command, explain: (enabled: boolean) => Command): Command[] {
-  const out: Command[] = [explain(a.explain)];
+/// What the answers add to your profile, as commands for the engine (lines with the source "your answer at setup").
+export function commandsFor(a: Answers, project: string, add: (scope: "profile", text: string, source: string) => Command): Command[] {
+  const out: Command[] = [];
   if (a.short) out.push(add("profile", "Prefers short answers", "your answer at setup"));
   if (a.plain) out.push(add("profile", "Prefers plain words, no jargon", "your answer at setup"));
   void project;

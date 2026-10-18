@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sections": ["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "sharing", "display", "updates", "numbers"],
+  "settings": [
+    { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
+
+    { "key": "talk.voice", "section": "talking", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "voice", "live": true },
+    { "key": "talk.speak", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.speak", "map": "isOne" } } },
+    { "key": "talk.speakReplies", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.speakReplies", "map": "isOne" } } },
+    { "key": "talk.autoSend", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.voiceAutoSend", "map": "isOne" } } },
+
+    { "key": "character.comeTo", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "dock", "live": true },
+    { "key": "fun.reactions", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.reactions", "map": "notOff" } } },
+
+    { "key": "showme.allScreens", "section": "pointing", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.showmeAllScreens", "map": "isOne" } } },
+
+    { "key": "spend.dailyLimit", "section": "spending", "kind": "number", "default": 10, "min": 1, "max": 500, "step": 0.01, "unit": "dollars", "scope": "app", "applies": ["runner"], "store": "spending", "live": true },
+
+    { "key": "work.maxTurns", "section": "work", "kind": "number", "default": 80, "min": 20, "max": 200, "step": 10, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+
+    { "key": "explain.on", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
+    { "key": "memory.paused", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
+    { "key": "teach.yourTurn", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.yourTurn", "map": "isOn" } } },
+
+    { "key": "sharing.hide", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
+    { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
+
+    { "key": "display.textSize", "section": "display", "kind": "choice", "default": "standard", "options": ["standard", "large", "larger", "largest"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.textSize", "map": "textSize" } } },
+
+    { "key": "updates.daily", "section": "updates", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+      "from": { "pageStorage": { "name": "companion.updateAuto", "map": "notZero" } } },
+
+    { "key": "numbers.on", "section": "numbers", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "metrics", "live": true }
+  ]
+}

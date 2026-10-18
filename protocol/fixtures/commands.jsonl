@@ -64,3 +64,5 @@
 {"v":1,"id":"c71","type":"teach.check","project":"p_9f2c","agent":"builder-1","checkpoint":"cp_0042"}
 {"v":1,"id":"cg1","type":"engine.warm"}
 {"v":1,"id":"cg2","type":"agent.start","project":"p_9f2c","agent":"builder-1","mode":"drive","prompt":"Make the button match this","model":"claude-sonnet-5-5","budgetUsd":3,"files":[{"name":"notes.md","text":"Use the brand blue."}],"images":[{"name":"button.png","mediaType":"image/png","base64":"iVBORw0KGgo="}]}
+{"v":1,"id":"cs1","type":"settings.apply","values":{"work.maxTurns":120},"project":"p_9f2c","projectValues":{}}
+{"v":1,"id":"cs2","type":"settings.apply","values":{}}

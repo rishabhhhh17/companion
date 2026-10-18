@@ -114,9 +114,11 @@ describe("answers said out loud for a question asked by voice (off by default, T
   });
   test("the card speaks through one place that knows both settings, passes whole answers on, and turns a sound note into a notice", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    const calls = card.split("\n").filter((l) => l.includes('invoke("speak"'));
+    const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    const calls = (card + "\n" + page).split("\n").filter((l) => l.includes('invoke("speak"'));
     // The card's own lines and replies go through sayIt; the Settings sample is the only other call (voicesettings.test.ts).
     expect(calls.length).toBe(2);
+    expect(card.split("\n").filter((l) => l.includes('invoke("speak"')).length).toBe(1);
     const say = card.slice(card.indexOf("const sayIt ="), card.indexOf("\n", card.indexOf("const sayIt =")));
     expect(say).toContain('invoke("speak", { text, whole, rest: S.speakRest })');
     expect(say).toContain("spokenNote(");

@@ -1,5 +1,6 @@
 // Voice settings (M11 wave 4, item 2): the Mac's voice and its speed, the microphone, the language, whether the sound is
 // on. What the app sends is read safely, and everything is said in plain words. Nothing here makes a sound or listens.
+import { defOf } from "../../protocol/settings.ts";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, spokenSpeed, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type VoiceSettings } from "./voicesettings.ts";
@@ -92,14 +93,15 @@ describe("voice settings in plain words", () => {
 });
 
 describe("the Settings rows", () => {
-  const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+  // Settings is settingsPage.tsx since the registry (T16); the voice editor is the talk.voice row's own.
+  const card = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
   const rows = card.slice(card.indexOf("function VoiceRows"), card.indexOf("\n}\n", card.indexOf("function VoiceRows")));
   test("Settings asks the app for the lists and changes them only through set_voice_settings, and the app has both commands", () => {
     expect(rows).toContain('invoke("voice_settings")');
     expect(rows).toContain('invoke("set_voice_settings", voiceAsk(');
     expect(rows).toContain("voiceSettingsFrom(");
-    const panel = card.slice(card.indexOf("function SettingsPanel"), card.indexOf("\n}\n", card.indexOf("function SettingsPanel")));
-    expect(panel).toContain("<VoiceRows");
+    const row = card.slice(card.indexOf("function SettingRow"), card.indexOf("\n}\n", card.indexOf("function SettingRow")));
+    expect(row).toContain('d.key === "talk.voice" ? <VoiceRows />');
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
     for (const c of ["voice_settings", "set_voice_settings"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
   });
@@ -114,9 +116,13 @@ describe("the Settings rows", () => {
     expect(tries[0]).toContain("onClick=");
     expect(tries[0]).toContain("S.voiceSample");
   });
-  test("Speak to me and Answer out loud are both here, each off until turned on", () => {
-    expect(rows).toContain("S.speakSetting"); expect(rows).toContain("S.speakRepliesSetting");
-    expect(rows).toContain("speechOn"); expect(rows).toContain("repliesOn");
+  test("Speak to me and Answer out loud are rows of their own in the same section, each off until turned on", () => {
+    for (const k of ["talk.speak", "talk.speakReplies"]) expect(defOf(k), k).toMatchObject({ kind: "switch", default: false, section: "talking", store: "settings" });
+    expect(S.set["talk.speak"].label).toBe(S.speakSetting);
+    expect(S.set["talk.speakReplies"].label).toBe(S.speakRepliesSetting);
+    // Turning either off silences at once: the shell does it when the setting changes (main.rs setting_applied).
+    const rs = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    expect(rs).toContain('if (key == "talk.speak" || key == "talk.speakReplies") && off(key) { speech_off(app); }');
   });
 });
 
@@ -132,7 +138,8 @@ describe("the picked speed reaches the card's own timing", () => {
   });
   test("the card reads the speed when it starts, and Settings notes every speed it reads or saves", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    const rows = card.slice(card.indexOf("function VoiceRows"), card.indexOf("\n}\n", card.indexOf("function VoiceRows")));
+    const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    const rows = page.slice(page.indexOf("function VoiceRows"), page.indexOf("\n}\n", page.indexOf("function VoiceRows")));
     expect(rows.match(/setV\(noteSpeed\(voiceSettingsFrom\(x\)\)\)/g)?.length).toBe(2);
     expect(rows).not.toMatch(/setV\(voiceSettingsFrom\(x\)\)/);
     // At its start the card asks only for the saved speed (voice_speed), never the lists: listing the microphones waits

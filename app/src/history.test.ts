@@ -36,6 +36,7 @@ describe("search in What I did", () => {
     expect(statusGroup("something new")).toBe("not_done");
     expect(statusGroup("interrupted")).toBe("stopped");
     expect(statusGroup("error_max_budget_usd")).toBe("stopped");
+    expect(statusGroup("error_max_turns")).toBe("stopped");
     expect(statusGroup("running")).toBe("running");
     expect(ids(filterHistory(tasks, { words: "", status: "done" }))).toEqual([6, 4]);
     expect(ids(filterHistory(tasks, { words: "", status: "not_done" }))).toEqual([5, 1]);

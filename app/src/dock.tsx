@@ -7,6 +7,7 @@ import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
+import { startSettings } from "./settingsStore.ts";
 import "./style.css";
 
 function Dock() {
@@ -76,4 +77,6 @@ function Dock() {
     </main>
   );
 }
+// The settings in force (reactions), kept in step with every change (settingsStore.ts).
+startSettings();
 createRoot(document.getElementById("root")!).render(<StrictMode><Dock /></StrictMode>);
