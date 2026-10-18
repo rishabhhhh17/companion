@@ -2,6 +2,7 @@
 // inside it. Plain code with no page in it, tested in a11y.test.ts; card.tsx, confirm.tsx and focus.ts only do what this
 // decides. Nothing here ever takes the keyboard: Companion never does that by itself (rule 9).
 import { shouldTakeFocus } from "./cardlogic.ts";
+import { PANEL_TAB, need, tabName, type Panel, type Tab } from "./home.ts";
 import { driveWords, pausedWords, receiptProofWords, stuckWords, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
@@ -11,22 +12,36 @@ import { S } from "./strings.ts";
 export type News = { key: string; text: string };
 
 /** Everything on Home worth saying out loud now, most important first: an error, a question, the loop card, a pause, a
- *  plan to look at, a finished task. Said politely through one live line (`liveLine`), never by moving the keyboard. */
-export function newsOf(m: Model): News[] {
-  const out: News[] = [];
-  if (m.error) out.push({ key: `error:${m.error}`, text: m.error });
-  for (const a of m.approvals) out.push({ key: `approval:${a.id}`, text: `${S.needsYouTitle}: ${a.title}` });
-  if (m.agentsAsk) out.push({ key: "agents", text: S.agentsTitle });
-  if (m.stuck) out.push({ key: `stuck:${m.stuck.index}:${m.stuck.title}`, text: `${S.stuckTitle}: ${stuckWords(m)}` });
-  if (m.paused) out.push({ key: `paused:${m.paused.reason}`, text: pausedWords(m) ?? S.pausedTitle });
-  if (m.plan) out.push({ key: `plan:${m.plan.agent}:${m.plan.steps.length}`, text: S.saidPlan(m.plan.steps.length) });
-  const f = m.drive?.finished;
-  if (f) out.push({ key: `drive:${f.status}:${f.completed}:${f.total}`, text: driveWords(m) ?? "" });
+ *  plan to look at, a finished task. Said politely through one live line (`liveLine`), never by moving the keyboard.
+ *  `at`: the tab open when it came. A thing on another tab says which tab, in the same words, so it is said once (Home
+ *  then shows that tab unless the person is typing, home.ts). A need that only its own tab shows (a lesson step, the
+ *  practice, Prompt help, Show me, the microphone) is said here only while another tab is open; on its tab, its panel
+ *  says it. */
+export function newsOf(m: Model, at: Tab = "now"): News[] { return gather(m, at).news; }
+
+/** What newsOf says, and the needs its open tab already shows (`quiet`: counted as said, so leaving the tab later does not
+ *  say them again). */
+function gather(m: Model, at: Tab): { news: News[]; quiet: string[] } {
+  const out: News[] = [], quiet: string[] = [];
+  const on = (p: Panel, text: string) => { const t = PANEL_TAB[p]; return t === "every" || t === at ? text : S.homeWaiting(tabName(t), text); };
+  if (m.error) out.push({ key: `error:${m.error}`, text: on("notes", m.error) });
+  for (const a of m.approvals) out.push({ key: `approval:${a.id}`, text: on("urgent", `${S.needsYouTitle}: ${a.title}`) });
+  if (m.agentsAsk) out.push({ key: "agents", text: on("urgent", S.agentsTitle) });
+  if (m.stuck) out.push({ key: `stuck:${m.stuck.index}:${m.stuck.title}`, text: on("urgent", `${S.stuckTitle}: ${stuckWords(m)}`) });
+  if (m.paused) out.push({ key: `paused:${m.paused.reason}`, text: on("urgent", pausedWords(m) ?? S.pausedTitle) });
+  if (m.plan) out.push({ key: `plan:${m.plan.agent}:${m.plan.steps.length}`, text: on("urgent", S.saidPlan(m.plan.steps.length)) });
+  const f = m.drive?.finished, done = f ? driveWords(m) ?? "" : "";
+  if (f && done.trim()) out.push({ key: `drive:${f.status}:${f.completed}:${f.total}`, text: on("drive", done) });
   if (m.receipt) {
     const label = m.task?.label ?? "";
-    out.push({ key: `receipt:${m.receipt.checkpoint}`, text: m.receipt.proof === "failed" ? S.saidNotDone(label) : S.saidDone(label, receiptProofWords(m)) });
+    out.push({ key: `receipt:${m.receipt.checkpoint}`, text: on("receipt", m.receipt.proof === "failed" ? S.saidNotDone(label) : S.saidDone(label, receiptProofWords(m))) });
   }
-  return out.filter((n) => n.text.trim() !== "");
+  const n = need(m);
+  if (n && !out.some((x) => x.key === n.key)) {
+    if (n.tab === at) quiet.push(`tab:${n.key}`);
+    else out.push({ key: `tab:${n.key}`, text: S.homeWaiting(tabName(n.tab), n.why) });
+  }
+  return { news: out.filter((x) => x.text.trim() !== ""), quiet };
 }
 
 const sentence = (t: string) => (/[.!?]$/.test(t.trim()) ? t.trim() : `${t.trim()}.`);
@@ -39,8 +54,8 @@ export const EMPTY_LINE: LiveLine = { text: "", keys: [] };
  *  things are said, each as its own sentence, and they replace its words. With nothing new, it keeps its words while
  *  something they are about still shows, and empties once all of it is gone: a live line whose words do not change is not
  *  said again, so the same thing coming back later must find it empty, and VoiceOver never finds old news there. */
-export function liveLine(line: LiveLine, said: readonly string[], m: Model): { said: string[]; line: LiveLine } {
-  const now = newsOf(m), keys = now.map((n) => n.key);
+export function liveLine(line: LiveLine, said: readonly string[], m: Model, at: Tab = "now"): { said: string[]; line: LiveLine } {
+  const { news: now, quiet } = gather(m, at), keys = [...now.map((n) => n.key), ...quiet];
   const fresh = now.filter((n) => !said.includes(n.key));
   if (fresh.length) return { said: keys, line: { text: fresh.map((n) => sentence(n.text)).join(" "), keys: fresh.map((n) => n.key) } };
   return { said: keys, line: line.keys.some((k) => keys.includes(k)) ? line : EMPTY_LINE };

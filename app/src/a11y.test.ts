@@ -114,6 +114,16 @@ function elements(src: string): { js: string; els: El[] } {
   return { js, els };
 }
 
+/** The body of a named function in a page's source (types taken out first, so braces in them do not count), its spaces
+ *  and line breaks made single spaces. */
+function body(src: string, name: string): string {
+  const js = new Bun.Transpiler({ loader: "tsx" }).transformSync(src);
+  const at = js.search(new RegExp(`function ${name}\\(`));
+  if (at < 0) throw new Error(`no function ${name}`);
+  const params = js.indexOf("(", at), open = js.indexOf("{", skip(js, params));
+  return js.slice(open, skip(js, open)).replace(/\s+/g, " ");
+}
+
 const lit = (v?: string): string | null => { const t = v?.trim() ?? ""; return /^"(?:[^"\\]|\\.)*"$/.test(t) ? JSON.parse(t) : null; };
 /** Words, not only signs. A sign is read out by its own name ("multiplication sign", "play"), never as what the control
  *  does, so "×" or "▶" alone is no name. The same rule for a label and for the words inside a button. */
@@ -362,9 +372,53 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(t).toMatch(/remote\. /);
     expect(t.endsWith(".")).toBe(true);
   });
+  test("a need waiting on another tab says which tab, in the same line, so it is said once", () => {
+    const m = run([...task(), approval()]);
+    const what = `${S.needsYouTitle}: git push sends your work to a remote`;
+    expect(newsOf(m, "settings")[0]).toEqual({ key: "approval:ap_1", text: S.homeWaiting("Now", what) });
+    expect(newsOf(m, "now")[0].text, "on its own tab: just what it is").toBe(what);
+    // Said once: Home then showing Now (it moves there unless the person is typing) says nothing more.
+    const a = liveLine(EMPTY_LINE, [], m, "settings");
+    expect(a.line.text).toBe(S.homeWaiting("Now", what));
+    expect(liveLine(a.line, a.said, m, "now").line).toBe(a.line);
+    expect(newsOf(m, "settings").filter((n) => n.text.includes(S.needsYouTitle)).length, "no second line for the tab").toBe(1);
+  });
+  test("an error shows on every tab, so it never says where", () => {
+    const m = run([ev({ type: "protocol.error", reason: "Could not save that." })]);
+    for (const t of ["now", "did", "learn", "memory", "settings"] as const) expect(newsOf(m, t)[0].text).toBe(m.error!);
+  });
+  test("a need only its own tab shows (a lesson step) is said when another tab is open, and left to its panel on its tab", () => {
+    const m = run([ev({ type: "ui.walkRequested", walk: "w1" }), ev({ type: "walk.step", walk: "w1", lesson: "k", title: "Turn on Screen Recording", index: 0, total: 3, say: "Open System Settings", find: "System Settings", ask: false })]);
+    expect(newsOf(m, "now").map((n) => n.text)).toEqual([S.homeWaiting("Learn", S.lessonsTitle)]);
+    expect(newsOf(m, "learn")).toEqual([]);
+    const a = liveLine(EMPTY_LINE, [], m, "now");
+    expect(a.line.text).toBe(S.homeWaiting("Learn", S.lessonsTitle));
+    expect(liveLine(a.line, a.said, m, "learn").line, "the tab moving says nothing more").toBe(a.line);
+    // Seen first on its own tab (its panel said it): going to another tab later does not say it again.
+    const b = liveLine(EMPTY_LINE, [], m, "learn");
+    expect(b.line.text).toBe("");
+    expect(liveLine(b.line, b.said, m, "now").line.text).toBe("");
+  });
+  test("Home has one live line for needs: the character's state, the cost and the task's steps are in none", () => {
+    const card = read("./card.tsx");
+    const { js, els } = elements(card);
+    const live = els.filter((e) => e.intrinsic && (["status", "alert", "log"].includes(lit(e.props.get("role")) ?? "") || (e.props.has("aria-live") && lit(e.props.get("aria-live")) !== "off")));
+    const line = live.filter((e) => e.props.get("children") === "news");
+    expect(line.length, "one news line").toBe(1);
+    expect(lit(line[0].props.get("aria-live"))).toBe("polite");
+    // Nothing else that is said out loud carries a need, the state that goes with it, the cost or the task's steps.
+    const NEEDS = ["home.said", "characterWords(", "visualState(", "formatUsd(", "costUsd", "activityNow(", "m.error", "m.approvals", "m.agentsAsk", "m.stuck", "m.paused", "m.plan", "S.needsYouTitle", "S.homeWaiting", "newsOf("];
+    expect(live.length).toBeGreaterThan(10);
+    for (const e of live.filter((x) => x !== line[0])) {
+      const said = js.slice(e.start, e.end);
+      for (const n of NEEDS) expect(said.includes(n), `a live region says ${n}: ${said.slice(0, 160)}`).toBe(false);
+    }
+    expect(card).not.toContain("home.said");
+    expect(card).toContain("liveLine(line.current, heard.current, m, tabNow.current)");
+  });
   test("the card has one polite line for it, read whole, and says nothing by moving the keyboard", () => {
     const card = read("./card.tsx");
-    expect(card).toContain("liveLine(line.current, heard.current, m)");
+    expect(card).toContain("liveLine(line.current, heard.current, m, tabNow.current)");
     expect(card).toContain("setNews(n.line.text)");
     expect(card).toMatch(/<div className="sr" role="status" aria-live="polite" aria-atomic="true">\{news\}<\/div>/);
     // Outside the first run's switch, so it is there before anything changes (a live line must exist first).
@@ -470,8 +524,16 @@ describe("Home from the keyboard alone (part 2)", () => {
   test("the confirm step takes the keyboard only after the person's own press, and gives it back", () => {
     const c = read("./confirm.tsx");
     expect(c).toContain("useLayoutEffect(");
-    expect(c).toMatch(/focusLost\(/);
-    expect(c).toContain("document.hasFocus()");
+    // Opening takes the keyboard only through the tested rule (focus.test.ts): never a focus of its own.
+    const open = body(c, "openStep");
+    expect(open).toContain("takeIfLost(");
+    expect(open).not.toContain(".focus(");
+    const mount = c.slice(c.indexOf("useLayoutEffect("), c.indexOf("}, []);", c.indexOf("useLayoutEffect(")));
+    expect(mount).toContain("openStep(box.current)");
+    expect(mount).not.toContain(".focus(");
+    // Its one other move of the keyboard is a key the person pressed inside the step.
+    expect(c.match(/\.focus\(/g)?.length).toBe(1);
+    expect(body(c, "ConfirmStep").slice(body(c, "ConfirmStep").indexOf("const onKeyDown"))).toContain(".focus(");
     expect(c).toContain("[data-cancel]");
     expect(c).toMatch(/return \(\) => focusBack\(back\)/);
     expect(c).toMatch(/confirmKey\(e\.key, e\.shiftKey/);
@@ -485,11 +547,27 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(card.match(/keepFocus\(/g)?.length).toBe(1);
     expect(card).toMatch(/keepFocus\(el, \(\) => document\.getElementById\(tabId\(tabNow\.current\)\)\)/);
     const f = read("./focus.ts");
-    expect(f).toContain("focusLost(");
     expect(f).toContain("focusSpot(");
-    expect(f).toContain("document.hasFocus()");
-    expect(f).toContain("MutationObserver");
+    expect(f).toContain("hasFocus: () => document.hasFocus()");
+    expect(f).toMatch(/const lostIn = \(p: Page\) => \{[^\n]*focusLost\([^\n]*p\.hasFocus\(\)\)/);
+    // The watch only asks refocus, which focus.test.ts runs against a stand in page.
+    expect(body(f, "keepFocus")).toContain("new MutationObserver(() => refocus(seen, tab))");
+    expect(body(f, "keepFocus")).not.toContain(".focus(");
     expect(f).not.toMatch(/setInterval|requestAnimationFrame/);
+  });
+  test("focus.ts moves the keyboard in two places only, each after the rule says Home may", () => {
+    const f = read("./focus.ts");
+    expect(f.match(/\.focus\(/g)?.length, "takeIfLost and refocus, nothing else").toBe(2);
+    for (const name of ["takeIfLost", "refocus"]) {
+      const b = body(f, name), guard = b.indexOf("if (!lostIn(p)) return");
+      expect(guard, `${name} asks the rule`).toBeGreaterThan(-1);
+      expect(guard, `${name} asks before it moves the keyboard`).toBeLessThan(b.indexOf(".focus("));
+    }
+    // A box opened from a press goes through the same rule.
+    expect(body(f, "focusIfLost")).toContain("takeIfLost(");
+    expect(body(f, "focusIfLost")).not.toContain(".focus(");
+    // A tab shown by itself gets the keyboard only by the same rule.
+    expect(card).toMatch(/useEffect\(\(\) => \{ takeIfLost\(\(\) => document\.getElementById\(tabId\(home\.tab\)\)\); \}, \[home\.tab\]\);/);
   });
   test("a box put away with Esc gives the keyboard back to the button that opened it", () => {
     for (const box of ["S.openLinkLabel", "S.obKeyLabel", "S.memoryEdit}: ${l.text}"]) {

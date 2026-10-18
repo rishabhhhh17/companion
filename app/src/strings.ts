@@ -497,7 +497,6 @@ export const S = {
   // Home in the notch (F18): the card under the island, in tabs, and the island's own words.
   homeLabel: "Home",
   homeTabs: { now: "Now", did: "What I did", learn: "Learn", memory: "Memory", settings: "Settings" },
-  homeShown: (tab: string, why: string) => `Showing ${tab}: ${why}.`,
   homeWaiting: (tab: string, why: string) => `${why}, on ${tab}.`,
   homeTabWaiting: "something here needs you",
   homeHistoryNone: "Nothing yet. Each task you start shows here, with what it changed and whether it was checked.",

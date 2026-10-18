@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useId, useReducer, useRef, useState, type ReactN
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
-import { focusBack, focusIfLost, keepFocus } from "./focus.ts";
+import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { reactionsOn, setReactions } from "./reactions.ts";
 import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, TALK_KEYS_START, talkCanPick, talkCost, talkKeysFrom, talkKeysLine, talkLabel, talkNotFreeLine, talkProblem, type TalkKeys, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn, comeToFrom } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
@@ -453,16 +453,18 @@ function Card() {
     homeDispatch({ type: "need", need: needNow, typing: typing(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus()) });
   }, [needNow?.key ?? ""]);
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
-  useEffect(() => { if (document.hasFocus() && (!document.activeElement || document.activeElement === document.body)) document.getElementById(tabId(home.tab))?.focus(); }, [home.tab]);
+  useEffect(() => { takeIfLost(() => document.getElementById(tabId(home.tab))); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
   const box = useRef<HTMLInputElement>(null);
-  // VoiceOver hears each new question, the loop card, a finished task and an error once, politely, on one line (a11y.ts);
-  // the keyboard is never moved for it. The line empties once what it said is gone, so nothing old is left there.
+  // VoiceOver hears each new question, the loop card, a finished task and an error once, politely, on one line (a11y.ts),
+  // with the tab it is on when that is not the open one (the tab open when it came: Home moves there after). It is Home's
+  // only live line for these; the keyboard is never moved for it. The line empties once what it said is gone, so nothing
+  // old is left there.
+  const tabNow = useRef(home.tab); tabNow.current = home.tab;
   const heard = useRef<string[]>([]), line = useRef<LiveLine>(EMPTY_LINE);
   const [news, setNews] = useState("");
-  useEffect(() => { const n = liveLine(line.current, heard.current, m); heard.current = n.said; line.current = n.line; setNews(n.line.text); }, [m]);
+  useEffect(() => { const n = liveLine(line.current, heard.current, m, tabNow.current); heard.current = n.said; line.current = n.line; setNews(n.line.text); }, [m]);
   // When the control with the keyboard goes away (pressed, closed, answered), the keyboard stays near where it was (focus.ts).
-  const tabNow = useRef(home.tab); tabNow.current = home.tab;
   useEffect(() => { const el = root.current; if (!el) return; return keepFocus(el, () => document.getElementById(tabId(tabNow.current))); }, []);
   // The buttons that open a step or a box, so the keyboard goes back to them when it closes.
   const linkId = useId(), undoId = useId(), bisectUndoId = useId();
@@ -829,7 +831,9 @@ function Card() {
     <main className="card" ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
-      <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      {/* Read when VoiceOver reaches it, not said by itself: the cost changes on every turn, and what needs the person is
+          said once on the live line below. */}
+      <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} setAutoSend={setAutoSend} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
@@ -846,7 +850,6 @@ function Card() {
           );
         })}
       </div>
-      <div className="sr" role="status" aria-live="polite">{home.said}</div>
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any tab): on every tab. */}
       {show("notes") && <>
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
@@ -1207,7 +1210,7 @@ function Card() {
       )}
 
       {show("task") && m.task && m.task.lines.length > 0 && (
-        <section className="panel" aria-live="polite">
+        <section className="panel">
           <h2>{m.task.label || "Task"}</h2>
           {/* The latest one or two steps, in plain words: never the raw command. */}
           {activityNow(m).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" || l.outcome === "denied" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</div>)}

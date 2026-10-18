@@ -83,9 +83,10 @@ export function need(m: Model): Need | null {
 
 // ---- the tabs ----
 
-/** said: the last tab shown by itself, for VoiceOver (focus does not move there). needKey: the need last acted on. */
-export type HomeState = { tab: Tab; needKey: string; said: string };
-export const homeStart = (): HomeState => ({ tab: "now", needKey: "", said: "" });
+/** needKey: the need last acted on. What VoiceOver hears about a need, and the tab it is on, is Home's one live line
+ *  (a11y.ts `liveLine`), since focus does not move there. */
+export type HomeState = { tab: Tab; needKey: string };
+export const homeStart = (): HomeState => ({ tab: "now", needKey: "" });
 // typing: the person is typing in Home right now, so a need on another tab marks that tab and is said, but does not move them.
 export type HomeAction = { type: "pick"; tab: Tab } | { type: "need"; need: Need | null; typing?: boolean } | { type: "opened"; keyboard: boolean };
 
@@ -96,18 +97,18 @@ export function typing(active: { tag: string; editable: boolean } | null, window
 
 export function homeReduce(s: HomeState, a: HomeAction): HomeState {
   switch (a.type) {
-    // The person's own choice. Focus moves to the tab, so VoiceOver reads it there; the old announcement goes.
-    case "pick": return { ...s, tab: a.tab, said: "" };
+    // The person's own choice. Focus moves to the tab, so VoiceOver reads it there.
+    case "pick": return { ...s, tab: a.tab };
     case "need": {
       const key = a.need?.key ?? "";
       if (key === s.needKey) return s;   // the same thing as before: never pulls the person back to it
       if (!a.need) return { ...s, needKey: "" };
       if (a.need.tab === s.tab) return { ...s, needKey: key };
-      if (a.typing) return { ...s, needKey: key, said: S.homeWaiting(tabName(a.need.tab), a.need.why) };
-      return { tab: a.need.tab, needKey: key, said: S.homeShown(tabName(a.need.tab), a.need.why) };
+      if (a.typing) return { ...s, needKey: key };
+      return { tab: a.need.tab, needKey: key };
     }
     // The ask box hotkeys open Home ready to type, and the box is on Now. A click keeps the tab the person left it on.
-    case "opened": return a.keyboard && s.tab !== "now" ? { ...s, tab: "now", said: "" } : s;
+    case "opened": return a.keyboard && s.tab !== "now" ? { ...s, tab: "now" } : s;
   }
 }
 

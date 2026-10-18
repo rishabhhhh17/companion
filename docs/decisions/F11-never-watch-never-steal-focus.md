@@ -33,7 +33,7 @@ A build detail inside this decision, not a change to it. Home still never takes 
 - When the control with the keyboard goes away (it was pressed, or an answer closed its card), the keyboard goes to the nearest part of Home still showing, else the open tab.
 - After Continue, Back or Skip in the first run, the keyboard goes to the new step's heading.
 
-Each happens only while Home has the keyboard and nothing in it does (for the first run, by the same rule a question follows: never from someone typing). A new question, the loop card, a finished task or an error is said out loud politely on one live line, never by moving the keyboard. Not yet tried on a real Mac with VoiceOver; the checks still to do are listed under item 3 of `docs/milestones/M11-wave4-plan.md`.
+Each happens only while Home has the keyboard and nothing in it does (for the first run, by the same rule a question follows: never from someone typing). A new question, the loop card, a finished task or an error is said out loud politely on one live line, never by moving the keyboard. It is Home's only live line for these, and when the thing is on another tab the same sentence says which tab. Not yet tried on a real Mac with VoiceOver; the checks still to do are listed under item 3 of `docs/milestones/M11-wave4-plan.md`.
 
 ## What it rules out
 - Section 11 row: passive screen watching, activity tracking, unasked proactive suggestions.
