@@ -21,6 +21,9 @@ use std::sync::OnceLock;
 pub const REGISTRY_TEXT: &str = include_str!("../../../protocol/settings.json");
 pub const FILE: &str = "settings.json";
 pub const DAMAGED: &str = "settings.damaged.json";
+/// The problem code for a settings.json that is there but could not be read (no permission, an I/O error, a folder in its
+/// place): it is never moved aside or saved over (`ready_to_save`).
+pub const UNREADABLE: &str = "unreadable";
 /// The one migration so far: the choices the pages kept in their own storage before the registry.
 pub const PAGE_STORAGE_MARK: &str = "pageStorage.v1";
 /// The stores the engine keeps itself, reached only through its own commands (spending.set, explain.set, memory.pause,
@@ -158,9 +161,15 @@ pub fn registry() -> &'static Registry {
 
 // ---------- what a value may be (the same rules as protocol/settings.ts) ----------
 
-/// Two values are the same setting value: numbers compared as numbers (80 and 80.0), everything else exactly.
+/// Two values are the same setting value: numbers compared as numbers (80 and 80.0), at any depth (a voice's speed of 1
+/// read back from a page is the 1.0 it was), everything else exactly.
 pub fn same(a: &Value, b: &Value) -> bool {
-    match (a.as_f64(), b.as_f64()) { (Some(x), Some(y)) if a.is_number() && b.is_number() => x == y, _ => a == b }
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q)),
+        (Value::Object(x), Value::Object(y)) => x.len() == y.len() && x.iter().all(|(k, p)| y.get(k).is_some_and(|q| same(p, q))),
+        _ => a == b,
+    }
 }
 fn half(x: f64) -> f64 { (x + 0.5).floor() }
 /// A number on its nearest step from min, tidied to ten places, never past max. Written as a whole number when it is one.
@@ -283,18 +292,40 @@ pub fn to_json(f: &File) -> Value {
 
 pub fn path(dir: &Path) -> PathBuf { dir.join(FILE) }
 
-/// Reads settings.json from Companion's folder. A damaged one is moved aside as settings.damaged.json (kept for support,
-/// removed by Delete everything) and Companion starts on the usual values.
+/// Reads settings.json from Companion's folder.
+///  - None there: the usual values.
+///  - Read, but not a settings file (not JSON, not text): moved aside as settings.damaged.json (kept for support, removed by
+///    Delete everything) and Companion starts on the usual values. The migration mark is kept and a fresh file holding
+///    only it is written at once: a settings.json is only ever written after Home has run the migration (the first thing
+///    it does), so the damaged one had it, and without it the old page storage would copy the choices from before the
+///    update back in over the person's own.
+///  - There but not readable at all: the usual values for this session and one problem (`UNREADABLE`). Nothing is known
+///    about what it holds, so it is not moved and not saved over (`ready_to_save`).
 pub fn load(r: &Registry, dir: &Path) -> (File, Vec<Problem>) {
     let p = path(dir);
     let text = match std::fs::read(&p) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(_) => Some(String::new()),
-        Ok(b) => Some(String::from_utf8(b).unwrap_or_default()),
+        Err(_) => return (File::default(), vec![Problem { key: None, code: UNREADABLE }]),
+        Ok(b) => Some(String::from_utf8(b).unwrap_or_default()),   // bytes that are not text: a damaged file
     };
-    let (f, problems, damaged) = parse_file(r, text.as_deref());
-    if damaged { let _ = std::fs::rename(&p, dir.join(DAMAGED)); }
+    let (mut f, problems, damaged) = parse_file(r, text.as_deref());
+    if damaged {
+        f.migrated = vec![PAGE_STORAGE_MARK.to_string()];
+        if std::fs::rename(&p, dir.join(DAMAGED)).is_ok() { let _ = save(dir, &f); }
+    }
     (f, problems)
+}
+
+/// Before a change is saved. A settings.json that could not be read is read again first: still not readable, the change
+/// is refused ("notSaved") and nothing is written over it; readable now, what it holds is taken (with its own problems),
+/// so the change goes on top of the person's values, never over them. Ok(true) when it was read again just now.
+pub fn ready_to_save(r: &Registry, dir: &Path, file: &mut File, problems: &mut Vec<Problem>) -> Result<bool, &'static str> {
+    if !problems.iter().any(|p| p.code == UNREADABLE) { return Ok(false); }
+    let (f, p) = load(r, dir);
+    let still = p.iter().any(|x| x.code == UNREADABLE);
+    *file = f;
+    *problems = p;
+    if still { Err("notSaved") } else { Ok(true) }
 }
 
 /// Writes the whole file at once (owner only). The error is the code the page puts in words.
@@ -356,6 +387,20 @@ pub fn reset_targets<'a>(r: &'a Registry, which: Which) -> Result<Vec<&'a Def>, 
         Which::Section(s) => { if !r.sections.iter().any(|x| x == s) { return Err("unknown"); } Ok(r.in_section(s).into_iter().filter(|d| !d.protective).collect()) }
         Which::All => Ok(r.defs.iter().filter(|d| !d.protective).collect()),
     }
+}
+
+/// What a reset puts back, decided from exactly what the page was shown, so the page can name each one before and keep each
+/// one for Undo: every setting in the reset (`reset_targets`, never a protective one) whose value in the snapshot differs
+/// from its usual one (`values` and `usual` are the snapshot's), and of the engine's own settings only the ones the page
+/// names in `engine` (those it has heard from the engine away from usual). One the page has not heard is left as it is:
+/// the page could neither name it nor put it back. The usual value of keys and voice is their own (the snapshot's), and
+/// the registry's for every other setting, as on the page (settingsStore.ts usualOf).
+pub fn reset_plan(r: &Registry, which: Which, values: &Map<String, Value>, usual: &Map<String, Value>, engine: &[String]) -> Result<Vec<String>, &'static str> {
+    Ok(reset_targets(r, which)?.into_iter().filter(|d| {
+        if d.runner_store() { return engine.iter().any(|k| *k == d.key); }
+        let u = if d.kind == Kind::Custom { usual.get(&d.key).unwrap_or(&d.default) } else { &d.default };
+        values.get(&d.key).is_some_and(|v| !same(v, u))
+    }).map(|d| d.key.clone()).collect())
 }
 
 /// Puts the settings kept in settings.json back to their usual values (removing them). One setting or a section: the
@@ -447,6 +492,22 @@ pub fn presentation_with(s: &crate::presentation::Settings, key: &str, v: &Value
 pub fn keys_value(m: &crate::keymap::Map) -> Value { crate::keymap::to_json(m)["keys"].clone() }
 pub fn voice_value(s: &crate::voiceset::Saved) -> Value { crate::voiceset::to_json(s) }
 
+/// Undo's value for the voice: the voice settings whole, exactly as the snapshot showed them. Read with voice.json's own
+/// rules; a value those rules would have to repair (a speed not offered, a language not known, a voice with no id) is
+/// refused, so Undo never keeps something the person did not have.
+pub fn voice_from(v: &Value) -> Result<crate::voiceset::Saved, &'static str> {
+    if !v.is_object() { return Err("custom"); }
+    let s = crate::voiceset::parse(Some(&v.to_string()));
+    if same(&voice_value(&s), v) { Ok(s) } else { Err("custom") }
+}
+/// Undo's value for the keys: every job's keys exactly as the snapshot showed them, read with keys.json's own rules; keys
+/// not on a job's list, two jobs on the same keys or anything else they would repair is refused.
+pub fn keys_from(v: &Value) -> Result<crate::keymap::Map, &'static str> {
+    if !v.is_object() { return Err("custom"); }
+    let (m, damaged) = crate::keymap::parse(Some(&json!({ "keys": v }).to_string()), None);
+    if damaged { Err("custom") } else { Ok(m) }
+}
+
 /// What the wrapped stores hold now, read by main.rs.
 pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved }
 
@@ -479,6 +540,7 @@ pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, prob
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keymap;
 
     fn cases() -> Vec<Value> { include_str!("../../../protocol/fixtures/settings-cases.jsonl").lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).expect("a case is JSON")).collect() }
     fn def_from(v: &Value) -> Def {
@@ -553,11 +615,81 @@ mod tests {
         let d = dir("damaged");
         std::fs::write(d.join(FILE), "{ not json").unwrap();
         let (f, problems) = load(r, &d);
-        assert_eq!(f, File::default());
+        assert!(f.values.is_empty() && f.projects.is_empty());
         assert_eq!(problems, vec![Problem { key: None, code: "damaged" }]);
-        assert!(!d.join(FILE).exists());
         assert_eq!(std::fs::read_to_string(d.join(DAMAGED)).unwrap(), "{ not json");
         for bad in ["[]", "7", r#"{"values": 3}"#, r#"{"projects": []}"#] { assert!(parse_file(r, Some(bad)).2, "{bad}"); }
+        // Bytes that are not text are a damaged file too: moved aside the same way.
+        let e = dir("damaged-bytes");
+        std::fs::write(e.join(FILE), [0xff, 0xfe, 0x00, 0x7b]).unwrap();
+        assert_eq!(load(r, &e).1, vec![Problem { key: None, code: "damaged" }]);
+        assert_eq!(std::fs::read(e.join(DAMAGED)).unwrap(), vec![0xff, 0xfe, 0x00, 0x7b]);
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&e);
+    }
+    #[test]
+    fn a_damaged_file_keeps_the_migration_mark_so_the_choices_from_before_the_update_never_come_back() {
+        // A settings.json is only written once Home has run the migration (it is the first thing Home does), so a damaged
+        // one had the mark. Losing it would let the old page storage copy the choices from before the update back in.
+        let r = registry();
+        let d = dir("damaged-mark");
+        std::fs::write(d.join(FILE), "{\"version\":1,\"values\":{\"fun.reactions\":fal").unwrap();
+        let (mut f, problems) = load(r, &d);
+        assert_eq!(problems, vec![Problem { key: None, code: "damaged" }]);
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        // The migration the page would send now writes nothing.
+        let mut old = Map::new();
+        old.insert("fun.reactions".into(), json!(false));
+        old.insert("display.textSize".into(), json!("large"));
+        assert_eq!(migrate(r, &mut f, PAGE_STORAGE_MARK, &old), Err("alreadyMigrated"));
+        assert!(f.values.is_empty());
+        // The fresh file with the mark is written at once, so the next start has it too (the damaged one stays aside).
+        let (again, problems) = load(r, &d);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(again.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        assert!(again.values.is_empty());
+        assert!(d.join(DAMAGED).exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn a_file_that_cannot_be_read_is_never_moved_aside_or_saved_over() {
+        let r = registry();
+        // A folder where the file should be: reading it fails, but it is not a damaged file.
+        let d = dir("unreadable");
+        std::fs::create_dir_all(d.join(FILE).join("inside")).unwrap();
+        let (mut f, mut problems) = load(r, &d);
+        assert_eq!(f, File::default());
+        assert_eq!(problems, vec![Problem { key: None, code: UNREADABLE }]);
+        assert!(d.join(FILE).join("inside").is_dir(), "left where it was");
+        assert!(!d.join(DAMAGED).exists(), "never moved aside");
+        // A change cannot be saved while it still cannot be read.
+        assert_eq!(ready_to_save(r, &d, &mut f, &mut problems), Err("notSaved"));
+        assert_eq!(problems, vec![Problem { key: None, code: UNREADABLE }]);
+        // Once it can be read, what it holds is taken first, so a change goes on top of the person's values.
+        std::fs::remove_dir_all(d.join(FILE)).unwrap();
+        std::fs::write(d.join(FILE), r#"{"version":1,"values":{"fun.reactions":false},"migrated":["pageStorage.v1"]}"#).unwrap();
+        assert_eq!(ready_to_save(r, &d, &mut f, &mut problems), Ok(true));
+        assert!(problems.is_empty());
+        assert_eq!(value_of(r, &f, "fun.reactions", None), Some(json!(false)));
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        // A file read fine needs nothing more.
+        assert_eq!(ready_to_save(r, &d, &mut f, &mut problems), Ok(false));
+        // No permission to read it: the same, and the file is untouched.
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            let e = dir("no-permission");
+            std::fs::write(e.join(FILE), r#"{"version":1,"values":{"fun.reactions":false}}"#).unwrap();
+            std::fs::set_permissions(e.join(FILE), std::fs::Permissions::from_mode(0o000)).unwrap();
+            if std::fs::read(e.join(FILE)).is_err() {   // (anyone who can read every file, such as root, skips this part)
+                let (g, p) = load(r, &e);
+                assert_eq!((g, p), (File::default(), vec![Problem { key: None, code: UNREADABLE }]));
+                assert!(!e.join(DAMAGED).exists());
+                std::fs::set_permissions(e.join(FILE), std::fs::Permissions::from_mode(0o600)).unwrap();
+                assert_eq!(std::fs::read_to_string(e.join(FILE)).unwrap(), r#"{"version":1,"values":{"fun.reactions":false}}"#);
+            }
+            let _ = std::fs::set_permissions(e.join(FILE), std::fs::Permissions::from_mode(0o600));
+            let _ = std::fs::remove_dir_all(&e);
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
     #[test]
@@ -634,6 +766,92 @@ mod tests {
         let all: Vec<&str> = reset_targets(&r, Which::All).unwrap().iter().map(|d| d.key.as_str()).collect();
         assert!(all.contains(&"checks.limit") && !all.contains(&"checks.rules"));
         assert_eq!(reset_targets(&r, Which::Section("nowhere")).err(), Some("unknown"));
+    }
+    fn reset_cases() -> Vec<Value> { include_str!("../../../protocol/fixtures/settings-reset-cases.jsonl").lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).expect("a case is JSON")).collect() }
+    fn which_of(v: &Value) -> Which<'_> {
+        if v["all"] == true { Which::All } else if let Some(s) = v["section"].as_str() { Which::Section(s) } else { Which::Key(v["key"].as_str().unwrap()) }
+    }
+    fn strings(v: &Value) -> Vec<String> { v.as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect() }
+    #[test]
+    fn what_a_reset_changes_matches_every_shared_case_and_so_what_undo_puts_back() {
+        // The same cases run on the page (settingsStore.test.ts): what the page counts, names and keeps for Undo is
+        // exactly what the shell resets.
+        let r = registry();
+        let cases = reset_cases();
+        assert!(cases.len() >= 10);
+        for c in cases {
+            let mut got = reset_plan(r, which_of(&c["which"]), c["values"].as_object().unwrap(), c["usual"].as_object().unwrap(), &strings(&c["sent"])).unwrap();
+            got.sort();
+            assert_eq!(got, strings(&c["resets"]), "{}", c["name"]);
+        }
+    }
+    #[test]
+    fn the_engines_own_settings_are_reset_only_when_the_page_could_show_them() {
+        let r = registry();
+        let none = Map::new();
+        // Not heard from: left as they are, even for Reset all, so Undo never misses one.
+        assert!(reset_plan(r, Which::All, &none, &none, &[]).unwrap().is_empty());
+        // Named by the page: reset, but only inside what was asked for.
+        let sent = vec!["memory.paused".to_string(), "spend.dailyLimit".to_string()];
+        assert_eq!(reset_plan(r, Which::Section("memory"), &none, &none, &sent).unwrap(), vec!["memory.paused".to_string()]);
+        assert_eq!(reset_plan(r, Which::Key("spend.dailyLimit"), &none, &none, &sent).unwrap(), vec!["spend.dailyLimit".to_string()]);
+        // A name that is not one of the engine's own, or not a setting, changes nothing.
+        let odd = vec!["fun.reactions".to_string(), "no.suchThing".to_string()];
+        assert!(reset_plan(r, Which::All, &none, &none, &odd).unwrap().is_empty());
+        assert_eq!(reset_plan(r, Which::Section("nowhere"), &none, &none, &[]).err(), Some("unknown"));
+        // A protective setting is never in it (test registry: checks.rules), and the engine's store is (checks.limit).
+        let t = test_registry();
+        let mut v = Map::new();
+        v.insert("checks.rules".into(), json!(["never edit .env"]));
+        v.insert("checks.mustSee".into(), json!(["Welcome"]));
+        let mut got = reset_plan(&t, Which::All, &v, &none, &["checks.limit".to_string()]).unwrap();
+        got.sort();
+        assert_eq!(got, vec!["checks.limit".to_string(), "checks.mustSee".to_string()]);
+    }
+    #[test]
+    fn what_a_reset_changes_in_each_shell_store_comes_from_the_values_the_page_was_shown() {
+        // Fake stores: come to off, quiet during calls off, other keys for Stop everything, another voice.
+        let stop = keymap::choices(keymap::Action::Stop)[1];
+        let voice = crate::voiceset::Saved { voice: Some(crate::voiceset::Named { id: "v".into(), name: "Ava".into(), lang: "en-US".into() }), speed: 1.25, ..Default::default() };
+        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice };
+        let mut f = File::default();
+        set(registry(), &mut f, "fun.reactions", &json!(false), None).unwrap();
+        let snap = snapshot(registry(), &f, None, &w, &[], &[]);
+        let (values, usual) = (snap["values"].as_object().unwrap(), snap["usual"].as_object().unwrap());
+        let mut all = reset_plan(registry(), Which::All, values, usual, &[]).unwrap();
+        all.sort();
+        assert_eq!(all, ["calls.quiet", "character.comeTo", "fun.reactions", "keys.hotkeys", "talk.voice"].map(String::from).to_vec());
+        assert_eq!(reset_plan(registry(), Which::Section("sharing"), values, usual, &[]).unwrap(), vec!["calls.quiet".to_string()]);
+        assert!(reset_plan(registry(), Which::Key("sharing.hide"), values, usual, &[]).unwrap().is_empty(), "already usual");
+        // Every store at its usual value: nothing to reset.
+        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default() };
+        let s2 = snapshot(registry(), &File::default(), None, &plain, &[], &[]);
+        assert!(reset_plan(registry(), Which::All, s2["values"].as_object().unwrap(), s2["usual"].as_object().unwrap(), &[]).unwrap().is_empty());
+    }
+    #[test]
+    fn undo_puts_back_the_voice_and_the_keys_only_exactly_as_the_page_was_shown_them() {
+        // The voice: what the snapshot showed comes back whole.
+        let voice = crate::voiceset::Saved { voice: Some(crate::voiceset::Named { id: "v".into(), name: "Ava".into(), lang: "en-US".into() }), speed: 1.25, mic: Some(crate::voiceset::Named { id: "m".into(), name: "Desk mic".into(), lang: String::new() }), language: "en".into() };
+        assert_eq!(voice_from(&voice_value(&voice)), Ok(voice.clone()));
+        assert_eq!(voice_from(&voice_value(&Default::default())), Ok(Default::default()));
+        // Through the page, 1.0 comes back as 1: still the same value.
+        assert_eq!(voice_from(&json!({ "voice": null, "speed": 1, "mic": null, "language": "auto" })), Ok(Default::default()));
+        // Anything the voice file's own rules would have to repair is refused, never stored as something else.
+        for bad in [json!(null), json!("Ava"), json!([]), json!({ "voice": null, "speed": 9, "mic": null, "language": "auto" }), json!({ "voice": null, "speed": 1, "mic": null, "language": "klingon" }), json!({ "voice": { "id": "" }, "speed": 1, "mic": null, "language": "auto" })] {
+            assert_eq!(voice_from(&bad), Err("custom"), "{bad}");
+        }
+        // The keys: every job's keys as shown come back; anything to repair (not on the job's list, two jobs on the same
+        // keys, not an object) is refused.
+        let stop = keymap::choices(keymap::Action::Stop)[1];
+        let m = keymap::Map::DEFAULT.with(keymap::Action::Stop, stop);
+        assert_eq!(keys_from(&keys_value(&m)), Ok(m));
+        assert_eq!(keys_from(&json!({})), Ok(keymap::Map::DEFAULT));
+        let card = keymap::id(keymap::default(keymap::Action::Card));
+        let spare = keymap::id(keymap::choices(keymap::Action::Card)[2]);
+        assert_eq!(keymap::choices(keymap::Action::Card)[2], keymap::choices(keymap::Action::Stop)[2], "a spare chord is on both lists");
+        for bad in [json!(null), json!([]), json!("ctrl"), json!({ "stop": "nonsense" }), json!({ "stop": card }), json!({ "card": spare, "stop": spare })] {
+            assert_eq!(keys_from(&bad), Err("custom"), "{bad}");
+        }
     }
     #[test]
     fn a_project_setting_needs_a_folder_and_is_kept_under_its_hash_never_its_path() {
@@ -726,6 +944,23 @@ mod tests {
             let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
             assert!(body.contains("settings::only_card(window.label())?"), "{c} does not check the window");
         }
+    }
+    #[test]
+    fn the_shell_resets_and_puts_back_only_through_these_rules() {
+        let main = include_str!("main.rs");
+        let body = |c: &str| { let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
+        // Reset: what changes in the shell's own stores and the engine's is the plan (reset_plan, tested above), never a
+        // decision of its own; settings.json is reset by reset(), tested above.
+        let reset = body("fn settings_reset(");
+        assert!(reset.contains("settings::reset_plan(") && reset.contains("for d in plan.iter()"), "{reset}");
+        assert!(!reset.contains("for d in targets") && !reset.contains("keys_picked() !=") && !reset.contains("before != voiceset"), "{reset}");
+        // Undo: the voice and the keys come back only as voice_from and keys_from read them.
+        let change = body("fn setting_change(");
+        assert!(change.contains("settings::voice_from(value)?") && change.contains("settings::keys_from(value)?"), "{change}");
+        assert!(!change.contains("voiceset::parse(") && !change.contains("keymap::parse("), "{change}");
+        // A file that could not be read is never saved over: every path that writes settings.json asks first.
+        for c in ["fn settings_migrate(", "fn setting_change(", "fn settings_reset("] { assert!(body(c).contains("settings_writable("), "{c}"); }
+        assert!(body("fn settings_writable(").contains("settings::ready_to_save("));
     }
     #[test]
     fn the_wrapped_stores_read_and_change_through_their_own_files() {

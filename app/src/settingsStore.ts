@@ -5,12 +5,18 @@
 //  - the engine's own events for the settings it keeps itself (spending.state, explain.state, memory.state, metrics.summary);
 //  - until the one migration has run, the old page storage, read with exactly today's meaning, so no window ever shows a
 //    choice the person did not make. Before any of these, the usual value. Nothing here ever throws.
+// Once the migration has run, page storage also remembers it (MIGRATED_FLAG), so a settings.json lost later (damaged, or
+// removed by hand) never brings the choices from before the update back.
 import { useSyncExternalStore } from "react";
 import { defOf, defaultOf, fromPageStorage, PAGE_STORAGE_MARK, REGISTRY, RUNNER_STORES, type Def } from "../../protocol/settings.ts";
 import { invoke, listen } from "./tauri.ts";
 
 export type Snapshot = { values: Record<string, unknown>; usual: Record<string, unknown>; project: string; migrated: string[]; problems: { key: string | null; code: string }[]; changed: string[] };
-type Storage = { getItem(k: string): string | null } | null | undefined;
+type Storage = { getItem(k: string): string | null; setItem?(k: string, v: string): void } | null | undefined;
+type Invoke = typeof invoke;
+let call: Invoke = invoke;
+/** Tests only: a stand in for the shell's commands (null puts the real one back). */
+export function _invokeForTests(f: Invoke | null): void { call = f ?? invoke; }
 
 let snap: Snapshot | null = null;
 const engine = new Map<string, unknown>();
@@ -34,10 +40,11 @@ export function snapshotFrom(v: unknown): Snapshot | null {
     changed: Array.isArray(v.changed) ? v.changed.filter((x): x is string => typeof x === "string") : [],
   };
 }
-export function takeSnapshot(v: unknown): void {
+export function takeSnapshot(v: unknown, st: Storage = pageStorage()): void {
   const s = snapshotFrom(v);
   if (!s) return;
   snap = s;
+  if (s.migrated.includes(PAGE_STORAGE_MARK) && !flagged(st)) remember(st);
   notify();
 }
 export const snapshotNow = (): Snapshot | null => snap;
@@ -61,14 +68,20 @@ function oldValue(d: Def, st: Storage): unknown {
   if (!p || !st) return undefined;
   try { return fromPageStorage(p.map, st.getItem(p.name)); } catch { return undefined; }
 }
-const migrated = () => !!snap && snap.migrated.includes(PAGE_STORAGE_MARK);
+/** Page storage's own note that the migration ran ("1"). The only thing the pages ever write there for settings; Delete
+ *  everything clears it together with settings.json. */
+export const MIGRATED_FLAG = "companion.settingsMigrated";
+function flagged(st: Storage): boolean { try { return st?.getItem(MIGRATED_FLAG) === "1"; } catch { return false; } }
+function remember(st: Storage): void { try { st?.setItem?.(MIGRATED_FLAG, "1"); } catch { /* storage may be unavailable */ } }
+const markShown = () => !!snap && snap.migrated.includes(PAGE_STORAGE_MARK);
+const migrated = (st: Storage) => markShown() || flagged(st);
 
 /** The value in force for a setting (undefined for a name that does not exist). */
 export function setting(key: string, st: Storage = pageStorage()): unknown {
   const d = defOf(key);
   if (!d) return undefined;
   if (RUNNER_STORES.includes(d.store)) return engine.has(key) ? engine.get(key) : d.default;
-  if (!migrated()) { const old = oldValue(d, st); if (old !== undefined) return old; }
+  if (!migrated(st)) { const old = oldValue(d, st); if (old !== undefined) return old; }
   if (snap && Object.hasOwn(snap.values, key)) return snap.values[key];
   return d.default;
 }
@@ -91,18 +104,30 @@ export function changedNow(section?: string): string[] {
     return v !== undefined && !same(v, usualOf(d.key));
   }).map((d) => d.key);
 }
-/** What Undo after Reset all puts back: every changed setting with the value it had. */
-export const undoValues = (): [string, unknown][] => changedNow().map((k) => [k, defOf(k)!.kind === "custom" ? snap?.values[k] : setting(k)]);
+/** What Undo after a reset of a section (or of everything) puts back: every changed setting with the value it has now.
+ *  It is the same list the shell resets (settings.rs reset_plan; both run protocol/fixtures/settings-reset-cases.jsonl). */
+export const undoValues = (section?: string): [string, unknown][] => changedNow(section).map((k) => [k, defOf(k)!.kind === "custom" ? snap?.values[k] : setting(k)]);
+const isEngines = (k: string) => RUNNER_STORES.includes(defOf(k)!.store);
+/** The engine's own settings in a reset that the page has not heard from the engine yet: the shell leaves them as they
+ *  are (the page could neither name them nor put them back), and the confirm says so. */
+export const notHeard = (section?: string): string[] =>
+  REGISTRY.settings.filter((d) => !d.protective && (!section || d.section === section) && RUNNER_STORES.includes(d.store) && !engine.has(d.key)).map((d) => d.key);
 
 // ---------- changing, always through the shell ----------
 
 export type Done = { ok: true; notReset?: string[] } | { ok: false; code: string };
 const asDone = (p: Promise<unknown>): Promise<Done> => p.then((v) => { takeSnapshot(v); const n = isObj(v) && Array.isArray(v.notReset) ? (v.notReset as string[]) : []; return { ok: true as const, ...(n.length ? { notReset: n } : {}) }; }, (e) => ({ ok: false as const, code: String(e) }));
-export const changeSetting = (key: string, value: unknown): Promise<Done> => asDone(invoke("settings_set", { key, value }));
-export const resetSetting = (key: string): Promise<Done> => asDone(invoke("settings_reset", { key }));
-export const resetSection = (section: string): Promise<Done> => asDone(invoke("settings_reset", { section }));
-export const resetAll = (): Promise<Done> => asDone(invoke("settings_reset", { all: true }));
-/** Undo after Reset all: each value put back, one at a time, through settings_set. Says which could not be. */
+export const changeSetting = (key: string, value: unknown): Promise<Done> => asDone(call("settings_set", { key, value }));
+// Each reset names the engine's own settings the page has heard away from usual; the shell resets only those of the engine's.
+export const resetSetting = (key: string): Promise<Done> => asDone(call("settings_reset", { key, engine: changedNow().filter((k) => k === key && isEngines(k)) }));
+export const resetSection = (section: string): Promise<Done> => asDone(call("settings_reset", { section, engine: changedNow(section).filter(isEngines) }));
+export const resetAll = (): Promise<Done> => asDone(call("settings_reset", { all: true, engine: changedNow().filter(isEngines) }));
+/** Reset a section (or everything) and keep what Undo puts back, read just before. */
+export async function resetWithUndo(section?: string): Promise<{ done: Done; back: [string, unknown][] }> {
+  const back = undoValues(section);
+  return { done: await (section ? resetSection(section) : resetAll()), back };
+}
+/** Undo after a reset: each value put back, one at a time, through settings_set. Says which could not be. */
 export async function undoReset(back: [string, unknown][]): Promise<string[]> {
   const failed: string[] = [];
   for (const [k, v] of back) { const r = await changeSetting(k, v); if (!r.ok) failed.push(k); }
@@ -120,12 +145,13 @@ export function migrationValues(st: Storage = pageStorage()): Record<string, unk
 }
 /** Home only, once the first snapshot shows it is still to do: the old choices go to the shell, which keeps only the
  *  ones not already set. The old page storage is left as it is for one version, so going back still works. */
-export async function migrateFromPageStorage(): Promise<void> {
+export async function migrateFromPageStorage(st: Storage = pageStorage()): Promise<void> {
   await ready;
-  if (!snap || migrated()) return;
-  const values = migrationValues();
+  if (!snap || markShown()) return;
+  // Done before (the flag), and settings.json lost since: only the mark is recorded again; nothing from before is sent.
+  const values = flagged(st) ? {} : migrationValues(st);
   if (values === null) return;
-  await invoke("settings_migrate", { from: PAGE_STORAGE_MARK, values }).then(takeSnapshot, () => {});
+  await call("settings_migrate", { from: PAGE_STORAGE_MARK, values }).then((v) => takeSnapshot(v, st), () => {});
 }
 
 /** Every window calls this once as it starts. The overlay may only listen (its capability), so it does not ask: it takes
@@ -137,7 +163,7 @@ export function startSettings(o: { ask?: boolean } = {}): void {
   void listen("settings-changed", (e) => takeSnapshot(e.payload));
   void listen("runner-event", (e) => { engineEvent(e.payload); });
   if (o.ask === false) { readyResolve?.(); return; }
-  void invoke("settings_get").then(takeSnapshot, () => {}).finally(() => readyResolve?.());
+  void call("settings_get").then((v) => takeSnapshot(v), () => {}).finally(() => readyResolve?.());
 }
 
 /** Tests only: forget everything read. */

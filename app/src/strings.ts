@@ -644,6 +644,11 @@ export const S = {
   saidPlan: (n: number) => `The plan is ready: ${n} ${n === 1 ? "step" : "steps"}. Check it, then start it.`,
   saidDone: (what: string, proof: string) => (what ? `Done: ${what}. ${proof}` : `Done. ${proof}`),
   saidNotDone: (what: string) => (what ? `Not done: ${what}. A check failed.` : "Not done. A check failed."),
+  // A task that reached the most turns the person allows (the setting work.maxTurns), naming that setting. Never "try
+  // again": the same task would stop at the same place.
+  turnsStopped: (setting: string) => `Stopped: this task used the most turns allowed (${setting}, in Settings). Nothing more was run.`,
+  historyTurns: "Stopped at the most turns allowed",
+  driveTurns: (setting: string) => `a step used the most turns allowed (${setting}, in Settings)`,
   // ---- Settings, from the registry (protocol/settings.json, T16; settingsPage.tsx, settingsRows.ts) ----
   // The words for every setting, by its name in the registry. A test checks every setting and every option has words here
   // and nothing is left over. label: what the row is called; help: one or two plain lines; also: other words people may
@@ -709,7 +714,8 @@ export const S = {
   setResetSectionSure: (list: string) => `These go back to usual: ${list}.`,
   setResetSectionYes: "Reset them",
   setResetAll: "Reset all settings to usual",
-  setResetAllSure: (n: number) => `${n} ${n === 1 ? "setting goes" : "settings go"} back to usual, keys and voice too. Your Claude key, project folders, memory, history, undo points and pictures are not touched.`,
+  setResetAllSure: (list: string) => `These go back to usual: ${list}. Your Claude key, project folders, the lines Companion remembers, history, undo points and pictures stay as they are.`,
+  setNotHeard: (list: string) => `Left as they are, because Companion could not read them yet: ${list}.`,
   setResetAllNone: "Every setting is already at its usual value.",
   setResetAllYes: "Reset all",
   setResetDone: (n: number) => `${n} ${n === 1 ? "setting is" : "settings are"} back to usual.`,
@@ -717,6 +723,7 @@ export const S = {
   setUndone: "Your settings are back as they were.",
   setNotAllBack: "Some settings could not be put back. Check them below.",
   setDamaged: "Your settings file could not be read, so Companion started with the usual settings. A copy of the old file was kept for support.",
+  setUnreadable: "Companion could not open your settings file, so it is using the usual settings for now. The file is left as it is, and changes are not saved until it can be opened.",
   setBadValue: (label: string) => `${label} had a value Companion could not use, so it is back to usual.`,
   setSpendingNoProject: "Choose a project folder to see what it used today.",
   setProblem: {

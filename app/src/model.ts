@@ -178,6 +178,7 @@ const LOOKS_TECHNICAL = /(\b[A-Z][A-Za-z]*(Error|Exception)\b|\bE[A-Z]{3,}\b|\ba
 const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.test(r.trim()) && !LOOKS_TECHNICAL.test(r);
 export function plainError(reason: string): string {
   if (/error_max_budget_usd/.test(reason)) return "Stopped: the spending limit for this task was reached. Nothing more was run.";
+  if (/error_max_turns/.test(reason)) return S.turnsStopped(S.set["work.maxTurns"].label);
   if (/^daily_limit/.test(reason)) return "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.";
   if (/unknown approval/i.test(reason)) return "That question is not waiting for an answer any more.";
   const nc = /Not connected:.*$/.exec(reason);
@@ -583,6 +584,7 @@ export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
     case "not_done": return "Not done";
     case "interrupted": return "Stopped";
     case "error_max_budget_usd": return "Stopped at the spending limit";
+    case "error_max_turns": return S.historyTurns;
     case "running": return "Running";
     default: return "Something went wrong";
   }
@@ -757,7 +759,7 @@ export function driveWords(m: Model): string | null {
   const f = m.drive?.finished;
   if (!f) return null;
   if (f.status === "done") return `All ${f.total} steps are done`;
-  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : f.status === "daily_limit" ? "the daily limit for this project was reached" : "a check failed";
+  const why = f.status === "interrupted" ? "you stopped it" : f.status === "error_max_budget_usd" ? "the spending limit was reached" : f.status === "error_max_turns" ? S.driveTurns(S.set["work.maxTurns"].label) : f.status === "daily_limit" ? "the daily limit for this project was reached" : "a check failed";
   return `Stopped after ${f.completed} of ${f.total} steps: ${why}`;
 }
 

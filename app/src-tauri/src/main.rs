@@ -749,7 +749,7 @@ fn with_settings<R>(f: impl FnOnce(&mut SettingsNow) -> R) -> R {
     let mut g = SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
     let s = g.get_or_insert_with(|| {
         let (file, problems) = settings::load(settings::registry(), &data_dir());
-        if !problems.is_empty() { log("settings_problems", json!({ "count": problems.len(), "damaged": problems.iter().any(|p| p.code == "damaged") })); }
+        if !problems.is_empty() { log("settings_problems", json!({ "count": problems.len(), "damaged": problems.iter().any(|p| p.code == "damaged"), "unreadable": problems.iter().any(|p| p.code == settings::UNREADABLE) })); }
         SettingsNow { file, problems }
     });
     f(s)
@@ -769,6 +769,13 @@ fn settings_line() -> String {
 /// The engine's settings again (after a change it applies, or another project). If it is not running it is given them
 /// when it starts.
 fn send_settings(app: &AppHandle) { let _ = app.state::<runner::Runner>().send_line(settings_line()); }
+/// Before settings.json is written: one that could not be read is read again (settings::ready_to_save). Still not
+/// readable, the change is refused and nothing is saved over it; readable now, the engine is given what it holds.
+fn settings_writable(app: &AppHandle) -> Result<(), &'static str> {
+    let again = with_settings(|s| settings::ready_to_save(settings::registry(), &data_dir(), &mut s.file, &mut s.problems))?;
+    if again { log("settings_read_again", json!({})); send_settings(app); }
+    Ok(())
+}
 
 /// What the page shows and reads: every value in force, the usual ones, the project, and the problems found.
 #[tauri::command]
@@ -790,6 +797,7 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
     let one = vec![key.to_string()];
     match d.store.as_str() {
         "settings" => {
+            settings_writable(app)?;
             let project = project_opt();
             let changed = with_settings(|s| -> Result<bool, &'static str> {
                 let mut next = s.file.clone();
@@ -820,17 +828,14 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
             app.state::<runner::Runner>().send(&cmd).map_err(|_| "engine")?;
             Ok(one)
         }
+        // Undo after a reset: the voice and the keys come back whole, exactly as the page was shown them (settings.rs).
         "voice" => {
-            if !value.is_object() { return Err("custom"); }
-            let before = voice_now();
-            let next = voiceset::parse(Some(&value.to_string()));
-            voice_save(&before, &next)?;
+            let next = settings::voice_from(value)?;
+            voice_save(&voice_now(), &next)?;
             Ok(one)
         }
         "keys" => {
-            if !value.is_object() { return Err("custom"); }
-            let (wanted, damaged) = keymap::parse(Some(&json!({ "keys": value }).to_string()), None);
-            if damaged { return Err("custom"); }
+            let wanted = settings::keys_from(value)?;
             if !keys_restore(app, &wanted).is_empty() { return Err("keysTaken"); }
             Ok(one)
         }
@@ -846,9 +851,11 @@ fn setting_applied(app: &AppHandle, key: &str) {
 }
 
 /// Puts one setting, a section or everything back to its usual value, in every store. Never a protective setting in a
-/// section or everything. Only from the card.
+/// section or everything. What changes is decided from what the page was shown (settings::reset_plan), so the page names
+/// each one first and keeps each one for Undo: `engine` is the engine's own settings the page has heard away from usual;
+/// one it has not heard is left as it is. Only from the card.
 #[tauri::command]
-fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>) -> Result<Value, String> {
+fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>) -> Result<Value, String> {
     settings::only_card(window.label())?;
     let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
         (Some(k), None, false) => settings::Which::Key(k),
@@ -857,7 +864,12 @@ fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<Stri
         _ => return Err("unknown".into()),
     };
     let r = settings::registry();
-    let targets = settings::reset_targets(r, which)?;
+    // A settings.json that could not be read stays as it is (nothing in it is in force, so the reset below changes
+    // nothing there); one readable again is taken first.
+    let _ = settings_writable(&app);
+    let shown = settings_snapshot(&[]);
+    let (none, mut problems) = (serde_json::Map::new(), Vec::<&'static str>::new());
+    let plan = settings::reset_plan(r, which, shown["values"].as_object().unwrap_or(&none), shown["usual"].as_object().unwrap_or(&none), &engine.unwrap_or_default())?;
     let project = project_opt();
     let mut changed = with_settings(|s| -> Result<Vec<String>, &'static str> {
         let mut next = s.file.clone();
@@ -867,20 +879,16 @@ fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<Stri
     })?;
     for k in &changed { setting_applied(&app, k); }
     if changed.iter().any(|k| r.get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }
-    let mut problems: Vec<&'static str> = vec![];
-    for d in targets {
+    for d in plan.iter().filter_map(|k| r.get(k)).filter(|d| d.store != "settings") {
         let done = match d.store.as_str() {
-            "dock" | "presentation" => {
-                let now_v = settings::dock_value(&with_prefs(|p| p.clone()), &d.key).or_else(|| settings::presentation_value(&presentation_now(), &d.key));
-                if now_v.is_some_and(|v| v != d.default) { setting_change(&app, &d.key, &d.default).map(|_| true) } else { Ok(false) }
-            }
+            "dock" | "presentation" => setting_change(&app, &d.key, &d.default).map(|_| ()),
             // The engine's own: its command with the usual value (the engine answers with its new state).
-            "spending" | "memory" | "metrics" => setting_change(&app, &d.key, &d.default).map(|_| true),
-            "keys" => if keys_picked() != keymap::Map::DEFAULT { keys_to_usual(&app).map(|_| true) } else { Ok(false) },
-            "voice" => { let before = voice_now(); if before != voiceset::Saved::default() { voice_save(&before, &voiceset::Saved::default()).map(|_| true) } else { Ok(false) } }
-            _ => Ok(false),
+            "spending" | "memory" | "metrics" => setting_change(&app, &d.key, &d.default).map(|_| ()),
+            "keys" => keys_to_usual(&app).map(|_| ()),
+            "voice" => voice_save(&voice_now(), &voiceset::Saved::default()),
+            _ => Ok(()),
         };
-        match done { Ok(true) => changed.push(d.key.clone()), Ok(false) => {}, Err(c) => problems.push(c) }
+        match done { Ok(()) => changed.push(d.key.clone()), Err(c) => problems.push(c) }
     }
     log("settings_reset", json!({ "which": match which { settings::Which::Key(_) => "one", settings::Which::Section(_) => "section", settings::Which::All => "all" }, "changed": changed.len(), "problems": problems }));
     settings_told(&app, &changed);
@@ -894,6 +902,7 @@ fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<Stri
 fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, values: Value) -> Result<Value, String> {
     settings::only_card(window.label())?;
     let values = values.as_object().cloned().ok_or("custom")?;
+    settings_writable(&app)?;
     let written = with_settings(|s| -> Result<Vec<String>, &'static str> {
         let mut next = s.file.clone();
         let w = settings::migrate(settings::registry(), &mut next, &from, &values)?;

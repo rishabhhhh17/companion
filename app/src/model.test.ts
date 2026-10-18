@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { checkShip, askResearch, approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
 import { confirmable, shipWords, phWords, blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -77,6 +78,14 @@ describe("task, receipt and undo", () => {
 
 describe("errors and sign in, in plain words", () => {
   test("the spending limit says so plainly", () => expect(plainError("error_max_budget_usd: the spending limit was reached")).toMatch(/spending limit/i));
+  test("the most turns limit names the setting that stopped it, and never says try again", () => {
+    const w = plainError("error_max_turns: the run stopped");
+    expect(w).toBe(S.turnsStopped(S.set["work.maxTurns"].label));
+    expect(w).toContain("Most turns in one task");
+    expect(w).toContain("Settings");
+    expect(w).not.toMatch(/error_max_turns|Something went wrong|Try again/i);
+    expect(run([ev({ type: "protocol.error", reason: "error_max_turns: the run stopped" })]).error).toBe(w);
+  });
   test("not connected tells you what to do", () => expect(plainError("engine error: Not connected: add your API key, or sign in with your Claude plan.")).toMatch(/add your API key/i));
   test("an unknown error is shown without raw jargon prefixes", () => expect(plainError("engine error: boom")).toContain("Something went wrong: boom"));
   test("auth none shows a not connected notice, auth api_key clears it", () => {
@@ -190,6 +199,8 @@ describe("the timeline of past tasks", () => {
     expect(historyWords(task(1, "x", "not_done", "failed"))).toBe("Not done");
     expect(historyWords(task(1, "x", "interrupted"))).toBe("Stopped");
     expect(historyWords(task(1, "x", "error_max_budget_usd"))).toBe("Stopped at the spending limit");
+    expect(historyWords(task(1, "x", "error_max_turns"))).toBe(S.historyTurns);
+    expect(S.historyTurns).not.toMatch(/Something went wrong/);
     expect(historyWords(task(1, "x", "running"))).toBe("Running");
     expect(historyWords(task(1, "x", "error"))).toBe("Something went wrong");
   });
@@ -274,6 +285,8 @@ describe("Drive: the plan card and progress", () => {
     expect(done("done", 3)).toBe("All 3 steps are done");
     expect(done("interrupted", 1)).toBe("Stopped after 1 of 3 steps: you stopped it");
     expect(done("error_max_budget_usd", 2)).toBe("Stopped after 2 of 3 steps: the spending limit was reached");
+    expect(done("error_max_turns", 1)).toBe(`Stopped after 1 of 3 steps: ${S.driveTurns(S.set["work.maxTurns"].label)}`);
+    expect(done("error_max_turns", 1)).toContain("Most turns in one task");
   });
   test("cancelling the plan removes the card", () => {
     expect(reduce(run([plan]), { type: "ui.planCancelled" } as never).plan).toBeNull();

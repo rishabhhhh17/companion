@@ -1,6 +1,6 @@
 // Settings (the registry, protocol/settings.json, T16): a search box, then every setting in its section, in the
 // registry's order, each row with its usual value and Reset when it differs; Reset this section and Reset all settings
-// to usual (with Undo for ten seconds); then the parts that are not settings (permissions, the key, practice, what
+// to usual (each naming what changes first, then Undo for ten seconds); then the parts that are not settings (permissions, the key, practice, what
 // Companion keeps with Delete everything, acknowledgements, logs). Every change goes to the shell through settingsStore.ts
 // (settings_set), which checks it, keeps it, applies it and tells every window. Every word is in strings.ts. Keyboard and
 // VoiceOver reach everything: each row is a named group, switches are role switch, choices a radio group with the arrows.
@@ -17,7 +17,7 @@ import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
 import { defOf, validate, type Def } from "../../protocol/settings.ts";
-import { changedNow, changeSetting, resetAll, resetSection, resetSetting, setting, snapshotNow, undoReset, undoValues, usualOf, useSetting } from "./settingsStore.ts";
+import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, numberFrom, problemWords, rowModel, searchSettings, wordsOf, type FixedGroup } from "./settingsRows.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -358,15 +358,29 @@ function SettingRow({ d, project, keys }: { d: Def; project: string; keys: Keys 
   );
 }
 
+const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
+
+/** After Reset this section or Reset all: a line saying what happened, and Undo for ten seconds, which puts back the
+ *  values kept just before the reset (exactly what the shell reset, settingsStore.ts undoValues) through the shell. */
+function useUndoToast() {
+  const [toast, setToast] = useState<{ text: string; back: [string, unknown][] | null } | null>(null);
+  useEffect(() => { if (!toast?.back) return; const t = setTimeout(() => setToast((x) => (x && x.back ? { ...x, back: null } : x)), 10_000); return () => clearTimeout(t); }, [toast?.back]);
+  const show = (done: Done, back: [string, unknown][]) => setToast(done.ok ? { text: done.notReset?.length ? S.setNotAllBack : S.setResetDone(back.length), back } : { text: problemWords(done.code), back: null });
+  const undo = (back: [string, unknown][]) => { setToast(null); void undoReset(back).then((failed) => setToast({ text: failed.length ? S.setNotAllBack : S.setUndone, back: null })); };
+  const view = toast && <div className="row" role="status"><span className="line">{toast.text}</span>{toast.back && toast.back.length > 0 && <button className="btn" type="button" onClick={() => undo(toast.back!)}>{S.setUndo}</button>}</div>;
+  return { show, view };
+}
+
 /** A section: its title, its rows (or the ones a search found), what else belongs there, and Reset this section, which
- *  asks first and names what will change. Protective settings are never in it. */
+ *  asks first and names what will change, then offers Undo. Protective settings are never in it. */
 function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode }) {
   useSetting(keys[0] ?? "");
   const headId = useId(), resetId = useId();
   const [asking, setAsking] = useState(false);
-  const [problem, setProblem] = useState("");
+  const toast = useUndoToast();
   const changed = changedNow(id);
-  const yes = () => { setAsking(false); void resetSection(id).then((x) => setProblem(!x.ok ? problemWords(x.code) : x.notReset?.length ? S.setNotAllBack : "")); };
+  const unheard = notHeard(id);
+  const yes = () => { setAsking(false); void resetWithUndo(id).then(({ done, back }) => toast.show(done, back)); };
   return (
     <section aria-labelledby={headId} className="settings-section">
       <h3 id={headId}>{title}</h3>
@@ -375,11 +389,12 @@ function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: str
       {changed.length > 0 && !asking && <div className="row"><button id={resetId} className="btn" type="button" onClick={() => setAsking(true)}>{S.setResetSection}</button></div>}
       {asking && (
         <ConfirmStep className="line" label={S.setResetSection} back={resetId} onCancel={() => setAsking(false)}>
-          <div className="line">{S.setResetSectionSure(changed.map((k) => wordsOf(k).label).join(", "))}</div>
+          <div className="line">{S.setResetSectionSure(names(changed))}</div>
+          {unheard.length > 0 && <div className="line muted">{S.setNotHeard(names(unheard))}</div>}
           <div className="row"><button className="btn" type="button" onClick={yes}>{S.setResetSectionYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(false)}>{S.planCancel}</button></div>
         </ConfirmStep>
       )}
-      {problem && <div className="error" role="alert">{problem}</div>}
+      {toast.view}
     </section>
   );
 }
@@ -434,18 +449,14 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
     busy.current = true; setStep("deleting"); setProblem("");
     void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects }).catch((e) => { busy.current = false; setProblem(String(e)); setStep("confirm"); });
   };
-  // Reset all settings to usual, asked first; then Undo for ten seconds puts every value back through the shell.
+  // Reset all settings to usual, asked first, naming every setting that changes; then Undo for ten seconds puts every
+  // value back through the shell.
   const [askAll, setAskAll] = useState(false);
-  const [toast, setToast] = useState<{ text: string; back: [string, unknown][] | null } | null>(null);
-  useEffect(() => { if (!toast?.back) return; const t = setTimeout(() => setToast((x) => (x && x.back ? { ...x, back: null } : x)), 10_000); return () => clearTimeout(t); }, [toast?.back]);
+  const allToast = useUndoToast();
   const changedAll = changedNow();
-  const resetEverything = () => {
-    setAskAll(false);
-    const back = undoValues();
-    void resetAll().then((x) => setToast(x.ok ? { text: x.notReset?.length ? S.setNotAllBack : S.setResetDone(back.length), back } : { text: problemWords(x.code), back: null }));
-  };
-  const undo = (back: [string, unknown][]) => { setToast(null); void undoReset(back).then((failed) => setToast({ text: failed.length ? S.setNotAllBack : S.setUndone, back: null })); };
-  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
+  const unheardAll = notHeard();
+  const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
+  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const fixedShown = (g: FixedGroup) => results.fixed.includes(g);
   const extras: Record<string, ReactNode> = {
     home: <div className="line muted">{S.dragHint}</div>,
@@ -535,11 +546,12 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
       {results.all && changedAll.length === 0 && <div className="line muted">{S.setResetAllNone}</div>}
       {askAll && (
         <ConfirmStep className="line" label={S.setResetAll} back={resetAllId} onCancel={() => setAskAll(false)}>
-          <div className="line">{S.setResetAllSure(changedAll.length)}</div>
+          <div className="line">{S.setResetAllSure(names(changedAll))}</div>
+          {unheardAll.length > 0 && <div className="line muted">{S.setNotHeard(names(unheardAll))}</div>}
           <div className="row"><button className="btn danger" type="button" onClick={resetEverything}>{S.setResetAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskAll(false)}>{S.planCancel}</button></div>
         </ConfirmStep>
       )}
-      {toast && <div className="row" role="status"><span className="line">{toast.text}</span>{toast.back && toast.back.length > 0 && <button className="btn" type="button" onClick={() => undo(toast.back!)}>{S.setUndo}</button>}</div>}
+      {allToast.view}
       <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>
     </section>
   );

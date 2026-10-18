@@ -98,17 +98,29 @@ calls `settings_migrate` once: `companion.reactions` (notOff) to `fun.reactions`
 writes only names not already set, drops invalid values, records `pageStorage.v1` and refuses a second run. Until the mark
 is in the snapshot, every window falls back to the old page storage for these, so nothing flashes a wrong value. Storage
 that cannot be read migrates nothing (today's defaults) and is tried again next time. The old page storage is kept for one
-version, so going back still works; Delete everything removes it as today.
+version, so going back still works; Delete everything removes it as today. Once the mark is in a snapshot, page storage
+also keeps `companion.settingsMigrated` ("1"): with it the old page storage is never read again and the migration only
+records the mark again, sending nothing, so a settings.json lost later (damaged, or removed by hand) never brings the
+choices from before the update back.
 
 ### Reset
 - One setting: a Reset button shows only when the value differs from usual (named "Reset {label} to {usual}").
 - A section: "Reset this section" shows when anything in it changed, with an inline confirm listing what will change.
-  Protective settings are left out.
-- Everything: "Reset all settings to usual" at the bottom, with a confirm giving the count. It resets `settings.json` (the
-  app's and every project's values), the wrapped shell stores (come to, presentation, keys through Reset to the usual keys,
-  voice to the Mac's own choices) and the engine's (daily limit $10, Explain on, learning on, beta numbers off; their counts
-  stay). It never touches the key, project folders, memory lines, history, undo points, pictures, per app answers or
-  anything protective. A toast then offers Undo for 10 seconds, which puts the previous values back through `settings_set`.
+  Protective settings are left out. A toast then offers Undo for 10 seconds, for that section's values only.
+- Everything: "Reset all settings to usual" at the bottom, with a confirm that names every setting that will change (so
+  someone who paused learning reads "Pause learning" there). It resets `settings.json` (the app's and every project's
+  values), the wrapped shell stores (come to, presentation, keys through Reset to the usual keys, voice to the Mac's own
+  choices) and the engine's (daily limit $10, Explain on, learning on, beta numbers off; their counts stay). It never
+  touches the key, project folders, memory lines, history, undo points, pictures, per app answers or anything protective.
+  A toast then offers Undo for 10 seconds, which puts the previous values back through `settings_set`.
+- What a reset changes is decided by the shell from exactly what the page was shown (`settings.rs` `reset_plan`), and the
+  page keeps that same list for Undo (`undoValues`); both run `protocol/fixtures/settings-reset-cases.jsonl`. The engine
+  keeps its own three settings, so the page names the ones it has heard away from usual and the shell resets only those.
+  One the page has not heard yet is left as it is, and the confirm says "Left as they are, because Companion could not
+  read them yet: ...". Undo puts the voice and the keys back only exactly as they were shown (`voice_from`, `keys_from`).
+- For area 2 (project settings): Reset all also clears every other project's values, but Undo puts back only the current
+  project's. Before the first project setting is registered, either make Reset all clear only this project's values or
+  make Undo restore the others, with a test.
 
 ### Search
 A search box at the top of Settings (a search region; Esc in the box clears it). It matches section titles, labels, help
@@ -121,8 +133,11 @@ parts (permissions, your Claude key, practice, what Companion keeps, acknowledge
 settings and removes them; a test proves both. `dev.json` still stays.
 
 ### When something goes wrong
-A file that is not JSON is moved aside as `settings.damaged.json` (kept for support, removed by Delete everything) and
-Companion starts on usual values, with one plain line in Settings. A single bad value falls back to usual and is listed. A
+A file that is not JSON (or not text) is moved aside as `settings.damaged.json` (kept for support, removed by Delete
+everything) and Companion starts on usual values, with one plain line in Settings; the migration mark is kept and written
+at once in a fresh file. A file that is there but cannot be read at all (no permission, an I/O error, a folder in its
+place) is left where it is and never saved over: Companion uses the usual values for that session, says so in one plain
+line, and reads it again before each change that would write it (refused while it still cannot be read). A single bad value falls back to usual and is listed. A
 failed write says "Could not save that setting. It is unchanged." and the control goes back. The activity log records
 which setting changed, never its value.
 
@@ -279,7 +294,11 @@ kept in settings.json, from the next task. Words: "Most turns in one task"; "A t
 changes something. A long task can stop here before it reaches its spending limit. The spending limit still caps the
 cost." Path: the row, `settings_set`, settings.json, `settings-changed` to the pages, `settings.apply` to the engine,
 `RunnerSettings`, read when a task starts, the SDK's `maxTurns`. A running task keeps its number. It covers every agent
-session (tasks, Drive, Rescue, Research, planning); the one turn quick lanes stay at 1.
+session (tasks, Drive, Rescue, Research, planning); the one turn quick lanes stay at 1. A task that reaches it ends as
+`error_max_turns`, worded on the card as "Stopped: this task used the most turns allowed (Most turns in one task, in
+Settings). Nothing more was run.", in What I did as "Stopped at the most turns allowed" (in the Stopped group), and for a
+Drive plan as "Stopped after N of M steps: a step used the most turns allowed (...)". Never "try again": the same task
+would stop at the same place.
 
 ### The Settings page
 - Top: the title, the search box (a clear button, Esc clears it) and a polite line with the count.
@@ -296,7 +315,10 @@ session (tasks, Drive, Rescue, Research, planning); the one turn quick lanes sta
 
 ### Tests (written first; each seen failing first)
 - Rust: the registry reads and every definition is valid; a broken one is caught; validation matches every shared case;
-  a missing file gives usual values; a damaged file is kept aside and gives usual values with one problem; one bad value
+  a missing file gives usual values; a damaged file is kept aside and gives usual values with one problem, keeping the
+  migration mark (a migration after it writes nothing); a file that cannot be read is neither moved nor saved over, and is
+  read again before a change; what a reset changes in each store matches every shared reset case and comes from what the
+  page was shown, the engine's own only when the page names them; Undo's voice and keys come back only as shown; one bad value
   falls back and is listed; unknown names survive a write; a usual value is not stored; set, reset of one, a section and
   everything (protective left out); only Home's window may change settings; migration writes only unset valid values once;
   project values are kept under the hash, never the path; the settings line holds only what the engine applies; the
@@ -310,14 +332,18 @@ session (tasks, Drive, Rescue, Research, planning); the one turn quick lanes sta
 - Pages: the migration reproduces today's meaning for every old key and value, absent keys and storage that throws; the old
   storage decides until the mark is there; setting(key) gives the usual value with no snapshot; search by label, help,
   option and other words, ignoring case and accents, grouped, with the empty message; every setting and option has words
-  and nothing is left over; each kind of row; Reset only when changed and never for a protective list; Undo after Reset all
-  gives every value back; no "on" or "off" written in the Settings code; the stand in never becomes the Memory tab's state.
+  and nothing is left over; each kind of row; Reset only when changed and never for a protective list; what the page names
+  and keeps for Undo matches every shared reset case; Undo sends each kept value back through settings_set in order and
+  carries on past a refusal; Reset this section and Reset all both name what changes and both offer Undo; the migration
+  flag is set from a snapshot with the mark, and with it nothing from before the update is read or sent; no "on" or "off"
+  written in the Settings code; the stand in never becomes the Memory tab's state; the most turns stop is in plain words.
 - Then the whole suite: `sh scripts/test-all.sh`, gated on its exit code.
 
 ### What done means
 Build and open the app (`sh app/scripts/build-app.sh`) and check it stays running. On a Mac with the old version's choices
 (reactions off, text size large, auto send on), update and confirm every choice carried over. Change a setting, quit,
-reopen, and it is still there. Reset a section, then Undo. Delete everything removes settings.json. maxTurns is proven by
+reopen, and it is still there. Reset a section, then Undo. Pause learning and lower the daily limit, then Reset all: the
+confirm names both, and Undo puts both back. Delete everything removes settings.json. maxTurns is proven by
 the fake engine; a real Claude run is optional and only when the founder says go. The keyboard and VoiceOver pass needs a
 person: "not proven" until the founder tries it. None of these real checks were done in the core change (the build was
 not opened by its instructions); they are owed before anything ships.
