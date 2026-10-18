@@ -83,6 +83,7 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 - Tested with stand ins (stubbed commands, a stand in virtual environment, Python fixture projects) and with this Mac's real Python 3.9.6, which has no pytest: the check of now says what to install and no task is blamed. A real pytest run inside the copies is still to be checked on a Mac that has pytest (the test for it skips when pytest is missing).
 
 ## What the build settled (checks on a busy Mac, 18 Oct 2026)
+- Point at the problem reads at most the last 64 KB of a check's output (every caller already passes only the end of it, 16 KB at most, or a 6,000 character selection), and a file path in it is at most 400 characters. Found when the runner's fuzz test was fixed to really read large output (it had been removing its project folder before the tests ran, so the locator gave up at once): a long run of text with no line break cost time with the square of its length, up to five seconds.
 - The failing output a step reports no longer carries stack lines from inside the runtime (`node:internal/...`, `native:`, older Node's `internal/...`). On a busy Mac, Node's test runner prints extra such lines for the same failure (its timers run late), which pushed the last lines of the output down, so the same failure read differently three times and the fix loop breaker never showed its card. Lines that name the person's code or a package are kept.
 
 ## Revisit if

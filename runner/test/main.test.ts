@@ -45,17 +45,20 @@ describe("the runner program", () => {
   });
 
   test("it answers a heartbeat at once, even in the middle of a long task, so the app can tell it is alive", async () => {
+    // The task only ends when it is stopped, so an answer at all shows the runner did not wait for it (the clock decides
+    // nothing, so a busy Mac cannot fail this).
     const project = tmp("proj");
-    const r = launch([{ text: "thinking", costUsd: 0, delayMs: 3000 }]);
+    const r = launch([{ text: "thinking", costUsd: 0, delayMs: 600_000 }]);
     await r.waitFor(() => r.lines.length >= 1);
     r.send(start(project));
     await r.waitFor(() => r.events().some((e: any) => e.type === "agent.state"));
     const before = r.lines.length;
     r.send({ v: 1, id: "ping-1", type: "runner.ping" });
-    await r.waitFor(() => r.events().slice(before).some((e: any) => e.type === "runner.pong"), 1500);
+    await r.waitFor(() => r.events().slice(before).some((e: any) => e.type === "runner.pong"), 15_000);
+    expect(r.events().some((e: any) => e.type === "receipt")).toBe(false);   // the task was still going
     r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "test" });
     await r.close();
-  });
+  }, 30_000);
 
   test("every line it writes is a valid protocol event", async () => {
     const project = tmp("proj");
@@ -209,8 +212,10 @@ describe("the browser check's download, over the pipe", () => {
     expect(bev(r, "browser.status")[0]).toMatchObject({ installed: true, installing: false });
     await r.close();
   });
+  // The pretend download takes 12 seconds (six steps of 2), longer than the waits below: "it stopped" is shown by the
+  // download never finishing, not by the clock, so a busy Mac cannot fail these.
   test("a second press while it downloads starts nothing new, and Stop everything ends it", async () => {
-    const r = launch([], { COMPANION_BROWSER_STUB: "400" });
+    const r = launch([], { COMPANION_BROWSER_STUB: "2000" });
     r.send({ v: 1, id: "b1", type: "browser.install" });
     await r.waitFor(() => bev(r, "browser.install").length >= 1);
     r.send({ v: 1, id: "b2", type: "browser.install" });
@@ -219,21 +224,19 @@ describe("the browser check's download, over the pipe", () => {
     expect(bev(r, "browser.status")[0]).toMatchObject({ installing: true });
     expect(bev(r, "browser.install").filter((e: any) => /starting/i.test(e.detail))).toHaveLength(1);
     r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "kill switch" });
-    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage === "cancelled"), 3000);
+    await r.waitFor(() => bev(r, "browser.install").some((e: any) => e.stage === "cancelled"), 10_000);
     expect(bev(r, "browser.install").some((e: any) => e.stage === "done")).toBe(false);
     await r.close();
-  });
+  }, 30_000);
   test("closing the app ends a download that is running", async () => {
-    const r = launch([], { COMPANION_BROWSER_STUB: "400" });
+    const r = launch([], { COMPANION_BROWSER_STUB: "2000" });
     r.send({ v: 1, id: "b1", type: "browser.install" });
     await r.waitFor(() => bev(r, "browser.install").length >= 1);
-    const t0 = Date.now();
     await r.close();
-    expect(Date.now() - t0).toBeLessThan(1500);
     // It was stopped and waited for (a real download runs in its own process group and would outlive the engine otherwise).
     expect(bev(r, "browser.install").some((e: any) => e.stage === "cancelled")).toBe(true);
     expect(bev(r, "browser.install").some((e: any) => e.stage === "done")).toBe(false);
-  });
+  }, 30_000);
   test("the pretend download is never used by the real engine", async () => {
     const { readSettings } = await import("../src/engines.ts");
     expect(readSettings({ COMPANION_BROWSER_STUB: "5" }).browserStubMs).toBeUndefined();
