@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { CheckpointStore } from "../src/checkpoints.ts";
 import { needsInstall, runLadder, type StepUpdate } from "../src/proof/ladder.ts";
 import type { RunResult } from "../src/proof/exec.ts";
+import { failureSignature } from "../src/drive.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -198,5 +199,42 @@ describe("what a failing check printed is covered before it reaches the card or 
     expect(result.verdict).toBe("failed");
     const text = JSON.stringify(result.steps) + JSON.stringify(updates);
     for (const secret of ["hunter22", "pa55word", "abcdefghijk"]) expect(text, secret).not.toContain(secret);
+  }, 60000);
+});
+
+// The fix loop breaker calls two failures the same when the same check failed with the same words (failureSignature). On a
+// busy Mac, Node's test runner prints the same failing test with extra frames of its own inside the stack (the timers ran
+// late, so their callbacks were run from runNextTicks and processTimers), so the last lines of the output start a few lines
+// later and the words differed: the card never appeared for a test that failed the same way three times (found by running
+// the loop breaker set under load, 18 Oct 2026). Frames inside the runtime itself never name the person's code.
+describe("the same failure reads the same on a busy Mac", () => {
+  const tap = (frames: string[], file = "test/store.js:9:10") => [
+    "", "> test", "> node --test", "", "TAP version 13", "# Subtest: a saved order shows up in the list", "not ok 1 - a saved order shows up in the list", "  ---",
+    "  duration_ms: 8.052792", "  location: '/Users/sam/shop/test/store.js:5:1'", "  failureType: 'testCodeFailure'", "  error: |-", "    Expected values to be strictly equal:", "    ",
+    "    0 !== 1", "    ", "  code: 'ERR_ASSERTION'", "  name: 'AssertionError'", "  expected: 1", "  actual: 0", "  operator: 'strictEqual'", "  stack: |-",
+    `    TestContext.<anonymous> (/Users/sam/shop/${file})`, ...frames, "  ...", "1..1", "# tests 1", "# suites 0", "# pass 0", "# fail 1", "# cancelled 0", "# skipped 0", "# todo 0", "# duration_ms 113.811042", "",
+  ].join("\n");
+  const QUIET = ["    async Test.run (node:internal/test_runner/test:632:9)", "    async startSubtest (node:internal/test_runner/harness:214:3)"];
+  const BUSY = ["    runNextTicks (node:internal/process/task_queues:60:5)", "    process.processTimers (node:internal/timers:509:9)", ...QUIET];
+  const failing = async (stdout: string) => {
+    const run = async (cmd: string): Promise<RunResult> => ({ code: /test/.test(cmd) ? 1 : 0, signal: null, stdout: /test/.test(cmd) ? stdout : "", stderr: "", timedOut: false, ms: 5 });
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ test: "node --test" }), "test/store.js": "require('node:test')('a', () => {});\n" }), {}, { run });
+    expect(result.failedAt?.rung).toBe("tests");
+    return result.failedAt!;
+  };
+  test("extra frames from inside the runtime do not make it a different failure", async () => {
+    const quiet = await failing(tap(QUIET)), busy = await failing(tap(BUSY));
+    expect(failureSignature(busy)).toBe(failureSignature(quiet));
+    expect(busy.detail).toBe(quiet.detail);
+  }, 60000);
+  test("the frame in the person's own code still counts, so a different failing test is a different failure", async () => {
+    const store = await failing(tap(BUSY)), cart = await failing(tap(QUIET, "test/cart.js:4:3"));
+    expect(failureSignature(cart)).not.toBe(failureSignature(store));
+    expect(store.detail).toContain("test/store.js");
+  }, 60000);
+  test("a frame in a package or in the project's own folder is kept", async () => {
+    const mine = await failing(tap(["    at render (/Users/sam/shop/node_modules/react-dom/cjs/react-dom.development.js:12:3)", "    at Object.<anonymous> (/Users/sam/shop/src/app.js:3:1)"]));
+    expect(mine.detail).toContain("react-dom.development.js");
+    expect(mine.detail).toContain("src/app.js");
   }, 60000);
 });

@@ -82,5 +82,8 @@ Pass signals and timeouts per rung are in technical_research.md section 7.
 - A project whose own code is installed into its virtual environment from a folder other than its top one is not traced back, and it says so (nothing is copied or checked): an editable install from `src` or from a build link tree (read from the `.pth`, `.egg-link` and setuptools editable finder files in site-packages), or a package of `src` installed without `-e`. Every copy would run that installed code, not its own. A flat project installed either way is checked as usual, because `python -m pytest` puts the copy's own top folder first on Python's path.
 - Tested with stand ins (stubbed commands, a stand in virtual environment, Python fixture projects) and with this Mac's real Python 3.9.6, which has no pytest: the check of now says what to install and no task is blamed. A real pytest run inside the copies is still to be checked on a Mac that has pytest (the test for it skips when pytest is missing).
 
+## What the build settled (checks on a busy Mac, 18 Oct 2026)
+- The failing output a step reports no longer carries stack lines from inside the runtime (`node:internal/...`, `native:`, older Node's `internal/...`). On a busy Mac, Node's test runner prints extra such lines for the same failure (its timers run late), which pushed the last lines of the output down, so the same failure read differently three times and the fix loop breaker never showed its card. Lines that name the person's code or a package are kept.
+
 ## Revisit if
 The false "done" rate does not stay near zero, its target in product_research.md section 17.

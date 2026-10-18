@@ -23,7 +23,7 @@ const checks = {
   },
   // Saving must really be waited for: with a slow disk the order is there as soon as saveOrder is done, with no extra wait.
   'store-awaits': async () => {
-    process.env.STORE_DELAY_MS = '150';
+    process.env.STORE_DELAY_TURNS = '150';
     const { saveOrder, listOrders, clearOrders } = fresh('src/store.js');
     clearOrders();
     await saveOrder({ id: 7 });
