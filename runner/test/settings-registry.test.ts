@@ -22,12 +22,41 @@ describe("the shipped list of settings", () => {
       "talk.speak": false, "talk.speakReplies": false, "talk.autoSend": false, "character.comeTo": true, "sharing.hide": true, "calls.quiet": true,
       "showme.allScreens": false, "fun.reactions": true, "teach.yourTurn": false, "display.textSize": "standard", "updates.daily": true,
       "spend.dailyLimit": 10, "explain.on": true, "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
+      // Area 4 (Home, the island and the character): each usual value is what the app does today.
+      "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
+      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
   });
   test("the worked example: most turns in one task, read when a task starts, for the engine only", () => {
     expect(defOf("work.maxTurns")).toMatchObject({ kind: "number", min: 20, max: 200, step: 10, unit: "count", scope: "app", applies: ["runner"], store: "settings", live: false });
+  });
+  test("area 4: Home, the island and the character, with the ranges in the plan", () => {
+    const sec = (k: string, n: number, min: number, max: number, step: number, unit: string) => expect(defOf(k), k).toMatchObject({ section: "home", kind: "number", default: n, min, max, step, unit, scope: "app", live: true });
+    sec("island.openDelay", 0.4, 0.1, 1.5, 0.1, "seconds");
+    sec("island.closeDelay", 0.3, 0.1, 1, 0.1, "seconds");
+    sec("island.followDelay", 3, 1, 10, 1, "seconds");
+    sec("character.position", 50, 0, 100, 5, "percent");
+    sec("character.linger", 1.5, 0.5, 10, 0.5, "seconds");
+    expect(defOf("island.display")!.options).toEqual(["follow", "builtIn", "main"]);
+    expect(defOf("home.goToNeeds")!.options).toEqual(["goToIt", "markTab"]);
+    expect(defOf("home.size")!.options).toEqual(["standard", "large"]);
+    expect(defOf("character.edge")!.options).toEqual(["left", "right", "top", "bottom"]);
+    expect(defOf("character.motion")!.options).toEqual(["followMac", "less"]);
+    // The character's place stays in dock.json (wrapped, T16), with Come to what it is about.
+    for (const k of ["character.edge", "character.position", "character.sameEverywhere", "character.comeTo"]) expect(defOf(k)!.store, k).toBe("dock");
+    // The shell applies every one; the pages read the two that change how Home itself behaves, and the motion.
+    for (const k of ["island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
+    expect(defOf("home.closeOnClickAway")!.applies).toEqual(["shell", "pages"]);
+    expect(defOf("character.motion")!.applies).toEqual(["shell", "pages"]);
+    expect(defOf("home.goToNeeds")!.applies).toEqual(["pages"]);
+    // The two with a fixed part say so under their rows.
+    expect(defOf("island.show")!.floor).toBe("islandOff");
+    expect(defOf("home.goToNeeds")!.floor).toBe("needsMarked");
+    // None of them reaches the engine.
+    for (const d of REGISTRY.settings.filter((x) => /^(island|home|character)\./.test(x.key))) expect(d.applies, d.key).not.toContain("runner");
   });
   test("the three settings the engine keeps itself are reached only through the engine", () => {
     for (const k of ["spend.dailyLimit", "explain.on", "memory.paused", "numbers.on"]) expect(defOf(k)!.applies, k).toEqual(["runner"]);

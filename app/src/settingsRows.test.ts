@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { REGISTRY, defOf, type Def } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
-import { fold, folderName, numberFrom, rowModel, searchSettings, valueWords } from "./settingsRows.ts";
+import { floorWords, fold, folderName, homeSizeHint, numberFrom, PLACE_KEYS, rowModel, searchSettings, shownNow, valueWords } from "./settingsRows.ts";
 
 const d = (key: string) => defOf(key)!;
 const text: Def = { key: "test.press", section: "checks", kind: "text", default: "", maxLength: 60, scope: "project", applies: ["runner"], store: "settings", live: false };
@@ -132,3 +132,55 @@ describe("search", () => {
     expect(r.fixed).toEqual([]);
   });
 });
+
+// ---- M11 area 4: Home, the island and the character ----
+describe("the rows for Home, the island and the character", () => {
+  test("Move to another display after shows only with Follow me, and the page leaves it out of the rows and the count otherwise", () => {
+    const with_ = (where: string) => (k: string) => (k === "island.display" ? where : undefined);
+    expect(shownNow("island.followDelay", with_("follow"))).toBe(true);
+    expect(shownNow("island.followDelay", with_("builtIn"))).toBe(false);
+    expect(shownNow("island.followDelay", with_("main"))).toBe(false);
+    for (const def of REGISTRY.settings.filter((x) => x.key !== "island.followDelay")) expect(shownNow(def.key, with_("main")), def.key).toBe(true);
+    const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    expect(page).toContain("const results = searchSettings(q, REGISTRY.settings.filter((x) => shownNow(x.key, setting)));");
+  });
+  test("Home size suggests Large when the text is larger than usual, and only then", () => {
+    expect(homeSizeHint("larger", "standard")).toBe(S.setHomeLarger);
+    expect(homeSizeHint("largest", "standard")).toBe(S.setHomeLarger);
+    for (const [t, h] of [["standard", "standard"], ["large", "standard"], ["larger", "large"], ["largest", "large"]]) expect(homeSizeHint(t, h), `${t} ${h}`).toBeNull();
+    const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    expect(page).toContain('homeSizeHint(setting("display.textSize"), value)');
+  });
+  test("the character's place: the edge is a choice of four, the position a percent from 0 to 100 in steps of 5", () => {
+    const e = rowModel(d("character.edge"), "left", "right", "");
+    expect(e.options?.map((o) => o.label)).toEqual(["Left", "Right", "Top", "Bottom"]);
+    expect([e.shown, e.usualLine, e.changed, e.canReset]).toEqual(["Left", S.setUsual("Right"), true, true]);
+    const p = rowModel(d("character.position"), 37, 50, "");
+    expect([p.shown, p.usualLine, p.number]).toEqual(["37%", S.setUsual("50%"), { min: 0, max: 100, step: 5, unit: "percent" }]);
+    const wait = rowModel(d("island.openDelay"), 0.4, 0.4, "");
+    expect([wait.shown, wait.changed, wait.later]).toEqual(["0.4 seconds", false, false]);
+    expect(rowModel(d("character.linger"), 10, 1.5, "").shown).toBe("10 seconds");
+  });
+  test("Reset the character's place puts back its edge, its position and Same place on every display, and nothing else", () => {
+    expect([...PLACE_KEYS]).toEqual(["character.edge", "character.position", "character.sameEverywhere"]);
+    for (const k of PLACE_KEYS) expect(d(k).store, k).toBe("dock");
+    const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    expect(page).toContain('const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));');
+    expect(page).toContain("for (const k of placeChanged) await resetSetting(k);");
+    expect(page).toContain("{S.setResetPlace}");
+    expect(S.setResetPlace.length).toBeGreaterThan(0);
+  });
+  test("the two fixed parts are said under their rows", () => {
+    expect(rowModel(d("island.show"), false, true, "").floor).toBe("islandOff");
+    expect(floorWords("islandOff")).toContain("Home opens beside the character");
+    expect(rowModel(d("home.goToNeeds"), "markTab", "goToIt", "").floor).toBe("needsMarked");
+    expect(floorWords("needsMarked")).toContain("A question waiting for your answer always opens Now");
+    for (const t of Object.values(S.floors)) { expect(/[\u2013\u2014]/.test(t), t).toBe(false); expect(t.includes("  "), t).toBe(false); }
+  });
+  test("search finds them by the words people use", () => {
+    for (const [q, key] of [["notch", "island.show"], ["hover", "island.peekOnHover"], ["monitor", "island.display"], ["click away", "home.closeOnClickAway"], ["bigger", "home.size"], ["corner", "character.edge"], ["reduce motion", "character.motion"], ["full screen", "character.overFullScreen"]]) {
+      expect(searchSettings(q).sections.flatMap((x) => x.keys), q).toContain(key);
+    }
+  });
+});
+

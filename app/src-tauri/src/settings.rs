@@ -475,10 +475,39 @@ pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card"
 
 // ---------- the stores that stay where they were (wrapped) ----------
 
-/// dock.json: "Come to what it is about".
-pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> { (key == "character.comeTo").then(|| json!(p.come_to)) }
+/// dock.json: "Come to what it is about", and the character's place on the display it is on now (`last_screen`, the
+/// display apply_dock put it on): its edge, its position along it in whole percents (0 the top or left end, 100 the bottom
+/// or right end; a place dragged by hand is shown rounded), and "Same place on every display".
+pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> {
+    let (edge, pct) = crate::docking::choice(p, &p.last_screen);
+    Some(match key {
+        "character.comeTo" => json!(p.come_to),
+        "character.edge" => json!(edge.word()),
+        "character.position" => json!((pct * 100.0).round() as i64),
+        "character.sameEverywhere" => json!(p.same_everywhere.is_some()),
+        _ => return None,
+    })
+}
+/// The same, changed: a place is changed on the display the character is on now, and only there (each other display keeps
+/// its own), and with Same place on every display on the copy follows it. None when nothing can change (a value that is
+/// not one, or no display known yet).
 pub fn dock_with(p: &crate::docking::Prefs, key: &str, v: &Value) -> Option<crate::docking::Prefs> {
-    (key == "character.comeTo").then(|| v.as_bool()).flatten().map(|b| crate::docking::Prefs { come_to: b, ..p.clone() })
+    let mut next = p.clone();
+    let here = p.last_screen.clone();
+    let place = |next: &mut crate::docking::Prefs, at: (crate::docking::Edge, f64)| {
+        next.per_screen.insert(here.clone(), at);
+        if next.same_everywhere.is_some() { next.same_everywhere = Some(at); }
+    };
+    let (edge, pct) = crate::docking::choice(p, &here);
+    match key {
+        "character.comeTo" => next.come_to = v.as_bool()?,
+        _ if here.is_empty() => return None,
+        "character.edge" => place(&mut next, (crate::docking::Edge::of(v.as_str()?)?, pct)),
+        "character.position" => place(&mut next, (edge, (v.as_f64().filter(|n| n.is_finite())? / 100.0).clamp(0.0, 1.0))),
+        "character.sameEverywhere" => next.same_everywhere = if v.as_bool()? { Some((edge, pct)) } else { None },
+        _ => return None,
+    }
+    Some(next)
 }
 /// presentation.json: hide from screen sharing and quiet during calls.
 pub fn presentation_value(s: &crate::presentation::Settings, key: &str) -> Option<Value> {
@@ -987,5 +1016,46 @@ mod tests {
         assert_eq!(snap["usual"]["spend.dailyLimit"], json!(10));
         assert_eq!(snap["changed"], json!(["calls.quiet"]));
         assert_eq!(snap["project"], "/p");
+    }
+
+    #[test]
+    fn the_characters_place_is_read_and_changed_on_the_display_it_is_on_in_dock_json() {
+        use crate::docking::{Edge, Prefs};
+        // The usual place (nothing saved): the right edge, halfway, the same as today.
+        let none = Prefs { last_screen: "a".into(), ..Default::default() };
+        assert_eq!((dock_value(&none, "character.edge"), dock_value(&none, "character.position"), dock_value(&none, "character.sameEverywhere")), (Some(json!("right")), Some(json!(50)), Some(json!(false))));
+        // A place dragged by hand is shown in whole percents.
+        let mut p = Prefs { last_screen: "a".into(), ..Default::default() };
+        p.per_screen.insert("a".into(), (Edge::Left, 0.3712));
+        p.per_screen.insert("b".into(), (Edge::Bottom, 0.9));
+        assert_eq!(dock_value(&p, "character.edge"), Some(json!("left")));
+        assert_eq!(dock_value(&p, "character.position"), Some(json!(37)));
+        // A change is made on the display the character is on, and only there; the other keeps its own place.
+        let top = dock_with(&p, "character.edge", &json!("top")).unwrap();
+        assert_eq!(top.per_screen["a"], (Edge::Top, 0.3712));
+        assert_eq!(top.per_screen["b"], (Edge::Bottom, 0.9));
+        let at = dock_with(&p, "character.position", &json!(80)).unwrap();
+        assert_eq!(at.per_screen["a"], (Edge::Left, 0.8));
+        for (v, want) in [(0, 0.0), (100, 1.0), (50, 0.5)] { assert_eq!(dock_with(&none, "character.position", &json!(v)).unwrap().per_screen["a"], (Edge::Right, want), "{v}"); }
+        // Same place on every display: on copies this display's place; a change here then moves the copy too; off drops it.
+        let same = dock_with(&p, "character.sameEverywhere", &json!(true)).unwrap();
+        assert_eq!(same.same_everywhere, Some((Edge::Left, 0.3712)));
+        assert_eq!(dock_value(&same, "character.sameEverywhere"), Some(json!(true)));
+        assert_eq!(dock_with(&same, "character.edge", &json!("bottom")).unwrap().same_everywhere, Some((Edge::Bottom, 0.3712)));
+        assert_eq!(dock_with(&same, "character.sameEverywhere", &json!(false)).unwrap().same_everywhere, None);
+        // Come to what it is about is untouched by these, and they leave it alone.
+        assert_eq!(dock_with(&p, "character.edge", &json!("top")).unwrap().come_to, p.come_to);
+        // Nothing to change it on (no display known yet), or a value that is not one: nothing changes.
+        assert!(dock_with(&Prefs::default(), "character.edge", &json!("top")).is_none());
+        assert!(dock_with(&p, "character.edge", &json!("middle")).is_none());
+        assert!(dock_with(&p, "character.position", &json!("half")).is_none());
+        assert!(dock_with(&p, "character.sameEverywhere", &json!(1)).is_none());
+        // What every page is told, and what a reset of the section puts back.
+        let w = Wrapped { dock: p.clone(), presentation: Default::default(), keys: crate::keymap::Map::DEFAULT, voice: Default::default() };
+        let snap = snapshot(registry(), &File::default(), None, &w, &[], &[]);
+        assert_eq!((snap["values"]["character.edge"].clone(), snap["values"]["character.position"].clone()), (json!("left"), json!(37)));
+        let mut plan = reset_plan(registry(), Which::Section("home"), snap["values"].as_object().unwrap(), snap["usual"].as_object().unwrap(), &[]).unwrap();
+        plan.sort();
+        assert_eq!(plan, vec!["character.edge".to_string(), "character.position".to_string()]);
     }
 }

@@ -5,7 +5,8 @@
 // decoration. The pages need a real Mac to run, so they are read here as text.
 import { afterEach, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { REDUCED, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
+import { REDUCED, followLessMotion, lessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
+import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 
 const here = new URL("./", import.meta.url).pathname;
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -184,7 +185,7 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     // A Rust test that names it in quotes (to check this very rule) does not count.
     const calls = all.flatMap(([f, s]) => [...s.matchAll(/(?<!")accessibilityDisplayShouldReduceMotion\(\)/g)].map(() => f));
     expect(calls).toEqual(["main.rs"]);
-    expect(main).toMatch(/fn reduce_motion\(\) -> bool \{ NSWorkspace::sharedWorkspace\(\)\.accessibilityDisplayShouldReduceMotion\(\) \}/);
+    expect(main).toMatch(/fn reduce_motion\(\) -> bool \{ home_set\(\)\.less_motion \|\| NSWorkspace::sharedWorkspace\(\)\.accessibilityDisplayShouldReduceMotion\(\) \}/);
     expect(main).toContain("roam_animate(app, mv, reduce_motion())");
   });
   test("nothing in the shell animates a window: the island opens and closes in place, Home drops down in place", () => {
@@ -193,3 +194,65 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(place).toContain("setFrame_display(");
   });
 });
+
+// ---- M11 area 4: Companion's own Motion setting (character.motion), inside Companion only ----
+describe("Motion: Follow my Mac, or Less motion", () => {
+  afterEach(() => { delete g.matchMedia; _resetForTests(); });
+  const snap = (motion?: string) => takeSnapshot({ values: motion ? { "character.motion": motion } : {}, usual: {}, project: "", migrated: ["pageStorage.v1"], problems: [], changed: [] }, null);
+  test("Follow my Mac is today's: only the Mac's own setting counts", () => {
+    snap();
+    expect(lessMotion()).toBe(false);
+    expect(reducedMotion()).toBe(false);
+    g.matchMedia = (q: string) => ({ matches: q === REDUCED });
+    expect(reducedMotion()).toBe(true);
+  });
+  test("Less motion means less motion everywhere in Companion, whatever the Mac says", () => {
+    snap("less");
+    expect(lessMotion()).toBe(true);
+    expect(reducedMotion()).toBe(true);
+    g.matchMedia = () => ({ matches: false });
+    expect(reducedMotion(), "the rest of the Mac is not changed, and Companion still moves less").toBe(true);
+    // So the character's state stops moving and decoration does not play.
+    expect(playful(true, reducedMotion())).toBe(false);
+  });
+  test("a page watching is told when the setting changes, once per change, until it stops listening", () => {
+    snap();
+    const seen: boolean[] = [];
+    const stop = watchReducedMotion((r) => seen.push(r));
+    snap("less"); snap("less"); snap("followMac");
+    expect(seen).toEqual([true, false]);
+    stop();
+    snap("less");
+    expect(seen).toEqual([true, false]);
+  });
+  test("each page marks its root, so the stylesheets stop their own animations and transitions too", () => {
+    const on = new Set<string>();
+    const root = { toggleAttribute: (n: string, force: boolean) => { if (force) on.add(n); else on.delete(n); return force; } };
+    snap();
+    const stop = followLessMotion(root);
+    expect(on.has("data-less-motion")).toBe(false);
+    snap("less");
+    expect(on.has("data-less-motion")).toBe(true);
+    snap("followMac");
+    expect(on.has("data-less-motion")).toBe(false);
+    stop();
+    snap("less");
+    expect(on.has("data-less-motion"), "stopped").toBe(false);
+    expect(() => followLessMotion(null)()).not.toThrow();
+  });
+  test("every page that moves follows it, and every stylesheet stops all motion under the mark", () => {
+    for (const f of ["dock.tsx", "island.tsx", "card.tsx", "overlay.ts"]) expect(read(`./${f}`), f).toContain("followLessMotion();");
+    const sheets = [read("./style.css"), read("../overlay.html")];
+    for (const css of sheets) {
+      const calm = rules(css).filter((r) => r.sel.startsWith(":root[data-less-motion]"));
+      expect(calm.map((r) => r.sel)).toEqual(expect.arrayContaining([":root[data-less-motion] *", ":root[data-less-motion] *::before", ":root[data-less-motion] *::after"]));
+      for (const r of calm) { expect(r.decl.animation).toMatch(/^none\b/); expect(r.decl.transition).toMatch(/^none\b/); }
+    }
+  });
+  test("the overlay takes the settings sent with each pointer and each sketch before it draws", () => {
+    const o = read("./overlay.ts");
+    expect(o).toMatch(/listen\("overlay-point", \(e\) => \{ const p = e\.payload as Point & \{ settings\?: unknown \}; takeSnapshot\(p\.settings\); show\(p\); \}\)/);
+    expect(o).toMatch(/listen\("overlay-diagram", \(e\) => \{[^\n]*takeSnapshot\(p\.settings\);/);
+  });
+});
+

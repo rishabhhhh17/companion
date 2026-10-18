@@ -200,6 +200,16 @@ floor" means a fixed part that must be proven by a test before the setting ships
 
 ### Area 4: Home, island and character (shell builder, with page changes in home.ts and motion.ts)
 
+Status (19 Oct 2026): built on `m11/set-home-character` and tested with fakes (all suites); not yet tried on a real Mac.
+What differs from the rows below, and why: the character's edge and position are changed on the display the character is
+on now (not the display the pointer is on), so a keyboard or VoiceOver user changes the place they can see the character in,
+whatever the pointer is doing; Same place on every display keeps a copy that follows the place set in Settings or by a drag.
+When something needs me set to only mark the tab still opens Now for a question waiting for an answer (the floor "a waiting
+question is never hidden"). The light for Prompt help and the error explainer was, and stays, Home opening with "Reading"
+(beside the character when the island is off); the character itself lights for Show me, Point at the problem and hold to
+talk. Owed on a real Mac: each row tried by a person, the built in display with the lid open and closed, the large Home with
+larger text, Less motion, and the island off with every capture.
+
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|
 | `island.show` Show the island in the notch | switch, on | shell | main.rs, island.rs | | Needs a floor: off, Home opens beside the character and the hotkey still opens it; the character carries the light for every capture and the microphone (rule 5), proven by a test. |

@@ -16,9 +16,9 @@ import { useKeys } from "./useKeys.ts";
 import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
-import { defOf, validate, type Def } from "../../protocol/settings.ts";
+import { REGISTRY, defOf, validate, type Def } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
-import { floorWords, numberFrom, problemWords, rowModel, searchSettings, wordsOf, type FixedGroup } from "./settingsRows.ts";
+import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
@@ -324,6 +324,8 @@ function SettingRow({ d, project, keys }: { d: Def; project: string; keys: Keys 
   const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
+  // Home size: Large is suggested while the text is larger than usual.
+  const hint = d.key === "home.size" ? homeSizeHint(setting("display.textSize"), value) : null;
   const labelId = useId(), helpId = useId();
   const [problem, setProblem] = useState("");
   const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); });
@@ -345,6 +347,7 @@ function SettingRow({ d, project, keys }: { d: Def; project: string; keys: Keys 
     <div role="group" aria-labelledby={labelId} className="setting">
       <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
       <div className="line muted" id={helpId}>{r.help}</div>
+      {hint && <div className="line">{hint}</div>}
       {editor}
       {r.projectLine && <div className="line muted">{r.projectLine}</div>}
       <div className="row">
@@ -402,7 +405,8 @@ function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: str
 export function SettingsPage({ working, project, spending, onClose, onPractice, onLesson }: { working: boolean; project: string; spending: Spending | null; onClose: () => void; onPractice: (kind?: PracticeKind) => void; onLesson: (lesson: string) => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
-  const results = searchSettings(q);
+  // A row that only means something with another setting's value shows only then (settingsRows.ts shownNow).
+  const results = searchSettings(q, REGISTRY.settings.filter((x) => shownNow(x.key, setting)));
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -458,8 +462,14 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const fixedShown = (g: FixedGroup) => results.fixed.includes(g);
+  // The character's place (its edge, its position and Same place on every display) put back with one press.
+  const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
+  const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
   const extras: Record<string, ReactNode> = {
-    home: <div className="line muted">{S.dragHint}</div>,
+    home: (<>
+      <div className="line muted">{S.dragHint}</div>
+      {placeChanged.length > 0 && <div className="row"><button className="btn" type="button" onClick={() => void resetPlace()}>{S.setResetPlace}</button></div>}
+    </>),
     spending: (<>
       {project
         ? (spending && spending.project === project ? <div className="line" role="status">{spendingLine(spending)}</div> : null)

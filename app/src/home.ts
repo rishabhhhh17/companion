@@ -50,8 +50,9 @@ export function shownOn(p: Panel, tab: Tab, m: Model): boolean {
 
 // ---- which tab opens by itself ----
 
-/** Something on Home is waiting for the person: its tab, a key that changes when it is a new thing to look at, and why. */
-export type Need = { key: string; tab: Tab; why: string };
+/** Something on Home is waiting for the person: its tab, a key that changes when it is a new thing to look at, and why.
+ *  `question`: it waits for the person's answer (a question, the loop card, a paused or new plan), so it is never hidden. */
+export type Need = { key: string; tab: Tab; why: string; question?: boolean };
 
 const WALK_NEEDS = ["step", "already", "asking", "help"];
 const PRACTICE_NEEDS = ["start", "found", "failed", "blocked", "done"];
@@ -65,11 +66,11 @@ const EH_NEEDS = ["reading", "consent", "ready", "unexplained", "needs_accessibi
 
 /** The most important thing waiting for the person, if any. A question to answer comes first. */
 export function need(m: Model): Need | null {
-  if (m.approvals.length) return { key: `approval:${m.approvals[0].id}`, tab: "now", why: S.needsYouTitle };
-  if (m.agentsAsk) return { key: "agents", tab: "now", why: S.agentsTitle };
-  if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle };
-  if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle };
-  if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle };
+  if (m.approvals.length) return { key: `approval:${m.approvals[0].id}`, tab: "now", why: S.needsYouTitle, question: true };
+  if (m.agentsAsk) return { key: "agents", tab: "now", why: S.agentsTitle, question: true };
+  if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle, question: true };
+  if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle, question: true };
+  if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle, question: true };
   if (m.walk && m.showme && SHOWME_PROBLEMS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "learn", why: S.showMe };
   if (m.walk && WALK_NEEDS.includes(m.walk.stage)) return { key: `walk:${m.walk.id}:${m.walk.index}:${m.walk.stage}`, tab: "learn", why: S.lessonsTitle };
   if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: "learn", why: S.practiceTitle };
@@ -89,7 +90,12 @@ export function need(m: Model): Need | null {
 export type HomeState = { tab: Tab; needKey: string };
 export const homeStart = (): HomeState => ({ tab: "now", needKey: "" });
 // typing: the person is typing in Home right now, so a need on another tab marks that tab and is said, but does not move them.
-export type HomeAction = { type: "pick"; tab: Tab } | { type: "need"; need: Need | null; typing?: boolean } | { type: "opened"; keyboard: boolean };
+// markOnly: When something needs me is set to only mark the tab and say it (home.goToNeeds), so the same, except for a
+// question waiting for an answer, which still opens its tab: it is never hidden.
+export type HomeAction = { type: "pick"; tab: Tab } | { type: "need"; need: Need | null; typing?: boolean; markOnly?: boolean } | { type: "opened"; keyboard: boolean };
+type NeedAction = Extract<HomeAction, { type: "need" }>;
+/** A need on another tab that stays there: the person is typing, or the setting asks to only mark it (not a question). */
+const onlyMarked = (s: HomeState, a: NeedAction): boolean => !!a.need && a.need.key !== s.needKey && a.need.tab !== s.tab && (!!a.typing || (!!a.markOnly && !a.need.question));
 
 /** Is the person typing in Home: a text box, a list or editable text has the keyboard, in a window that has it? */
 export function typing(active: { tag: string; editable: boolean } | null, windowHasFocus: boolean): boolean {
@@ -105,12 +111,18 @@ export function homeReduce(s: HomeState, a: HomeAction): HomeState {
       if (key === s.needKey) return s;   // the same thing as before: never pulls the person back to it
       if (!a.need) return { ...s, needKey: "" };
       if (a.need.tab === s.tab) return { ...s, needKey: key };
-      if (a.typing) return { ...s, needKey: key };
+      if (onlyMarked(s, a)) return { ...s, needKey: key };
       return { tab: a.need.tab, needKey: key };
     }
     // The ask box hotkeys open Home ready to type, and the box is on Now. A click keeps the tab the person left it on.
     case "opened": return a.keyboard && s.tab !== "now" ? { ...s, tab: "now" } : s;
   }
+}
+
+/** What is said out loud (with Speak to me on) when a new need only marked its tab because of the setting: the same words
+ *  VoiceOver hears on Home's live line (a11y.ts). Nothing when the setting is Go to it, as today. */
+export function markedLine(s: HomeState, a: NeedAction): string | null {
+  return a.markOnly && a.need && onlyMarked(s, a) ? S.homeWaiting(tabName(a.need.tab), a.need.why) : null;
 }
 
 /** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. */
@@ -127,11 +139,12 @@ export function tabKey(t: Tab, key: string): Tab | null {
 
 // ---- a click elsewhere ----
 
-/** May a click in another app close Home? Not while it shows something the person is in the middle of: a question, a
- *  lesson, a pointer on the screen, Prompt help or the error explainer, the microphone, a "are you sure", or the first run
- *  (which sends people to other apps to get a key or sign in). */
-export function closesOnClickAway(m: Model, onboarding: boolean): boolean {
-  if (onboarding || need(m)) return false;
+/** May a click in another app close Home? Never with Close Home when I click another app turned off (`on`,
+ *  home.closeOnClickAway). Not while it shows something the person is in the middle of: a question, a lesson, a pointer on
+ *  the screen, Prompt help or the error explainer, the microphone, a "are you sure", or the first run (which sends people
+ *  to other apps to get a key or sign in). */
+export function closesOnClickAway(m: Model, onboarding: boolean, on = true): boolean {
+  if (!on || onboarding || need(m)) return false;
   if (m.walk || m.practice || m.showme || m.teach || m.ph || m.eh || m.voice) return false;
   if (m.point?.stage === "checking" || m.diagram?.stage === "asking") return false;
   if (m.undo?.stage === "confirm" || m.bisect?.undoStage === "confirm") return false;
@@ -145,10 +158,12 @@ const cut = (t: string) => (t.length <= ISLAND_LINE_MAX ? t : `${t.slice(0, ISLA
 const waiting = (m: Model) => !!need(m) && need(m)!.tab === "now" && (m.approvals.length > 0 || !!m.agentsAsk || !!m.stuck || !!m.paused || !!m.plan);
 
 /** A mark beside the notch (the island a little wider) only when the person should look: a question waits, Companion is
- *  listening, or something just finished. Never just because work is going on. */
-export function islandAlert(m: Model): boolean {
+ *  listening, or something just finished. Never just because work is going on. `marked`: When something needs me only
+ *  marks the tab (home.goToNeeds), so anything that needs the person shows the mark too. */
+export function islandAlert(m: Model, marked = false): boolean {
   if (!m.runnerUp) return false;
   if (waiting(m)) return true;
+  if (marked && need(m)) return true;
   const v = visualState(m);
   return v === "needsYou" || v === "listening" || v === "done";
 }

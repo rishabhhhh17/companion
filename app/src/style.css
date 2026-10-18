@@ -111,6 +111,9 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 @keyframes roam-surface { from { transform: scale(.72); opacity: .55; } to { transform: scale(.92); opacity: 1; } }
 @keyframes roam-settle { 0% { transform: scale(1.06, .94); } 60% { transform: scale(.98, 1.02); } 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion], .character[data-roam] { animation: none; transition: none; } }
+/* Less motion, Companion's own Motion setting (character.motion; motion.ts marks the page): inside Companion only, nothing
+   moves, as with the Mac's own Reduce motion. */
+:root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition: none !important; }
 
 /* Home (F18): the card's tabs. */
 .tabs { display: flex; gap: 2px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }

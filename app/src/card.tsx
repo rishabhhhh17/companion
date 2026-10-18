@@ -19,7 +19,8 @@ import { autoCheckDue, found, isBusy } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
-import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
+import { followLessMotion } from "./motion.ts";
+import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
@@ -269,7 +270,12 @@ function Card() {
   const needNow = need(m);
   useEffect(() => {
     const a = document.activeElement as HTMLElement | null;
-    homeDispatch({ type: "need", need: needNow, typing: typing(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus()) });
+    // When something needs me (home.goToNeeds): go to its tab, as F18 asks, or only mark it and say it. A question waiting
+    // for an answer opens Now either way (home.ts). What was only marked is said out loud when Speak to me is on.
+    const act = { type: "need" as const, need: needNow, typing: typing(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus()), markOnly: setting("home.goToNeeds") === "markTab" };
+    const said = markedLine(home, act);
+    homeDispatch(act);
+    if (said && speechOn()) sayIt(said, false);
   }, [needNow?.key ?? ""]);
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
   useEffect(() => { takeIfLost(() => document.getElementById(tabId(home.tab))); }, [home.tab]);
@@ -751,7 +757,7 @@ function Card() {
   const nowModel = useRef(m); nowModel.current = m;
   const onboardingNow = useRef(!onboarded); onboardingNow.current = !onboarded;
   useEffect(() => {
-    const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };
   }, []);
   const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
@@ -1489,4 +1495,6 @@ function Card() {
 // registry is used, with the same meaning).
 startSettings();
 applyTextSize(textSize());
+// Less motion (character.motion) stops Home's own animations too.
+followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);

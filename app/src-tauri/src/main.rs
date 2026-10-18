@@ -51,6 +51,7 @@ mod visibility;
 mod wheel;
 mod presentation;
 mod settings;
+mod homeset;
 
 mod runner;
 mod instance;
@@ -79,9 +80,10 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuil
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 const DOCK: (f64, f64) = (160.0, 160.0);
-// Home's size (the card, F18): CARD is its width (380, for its tabs) and its least height, CARD_MAX_H the tallest it
-// grows. One definition, in island.rs, used by resize_card, by card_spot and by everything that keeps clear of Home.
-use island::{CARD, CARD_MAX_H};
+// Home's size (the card, F18): CARD is the usual width (380, for its tabs) and least height, the size Home's window is made
+// at. The size in force (home.size: standard or large) is `home_size()`, one definition in island.rs (HomeSize), used by
+// resize_card, by card_spot and by everything that keeps clear of Home.
+use island::CARD;
 
 static RUN: OnceLock<String> = OnceLock::new();
 static T0: OnceLock<u128> = OnceLock::new();
@@ -180,8 +182,8 @@ fn make_panel(mtm: MainThreadMarker, tauri_win: &NSWindow, card: bool, frame: NS
     panel.setFloatingPanel(true);
     panel.setHidesOnDeactivate(false);
     panel.setLevel(3);
-    // By default the character stays out of full screen apps (the product default). Setting
-    // COMPANION_OVER_FULLSCREEN=1 adds fullScreenAuxiliary so it shows over them (a user setting later).
+    // By default the character stays out of full screen apps (the product default). The setting Show Companion over full
+    // screen apps (character.overFullScreen), or a developer's COMPANION_OVER_FULLSCREEN=1, keeps it on screen over them.
     // fullScreenAuxiliary lets it be on a full screen Space; whether it stays there is decided by
     // visibility.rs, because on macOS 27 leaving the flag out did not hide it.
     panel.setCollectionBehavior(B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::Stationary | B::IgnoresCycle);
@@ -211,9 +213,11 @@ fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> 
     let list = screens_now(mtm);
     let first = list.first()?;
     let ph = first.frame[3];
-    let on = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let hs = home_set();
+    // With the island turned off in Settings there is no island to drop from: Home opens beside the character.
+    let on = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).clone().filter(|_| hs.island_show);
     let home = roamer().home().unwrap_or_else(|| from_appkit(d.frame(), ph));
-    let spot = island::card_spot(on.as_ref(), home, &list, |id| with_prefs(|p| choice(p, id).0), h)?;
+    let spot = island::card_spot(on.as_ref(), home, &list, |id| with_prefs(|p| choice(p, id).0), (hs.size.w, h.clamp(hs.size.min_h, hs.size.max_h)))?;
     Some((spot, ph))
 }
 
@@ -225,13 +229,13 @@ fn place_card(d: &NSPanel, c: &NSPanel) {
     c.setFrame_display(to_appkit(cf, ph), true);
     // The card opened or grew. If at its tallest it could reach the character beside a window, the visit is planned
     // again clear of it (or ends).
-    if let Some((room, _)) = card_spot(mtm, d, CARD_MAX_H) { roam_card_moved(mtm, room); }
+    if let Some((room, _)) = card_spot(mtm, d, home_size().max_h) { roam_card_moved(mtm, room); }
 }
 
 /// Where our card can reach at its tallest while it is up, for the character to keep clear of. Nothing while it is
 /// closed: if it opens later, place_card plans the visit again.
 fn card_room(mtm: MainThreadMarker) -> Vec<Rect> {
-    with_panels(|d, c| if c.isVisible() { card_spot(mtm, d, CARD_MAX_H).map(|(r, _)| r) } else { None }).flatten().into_iter().collect()
+    with_panels(|d, c| if c.isVisible() { card_spot(mtm, d, home_size().max_h).map(|(r, _)| r) } else { None }).flatten().into_iter().collect()
 }
 
 // ---------- screens and docking glue (the maths is in docking.rs, tested) ----------
@@ -271,7 +275,7 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
         choice(p, &target.id)
     });
     // On its edge, inside the work area, out of the clear zone at the top centre (the notch island).
-    let f = docking::place(&target, DOCK, edge, pct);
+    let f = docking::place(&target, DOCK, edge, pct, home_size());
     // This is home now. A drag or a display change also ends any visit beside a window, with no trip back, and stops a
     // trip that was under way where it is.
     ROAM_GEN.fetch_add(1, Ordering::SeqCst);
@@ -296,9 +300,10 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
         let list = screens_now(mtm);
         let Some(first) = list.first() else { return };
         let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
-        let (edge, pct) = snap_on(&target, DOCK, x, y);
+        let (edge, pct) = snap_on(&target, DOCK, x, y, home_size());
         *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
-        with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); });
+        // With Same place on every display on, the place dragged to is the one copied to displays with no place yet.
+        with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } });
         apply_dock(mtm, "drag", true);
     });
 }
@@ -360,16 +365,29 @@ fn displays_now(mtm: MainThreadMarker) -> Vec<island::Display> {
     }).collect()
 }
 
+/// The id (as `displays_now` names it) of the Mac's own screen, when it is connected and on (CGDisplayIsBuiltin); None
+/// with the lid closed or on a Mac with no screen of its own. Only for island.display "built in". Main thread.
+fn builtin_display(mtm: MainThreadMarker) -> Option<String> {
+    let list = NSScreen::screens(mtm);
+    let primary_h = list.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+    list.iter().find(|s| objc2_core_graphics::CGDisplayIsBuiltin(s.CGDirectDisplayID())).map(|s| { let f = from_appkit(s.frame(), primary_h); format!("{}x{}@{},{}", f[2], f[3], f[0], f[1]) })
+}
+
 /// Puts the island on its display at the size it should be now, and tells its page. `follow_mouse`: the person is opening
 /// Home, so the display with the pointer. Otherwise the display it was on last (`follow_pointer` changes that after the
 /// pointer stays on another display), so a change of size alone never moves it. Main thread.
 fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
+    let hs = home_set();
+    // Turned off in Settings (island.show): no island, and Home opens beside the character (card_spot).
+    if !hs.island_show { *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = None; island_show(false); return; }
     let list = displays_now(mtm);
     let Some(first) = list.first() else { return };
     let ph = first.frame[3];
     let last = island_last();
     let mouse = if follow_mouse || !list.iter().any(|d| d.id == last) { let m = NSEvent::mouseLocation(); (m.x, ph - m.y) } else { (f64::NAN, f64::NAN) };
-    let Some((d, how)) = island::pick(&list, &last, mouse, follow_mouse) else { return };
+    // Which display (island.display): the one being used (today's), the Mac's own screen, or the main one.
+    let builtin = if hs.display == island::Where::BuiltIn { builtin_display(mtm) } else { None };
+    let Some((d, how)) = island::pick_where(&list, hs.display, builtin.as_deref(), &last, mouse, follow_mouse) else { return };
     let d = d.clone();
     if d.id != last { remember_island(&d.id); }
     let moved = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref() != Some(&d);
@@ -397,6 +415,9 @@ fn tell_island(mode: island::Mode, kind: island::Kind) {
 /// `Follow`), not while Home is open. Called from `tick`, twice a second. Only which display the pointer is on is used,
 /// read with `NSEvent::mouseLocation` (no permission); never what is on the screen, never keys. Main thread.
 fn follow_pointer(mtm: MainThreadMarker) {
+    // Only with Follow me (island.display), and only while there is an island.
+    let hs = home_set();
+    if hs.display != island::Where::Follow || !hs.island_show { return; }
     let list = displays_now(mtm);
     if list.len() < 2 { return; }
     let ph = list[0].frame[3];
@@ -404,11 +425,13 @@ fn follow_pointer(mtm: MainThreadMarker) {
     let p = (m.x, ph - m.y);
     let under = list.iter().find(|d| island::contains(d.frame, p)).map(|d| d.id.as_str());
     let current = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|d| d.id.clone()).unwrap_or_default();
-    let to = ISLAND_FOLLOW.lock().unwrap_or_else(|e| e.into_inner()).sample(under, &current, HOME_OPEN.load(Ordering::SeqCst), now() as u64);
+    let to = ISLAND_FOLLOW.lock().unwrap_or_else(|e| e.into_inner()).sample(under, &current, HOME_OPEN.load(Ordering::SeqCst), now() as u64, hs.follow_ms);
     if let Some(id) = to { remember_island(&id); place_island(mtm, false, "followed_pointer"); }
 }
 
 fn island_show(on: bool) {
+    // Turned off in Settings (island.show): never shown, whatever asks.
+    let on = on && home_set().island_show;
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { if on { p.orderFrontRegardless(); } else { p.orderOut(None); } } });
     if !on { reset_hover(); }
 }
@@ -420,7 +443,8 @@ fn island_rect(primary_h: f64) -> Option<Rect> {
 
 /// Forgets whether the pointer was on the island (it was hidden, moved, or Home opened or closed over it).
 fn reset_hover() {
-    *ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()) = island::Hover::new();
+    let times = home_set().hover;
+    *ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()) = { let mut h = island::Hover::new(); h.set_times(times); h };
     ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()).hover = false;
 }
 
@@ -454,7 +478,9 @@ fn island_state() -> Value {
 /// app is in front. Nothing else about the pointer is read for this. Main thread.
 fn island_hover_changed(inside: bool) {
     let t = now() as u64;
-    { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); if inside { h.enter(t) } else { h.exit(t) } }
+    // The waits, and whether resting opens the status at all, as Settings says now (island.peekOnHover, openDelay, closeDelay).
+    let times = home_set().hover;
+    { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); h.set_times(times); if inside { h.enter(t) } else { h.exit(t) } }
     island_hover_settle();
 }
 fn island_hover_settle() {
@@ -532,7 +558,8 @@ fn watch_click_away(app: &AppHandle) {
             });
             rx.recv_timeout(Duration::from_millis(500)).ok()
         };
-        while HOME_OPEN.load(Ordering::SeqCst) && HOME_GEN.load(Ordering::SeqCst) == gen {
+        // Turned off in Settings (home.closeOnClickAway), the watch stops: nothing more is read.
+        while HOME_OPEN.load(Ordering::SeqCst) && HOME_GEN.load(Ordering::SeqCst) == gen && home_set().click_away {
             std::thread::sleep(Duration::from_millis(island::CLICK_POLL_MS));
             // A click in one of our own dialogs (another process) is not a click elsewhere, nor is the press that ends it.
             if NATIVE_DIALOGS.load(Ordering::SeqCst) > 0 { w = island::ClickAway::new(true); continue; }
@@ -578,8 +605,9 @@ fn roam_blocked() -> bool {
     let p = macos_see::pointer();
     p.x >= at[0] && p.x < at[0] + at[2] && p.y >= at[1] && p.y < at[1] + at[3]
 }
-/// The Mac's own Reduce motion setting (Accessibility, Display). Read with no permission.
-fn reduce_motion() -> bool { NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion() }
+/// The Mac's own Reduce motion setting (Accessibility, Display), read with no permission, or Companion's own Motion setting
+/// set to less (character.motion), which changes only Companion.
+fn reduce_motion() -> bool { home_set().less_motion || NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion() }
 
 /// Something about a place on screen is up: the character comes beside the window it is in, unless the setting is off,
 /// Companion is hidden, the place has no confirmed window (a menu, a dialog, the desktop), or there is no room outside
@@ -650,7 +678,7 @@ fn roam_tick(app: &AppHandle, wins: &[fullscreen::Win], front_pid: i32) {
     let up = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || card_visible();
     let hidden = HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst);
     let on = with_prefs(|p| p.come_to);
-    let ended = roamer().tick(&roam::TickIn { now: now() as u64, on, hidden, up, wins, ours: std::process::id() as i32, front_pid });
+    let ended = roamer().tick(&roam::TickIn { now: now() as u64, on, hidden, up, wins, ours: std::process::id() as i32, front_pid, linger_ms: home_set().linger_ms });
     if let Some(why) = ended {
         log("roam_home", json!({ "why": format!("{why:?}") }));
         if why == roam::EndWhy::Hidden { roam_home_now(app); }
@@ -735,6 +763,55 @@ fn come_to_set(app: &AppHandle, on: bool) {
     if !on { roam_end(app); }
 }
 
+/// Settings: the character's place on the display it is on (character.edge, character.position) and Same place on every
+/// display, kept in `dock.json` as a drag keeps them (settings.rs `dock_with`). Changed only through settings_set (card
+/// only). The character goes there at once, which also ends any visit beside a window (apply_dock).
+fn place_set(app: &AppHandle, next: Prefs) {
+    with_prefs(|p| *p = next);
+    save_prefs();
+    let _ = app.run_on_main_thread(|| { if let Some(mtm) = MainThreadMarker::new() { apply_dock(mtm, "setting", false); } });
+}
+
+/// Home, the island and the character as Settings says now (homeset.rs): read each time it is needed, so a change takes
+/// effect at once.
+fn home_set() -> homeset::HomeSet { with_settings(|s| homeset::read(settings::registry(), &s.file)) }
+/// Home's size in force (home.size): its width, least height and tallest height. The one size for placing Home, for the
+/// character's clear zones and for the trips beside a window.
+fn home_size() -> island::HomeSize { home_set().size }
+
+/// What the shell does at once when one of these changes (homeset.rs). The rest are read where they are used (the waits on
+/// the island, the wait beside a window, the motion, full screen apps) and need nothing more.
+fn home_setting_applied(app: &AppHandle, key: &str) {
+    match key {
+        // The island shown or hidden, on another display, or Home another size: everything is put back where it belongs.
+        "island.show" | "island.display" | "home.size" => {
+            let size = key == "home.size";
+            let _ = app.run_on_main_thread(move || {
+                let Some(mtm) = MainThreadMarker::new() else { return };
+                let hs = home_set();
+                CARD_H.store((CARD_H.load(Ordering::SeqCst) as f64).clamp(hs.size.min_h, hs.size.max_h) as u64, Ordering::SeqCst);
+                reset_hover();
+                place_island(mtm, false, "setting");
+                // Put in place first, then shown (unless Companion is hidden): it never shows where it was.
+                island_show(!USER_HID.load(Ordering::SeqCst) && !HIDDEN_BY_US.load(Ordering::SeqCst));
+                // Home's size: the character's own place keeps clear of Home at the new size (docking.rs dock_zone).
+                if size { apply_dock(mtm, "setting", true); }
+                with_panels(|d, c| if c.isVisible() { place_card(d, c) });
+            });
+        }
+        // The status on pointing: what shows now is put back, and the next pointing uses the new waits.
+        "island.peekOnHover" | "island.openDelay" | "island.closeDelay" => {
+            let _ = app.run_on_main_thread(|| { reset_hover(); if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "setting"); } });
+        }
+        // Close Home when I click another app: an open Home's watch stops at once, or starts when it is turned on.
+        "home.closeOnClickAway" => {
+            HOME_GEN.fetch_add(1, Ordering::SeqCst);
+            if HOME_OPEN.load(Ordering::SeqCst) && home_set().click_away { watch_click_away(app); }
+        }
+        _ => {}
+    }
+}
+
 // ---------- Settings: the registry (settings.rs, T16) ----------
 //
 // One list of every setting (protocol/settings.json). Pages never write a file: every change comes here (settings_set,
@@ -812,8 +889,9 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
         }
         "dock" => {
             let v = settings::validate(d, value)?;
-            let next = with_prefs(|p| settings::dock_with(p, key, &v)).ok_or("unknown")?;
-            come_to_set(app, next.come_to);
+            // Nothing to change it on yet (no display known): said as a setting that could not be changed.
+            let next = with_prefs(|p| settings::dock_with(p, key, &v)).ok_or("other")?;
+            if key == "character.comeTo" { come_to_set(app, next.come_to); } else { place_set(app, next); }
             Ok(one)
         }
         "presentation" => {
@@ -848,6 +926,7 @@ fn setting_applied(app: &AppHandle, key: &str) {
     let off = |k: &str| with_settings(|s| settings::value_of(settings::registry(), &s.file, k, None)) == Some(json!(false));
     // Speak to me or Answer out loud turned off: silence at once.
     if (key == "talk.speak" || key == "talk.speakReplies") && off(key) { speech_off(app); }
+    home_setting_applied(app, key);
 }
 
 /// Puts one setting, a section or everything back to its usual value, in every store. Never a protective setting in a
@@ -991,7 +1070,7 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
             if keyboard { c.makeKeyWindow(); }
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
-        if !was_open { watch_click_away(&a); }
+        if !was_open && home_set().click_away { watch_click_away(&a); }
         let _ = a.emit_to("card", "opened", json!({ "keyboard": keyboard }));
     });
 }
@@ -1065,7 +1144,8 @@ fn toggle_home(app: AppHandle, source: &'static str) {
 /// The card page tells us how tall its content is; we resize the panel to fit.
 #[tauri::command]
 fn resize_card(app: AppHandle, height: f64) {
-    let h = height.clamp(CARD.1, CARD_MAX_H);
+    let hs = home_size();
+    let h = height.clamp(hs.min_h, hs.max_h);
     CARD_H.store(h as u64, Ordering::SeqCst);
     let _ = app.run_on_main_thread(move || { with_panels(|d, c| if c.isVisible() { place_card(d, c) }); });
 }
@@ -1308,6 +1388,8 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     let exact = exact && watched.window().is_some();
     let clip = watched.window().map(|an| json!({ "x": an.bounds[0] - d.x, "y": an.bounds[1] - d.y, "w": an.bounds[2], "h": an.bounds[3] }));
     let anchored = watched.window().cloned();
+    // The overlay only listens (its capability), so it is given the settings in force with the pointer (the motion).
+    let settings = settings_snapshot(&[]);
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
@@ -1318,7 +1400,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         // The character comes beside the window the ring is in (F18 item 2); a ring with no confirmed window leaves it home.
         roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
         let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
-            "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)) });
+            "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)), "settings": settings });
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
@@ -1857,6 +1939,7 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
     OVERLAY_BUSY_UNTIL.store(now() as u64 + 16_500, SeqCst);
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let a = app.clone();
+    let settings = settings_snapshot(&[]);
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         let screens = NSScreen::screens(mtm);
@@ -1867,7 +1950,7 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
         let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
-        let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x }));
+        let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x, "settings": settings }));
         let _ = tx.send(true);
     });
     if !rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false) { OVERLAY_BUSY_UNTIL.store(0, SeqCst); return Err("no_screen".into()); }
@@ -2411,7 +2494,8 @@ fn tick(app: &AppHandle) {
         log("fullscreen_raw", json!({ "raw": raw, "front_pid": front_pid, "our_panels_hidden": HIDDEN_BY_US.load(Ordering::SeqCst), "front_windows": front }));
     }
     let fs = FS_SMOOTH.lock().unwrap().get_or_insert_with(|| visibility::Debounce::new(false, 3)).push(raw);
-    let show = visibility::should_show(visibility::Inputs { full_screen_app_in_front: fs, show_over_full_screen: std::env::var("COMPANION_OVER_FULLSCREEN").is_ok_and(|v| v == "1"), user_hid_it: USER_HID.load(Ordering::SeqCst) });
+    let over = visibility::over_full_screen(std::env::var("COMPANION_OVER_FULLSCREEN").ok().as_deref(), home_set().over_full_screen);
+    let show = visibility::should_show(visibility::Inputs { full_screen_app_in_front: fs, show_over_full_screen: over, user_hid_it: USER_HID.load(Ordering::SeqCst) });
     if !show && !USER_HID.load(Ordering::SeqCst) && !HIDDEN_BY_US.swap(true, Ordering::SeqCst) {
         with_panels(|d, c| { d.orderOut(None); c.orderOut(None); });
         island_show(false);
