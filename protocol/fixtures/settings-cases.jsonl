@@ -57,6 +57,40 @@
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["build"], "ok": false, "reason": "notAllowed"}
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "lint"], "ok": false, "reason": "duplicate"}
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "test", "x"], "ok": false, "reason": "tooMany"}
+{"key": "check.start", "value": "auto", "ok": true, "normalized": "auto"}
+{"key": "check.start", "value": "dev", "ok": true, "normalized": "dev"}
+{"key": "check.start", "value": "build:prod", "ok": true, "normalized": "build:prod"}
+{"key": "check.start", "value": "dev; rm -rf ~", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "npm run dev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "-dev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": true, "normalized": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+{"key": "check.start", "value": "dév", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": 3, "ok": false, "reason": "notChoice"}
+{"key": "check.time", "value": "longest", "ok": true, "normalized": "longest"}
+{"key": "check.time", "value": "forever", "ok": false, "reason": "notChoice"}
+{"key": "check.install", "value": "never", "ok": true, "normalized": "never"}
+{"key": "check.install", "value": "always", "ok": false, "reason": "notChoice"}
+{"key": "check.pageSize", "value": "both", "ok": true, "normalized": "both"}
+{"key": "check.skip", "value": ["lint", "test"], "ok": true, "normalized": ["lint", "test"]}
+{"key": "check.skip", "value": ["browser"], "ok": false, "reason": "notAllowed"}
+{"key": "check.skip", "value": ["start"], "ok": false, "reason": "notAllowed"}
+{"key": "check.skip", "value": ["lint", "lint"], "ok": false, "reason": "duplicate"}
+{"key": "check.skip", "value": ["typecheck", "lint", "build", "test", "lint"], "ok": false, "reason": "tooMany"}
+{"key": "check.mustSee", "value": ["  Welcome back "], "ok": true, "normalized": ["Welcome back"]}
+{"key": "check.mustSee", "value": [""], "ok": false, "reason": "empty"}
+{"key": "check.mustSee", "value": ["wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"], "ok": false, "reason": "tooLong"}
+{"key": "check.press", "value": " Add to cart ", "ok": true, "normalized": "Add to cart"}
+{"key": "check.press", "value": "Save\nnow", "ok": false, "reason": "notOneLine"}
+{"key": "check.afterPress", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "ok": false, "reason": "tooLong"}
+{"key": "pictures.keep", "value": 0, "ok": true, "normalized": 0}
+{"key": "pictures.keep", "value": 74, "ok": true, "normalized": 50}
+{"key": "pictures.keep", "value": 75, "ok": true, "normalized": 100}
+{"key": "pictures.keep", "value": 1001, "ok": false, "reason": "tooHigh"}
+{"key": "net.slow", "value": true, "ok": true, "normalized": true}
+{"key": "rules.house", "value": ["never edit .env"], "ok": true, "normalized": ["never edit .env"]}
+{"key": "rules.house", "value": ["never edit x", "never edit x"], "ok": false, "reason": "duplicate"}
 {"migrate": "isOn", "raw": "on", "value": true}
 {"migrate": "isOn", "raw": "off", "value": false}
 {"migrate": "isOn", "raw": "yes", "value": false}

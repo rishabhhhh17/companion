@@ -1,0 +1,24 @@
+{"line": "never edit .env", "kind": "never_edit", "pattern": ".env", "text": "never edit .env"}
+{"line": "  NEVER   Edit   Pricing.txt ", "kind": "never_edit", "pattern": "Pricing.txt", "text": "NEVER Edit Pricing.txt"}
+{"line": "never\tedit\tsrc/*.ts\r", "kind": "never_edit", "pattern": "src/*.ts", "text": "never edit src/*.ts"}
+{"line": "never edit run x", "kind": "never_edit", "pattern": "run x", "text": "never edit run x"}
+{"line": "never run npm publish", "kind": "never_run", "pattern": "npm publish", "text": "never run npm publish"}
+{"line": "never run  rm -rf /tmp/x", "kind": "never_run", "pattern": "rm -rf /tmp/x", "text": "never run rm -rf /tmp/x"}
+{"line": "ask before editing config/*", "kind": "ask_edit", "pattern": "config/*", "text": "ask before editing config/*"}
+{"line": "Ask Before Running git push", "kind": "ask_run", "pattern": "git push", "text": "Ask Before Running git push"}
+{"line": "ask before installing packages", "kind": "ask_install", "pattern": "", "text": "ask before installing packages"}
+{"line": "ASK before installing   PACKAGES", "kind": "ask_install", "pattern": "", "text": "ASK before installing PACKAGES"}
+{"line": "never edit .env", "kind": "never_edit", "pattern": ".env", "text": "never edit .env"}
+{"line": "never edit 　secret.txt", "kind": "never_edit", "pattern": "secret.txt", "text": "never edit secret.txt"}
+{"line": "ask before installing packages now", "kind": null}
+{"line": "ask before installing", "kind": null}
+{"line": "never edit", "kind": null}
+{"line": "never edit   ", "kind": null}
+{"line": "never editing x", "kind": null}
+{"line": "nevermind edit x", "kind": null}
+{"line": "never   ", "kind": null}
+{"line": "be nice to the user", "kind": null}
+{"line": "# never edit .env", "kind": null}
+{"line": "   # a note", "kind": null}
+{"line": "", "kind": null}
+{"line": "   ", "kind": null}

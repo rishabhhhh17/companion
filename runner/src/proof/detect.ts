@@ -68,6 +68,22 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
   return { kind: hasPkg ? "node" : py ? "python" : start ? "static" : "unknown", packageManager: pm, lockfile: lock?.[0] ?? null, checks, tests, start, ...(py ? { python: py.setup } : {}) };
 }
 
+/** check.start in Settings: start the project with one of its own scripts instead of the one found. "auto" (or nothing)
+ *  is today's choice. Only a script that is in package.json now, with a plain script name, is ever used, and only as
+ *  "<package manager> run <name>", never as a command of its own; the project's own .claude/launch.json still wins. A
+ *  script that is not there (any more) means the usual way, said as a gap. */
+export function withStartScript(det: Detected, dir: string, script: string | undefined): { det: Detected; gap?: string } {
+  if (!script || script === "auto") return { det };
+  const launch = readJson(join(dir, ".claude", "launch.json"));
+  if (Array.isArray(launch?.configurations) && launch!.configurations[0]?.runtimeExecutable) return { det };
+  const pkg = det.packageManager ? readJson(join(dir, "package.json")) : null;
+  const scripts: Record<string, unknown> = pkg && typeof pkg.scripts === "object" && pkg.scripts ? pkg.scripts : {};
+  if (!det.packageManager || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,59}$/.test(script) || !Object.hasOwn(scripts, script) || typeof scripts[script] !== "string") {
+    return { det, gap: `The start script chosen in Settings (${script.slice(0, 60)}) is not in this project's package.json, so it was started the usual way.` };
+  }
+  return { det: { ...det, start: { kind: "server", command: `${det.packageManager} run ${script}` } } };
+}
+
 // Is this package manager on the Mac's tool path (the same path Companion runs commands with)?
 let cachedPath: string[] | null = null;
 // Tests set COMPANION_TEST_ASSUME_TOOLS (test/setup.ts), so their results never depend on which tools the Mac running them has.

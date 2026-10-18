@@ -56,6 +56,8 @@ export class CheckpointStore {
 
   private recoveryBudget: number;
   private maxFiles: number;
+  /** How long one git step of a snapshot may take: five minutes, doubled by "my internet is slow" (set by the runner). */
+  gitTimeoutMs = GIT_TIMEOUT_MS;
   constructor(shadowDir: string, projectDir: string, opts: { recoveryBudgetBytes?: number; maxFiles?: number } = {}) {
     this.recoveryBudget = opts.recoveryBudgetBytes ?? 2 * 1024 * 1024 * 1024;
     this.maxFiles = opts.maxFiles ?? 150_000;
@@ -128,7 +130,7 @@ export class CheckpointStore {
   }
 
   private async git(args: string[], opts: { index?: string } = {}): Promise<string> {
-    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: GIT_TIMEOUT_MS });
+    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: this.gitTimeoutMs });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     const code = await p.exited;
     if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${err.trim()}`);
@@ -136,7 +138,7 @@ export class CheckpointStore {
   }
 
   private async gitFull(args: string[], opts: { index?: string } = {}): Promise<{ out: string; err: string; code: number }> {
-    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: GIT_TIMEOUT_MS });
+    const p = Bun.spawn(["git", "-c", "core.quotepath=off", ...args], { cwd: this.projectDir, env: this.env(opts.index), stdout: "pipe", stderr: "pipe", timeout: this.gitTimeoutMs });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     return { out, err, code: await p.exited };
   }

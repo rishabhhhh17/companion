@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { runCommand, shq } from "./exec.ts";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
-import { detectProject } from "./detect.ts";
+import { detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
@@ -15,6 +15,8 @@ export type Before = { shot: PageShot } | { none: "no_page" | "crashed" | "not_p
 export async function captureBefore(o: {
   store: CheckpointStore; beforeId: string; project: string; workDir: string; signal?: AbortSignal;
   startMs?: number; browserMs?: number; browser?: (url: string, b: BrowserOptions) => Promise<BrowserResult>;
+  // How this project is checked (Settings): its start script ("auto" is the one found) and the page size of the picture.
+  start?: string; viewport?: { width: number; height: number };
 }): Promise<Before> {
   mkdirSync(o.workDir, { recursive: true, mode: 0o700 });
   const dir = mkdtempSync(join(o.workDir, "before-"));
@@ -23,7 +25,7 @@ export async function captureBefore(o: {
     borrowPackages(join(o.project, "node_modules"), join(dir, "node_modules"));
     borrowVenv(o.project, dir);
     if (o.signal?.aborted) return { none: "cancelled" };
-    const det = detectProject(dir);
+    const det = withStartScript(detectProject(dir), dir, o.start).det;
     if (!det.start) return { none: "no_page" };
     let scriptText = "";
     try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(det.start.kind === "server" ? det.start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
@@ -36,7 +38,7 @@ export async function captureBefore(o: {
     o.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (o.signal?.aborted) return { none: "cancelled" };
-      const b = await (o.browser ?? browserCheck)(srv.url, { shot: true, clickButtons: false, timeoutMs: o.browserMs ?? 20_000, signal: o.signal });
+      const b = await (o.browser ?? browserCheck)(srv.url, { shot: true, clickButtons: false, timeoutMs: o.browserMs ?? 20_000, signal: o.signal, ...(o.viewport ? { viewport: o.viewport } : {}) });
       if (o.signal?.aborted) return { none: "cancelled" };
       return b.shot ? { shot: b.shot } : { none: "not_pictured" };
     } finally { o.signal?.removeEventListener("abort", onAbort); await srv.stop(); }

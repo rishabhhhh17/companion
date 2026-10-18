@@ -32,7 +32,8 @@ import { readDeployFailure } from "./ship/buildlog.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
-import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
+import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
+import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
@@ -66,7 +67,9 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
 // noInstall: check the project as it is, without installing its packages first (Point at the problem, your turn).
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean };
+// check and limits: what the person chose in Settings for checking this project, read when the task or check started.
+// askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean> };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -107,7 +110,12 @@ export type RunnerOptions = {
   bisect?: { workDir: string; run?: (command: string, o: RunOptions) => Promise<RunResult>; detect?: (dir: string) => Detected };
   // What the shell applied from the settings registry (settings.apply, T16). Without it, every setting is its usual value.
   settings?: RunnerSettings;
+  // How an install the person pressed and a copy from a link are run (runCommand; tests pass a stand in).
+  commands?: (command: string, o: RunOptions) => Promise<RunResult>;
 };
+
+/** How long one snapshot may take (checkpoints.ts), doubled by "my internet is slow". */
+const SNAPSHOT_LIMIT_MS = 5 * 60_000;
 
 /** A private copy made for checking an earlier version starts with this; anything left by a run that was cut off is swept. */
 const BISECT_PREFIX = "bisect-";
@@ -115,8 +123,8 @@ export function sweepBisect(workDir: string) {
   try { for (const n of readdirSync(workDir)) if (n.startsWith(BISECT_PREFIX)) rmSync(join(workDir, n), { recursive: true, force: true }); } catch { /* nothing there */ }
 }
 
-// Receipt pictures are kept for the timeline, newest first, so they never fill the disk.
-const KEEP_PICTURES = 200;
+// Receipt pictures are kept for the timeline, newest first, so they never fill the disk: as many as "Pictures to keep" says
+// (pictures.keep, usually 200), removed when the next picture is made.
 function pruneOldest(dir: string, keep: number) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".jpg")).map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
   for (const x of files.slice(keep)) rmSync(join(dir, x.f), { force: true });
@@ -382,6 +390,37 @@ export class AgentRunner {
   private now() { return (this.o.now ?? (() => new Date()))(); }
   /** A setting's value in force (settings.apply), read when a task starts. */
   private setting<T>(key: string, project?: string): T { return (this.o.settings?.get(key, project) ?? defaultOf(key)) as T; }
+  /** What the person chose for checking this project (Checking your project, in Settings), read once as a task or a check
+   *  starts, with the limits for the time allowed. Every usual value is today's behaviour. */
+  private checkFor(project: string): { check: CheckSettings; limits: Limits } {
+    const check = checkSettings((k) => this.setting(k, project));
+    return { check, limits: scaleLimits(TIME_FACTOR[check.time]) };
+  }
+  /** "My internet is slow": 2, else 1. */
+  private slow(): number { return slowFactor((k) => this.setting(k)); }
+  /** The install question for a check (check.install "ask", or the house rule "ask before installing packages"), on the
+   *  usual approval card. Only a yes is a yes: no answer before it runs out, a no, Stop or Stop everything is a no, and an
+   *  answer after it ran out changes nothing. */
+  private installAsker(s: Session | undefined, agent: string, checkpoint: string): (command: string) => Promise<boolean> {
+    return async (command) => {
+      if (!s || s.abort.signal.aborted) return false;
+      const approval = `ap_${randomBytes(4).toString("hex")}`;
+      const timeout = this.o.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`, expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
+      this.state(agent, "needsYou");
+      let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
+      const yes = await new Promise<boolean>((res) => {
+        const end = (ok: boolean) => { clearTimeout(t); s.abort.signal.removeEventListener("abort", stop); s.pending.delete(approval); res(ok); };
+        const stop = () => { how = "cancelled"; end(false); };
+        const t = setTimeout(() => { how = "expired"; end(false); }, timeout);
+        s.abort.signal.addEventListener("abort", stop, { once: true });
+        s.pending.set(approval, (ok) => { how = ok && !s.abort.signal.aborted ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; end(how === "allowed"); });
+      });
+      this.emit({ type: "approval.resolved", approval, agent, outcome: how } as never);
+      this.state(agent, "checking");
+      return yes;
+    };
+  }
   private emit<T extends Omit<Event, "v" | "id">>(e: T) {
     this.o.emit({ v: PROTOCOL_VERSION, id: `e${++this.counter}`, ts: this.now().toISOString(), ...e } as unknown as Event);
   }
@@ -544,7 +583,9 @@ export class AgentRunner {
 
   private store(project: string): CheckpointStore {
     const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
-    return CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
+    const s = CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
+    s.gitTimeoutMs = SNAPSHOT_LIMIT_MS * this.slow();   // "my internet is slow" doubles it
+    return s;
   }
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
@@ -634,6 +675,8 @@ export class AgentRunner {
     const prior = opts.priorUsd ?? 0;
     // Read once, as the task starts: a change in Settings reaches the next task, never this one.
     const maxTurns = this.setting<number>("work.maxTurns", cmd.project);
+    const checking = this.checkFor(cmd.project);
+    const pictures = { make: this.setting<boolean>("pictures.make") !== false, keep: this.setting<number>("pictures.keep") };
     const room = this.room(cmd.project) + prior;
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -744,7 +787,7 @@ export class AgentRunner {
         return parseReview(text);
       } : undefined;
       try {
-        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review }));
+        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id) }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -795,12 +838,13 @@ export class AgentRunner {
     const projectKey = resolve(cmd.project);
     const repeat = status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
     if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat }); else if (changed.length) this.teachOffers.delete(projectKey);
-    // Off the record work gets no saved picture (nothing about it is kept).
-    const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
+    // Off the record work gets no saved picture (nothing about it is kept), and none when "Make before and after pictures"
+    // is off (the check itself is the same either way).
+    const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord && pictures.make;
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
-    if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
+    if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
     if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
@@ -827,7 +871,7 @@ export class AgentRunner {
 
   // The visual receipt: run the earlier version in a private copy, compare the two pages, circle what changed.
   // It runs after the task has ended, so it never holds the person up; Stop everything ends it.
-  private async visualReceipt(cmd: StartCmd, store: CheckpointStore, beforeId: string, after: PageShot): Promise<void> {
+  private async visualReceipt(cmd: StartCmd, store: CheckpointStore, beforeId: string, after: PageShot, checking: { check: CheckSettings; limits: Limits }, keep: number): Promise<void> {
     const pics = this.o.pictures!;
     const ac = new AbortController();
     this.picturing.add(ac);
@@ -836,7 +880,10 @@ export class AgentRunner {
     try {
       const out = await this.inTurn(cmd.project, async () => {
         if (ac.signal.aborted) return null;
-        const b = await (pics.before ?? captureBefore)({ store, beforeId, project: cmd.project, workDir: pics.workDir, signal: ac.signal });
+        // The earlier version starts and is pictured the way this project is checked: its start script, its page size (the
+        // picture is the first size the check opened), its time allowed.
+        const f = TIME_FACTOR[checking.check.time];
+        const b = await (pics.before ?? captureBefore)({ store, beforeId, project: cmd.project, workDir: pics.workDir, signal: ac.signal, start: checking.check.start, startMs: 60_000 * f, browserMs: 20_000 * f, ...(checking.check.pageSize === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}) });
         if (ac.signal.aborted || ("none" in b && b.none === "cancelled")) return null;
         // Only a page that really had nothing, or really crashed, is drawn as "everything is new". Otherwise no circles are guessed.
         const unknown = "none" in b && b.none === "not_pictured";
@@ -850,7 +897,12 @@ export class AgentRunner {
         : pic.how === "all_new" ? "This works now. Everything on this page is new."
         : pic.regions.length ? "This works now. What changed is circled." : "This works now. The page looks the same as before.";
       let saved = "";
-      try { mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 }); saved = join(pics.saveDir, receiptPictureName(cmd.project, beforeId)); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); pruneOldest(pics.saveDir, KEEP_PICTURES); } catch { saved = ""; }
+      // Pictures to keep: 0 shows this one on the card and keeps none; lowered, the oldest go now, when a picture is made.
+      try {
+        mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 });
+        if (keep > 0) { saved = join(pics.saveDir, receiptPictureName(cmd.project, beforeId)); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); }
+        pruneOldest(pics.saveDir, Math.max(0, keep));
+      } catch { saved = ""; }
       this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: true, image: pic.jpeg, caption, circles: pic.regions.length, ...(saved ? { file: saved } : {}) } as never);
     } catch { none(); }   // a missing picture never spoils a finished task
     finally { this.picturing.delete(ac); }
@@ -1002,7 +1054,7 @@ export class AgentRunner {
       const sk = this.openShipSession(ac);
       const onStep = this.stepTeller("ship");
       try {
-        const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
+        const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id) });
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
         if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
@@ -1056,7 +1108,9 @@ export class AgentRunner {
       if (!r.ok) { this.shipSay(cmd.project, r.reason === NOT_SIGNED_IN ? "not_signed_in" : "failed", r.reason); return; }
       if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(r.url) || !isSafeUrl(r.url)) { this.shipSay(cmd.project, "failed", "The preview link looked wrong, so I did not open it."); return; }
       this.shipSay(cmd.project, "checking_preview", "Opening the preview in a hidden browser to make sure it works.", { previewUrl: r.url });
-      const b = await (this.o.browser ?? browserCheck)(r.url, {});
+      // Time allowed for checks covers this one too (today's 15 seconds, times the factor).
+      const f = TIME_FACTOR[this.checkFor(cmd.project).check.time];
+      const b = await (this.o.browser ?? browserCheck)(r.url, f === 1 ? {} : { timeoutMs: 15_000 * f });
       if (ac.signal.aborted) return;
       if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false, ...(b.notInstalled ? { needs: "browser" } : {}) }); return; }
       if (!b.ok) {
@@ -1197,7 +1251,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never);
       let res: LadderResult = { verdict: "cancelled", steps: [] };
-      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
+      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
@@ -1224,7 +1278,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
@@ -1233,7 +1287,8 @@ export class AgentRunner {
       // A Python check that could not run because a package is not installed: the first thing to install, with the
       // command (Point at the problem never installs anything).
       const notes: string[] = res.verdict === "passed_with_gaps" && res.gaps?.length ? [res.gaps[0]] : [];
-      if (this.o.deployLogs && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
+      // Off in Settings (rescue.readDeployLog), it looks only at the project.
+      if (this.o.deployLogs && this.setting<boolean>("rescue.readDeployLog") !== false && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
         const d = await readDeployFailure(cmd.project, this.o.deployLogs, abort.signal);
         if (abort.signal.aborted || d?.state === "cancelled") { found("cancelled"); this.state(cmd.agent, "idle"); return; }
         if (d?.state === "failed") { found("failed", { label: DEPLOY_FAILED, detail: d.summary, problem: d.problem }, needs); this.state(cmd.agent, "needsYou"); return; }
@@ -1261,7 +1316,7 @@ export class AgentRunner {
    *  A Python project's virtual environment (.venv or venv) is borrowed by one link instead, as the visual receipt's earlier
    *  version does: the Python checks never write into it (no bytecode, no caches: python.ts and the ladder's flags), and
    *  deleting the copy removes only the link. Null when the version could not be copied or checked. */
-  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal): Promise<LadderResult | null> {
+  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal, checking: { check: CheckSettings; limits: Limits }): Promise<LadderResult | null> {
     const work = this.o.bisect!.workDir;
     if (signal.aborted) return { verdict: "cancelled", steps: [] };
     mkdirSync(work, { recursive: true, mode: 0o700 });
@@ -1276,7 +1331,7 @@ export class AgentRunner {
         if (packages === "failed") return null;
       }
       // A Stop while the copy was made (or while waiting for the project's turn) ends it before any check starts.
-      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true })));
+      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true, ...checking })));
     } catch { return signal.aborted ? { verdict: "cancelled", steps: [] } : null; }
     finally { rmSync(dir, { recursive: true, force: true }); }
   }
@@ -1303,6 +1358,8 @@ export class AgentRunner {
     let found = false, shown = false;
     try {
       const store = this.store(cmd.project);
+      // This project's check settings, read once: every version is checked the same way.
+      const checking = this.checkFor(cmd.project);
       const points = taskPoints(this.o.log.list(cmd.project, 200), await store.list()).slice(-WINDOW);
       if (points.length < 2) { result("too_few"); return; }
       this.state(cmd.agent, "checking");
@@ -1334,7 +1391,7 @@ export class AgentRunner {
       const folders = packageFolders(cmd.project);
       const tell = (what: "now" | "after" | "before", label?: string) => this.emit({ type: "bisect.progress", project: cmd.project, agent: cmd.agent, run: runs, maxRuns: MAX_RUNS, what, ...(label ? { label } : {}) } as never);
       runs++; tell("now");
-      const first = await this.checkCopy(cmd.project, store, now.id, folders, abort.signal);
+      const first = await this.checkCopy(cmd.project, store, now.id, folders, abort.signal, checking);
       if (abort.signal.aborted || first?.verdict === "cancelled") { result("cancelled"); return; }
       if (!first) { result("failed", { detail: "Your project could not be copied to check it. Nothing was changed." }); return; }
       if (first.verdict !== "failed") { result("not_failing"); return; }
@@ -1356,7 +1413,7 @@ export class AgentRunner {
         usable: async (cp) => { const same = (await this.packagesOf(store, cp)) === wanted; if (!same) otherPackages = true; return same; },
         probe: async (cp, at) => {
           runs++; tell(at.side, at.label);
-          const res = await this.checkCopy(cmd.project, store, cp, folders, abort.signal);
+          const res = await this.checkCopy(cmd.project, store, cp, folders, abort.signal, checking);
           const v = classify(res, failed.rung, check);
           // Said with an unclear answer: why some versions could not be counted for or against any task. Only the reason of
           // the step (and check) that fails now: a package missing for another check says nothing about this one.
@@ -1473,7 +1530,7 @@ export class AgentRunner {
   private async projectInspect(project: string): Promise<void> {
     if (!existsSync(project)) { this.fail("That project folder is not there any more."); return; }
     const r = inspectProject(project);
-    this.emit({ type: "project.report", project, origin: r.origin, about: aboutLine(r), stack: r.stack, needsInstall: r.needsInstall, installCommand: r.installCommand, start: r.start, missing: r.env.missing.slice(0, 12), missingCount: r.env.missing.length, example: r.env.example, notes: r.notes } as never);
+    this.emit({ type: "project.report", project, origin: r.origin, about: aboutLine(r), stack: r.stack, needsInstall: r.needsInstall, installCommand: r.installCommand, start: r.start, missing: r.env.missing.slice(0, 12), missingCount: r.env.missing.length, example: r.env.example, notes: r.notes, ...r.check } as never);
   }
 
   // Install the project's packages, only when the person pressed the button. The project's own install scripts run, as
@@ -1491,7 +1548,7 @@ export class AgentRunner {
     try {
       say("installing", `Installing what the project needs with ${det.packageManager}. This can take a few minutes the first time.`);
       // Not in CI mode: pnpm then refuses a lock file that an export left out of date, and a person installing wants it to work.
-      const r = await this.inTurn(project, () => runCommand(`${det.packageManager} install${det.packageManager === "pnpm" ? " --no-frozen-lockfile" : ""}`, { cwd: project, timeoutMs: 10 * 60_000, signal: ac.signal }));
+      const r = await this.inTurn(project, () => (this.o.commands ?? runCommand)(`${det.packageManager} install${det.packageManager === "pnpm" ? " --no-frozen-lockfile" : ""}`, { cwd: project, timeoutMs: 10 * 60_000 * this.slow(), signal: ac.signal }));
       if (r.aborted) { say("cancelled", "Stopped. Some packages may be half installed; press Install again to finish."); return; }
       if (r.code !== 0 || r.timedOut) { say("failed", `The install did not finish. ${redact((r.stderr || r.stdout).trim().split("\n").slice(-6).join(" ").slice(-400))}`); return; }
       say("done", "Installed.");
@@ -1511,7 +1568,7 @@ export class AgentRunner {
     this.installing.set(dest, ac);
     try {
       // Single quoted: a folder name with $, backticks or quotes in it is only ever a name.
-      const r = await runCommand(`git clone --quiet ${shq(t.url)} ${shq(dest)}`, { cwd: cmd.parent, timeoutMs: 5 * 60_000, signal: ac.signal, env: { GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/usr/bin/false" } });
+      const r = await (this.o.commands ?? runCommand)(`git clone --quiet ${shq(t.url)} ${shq(dest)}`, { cwd: cmd.parent, timeoutMs: 5 * 60_000 * this.slow(), signal: ac.signal, env: { GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/usr/bin/false" } });
       if (r.aborted) { rmSync(dest, { recursive: true, force: true }); done(false, "Stopped."); return; }
       if (r.code !== 0 || r.timedOut) {
         rmSync(dest, { recursive: true, force: true });
@@ -1530,13 +1587,13 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal, ...this.checkFor(cmd.project), askInstall: this.installAsker(this.sessions.get(cmd.agent), cmd.agent, snap.id) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
       if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
       const evidence = res.steps.map((x) => ({ label: x.label, status: x.status, detail: x.detail }));
       // A project linked to Vercel: why its last deploy failed is evidence too (read only, the person's own Vercel tool).
-      if (this.o.deployLogs) {
+      if (this.o.deployLogs && this.setting<boolean>("rescue.readDeployLog") !== false) {
         const d = await readDeployFailure(cmd.project, this.o.deployLogs, st.abort.signal);
         if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
         if (d?.state === "failed") evidence.push({ label: DEPLOY_EVIDENCE, status: "failed", detail: d.evidence });

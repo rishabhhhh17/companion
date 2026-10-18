@@ -80,7 +80,8 @@ const URL_RE = /https:\/\/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.vercel\.app\b[^\s
 const plain = (r: RunResult) => clip(redact(`${r.stderr}\n${r.stdout}`).replace(/\s+/g, " ").trim(), 300);
 
 export class VercelCli implements Deployer, DeployLogReader {
-  constructor(private run: typeof runCommand = runCommand, private authFile = join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), private hasCli: () => boolean = cliOnPath) {}
+  // scale: "my internet is slow" (2) doubles the waits for a deploy, going live and rolling back; read at each call.
+  constructor(private run: typeof runCommand = runCommand, private authFile = join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), private hasCli: () => boolean = cliOnPath, private scale: () => number = () => 1) {}
   // Only whether the file exists: its contents are never opened.
   signedIn() { return existsSync(this.authFile); }
 
@@ -99,19 +100,19 @@ export class VercelCli implements Deployer, DeployLogReader {
   }
 
   async preview(project: string, signal?: AbortSignal) {
-    const { r, fail } = await this.vercel("deploy --yes", project, 10 * 60_000, signal);
+    const { r, fail } = await this.vercel("deploy --yes", project, 10 * 60_000 * this.scale(), signal);
     if (fail) return { ok: false as const, reason: fail };
     const url = this.lastUrl(r);
     return url ? { ok: true as const, url } : { ok: false as const, reason: "Vercel finished but did not give a preview link." };
   }
   async promote(url: string, project: string, signal?: AbortSignal) {
     if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) return { ok: false as const, reason: "That is not a Vercel preview link." };
-    const { r, fail } = await this.vercel(`promote ${url} --yes`, project, 5 * 60_000, signal);
+    const { r, fail } = await this.vercel(`promote ${url} --yes`, project, 5 * 60_000 * this.scale(), signal);
     if (fail) return { ok: false as const, reason: fail };
     return { ok: true as const, productionUrl: this.lastUrl(r) ?? undefined };
   }
   async rollback(project: string, signal?: AbortSignal) {
-    const { fail } = await this.vercel("rollback --yes", project, 5 * 60_000, signal);
+    const { fail } = await this.vercel("rollback --yes", project, 5 * 60_000 * this.scale(), signal);
     return fail ? { ok: false as const, reason: fail } : { ok: true as const };
   }
 

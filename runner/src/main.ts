@@ -24,6 +24,7 @@ import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
 import { Warmer } from "./warm.ts";
 import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
+import { slowFactor } from "./proof/options.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -40,10 +41,12 @@ const problem = (m: string) => { notes.push(m); };
 const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(settings) : null;
 // The daily spending limit the person chose in Settings, kept in the data folder (a developer's setting wins, for tests).
 const spending = new SpendingStore(join(settings.data, SPENDING_FILE));
-// The person's own Vercel tool: Ship deploys through it, and Point at the problem and Rescue read a failed deploy's build log through it (read only).
-const vercel = new VercelCli();
 // The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts.
 const runnerSettings = new RunnerSettings();
+// "My internet is slow" (net.slow): the waits for things that go over the internet are doubled, read each time.
+const slow = () => slowFactor((k) => runnerSettings.get(k));
+// The person's own Vercel tool: Ship deploys through it, and Point at the problem and Rescue read a failed deploy's build log through it (read only).
+const vercel = new VercelCli(undefined, undefined, undefined, slow);
 const runner = new AgentRunner({ settings: runnerSettings, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
 const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject });
@@ -52,7 +55,7 @@ const inflight = new Set<Promise<unknown>>();
 // this engine being ended by force (the installer ends with it).
 // The zero cost warm up (warm.ts): only the real engine has a Claude binary to read through.
 const warmer = new Warmer({ binary: () => (settings.engine === "sdk" ? resolveClaudeBinary(settings.claudeBin) : null) });
-const browser = new BrowserSetup({ emit: say, ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}), ...(settings.browserStubInstaller ? { installer: settings.browserStubInstaller } : {}) });
+const browser = new BrowserSetup({ emit: say, timeoutMs: () => 15 * 60_000 * slow(), ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}), ...(settings.browserStubInstaller ? { installer: settings.browserStubInstaller } : {}) });
 
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
 process.stdout.on("error", () => process.exit(0));
