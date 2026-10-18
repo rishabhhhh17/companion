@@ -9,14 +9,15 @@ import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
-import { listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
+import { inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
+import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { PracticeKind, Spending } from "./model.ts";
 import { canPick, choicesFrom, chordLabel, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
-import { defOf, validate, type Def } from "../../protocol/settings.ts";
+import { defOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, numberFrom, problemWords, rowModel, searchSettings, wordsOf, type FixedGroup } from "./settingsRows.ts";
 
@@ -317,9 +318,87 @@ function ChoiceControl({ value, options, labelId, disabled, onChange }: { value:
   );
 }
 
+/** Checks to leave out (check.skip): one switch for each check this project has. The start and browser checks are never in
+ *  the list: they always run (the row's fixed part says so). */
+function SkipControl({ d, value, facts, disabled, onChange }: { d: Def; value: string[]; facts: CheckFacts | null; disabled: boolean; onChange: (v: string[]) => void }) {
+  const items = skipItems(facts, value);
+  const words = wordsOf(d.key).options ?? {};
+  if (!items.length) return <div className="line muted">{S.chkNoChecks}</div>;
+  return (<div>
+    {items.map((item) => {
+      const out = value.includes(item);
+      return (
+        <div className="row" key={item}>
+          <span className="line">{words[item] ?? item}</span>
+          <button className="btn" type="button" role="switch" aria-checked={out} aria-label={S.chkLeaveOut(words[item] ?? item)} disabled={disabled} onClick={() => onChange(out ? value.filter((x) => x !== item) : [...value, item])}>{out ? S.chkLeftOut : S.chkRun}</button>
+        </div>
+      );
+    })}
+  </div>);
+}
+
+/** House rules (rules.house): the project's own .companion/rules.txt. Rules are built from the five kinds, taken off only
+ *  after an inline confirm, and nothing is written until Save; the shell keeps every line of the file it does not
+ *  understand exactly as it was. No reset ever touches them. */
+function HouseRules({ saved, disabled }: { saved: string[]; disabled: boolean }) {
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [kind, setKind] = useState<RuleKind>("never_edit");
+  const [what, setWhat] = useState("");
+  const [asking, setAsking] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const baseId = useId(), whatId = useId();
+  const list = draft ?? saved;
+  const add = () => { setNote(""); const r = addRule(list, kind, what); if (!r.ok) { setProblem(r.problem); return; } setProblem(""); setWhat(""); setDraft(r.list); };
+  const remove = (rule: string) => { setAsking(null); setNote(""); setDraft(removeRule(list, rule)); };
+  const save = () => { setProblem(""); void changeSetting("rules.house", list).then((x) => { if (x.ok) { setDraft(null); setNote(S.rulesSaved); } else setProblem(problemWords(x.code, defOf("rules.house"))); }); };
+  return (<div>
+    {list.length === 0 && <div className="line muted">{S.rulesNone}</div>}
+    {list.map((rule, i) => (
+      <div className="row" key={rule}>
+        <span className="line">{rule}</span>
+        {asking !== rule && <button id={`${baseId}-${i}`} className="btn" type="button" disabled={disabled} aria-label={S.setRemoveItem(rule)} onClick={() => setAsking(rule)}>{S.attachRemoveShort}</button>}
+        {asking === rule && (
+          <ConfirmStep className="line" label={S.rulesRemoveSure(rule)} back={`${baseId}-${i}`} onCancel={() => setAsking(null)}>
+            <div className="line">{S.rulesRemoveSure(rule)}</div>
+            <div className="row"><button className="btn danger" type="button" onClick={() => remove(rule)}>{S.setRemoveYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
+          </ConfirmStep>
+        )}
+      </div>
+    ))}
+    <div className="row">
+      <select aria-label={S.rulesKindLabel} value={kind} disabled={disabled} onChange={(e) => setKind(e.target.value as RuleKind)}>{ruleKindOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
+      {kind !== "ask_install" && <input id={whatId} type="text" autoComplete="off" spellCheck={false} value={what} maxLength={200} disabled={disabled} aria-label={S.rulesWhat} placeholder={S.rulesWhat} onChange={(e) => setWhat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />}
+      <button className="btn" type="button" disabled={disabled} onClick={add}>{S.rulesAdd}</button>
+    </div>
+    {draft && <div className="line" role="status">{S.rulesUnsaved}</div>}
+    {draft && <div className="row"><button className="btn primary" type="button" disabled={disabled} onClick={save}>{S.rulesSave}</button><button className="btn" type="button" onClick={() => { setDraft(null); setProblem(""); }}>{S.rulesCancel}</button></div>}
+    {note && <div className="line" role="status">{note}</div>}
+    <div className="line muted">{S.rulesKept}</div>
+    {problem && <div className="error" role="alert">{problem}</div>}
+  </div>);
+}
+
+/** Pictures to keep (pictures.keep): lowering it below the pictures kept now says first how many will go. */
+function PicturesKeep({ d, value, count, labelId, disabled, onChange, onProblem }: { d: Def; value: number; count: number | undefined; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void }) {
+  const [pending, setPending] = useState<{ to: number; go: number } | null>(null);
+  const [fresh, setFresh] = useState(0);   // shows the kept value again when the change is not confirmed
+  const backId = useId();
+  const want = (to: number) => { const go = picturesGoing(count, value, to); if (go > 0) setPending({ to, go }); else onChange(to); };
+  return (<span>
+    <span id={backId}><NumberControl key={fresh} d={d} value={value} labelId={labelId} disabled={disabled} onChange={want} onProblem={onProblem} /></span>
+    {pending && (
+      <ConfirmStep className="line" label={S.chkPicturesGo(pending.go, pending.to)} back={backId} onCancel={() => { setPending(null); setFresh((n) => n + 1); }}>
+        <div className="line">{S.chkPicturesGo(pending.go, pending.to)}</div>
+        <div className="row"><button className="btn danger" type="button" onClick={() => { const to = pending.to; setPending(null); onChange(to); }}>{S.chkPicturesGoYes}</button><button className="btn" type="button" data-cancel onClick={() => { setPending(null); setFresh((n) => n + 1); }}>{S.planCancel}</button></div>
+      </ConfirmStep>
+    )}
+  </span>);
+}
+
 /** One setting: its name, its control, one or two lines of help, the usual value, Reset when it differs, when it takes
  *  effect, the fixed part, and for a project setting which project. */
-function SettingRow({ d, project, keys }: { d: Def; project: string; keys: Keys }) {
+function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: string; keys: Keys; facts: CheckFacts | null; pictures: number | undefined }) {
   useSetting(d.key);
   const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
   const usual = usualOf(d.key);
@@ -329,23 +408,40 @@ function SettingRow({ d, project, keys }: { d: Def; project: string; keys: Keys 
   const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); });
   const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v)); };
   const reset = () => { setProblem(""); done(resetSetting(d.key)); };
+  // Checking your project: the project's own .claude/proof.json or .claude/launch.json wins, and the row shows that, read
+  // only; the words after pressing need a button to press; a house rule can make installing ask first.
+  const facts_ = facts && facts.project === project ? facts : null;
+  const fromFile = proofLines(d.key, facts_);
+  const launchWins = d.key === "check.start" && !!facts_?.launchFile;
+  const pressNow = useSetting("check.press");
+  const rulesNow = useSetting("rules.house");
+  const rulesBlocked = (snapshotNow()?.problems ?? []).some((p) => p.key === "rules.house");
+  if (d.key === "check.afterPress" && !afterPressShown(pressNow, facts_)) return null;
+  const off = r.disabled || fromFile.length > 0 || launchWins;
+  const notes = [...fromFile, ...(launchWins ? [S.chkLaunchFile] : []), ...(d.key === "check.install" ? [installNote(value, rulesNow)].filter((x): x is string => !!x) : [])];
   const control = (() => {
+    if (d.key === "rules.house") return null;
+    if (d.key === "check.skip") return null;
+    if (d.key === "check.start") return <ChoiceControl value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
+    if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={pictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
     switch (d.kind) {
-      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={r.disabled} onClick={() => change(value !== true)}>{r.shown}</button>;
-      case "choice": return <ChoiceControl value={String(value)} options={r.options ?? []} labelId={labelId} disabled={r.disabled} onChange={change} />;
-      case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={r.disabled} onChange={change} onProblem={setProblem} />;
-      case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={r.disabled} onChange={change} onProblem={setProblem} />;
-      case "list": return <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled} onChange={change} onProblem={setProblem} />;
+      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={off} onClick={() => change(value !== true)}>{r.shown}</button>;
+      case "choice": return <ChoiceControl value={String(value)} options={r.options ?? []} labelId={labelId} disabled={off} onChange={change} />;
+      case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
+      case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
+      case "list": return <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} />;
       default: return null;
     }
   })();
   // The keys and the voice keep their own editors; the keys' editor has its own Reset to the usual keys.
-  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : null;
+  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : d.key === "rules.house" ? <HouseRules saved={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled || rulesBlocked} />
+    : d.key === "check.skip" ? <SkipControl d={d} value={Array.isArray(value) ? (value as string[]) : []} facts={facts_} disabled={off} onChange={change} /> : null;
   return (
     <div role="group" aria-labelledby={labelId} className="setting">
       <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
       <div className="line muted" id={helpId}>{r.help}</div>
       {editor}
+      {notes.map((n) => <div className="line muted" key={n}>{n}</div>)}
       {r.projectLine && <div className="line muted">{r.projectLine}</div>}
       <div className="row">
         <span className="line muted">{r.usualLine}</span>
@@ -373,7 +469,7 @@ function useUndoToast() {
 
 /** A section: its title, its rows (or the ones a search found), what else belongs there, and Reset this section, which
  *  asks first and names what will change, then offers Undo. Protective settings are never in it. */
-function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode }) {
+function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pictures }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode; facts: CheckFacts | null; pictures: number | undefined }) {
   useSetting(keys[0] ?? "");
   const headId = useId(), resetId = useId();
   const [asking, setAsking] = useState(false);
@@ -384,7 +480,7 @@ function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: str
   return (
     <section aria-labelledby={headId} className="settings-section">
       <h3 id={headId}>{title}</h3>
-      {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} /> : null; })}
+      {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} facts={facts} pictures={pictures} /> : null; })}
       {extra}
       {changed.length > 0 && !asking && <div className="row"><button id={resetId} className="btn" type="button" onClick={() => setAsking(true)}>{S.setResetSection}</button></div>}
       {asking && (
@@ -418,6 +514,15 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   // The engine's own settings (the daily limit, Explain, pausing, beta numbers) for every project: asked for the project in
   // use, or the stand in when no folder is chosen. Their answers come back as the engine's events (settingsStore.ts).
   useEffect(() => { const p = project || NO_PROJECT; void send(showSpending(p)); void send(listMemory(p)); void send(metricsShow()); }, [project]);
+  // What the rows for checking this project need to know (its scripts, its checks, its own .claude files): the engine's
+  // project report, asked for again each time Settings opens, so an edited package.json shows.
+  const [facts, setFacts] = useState<CheckFacts | null>(null);
+  useEffect(() => {
+    setFacts(null);
+    if (project) void send(inspectProject(project));
+    const off = listen("runner-event", (e) => { const f = factsFrom(e.payload); if (f && f.project === project) setFacts(f); });
+    return () => { off.then((f) => f()); };
+  }, [project]);
   const [up, setUp] = useState<UpdateState>(found.update ?? { stage: "idle" });
   const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
   useEffect(() => { void invoke("update_status").then((v) => setUpInfo(v as { configured: boolean; version: string })).catch(() => {}); }, []);
@@ -456,7 +561,7 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   const changedAll = changedNow();
   const unheardAll = notHeard();
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
-  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
+  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const fixedShown = (g: FixedGroup) => results.fixed.includes(g);
   const extras: Record<string, ReactNode> = {
     home: <div className="line muted">{S.dragHint}</div>,
@@ -497,7 +602,7 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
       </div>
       <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
       {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {results.sections.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} />)}
+      {results.sections.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} facts={facts} pictures={inv?.receiptPictures} />)}
       {fixedShown("permissions") && <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
       {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
