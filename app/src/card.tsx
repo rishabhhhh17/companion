@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useReducer, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { reactionsOn, setReactions } from "./reactions.ts";
-import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, TALK_KEYS_START, talkCanPick, talkCost, talkKeysFrom, talkKeysLine, talkLabel, talkNotFreeLine, talkProblem, type TalkKeys, DELETE_PHRASE, deletableLines, keyHints, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn, comeToFrom } from "./settings.ts";
+import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, type Presentation, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, limitFromText, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState, setYourTurn, yourTurnOn, comeToFrom } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
@@ -14,6 +14,8 @@ import type { Explain, HistoryItem, MemoryLine, PracticeKind, Spending, Problem 
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
+import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { useKeys } from "./useKeys.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { webLink } from "./links.ts";
@@ -195,28 +197,82 @@ function ComeToRow() {
   </>);
 }
 
-// Hold to talk keys (F18.3): a short list of two key chords. Only the ones free on this Mac can be pressed (the app tries
-// each when Settings opens, talkkeys::free); the app tries the new keys again at once and keeps them only if they work,
-// saved on this Mac (talkkeys.rs). Each other chord says what it gives up. Only hold to talk can be changed here.
-function TalkKeysRow({ talk, onChange }: { talk: TalkKeys; onChange: (t: TalkKeys) => void }) {
+// Keys to remember (M11 wave 4): every job with its keys, and Change for a short list of keys free on this Mac (the app
+// tries each when Change is pressed, keymap::free). The app registers new keys at once and keeps them only if they work,
+// saved on this Mac (keymap.rs); Reset puts every job back on its usual keys. Nothing here reads key presses: the person
+// picks from the list. Hold to talk's other chords each say what they give up.
+function KeysSection({ keys }: { keys: Keys }) {
+  const [open, setOpen] = useState<Job | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Each row's Change button, so the keyboard can go back to it when the list closes (the button it was on is gone).
+  const changeButtons = useRef<Partial<Record<Job, HTMLButtonElement | null>>>({});
+  const openNow = useRef(open);
+  openNow.current = open;
+  const close = (job: Job, changed: Keys | null) => {
+    if (changed) setNote(keyChangedLine(job, changed));
+    // A late answer, after another job's list was opened, neither closes that list nor moves the keyboard.
+    if (openNow.current !== job) return;
+    setOpen(null);
+    if (document.hasFocus()) changeButtons.current[job]?.focus();
+  };
+  const reset = () => {
+    if (busy) return;
+    setBusy(true); setNote(""); setOpen(null);
+    void invoke("reset_keys").then((v) => { setKeysNow(keysFrom(v)); setNote(resetLine(v)); }).catch((e) => setNote(keyProblem(String(e)))).finally(() => setBusy(false));
+  };
+  return (<>
+    <h3>{S.keysTitle}</h3>
+    <div className="line muted">{S.keysSettingsHelp}</div>
+    {keyRows(keys).map((r) => (
+      <div key={r.job}>
+        <div className="row">
+          <span className="line"><b>{r.name}:</b> {r.keys}</span>
+          <button className="btn" type="button" ref={(b) => { changeButtons.current[r.job] = b; }} disabled={busy} aria-expanded={open === r.job} aria-label={S.keysChangeFor(r.name)} onClick={() => { setNote(""); setOpen(open === r.job ? null : r.job); }}>{S.keysChange}</button>
+        </div>
+        {r.line && <div className={r.problem ? "line" : "line muted"} role={r.problem ? "alert" : undefined}>{r.line}</div>}
+        {open === r.job && <KeyPicker job={r.job} keys={keys} onDone={(changed) => close(r.job, changed)} />}
+      </div>
+    ))}
+    <div className="row"><button className="btn" type="button" disabled={busy} onClick={reset}>{S.keysReset}</button></div>
+    {note && <div className="line" role="status">{note}</div>}
+  </>);
+}
+
+// One job's short list, asked of the app when Change is pressed. Only keys the app says are free on this Mac and that no
+// other job has can be pressed (keys.ts canPick); the app counts the keys registered for the job as free, so the keys in
+// use after a fall back can be pressed again to keep them.
+function KeyPicker({ job, keys, onDone }: { job: Job; keys: Keys; onDone: (changed: Keys | null) => void }) {
+  const [c, setC] = useState<Choices | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const line = talkKeysLine(talk);
-  const notFree = talkNotFreeLine(talk);
+  const live = useRef(true);
+  const load = () => { void invoke("key_choices", { action: job }).then((v) => { if (live.current) setC(choicesFrom(v, job)); }).catch((e) => { if (live.current) setProblem(keyProblem(String(e))); }); };
+  useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, [job]);
   const pick = (id: string) => {
     if (busy) return;
     setBusy(true); setProblem("");
-    void invoke("set_talk_keys", { id }).then((v) => onChange(talkKeysFrom(v))).catch((e) => setProblem(talkProblem(String(e)))).finally(() => setBusy(false));
+    void invoke("set_key", { action: job, id }).then((v) => { const k = keysFrom(v); setKeysNow(k); onDone(k); })
+      .catch((e) => {
+        const code = String(e);
+        setProblem(keyProblem(code));
+        // Another app took them since the list was asked for: ask again, so they show as taken.
+        if (code === "taken") load();
+      })
+      .finally(() => setBusy(false));
   };
-  return (<>
-    <div className="line" role={line.problem ? "alert" : undefined}>{line.text}</div>
-    <div className="row" role="group" aria-label={S.talkKeysGroup}>
-      {talk.choices.map((id) => <button key={id} className={talk.using === id ? "btn primary" : "btn"} type="button" disabled={busy || !talkCanPick(talk, id)} aria-pressed={talk.using === id} aria-describedby={talkCost(id) ? `talk-cost-${id}` : undefined} onClick={() => pick(id)}>{talkLabel(id)}</button>)}
-    </div>
-    {notFree && <div className="line muted">{notFree}</div>}
-    {talk.choices.map((id) => talkCost(id) && <div className="line muted" id={`talk-cost-${id}`} key={id}>{talkCost(id)}</div>)}
+  return (<div>
+    {!c && !problem && <div className="line muted" role="status">{S.keysChecking}</div>}
+    {c && (<>
+      <div className="row" role="group" aria-label={S.keysPickFor((S.keyJobs as Record<Job, string>)[job])}>
+        {c.choices.map((id) => <button key={id} className={keys.using[job] === id ? "btn primary" : "btn"} type="button" disabled={busy || !canPick(c, id)} aria-pressed={keys.using[job] === id} aria-describedby={talkCost(id) ? `key-cost-${id}` : undefined} onClick={() => pick(id)}>{chordLabel(id)}</button>)}
+        <button className="btn" type="button" onClick={() => onDone(null)}>{S.planCancel}</button>
+      </div>
+      {pickerLines(c, keys).map((l) => <div className="line muted" key={l}>{l}</div>)}
+      {c.choices.map((id) => talkCost(id) && <div className="line muted" id={`key-cost-${id}`} key={id}>{talkCost(id)}</div>)}
+    </>)}
     {problem && <div className="error" role="alert">{problem}</div>}
-  </>);
+  </div>);
 }
 
 function SettingsPanel({ working, explainOn, project, spending, fun, setFun, autoSend, setAutoSend, yourTurn, setYourTurnOn, onClose, onPractice, onLesson }: { working: boolean; onLesson: (lesson: string) => void; onPractice: (kind?: PracticeKind) => void; explainOn: boolean; project: string; spending: Spending | null; fun: boolean; setFun: (v: boolean) => void; autoSend: boolean; setAutoSend: (v: boolean) => void; yourTurn: boolean; setYourTurnOn: (v: boolean) => void; onClose: () => void }) {
@@ -229,8 +285,9 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   const [exported, setExported] = useState("");
   const [speak, setSpeak] = useState(speechOn);
   const [allScreens, setAllScreensState] = useState(allScreensOn);
-  const [talk, setTalk] = useState<TalkKeys>(TALK_KEYS_START);
-  useEffect(() => { void invoke("talk_keys").then((v) => setTalk(talkKeysFrom(v))).catch(() => {}); }, []);
+  // The keys every job uses now, asked again each time Settings opens.
+  const keys = useKeys();
+  useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, []);
   const [up, setUp] = useState<UpdateState>(foundUpdate ?? { stage: "idle" });
   const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
   const [upAuto, setUpAuto] = useState(() => { try { return localStorage.getItem("companion.updateAuto") !== "0"; } catch { return true; } });
@@ -277,10 +334,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
           </div>
         );
       })}
-      <h3>{S.keysTitle}</h3>
-      <div className="line muted">{S.keysHelp}</div>
-      {keyHints(talk).map((l, i) => <div className="line" key={i}>{l}</div>)}
-      <TalkKeysRow talk={talk} onChange={setTalk} />
+      <KeysSection keys={keys} />
       {inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
       <h3>{S.settingsChoices}</h3>
       <div className="row">
@@ -511,6 +565,9 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 
 function Card() {
   const [m, dispatch] = useModel();
+  // The keys every job uses now (keymap.rs keeps them): every line on the card that names a key is filled from them.
+  const keys = useKeys();
+  useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, []);
   // Home (F18): the card in tabs. Each part of the old card shows only on its own tab, or on every tab (home.ts); a tab
   // that needs the person is shown by itself, once per new need, and said out loud because the keyboard focus does not
   // move there.
@@ -689,7 +746,7 @@ function Card() {
   }, []);
   // Spoken replies: only if turned on, one line per thing shown, and never for anything the person did not ask for.
   const saidKey = useRef("");
-  const spoken = lineFor({ walk: m.walk, showme: m.showme });
+  const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys);
   useEffect(() => {
     if (!spoken || spoken.key === saidKey.current || !speechOn()) return;
     saidKey.current = spoken.key;
@@ -957,9 +1014,11 @@ function Card() {
     dispatch({ type: "ui.planRequested" });
     void send(diagnose(project));
   };
-  // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk).
+  // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk). It answers which
+  // use keys it took for this result, if any, so the line under it names them only when they work.
+  const [phArmed, setPhArmed] = useState(true);
   useEffect(() => {
-    if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" });
+    if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
   }, [m.ph?.stage, m.ph?.text]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
@@ -1036,7 +1095,7 @@ function Card() {
           {news.show.map((r) => (
             <div key={r.version}>
               <h2>{S.whatsNewTitle(r.version)}</h2>
-              {r.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
+              {r.lines.map((l, i) => <div className="line" key={i}>{keysIn(l, keys)}</div>)}
             </div>
           ))}
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(news.remember); setNews(null); }}>{S.whatsNewClose}</button></div>
@@ -1048,7 +1107,7 @@ function Card() {
           <h2>{S.practiceTitle}</h2>
           {m.practice.stage === "start" && <>
             <div className="line">{m.practice.kind === "setting" ? S.practiceSettingStart : S.practiceStart}</div>
-            <div className="line muted">{S.practiceKeys}</div>
+            <div className="line muted">{keyHint("problem", S.practiceKeys, keys)}</div>
             <div className="row">
               <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
@@ -1124,16 +1183,16 @@ function Card() {
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
           {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
-            <div className="line"><b>{m.walk.say}</b></div>
+            <div className="line"><b>{keysIn(m.walk.say, keys)}</b></div>
             {m.walk.link && <div className="row"><OpenButton url={m.walk.link} onNote={setLessonNote} /></div>}
             {m.walk.link && lessonNote && <div className="line" role="status">{lessonNote}</div>}
           </>}
-          {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
-          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}
+          {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{keysIn(m.walk.note ?? "", keys)}</div>}
+          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{keysIn(m.walk.note ?? "", keys)}</div>}
           {m.walk.log.length > 0 && (
             <details className="line muted">
               <summary>{S.lessonLogTitle} ({m.walk.log.length})</summary>
-              <ol>{m.walk.log.map((h, i) => <li key={i}>{h.say} <span className="muted">({h.how === "skipped" ? S.lessonLogSkipped : S.lessonLogDone})</span></li>)}</ol>
+              <ol>{m.walk.log.map((h, i) => <li key={i}>{keysIn(h.say, keys)} <span className="muted">({h.how === "skipped" ? S.lessonLogSkipped : S.lessonLogDone})</span></li>)}</ol>
             </details>
           )}
           <div className="row">
@@ -1333,7 +1392,7 @@ function Card() {
                 <button className="btn primary" type="button" onClick={() => void invoke("ph_accept")}>{S.phUse}</button>
                 <button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.phDismiss}</button>
               </div>
-              <div className="line muted">{S.phHotkeys}</div>
+              <div className="line muted">{acceptHint(phArmed, keys)}</div>
             </>
           )}
           {(m.ph.stage === "pasted") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_restore")}>{S.phRestore}</button></div>}

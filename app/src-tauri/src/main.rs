@@ -44,6 +44,7 @@ mod voice;
 #[allow(dead_code)]
 mod voice_mac;
 mod talkkeys;
+mod keymap;
 mod visibility;
 mod wheel;
 mod presentation;
@@ -63,7 +64,7 @@ use std::ptr::NonNull;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use docking::{choice, inside, pick, signature, snap_on, Prefs, Rect, Screen};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -72,7 +73,7 @@ use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 const DOCK: (f64, f64) = (160.0, 160.0);
 // Home's size (the card, F18): CARD is its width (380, for its tabs) and its least height, CARD_MAX_H the tallest it
@@ -743,32 +744,48 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 
 // ---- Prompt help (M5b): the hotkey is the only way anything is read ----
 
-fn sc_mods() -> Modifiers { Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER }
-fn sc_showme() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyS) }
-fn sc_problem() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyF) }
-fn sc_read() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyR) }
-fn sc_accept() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyA) }
-fn sc_explain() -> Shortcut { Shortcut::new(Some(sc_mods()), Code::KeyE) }
+// Every job's keys come from the key map (keymap.rs, the Keys section below); only the bare Esc that dismisses a result is
+// fixed, and it is on no list.
 fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }
 static ARMED: AtomicU64 = AtomicU64::new(0);
 
-/// Accept and dismiss hotkeys exist only while a result is showing, and give themselves up after a minute and a half.
-/// Esc is taken from the person's apps only for that long (T11).
+/// Use a suggestion and Esc exist only while a result is showing, and give themselves up after a minute and a half. Esc
+/// is taken from the person's apps only for that long (T11). The work runs on the main thread, like every change of keys
+/// (so it never races a change in Settings), and a caller on another thread waits for it, as before.
 fn arm_result_keys(app: &AppHandle, on: bool) {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let a = app.clone();
+    if app.run_on_main_thread(move || { arm_now(&a, on); let _ = tx.send(()); }).is_ok() { let _ = rx.recv_timeout(Duration::from_secs(2)); }
+}
+fn arm_now(app: &AppHandle, on: bool) {
+    let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
+    let accept = keymap::Action::Accept;
     if on {
         let gen = ARMED.fetch_add(1, Ordering::SeqCst) + 1;
-        let _ = gs.register(sc_accept()); let _ = gs.register(sc_esc());
+        // The keys in use, else the picked then the usual ones (keymap::arm), so keys another app held at launch work once
+        // it lets go. None when another app holds them all: then only the button and Esc work.
+        if !ACCEPT_ARMED.load(Ordering::SeqCst) {
+            let was = key_using(accept);
+            let got = keymap::arm(accept, was, &keys_picked(), |c| gs.register(keymap::shortcut(c)).is_ok());
+            if got != was { set_key_using(accept, got); log("accept_keys", json!({ "id": got.map(keymap::id) })); }
+            ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);
+        }
+        let _ = gs.register(sc_esc());
         let a = app.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(90)); if ARMED.load(Ordering::SeqCst) == gen { arm_result_keys(&a, false); } });
     } else {
         ARMED.fetch_add(1, Ordering::SeqCst);
-        let _ = gs.unregister(sc_accept()); let _ = gs.unregister(sc_esc());
+        if ACCEPT_ARMED.swap(false, Ordering::SeqCst) { if let Some(c) = key_using(accept) { let _ = gs.unregister(keymap::shortcut(c)); } }
+        let _ = gs.unregister(sc_esc());
     }
 }
 
 #[tauri::command] fn ph_consent(app: AppHandle, choice: String) { phelp::consent_answer(&app, &choice); }
-#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); }
+/// Answers which keys use a suggestion has for this result (keymap::arm may take other keys than the page knew, or none
+/// when another app holds them all), so the result names them only when they work. A sync command: on the main thread,
+/// arming runs before the answer.
+#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> Option<String> { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id) }
 #[tauri::command] fn ph_accept(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, false); }
 #[tauri::command] fn ph_restore(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, true); }
 #[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
@@ -1793,83 +1810,147 @@ fn open_link(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
     if ok { Ok(()) } else { Err("The link could not be opened. Copy it into your browser instead.".into()) }
 }
 
-// ---------- Hold to talk keys (F18.3, the rules are in talkkeys.rs) ----------
+// ---------- Keys: every hotkey, each changeable in Settings (M11 wave 4; the rules are in keymap.rs, tested) ----------
 
-const NO_CHORD: usize = usize::MAX;
-/// The chord registered for hold to talk now (an index into talkkeys::CHOICES), or none when another app holds it.
-/// Read without a lock, because the hotkey handler reads it on every press.
-static TALK_USING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(NO_CHORD);
-/// The chord the person picked (saved on this Mac), the default until they pick.
-static TALK_PICKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-/// One change at a time, never held while the hotkey handler runs.
-static TALK_SWITCH: Mutex<()> = Mutex::new(());
-/// Key repeats while the keys are held restart nothing (talkkeys::Held).
+/// The chord each job uses now (keymap::encode), keymap::NONE when it has none because another app holds its keys. For
+/// use a suggestion, the chord armed while a Prompt help result shows. Read without a lock, because the hotkey handler
+/// reads it on every press.
+static KEYS_USING: [AtomicU32; keymap::N] = [const { AtomicU32::new(keymap::NONE) }; keymap::N];
+/// What the person picked (saved on this Mac in keys.json), the usual keys until they pick.
+static KEYS_PICKED: Mutex<keymap::Map> = Mutex::new(keymap::Map::DEFAULT);
+/// One change or check at a time. Taken only on the main thread (the commands and arm_now run there), never while the
+/// hotkey handler runs, and nothing that holds it waits for the main thread.
+static KEYS_SWITCH: Mutex<()> = Mutex::new(());
+/// Whether use a suggestion's keys are registered now (only while a Prompt help result shows).
+static ACCEPT_ARMED: AtomicBool = AtomicBool::new(false);
+/// Key repeats while the hold to talk keys are held restart nothing (talkkeys::Held).
 static TALK_HELD: Mutex<talkkeys::Held> = Mutex::new(talkkeys::Held::new());
 
-fn talk_keys_path() -> PathBuf { data_dir().join("talk-keys.json") }
-fn talk_using() -> Option<&'static talkkeys::Chord> { talkkeys::at(TALK_USING.load(Ordering::SeqCst)) }
-fn talk_picked() -> &'static talkkeys::Chord { talkkeys::at(TALK_PICKED.load(Ordering::SeqCst)).unwrap_or(talkkeys::DEFAULT) }
-fn set_talk_using(c: Option<&'static talkkeys::Chord>) { TALK_USING.store(c.map(talkkeys::index).unwrap_or(NO_CHORD), Ordering::SeqCst); }
+fn keys_path() -> PathBuf { data_dir().join(keymap::FILE) }
+fn key_using(a: keymap::Action) -> Option<keymap::Chord> { keymap::decode(KEYS_USING[a.index()].load(Ordering::SeqCst)) }
+fn set_key_using(a: keymap::Action, c: Option<keymap::Chord>) { KEYS_USING[a.index()].store(c.map(keymap::encode).unwrap_or(keymap::NONE), Ordering::SeqCst); }
+fn keys_using() -> keymap::Using { keymap::ACTIONS.map(key_using) }
+fn keys_picked() -> keymap::Map { *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) }
+/// What is registered for a job right now: use a suggestion only while a Prompt help result shows.
+fn key_registered(a: keymap::Action) -> Option<keymap::Chord> { keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)) }
+/// Every other job's keys, in use and picked: Companion's own, never offered to this job and never touched for it.
+fn key_others(a: keymap::Action, picked: &keymap::Map) -> Vec<(keymap::Action, keymap::Chord)> {
+    keymap::others(a, &keys_using(), picked)
+}
+/// Which job a shortcut the plugin reports belongs to, among the keys in use now.
+fn key_action(s: &Shortcut) -> Option<keymap::Action> {
+    keymap::ACTIONS.into_iter().find(|a| key_using(*a).is_some_and(|c| keymap::shortcut(c) == *s))
+}
 /// Whether a shortcut the plugin reports is the hold to talk chord in use right now.
-fn is_talk(s: &Shortcut) -> bool { talk_using().is_some_and(|c| &talkkeys::shortcut(c) == s) }
+fn is_talk(s: &Shortcut) -> bool { key_action(s) == Some(keymap::Action::Talk) }
+/// Saves what the person picked. Only one file keeps the keys: hold to talk's old one goes once the new one is written.
+fn save_keys(m: &keymap::Map) -> bool {
+    let _ = std::fs::create_dir_all(data_dir());
+    let ok = logfile::write_atomic(&keys_path(), keymap::to_json(m).to_string().as_bytes()).is_ok();
+    if ok { let _ = std::fs::remove_file(data_dir().join(keymap::OLD_TALK_FILE)); }
+    ok
+}
+fn let_go_logged(c: keymap::Chord, gone: bool) { if !gone { log("keys_not_let_go", json!({ "id": keymap::id(c) })); } }
 
-/// At launch: the saved chord, else the default (talkkeys::start). Returns how it went, for the one launch notice.
-fn start_talk_keys(app: &AppHandle) -> talkkeys::Started {
-    let picked = talkkeys::parse(std::fs::read_to_string(talk_keys_path()).ok().as_deref());
+/// How the keys started at launch, for the one launch notice.
+struct KeysLaunch { started: [keymap::Started; keymap::N], damaged: bool }
+
+/// At launch: every job's saved keys, else its usual ones (keymap::start). Use a suggestion's are only tried and let go
+/// (they are registered while a result shows, keymap::arm). A saved file that could not be read is written back
+/// repaired, so the person is told once. Main thread.
+fn start_keys(app: &AppHandle) -> KeysLaunch {
+    // Only a missing keys.json is nothing saved; one that cannot be read as text is damaged (keymap::saved_text).
+    let saved = keymap::saved_text(std::fs::read(keys_path()));
+    let old_talk = std::fs::read_to_string(data_dir().join(keymap::OLD_TALK_FILE)).ok();
+    let (picked, damaged) = keymap::parse(saved.as_deref(), old_talk.as_deref());
     let gs = app.global_shortcut();
-    let started = talkkeys::start(picked, |c| gs.register(talkkeys::shortcut(c)).is_ok());
-    TALK_PICKED.store(talkkeys::index(picked), Ordering::SeqCst);
-    set_talk_using(started.using());
-    log("talk_keys", json!({ "picked": picked.id, "using": started.using().map(|c| c.id) }));
-    started
+    // Use a suggestion's keys are let go again at once (keymap::keep_registered): they are taken only for a result.
+    let started = keymap::start(&picked,
+        |_, c| gs.register(keymap::shortcut(c)).is_ok(),
+        |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
+    *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = picked;
+    for a in keymap::ACTIONS { set_key_using(a, started[a.index()].using()); }
+    if damaged { let _ = save_keys(&picked); }
+    let without: Vec<&str> = keymap::ACTIONS.iter().filter(|a| started[a.index()].using().is_none()).map(|a| a.id()).collect();
+    log("keys", json!({ "changed": keymap::to_json(&picked)["keys"], "damaged": damaged, "without": without }));
+    KeysLaunch { started, damaged }
 }
 
-/// What the page is told (talkkeys::state_json), with which chords are free on this Mac now: each chord not in use is
-/// registered and let go again at once (talkkeys::free), never the one in use. Called with TALK_SWITCH held.
-fn talk_state(app: &AppHandle) -> Value {
-    let gs = app.global_shortcut();
-    let using = talk_using();
-    let free = talkkeys::free(using,
-        |c| gs.register(talkkeys::shortcut(c)).is_ok(),
-        |c| { if gs.unregister(talkkeys::shortcut(c)).is_err() { log("talk_keys_not_let_go", json!({ "id": c.id })); } });
-    talkkeys::state_json(using, talk_picked(), &free)
-}
-
-/// Settings and the first run: what hold to talk uses now, what the person picked, the short list and which of it is free.
-/// Only from the card, since it briefly registers chords. A sync command, so it runs on the main thread like set_talk_keys.
+/// Settings and the first run: the keys every job uses now (none when another app holds them) and the ones picked.
+/// Registers nothing.
 #[tauri::command]
-fn talk_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
+fn key_map() -> Value { keymap::state_json(&keys_using(), &keys_picked()) }
+
+/// Settings, Change: which of one job's short list can be pressed on this Mac now. Each chord on it that no job has is
+/// registered and let go again at once (keymap::free); the job's own keys are never touched. Only from the card, one
+/// change or check at a time. A sync command, so it runs on the main thread.
+#[tauri::command]
+fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }
-    let _one = TALK_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
-    Ok(talk_state(&app))
+    let Some(a) = keymap::Action::from_id(&action) else { return Err("unknown".into()) };
+    let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    let gs = app.global_shortcut();
+    let free = keymap::free(a, key_registered(a), &key_others(a, &keys_picked()),
+        |c| gs.register(keymap::shortcut(c)).is_ok(),
+        |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
+    Ok(keymap::choices_json(a, &free))
 }
 
-/// Settings: use other keys for hold to talk. Only from the card, only a chord on the list. Registered at once and saved
-/// on this Mac only if it works; otherwise nothing changes. The error is a code the page turns into words.
+/// Settings: other keys for one job. Only from the card, only a chord on its list that no other job has. Registered at
+/// once and saved on this Mac only if it works; otherwise nothing changes, so Stop everything never loses working keys.
+/// The error is a code the page puts in words.
 #[tauri::command]
-fn set_talk_keys(app: AppHandle, window: tauri::WebviewWindow, id: String) -> Result<Value, String> {
+fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: String) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }
-    let Some(wanted) = talkkeys::find(&id) else { return Err("unknown".into()) };
-    let _one = TALK_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
-    let before = talk_using();
+    let (Some(a), Some(wanted)) = (keymap::Action::from_id(&action), keymap::from_id(&id)) else { return Err("unknown".into()) };
+    let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    let (picked, before, was) = (keys_picked(), key_registered(a), key_using(a));
     let gs = app.global_shortcut();
-    let r = talkkeys::switch(before, wanted,
-        |c| gs.register(talkkeys::shortcut(c)).is_ok(),
-        |c| { let _ = std::fs::create_dir_all(data_dir()); logfile::write_atomic(&talk_keys_path(), talkkeys::to_json(c).to_string().as_bytes()).is_ok() },
-        |c| { if gs.unregister(talkkeys::shortcut(c)).is_err() { log("talk_keys_not_let_go", json!({ "id": c.id })); } });
+    let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));
+    let r = keymap::switch(a, wanted, before, keep, &picked, &key_others(a, &picked),
+        |c| gs.register(keymap::shortcut(c)).is_ok(),
+        save_keys,
+        |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
     match r {
-        Ok(c) => {
-            TALK_PICKED.store(talkkeys::index(c), Ordering::SeqCst);
-            if before != Some(c) {
-                set_talk_using(Some(c));
-                // The old keys no longer reach hold to talk, so a hold still going on them is ended here, not left open.
-                TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset();
-                voice_send(&app, VoiceMsg::Cancel);
-            }
-            log("talk_keys_set", json!({ "id": c.id }));
-            Ok(talk_state(&app))
+        Ok(next) => {
+            *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
+            set_key_using(a, Some(wanted));
+            // The old hold to talk keys no longer reach it, so a hold still going on them is ended here, not left open.
+            if a == keymap::Action::Talk && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
+            log("key_set", json!({ "action": a.id(), "id": keymap::id(wanted) }));
+            Ok(keymap::state_json(&keys_using(), &next))
         }
-        Err(p) => { log("talk_keys_not_set", json!({ "id": wanted.id, "why": p.code() })); Err(p.code().into()) }
+        Err(p) => { log("key_not_set", json!({ "action": a.id(), "id": keymap::id(wanted), "why": p.code() })); Err(p.code().into()) }
+    }
+}
+
+/// Settings: every job back on its usual keys (keymap::reset). A job whose usual keys another app holds keeps what it
+/// has, and the answer names it. Only from the card.
+#[tauri::command]
+fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
+    if window.label() != "card" { return Err("not_card".into()); }
+    let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    let (picked, using) = (keys_picked(), keys_using());
+    let registered = keymap::ACTIONS.map(key_registered);
+    let armed = ACCEPT_ARMED.load(Ordering::SeqCst);
+    let gs = app.global_shortcut();
+    let r = keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),
+        |c| gs.register(keymap::shortcut(c)).is_ok(),
+        save_keys,
+        |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
+    match r {
+        Ok(done) => {
+            *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = done.picked;
+            for a in keymap::ACTIONS { set_key_using(a, done.using[a.index()]); }
+            let talk = keymap::Action::Talk.index();
+            if using[talk] != done.using[talk] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
+            let kept: Vec<&str> = done.kept.iter().map(|a| a.id()).collect();
+            log("keys_reset", json!({ "kept": kept }));
+            let mut v = keymap::state_json(&done.using, &done.picked);
+            v["kept"] = json!(kept);
+            Ok(v)
+        }
+        Err(p) => { log("keys_not_reset", json!({ "why": p.code() })); Err(p.code().into()) }
     }
 }
 
@@ -1994,7 +2075,7 @@ fn voice_download(app: AppHandle) {
             say_voice(&a, "downloading", "Downloading the speech model", json!({ "percent": pct }));
         });
         match r {
-            Ok(()) => say_voice(&app, "model_ready", &talkkeys::ready_words(talk_using()), json!({})),
+            Ok(()) => say_voice(&app, "model_ready", &talkkeys::ready_words(key_using(keymap::Action::Talk)), json!({})),
             Err(e) => say_voice(&app, "error", &e, json!({})),
         }
     });
@@ -2111,9 +2192,6 @@ fn main() {
     if instance::should_leave(&instance) { log("second_copy_left", json!({})); return; }
     if let instance::Taken::CouldNotCheck(why) = &instance { log("instance_not_checked", json!({ "why": why })); }
     let _instance = instance;   // held until Companion quits; macOS lets the lock go when the program ends
-    let mods = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
-    let k = Shortcut::new(Some(mods), Code::KeyK);   // open the ask box
-    let x = Shortcut::new(Some(mods), Code::KeyX);   // stop everything
     let app = tauri::Builder::default()
         .activate_ignoring_other_apps(false)
         .enable_macos_default_menu(false)
@@ -2121,6 +2199,11 @@ fn main() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
+                    // Esc dismisses a Prompt help result while one shows (it is registered only then, and is on no list).
+                    if s == &sc_esc() {
+                        if e.state == ShortcutState::Pressed { let a = app.clone(); std::thread::spawn(move || { arm_result_keys(&a, false); phelp::dismiss(&a); }); }
+                        return;
+                    }
                     // Hold to talk (two keys, talkkeys.rs) needs to know when the keys come up as well as down.
                     if is_talk(s) {
                         let down = e.state == ShortcutState::Pressed;
@@ -2135,50 +2218,45 @@ fn main() {
                         return;
                     }
                     if e.state != ShortcutState::Pressed { return; }
-                    if s == &sc_showme() {
-                        // Open the box ready for a question about the screen; nothing is captured until the question is sent.
-                        log("hotkey", json!({ "id": "S" }));
-                        open_card(app, "hotkey", true);
-                        let _ = app.emit("showme-mode", true);
-                        return;
-                    }
-                    if s == &sc_problem() {
-                        // Stuck? Check the project as it is, then point at where it fails. Nothing is captured until a place is known.
-                        log("hotkey", json!({ "id": "F" }));
-                        open_card(app, "hotkey", false);
-                        let _ = app.emit("find-problem", true);
-                        return;
-                    }
-                    if s == &k {
-                        log("hotkey", json!({ "id": "K" }));
-                        open_card(app, "hotkey", true);
-                    } else if s == &sc_read() {
-                        // Changing hotkeys from inside a hotkey handler can deadlock the shortcut plugin, so hand the work to another thread.
-                        log("hotkey", json!({ "id": "R" }));
-                        let a = app.clone();
-                        std::thread::spawn(move || { arm_result_keys(&a, false); phelp::on_hotkey(&a, open_card); });
-                    } else if s == &sc_explain() {
+                    // Every other job: whichever keys it uses now (keymap.rs), never fixed ones.
+                    let Some(job) = key_action(s) else { return };
+                    if job != keymap::Action::Stop { log("hotkey", json!({ "id": job.id() })); }
+                    match job {
+                        keymap::Action::ShowMe => {
+                            // Open the box ready for a question about the screen; nothing is captured until the question is sent.
+                            open_card(app, "hotkey", true);
+                            let _ = app.emit("showme-mode", true);
+                        }
+                        keymap::Action::Problem => {
+                            // Stuck? Check the project as it is, then point at where it fails. Nothing is captured until a place is known.
+                            open_card(app, "hotkey", false);
+                            let _ = app.emit("find-problem", true);
+                        }
+                        keymap::Action::Card => open_card(app, "hotkey", true),
+                        keymap::Action::Read => {
+                            // Changing hotkeys from inside a hotkey handler can deadlock the shortcut plugin, so hand the work to another thread.
+                            let a = app.clone();
+                            std::thread::spawn(move || { arm_result_keys(&a, false); phelp::on_hotkey(&a, open_card); });
+                        }
                         // Explain the error the person selected in another app. The light comes on before anything is read.
-                        log("hotkey", json!({ "id": "E" }));
-                        errhelp::on_hotkey(app, open_card);
-                    } else if s == &sc_accept() {
-                        log("hotkey", json!({ "id": "A" }));
-                        let a = app.clone();
-                        std::thread::spawn(move || { arm_result_keys(&a, false); phelp::put_back(&a, false); });
-                    } else if s == &sc_esc() {
-                        let a = app.clone();
-                        std::thread::spawn(move || { arm_result_keys(&a, false); phelp::dismiss(&a); });
-                    } else if s == &x {
-                        let r = app.state::<runner::Runner>().stop_everything("kill switch");
-                        log("hotkey", json!({ "id": "X", "stop_everything": true, "sent": r.is_ok() }));
-                        let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
-                        showme_stop(&app);
+                        keymap::Action::Explain => errhelp::on_hotkey(app, open_card),
+                        keymap::Action::Accept => {
+                            let a = app.clone();
+                            std::thread::spawn(move || { arm_result_keys(&a, false); phelp::put_back(&a, false); });
+                        }
+                        keymap::Action::Stop => {
+                            let r = app.state::<runner::Runner>().stop_everything("kill switch");
+                            log("hotkey", json!({ "id": "stop", "stop_everything": true, "sent": r.is_ok() }));
+                            let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                            showme_stop(&app);
+                        }
+                        keymap::Action::Talk => {}
                     }
                 })
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -2245,17 +2323,14 @@ fn main() {
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || tick(&h2));
             });
-            // Another app may already own one of our hotkeys. That must never stop Companion from opening.
-            let mut taken: Vec<&str> = Vec::new();
-            for (sc, what) in [(k, "open the ask box"), (x, "stop everything"), (sc_read(), "Prompt help"), (sc_showme(), "Show me how"), (sc_problem(), "point at the problem"), (sc_explain(), "explain an error")] {
-                if app.global_shortcut().register(sc).is_err() { taken.push(what); }
+            // Every job's keys: the saved ones, else the usual ones (keymap.rs; hold to talk is two keys, F18.3). Another app
+            // may already own some of them. That must never stop Companion from opening; the one notice says what to do.
+            let launch = start_keys(app.handle());
+            if launch.damaged || launch.started.iter().any(|s| s.using() != Some(s.picked())) {
+                let off: Vec<&str> = keymap::ACTIONS.iter().filter(|a| launch.started[a.index()].using() != Some(launch.started[a.index()].picked())).map(|a| a.id()).collect();
+                log("hotkey_unavailable", json!({ "which": off, "damaged": launch.damaged }));
             }
-            // Hold to talk is two keys the person can change (F18.3): the saved ones, else Option and Space.
-            let talk = start_talk_keys(app.handle());
-            if !taken.is_empty() || talk.using() != Some(talk.picked()) {
-                log("hotkey_unavailable", json!({ "which": taken, "hold_to_talk": talk.using().map(|c| c.id) }));
-            }
-            if let Some(message) = talkkeys::launch_notice(&taken, &talk) {
+            if let Some(message) = keymap::launch_notice(&launch.started, launch.damaged) {
                 runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-hotkeys", "type": "app.notice", "message": message }));
             }
             start_runner(app.handle());

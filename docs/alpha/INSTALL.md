@@ -28,7 +28,10 @@ For everything else, hold **Control + Option + Command** and press:
 - **F**: find what is wrong in your project and point at it. If the place is on another monitor, it looks there too.
 - **S**: ask about something on your screen (it looks once, with a light first).
 - **R**: rewrite the prompt you are typing in another app so it is clearer (then **A** to put it back, or Esc to drop it).
+- **E**: explain an error you selected in any app (Terminal, a browser, a builder's chat) in plain words, and find it in your project.
 - **K**: open the ask box. **X**: stop everything, always (it also silences spoken replies and stops listening).
+
+These are the usual keys. You can change any of them in **Settings**, under Keys to remember: press Change next to one and pick from a short list of keys that are free on your Mac, or press Reset to the usual keys. If another app already uses some of them when Companion opens, Companion says which and uses its usual keys or none for those until you pick others. Stop everything is also always in the Companion icon in the menu bar.
 
 ## The card, in short
 Open it by clicking the character or pressing K. Buttons you will use:

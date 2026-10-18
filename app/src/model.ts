@@ -4,6 +4,7 @@ import { PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
+import { withKeys } from "./keys.ts";
 import { webLink } from "./links.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
@@ -382,6 +383,8 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.walkRequested": return { ...m, walkWant: String(e.walk), walk: null };
     case "ui.walkClosed": return { ...m, walk: null, walkWant: null };
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
+    // A lesson names the usual keys. Its words are kept as sent: the card and the spoken line fill in the keys in use each
+    // time they show or say them (keys.ts keysIn), so a change in Settings while a step is up shows at once.
     case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [], ...(webLink(e.link) ? { link: String(e.link) } : {}) } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
@@ -642,7 +645,7 @@ export function phWords(m: Model): string | null {
   switch (p.stage) {
     case "reading": return `Reading your text in ${p.app ?? "this app"}`;
     case "thinking": return "Improving it";
-    case "needs_accessibility": return "Turn on Accessibility for Companion in System Settings, then press Control, Option, Command and R again.";
+    case "needs_accessibility": return withKeys(S.phNeedsAccess, "read");
     case "nothing_to_read": return `I could not find text to read in ${p.app ?? "this app"}. Click into the text box first.`;
     case "consent": return `Allow Prompt help to read the text box in ${p.app ?? "this app"}?`;
     default: return p.message ?? null;
@@ -708,13 +711,13 @@ export function ehLines(m: Model): string[] {
   if (!h) return [];
   const app = h.app || S.thisApp;
   const where = h.where && h.where.kind === "line" ? [S.ehWhere(h.where.file, h.where.line)] : [];
-  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: S.ehOwnApp, no_engine: S.ehNoEngine };
+  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: withKeys(S.ehOwnApp, "explain"), no_engine: S.ehNoEngine };
   switch (h.stage) {
     case "reading": return [S.ehReading(app)];
     case "thinking": return [S.ehThinking];
     case "consent": return [S.ehConsent(app)];
-    case "needs_accessibility": return [S.ehNeedsAccess];
-    case "nothing_selected": return [S.ehNothing(app)];
+    case "needs_accessibility": return [withKeys(S.ehNeedsAccess, "explain")];
+    case "nothing_selected": return [withKeys(S.ehNothing(app), "explain")];
     case "ready": return [...(h.sentences ?? []), ...where];
     case "unexplained": return [sentence(h.reason) || S.ehError, ...where];
     default: return [refused[h.why ?? ""] ?? S.ehError];
