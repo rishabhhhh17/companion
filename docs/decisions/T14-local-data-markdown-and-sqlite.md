@@ -37,6 +37,9 @@ Details are in technical_research.md section 11. Rules a coding agent must never
 ## What the build settled (config and safety pass, 16 Oct 2026)
 - New stored data: `spending.json` in the runner's part of Companion's data folder (`runner/spending.json`, mode 0600). It holds one number, the daily spending limit the person chose in Settings (`{"dailyLimitUsd": 25}`), between 1 and 500 dollars. It is read at start; a missing, damaged or out of range file means the default of 10 dollars. Why: before this the limit could only be changed by an environment variable, so a person could not change it at all. It holds no spending history (that stays in `ledger.db`) and nothing about any task. Delete everything lists it under settings and removes it (`app/src-tauri/src/wipe.rs`). Code: `runner/src/spending.ts`.
 
+## What the build settled (accessibility pass, M11 wave 4, 18 Oct 2026)
+- New stored data: `companion.textSize` in Home's page storage (the web view's own storage on this Mac, like the reactions and Your turn settings). It holds one word, the text size the person chose in Settings (`standard`, `large`, `larger` or `largest`); a missing or damaged value means Standard, the size Home always had. Why: the pages size their words themselves, and the Mac's own text size setting may not reach them, so a person who needs bigger words had no way to get them. It holds nothing else. Delete everything removes it with the rest of the page storage (`Library/WebKit/dev.companion.app`, `app/src-tauri/src/wipe.rs`). Code: `app/src/textsize.ts`.
+
 ## Open [verify] items
 - None.
 

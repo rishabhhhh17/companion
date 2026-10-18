@@ -19,6 +19,7 @@ import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "
 import { useModel } from "./useModel.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { TEXT_SIZES, applyTextSize, setTextSize, textSize, type TextSize } from "./textsize.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -196,6 +197,18 @@ function ComeToRow() {
   </>);
 }
 
+// Text size (textsize.ts): every word in Home follows one root size. Standard is the usual size and the way back.
+function TextSizeRow() {
+  const [size, setSize] = useState<TextSize>(textSize);
+  const pick = (s: TextSize) => { setSize(s); setTextSize(s); applyTextSize(s); };
+  return (
+    <Group title={S.textSizeTitle}>
+      <div className="line muted">{S.textSizeHelp}</div>
+      <div className="row">{TEXT_SIZES.map((s) => <button key={s} className="btn" type="button" aria-pressed={s === size} onClick={() => pick(s)}>{S.textSizes[s]}</button>)}</div>
+    </Group>
+  );
+}
+
 // Hold to talk keys (F18.3): a short list of two key chords. Only the ones free on this Mac can be pressed (the app tries
 // each when Settings opens, talkkeys::free); the app tries the new keys again at once and keeps them only if they work,
 // saved on this Mac (talkkeys.rs). Each other chord says what it gives up. Only hold to talk can be changed here.
@@ -299,6 +312,7 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <ComeToRow />
       <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
       </Group>
+      <TextSizeRow />
       <SpendingRow project={project} spending={spending} />
       <Group title={S.settingsKept}>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
@@ -1471,4 +1485,6 @@ function Card() {
     </main>
   );
 }
+// The saved text size is on the page before Home first draws, so nothing jumps.
+applyTextSize(textSize());
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);

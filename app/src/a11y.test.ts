@@ -7,6 +7,7 @@ import { BACK_MS, EMPTY_LINE, backStill, confirmKey, focusLost, focusSpot, liveL
 import { initial, reduce, type Model } from "./model.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
+import { TEXT_SIZES } from "./textsize.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const PAGES = readdirSync(new URL("./", import.meta.url).pathname).filter((f) => f.endsWith(".tsx")).sort();
@@ -740,5 +741,50 @@ describe("Home stays usable with bigger text (part 4)", () => {
   });
   test("no page sets a height or a font size inline, out of reach of the stylesheet", () => {
     for (const f of PAGES) expect(read(`./${f}`), f).not.toMatch(/style=\{\{[^}]*(height|fontSize)/);
+  });
+  // The island is the notch's size and its words are cut to fit it (island.rs sizes the window to the point), so it keeps
+  // its own sizes; the full status is in Home and in the island's name for VoiceOver.
+  const ISLAND_SIZE = /island|\.lip|\.peekline|\.pillrow/;
+  test("every word in Home is sized from the one root size (rem), so the text size choice reaches all of them", () => {
+    let sized = 0;
+    for (const r of css) {
+      if (ISLAND_SIZE.test(r.sel)) continue;
+      const fs = r.decl["font-size"] ?? "", font = r.decl.font ?? "";
+      if (r.sel.startsWith(":root")) { expect(fs + font, r.sel).toMatch(/^(\d+px)?(\d+px -apple-system.*)?$/); continue; }
+      expect(fs, `${r.sel} { font-size: ${fs} } does not follow the text size: use rem`).not.toMatch(/\d(px|pt)\b/);
+      expect(font, `${r.sel} { font: ${font} } does not follow the text size: use rem`).not.toMatch(/\d(px|pt)\b/);
+      expect(r.decl["line-height"] ?? "", r.sel).not.toMatch(/\d(px|pt)\b/);
+      if (/rem/.test(fs + font)) sized++;
+    }
+    expect(sized, "the words in Home that have a size of their own").toBeGreaterThanOrEqual(10);
+  });
+  test("each text size is a root size in style.css, bigger at each step; Standard is the size Home always had", () => {
+    const root = css.find((r) => r.sel === ":root" && !r.media)!;
+    expect(root.decl.font).toMatch(/^14px /);
+    let last = 14;
+    for (const t of TEXT_SIZES.filter((x) => x !== "standard")) {
+      const r = css.find((x) => x.sel === `:root[data-text="${t}"]` && !x.media);
+      expect(r, t).toBeTruthy();
+      const px = Number(/^(\d+)px$/.exec(r!.decl["font-size"] ?? "")?.[1]);
+      expect(px, t).toBeGreaterThan(last);
+      last = px;
+    }
+    expect(last, "the largest is a real step up").toBeGreaterThanOrEqual(20);
+    expect(css.some((x) => x.sel === ':root[data-text="standard"]'), "Standard needs no rule of its own").toBe(false);
+  });
+  test("Home puts the saved size on before it draws, and Settings changes it there", () => {
+    const card = read("./card.tsx");
+    const draw = card.indexOf("createRoot(");
+    expect(card.indexOf("applyTextSize(textSize());"), "before the first draw").toBeGreaterThan(-1);
+    expect(card.indexOf("applyTextSize(textSize());")).toBeLessThan(draw);
+    const row = body(card, "TextSizeRow");
+    expect(row).toContain("Group, { title: S.textSizeTitle");
+    expect(row).toContain("TEXT_SIZES.map(");
+    expect(row).toContain('"aria-pressed": s === size');
+    expect(row).toContain("setTextSize(s)");
+    expect(row).toContain("applyTextSize(s)");
+    expect(body(card, "SettingsPanel")).toContain("TextSizeRow");
+    // Only Home: the character's window and the island keep their sizes.
+    for (const f of ["./dock.tsx", "./island.tsx", "./overlay.ts"]) expect(read(f), f).not.toContain("applyTextSize");
   });
 });
