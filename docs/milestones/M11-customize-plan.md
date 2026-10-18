@@ -110,7 +110,7 @@ choices from before the update back.
 - Everything: "Reset all settings to usual" at the bottom, with a confirm that names every setting that will change (so
   someone who paused learning reads "Pause learning" there). It resets `settings.json` (the app's and every project's
   values), the wrapped shell stores (come to, presentation, keys through Reset to the usual keys, voice to the Mac's own
-  choices) and the engine's (daily limit $10, Explain on, learning on, beta numbers off; their counts stay). It never
+  choices) and the engine's (daily limit $10, Explain back to reasons and a question, learning on, beta numbers off; their counts stay). It never
   touches the key, project folders, memory lines, history, undo points, pictures, per app answers or anything protective.
   A toast then offers Undo for 10 seconds, which puts the previous values back through `settings_set`.
 - What a reset changes is decided by the shell from exactly what the page was shown (`settings.rs` `reset_plan`), and the
@@ -184,6 +184,17 @@ floor" means a fixed part that must be proven by a test before the setting ships
 | `rescue.readDeployLog` Read my last Vercel deploy log when looking for a problem | switch, on | runner | agent.ts (Rescue and Point at the problem) | | Read only, through the person's own Vercel tool. |
 
 ### Area 3: Memory, Explain and teaching (engine builder, with small page changes)
+
+Status (19 Oct 2026): built on `m11/set-memory-teach` and tested with fakes (every suite); not tried in the built app by a
+person. `explain.on` is gone: `explain.mode` replaced it, in memory-settings.json, and `explain.set` and `explain.state`
+carry the choice (`mode`). The other engine settings are kept in settings.json and read when a task (or its planning)
+starts. `teach.yourTurn` is now read by the engine too (it is sent with `settings.apply`, again after the migration), and
+shows "From the next task", because an offer is worked out as a task ends. Found and fixed while building it: the goal of
+an approved plan was written just before the plan's watcher started, so the memory file and a new AGENTS.md could arrive
+as file events and pause the plan as if the person had changed the project; it is now written once the watcher is
+looking, as Companion's own write. Also found: Home asked for Where was I with the folder as it was when Home first drew
+(none yet), so it was never asked for; it now reads the folder chosen when Home opens, so after a 30 minute break it shows
+as designed (to be seen on a real Mac). Every row below is built; nothing was left out.
 
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|
@@ -286,7 +297,7 @@ and `calls.quiet` (on, presentation.json, shell), `showme.allScreens` (off, migr
 migrated, pages), `teach.yourTurn` (off, migrated, pages), `display.textSize` (Standard, Large, Larger, Largest; migrated;
 pages), `updates.daily` (on, migrated, pages), `spend.dailyLimit` (1 to 500 dollars, step 0.01, usual 10; spending.json;
 the engine), `explain.on` (on; memory-settings.json; the engine), `memory.paused` (off; memory-settings.json; the engine),
-`numbers.on` (off; metrics.json; the engine), and `work.maxTurns`.
+`numbers.on` (off; metrics.json; the engine), and `work.maxTurns`. (Area 3 replaced `explain.on` with `explain.mode`.)
 
 ### The worked example
 `work.maxTurns`: number, section work, usual 80, 20 to 200, step 10, a count, for every project, applied by the engine,

@@ -8,7 +8,7 @@ import { AgentRunner } from "./agent.ts";
 import { createEngine, createLanes, currentAuth, readSettings } from "./engines.ts";
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
-import { MemoryStore } from "./memory/store.ts";
+import { promptHelpMemory } from "./memory/recall.ts";
 import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
@@ -45,7 +45,8 @@ const vercel = new VercelCli();
 // The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts.
 const runnerSettings = new RunnerSettings();
 const runner = new AgentRunner({ settings: runnerSettings, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
-const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
+// Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength).
+const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data) }) : null;
 const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject });
 const inflight = new Set<Promise<unknown>>();
 // The browser check's one time download: only on the person's press, ended by Stop everything, by the app closing, and by

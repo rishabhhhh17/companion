@@ -23,6 +23,7 @@ import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
+import { recallWords } from "./memory/recall.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
@@ -295,12 +296,17 @@ export class AgentRunner {
       if (r.status === "failed" && r.reason) this.fail(r.reason);
     } catch { /* sharing is never worth stopping a task for */ }
   }
-  // What an agent is told. Nothing at all for an off the record task.
+  // What an agent is told. Nothing at all for an off the record task. Read as a task (or its planning) starts: what is
+  // learned from the project's files and from the person's words (memory.learnFromFiles, memory.learnFromWords; Pause still
+  // stops both, and what memory may never hold is fixed in filter.ts), and how much Claude is told (memory.tellClaude,
+  // memory.recallLength: none, or up to 500, 1500 or 3000 words).
   private learnAndRecall(project: string, said: string, offTheRecord: boolean | undefined, share = true): string {
     if (offTheRecord) return "";
     try {
-      this.remember(project, [...projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })), ...askSignals(said)], share);
-      return this.memoryFor(project)?.forAgent() ?? "";
+      const files = this.setting<boolean>("memory.learnFromFiles", project), words = this.setting<boolean>("memory.learnFromWords", project);
+      this.remember(project, [...(files ? projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })) : []), ...(words ? askSignals(said) : [])], share);
+      const n = recallWords((k) => this.setting(k, project), "task");
+      return n > 0 ? this.memoryFor(project)?.forAgent(n) ?? "" : "";
     } catch { return ""; }
   }
   // Where was I: three plain lines from the task history, only when something happened while the person was away.
@@ -316,18 +322,20 @@ export class AgentRunner {
   private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1) {
     if (!this.o.explainer || input.changed.length === 0) return;
     try {
-      const m = this.memoryFor(cmd.project);
-      if (m && !m.explainEnabled()) return;
+      // Explain after a task (explain.mode): off asks nothing, short reasons asks for no question and shows none.
+      const mode = this.memoryFor(cmd.project)?.explainMode() ?? "reasonsAndQuestion";
+      if (mode === "off") return;
+      const question = mode === "reasonsAndQuestion";
       if (this.room(cmd.project) <= 0) return;
       const ac = new AbortController();
       const stop = () => ac.abort();
       signal.addEventListener("abort", stop, { once: true });
       const timer = setTimeout(stop, 45_000);
       try {
-        const r = await this.o.explainer(explainRequest(input), ac.signal);
+        const r = await this.o.explainer(explainRequest(input, { question }), ac.signal);
         if (Number.isFinite(r.costUsd) && r.costUsd > 0) this.ledger.add(cmd.project, r.costUsd);
         const e = parseExplain(r.text);
-        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
+        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(question && e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
@@ -335,7 +343,7 @@ export class AgentRunner {
     const m = this.memoryFor(project);
     if (!m) return;
     const p = m.list("project"), u = m.list("profile");
-    this.emit({ type: "explain.state", project, enabled: m.explainEnabled() } as never);
+    this.emit({ type: "explain.state", project, enabled: m.explainEnabled(), mode: m.explainMode() } as never);
     this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems] } as never);
   }
   private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
@@ -408,7 +416,7 @@ export class AgentRunner {
       case "ship.preview": return this.shipPreview(cmd);
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
-      case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplain(cmd.enabled); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled() } as never); return; }
+      case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplainMode(cmd.mode); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled(), mode: m.explainMode() } as never); return; }
       case "memory.add": {
         // A line the person chose themselves (for example an answer at setup). It still goes through the same filter.
         const m = this.memoryFor(cmd.project);
@@ -634,6 +642,9 @@ export class AgentRunner {
     const prior = opts.priorUsd ?? 0;
     // Read once, as the task starts: a change in Settings reaches the next task, never this one.
     const maxTurns = this.setting<number>("work.maxTurns", cmd.project);
+    // Explain after every task, or only after the steps of a plan (explain.after); Your turn worked out only when it is on.
+    const explainHere = this.setting<string>("explain.after", cmd.project) !== "plansOnly" || !!opts.step;
+    const yourTurn = this.setting<boolean>("teach.yourTurn", cmd.project) === true;
     const room = this.room(cmd.project) + prior;
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -789,11 +800,12 @@ export class AgentRunner {
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.openTasks.delete(cmd.agent);
     // The change itself, place by place: the first changed line for "Show me what changed", the diff for Explain, and the
-    // same small change made twice for "your turn" (only after a proven fix, outside a plan, and never off the record).
+    // same small change made twice for "your turn" (only when it is on, after a proven fix, outside a plan, and never off
+    // the record).
     const hunks = changed.length ? await this.taskHunksOf(store, before.id, lastAfter, changed) : [];
     const changedAt = changeTarget(hunks);
     const projectKey = resolve(cmd.project);
-    const repeat = status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
+    const repeat = yourTurn && status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
     if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat }); else if (changed.length) this.teachOffers.delete(projectKey);
     // Off the record work gets no saved picture (nothing about it is kept).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
@@ -802,7 +814,7 @@ export class AgentRunner {
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
-    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
     this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
     const stuck = proof === "failed" && sameThree(sigs) ? lastFailure : undefined;
@@ -1560,7 +1572,6 @@ export class AgentRunner {
     const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, MAX_STEPS);
     if (steps.length === 0) { this.fail("A plan needs at least one step.", cmd.agent); return; }
     this.plans.delete(cmd.agent);
-    if (!plan.offTheRecord && plan.goal) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
     this.driving.add(cmd.agent);
     this.driveStop.delete(cmd.agent);
     // The whole plan is one task to the person: a yes "for the rest of this task" holds for every step, and ends with the plan.
@@ -1572,6 +1583,10 @@ export class AgentRunner {
     const watcher = new ProjectWatcher(plan.project, (path) => this.requestPause(cmd.agent, "files_changed", path));
     this.watchers.set(cmd.agent, watcher);
     watcher.start();
+    // The plan's goal, as a line about the project (memory.rememberGoals, read as the plan starts). Written once the watcher
+    // is looking, as Companion's own write (remember), so the memory file and AGENTS.md it may write are never taken for
+    // the person changing the project.
+    if (!plan.offTheRecord && plan.goal && this.setting<boolean>("memory.rememberGoals", plan.project)) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
     // Wait here until the person resumes (true) or stops (false).
     const pauseHere = async (): Promise<boolean> => {
       if (!this.pauseReq.has(cmd.agent)) return true;

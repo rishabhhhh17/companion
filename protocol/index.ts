@@ -48,7 +48,11 @@ export type MemoryErase = Envelope & { type: "memory.erase"; project: string; sc
 export type MemoryExport = Envelope & { type: "memory.export"; project: string };
 export type MemoryAgents = Envelope & { type: "memory.agents"; project: string; answer: "yes" | "no" | "remove" };
 export type RecapAsk = Envelope & { type: "recap.ask"; project: string; since: string };
-export type ExplainSet = Envelope & { type: "explain.set"; project: string; enabled: boolean };
+// Explain after a task (the setting explain.mode, T16): off, two short reasons, or the reasons and a quick check question.
+// Only the shell sends explain.set; the engine keeps the choice in memory-settings.json.
+export const EXPLAIN_MODES = ["off", "reasons", "reasonsAndQuestion"] as const;
+export type ExplainMode = (typeof EXPLAIN_MODES)[number];
+export type ExplainSet = Envelope & { type: "explain.set"; project: string; mode: ExplainMode };
 export type ShipPreview = Envelope & { type: "ship.preview"; project: string };
 export type ShipLive = Envelope & { type: "ship.live"; project: string; url: string; confirm: true };
 export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; confirm: true };
@@ -311,7 +315,7 @@ const COMMANDS: Record<string, Check[]> = {
   "project.clone": [str("url"), str("parent")],
   "memory.add": [str("project"), oneOf("scope", ["project", "profile"]), str("text"), str("source")],
   "recap.ask": [str("project"), str("since")],
-  "explain.set": [str("project"), bool("enabled")],
+  "explain.set": [str("project"), oneOf("mode", [...EXPLAIN_MODES])],
   "memory.list": [str("project")],
   "memory.forget": [str("project"), oneOf("scope", ["project", "profile"]), str("line")],
   "memory.edit": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text")],
@@ -374,7 +378,7 @@ const EVENTS: Record<string, Check[]> = {
   "teach.ready": [str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || isPlace(m.target) ? null : "a made turn needs a \"target\" place")],
   "teach.result": [str("project"), str("checkpoint"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), bool("same")],
   "teach.step": [str("project"), str("checkpoint"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
-  "explain.state": [str("project"), bool("enabled")],
+  "explain.state": [str("project"), bool("enabled"), oneOf("mode", [...EXPLAIN_MODES])],
   "recap.ready": [str("project"), list("lines")],
   "memory.agents_ask": [str("project"), list("files")],
   "memory.agents_written": [str("project"), list("files")],

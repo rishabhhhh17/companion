@@ -24,6 +24,7 @@ import { S } from "./strings.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
+import { offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
@@ -36,8 +37,9 @@ const send = (cmd: unknown) => invoke("send_command", { cmd });
 // Beta numbers: a fixed name, counted only if the person turned numbers on.
 const SESSION_GAP_MS = 30 * 60 * 1000;
 const count = (name: string) => { void send(metricsNote(name)); };
-// When the person last used the card. Kept only on this Mac, in this page's own storage.
-const AWAY_MS = 30 * 60 * 1000, SEEN_KEY = "companion.lastSeen";
+// When the person last used the card. Kept only on this Mac, in this page's own storage. Where was I is asked for after the
+// break the person chose (recap.after, memorySettings.ts).
+const SEEN_KEY = "companion.lastSeen";
 const lastSeen = (): number => { try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch { return 0; } };
 const touch = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); } catch { /* storage may be unavailable */ } };
 // While a person is composing text (Japanese, Chinese, Korean...) Enter and Esc belong to the input method, not to us.
@@ -366,6 +368,10 @@ function Card() {
   }, []);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
+  // Start every task off the record (task.offRecordByDefault): the box follows the setting as it arrives or changes, and
+  // goes back to it after each send. What off the record keeps (nothing) never changes.
+  const offDefault = useSetting("task.offRecordByDefault") === true;
+  useEffect(() => { setOff(offDefault); }, [offDefault]);
   // Turning off the record on drops the kept draft at once; turning it off again keeps what is in the box. Not at start,
   // so the draft from last time is not dropped before it is put back.
   const offWas = useRef(false);
@@ -381,10 +387,13 @@ function Card() {
     if (kept && !box.current.value) { box.current.value = kept; fitBox(); }
   }, [onboarded]);
   const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
-  // The "remembered" toast stays for ten seconds after the last new line.
+  // The "remembered" toast stays after the last new line for as long as the person chose (memory.toastSeconds, ten seconds
+  // usually), or until it is closed.
   useEffect(() => {
     if (!m.toast) return;
-    const t = setTimeout(() => dispatch({ type: "ui.toastClear" }), 10000);
+    const ms = toastMs();
+    if (ms === null) return;
+    const t = setTimeout(() => dispatch({ type: "ui.toastClear" }), ms);
     return () => clearTimeout(t);
   }, [m.toast?.lines.length]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
@@ -555,9 +564,11 @@ function Card() {
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
       warmSoon();
-      // Coming back after a break: ask what happened while away. Only Companion's own history is used.
+      // Coming back after a break: ask what happened while away. Only Companion's own history is used. The folder is read
+      // as it is now: this listener is set up once, before the folder is known.
       const last = lastSeen();
-      if (last && project && Date.now() - last >= AWAY_MS) void send(askRecap(project, new Date(last).toISOString()));
+      const here = projectRef.current;
+      if (last && here && recapDue(last, Date.now())) void send(askRecap(here, new Date(last).toISOString()));
       if (!last || Date.now() - last >= SESSION_GAP_MS) count("session");   // a new visit after a break, not every time the card opens
       touch();
     });
@@ -652,7 +663,6 @@ function Card() {
   // through the shell (settingsStore.ts).
   const autoSend = useSetting("talk.autoSend") === true;
   const setAutoSend = (on: boolean) => { void changeSetting("talk.autoSend", on); };
-  const explainOn = useSetting("explain.on") === true;
   // Text size follows the setting in force, from the shell's first answer on.
   const size = useSetting("display.textSize");
   useEffect(() => { applyTextSize(textSizeFrom(size)); }, [size]);
@@ -765,7 +775,7 @@ function Card() {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
     sent.current = { prompt, attached: attachedNow.current, off };
-    void send(startTask(project, prompt, off, added)).catch(() => putBackSent()); setOff(false);
+    void send(startTask(project, prompt, off, added)).catch(() => putBackSent()); setOff(offRecordAtStart());
     clearBox(); clearAttached();
   };
   // The words from hold to talk send through this, so they always go with the current folder and settings.
@@ -801,7 +811,7 @@ function Card() {
     sentFromBox("plan");
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
-    void send(planDrive(project, goal, off)); setOff(false);
+    void send(planDrive(project, goal, off)); setOff(offRecordAtStart());
     clearBox();
   };
 
@@ -1452,6 +1462,7 @@ function Card() {
           <div className="row">
             <button className="btn" type="button" onClick={() => { for (const l of m.toast!.lines) void send(forgetLine(project, l.scope, l.id)); dispatch({ type: "ui.toastClear" }); }}>{S.memoryUndo}</button>
             <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.toastClear" }); pickTab("memory"); }}>{S.memorySeeAll}</button>
+            {toastMs() === null && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.toastClear" })}>{S.memoryClose}</button>}
           </div>
         </section>
       )}
@@ -1469,7 +1480,6 @@ function Card() {
           <MemoryList title={S.memoryProfile} scope="profile" lines={m.memory.profileLines} project={project} />
           <div className="row">
             <button className="btn" type="button" onClick={() => void changeSetting("memory.paused", !m.memory!.paused)}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
-            <button className="btn" type="button" role="switch" aria-checked={explainOn} onClick={() => void changeSetting("explain.on", !explainOn)}>{S.explainSetting}: {explainOn ? S.on : S.off}</button>
             <button className="btn" type="button" role="switch" aria-checked={fun} onClick={() => void changeSetting("fun.reactions", !fun)}>{S.reactionsSetting}: {fun ? S.on : S.off}</button>
             <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
             <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>

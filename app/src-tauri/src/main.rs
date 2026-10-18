@@ -911,6 +911,8 @@ fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, 
         Ok(w)
     })?;
     log("settings_migrated", json!({ "from": from, "written": written.len() }));
+    // A choice carried over that the engine reads too (Your turn) reaches it at once, as any other change it applies does.
+    if written.iter().any(|k| settings::registry().get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }
     settings_told(&app, &written);
     Ok(settings_snapshot(&written))
 }
