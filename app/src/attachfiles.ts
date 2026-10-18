@@ -2,10 +2,12 @@
 // rules in runner/src/attach.ts (the engine checks the same rules again before anything is sent). Settings and key files,
 // files that are too big and kinds that cannot go are refused before their bytes are read, each with one plain line. What
 // is added shows as a chip that can be removed, and goes with the request only when Start is pressed.
-import { admit, baseName, kindOf, precheck, type Attached, type Picture, type Refusal, type TextFile } from "../../runner/src/attach.ts";
+import { admit, baseName, checkAttachments, kindOf, precheck, type Attached, type Picture, type Refusal, type TextFile } from "../../runner/src/attach.ts";
 import { S } from "./strings.ts";
 
 export type { Attached };
+// The engine's own check, which Start makes on the page first (a request it would refuse is never sent).
+export { checkAttachments };
 /** A dropped or pasted file, as the page gets it (a browser File has these). */
 export type FileLike = { name: string; size: number; type: string; arrayBuffer(): Promise<ArrayBuffer> };
 

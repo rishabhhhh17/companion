@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { askKey, draftToKeep, MAX_DRAFT } from "./askbox.ts";
+import { askKey, draftToKeep, MAX_DRAFT, putBack, sentOutcome, type Sent } from "./askbox.ts";
+import { AGENT } from "./commands.ts";
 
 const k = (key: string, o: { shift?: boolean; composing?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean } = {}) =>
   askKey({ key, shift: !!o.shift, alt: !!o.alt, meta: !!o.meta, ctrl: !!o.ctrl, composing: !!o.composing });
@@ -67,5 +68,58 @@ describe("the draft kept on this Mac", () => {
     const research = card.slice(card.indexOf("const research = () => {"), card.indexOf("const plan = () => {"));
     expect(research).toContain("clearBox()");
     expect(card).not.toMatch(/box\.current\.value = ""/);
+  });
+});
+
+describe("a request the engine says no to is put back", () => {
+  // Start empties the box at once. If the engine then refuses (a file it will not take, no Claude connected for a picture,
+  // something else working on the project, the daily limit), the words and the files come back, so the person can do what
+  // the refusal says: remove the file and press Start again, without typing it all and dragging every file in again.
+  const ev = (type: string, o: Record<string, unknown> = {}) => ({ v: 1, id: "e", type, ...o });
+  test("the task began once its before snapshot is taken", () => {
+    expect(sentOutcome(ev("checkpoint.created", { agent: AGENT, project: "/p", checkpoint: "cp_1", label: "Before: x", files: 1, skipped: [] }), AGENT)).toBe("started");
+  });
+  test("a refusal for that agent, Stop before it began, or the engine stopping, puts it back", () => {
+    expect(sentOutcome(ev("protocol.error", { agent: AGENT, reason: "Something else is already working on this project." }), AGENT)).toBe("refused");
+    expect(sentOutcome(ev("agent.state", { agent: AGENT, state: "idle" }), AGENT)).toBe("refused");
+    expect(sentOutcome(ev("app.runner_down"), AGENT)).toBe("refused");
+  });
+  test("anything else changes nothing: other agents, other errors, looking at the pictures", () => {
+    expect(sentOutcome(ev("protocol.error", { reason: "Memory is not available." }), AGENT)).toBeNull();
+    expect(sentOutcome(ev("protocol.error", { agent: "lesson-1", reason: "x" }), AGENT)).toBeNull();
+    expect(sentOutcome(ev("checkpoint.created", { agent: "other" }), AGENT)).toBeNull();
+    expect(sentOutcome(ev("agent.state", { agent: AGENT, state: "thinking" }), AGENT)).toBeNull();
+    expect(sentOutcome(ev("tasks.listed", { tasks: [] }), AGENT)).toBeNull();
+    expect(sentOutcome(null, AGENT)).toBeNull();
+    expect(sentOutcome("protocol.error", AGENT)).toBeNull();
+  });
+  const sent: Sent<string> = { prompt: "Make the header match\nthe picture", attached: ["shot.png", "notes.md"], off: false };
+  test("the words go back into an empty box, the files back onto the box, as they were", () => {
+    expect(putBack(sent, { text: "", attached: [] })).toEqual({ text: "Make the header match\nthe picture", attached: ["shot.png", "notes.md"], off: false });
+    expect(putBack(sent, { text: "  \n", attached: [] }).text).toBe("Make the header match\nthe picture");
+  });
+  test("never over something typed or added since", () => {
+    expect(putBack(sent, { text: "a new request", attached: [] })).toEqual({ attached: ["shot.png", "notes.md"] });
+    expect(putBack(sent, { text: "", attached: ["other.md"] })).toEqual({ text: "Make the header match\nthe picture", off: false });
+    expect(putBack(sent, { text: "typed", attached: ["other.md"] })).toEqual({});
+  });
+  test("an off the record request comes back off the record, so its words are never kept on this Mac", () => {
+    expect(putBack({ ...sent, off: true }, { text: "", attached: [] }).off).toBe(true);
+  });
+  test("nothing to put back for an empty request", () => {
+    expect(putBack({ prompt: "", attached: [], off: false }, { text: "", attached: [] })).toEqual({});
+  });
+  test("the card keeps what Start sent in memory only, checks the files first, and puts it back on a refusal", () => {
+    const submit = card.slice(card.indexOf("const submit = () => {"), card.indexOf("// Which task broke it"));
+    // The engine's own check runs on the page first: a request it would refuse is never sent, and nothing is cleared.
+    expect(submit).toMatch(/const added = forRequest\(attachedNow\.current\);\s*if \("error" in checkAttachments\(added\)\)/);
+    expect(submit.indexOf("checkAttachments(added)")).toBeLessThan(submit.indexOf("void send("));
+    expect(submit).toContain("sent.current = { prompt, attached: attachedNow.current, off };");
+    expect(submit).toMatch(/void send\(startTask\(project, prompt, off, added\)\)\.catch\(\(\) => putBackSent\(\)\)/);
+    expect(card).toMatch(/listen\("runner-event", \(e\) => onSentEvent\.current\(e\.payload\)\)/);
+    expect(card).toContain("sentOutcome(payload, AGENT)");
+    // Never on disk: only the box's own draft rules decide what is kept, and a new folder forgets it.
+    expect(card).not.toMatch(/localStorage\.setItem\([^)]*sent/i);
+    expect(card).toMatch(/useEffect\(\(\) => \{ clearAttached\(\); sent\.current = null; \}, \[project\]\);/);
   });
 });

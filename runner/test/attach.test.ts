@@ -13,9 +13,16 @@ const ok = (r: ReturnType<typeof admit>): Attached => { if (!("ok" in r)) throw 
 const why = (r: ReturnType<typeof admit> | ReturnType<typeof precheck>) => ("refused" in r ? r.refused : null);
 
 describe("which files may be added", () => {
-  test("text and code files by their name, and plain text by its type", () => {
-    for (const n of ["notes.md", "App.tsx", "index.js", "main.py", "schema.prisma", "styles.css", "data.json", "config.yaml", "error.log", "README", "Dockerfile", "Makefile", ".gitignore", "query.sql"]) expect(kindOf(n), n).toBe("text");
-    expect(kindOf("something.weird", "text/plain")).toBe("text");
+  test("text and code files by their name", () => {
+    for (const n of ["notes.md", "App.tsx", "index.js", "main.py", "schema.prisma", "styles.css", "data.json", "config.yaml", "error.log", "README", "Dockerfile", "Makefile", ".gitignore", "query.sql", "script.pl", "events.jsonl", "data.ndjson"]) expect(kindOf(n), n).toBe("text");
+  });
+  test("a text file is known by its name alone, the one thing the engine is given, never by the type the Mac gives it", () => {
+    // The page knows a file's type, the engine does not: a rule that let the type decide would let the page add a file the
+    // engine then refuses, and the whole request with it.
+    for (const [n, t] of [["something.weird", "text/plain"], ["notes", "text/plain"], ["Procfile.dev", "text/plain"], ["invite.ics", "text/calendar"], ["notes.rtf", "text/rtf"], ["blob", "application/json"]]) {
+      expect(kindOf(n, t), `${n} ${t}`).toBe("kind");
+      expect(kindOf(n), n).toBe("kind");
+    }
   });
   test("PNG and JPEG pictures, by name or type", () => {
     for (const n of ["shot.png", "Photo.JPG", "screen.jpeg"]) expect(kindOf(n), n).toBe("image");
@@ -40,6 +47,13 @@ describe("which files may be added", () => {
     expect(baseName("  notes.md  ")).toBe("notes.md");
     expect(Array.from(baseName(`${"é".repeat(300)}.md`)).length).toBeLessThanOrEqual(ATTACH.maxName);
     expect(baseName("")).toBe("");
+  });
+  test("a name cleaned once stays the same when the engine cleans it again", () => {
+    // A long name cut where a space falls must not end in that space: the engine refuses a name its own cleaning changes.
+    for (const n of [`${"a".repeat(ATTACH.maxName - 1)} b.md`, `${"é".repeat(ATTACH.maxName - 1)}\u200b b.md`, "  x.md", "a\u202e .md", "dir/ notes.md "]) {
+      const once = baseName(n);
+      expect(baseName(once), JSON.stringify(n)).toBe(once);
+    }
   });
 });
 
@@ -103,6 +117,33 @@ describe("adding a file to the request", () => {
     const pics = ["a.png", "b.png"].map((n) => ok(admit([], { name: n, size: PNG.length }, PNG)));
     expect(why(precheck(pics, { name: "c.png", size: PNG.length }))).toBe("too_many_pictures");
     expect(why(precheck([small("x.md")], { name: "x.md", size: 1 }))).toBe("already");
+  });
+});
+
+describe("the caps count the text that goes, after its secrets are hidden", () => {
+  // Hiding a short secret makes the text longer ("password=abc12" becomes "password=[secret]"). The engine counts the text
+  // it is given, so the page must count that too, or it would add a file the engine then refuses.
+  const line = "password=abc12\n";
+  const grows = enc(line.repeat(Math.floor(99_900 / line.length)));
+  test("a file under the cap that grows past it when its secrets are hidden is refused as too big", () => {
+    expect(grows.length).toBeLessThanOrEqual(ATTACH.maxTextBytes);
+    expect(why(admit([], { name: "config.log", size: grows.length }, grows))).toBe("too_big");
+  });
+  test("files that together grow past the total cap are refused as too much", () => {
+    // Three of these are under the total cap as they are on disk, and over it once their secrets are hidden.
+    const part = enc(line.repeat(Math.floor(65_000 / line.length)));
+    expect(part.length * 3).toBeLessThanOrEqual(ATTACH.maxTextTotal);
+    const a = ok(admit([], { name: "a.log", size: part.length }, part));
+    const b = ok(admit([a], { name: "b.log", size: part.length }, part));
+    expect(why(admit([a, b], { name: "c.log", size: part.length }, part))).toBe("too_much");
+  });
+  test("whatever is added passes the engine's own check", () => {
+    const part = enc(line.repeat(Math.floor(65_000 / line.length)));
+    const have: Attached[] = [];
+    for (const n of ["a.log", "b.log", "c.log", "d.log"]) { const r = admit(have, { name: n, size: part.length }, part); if ("ok" in r) have.push(r.ok); }
+    expect(have.length).toBeGreaterThan(0);
+    const r = checkAttachments({ files: have.flatMap((x) => (x.kind === "text" ? [{ name: x.name, text: x.text }] : [])) });
+    expect("error" in r ? r.error : "passed").toBe("passed");
   });
 });
 

@@ -4,6 +4,21 @@ import { blockedNote, ehLines, formatUsd, receiptProofWords, type About, type Ex
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 
+/** The most a Copy button puts on the clipboard, in characters: the Mac side's own cap (share.rs MAX_COPY). */
+export const MAX_COPY = 20_000;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
+
+/** The text Copy may put on the clipboard, or null: the Mac side's own check (share.rs copyable), made on the page too, so
+ *  the page's own clipboard, used only when the Mac side cannot be reached, never takes what the Mac side would refuse.
+ *  Not empty, at most MAX_COPY characters, no control characters but new lines and tabs (a terminal control in model or
+ *  test output is refused). Windows line ends become plain new lines first. */
+export function copyable(text: string): string | null {
+  const t = String(text ?? "").replace(/\r\n?/g, "\n");
+  if (!t.trim() || Array.from(t).length > MAX_COPY || CONTROL.test(t)) return null;
+  return t;
+}
+
 const lines = (l: (string | null | undefined | false)[]) => redact(l.filter((x): x is string => typeof x === "string" && x.length > 0).join("\n"));
 
 /** The receipt as the card shows it: what changed, what cannot be undone, the proof, what was not done, commands and cost. */

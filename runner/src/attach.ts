@@ -1,8 +1,10 @@
 // Files into the ask box (wave 4 item 4). The person drags a file onto Home or pastes one into the ask box; the page reads
 // it on this Mac and these rules decide whether it may go with the request. The engine checks the same rules again before
 // anything is sent (checkAttachments), so a page can never slip something past them.
-//   Text and code files, up to 100 KB each and 200 KB together, are read as UTF-8 and their secrets hidden with the same
-//   redaction everything else uses. Settings and key files (.env, id_rsa, *.pem, credentials and the like) are never added.
+//   Text and code files, known by their name alone (the engine is given only the name, so the type the Mac gives a file
+//   never decides it), are read as UTF-8 and their secrets hidden with the same redaction everything else uses. The caps,
+//   100 KB each and 200 KB together, count the text as it goes, after hiding (hiding a short secret makes it longer), as
+//   the engine counts it. Settings and key files (.env, id_rsa, *.pem, credentials and the like) are never added.
 //   PNG and JPEG pictures, up to 3.5 MB and two per request, known by their first bytes, go to the engine only when the
 //   person presses Start, and are looked at the way Show me looks at a screen picture (lanes.ts describe: no saved
 //   conversation, Claude Code's copy on the in memory drive); the task itself gets only the words said about them.
@@ -20,7 +22,7 @@ type Verdict = { ok: Attached } | { refused: Refusal; name: string };
 
 const TEXT_EXT = new Set(("txt md markdown mdx rst json jsonc json5 yaml yml toml ini cfg conf properties csv tsv log xml html htm svg css scss sass less "
   + "js jsx mjs cjs ts tsx mts cts vue svelte astro py pyi rb go rs java kt kts swift m mm c h cc cpp cxx hpp hh cs php sh bash zsh fish ps1 bat "
-  + "sql graphql gql prisma proto lua r dart scala ex exs erl hrl hs clj cljs elm tf hcl gradle lock diff patch").split(" "));
+  + "sql graphql gql prisma proto lua r dart scala ex exs erl hrl hs clj cljs elm tf hcl gradle lock diff patch pl pm jsonl ndjson").split(" "));
 const TEXT_NAMES = new Set(["readme", "license", "licence", "changelog", "dockerfile", "makefile", "procfile", "gemfile", "rakefile", "brewfile", "vagrantfile", "jenkinsfile",
   ".gitignore", ".gitattributes", ".dockerignore", ".editorconfig", ".prettierrc", ".eslintrc", ".babelrc", ".nvmrc", ".node-version", ".python-version", ".tool-versions"]);
 // Right to left overrides, zero width spaces, a soft hyphen: they change how a name looks without showing.
@@ -28,22 +30,25 @@ const HIDDEN = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 
-/** A file's own name only: the last part of any path, with hidden and control characters taken out, not too long. */
+/** A file's own name only: the last part of any path, with hidden and control characters taken out, not too long. Cleaning
+ *  a cleaned name changes nothing (the engine refuses a name its own cleaning would change), so it is trimmed after the cut. */
 export function baseName(name: string): string {
   const last = String(name ?? "").split(/[\\/]/).pop() ?? "";
   const clean = last.replace(HIDDEN, "").replace(CONTROL, "").trim();
-  return Array.from(clean).slice(0, ATTACH.maxName).join("");
+  return Array.from(clean).slice(0, ATTACH.maxName).join("").trim();
 }
 
 const extOf = (n: string) => { const i = n.lastIndexOf("."); return i > 0 ? n.slice(i + 1).toLowerCase() : ""; };
 
-/** What a file is, from its name (and the type the Mac gives it): settings and key files first, whatever else it says. */
+/** What a file is: settings and key files first, whatever else it says. A picture by its name or its type (its bytes are
+ *  checked after, and the engine is given the type the bytes showed). A text file by its name alone, as the engine knows it:
+ *  a type such as text/plain never makes a file text, or the page could add one the engine then refuses. */
 export function kindOf(name: string, mediaType = ""): "text" | "image" | "secret" | "kind" {
   const n = baseName(name);
   if (isEnvFile(n)) return "secret";
   const ext = extOf(n), t = mediaType.toLowerCase();
   if (["png", "jpg", "jpeg"].includes(ext) || t === "image/png" || t === "image/jpeg") return "image";
-  if (TEXT_EXT.has(ext) || TEXT_NAMES.has(n.toLowerCase()) || t.startsWith("text/") || t === "application/json") return "text";
+  if (TEXT_EXT.has(ext) || TEXT_NAMES.has(n.toLowerCase())) return "text";
   return "kind";
 }
 
@@ -69,7 +74,9 @@ export function toBase64(b: Uint8Array): string {
   return btoa(bin);
 }
 
-const textBytes = (have: Attached[]) => have.reduce((n, a) => n + (a.kind === "text" ? a.bytes : 0), 0);
+const utf8Length = (t: string) => new TextEncoder().encode(t).length;
+// The text already added, as it goes (after its secrets were hidden), the way the engine counts it.
+const textBytes = (have: Attached[]) => have.reduce((n, a) => n + (a.kind === "text" ? utf8Length(a.text) : 0), 0);
 
 /** Before reading the file at all: its name, its kind, its size, and how many are added already. */
 export function precheck(have: Attached[], file: { name: string; size: number; type?: string }): { ok: true } | { refused: Refusal; name: string } {
@@ -88,7 +95,8 @@ export function precheck(have: Attached[], file: { name: string; size: number; t
   return { ok: true };
 }
 
-/** After reading it: the chip to add, or why it was not added. A text file's secrets are hidden here. */
+/** After reading it: the chip to add, or why it was not added. A text file's secrets are hidden here, and the caps count
+ *  the text after hiding, as the engine does. bytes stays the file's own size (its chip, and the same file twice). */
 export function admit(have: Attached[], file: { name: string; size: number; type?: string }, bytes: Uint8Array): Verdict {
   const first = precheck(have, { ...file, size: Math.max(file.size, bytes.length) });
   if ("refused" in first) return first;
@@ -101,8 +109,10 @@ export function admit(have: Attached[], file: { name: string; size: number; type
   const text = textFrom(bytes);
   if (text === null) return { refused: "not_text", name };
   if (!text.trim()) return { refused: "empty", name };
-  if (textBytes(have) + bytes.length > ATTACH.maxTextTotal) return { refused: "too_much", name };
   const clean = redact(text);
+  const goes = utf8Length(clean);
+  if (goes > ATTACH.maxTextBytes) return { refused: "too_big", name };
+  if (textBytes(have) + goes > ATTACH.maxTextTotal) return { refused: "too_much", name };
   return { ok: { kind: "text", name, text: clean, hidden: clean !== text, bytes: bytes.length } };
 }
 
@@ -115,7 +125,6 @@ export function attachmentsBlock(files: TextFile[]): string {
 
 const REFUSED = "Something added to the request could not be used (a settings or key file, too big, or not a text file or a PNG or JPEG picture), so nothing was started. Remove it and press Start again.";
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
-const utf8Length = (t: string) => new TextEncoder().encode(t).length;
 
 /** The engine's own check of what a request carries. Anything off refuses the whole request, in plain words. */
 export function checkAttachments(cmd: { files?: unknown; images?: unknown }): { files: TextFile[]; images: Picture[] } | { error: string } {

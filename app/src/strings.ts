@@ -15,13 +15,15 @@ export const S = {
   attachHidden: (name: string) => `Some parts of ${name} looked like keys or passwords, so they were hidden.`,
   attachUnreadable: (name: string) => `${name} could not be read, so it was not added.`,
   attachStartOnly: "Added files go only with Start. The other buttons leave them out.",
+  // Start, when the box holds something the engine's own check would refuse (it never should: they share one rule).
+  attachCannotSend: "Something added cannot go with this request, so nothing was sent. Remove it and press Start again.",
   attachPictureNote: "A picture is looked at by Claude first, which costs a little, and only what it shows in words goes to the task.",
   attachRefused: {
     secret: (name: string) => `${name} was not added. Settings and key files hold secrets, so Companion never reads them.`,
     too_big: (name: string) => `${name} was not added because it is too big. A text file can be up to 100 KB, a picture up to 3.5 MB.`,
     too_much: (name: string) => `${name} was not added. All the files together can be up to 200 KB of text.`,
     not_text: (name: string) => `${name} was not added because it is not plain text Companion can read.`,
-    kind: (name: string) => `${name} was not added. Only text and code files, and PNG or JPEG pictures, can go with a request.`,
+    kind: (name: string) => `${name} was not added. Only text and code files (names ending in .txt, .md, .js and the like), and PNG or JPEG pictures, can go with a request.`,
     empty: (name: string) => `${name} was not added because it is empty.`,
     too_many: (name: string) => `${name} was not added. A request can carry up to 5 files.`,
     too_many_pictures: (name: string) => `${name} was not added. A request can carry up to 2 pictures.`,

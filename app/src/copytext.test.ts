@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
-import { aboutCopy, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
+import { aboutCopy, copyable, ehCopy, explainCopy, MAX_COPY, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { S } from "./strings.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, { v: 1, id: "e", ...e } as never), from);
@@ -65,7 +65,12 @@ describe("Copy on replies and receipts", () => {
   });
   test("Copy puts the text on the Mac's clipboard itself, falls back to the page's clipboard, and says so when both fail", () => {
     const btn = card.slice(card.indexOf("function CopyButton("), card.indexOf("function ResearchNote("));
-    expect(btn).toMatch(/invoke\("copy_text", \{ text \}\)\.catch\(\(\) => navigator\.clipboard/);
+    // The page makes the Mac side's own check first, so its clipboard is used only for text the Mac side would have taken:
+    // a refusal there (a terminal control in model output, text too long) is never undone by the fallback.
+    expect(btn).toMatch(/const ok = copyable\(text\);\s*if \(ok === null\) \{ setState\("failed"\); return; \}/);
+    expect(btn).toMatch(/invoke\("copy_text", \{ text: ok \}\)\.catch\(\(\) => navigator\.clipboard\?\.writeText\(ok\)/);
+    expect(btn.indexOf("copyable(text)")).toBeLessThan(btn.indexOf("invoke(\"copy_text\""));
+    expect(btn).not.toMatch(/writeText\(text\)/);
     expect(btn).toContain('setState("failed")');
     expect(btn).toMatch(/onClick=\{copy\}/);
     // Only from Home, and the Mac side checks the text (share.rs copyable).
@@ -77,5 +82,39 @@ describe("Copy on replies and receipts", () => {
   });
   test("the card offers Copy on why it was done, where you left off, and what the project is", () => {
     for (const f of ["explainCopy(e)", "recapCopy(m.recap)", "aboutCopy(m.about)"]) expect(card, f).toContain(`<CopyButton text={${f}}`);
+  });
+});
+
+describe("what Copy may put on the clipboard", () => {
+  // The same rule the Mac side uses (share.rs copyable), so the page's own clipboard, used when the Mac side cannot be
+  // reached, never takes what the Mac side would refuse.
+  const share = readFileSync(new URL("../src-tauri/src/share.rs", import.meta.url), "utf8");
+  test("the cap is the Mac side's", () => {
+    const rust = share.match(/pub const MAX_COPY: usize = ([\d_]+);/);
+    expect(rust).not.toBeNull();
+    expect(Number(rust![1].replace(/_/g, ""))).toBe(MAX_COPY);
+  });
+  test("plain lines with new lines and tabs, up to the cap, counted in characters", () => {
+    expect(copyable("What changed\nAdded: src/page.js\n\t3 commands")).toBe("What changed\nAdded: src/page.js\n\t3 commands");
+    expect(copyable("é".repeat(MAX_COPY))).toBe("é".repeat(MAX_COPY));
+    expect(copyable("🙂".repeat(MAX_COPY))).toBe("🙂".repeat(MAX_COPY));
+  });
+  test("Windows line ends become plain new lines, so they still copy", () => {
+    expect(copyable("one\r\ntwo\rthree")).toBe("one\ntwo\nthree");
+  });
+  test("refused: nothing, only spaces, too long, and any control character but a new line or a tab", () => {
+    expect(copyable("")).toBeNull();
+    expect(copyable("  \n ")).toBeNull();
+    expect(copyable("a".repeat(MAX_COPY + 1))).toBeNull();
+    for (const c of ["\u0000", "\u0007", "\u0008", "\u000b", "\u000c", "\u001b", "\u007f", "\u0085", "\u009b"]) expect(copyable(`a${c}[31mb`), JSON.stringify(c)).toBeNull();
+  });
+  test("refuses exactly what the Mac side's own tests refuse", () => {
+    const at = share.indexOf("fn copy_takes_only_plain_text_of_a_sensible_length");
+    expect(at).toBeGreaterThan(0);
+    const mod = share.slice(at, share.indexOf("#[test]", at));
+    expect(mod).toContain('copyable("a\\u{1b}[31mb"), None');
+    expect(mod).toContain('copyable("a\\u{0}b"), None');
+    expect(copyable("a\u001b[31mb")).toBeNull();
+    expect(copyable("a\u0000b")).toBeNull();
   });
 });

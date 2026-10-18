@@ -7,7 +7,7 @@ import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
 import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
@@ -17,11 +17,11 @@ import { useModel } from "./useModel.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { webLink } from "./links.ts";
-import { DRAFT_KEY, askKey, draftToKeep } from "./askbox.ts";
-import { aboutCopy, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
+import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
+import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
-import { addFiles, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
+import { addFiles, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -359,13 +359,16 @@ function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => vo
 
 // Copy: puts what the card shows on the clipboard, only on a press (copytext.ts hides anything that looks like a key again
 // first). The Mac side writes it (copy_text, the same clipboard as Copy link); the page's own clipboard is the fallback.
-// Says so when neither could be used, so a failure is never silent.
+// The page makes the Mac side's own check first (copyable), so the fallback only ever takes text the Mac side would have
+// taken, never what it refused. Says so when it could not copy, so a failure is never silent.
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   if (!text) return null;
   const copy = () => {
     setState("idle");
-    void invoke("copy_text", { text }).catch(() => navigator.clipboard?.writeText(text) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
+    const ok = copyable(text);
+    if (ok === null) { setState("failed"); return; }
+    void invoke("copy_text", { text: ok }).catch(() => navigator.clipboard?.writeText(ok) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
   };
   return <>
     <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : S.copy}</button>
@@ -545,7 +548,31 @@ function Card() {
   const [dragging, setDragging] = useState(false);
   const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); void addFiles(attachedNow.current, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); }); };
   const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); };
-  useEffect(() => { clearAttached(); }, [project]);
+  // What Start sent, kept in memory only until the engine says the task began (askbox.ts sentOutcome). If it says no
+  // instead (a file it will not take, no Claude for a picture, something else working, the daily limit), or Stop came
+  // before the task began, the words and the files are put back, never over anything typed or added since, so the person
+  // can do what the refusal says. A new folder forgets it.
+  const sent = useRef<Sent<Attached> | null>(null);
+  const putBackSent = () => {
+    const s = sent.current; sent.current = null;
+    if (!s) return;
+    const r = putBack(s, { text: box.current?.value ?? "", attached: attachedNow.current });
+    if (r.attached) { attachedNow.current = r.attached; setAttached(r.attached); }
+    // Off the record comes back first, so the words put back are never kept on this Mac.
+    if (r.text !== undefined) { if (r.off) { offNow.current = true; setOff(true); } setBox(r.text); }
+  };
+  const onSentEvent = useRef((_: unknown) => {});
+  onSentEvent.current = (payload: unknown) => {
+    if (!sent.current) return;
+    const o = sentOutcome(payload, AGENT);
+    if (o === "started") sent.current = null;
+    else if (o === "refused") putBackSent();
+  };
+  useEffect(() => {
+    const off = listen("runner-event", (e) => onSentEvent.current(e.payload));
+    return () => { off.then((f) => f()); };
+  }, []);
+  useEffect(() => { clearAttached(); sent.current = null; }, [project]);
   // A file dropped on Home outside the drop handling must never be opened in place of Home's page, and neither may a link
   // dropped anywhere but the ask box (blocksDrop); words dragged onto the ask box land there.
   useEffect(() => {
@@ -910,8 +937,13 @@ function Card() {
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
+    // The engine checks what goes with the request again and refuses all of it if anything is off. That check runs here
+    // first, so a request it would refuse is never sent, and nothing is cleared.
+    const added = forRequest(attachedNow.current);
+    if ("error" in checkAttachments(added)) { setAttachNotes([S.attachCannotSend]); return; }
     dispatch({ type: "ui.undoClosed" });
-    void send(startTask(project, prompt, off, forRequest(attached))); setOff(false);
+    sent.current = { prompt, attached: attachedNow.current, off };
+    void send(startTask(project, prompt, off, added)).catch(() => putBackSent()); setOff(false);
     clearBox(); clearAttached();
   };
   // The words from hold to talk send through this, so they always go with the current folder and settings.

@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { ATTACH } from "../../runner/src/attach.ts";
+import { ATTACH, checkAttachments } from "../../runner/src/attach.ts";
 import { addFiles, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
@@ -79,6 +79,51 @@ describe("adding files to the ask box", () => {
       const line = (f as (n: string) => string)("notes.md");
       expect(line, k).toContain("notes.md");
       expect(/[–—]/.test(line), k).toBe(false);
+    }
+  });
+});
+
+describe("the box and the engine use one rule", () => {
+  // The engine checks what Start sends again, and refuses the whole request if anything is off. So nothing the box adds may
+  // fail that check: if it could, the person would see a chip, press Start, and be told no.
+  const passes = (have: Awaited<ReturnType<typeof addFiles>>["have"]) => { const r = checkAttachments(forRequest(have)); return "error" in r ? r.error : "passed"; };
+  const line = "password=abc12\n";
+  const grow = (n: number) => enc(line.repeat(Math.floor(n / line.length)));
+  const cases: [string, Uint8Array, string][] = [
+    // Text by its type alone, which the engine never sees.
+    ["script.pl", enc("print 1;"), "text/x-perl-script"], ["invite.ics", enc("BEGIN:VCALENDAR"), "text/calendar"], ["notes.rtf", enc("{\\rtf1 hi}"), "text/rtf"],
+    ["data.ndjson", enc("{}\n{}"), "application/json"], ["Procfile.dev", enc("web: bun dev"), "text/plain"], ["notes", enc("hello"), "text/plain"],
+    // Text that grows when its secrets are hidden.
+    ["config.log", grow(99_900), "text/plain"], ["a.env.md", grow(50_000), ""],
+    // Names the engine cleans again.
+    [`${"a".repeat(ATTACH.maxName - 1)} b.md`, enc("x"), ""], [`  ${"é".repeat(ATTACH.maxName)}.ts`, enc("const a = 1"), ""], ["dir/sub/\u202enotes.md", enc("x"), ""],
+    // Pictures known by their bytes, whatever they are called or said to be.
+    ["clipboard", PNG, "image/png"], ["photo.heic", PNG, "image/png"], ["shot.png", new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16]), ""], ["notes.md", PNG, "image/png"],
+  ];
+  test("each file the box adds, on its own, passes the engine's check", async () => {
+    for (const [name, bytes, type] of cases) {
+      const { have } = await addFiles([], [file(name, bytes, type)]);
+      expect(passes(have), `${name} ${type}`).toBe("passed");
+    }
+  });
+  test("and so do the files it adds together, up to every cap", async () => {
+    const r = await addFiles([], [file("a.log", grow(65_000)), file("b.log", grow(65_000)), file("c.log", grow(65_000)), file("one.png", PNG), file("two.png", PNG.slice()), file("three.png", PNG)]);
+    expect(r.have.length).toBeGreaterThan(1);
+    expect(passes(r.have)).toBe("passed");
+  });
+  test("whatever mix of names, types and sizes is dropped", async () => {
+    let seed = 7;
+    const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed % n; };
+    const names = ["notes.md", "notes", "a.pl", "b.ics", "c.rtf", "d.ndjson", "Procfile.dev", "App.tsx", "shot.png", "clipboard", "x.jpg", ".env", "id_rsa", "doc.pdf", " pad .md", `${"z".repeat(119)} q.md`];
+    const types = ["", "text/plain", "text/calendar", "application/json", "image/png", "image/jpeg"];
+    const bodies = [enc("hello"), grow(30_000), grow(99_900), grow(65_000), PNG, enc("const k = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123';"), new Uint8Array([0xff, 0xfe, 0])];
+    for (let round = 0; round < 60; round++) {
+      let have: Awaited<ReturnType<typeof addFiles>>["have"] = [];
+      for (let drop = 0; drop < 3; drop++) {
+        const files = Array.from({ length: 1 + rnd(4) }, () => file(names[rnd(names.length)], bodies[rnd(bodies.length)].slice(), types[rnd(types.length)]));
+        have = (await addFiles(have, files)).have;
+      }
+      expect(passes(have), `round ${round}: ${have.map((a) => a.name).join(", ")}`).toBe("passed");
     }
   });
 });
@@ -177,7 +222,8 @@ describe("Home takes files only from a drop or a paste the person makes", () => 
   });
   test("each chip has a Remove button that names the file, and Start sends what is added", () => {
     expect(card).toContain("aria-label={S.attachRemove(a.name)}");
-    expect(card).toMatch(/startTask\(project, prompt, off, forRequest\(attached\)\)/);
+    expect(card).toMatch(/const added = forRequest\(attachedNow\.current\);/);
+    expect(card).toMatch(/startTask\(project, prompt, off, added\)/);
   });
   test("words from hold to talk are not sent by themselves while files are added: Start is pressed for them", () => {
     expect(card).toMatch(/else if \(autoSend && attachedNow\.current\.length === 0 &&/);
