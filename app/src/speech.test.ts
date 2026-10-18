@@ -71,22 +71,22 @@ describe("answers said out loud for a question asked by voice (off by default, T
   });
   const m = (o: Partial<Model>): Model => ({ ...initial(), ...o });
   test("the answers on the card: a research answer and a finished task's result, each under its own key and kind", () => {
-    const r = repliesIn(m({ research: { title: "Which host", answer: "Vercel fits this project best.", notes: [], file: "/p/.companion/research/a.md" } } as never));
-    expect(r).toEqual([{ key: "research:/p/.companion/research/a.md", text: "Vercel fits this project best.", kind: "research" }]);
-    const done = repliesIn(m({ receipt: { proof: "passed", checkpoint: "cp_0007", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never));
-    expect(done).toEqual([{ key: "receipt:cp_0007", text: S.proven, kind: "task" }]);
+    const r = repliesIn(m({ research: { title: "Which host", answer: "Vercel fits this project best.", notes: [], file: ".companion/research/a.md" } } as never), "/p");
+    expect(r).toEqual([{ key: "research:/p:.companion/research/a.md", text: "Vercel fits this project best.", kind: "research" }]);
+    const done = repliesIn(m({ receipt: { proof: "passed", checkpoint: "cp_0007", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
+    expect(done).toEqual([{ key: "receipt:/p:cp_0007", text: S.proven, kind: "task" }]);
     // A rescue is started by its button, never by voice, so it is not an answer to say.
-    expect(repliesIn(m({ rescue: { summary: "The site builds.", works: [], broken: "x", evidence: [] } } as never))).toEqual([]);
-    expect(repliesIn(m({}))).toEqual([]);
+    expect(repliesIn(m({ rescue: { summary: "The site builds.", works: [], broken: "x", evidence: [] } } as never), "/p")).toEqual([]);
+    expect(repliesIn(m({}), "/p")).toEqual([]);
   });
   test("a new answer is found even when an older one is still on the card", () => {
-    const research = { title: "Which host", answer: "Vercel.", notes: [], file: "/p/r.md" };
-    const before = repliesIn(m({ research } as never));
+    const research = { title: "Which host", answer: "Vercel.", notes: [], file: ".companion/research/r.md" };
+    const before = repliesIn(m({ research } as never), "/p");
     const seen = new Set(before.map((x) => x.key));
     expect(newReply(before, seen)).toBeNull();
     // The task asked by voice finishes while the old research answer is still shown: its result is the new answer.
-    const after = repliesIn(m({ research, receipt: { proof: "passed", checkpoint: "cp_0008", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never));
-    expect(newReply(after, seen)).toEqual({ key: "receipt:cp_0008", text: S.proven, kind: "task" });
+    const after = repliesIn(m({ research, receipt: { proof: "passed", checkpoint: "cp_0008", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
+    expect(newReply(after, seen)).toEqual({ key: "receipt:/p:cp_0008", text: S.proven, kind: "task" });
     expect(newReply([], seen)).toBeNull();
   });
   test("when the sound is off nothing is said, and the card says so once", () => {
@@ -189,5 +189,46 @@ describe("a Show me asked by voice counts only its own answer", () => {
     for (const l of card.split("\n").filter((x) => x.includes('invoke("do_it_for_me")') || x.includes("send(findProblem(project))") || x.includes("message: S.showMeHint"))) expect(l).toContain("pressed();");
     expect(card.slice(card.indexOf("const rescue = () => {"), card.indexOf("const rescue = () => {") + 200)).toContain("pressed();");
     expect(card.slice(card.indexOf("const beginLesson = "), card.indexOf("const beginLesson = ") + 300)).toContain("pressed();");
+  });
+});
+
+// Found in review, 18 Oct 2026: a reply's key was its checkpoint alone, and checkpoints are numbered per project (each
+// project's shadow history starts again at cp_0001). After the practice fix ended with cp_0001, the first task asked by
+// voice in the person's own project also ended with cp_0001, so its answer was never said, and the question stayed open
+// for ten minutes for the next pressed flow's answer. Research notes are named per project too.
+describe("answers in another project", () => {
+  const m = (o: Partial<Model>): Model => ({ ...initial(), ...o });
+  const receipt = (checkpoint: string) => ({ proof: "passed", checkpoint, changed: [], commands: 0, notUndoable: [], usdEstimate: 0 });
+  test("the first receipt in another project is a new answer, though its checkpoint has the same number", () => {
+    const seen = new Set(repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/practice").map((x) => x.key));
+    const mine = repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/shop");
+    expect(newReply(mine, seen)).toEqual({ key: "receipt:/Users/me/shop:cp_0001", text: S.proven, kind: "task" });
+    // The same answer in the same project is still said only once.
+    for (const x of mine) seen.add(x.key);
+    expect(newReply(repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/shop"), seen)).toBeNull();
+  });
+  test("a research note with the same name in another project is a new answer", () => {
+    const research = { title: "Which host", answer: "Vercel.", notes: [], file: ".companion/research/2026-10-18-which-host.md" };
+    const seen = new Set(repliesIn(m({ research } as never), "/a").map((x) => x.key));
+    expect(newReply(repliesIn(m({ research } as never), "/b"), seen)?.kind).toBe("research");
+  });
+  test("the card keys answers by its project, forgets them and any open voice question when the project changes", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const effect = card.slice(card.indexOf("const seenReplies ="), card.indexOf("}, [replyKeys]);"));
+    expect(effect).toContain("repliesIn(m, project).map((r) => r.key)");
+    expect(effect).toContain("const all = repliesIn(m, project);");
+    expect(card).not.toMatch(/repliesIn\(m\)/);
+    const changed = card.slice(card.indexOf("// Another project:"), card.indexOf("// Another project:") + 500);
+    expect(changed).toContain('listen("project-changed"');
+    expect(changed).toContain("seenReplies.current.clear();");
+    expect(changed).toContain("voiceAsked.current = null;");
+  });
+  test("a typed follow up, Try again, the error explainer's Fix it and Let me try the next one are pressed, not asked by voice", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const followUp = card.slice(card.indexOf("<FollowUpBox project={project}"), card.indexOf("<FollowUpBox project={project}") + 400);
+    expect(followUp).toMatch(/onSent=\{\(\) => \{ pressed\(\);/);
+    const fix = card.split("\n").find((l) => l.includes("send(fixError("))!;
+    expect(fix).toContain("pressed();");
+    expect(card.slice(card.indexOf("const tryTheNextOne = "), card.indexOf("const tryTheNextOne = ") + 200)).toContain("pressed();");
   });
 });

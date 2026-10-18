@@ -157,8 +157,9 @@ pub struct Recorder { stop: Sender<()>, result: mpsc::Receiver<Result<Heard, Str
 
 impl Recorder {
     /// Opens the microphone picked in Settings, or the Mac's default when none is picked or the picked one is not connected
-    /// (voiceset::pick_mic). While the keys are held, a microphone that goes away is replaced by another (voiceset::after_loss)
-    /// and one that changes (a Bluetooth headset starting its microphone) is opened again, at most MAX_REOPENS times.
+    /// or will not open (voiceset::open_at_start). While the keys are held, a microphone that goes away is replaced by
+    /// another (voiceset::after_loss) and one that changes (a Bluetooth headset starting its microphone) is opened again, at
+    /// most MAX_REOPENS times.
     pub fn start(saved: Option<Named>) -> Result<(Recorder, Opened), String> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (res_tx, res_rx) = mpsc::channel();
@@ -167,14 +168,25 @@ impl Recorder {
             let host = cpal::default_host();
             let list = input_list(&host);
             let infos: Vec<Input> = list.iter().map(|(i, _)| i.clone()).collect();
-            let pick = voiceset::pick_mic(saved.as_ref(), &infos, default_id(&host).as_deref());
-            let first = match pick.index {
-                Some(i) => Some(list[i].clone()),
-                None => host.default_input_device().map(|d| (Input { id: d.id().map(|x| x.to_string()).unwrap_or_default(), name: name_of(&d).unwrap_or_default() }, d)),
+            let fail = |e: String| { let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); };
+            let (mut using, mut live, missing) = if infos.is_empty() {
+                // No microphone could be listed by name just now: the Mac's default, if it has one.
+                let Some(d) = host.default_input_device() else { fail("No microphone was found.".into()); return };
+                let using = Input { id: d.id().map(|x| x.to_string()).unwrap_or_default(), name: name_of(&d).unwrap_or_default() };
+                match open(&d) { Ok(o) => (using, Some(o), saved.as_ref().map(|s| s.name.clone())), Err(e) => { fail(e); return } }
+            } else {
+                // The picked one (or the Mac's default), then, when it is listed but will not open, another in its place, named
+                // in the one plain line (voiceset::open_at_start). A stop meanwhile wins, as in a reopen.
+                let did = default_id(&host);
+                let mut first_err: Option<String> = None;
+                let opener = |i: usize| match open(&list[i].1) { Ok(o) => Some(o), Err(e) => { first_err.get_or_insert(e); None } };
+                match voiceset::open_at_start(saved.as_ref(), &infos, did.as_deref(), opener, || voiceset::stop_waiting(&stop_rx)) {
+                    (voiceset::Reopen::Opened(i, o), missing) => (infos[i].clone(), Some(o), missing),
+                    (voiceset::Reopen::NoneOpened, _) => { fail(first_err.unwrap_or_else(|| "No microphone would start.".into())); return }
+                    (voiceset::Reopen::Stopped, _) => { fail("The microphone did not start.".into()); return }
+                }
             };
-            let Some((mut using, dev)) = first else { let e = "No microphone was found.".to_string(); let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); return };
-            let mut live = match open(&dev) { Ok(o) => Some(o), Err(e) => { let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); return } };
-            let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing: pick.missing.clone() }));
+            let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing }));
             let (mut heard, mut switched_to, mut lost, mut reopens) = (Vec::<f32>::new(), None, false, 0u32);
             loop {
                 // The key came up (or Stop everything, or the recorder was dropped): stop listening.
@@ -276,6 +288,17 @@ mod tests {
         let reopen = &c[c.find("let other = voiceset::after_loss(").unwrap()..];
         assert!(reopen.contains("voiceset::reopen_first([same, other].into_iter().flatten(), |i| open(&list[i].1).ok(), || voiceset::stop_waiting(&stop_rx))"));
         assert!(reopen.contains("voiceset::Reopen::Stopped => break"), "a stop during a reopen ends the recording");
+    }
+    // Found in review, 18 Oct 2026: at the start, a picked microphone that was listed but would not open gave an error
+    // instead of the default listening with the one plain line.
+    #[test]
+    fn the_start_falls_back_like_a_reopen_and_names_the_picked_microphone_when_another_listens() {
+        let c = code();
+        let start = &c[c.find("pub fn start(saved: Option<Named>)").unwrap()..c.find("let (mut heard, mut switched_to").unwrap()];
+        assert!(start.contains("voiceset::open_at_start(saved.as_ref(), &infos, did.as_deref(),"), "{start}");
+        assert!(start.contains("|| voiceset::stop_waiting(&stop_rx))"));
+        assert!(!start.contains("voiceset::pick_mic("), "the start's choice is open_at_start's");
+        assert!(start.contains("let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing }));"));
     }
 
     /// Real speech in, real words out. Needs the model (downloaded once into the real app folder, about 140 MB).

@@ -591,15 +591,21 @@ function Card() {
   // The answer to a question asked by voice (a research answer, a finished task's result), said once, whole when short:
   // only the answer that is new on the card, and only of the kind that was asked (speech.ts newReply, askedByVoice).
   const seenReplies = useRef(new Set<string>());
-  const replyKeys = repliesIn(m).map((r) => r.key).join("|");
+  const replyKeys = repliesIn(m, project).map((r) => r.key).join("|");
   useEffect(() => {
-    const all = repliesIn(m);
+    const all = repliesIn(m, project);
     const r = newReply(all, seenReplies.current);
     for (const x of all) seenReplies.current.add(x.key);
     if (!r || !repliesOn() || !askedByVoice(voiceAsked.current, r.kind, Date.now())) return;
     voiceAsked.current = null;   // one answer per question
     sayIt(r.text, true);
   }, [replyKeys]);
+  // Another project: its answers are numbered and named on their own (its first task ends with cp_0001 again), and a
+  // question asked by voice about the old project is not answered by anything in the new one.
+  useEffect(() => {
+    const off = listen("project-changed", () => { seenReplies.current.clear(); voiceAsked.current = null; });
+    return () => { off.then((f) => f()); };
+  }, []);
   // A question sent from the box counts as asked by voice when the box still held words from hold to talk.
   const sentFromBox = (kind: AskKind) => { voiceAsked.current = fromVoice.current ? { kind, at: Date.now() } : null; fromVoice.current = false; };
   // A Show me asked by voice keeps to its own request and ends with its answer (speech.ts followVoiceShowMe), so no other
@@ -752,7 +758,7 @@ function Card() {
     });
     return () => { off.then((f) => f()); };
   }, []);
-  const tryTheNextOne = (checkpoint: string) => { if (!project) return; teachWant.current = checkpoint; dispatch({ type: "ui.teachAsked", checkpoint }); void send(tryNextOne(project, checkpoint)); };
+  const tryTheNextOne = (checkpoint: string) => { if (!project) return; pressed(); teachWant.current = checkpoint; dispatch({ type: "ui.teachAsked", checkpoint }); void send(tryNextOne(project, checkpoint)); };
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
   const [fun, setFun] = useState(reactionsOn);
@@ -1340,7 +1346,7 @@ function Card() {
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {(canFollowUp(m, project) || m.followUp === "sending") && (
             <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)}
-              onSent={() => { dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
+              onSent={() => { pressed(); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
           )}
         </section>
       )}
@@ -1453,7 +1459,7 @@ function Card() {
           )}
           <div className="row">
             {["ready", "unexplained"].includes(m.eh.stage) && pointsOnScreen(m.eh.where) && project && m.eh.project === project && <button className="btn" type="button" onClick={() => pointProblem(project, m.eh!.where)}>{S.pointWhere}</button>}
-            {["ready", "unexplained"].includes(m.eh.stage) && m.eh.evidence && project && m.eh.project === project && <button className="btn primary" type="button" disabled={working} onClick={() => { dispatch({ type: "ui.undoClosed" }); void send(fixError(project, m.eh!.evidence!, m.eh!.where)); void invoke("eh_dismiss"); }}>{S.ehFix}</button>}
+            {["ready", "unexplained"].includes(m.eh.stage) && m.eh.evidence && project && m.eh.project === project && <button className="btn primary" type="button" disabled={working} onClick={() => { pressed(); dispatch({ type: "ui.undoClosed" }); void send(fixError(project, m.eh!.evidence!, m.eh!.where)); void invoke("eh_dismiss"); }}>{S.ehFix}</button>}
             <button className="btn" type="button" onClick={() => { void invoke("eh_dismiss"); dispatch({ type: "ui.ehClosed" }); }}>{["reading", "thinking", "consent"].includes(m.eh.stage) ? S.planCancel : S.ehClose}</button>
           </div>
         </section>

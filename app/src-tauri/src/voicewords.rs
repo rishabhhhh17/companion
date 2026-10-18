@@ -13,11 +13,22 @@ pub const MAX_CHARS: usize = 320;
 pub const MAX_PACKAGE_WORDS: usize = 20;
 pub const MAX_SETTING_WORDS: usize = 8;
 pub const MAX_ENTRIES: usize = 4000;
+/// Entries looked at in any one folder, so one crowded folder never uses up the whole budget.
+pub const MAX_FOLDER_ENTRIES: usize = 400;
+/// Names taken from any one folder, so one crowded folder never takes all the room on the list.
+pub const MAX_FOLDER_WORDS: usize = 6;
 pub const MAX_DEPTH: usize = 3;
 pub const MAX_PACKAGE_BYTES: u64 = 512 * 1024;
 
 /// Folders that hold what tools made or fetched, not the person's own names.
 const SKIP_DIRS: &[&str] = &["node_modules", "dist", "build", "out", "target", "vendor", "coverage", "venv", "env", "__pycache__", "Pods", "DerivedData", "bower_components", "tmp", "temp", "logs"];
+/// Folders of pictures, fonts and sounds: never looked into (product-0.jpg and icon-128.png are nobody's words).
+const ASSET_DIRS: &[&str] = &["public", "assets", "static", "images", "image", "img", "icons", "fonts", "media", "videos", "video", "audio", "sounds", "screenshots"];
+/// Picture, font, sound, video and document files: their names are left out.
+const ASSET_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "icns", "bmp", "tif", "tiff", "heic", "psd", "ttf", "otf", "woff", "woff2", "eot",
+    "mp3", "wav", "ogg", "m4a", "aac", "flac", "mp4", "mov", "webm", "avi", "mkv", "pdf"];
+/// Code files: their names are the ones a person says ("useAuth", "CheckoutForm"), so they come first in each folder.
+const CODE_EXTS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro", "py", "rb", "go", "rs", "swift", "kt", "java", "php", "sql", "prisma", "graphql", "gql", "dart", "cs", "ex", "exs"];
 /// Names too common to be worth a place on the short list (the speech model knows these words already).
 const GENERIC: &[&str] = &["index", "main", "app", "page", "layout", "readme", "license", "licence", "changelog", "package", "package-lock", "tsconfig", "jsconfig",
     "test", "tests", "spec", "specs", "utils", "util", "lib", "src", "styles", "style", "globals", "global", "favicon", "logo", "components", "component", "types", "type",
@@ -69,27 +80,44 @@ pub fn from_file_name(name: &str) -> Option<String> {
 /// A name that suggests private material (PRIVATE_HINTS): left out, and a folder with such a name is not looked into.
 fn sounds_private(name: &str) -> bool { let low = name.to_lowercase(); PRIVATE_HINTS.iter().any(|h| low.contains(h)) }
 
-fn walk(dir: &Path, depth: usize, seen: &mut usize, by_depth: &mut Vec<Vec<String>>) {
-    if depth > MAX_DEPTH || *seen >= MAX_ENTRIES { return; }
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
-    let mut entries: Vec<(String, bool)> = Vec::new();
-    for e in rd.flatten() {
-        if *seen >= MAX_ENTRIES { break; }
-        *seen += 1;
-        let Ok(ft) = e.file_type() else { continue };
-        if ft.is_symlink() { continue; }   // never followed out of the project
-        entries.push((e.file_name().to_string_lossy().to_string(), ft.is_dir()));
+fn ext(name: &str) -> String { name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default() }
+/// In each folder: code files first, then folders, then other files.
+fn rank(name: &str, is_dir: bool) -> u8 { if is_dir { 1 } else if CODE_EXTS.contains(&ext(name).as_str()) { 0 } else { 2 } }
+fn looks_into(name: &str) -> bool {
+    let low = name.to_lowercase();
+    !name.starts_with('.') && !SKIP_DIRS.contains(&name) && !ASSET_DIRS.contains(&low.as_str()) && !sounds_private(name)
+}
+
+/// Folder and file names, breadth first: the whole top of the project before anything deeper, so the caps cut the deepest
+/// names first. At most MAX_FOLDER_ENTRIES looked at and MAX_FOLDER_WORDS taken from any one folder, MAX_ENTRIES in all.
+fn walk(project: &Path) -> Vec<String> {
+    let (mut out, mut seen) = (Vec::new(), 0usize);
+    let mut queue = std::collections::VecDeque::from([(project.to_path_buf(), 0usize)]);
+    while let Some((dir, depth)) = queue.pop_front() {
+        if seen >= MAX_ENTRIES { break; }
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let mut entries: Vec<(String, bool)> = Vec::new();
+        for e in rd.flatten().take(MAX_FOLDER_ENTRIES) {
+            if seen >= MAX_ENTRIES { break; }
+            seen += 1;
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() { continue; }   // never followed out of the project
+            entries.push((e.file_name().to_string_lossy().to_string(), ft.is_dir()));
+        }
+        entries.sort_by(|a, b| rank(&a.0, a.1).cmp(&rank(&b.0, b.1)).then_with(|| a.0.cmp(&b.0)));
+        let mut taken = 0usize;
+        for (name, is_dir) in &entries {
+            let asset = !*is_dir && ASSET_EXTS.contains(&ext(name).as_str());
+            if taken < MAX_FOLDER_WORDS && !asset { if let Some(w) = from_file_name(name) { out.push(w); taken += 1; } }
+            if *is_dir && depth < MAX_DEPTH && looks_into(name) { queue.push_back((dir.join(name), depth + 1)); }
+        }
     }
-    entries.sort();
-    while by_depth.len() <= depth { by_depth.push(Vec::new()); }
-    for (name, is_dir) in &entries {
-        if let Some(w) = from_file_name(name) { by_depth[depth].push(w); }
-        if *is_dir && !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_str()) && !sounds_private(name) { walk(&dir.join(name), depth + 1, seen, by_depth); }
-    }
+    out
 }
 
 /// The project's own words, most useful first: package names, then the setting names the project check reported, then
-/// folder and file names, shallow ones first. Only package.json is opened, and only when it is a sensible size.
+/// folder and file names, shallow ones first and code names first in each folder (never pictures, fonts or sounds). Only
+/// package.json is opened, and only when it is a sensible size.
 pub fn collect(project: &Path, settings: &[String]) -> Vec<String> {
     if !project.is_dir() { return vec![]; }
     let mut out = Vec::new();
@@ -98,9 +126,7 @@ pub fn collect(project: &Path, settings: &[String]) -> Vec<String> {
         if let Ok(t) = std::fs::read_to_string(&pkg) { for w in from_package(&t) { push(&mut out, &w); } }
     }
     for w in settings.iter().take(MAX_SETTING_WORDS) { push(&mut out, w); }
-    let (mut seen, mut by_depth) = (0usize, Vec::new());
-    walk(project, 0, &mut seen, &mut by_depth);
-    for w in by_depth.into_iter().flatten() { if out.len() >= MAX_WORDS { break; } push(&mut out, &w); }
+    for w in walk(project) { if out.len() >= MAX_WORDS { break; } push(&mut out, &w); }
     out.truncate(MAX_WORDS);
     out
 }
@@ -259,6 +285,61 @@ mod tests {
         let w = collect(&d, &[]);
         assert!(t0.elapsed() < std::time::Duration::from_secs(3), "{:?}", t0.elapsed());
         assert!(w.len() <= MAX_WORDS);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    // Found in review, 18 Oct 2026: the walk went depth first with one shared budget and took names in visiting order, so
+    // a public folder of pictures (it sorts before src) filled the list with product-0, product-1... and 4100 icons used
+    // the whole budget before src was ever read. A real project also has up to 20 package names and 8 setting names first.
+    fn real_size_package(d: &Path) {
+        let deps: serde_json::Map<String, Value> = (0..30).map(|i| (format!("toolkit{i}"), json!("1"))).collect();
+        write(d.join("package.json"), json!({ "name": "shop", "dependencies": deps }).to_string()).unwrap();
+    }
+    fn settings8() -> Vec<String> { (0..8).map(|i| format!("SETTING_{i}")).collect() }
+    #[test]
+    fn pictures_icons_and_fonts_never_crowd_out_the_projects_own_code_names() {
+        let d = fixture("crowded-public");
+        real_size_package(&d);
+        create_dir_all(d.join("public/images")).unwrap();
+        for i in 0..45 { write(d.join(format!("public/images/product-{i}.jpg")), "").unwrap(); }
+        create_dir_all(d.join("public/icons")).unwrap();
+        for i in 0..4100 { write(d.join(format!("public/icons/i{i}.svg")), "").unwrap(); }
+        create_dir_all(d.join("src/assets")).unwrap(); write(d.join("src/assets/heroBanner.png"), "").unwrap();
+        write(d.join("brandFont.woff2"), "").unwrap(); write(d.join("introVideo.mp4"), "").unwrap();
+        create_dir_all(d.join("src/hooks")).unwrap(); write(d.join("src/hooks/useAuth.ts"), "").unwrap();
+        create_dir_all(d.join("src/components")).unwrap(); write(d.join("src/components/CheckoutForm.tsx"), "").unwrap();
+        // A crowded folder of the project's own components gives some of its names, never all the room.
+        for i in 0..30 { write(d.join(format!("src/components/Widget{i}.tsx")), "").unwrap(); }
+        let w = collect(&d, &settings8());
+        assert!(w.len() <= MAX_WORDS);
+        assert!(w[..MAX_PACKAGE_WORDS].iter().all(|x| x == "shop" || x.starts_with("toolkit")), "package names first: {w:?}");
+        for want in ["useAuth", "CheckoutForm", "hooks", "SETTING_7"] { assert!(w.contains(&want.to_string()), "{want} in {w:?}"); }
+        for never in ["product-0", "i0", "i10", "heroBanner", "brandFont", "introVideo", "images", "icons"] { assert!(!w.contains(&never.to_string()), "{never} in {w:?}"); }
+        assert!(w.iter().filter(|x| x.starts_with("Widget")).count() < 10, "one folder never takes all the room: {w:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn a_crowded_folder_that_sorts_first_never_stops_the_rest_of_the_project_being_read() {
+        let d = fixture("crowded-data");
+        real_size_package(&d);
+        create_dir_all(d.join("aaa-data/b/c")).unwrap();
+        for i in 0..4100 { write(d.join(format!("aaa-data/b/c/row{i}.json")), "").unwrap(); }
+        for i in 0..50 { write(d.join(format!("aaa-data/row{i}.json")), "").unwrap(); }
+        create_dir_all(d.join("src/hooks")).unwrap(); write(d.join("src/hooks/useAuth.ts"), "").unwrap();
+        create_dir_all(d.join("supabase")).unwrap(); write(d.join("supabase/seedUsers.sql"), "").unwrap();
+        let w = collect(&d, &settings8());
+        for want in ["useAuth", "supabase", "seedUsers", "hooks"] { assert!(w.contains(&want.to_string()), "{want} in {w:?}"); }
+        assert!(w.iter().filter(|x| x.starts_with("row")).count() < 10, "{w:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn shallow_names_come_before_deep_ones_and_code_names_first_in_each_folder() {
+        let d = fixture("order");
+        create_dir_all(d.join("aaa/bbb")).unwrap(); write(d.join("aaa/bbb/deepWidget.ts"), "").unwrap();
+        write(d.join("zzzTop.ts"), "").unwrap(); write(d.join("aardvarkNotes.md"), "").unwrap();
+        let w = collect(&d, &[]);
+        let at = |x: &str| w.iter().position(|y| y == x).unwrap_or_else(|| panic!("{x} in {w:?}"));
+        assert!(at("zzzTop") < at("deepWidget"), "{w:?}");
+        assert!(at("zzzTop") < at("aardvarkNotes"), "a code file's name first: {w:?}");
         let _ = std::fs::remove_dir_all(&d);
     }
     #[test]

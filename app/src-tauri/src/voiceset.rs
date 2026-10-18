@@ -166,6 +166,17 @@ pub fn reopen_first<T>(candidates: impl IntoIterator<Item = usize>, mut open: im
     }
     Reopen::NoneOpened
 }
+/// Opening a microphone when the keys go down: the one pick_mic gives, then, when that one is listed but will not open
+/// (headphones just switched off can stay in the list for a moment), the one after_loss gives in its place, looking for a
+/// stop the same way a reopen does. The second part names the picked microphone whenever another one listens instead,
+/// so the one plain line is said (MicNote).
+pub fn open_at_start<T>(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>, open: impl FnMut(usize) -> Option<T>, stopped: impl FnMut() -> bool) -> (Reopen<T>, Option<String>) {
+    let Some(first) = pick_mic(saved, inputs, default_id).index else { return (Reopen::NoneOpened, None) };
+    let instead = after_loss(saved, inputs, default_id, &inputs[first].id);
+    let r = reopen_first([Some(first), instead].into_iter().flatten(), open, stopped);
+    let missing = match &r { Reopen::Opened(i, _) => saved.filter(|s| s.id != inputs[*i].id).map(|s| s.name.clone()), _ => None };
+    (r, missing)
+}
 /// Whether the recorder was told to stop, or went away, without waiting.
 pub fn stop_waiting(rx: &std::sync::mpsc::Receiver<()>) -> bool { !matches!(rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)) }
 /// A device's name for Settings and the card: no control characters, at most MAX_NAME characters.
@@ -440,6 +451,40 @@ mod tests {
         let r = reopen_first([4, 7], |i| { tried.borrow_mut().push(i); None::<u8> }, || { looks.set(looks.get() + 1); looks.get() > 1 });
         assert_eq!(r, Reopen::Stopped);
         assert_eq!(*tried.borrow(), [4]);
+    }
+    // Found in review, 18 Oct 2026: when the keys went down, a picked microphone that was still listed but would not open
+    // (AirPods just switched off can stay in the list for a moment) gave an error, instead of the default listening with
+    // the one plain line. Only a microphone lost while the keys were held tried another.
+    #[test]
+    fn at_the_start_a_picked_microphone_that_is_listed_but_will_not_open_gives_way_to_the_default_and_is_named() {
+        let list = [inp("coreaudio:airpods", "AirPods Pro"), inp("coreaudio:built-in", "MacBook Pro Microphone"), inp("coreaudio:usb", "Blue Yeti")];
+        let pods = named("coreaudio:airpods", "AirPods Pro", "");
+        let tried = std::cell::RefCell::new(Vec::new());
+        let (r, missing) = open_at_start(Some(&pods), &list, Some("coreaudio:built-in"), |i| { tried.borrow_mut().push(i); (i != 0).then_some(i) }, || false);
+        assert_eq!(r, Reopen::Opened(1, 1), "the Mac's default listens");
+        assert_eq!(missing.as_deref(), Some("AirPods Pro"), "so the one plain line names the picked one");
+        assert_eq!(*tried.borrow(), [0, 1]);
+        // It opens: nothing else is tried and nothing is said.
+        let tried = std::cell::RefCell::new(Vec::new());
+        assert_eq!(open_at_start(Some(&pods), &list, Some("coreaudio:built-in"), |i| { tried.borrow_mut().push(i); Some(i) }, || false), (Reopen::Opened(0, 0), None));
+        assert_eq!(*tried.borrow(), [0]);
+        // Not listed at all: the default, named as before (pick_mic).
+        let gone = named("coreaudio:gone", "Old Headset", "");
+        assert_eq!(open_at_start(Some(&gone), &list, Some("coreaudio:built-in"), Some, || false), (Reopen::Opened(1, 1), Some("Old Headset".into())));
+    }
+    #[test]
+    fn at_the_start_the_default_that_will_not_open_gives_way_to_another_and_a_stop_or_nothing_opening_is_said() {
+        let list = [inp("coreaudio:built-in", "MacBook Pro Microphone"), inp("coreaudio:usb", "Blue Yeti")];
+        // Nothing picked, the default will not open: another one listens, with nothing to name.
+        assert_eq!(open_at_start(None, &list, Some("coreaudio:built-in"), |i| (i == 1).then_some(i), || false), (Reopen::Opened(1, 1), None));
+        // Nothing opens.
+        assert_eq!(open_at_start(None, &list, Some("coreaudio:built-in"), |_| None::<usize>, || false).0, Reopen::NoneOpened);
+        // Let go, or Stop everything, first: nothing is opened.
+        let opened = std::cell::Cell::new(0);
+        assert_eq!(open_at_start(Some(&named("coreaudio:usb", "Blue Yeti", "")), &list, None, |i| { opened.set(opened.get() + 1); Some(i) }, || true), (Reopen::Stopped, None));
+        assert_eq!(opened.get(), 0);
+        // No microphone listed: nothing to open here (the recorder then asks the Mac for its default itself).
+        assert_eq!(open_at_start(None, &[], None, |i| Some(i), || false).0, Reopen::NoneOpened);
     }
     #[test]
     fn a_stop_is_seen_whether_it_was_sent_or_the_recorder_went_away_and_is_not_seen_otherwise() {

@@ -90,11 +90,13 @@ export function speakWhen(o: { speech: boolean; replies: boolean; byVoice: boole
 
 export type Reply = { key: string; text: string; kind: AskKind };
 /** The answers on the card now: a finished task's result and a research answer, one key each, so each is said once.
- *  Show me's answers are lineFor's. A rescue is started by its button, never by voice, so it is not here. */
-export function repliesIn(m: Model): Reply[] {
+ *  Show me's answers are lineFor's. A rescue is started by its button, never by voice, so it is not here. `project`: the
+ *  card's project, part of each key, since checkpoints and research notes are numbered and named per project (each
+ *  project's first task ends with cp_0001). */
+export function repliesIn(m: Model, project: string): Reply[] {
   const out: Reply[] = [];
-  if (m.receipt?.checkpoint) out.push({ key: `receipt:${m.receipt.checkpoint}`, text: receiptProofWords(m), kind: "task" });
-  if (m.research?.answer) out.push({ key: `research:${m.research.file}`, text: m.research.answer, kind: "research" });
+  if (m.receipt?.checkpoint) out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: receiptProofWords(m), kind: "task" });
+  if (m.research?.answer) out.push({ key: `research:${project}:${m.research.file}`, text: m.research.answer, kind: "research" });
   return out;
 }
 /** The answer that was not on the card before (an older one may still be shown beside it), or null. */

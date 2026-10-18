@@ -1970,7 +1970,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 speech_off(&app);
                 say_voice(&app, "listening", LISTENING, json!({}));
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
-                // The microphone picked in Settings, or the Mac's default (voiceset::pick_mic).
+                // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
                         rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some() }));
