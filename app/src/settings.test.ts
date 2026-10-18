@@ -219,6 +219,11 @@ describe("the Keys section in Settings", () => {
     expect(pickerLines(list("talk", ["option-return", "control-return"]), set("talk", null))).toEqual([]);
     expect(pickerLines(list("talk", ["option-return"]), set("talk", null))).toEqual([S.keysNotFree]);
   });
+  test("use a suggestion's keys another app took since show as taken, with the reason", () => {
+    // Not registered while no result shows, so the app tries them; macOS refused them, so they are not in the free list.
+    expect(pickerLines(list("accept", ["control-option-command-j", "control-option-command-l"]), KEYS_START)).toEqual([S.keysNotFree]);
+    expect(pickerLines(list("accept", ["control-option-command-a", "control-option-command-j", "control-option-command-l"]), KEYS_START)).toEqual([]);
+  });
   test("when the keys another app held at launch are free again, the picker says so instead of a stale reason", () => {
     expect(pickerLines(list("talk", ["option-space", "option-return", "control-return"]), set("talk", null))).toEqual(["Option and Space are free again. Press them to use them again, or pick others."]);
   });
@@ -260,7 +265,7 @@ describe("the Keys section in Settings", () => {
     const picker = fn("KeyPicker");
     expect(picker).toContain('invoke("key_choices", { action: job })');
     expect(picker).toContain('invoke("set_key", { action: job, id })');
-    expect(picker).toContain("disabled={busy || !canPick(c, keys, id)}");
+    expect(picker).toContain("disabled={busy || !canPick(c, id)}");
     expect(picker).toContain("aria-pressed={keys.using[job] === id}");
     expect(picker).toContain("pickerLines(c, keys)");
     expect(picker).toContain("talkCost(id)");

@@ -113,8 +113,15 @@ describe("every line that names a key", () => {
     expect(keysIn("Control, Option, Command and Keys", swap("card", "control-option-command-j"))).toBe("Control, Option, Command and Keys");
     const both: Keys = { using: { ...KEY_DEFAULTS, problem: "control-option-command-u", card: "control-option-shift-command-k" }, picked: { ...KEY_DEFAULTS, problem: "control-option-command-u", card: "control-option-shift-command-k" } };
     expect(keysIn("Control, Option, Command and K or Control, Option, Command and F", both)).toBe("Control, Option, Shift, Command and K or Control, Option, Command and U");
-    // A job without keys keeps the usual words (they say which keys another app holds).
-    expect(keysIn(say, swap("problem", null))).toBe(say);
+    // A job without keys is named by its job, never by keys that do not work, and the text ends with where to pick others
+    // (the same words a hint uses, keyHint), once for each such job however often it is named.
+    expect(keysIn(say, swap("problem", null))).toBe("Press the keys for Point at the problem in Companion to find the same place in your project. Point at the problem: another app is using its keys. Pick other keys in Settings, under Keys to remember.");
+    const twice = keysIn("Press Control, Option, Command and F. Then Control, Option, Command and F again.", swap("problem", null));
+    expect(twice).not.toContain("Control, Option, Command and F");
+    expect(twice.split(S.keyHintOff.replace("{job}", "Point at the problem")).length).toBe(2);
+    for (const t of [keysIn(say, swap("problem", null)), twice]) { expect(t).not.toContain("{"); expect(t).not.toContain("—"); }
+    // A job without keys that the text does not name adds nothing.
+    expect(keysIn(say, swap("showme", null))).toBe(say);
   });
 });
 
@@ -122,15 +129,25 @@ describe("Change: the short list", () => {
   test("is read safely, and only chords on the list can be pressed", () => {
     const c = choicesFrom({ action: "card", choices: ["control-option-command-k", "control-option-command-j", "junk", 7], free: ["control-option-command-k", "junk"], ours: { "control-option-command-j": "showme", "x": "nobody" } }, "card");
     expect(c).toEqual({ job: "card", choices: ["control-option-command-k", "control-option-command-j"], free: ["control-option-command-k"], ours: { "control-option-command-j": "showme" } });
-    expect(canPick(c, KEYS_START, "control-option-command-k")).toBe(true);
-    expect(canPick(c, KEYS_START, "control-option-command-j")).toBe(false);
-    expect(canPick(c, KEYS_START, "control-option-command-l")).toBe(false);
+    expect(canPick(c, "control-option-command-k")).toBe(true);
+    expect(canPick(c, "control-option-command-j")).toBe(false);
+    expect(canPick(c, "control-option-command-l")).toBe(false);
     // An answer for another job, or one that cannot be read, offers nothing rather than guessing.
     for (const junk of [undefined, null, 7, {}, { action: "stop", choices: ["control-option-command-x"], free: ["control-option-command-x"] }]) expect(choicesFrom(junk, "card").choices, String(junk)).toEqual([]);
   });
-  test("the keys a job uses now can always be pressed again, which keeps them after a fall back", () => {
-    const c = choicesFrom({ action: "showme", choices: ["control-option-command-s", "control-option-command-j"], free: [], ours: {} }, "showme");
-    expect(canPick(c, swap("showme", "control-option-command-s", "control-option-command-j"), "control-option-command-s")).toBe(true);
+  test("the keys a job uses now can be pressed again, which keeps them after a fall back", () => {
+    // The app lists the keys registered for a job as free (keymap.rs free), so pressing them keeps them.
+    const c = choicesFrom({ action: "showme", choices: ["control-option-command-s", "control-option-command-j"], free: ["control-option-command-s"], ours: {} }, "showme");
+    expect(canPick(c, "control-option-command-s")).toBe(true);
+    expect(canPick(c, "control-option-command-j")).toBe(false);
+  });
+  test("keys macOS refuses cannot be pressed, even use a suggestion's keys in use", () => {
+    // They are registered only while a Prompt help result shows, so the app really tries them when Change is pressed.
+    // Another app took them since: they are not free, and a button that can only fail is not offered.
+    const c = choicesFrom({ action: "accept", choices: ["control-option-command-a", "control-option-shift-command-a", "control-option-command-j"], free: ["control-option-shift-command-a", "control-option-command-j"], ours: {} }, "accept");
+    expect(KEYS_START.using.accept).toBe("control-option-command-a");
+    expect(canPick(c, "control-option-command-a")).toBe(false);
+    expect(canPick(c, "control-option-command-j")).toBe(true);
   });
   test("every reason the app gives for not changing the keys is said in plain words", () => {
     expect(keyProblem("taken")).toBe(S.keysTaken);

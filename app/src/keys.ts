@@ -53,6 +53,8 @@ export const keysNow = (): Keys => now;
 export function setKeysNow(k: Keys): void { now = k; for (const f of listeners) f(); }
 export function onKeys(f: () => void): () => void { listeners.add(f); return () => { listeners.delete(f); }; }
 
+/** How a line names a job ("Point at the problem"). */
+const jobName = (j: Job): string => (S.keyJobs as Record<Job, string>)[j];
 /** The keys a job uses now, in words; empty when another app holds them. */
 export const keysOf = (job: Job, k: Keys = now): string => { const id = k.using[job]; return id ? chordLabel(id) : ""; };
 /** A line that names a job's keys ("{keys}"), filled with the keys in use. A line said after the keys were pressed names
@@ -61,7 +63,7 @@ export const withKeys = (template: string, job: Job, k: Keys = now): string => t
 /** A hint about a job: filled with its keys, or, when another app holds them, where to pick others (never keys that do
  *  not work). `off` replaces that line where something better fits. */
 export const keyHint = (job: Job, template: string, k: Keys = now, off?: string): string =>
-  (k.using[job] ? withKeys(template, job, k) : off ?? S.keyHintOff.replace("{job}", (S.keyJobs as Record<Job, string>)[job]));
+  (k.using[job] ? withKeys(template, job, k) : off ?? S.keyHintOff.replace("{job}", jobName(job)));
 
 /** The Prompt help result's line: its use keys only when the app could take them for this result (ph_ready answers;
  *  another app may have taken them since launch), else only Esc. */
@@ -77,13 +79,25 @@ export function armedFor(v: unknown): boolean {
 
 const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Text written with the usual keys (lessons, lines from the engine) with the keys in use instead, each job's once, in a
- *  single pass. A job without keys keeps its usual words. */
+ *  single pass. Called each time the text is shown or said, so a change in Settings shows at once. A job without keys is
+ *  named by its job ("the keys for Point at the problem"), and the text ends with where to pick others (keyHint's words,
+ *  once per job), so it never asks for keys that do not work. */
 export function keysIn(text: string, k: Keys = now): string {
-  const swaps = new Map<string, string>();
-  for (const j of JOBS) { const id = k.using[j]; if (id && id !== KEY_DEFAULTS[j]) swaps.set(chordLabel(KEY_DEFAULTS[j]), chordLabel(id)); }
-  if (swaps.size === 0 || typeof text !== "string") return text;
-  const re = new RegExp(`(?:${[...swaps.keys()].map(escape).join("|")})(?![A-Za-z])`, "g");
-  return text.replace(re, (m) => swaps.get(m) ?? m);
+  if (typeof text !== "string") return text;
+  const jobOf = new Map<string, Job>();
+  for (const j of JOBS) if (k.using[j] !== KEY_DEFAULTS[j]) jobOf.set(chordLabel(KEY_DEFAULTS[j]), j);
+  if (jobOf.size === 0) return text;
+  const off: Job[] = [];
+  const re = new RegExp(`(?:${[...jobOf.keys()].map(escape).join("|")})(?![A-Za-z])`, "g");
+  const out = text.replace(re, (m) => {
+    const j = jobOf.get(m);
+    if (!j) return m;
+    const label = chordLabel(k.using[j] ?? "");
+    if (label) return label;
+    if (!off.includes(j)) off.push(j);
+    return S.keysForJob.replace("{job}", jobName(j));
+  });
+  return [out, ...off.map((j) => S.keyHintOff.replace("{job}", jobName(j)))].join(" ");
 }
 
 /** What the app sends when Change is pressed (key_choices): the job's short list, the chords that can be pressed now, and
@@ -98,10 +112,11 @@ export function choicesFrom(v: unknown, job: Job): Choices {
   if (typeof o.ours === "object" && o.ours !== null) for (const [id, j] of Object.entries(o.ours as Record<string, unknown>)) if (choices.includes(id) && JOBS.includes(j as Job)) ours[id] = j as Job;
   return { job, choices, free: ids(o.free).filter((id) => choices.includes(id)), ours };
 }
-/** Whether a chord's button can be pressed: the keys the job uses now (pressing them keeps them), or one free on this Mac
- *  that no other job has. */
-export const canPick = (c: Choices, k: Keys, id: string): boolean =>
-  c.choices.includes(id) && (k.using[c.job] === id || (c.free.includes(id) && !c.ours[id]));
+/** Whether a chord's button can be pressed: one the app says is free on this Mac now, that no other job has. The app's
+ *  answer decides, not the keys the page knows: it counts the keys registered for the job as free (so the keys in use
+ *  after a fall back can be pressed to keep them), and it really tries use a suggestion's keys, which are registered only
+ *  while a result shows, so keys another app took since show as taken instead of a button that can only fail. */
+export const canPick = (c: Choices, id: string): boolean => c.choices.includes(id) && c.free.includes(id) && !c.ours[id];
 
 /** Why the keys did not change, from the code the app sends (keymap.rs NotChanged, and the commands in main.rs). */
 export function keyProblem(code: string): string {

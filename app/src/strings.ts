@@ -157,6 +157,8 @@ export const S = {
   keysResetKept: (jobs: string) => `These could not go back to their usual keys, because another app is using them: ${jobs}.`,
   keyHintOff: "{job}: another app is using its keys. Pick other keys in Settings, under Keys to remember.",
   itsKeys: "its keys",
+  // A lesson that names the keys of a job with no keys names the job instead (keys.ts keysIn).
+  keysForJob: "the keys for {job}",
   voiceDownload: "Download the speech model (about 140 MB, once)",
   voiceAutoSend: "Send automatically when I say three words or more",
   voiceUse: "Use these words",

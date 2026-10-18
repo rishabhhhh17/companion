@@ -4,7 +4,7 @@ import { PRACTICE_LABEL, SETTINGS_LESSON_ID } from "./commands.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
-import { keysIn, withKeys } from "./keys.ts";
+import { withKeys } from "./keys.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -381,12 +381,13 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.walkRequested": return { ...m, walkWant: String(e.walk), walk: null };
     case "ui.walkClosed": return { ...m, walk: null, walkWant: null };
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
-    // A lesson names the usual keys; the card says the keys in use instead (keys.ts keysIn), and so does the spoken line.
-    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: keysIn(String(e.say)), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: keysIn(String(x.say)), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
+    // A lesson names the usual keys. Its words are kept as sent: the card and the spoken line fill in the keys in use each
+    // time they show or say them (keys.ts keysIn), so a change in Settings while a step is up shows at once.
+    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
-    case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: keysIn(String(e.say ?? "")) } } : m;
+    case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
     // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.
-    case "walk.wait": return m.walk && m.walk.id === e.walk && m.walk.stage === "step" && m.walk.index === e.index ? { ...m, walk: { ...m.walk, note: keysIn(String(e.say ?? "")) } } : m;
+    case "walk.wait": return m.walk && m.walk.id === e.walk && m.walk.stage === "step" && m.walk.index === e.index ? { ...m, walk: { ...m.walk, note: String(e.say ?? "") } } : m;
     case "walk.done": {
       // The setting practice: its lesson finishing in its own project means the checks run again (the card starts them).
       if (m.practice?.stage === "lesson" && e.project === m.practice.project && e.lesson === SETTINGS_LESSON_ID) m = { ...m, practice: { ...m.practice, stage: "proving" } };

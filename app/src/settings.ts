@@ -124,9 +124,9 @@ export function keyRows(k: Keys = keysNow()): KeyRow[] {
 export function pickerLines(c: Choices, k: Keys = keysNow()): string[] {
   const out: string[] = [];
   const using = k.using[c.job], picked = k.picked[c.job];
-  if (!using && canPick(c, k, picked)) out.push(S.keysFreeNow.replace("{keys}", chordLabel(picked)));
+  if (!using && canPick(c, picked)) out.push(S.keysFreeNow.replace("{keys}", chordLabel(picked)));
   const said = using !== picked ? picked : null;
-  if (c.choices.some((id) => id !== said && !c.ours[id] && !canPick(c, k, id))) out.push(S.keysNotFree);
+  if (c.choices.some((id) => id !== said && !c.ours[id] && !canPick(c, id))) out.push(S.keysNotFree);
   if (c.choices.some((id) => c.ours[id])) out.push(S.keysOurs);
   return out;
 }

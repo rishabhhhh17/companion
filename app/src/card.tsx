@@ -14,7 +14,7 @@ import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./mod
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
@@ -232,8 +232,9 @@ function KeysSection({ keys }: { keys: Keys }) {
   </>);
 }
 
-// One job's short list, asked of the app when Change is pressed. Only keys that are free on this Mac and that no other job
-// has can be pressed; the keys in use can always be pressed again (that keeps them after a fall back).
+// One job's short list, asked of the app when Change is pressed. Only keys the app says are free on this Mac and that no
+// other job has can be pressed (keys.ts canPick); the app counts the keys registered for the job as free, so the keys in
+// use after a fall back can be pressed again to keep them.
 function KeyPicker({ job, keys, onDone }: { job: Job; keys: Keys; onDone: (changed: Keys | null) => void }) {
   const [c, setC] = useState<Choices | null>(null);
   const [problem, setProblem] = useState("");
@@ -257,7 +258,7 @@ function KeyPicker({ job, keys, onDone }: { job: Job; keys: Keys; onDone: (chang
     {!c && !problem && <div className="line muted" role="status">{S.keysChecking}</div>}
     {c && (<>
       <div className="row" role="group" aria-label={S.keysPickFor((S.keyJobs as Record<Job, string>)[job])}>
-        {c.choices.map((id) => <button key={id} className={keys.using[job] === id ? "btn primary" : "btn"} type="button" disabled={busy || !canPick(c, keys, id)} aria-pressed={keys.using[job] === id} aria-describedby={talkCost(id) ? `key-cost-${id}` : undefined} onClick={() => pick(id)}>{chordLabel(id)}</button>)}
+        {c.choices.map((id) => <button key={id} className={keys.using[job] === id ? "btn primary" : "btn"} type="button" disabled={busy || !canPick(c, id)} aria-pressed={keys.using[job] === id} aria-describedby={talkCost(id) ? `key-cost-${id}` : undefined} onClick={() => pick(id)}>{chordLabel(id)}</button>)}
         <button className="btn" type="button" onClick={() => onDone(null)}>{S.planCancel}</button>
       </div>
       {pickerLines(c, keys).map((l) => <div className="line muted" key={l}>{l}</div>)}
@@ -571,7 +572,7 @@ function Card() {
   }, []);
   // Spoken replies: only if turned on, one line per thing shown, and never for anything the person did not ask for.
   const saidKey = useRef("");
-  const spoken = lineFor({ walk: m.walk, showme: m.showme });
+  const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys);
   useEffect(() => {
     if (!spoken || spoken.key === saidKey.current || !speechOn()) return;
     saidKey.current = spoken.key;
@@ -984,14 +985,14 @@ function Card() {
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
           {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
-            <div className="line"><b>{m.walk.say}</b></div>
+            <div className="line"><b>{keysIn(m.walk.say, keys)}</b></div>
           </>}
-          {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
-          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}
+          {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{keysIn(m.walk.note ?? "", keys)}</div>}
+          {m.walk.stage === "step" && m.walk.note && <div className="line muted">{keysIn(m.walk.note ?? "", keys)}</div>}
           {m.walk.log.length > 0 && (
             <details className="line muted">
               <summary>{S.lessonLogTitle} ({m.walk.log.length})</summary>
-              <ol>{m.walk.log.map((h, i) => <li key={i}>{h.say} <span className="muted">({h.how === "skipped" ? S.lessonLogSkipped : S.lessonLogDone})</span></li>)}</ol>
+              <ol>{m.walk.log.map((h, i) => <li key={i}>{keysIn(h.say, keys)} <span className="muted">({h.how === "skipped" ? S.lessonLogSkipped : S.lessonLogDone})</span></li>)}</ol>
             </details>
           )}
           <div className="row">

@@ -157,8 +157,16 @@ describe("every hint names the keys in use", () => {
     const model = read("./model.ts");
     expect(model).not.toMatch(/Control, Option, Command/);
     expect(model).toContain('withKeys(S.phNeedsAccess, "read")');
-    // Lessons (and the engine's own lesson lines) name the usual keys; the page names the keys in use instead.
-    expect(model).toMatch(/say: keysIn\(String\(e\.say\)\)/);
+    // Lessons (and the engine's own lesson lines) name the usual keys. The model keeps their words as sent; the card and
+    // the spoken line fill in the keys in use each time they draw or speak (with `keys`, so the card draws again when they
+    // change), so a step that arrived before key_map answered, or a change in Settings while a step is up, shows at once.
+    expect(model).not.toMatch(/keysIn\(/);
+    const walkPanel = card.slice(card.indexOf('{show("walk") && m.walk && ('), card.indexOf("</section>", card.indexOf('{show("walk") && m.walk && (')));
+    expect(walkPanel).toContain("<b>{keysIn(m.walk.say, keys)}</b>");
+    expect(walkPanel.match(/\{keysIn\(m\.walk\.note \?\? "", keys\)\}/g)?.length).toBe(2);
+    expect(walkPanel).toContain("{keysIn(h.say, keys)}");
+    expect(walkPanel).not.toMatch(/\{m\.walk\.(say|note)\}|\{h\.say\}/);
+    expect(card).toContain("const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys);");
   });
   test("no line anywhere names a key that is not registered", () => {
     const letters = new Set(JOBS.filter((j) => j !== "talk").map((j) => letterOf(KEY_DEFAULTS[j])));
