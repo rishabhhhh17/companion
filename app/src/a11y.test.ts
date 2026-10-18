@@ -115,12 +115,21 @@ function elements(src: string): { js: string; els: El[] } {
 }
 
 const lit = (v?: string): string | null => { const t = v?.trim() ?? ""; return /^"(?:[^"\\]|\\.)*"$/.test(t) ? JSON.parse(t) : null; };
+/** Words, not only signs. A sign is read out by its own name ("multiplication sign", "play"), never as what the control
+ *  does, so "×" or "▶" alone is no name. The same rule for a label and for the words inside a button. */
+const hasWords = (t: string): boolean => /[A-Za-z]/.test(t);
+/** The text a quoted string shows, its escapes read. */
+const unquote = (t: string): string =>
+  t.slice(1, -1).replace(/\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|([\s\S]))/g, (_, x, u1, u2, c) => (x || u1 || u2 ? String.fromCodePoint(parseInt(x ?? u1 ?? u2, 16)) : c));
 /** A name given in a prop: a string with words in it, or an expression (the strings file's words). */
 const words = (v?: string): boolean => {
   if (v === undefined) return false;
   const l = lit(v);
-  if (l !== null) return /[A-Za-z]/.test(l);
-  return !/^(undefined|null|false|true|""|``|void 0)$/.test(v.trim());
+  if (l !== null) return hasWords(l);
+  const t = v.trim();
+  // A template with no value in it is only its own text, read the same way as a quoted string.
+  if (t.startsWith("`") && skip(t, 0) === t.length && !t.includes("${")) return hasWords(unquote(t));
+  return !/^(undefined|null|false|true|""|``|void 0)$/.test(t);
 };
 const labelled = (e: El) => words(e.props.get("aria-label")) || e.props.has("aria-labelledby");
 const hidden = (e: El) => lit(e.props.get("aria-hidden")) === "true" || e.props.get("aria-hidden") === "true";
@@ -159,7 +168,9 @@ function gives(js: string, a: number, b: number, els: El[]): boolean {
     if (t.startsWith("[") && skip(t, 0) === t.length) return splitTop(t.slice(1, -1), [","]).some(said);
     const ph = /^@(\d+)@$/.exec(t);
     if (ph) return shows(els[Number(ph[1])], js, els);
-    if (/^["']/.test(t) && skip(t, 0) === t.length) return /\S/.test(t.slice(1, -1));
+    if (/^["']/.test(t) && skip(t, 0) === t.length) return hasWords(unquote(t));
+    // A template with a value in it is that value's words; one with none is only its own text.
+    if (t.startsWith("`") && skip(t, 0) === t.length) return t.includes("${") || hasWords(unquote(t));
     if (t === "" || /^(undefined|null|false|true|this|void 0)$/.test(t)) return false;
     return true;   // a value from the strings file, the model or the person's own words
   };
@@ -212,9 +223,14 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
       <div aria-hidden="true"><button type="button" onClick={go}>{S.allow}</button></div>
       <img src="a.png" />
       <pre tabIndex={0}>{n}</pre>
+      <button onClick={go}>×</button>
+      <button>{"▶"}</button>
+      <button aria-label={\`×\`} onClick={go} />
+      <button>{\`▶\`}</button>
     </div>`;
     const found = problemsIn("bad.tsx", bad);
-    expect(found.filter((p) => p.startsWith("no name")).length, found.join("\n")).toBe(6);
+    // A sign is not a name: VoiceOver reads "multiplication sign" or "play", not what the button does.
+    expect(found.filter((p) => p.startsWith("no name")).length, found.join("\n")).toBe(10);
     expect(found.some((p) => p.startsWith("a click a keyboard cannot reach"))).toBe(true);
     expect(found.some((p) => p.startsWith("a control inside something hidden"))).toBe(true);
     expect(found.some((p) => p.startsWith("a picture with no words"))).toBe(true);
@@ -231,6 +247,8 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
       <img src="a.png" alt={S.picture} />
       <pre tabIndex={0} aria-label={S.diff}>{n}</pre>
       <details><summary>{S.more} <span className="muted">· {S.cost}</span></summary></details>
+      <button type="button" aria-label={\`\${S.open} \${n}\`} />
+      <button type="button">{\`\${S.allow} ×\`}</button>
     </>`;
     expect(problemsIn("good.tsx", good)).toEqual([]);
   });
@@ -604,6 +622,12 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       expect(ratio(c(colourIn(one(".btn")!.decl.border)!), bg), "a button's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".ask input, .row input[type=\"text\"]")!.decl.border)!), bg), "a text box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(one('.tab[aria-selected="true"]')!.decl["border-bottom-color"]), bg), "the open tab's line").toBeGreaterThanOrEqual(3);
+    });
+    test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {
+      // For sighted people the dot is the only sign another tab needs them (VoiceOver hears the words beside it).
+      const dot = c(one(".tabdot")!.decl.background);
+      expect(ratio(dot, bg), "on the page").toBeGreaterThanOrEqual(3);
+      expect(ratio(dot, over(c(colourIn(one(".tab:hover")!.decl.background)!), bg)), "on a tab under the pointer").toBeGreaterThanOrEqual(3);
     });
     test(`${theme}: the island's words, ring and marks stand out on its black`, () => {
       const black = c("#000");
