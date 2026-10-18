@@ -270,6 +270,7 @@ impl Runner {
     /// Tell every page, and remember it for pages that load later.
     pub fn publish(app: &AppHandle, v: Value) {
         remember(&mut lock(&app.state::<Runner>().sticky), &v);
+        crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         let _ = app.emit("runner-event", v);
     }
 
