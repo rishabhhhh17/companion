@@ -103,6 +103,16 @@ describe("what a paste carries", () => {
     // Only spaces is not text: a copied screenshot still comes as a picture.
     expect(pastedFiles(copied("  \n", [], [{ kind: "file", getAsFile: () => pic }]))).toEqual([pic]);
   });
+  test("a picture copied in Finder, whose own name is the copied text, is still added", () => {
+    const shot = file("Screenshot 2026-10-18.png", PNG, "image/png"), md = file("notes.md", enc("a"), "text/markdown");
+    const copied = (text: string, files: FileLike[]) => ({ files, items: [], getData: (t: string) => (t === "text/plain" ? text : "") });
+    expect(pastedFiles(copied("Screenshot 2026-10-18.png", [shot]))).toEqual([shot]);
+    // Several files copied together: one name per line (Finder may use a carriage return), or a whole path.
+    expect(pastedFiles(copied("notes.md\rScreenshot 2026-10-18.png", [md, shot]))).toEqual([md, shot]);
+    expect(pastedFiles(copied("/Users/sam/Desktop/Screenshot 2026-10-18.png\n", [shot]))).toEqual([shot]);
+    // Words that only hold the picture's name somewhere inside them are still words.
+    expect(pastedFiles(copied("See Screenshot 2026-10-18.png for the error", [shot]))).toEqual([]);
+  });
 });
 
 describe("the chips", () => {

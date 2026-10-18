@@ -2,7 +2,7 @@
 // rules in runner/src/attach.ts (the engine checks the same rules again before anything is sent). Settings and key files,
 // files that are too big and kinds that cannot go are refused before their bytes are read, each with one plain line. What
 // is added shows as a chip that can be removed, and goes with the request only when Start is pressed.
-import { admit, kindOf, precheck, type Attached, type Picture, type Refusal, type TextFile } from "../../runner/src/attach.ts";
+import { admit, baseName, kindOf, precheck, type Attached, type Picture, type Refusal, type TextFile } from "../../runner/src/attach.ts";
 import { S } from "./strings.ts";
 
 export type { Attached };
@@ -37,13 +37,17 @@ export async function addFiles(have: Attached[], files: FileLike[]): Promise<{ h
 /** The files a paste carries: its files, or else its file items (a picture copied from a screenshot can come only as an
  *  item), or none for plain text, which the box then takes as typing. When the paste also carries text, it is text: apps
  *  such as Word, Excel and Keynote put a picture of what was copied next to its text, and that picture is never taken in
- *  place of the words (a file copied in Finder, whose name comes as text too, is still added when it is not a picture). */
+ *  place of the words. A file copied in Finder, whose name (or path) comes as the text, one per line, is still added, a
+ *  picture too. */
 export function pastedFiles<F extends FileLike>(d: { files?: ArrayLike<F> | null; items?: ArrayLike<{ kind: string; getAsFile(): F | null }> | null; getData?: (type: string) => string } | null | undefined): F[] {
   if (!d) return [];
   let text = "";
   try { text = d.getData?.("text/plain") ?? ""; } catch { /* no text in it */ }
   const files = Array.from(d.files ?? []);
-  if (text.trim()) return files.filter((f) => kindOf(String(f.name ?? ""), String(f.type ?? "")) !== "image");
+  if (text.trim()) {
+    const named = new Set(text.split(/[\r\n]+/).map(baseName).filter(Boolean));
+    return files.filter((f) => kindOf(String(f.name ?? ""), String(f.type ?? "")) !== "image" || named.has(baseName(String(f.name ?? ""))));
+  }
   if (files.length) return files;
   return Array.from(d.items ?? []).filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is F => !!f);
 }
