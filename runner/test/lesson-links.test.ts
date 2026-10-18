@@ -20,7 +20,7 @@ describe("a link on a lesson step", () => {
   });
   test("anything else refuses the lesson, with a reason", () => {
     for (const link of ["http://cursor.com", "cursor.com/download", "javascript:alert(1)", "file:///etc/passwd", "https://user:pw@cursor.com", "https://cursor .com", "https://cursor.com/a b",
-      "https://localhost/x", "https://cursor", "https://cursor.com/‮", `https://cursor.com/${"a".repeat(300)}`, 42, "", null]) {
+      "https://localhost/x", "https://cursor", "https://cursor.com/\u202e", `https://cursor.com/${"a".repeat(300)}`, 42, "", null]) {
       const r = parseLesson(raw([step("a", { link })]));
       expect(r.ok, String(link)).toBe(false);
       if (!r.ok) expect(r.error).toMatch(/link/);

@@ -36,7 +36,7 @@ describe("which files may be added", () => {
   test("a name is only ever the file's own name: no folders, no hidden characters, not too long", () => {
     expect(baseName("/Users/me/project/src/App.tsx")).toBe("App.tsx");
     expect(baseName("..\\..\\x.md")).toBe("x.md");
-    expect(baseName("a‮gnp.exe")).toBe("agnp.exe");
+    expect(baseName("a\u202egnp.exe")).toBe("agnp.exe");
     expect(baseName("  notes.md  ")).toBe("notes.md");
     expect(Array.from(baseName(`${"é".repeat(300)}.md`)).length).toBeLessThanOrEqual(ATTACH.maxName);
     expect(baseName("")).toBe("");

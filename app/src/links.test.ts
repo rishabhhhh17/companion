@@ -10,7 +10,7 @@ describe("which links get an Open button", () => {
     expect(webLink("https://Docs.Stripe.com/payments?lang=en#cards")).toEqual({ url: "https://docs.stripe.com/payments?lang=en#cards", host: "docs.stripe.com" });
     expect(webLink("http://localhost:3000/signup")?.host).toBe("localhost");
     // A look alike name from another alphabet shows as its punycode name, the same name the Mac side opens.
-    expect(webLink("https://gіthub.com/x")).toEqual({ url: "https://xn--gthub-n2e.com/x", host: "xn--gthub-n2e.com" });
+    expect(webLink("https://g\u0456thub.com/x")).toEqual({ url: "https://xn--gthub-n2e.com/x", host: "xn--gthub-n2e.com" });
   });
   test("anything else gets no button (the same refusals as the Mac side, share.rs web_link)", () => {
     for (const bad of [
@@ -20,7 +20,7 @@ describe("which links get an Open button", () => {
       "https:/example.com", "https://", "https:// example.com", "https://exa mple.com", "https://example.com/a b",
       "https://example.com\n", "\nhttps://example.com", " https://example.com", "https://example.com\t", "https://a.com\u0000",
       "https://user:pass@example.com", "https://paypal.com@evil.example", "https://user@example.com",
-      "https://example.com/‮moc.live", "https://​example.com", "https://example.com/﻿",
+      "https://example.com/\u202emoc.live", "https://\u200bexample.com", "https://example.com/\ufeff",
       `https://example.com/${"a".repeat(2100)}`,
     ]) expect(webLink(bad), JSON.stringify(bad)).toBeNull();
     expect(webLink(undefined)).toBeNull();
