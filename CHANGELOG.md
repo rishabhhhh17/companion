@@ -467,3 +467,12 @@ None of this has been seen on a real screen or run with real Claude yet.
 - **Hold to talk is Option and Space.** If another app already uses those keys, Settings offers other two key choices that are free on your Mac.
 - **Ready for your Claude key.** Every request Companion makes now has the shape the newest Claude models accept (some older shapes would have failed on Sonnet 5.5 and Opus 5.5, including every Show me how on the default settings). Pointing with Computer Use uses the newest tool version.
 - **Safe paid tests.** All test runs with your key go through one harness: your key is read from the Keychain in code and never shown, each case and the whole run have a spending stop, and nothing spends unless asked. The test sets are ready: 25 fix cases, 5 "going in circles" cases, 10 risky changes for the second check, Explain scoring, and harder pointing tests.
+
+## M11 wave 4: make it yours, and usable by everyone (18 Oct 2026)
+None of this has been seen on a real screen yet.
+- **Every hotkey can be changed** in Settings, Keys to remember. Only key combinations are allowed (Companion never reads what you type), keys another app holds are shown as taken, no two jobs share keys, Stop everything always keeps working, and Reset puts the usual keys back. Every hint names the keys you picked.
+- **Voice:** pick the Mac voice and how fast it speaks, have short replies to voice questions read out (off by default), choose the microphone (Companion falls back to the Mac's default if yours disappears), and pick the language. Speech to text knows your project's own words (file and package names), worked out on your Mac.
+- **Accessibility:** every control has a name for VoiceOver, everything works with the keyboard alone, new questions are announced without taking your keyboard, all motion follows the Mac's Reduce motion setting, colors meet contrast standards in light and dark, and there is a text size setting.
+- **Small things that add up:** links open in your browser, a short "what changed" note after an update, Report a problem (it saves a cleaned log and opens a ready report; it sends nothing itself), a multi line ask box that keeps your draft, Copy on replies, drop or paste files into the ask box (secrets hidden, settings and key files refused), search in What I did, and a faster first reply at no cost.
+- **Which task broke it** now works for Python projects too.
+- Tests no longer fail just because the Mac is busy.
