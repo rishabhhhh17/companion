@@ -922,6 +922,26 @@ mod tests {
         assert_eq!(l["values"], json!({ "work.maxTurns": 150 }));
     }
     #[test]
+    fn area_1_the_engine_is_given_how_work_runs_and_never_the_budgets_or_models_the_pages_send() {
+        let mut f = File::default();
+        for (k, v) in [("work.tries", json!(5)), ("work.askOnAnyFailure", json!(true)), ("work.tryAgain", json!("fresh")), ("drive.maxSteps", json!(3)), ("approval.waitMinutes", json!(120)), ("model.quick", json!("recommended")),
+                       ("budget.task", json!(12.5)), ("budget.plan", json!(20)), ("budget.rescue", json!(1)), ("budget.research", json!(50)), ("model.work", json!("careful")), ("model.rescue", json!("recommended"))] {
+            assert_eq!(set(registry(), &mut f, k, &v, None), Ok(true), "{k}");
+            let d = registry().get(k).unwrap();
+            assert_eq!(needs_apply(d), d.applies_to("runner"), "{k}");
+        }
+        let l: Value = serde_json::from_str(&apply_line(registry(), &f, None, "a1")).unwrap();
+        assert_eq!(l["values"], json!({ "work.tries": 5, "work.askOnAnyFailure": true, "work.tryAgain": "fresh", "drive.maxSteps": 3, "approval.waitMinutes": 120, "model.quick": "recommended" }));
+        // The usual values are never stored, so putting one back reaches the engine as a missing name.
+        for k in ["work.tries", "approval.waitMinutes"] { let usual = registry().get(k).unwrap().default.clone(); set(registry(), &mut f, k, &usual, None).unwrap(); }
+        let l: Value = serde_json::from_str(&apply_line(registry(), &f, None, "a2")).unwrap();
+        assert!(l["values"].get("work.tries").is_none() && l["values"].get("approval.waitMinutes").is_none());
+        // Out of range is refused here too, before anything is kept or sent.
+        assert_eq!(set(registry(), &mut f, "budget.task", &json!(50.5), None), Err("tooHigh"));
+        assert_eq!(set(registry(), &mut f, "approval.waitMinutes", &json!(4), None), Err("tooLow"));
+        assert_eq!(set(registry(), &mut f, "model.work", &json!("claude-opus-5-5"), None), Err("notChoice"));
+    }
+    #[test]
     fn the_engines_own_settings_go_to_it_as_its_own_commands() {
         let c = runner_command("spend.dailyLimit", &json!(25), "", "i").unwrap();
         assert_eq!((c["type"].as_str(), c["project"].as_str(), c["limitUsd"].as_f64()), (Some("spending.set"), Some(crate::runner::NO_PROJECT), Some(25.0)));

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROTOCOL_VERSION, parseCommand, serialize, type Command, type Event } from "../../protocol/index.ts";
 import { AgentRunner } from "./agent.ts";
-import { createEngine, createLanes, currentAuth, readSettings } from "./engines.ts";
+import { createEngine, createLanes, currentAuth, quickModelOf, readSettings } from "./engines.ts";
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore } from "./memory/store.ts";
@@ -37,13 +37,14 @@ const say = (e: Record<string, unknown>) => emit({ v: PROTOCOL_VERSION, id: `r${
 // If a local file is damaged or cannot be written, Companion still starts and says so in plain words.
 const notes: string[] = [];
 const problem = (m: string) => { notes.push(m); };
-const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(settings) : null;
+// The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts, and by the fast lane
+// for each request ("Claude for quick answers").
+const runnerSettings = new RunnerSettings();
+const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(settings, {}, { quickModel: () => quickModelOf(runnerSettings) }) : null;
 // The daily spending limit the person chose in Settings, kept in the data folder (a developer's setting wins, for tests).
 const spending = new SpendingStore(join(settings.data, SPENDING_FILE));
 // The person's own Vercel tool: Ship deploys through it, and Point at the problem and Rescue read a failed deploy's build log through it (read only).
 const vercel = new VercelCli();
-// The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts.
-const runnerSettings = new RunnerSettings();
 const runner = new AgentRunner({ settings: runnerSettings, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: (project) => new MemoryStore({ project: project ?? "", profileDir: settings.data }).forAgent(300) }) : null;
 const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject });

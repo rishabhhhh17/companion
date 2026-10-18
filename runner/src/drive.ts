@@ -1,4 +1,6 @@
 // Drive: a plan first, then one step at a time. This file holds the plain, testable parts.
+// The usual most steps in a plan. The person may change it ("Most steps in a plan", drive.maxSteps, 3 to 20), read when a
+// plan is made; Rescue's own plans keep this one, and their own 3 to 7 steps (rescue.ts).
 export const MAX_STEPS = 12;
 
 const MAX_STEP_CHARS = 160;
@@ -21,25 +23,25 @@ export function parsePlan(text: string): string[] {
   return lines;
 }
 
-export const planPrompt = (goal: string) =>
+export const planPrompt = (goal: string, max = MAX_STEPS) =>
   `Plan this goal for a person who is not an engineer. Look around the project first (read only, change nothing).
 
 Reply with ONLY a JSON list of short steps in plain words, for example ["Add the prices section", "Add the contact line"].
-- Use as few steps as the goal needs. A small goal is 1 to 3 steps. Never more than ${MAX_STEPS}.
+- Use as few steps as the goal needs. A small goal is 1 to 3 steps. Never more than ${max}.
 - Each step is one real change that produces something a person could see or check, such as "Add the prices section" or "Make the form send an email".
 - Do not include steps about opening editors, saving files, opening a browser or looking at the result. Companion saves, checks and opens things itself.
 
 Goal: ${goal}`;
-export const shortenPrompt = (n: number) =>
-  `That plan has ${n} steps. Please reply again with ONLY a JSON list of at most ${MAX_STEPS} steps, combining small ones.`;
+export const shortenPrompt = (n: number, max = MAX_STEPS) =>
+  `That plan has ${n} steps. Please reply again with ONLY a JSON list of at most ${max} steps, combining small ones.`;
 export const stepPrompt = (i: number, n: number, title: string) =>
   `Step ${i} of ${n}: ${title}\n\nDo only this step, keep the change small, and stop when it is done.`;
 // Off the record, no conversation is saved, so a step or a second try cannot continue the planning conversation. It
 // starts afresh and is told what the whole plan is for.
 export const freshStepPrompt = (goal: string, prompt: string) =>
   `${goal ? `This is one step of a bigger goal: ${goal}\n` : ""}Earlier steps may already be done in the project's files, so look before you change anything.\n\n${prompt}`;
-export const freshShortenPrompt = (goal: string, n: number) =>
-  `${planPrompt(goal)}\n\nA first try gave ${n} steps, which is too many. Reply with ONLY a JSON list of at most ${MAX_STEPS} steps, combining small ones.`;
+export const freshShortenPrompt = (goal: string, n: number, max = MAX_STEPS) =>
+  `${planPrompt(goal, max)}\n\nA first try gave ${n} steps, which is too many. Reply with ONLY a JSON list of at most ${max} steps, combining small ones.`;
 // A rough, honest estimate to show before the person presses Start.
 // It is an upper limit ("up to"), because most steps cost far less.
 export const estimateUsd = (steps: number) => Math.round(steps * 0.25 * 100) / 100;
@@ -52,8 +54,17 @@ export const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "NotebookR
 export function failureSignature(f: { rung: string; detail: string }): string {
   return `${f.rung}:${f.detail.toLowerCase().replace(/\d+/g, "N").replace(/\s+/g, " ").trim().slice(0, 240)}`;
 }
-export const differentPrompt = (title: string, f: { label: string; detail: string }) =>
-  `Step: ${title}\n\nThe same check has failed three times in a row with the same problem, so the current approach is not working.\nFailed check: ${f.label}\nWhat happened: ${f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
+// How the tries ran out, said truly to Claude: how many checks failed in a row, and whether they all failed the same way.
+// The usual three identical failures say exactly what they always said.
+export type LoopEnd = { tries: number; same: boolean };
+const TIMES = ["", "once", "two times", "three times", "four times", "five times"];
+export function triedLine(end: LoopEnd = { tries: 3, same: true }): string {
+  const times = TIMES[end.tries] ?? `${end.tries} times`;
+  if (end.tries <= 1) return "The check failed, so the current approach is not working.";
+  return end.same ? `The same check has failed ${times} in a row with the same problem, so the current approach is not working.` : `The checks have failed ${times} in a row, so the current approach is not working.`;
+}
+export const differentPrompt = (title: string, f: { label: string; detail: string }, end?: LoopEnd) =>
+  `Step: ${title}\n\n${triedLine(end)}\nFailed check: ${f.label}\nWhat happened: ${f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
 export const STUCK_OPTIONS = [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }];
 export const pausedPrompt = (title: string) =>
   `You were paused because the person looked at or changed the project themselves. Re-read whatever you need, keep their changes, and carry on with this step: ${title}`;

@@ -1,6 +1,8 @@
 // The engine is whatever produces an agent's turns. The real one wraps the Claude Agent
 // SDK (later in M1). The scripted one plays back a fixed script, for free, fast tests.
 
+import { defOf } from "../../protocol/settings.ts";
+
 export type ToolUse = { name: string; input: Record<string, unknown> };
 // Tokens used since the engine's last turn that reported any. `in` is input not read from the cache (cache writes count
 // here), `cacheRead` is input read from the cache, `out` is output. Absent when the engine did not say.
@@ -11,8 +13,11 @@ export type Turn = { text?: string; tool?: ToolUse; costUsd: number; sessionId?:
 export type ShellFacts = { backgroundId?: string };
 export type ToolResult = { ok: boolean; output: string; shell?: ShellFacts };
 export type Authorization = { allow: boolean; reason: string };
-// How long an approval card waits for the person. No answer in that time counts as no.
+// How long an approval card waits for the person, as usual. No answer in that time counts as no. The person may change
+// only the wait ("How long a question waits for your answer", approval.waitMinutes), read when each question is asked;
+// the longest it can be is the setting's own top, which the SDK hook's time limit is set from (sdkEngine.ts).
 export const APPROVAL_TIMEOUT_MS = 30 * 60_000;
+export const MAX_APPROVAL_WAIT_MS = Number(defOf("approval.waitMinutes")?.max ?? 120) * 60_000;
 // `authorize` is how an engine that runs tools itself (the real SDK) asks Companion before each one.
 export type EngineOptions = {
   prompt: string; project: string; model: string; signal: AbortSignal; budgetUsd: number;

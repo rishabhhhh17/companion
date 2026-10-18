@@ -89,7 +89,7 @@ The aim eval with every page (`--set all`, 88 asks) costs a little over twice th
 
 Run every set dry first; all must be green. Then spend, cheapest first, so a problem with the harness costs cents, not dollars:
 
-1. **The smoke test**, `cd runner && bun run scripts/smoke-real.ts --spend` (about $0.55, stops at $1): every lane accepts its request on its default model, through the same harness.
+1. **The smoke test**, `cd runner && bun run scripts/smoke-real.ts --spend` (about $0.75, stops at $1): every lane accepts its request on its default model, through the same harness.
 2. **review-catch** on Opus 5.5 (about $0.50). One turn per case, so it checks the harness's single answer path. Decides whether to turn review on by default for risky changes.
 3. **explain** on Haiku 4.5, then on Haiku 5.5 with `--fast-model claude-haiku-5-5` (about $0.45 each with grading). Decides the fast lane's model (Haiku 4.5 may retire after 15 Oct 2026).
 4. **fix-projects** baseline on Sonnet 5.5 (about $5.50, cap $8).

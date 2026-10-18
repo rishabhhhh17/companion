@@ -10,7 +10,7 @@ Everything below is built and tested with fakes, but nobody has run it against r
 
 | Step | Command (from `runner/`) | Estimate | Stops at |
 |---|---|---|---|
-| A. Smoke test | `bun run scripts/smoke-real.ts --spend` | about $0.53 | $0.30 a case, $1 in all |
+| A. Smoke test | `bun run scripts/smoke-real.ts --spend` (its `main-engine-opus55`, `rescue-sonnet55` and `fast-sonnet55` cases are the gate for the model choices in Settings: each that passes goes into `SMOKE_PASSED` in `runner/src/models.ts`) | about $0.75 | $0.30 a case, $1 in all |
 | B. Real checks | `bun run scripts/real-verify.ts --spend` | about $3.51 | its own stop per scenario (at most $1.50), $12 in all |
 | C. Prompt help eval | `bun run ../evals/prompt-help/run.ts --real --spend` (again with `COMPANION_FAST_MODEL=claude-haiku-5-5`) | about $0.08 each | $0.40 |
 | D. Aim eval | `bun run scripts/eval-aim.ts --spend` (all 88 asks, basic and hard; again with `--lane computer_use` or `COMPANION_AIM=computer_use`) | about $1.50 on Sonnet 5.5 (about $0.07 with `--vision-model claude-haiku-5-5`) | $0.05 an ask, $6 in all; any stop ends the run |
