@@ -238,3 +238,48 @@ describe("the same failure reads the same on a busy Mac", () => {
     expect(mine.detail).toContain("src/app.js");
   }, 60000);
 });
+
+// A very busy Mac can run out of room for more programs (every process slot in use): npm then says "spawn sh EAGAIN" and
+// the shell "fork: Resource temporarily unavailable". That says nothing about the project. Seen in the fix eval: a right
+// fix of the open notes table ended "lint failed. npm error code EAGAIN" with the process limit just above what was
+// running, the same "failed" the row level security case once gave under heavy load.
+describe("a check the Mac had no room to start is not the project's check failing", () => {
+  const NPM_EAGAIN = "npm error code EAGAIN\nnpm error syscall spawn sh\nnpm error errno -35\nnpm error spawn sh EAGAIN\nnpm error command sh -c node scripts/check-database.js\n";
+  const res = (o: Partial<RunResult> = {}): RunResult => ({ code: 0, signal: null, stdout: "", stderr: "", timedOut: false, ms: 1, ...o });
+  const project = { "package.json": pkg({ lint: "node scripts/check-database.js", test: "node --test" }), "test/a.js": "require('node:test')('x', () => {});\n" };
+  const ladderWith = async (answer: (command: string, n: number) => RunResult) => {
+    const calls: string[] = [];
+    const run = async (command: string) => { calls.push(command); return answer(command, calls.filter((c) => c === command).length); };
+    const { result } = await scenario(project, () => {}, {}, { run, noRoomWaitsMs: [0, 0] });
+    return { result, calls };
+  };
+  test("it is run again after a moment, and its real answer counts", async () => {
+    const { result, calls } = await ladderWith((c, n) => (/lint/.test(c) && n === 1 ? res({ code: 1, stderr: NPM_EAGAIN }) : res()));
+    expect(result.verdict).toBe("passed");
+    expect(calls.filter((c) => /lint/.test(c))).toHaveLength(2);
+    expect(result.noRoom).toBeUndefined();
+  }, 30000);
+  test("one that still cannot start is said in Companion's words, with what to do, and is marked as such", async () => {
+    const { result, calls } = await ladderWith((c) => (/lint/.test(c) ? res({ code: 1, stderr: NPM_EAGAIN }) : res()));
+    expect(calls.filter((c) => /lint/.test(c))).toHaveLength(3);
+    expect(result.verdict).toBe("failed");
+    expect(result.noRoom).toBe(true);
+    expect(result.failedAt?.rung).toBe("checks");
+    expect(result.failedAt?.detail).toMatch(/too many programs are running/);
+    expect(result.failedAt?.detail).not.toMatch(/lint failed|EAGAIN/);
+    expect(result.failedAt?.problem).toMatchObject({ kind: "message" });
+    expect(result.checks).toEqual([{ name: "lint", status: "not_started" }]);
+  }, 30000);
+  test("the same for the tests, and for the shell's own words", async () => {
+    const { result, calls } = await ladderWith((c, n) => (/npm run test|npm test/.test(c) && n < 3 ? res({ code: 2, stderr: "sh: fork: retry: Resource temporarily unavailable\n" }) : res()));
+    expect(result.verdict).toBe("passed");
+    expect(calls.filter((c) => /test/.test(c))).toHaveLength(3);
+  }, 30000);
+  test("a failing test that only talks about EAGAIN is the project's own failure, run once", async () => {
+    const { result, calls } = await ladderWith((c) => (/test/.test(c) ? res({ code: 1, stdout: "not ok 1 - reads the socket\n  error: 'read EAGAIN'\n" }) : res()));
+    expect(result.verdict).toBe("failed");
+    expect(result.noRoom).toBeUndefined();
+    expect(result.failedAt?.detail).toMatch(/The tests did not pass/);
+    expect(calls.filter((c) => /test/.test(c))).toHaveLength(1);
+  }, 30000);
+});

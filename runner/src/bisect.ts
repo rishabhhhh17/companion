@@ -14,16 +14,40 @@ export type Verdict = "good" | "bad" | "skip" | "cancelled";
 
 /** How a check of an earlier version stands against the step that fails now. A version that failed at an earlier step never
  *  got that far, so it says nothing either way ("skip"). A step that was not there yet (no tests then) cannot have failed. A
- *  step that is there but could not run (a package not installed, pytest finding no tests: the ladder's `unclear`) says
- *  nothing either: read as a pass, it would move the search past the version that broke it, onto an innocent task. */
-export function classify(res: LadderResult | null, target: Rung): Verdict {
+ *  step that is there but could not run (a package not installed, pytest finding no tests: see couldNotRun) says nothing
+ *  either: read as a pass, it would move the search past the version that broke it, onto an innocent task.
+ *  The checks step is several checks tried in order (a lint, a type check, a build). With `check`, the one that fails now,
+ *  only that check counts: failed is bad, could not run is skip, passed is good whatever else could not run, and not tried
+ *  is skip when another check failed first (it never got there) and good otherwise (it was not set up yet). A step this Mac
+ *  had no room to start (the ladder's noRoom) says nothing about the code either. */
+export function classify(res: LadderResult | null, target: Rung, check?: string): Verdict {
   if (!res) return "skip";
   if (res.verdict === "cancelled") return "cancelled";
   const at = res.steps.find((s) => s.rung === target);
-  if (at?.status === "failed") return "bad";
-  if (at && res.unclear?.includes(target)) return "skip";
-  if (at) return "good";
-  return res.verdict === "failed" ? "skip" : "good";
+  if (!at) return res.verdict === "failed" ? "skip" : "good";
+  if (target === "checks" && check) {
+    const c = res.checks?.find((x) => x.name === check);
+    if (c) return c.status === "failed" ? "bad" : c.status === "passed" ? "good" : "skip";
+    return at.status === "failed" ? "skip" : "good";
+  }
+  if (at.status === "failed") return res.noRoom && res.failedAt?.rung === target ? "skip" : "bad";
+  return couldNotRun(res, target, check) ? "skip" : "good";
+}
+
+/** Whether the step that fails now (and for the checks step, `check`, the check that fails now) was there in this version
+ *  but could not run, and why: "missing" when a package it needs is not installed, "other" for anything else (pytest
+ *  finding no tests, a page never opened, no room on this Mac to start it). Only that step's own reason: what could not run
+ *  elsewhere says nothing about it. For the checks step with no `check` known, any check that could not run makes it unclear. */
+export function couldNotRun(res: LadderResult | null, target: Rung, check?: string): "missing" | "other" | null {
+  if (!res) return null;
+  if (target === "checks") {
+    const mine = (res.checks ?? []).filter((c) => !check || c.name === check);
+    if (mine.some((c) => c.status === "missing")) return "missing";
+    if (mine.some((c) => c.status === "not_started")) return "other";
+  }
+  if (res.noRoom && res.failedAt?.rung === target) return "other";
+  const u = res.unclear?.find((x) => x.rung === target);
+  return u ? (u.missing ? "missing" : "other") : null;
 }
 
 /** One task that changed the project: the saved version from before it and the last one saved after it. */

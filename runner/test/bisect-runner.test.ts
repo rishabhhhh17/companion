@@ -4,7 +4,7 @@
 // only, no network, never the person's git.
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { AgentRunner, type ProofContext } from "../src/agent.ts";
@@ -125,6 +125,16 @@ describe("finding which task broke it", () => {
     await s.runTasks();
     await s.bisect();
     expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "not_failing", runs: 1 });
+  });
+  test("a check of now that the Mac had no room to start is not traced back, and it says so", async () => {
+    const f = { rung: "checks" as const, label: "Building and checking the code", status: "failed" as const, detail: "This Mac could not start the check because too many programs are running. Close some programs, then try again.", ms: 1 };
+    const s = setup({ judge: async () => ({ verdict: "failed", steps: [f], failedAt: f, noRoom: true }) });
+    await s.runTasks();
+    await s.bisect();
+    const r = of(s.events, "bisect.result")[0];
+    expect(r).toMatchObject({ outcome: "cannot_check", runs: 1 });
+    expect(r.detail).toMatch(/too many programs are running/);
+    expect(s.checked).toHaveLength(1);
   });
   test("fewer than two earlier tasks: says so and checks nothing", async () => {
     const s = setup({ tasks: 1, breaks: 1 });
@@ -381,22 +391,35 @@ describe("with the real proof ladder", () => {
 // A Python project: the private copy borrows the project's own virtual environment (one link, as the visual receipt's
 // earlier version does), its requirement files decide which versions can use it, and a test step that could not run (a
 // package not installed, pytest finding no tests) cannot tell. The real proof ladder runs on each copy, with its commands
-// stubbed: pytest's answer is read from the copy's app.py, so no real Python is needed.
+// stubbed: pytest's answer is read from the copy's app.py, so no real Python is needed. The Python the copies use is asked
+// once where it imports code from: the stand in .venv/bin/python (a shell script) answers that for real, and with no
+// virtual environment a stub answers for this Mac's python3, which a test never starts.
 type Ran = { command: string; cwd: string; env?: Record<string, string>; venvLinked: boolean; venvTarget: string | null; requirements: string };
-function pyProject(o: { tasks: Record<number, Step[]>; n?: number; requirements?: string; venv?: boolean } = { tasks: {} }) {
-  const project = tmp("py"), work = tmp("w");
+// python: the stand in's script instead of one that answers. site: what this Mac's python3 keeps in a site folder of its
+// own, outside the project (with no virtual environment).
+function pyProject(o: { tasks: Record<number, Step[]>; n?: number; requirements?: string; pyproject?: string; venv?: boolean; python?: string; site?: (project: string) => Record<string, string> } = { tasks: {} }) {
+  const project = tmp("py"), work = tmp("w"), askLog = join(tmp("log"), "asked.txt");
   writeFileSync(join(project, "requirements.txt"), o.requirements ?? "pytest\n");
+  if (o.pyproject) writeFileSync(join(project, "pyproject.toml"), o.pyproject);
   writeFileSync(join(project, "app.py"), "def total():\n    return 15\n");
   mkdirSync(join(project, "tests"));
   writeFileSync(join(project, "tests", "test_app.py"), "from app import total\n\n\ndef test_total():\n    assert total() == 15\n");
   if (o.venv !== false) {
-    // A stand in for the project's own .venv: never run (the commands are stubbed), only borrowed.
+    // A stand in for the project's own .venv, borrowed into each copy. Its Python only ever answers where it imports code
+    // from (the checks are stubbed), and writes down that it was asked, outside the project.
     mkdirSync(join(project, ".venv", "bin"), { recursive: true });
     mkdirSync(join(project, ".venv", "lib", "python3.12", "site-packages", "pytest"), { recursive: true });
-    writeFileSync(join(project, ".venv", "bin", "python"), "#!/bin/sh\nexit 3\n");
+    writeFileSync(join(project, ".venv", "bin", "python"), o.python ?? `#!/bin/sh\necho "$*" >> '${askLog}'\n[ "$1" = "-c" ] || exit 3\nhere=$(cd "$(dirname "$0")/.." && pwd)\nprintf '{"path": ["", "/opt/py/lib/python3.12", "%s/lib/python3.12/site-packages"], "base": ["/opt/py", "/opt/py"]}\\n' "$here"\n`);
+    chmodSync(join(project, ".venv", "bin", "python"), 0o755);
     writeFileSync(join(project, ".venv", "pyvenv.cfg"), "home = /opt/homebrew/bin\n");
     writeFileSync(join(project, ".venv", "lib", "python3.12", "site-packages", "pytest", "__init__.py"), "");
   }
+  // With no virtual environment, this Mac's python3 is asked; a stub answers for it, with a site folder outside the project.
+  const siteDir = join(tmp("site"), "lib", "python3.9", "site-packages");
+  mkdirSync(siteDir, { recursive: true });
+  for (const [name, text] of Object.entries(o.site?.(project) ?? {})) writeFileSync(join(siteDir, name), text);
+  const asked: string[] = [];
+  const ask = async (command: string) => { asked.push(command); return { code: 0, signal: null, stdout: JSON.stringify({ path: ["", "/opt/py/lib/python3.9", siteDir], base: ["/opt/py", "/opt/py"] }) + "\n", stderr: "", timedOut: false, ms: 1 }; };
   const n = o.n ?? 5;
   const rounds: Step[][] = [];
   for (let i = 1; i <= n; i++) rounds.push(o.tasks[i] ?? [write(`notes${i}.txt`, `task ${i}\n`), say]);
@@ -404,13 +427,15 @@ function pyProject(o: { tasks: Record<number, Step[]>; n?: number; requirements?
   const ran: Ran[] = [];
   let clock = Date.parse("2026-10-14T09:00:00Z");
   // pytest, as the copy's app.py makes it answer: an import of a package that is not installed, no tests found, a failing
-  // test (BUG), or a pass.
+  // test (BUG), or a pass. ruff fails on an unused import; mypy is never installed.
   const pytest = async (command: string, x: { cwd: string; env?: Record<string, string> }) => {
     let venvLinked = false, venvTarget: string | null = null;
     try { venvLinked = lstatSync(join(x.cwd, ".venv")).isSymbolicLink(); venvTarget = realpathSync(join(x.cwd, ".venv")); } catch { /* no venv in the copy */ }
     ran.push({ command, cwd: x.cwd, env: x.env, venvLinked, venvTarget, requirements: readFileSync(join(x.cwd, "requirements.txt"), "utf8") });
     const app = readFileSync(join(x.cwd, "app.py"), "utf8");
-    const r = (code: number, stdout: string) => ({ code, signal: null, stdout, stderr: "", timedOut: false, ms: 1 });
+    const r = (code: number, stdout: string, stderr = "") => ({ code, signal: null, stdout, stderr, timedOut: false, ms: 1 });
+    if (/-m mypy/.test(command)) return r(1, "", "'.venv/bin/python': No module named mypy\n");
+    if (/-m ruff/.test(command)) return app.includes("import os") ? r(1, "app.py:1:8: F401 [*] `os` imported but unused\nFound 1 error.\n") : r(0, "All checks passed!\n");
     if (!/-m pytest/.test(command)) return r(0, "");
     if (app.includes("import requests")) return r(2, "___ ERROR collecting tests/test_app.py ___\ntests/test_app.py:1: in <module>\n    from app import total\napp.py:1: in <module>\n    import requests\nE   ModuleNotFoundError: No module named 'requests'\n");
     if (app.includes("NO_TESTS")) return r(5, "no tests ran in 0.01s\n");
@@ -419,12 +444,13 @@ function pyProject(o: { tasks: Record<number, Step[]>; n?: number; requirements?
   };
   const runner = new AgentRunner({
     shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e),
-    now: () => new Date((clock += 60_000)), bisect: { workDir: work },
+    now: () => new Date((clock += 60_000)), bisect: { workDir: work, ...(o.venv === false ? { run: ask as never } : {}) },
     proof: async (ctx) => (ctx.project === project ? passing : runLadder({ ...ctx, run: pytest as never })),
   });
   const runTasks = async () => { for (let i = 1; i <= n; i++) await runner.handle({ v: 1, id: `t${i}`, type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: `Task number ${i}`, model: "m", budgetUsd: 3 }); };
   const bisect = () => runner.handle({ v: 1, id: "b1", type: "bisect.start", project, agent: "builder-1" });
-  return { project, work, events, ran, runner, runTasks, bisect };
+  const venvAsked = () => (existsSync(askLog) ? readFileSync(askLog, "utf8").split("\n").filter(Boolean) : []);
+  return { project, work, events, ran, runner, runTasks, bisect, asked, venvAsked };
 }
 const bug = (extra = "") => [write("app.py", `${extra}def total():\n    return 16  # BUG\n`), say];
 
@@ -450,6 +476,9 @@ describe("a Python project", () => {
       expect(x.env?.PYTHONDONTWRITEBYTECODE).toBe("1");
     }
     expect(s.ran.some((x) => /\bpip\b|install/.test(x.command))).toBe(false);
+    // Its Python was asked once where it imports code from, and only that (the checks themselves are stubbed).
+    expect(s.venvAsked()).toHaveLength(1);
+    expect(s.venvAsked()[0]).toMatch(/^-c import json, sys; print\(json\.dumps\(/);
     // Each copy is gone, the link with it; the project and its virtual environment are exactly as they were.
     expect(readdirSync(s.work)).toEqual([]);
     expect(treeHash(join(s.project, ".venv"))).toBe(venv);
@@ -474,6 +503,30 @@ describe("a Python project", () => {
     const r = of(s.events, "bisect.result")[0];
     expect(r.outcome).not.toBe("found");
     expect(r).toMatchObject({ outcome: "unsure", earlier: { label: "Task number 2" }, later: { label: "Task number 3" } });
+  });
+  // mypy is set up in pyproject.toml but not installed, so it can run in no version (every copy borrows the same virtual
+  // environment). ruff is what fails now: a version where ruff ran and passed is good, whatever mypy could not do there.
+  test("the check that fails now is traced back on its own, though another check could run in no version", async () => {
+    const s = pyProject({ requirements: "pytest\nruff\n", pyproject: "[tool.ruff]\nline-length = 100\n\n[tool.mypy]\nstrict = true\n", tasks: { 3: [write("app.py", "import os\n\n\ndef total():\n    return 15\n"), say] } });
+    await s.runTasks();
+    await s.bisect();
+    const r = of(s.events, "bisect.result")[0];
+    expect(r).toMatchObject({ outcome: "found", task: { label: "Task number 3" }, step: { rung: "checks" } });
+    expect(r.changed).toEqual([{ file: "app.py", kind: "modified" }]);
+    // The check of now stops at ruff, so mypy was tried only in earlier versions, where ruff passed; it could not run there.
+    expect(s.ran.filter((x) => /-m mypy/.test(x.command)).length).toBeGreaterThan(0);
+    expect(parseEvent(JSON.stringify(r)).ok).toBe(true);
+  });
+  test("an unclear answer gives the reason of the step that fails now, never one from another step", async () => {
+    // The tests fail now. After task 2, pytest found no tests; mypy could run in no version at all. The reason is the
+    // tests' own (they could not run), not that a package is missing.
+    const s = pyProject({ pyproject: "[tool.mypy]\nstrict = true\n", tasks: { 2: bug("NO_TESTS = True\n"), 3: bug() } });
+    await s.runTasks();
+    await s.bisect();
+    const r = of(s.events, "bisect.result")[0];
+    expect(r).toMatchObject({ outcome: "unsure", earlier: { label: "Task number 2" }, later: { label: "Task number 3" }, step: { rung: "tests" } });
+    expect(r.detail).toMatch(/the step that fails could not run/);
+    expect(r.detail).not.toMatch(/not installed/);
   });
   test("versions from before a change to the requirements are not checked with today's virtual environment, and the real task is found", async () => {
     const s = pyProject({ tasks: { 4: [write("requirements.txt", "pytest\nflask==3.1.0\n"), say], 5: bug() } });
@@ -505,6 +558,42 @@ describe("a Python project", () => {
     await s.bisect();
     expect(of(s.events, "bisect.result")[0]).toMatchObject({ outcome: "found", task: { label: "Task number 3" } });
     for (const x of s.ran.filter((y) => /-m pytest/.test(y.command))) { expect(x.command).toBe("'python3' -m pytest -q --tb=short -p no:cacheprovider"); expect(x.venvLinked).toBe(false); }
+    expect(s.asked).toHaveLength(1);
+    expect(s.asked[0]).toStartWith("'python3' -c ");   // the same Python the copies run
+  });
+  // With no virtual environment, every copy runs this Mac's python3. Its own site folder, outside the project, can hold
+  // the project's src installed with -e (python.org's Python, Apple's with --user, pyenv, conda): every copy would import
+  // today's code from there, so the task that added the failing test would be blamed, not the one that broke the code.
+  test("a project whose src is installed into this Mac's own Python (no virtual environment) is not traced back either", async () => {
+    const s = pyProject({ venv: false, site: (project) => ({ "_shop.pth": `${project}/src\n` }), tasks: { 3: bug() } });
+    mkdirSync(join(s.project, "src", "shop"), { recursive: true });
+    writeFileSync(join(s.project, "src", "shop", "__init__.py"), "");
+    await s.runTasks();
+    s.events.length = 0;
+    await s.bisect();
+    const r = of(s.events, "bisect.result");
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ outcome: "cannot_check", runs: 0 });
+    expect(r[0].detail).toMatch(/installed in this Mac's Python from its src folder/);
+    expect(r[0].detail).toMatch(/installed code, not its own/);
+    expect(parseEvent(JSON.stringify(r[0])).ok).toBe(true);
+    expect(s.asked).toHaveLength(1);
+    expect(s.ran).toEqual([]);
+    expect(readdirSync(s.work)).toEqual([]);
+  });
+  test("a project whose Python cannot say where it imports code from is not traced back, and it says so", async () => {
+    const s = pyProject({ python: "#!/bin/sh\nexit 1\n", tasks: { 3: bug() } });
+    await s.runTasks();
+    s.events.length = 0;
+    await s.bisect();
+    const r = of(s.events, "bisect.result");
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ outcome: "cannot_check", runs: 0 });
+    expect(r[0].detail).toMatch(/did not say where it loads code from/);
+    expect(r[0].detail).toMatch(/Nothing was changed/);
+    expect(parseEvent(JSON.stringify(r[0])).ok).toBe(true);
+    expect(s.ran).toEqual([]);
+    expect(readdirSync(s.work)).toEqual([]);
   });
   // An editable install from src: every copy would import today's code from the person's src folder, so whichever task
   // added the test that fails would be blamed, not the one that broke the code. Nothing is copied or checked.
@@ -518,7 +607,7 @@ describe("a Python project", () => {
     const r = of(s.events, "bisect.result");
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ outcome: "cannot_check", runs: 0 });
-    expect(r[0].detail).toMatch(/src/);
+    expect(r[0].detail).toMatch(/installed in its virtual environment \(\.venv\) from its src folder/);
     expect(r[0].detail).toMatch(/installed code, not its own/);
     expect(r[0].detail).toMatch(/Nothing was changed/);
     expect(parseEvent(JSON.stringify(r[0])).ok).toBe(true);
@@ -553,7 +642,8 @@ function realPyProject(n: number, breaks: number) {
   let clock = Date.parse("2026-10-14T09:00:00Z");
   const runner = new AgentRunner({
     shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e),
-    now: () => new Date((clock += 60_000)), bisect: { workDir: work },
+    // The same real Python is asked where it imports code from as runs the checks (never a python3 looked up some other way).
+    now: () => new Date((clock += 60_000)), bisect: { workDir: work, detect: (d) => detectProject(d, undefined, { path: realPath }) },
     proof: async (ctx) => (ctx.project === project ? passing : runLadder({ ...ctx, detect: (d) => detectProject(d, undefined, { path: realPath }) })),
   });
   return { project, work, events, runner, run: async () => {

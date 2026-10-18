@@ -2,7 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
-import { runCommand, shq } from "./proof/exec.ts";
+import { runCommand, shq, type RunOptions, type RunResult } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -34,15 +34,15 @@ import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
-import { classify, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
+import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
 import { aboutLine, inspectProject } from "./proof/intake.ts";
 import { cloneTarget } from "./proof/clone.ts";
 import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
-import { detectProject } from "./proof/detect.ts";
-import { editableInside } from "./proof/python.ts";
+import { detectProject, type Detected } from "./proof/detect.ts";
+import { editableInside, pythonPaths, type PythonPaths } from "./proof/python.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
@@ -91,8 +91,9 @@ export type RunnerOptions = {
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
   explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
   // Which task broke it: earlier saved versions are checked in private copies made in this folder (in Companion's own data,
-  // never the project), each deleted as soon as it has been checked. Without it, off.
-  bisect?: { workDir: string };
+  // never the project), each deleted as soon as it has been checked. Without it, off. run: how a Python project's Python is
+  // asked where it imports code from (runCommand; tests pass a stand in). detect: how the project is read (detectProject).
+  bisect?: { workDir: string; run?: (command: string, o: RunOptions) => Promise<RunResult>; detect?: (dir: string) => Detected };
 };
 
 /** A private copy made for checking an earlier version starts with this; anything left by a run that was cut off is swept. */
@@ -1238,13 +1239,31 @@ export class AgentRunner {
       const store = this.store(cmd.project);
       const points = taskPoints(this.o.log.list(cmd.project, 200), await store.list()).slice(-WINDOW);
       if (points.length < 2) { result("too_few"); return; }
-      // Its own code installed into its virtual environment from a folder other than its top one (an editable install
-      // from src, or src installed without -e): every copy would import that installed code, so an earlier version
-      // cannot be checked with it.
-      const linked = editableInside(cmd.project);
-      if (linked) { result("cannot_check", { detail: `This project's own code is installed in its virtual environment from its ${linked.split("/")[0]} folder, so an earlier version would still run the installed code, not its own. Companion cannot check earlier versions of this project yet. Nothing was changed.` }); return; }
       this.state(cmd.agent, "checking");
       shown = true;
+      // A Python project's own code installed where the Python that checks the copies looks, from a folder other than its
+      // top one (an editable install from src, or src installed without -e; in its virtual environment, or with none in
+      // this Mac's Python's own or user site folders): every copy would import that installed code, so an earlier version
+      // cannot be checked with it. That Python is asked once where it imports code from, from an empty folder of
+      // Companion's own; one that cannot say is not used either.
+      const det = (this.o.bisect.detect ?? detectProject)(cmd.project);
+      if (det.python) {
+        let paths: PythonPaths | undefined;
+        if (det.python.command) {
+          mkdirSync(this.o.bisect.workDir, { recursive: true, mode: 0o700 });
+          const empty = mkdtempSync(join(this.o.bisect.workDir, BISECT_PREFIX));
+          try { paths = (await pythonPaths(det.python.command, cmd.project, { cwd: empty, signal: abort.signal, ...(this.o.bisect.run ? { run: this.o.bisect.run } : {}) })) ?? undefined; }
+          finally { rmSync(empty, { recursive: true, force: true }); }
+          if (abort.signal.aborted) { result("cancelled"); return; }
+          if (!paths) { result("cannot_check", { detail: "This project's Python did not say where it loads code from, so Companion cannot be sure an earlier version would run its own code. Companion cannot check earlier versions of this project yet. Nothing was changed." }); return; }
+        }
+        const linked = editableInside(cmd.project, paths);
+        if (linked) {
+          const where = det.python.venv ? `its virtual environment (${det.python.venv})` : "this Mac's Python";
+          result("cannot_check", { detail: `This project's own code is installed in ${where} from its ${linked.split("/")[0]} folder, so an earlier version would still run the installed code, not its own. Companion cannot check earlier versions of this project yet. Nothing was changed.` });
+          return;
+        }
+      }
       const now = await store.snapshot("Find which task broke it: the project as it was found");
       const folders = packageFolders(cmd.project);
       const tell = (what: "now" | "after" | "before", label?: string) => this.emit({ type: "bisect.progress", project: cmd.project, agent: cmd.agent, run: runs, maxRuns: MAX_RUNS, what, ...(label ? { label } : {}) } as never);
@@ -1255,12 +1274,16 @@ export class AgentRunner {
       if (first.verdict !== "failed") { result("not_failing"); return; }
       const failed = first.failedAt ?? first.steps.find((s) => s.status === "failed");
       // Packages that are not installed (or a check that is not a step of the project) cannot be traced back through versions.
-      if (!failed || failed.rung === "install" || failed.rung === "review") { result("cannot_check", { detail: failed?.detail ?? "The check that fails could not be repeated on earlier versions." }); return; }
+      // A check this Mac had no room to start (too many programs running) says nothing about any version either.
+      if (!failed || failed.rung === "install" || failed.rung === "review" || first.noRoom) { result("cannot_check", { detail: failed?.detail ?? "The check that fails could not be repeated on earlier versions." }); return; }
       const step = { rung: failed.rung, label: failed.label };
+      // The checks step is several checks: the one that fails now is what earlier versions are read by (classify).
+      const check = failed.rung === "checks" ? first.checks?.find((c) => c.status === "failed")?.name : undefined;
       // The installed packages are today's. A version that asked for other ones (its package lists or lockfile differ) is
       // never checked with them: it could fail only because of the packages, and an innocent task would be blamed.
       const wanted = await this.packagesOf(store, now.id);
-      let otherPackages = false, couldNotRun = null as "missing" | "other" | null;
+      let otherPackages = false;
+      const unclearWhy = new Set<"missing" | "other">();
       const search = await findFirstBad({
         points, nowId: now.id, maxProbes: MAX_RUNS - 1,
         differs: (a, b) => store.differs(a, b),
@@ -1268,9 +1291,11 @@ export class AgentRunner {
         probe: async (cp, at) => {
           runs++; tell(at.side, at.label);
           const res = await this.checkCopy(cmd.project, store, cp, folders, abort.signal);
-          const v = classify(res, failed.rung);
-          // Said with an unclear answer: why some versions could not be counted for or against any task.
-          if (v === "skip" && res?.unclear?.includes(failed.rung)) couldNotRun = res.gaps?.length ? "missing" : (couldNotRun ?? "other");
+          const v = classify(res, failed.rung, check);
+          // Said with an unclear answer: why some versions could not be counted for or against any task. Only the reason of
+          // the step (and check) that fails now: a package missing for another check says nothing about this one.
+          const why = v === "skip" ? couldNotRun(res, failed.rung, check) : null;
+          if (why) unclearWhy.add(why);
           return v;
         },
       });
@@ -1292,8 +1317,8 @@ export class AgentRunner {
       if (o.kind === "after_last_task") { result(o.kind, { step, earlier: brief(o.last) }); return; }
       const why = [
         ...(otherPackages ? ["Some earlier versions needed other packages than the ones installed now, so they could not be checked."] : []),
-        ...(couldNotRun === "missing" ? ["Some earlier versions could not be checked because a package they need is not installed, so no task is blamed for them."] : []),
-        ...(couldNotRun === "other" ? ["In some earlier versions the step that fails could not run, so no task is blamed for them."] : []),
+        ...(unclearWhy.has("missing") ? ["Some earlier versions could not be checked because a package they need is not installed, so no task is blamed for them."] : []),
+        ...(unclearWhy.has("other") ? ["In some earlier versions the step that fails could not run, so no task is blamed for them."] : []),
       ];
       result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}),
         ...(o.kind === "unsure" && why.length ? { detail: why.join(" ") } : {}) });

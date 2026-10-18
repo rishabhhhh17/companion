@@ -1,7 +1,7 @@
 // Which task broke it, the search itself (no git, no checks): how a check of an earlier version is judged, which saved
 // versions belong to which task, and the binary search with its hard cap on runs.
 import { describe, expect, test } from "bun:test";
-import { classify, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint, type Verdict } from "../src/bisect.ts";
+import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint, type Verdict } from "../src/bisect.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { TaskRow } from "../src/tasklog.ts";
 
@@ -24,20 +24,60 @@ describe("judging one earlier version against the step that fails now", () => {
   // A step that is there but could not run this time (a package not installed, pytest finding no tests) says nothing
   // either way. Read as a pass, it would move the search past the version that really broke it, onto an innocent task.
   test("a step that could not run cannot tell, so it is never read as passing", () => {
-    const unclear = (verdict: LadderResult["verdict"], steps: unknown[], rungs: string[]): LadderResult => ({ ...res(verdict, steps), unclear: rungs as never });
+    const unclear = (verdict: LadderResult["verdict"], steps: unknown[], rungs: [string, boolean][]): LadderResult => ({ ...res(verdict, steps), unclear: rungs.map(([rung, missing]) => ({ rung, missing })) as never });
     // The tests could not run because a package the project lists is not installed (nothing else was checked either).
-    expect(classify(unclear("failed", [step("install", "failed"), step("checks", "skipped"), step("tests", "skipped")], ["tests"]), "tests")).toBe("skip");
+    expect(classify(unclear("failed", [step("install", "failed"), step("checks", "skipped"), step("tests", "skipped")], [["tests", true]]), "tests")).toBe("skip");
+    expect(couldNotRun(unclear("failed", [step("install", "failed"), step("checks", "skipped"), step("tests", "skipped")], [["tests", true]]), "tests")).toBe("missing");
     // pytest found no tests to run.
-    expect(classify(unclear("passed_with_gaps", [step("checks", "passed"), step("tests", "skipped")], ["tests"]), "tests")).toBe("skip");
-    // One check ran and passed, another could not run: the step as a whole cannot say it passed.
-    expect(classify(unclear("passed_with_gaps", [step("checks", "passed"), step("tests", "passed")], ["checks"]), "checks")).toBe("skip");
+    expect(classify(unclear("passed_with_gaps", [step("checks", "passed"), step("tests", "skipped")], [["tests", false]]), "tests")).toBe("skip");
+    expect(couldNotRun(unclear("passed_with_gaps", [step("checks", "passed"), step("tests", "skipped")], [["tests", false]]), "tests")).toBe("other");
     // The server could not start because a package is missing, so the page was never opened.
-    expect(classify(unclear("passed_with_gaps", [step("tests", "passed"), step("start", "skipped"), step("browser", "skipped")], ["start", "browser"]), "browser")).toBe("skip");
+    expect(classify(unclear("passed_with_gaps", [step("tests", "passed"), step("start", "skipped"), step("browser", "skipped")], [["start", true], ["browser", true]]), "browser")).toBe("skip");
     // What could not run at another step says nothing about this one.
-    expect(classify(unclear("failed", [step("checks", "skipped"), step("tests", "failed")], ["checks"]), "tests")).toBe("bad");
-    expect(classify(unclear("passed_with_gaps", [step("checks", "skipped"), step("tests", "passed")], ["checks"]), "tests")).toBe("good");
+    expect(classify(unclear("failed", [step("checks", "skipped"), step("tests", "failed")], [["start", true]]), "tests")).toBe("bad");
+    expect(classify(unclear("passed_with_gaps", [step("checks", "skipped"), step("tests", "passed")], [["browser", false]]), "tests")).toBe("good");
+    expect(couldNotRun(unclear("passed_with_gaps", [step("checks", "skipped"), step("tests", "passed")], [["browser", false]]), "tests")).toBeNull();
     // A step that was not there yet (no tests in that version at all) is still good, as before.
     expect(classify(res("nothing_to_check", [step("checks", "skipped"), step("tests", "skipped")]), "tests")).toBe("good");
+  });
+  // The checks step is several checks (a lint, a type check, a build), tried in order until one fails. What counts is the
+  // check that fails now, by name: a version where it ran and passed is good, whatever else could not run there.
+  test("for the checks step, only the check that fails now counts", () => {
+    const with_ = (verdict: LadderResult["verdict"], checksStatus: string, checks: [string, string][]): LadderResult => ({ ...res(verdict, [step("install", "skipped"), step("checks", checksStatus), step("tests", "passed")]), checks: checks.map(([name, status]) => ({ name, status })) as never });
+    // ruff (lint) fails now; mypy (typecheck) is configured but not installed, in every version.
+    const ranAndPassed = with_("passed_with_gaps", "passed", [["lint", "passed"], ["typecheck", "missing"]]);
+    expect(classify(ranAndPassed, "checks", "lint")).toBe("good");
+    expect(couldNotRun(ranAndPassed, "checks", "lint")).toBeNull();
+    expect(classify(with_("failed", "failed", [["lint", "failed"]]), "checks", "lint")).toBe("bad");
+    // The check that fails now could not run in that version: it cannot tell, and says why.
+    const lintMissing = with_("passed_with_gaps", "passed", [["lint", "missing"], ["typecheck", "passed"]]);
+    expect(classify(lintMissing, "checks", "lint")).toBe("skip");
+    expect(couldNotRun(lintMissing, "checks", "lint")).toBe("missing");
+    expect(classify(with_("passed_with_gaps", "skipped", [["lint", "missing"], ["typecheck", "missing"]]), "checks", "lint")).toBe("skip");
+    // Another check failed before it was tried (a Node project's type check comes before its lint): it says nothing.
+    expect(classify(with_("failed", "failed", [["typecheck", "failed"]]), "checks", "lint")).toBe("skip");
+    expect(couldNotRun(with_("failed", "failed", [["typecheck", "failed"]]), "checks", "lint")).toBeNull();
+    // Another check failed after it had passed: it passed then.
+    expect(classify(with_("failed", "failed", [["typecheck", "passed"], ["lint", "passed"], ["build", "failed"]]), "checks", "lint")).toBe("good");
+    // That check was not there yet in that version (no lint set up then): it cannot have failed.
+    expect(classify(with_("passed", "passed", [["typecheck", "passed"]]), "checks", "lint")).toBe("good");
+    // When which check fails now is not known, any check that could not run makes the step unclear, as before.
+    expect(classify(ranAndPassed, "checks")).toBe("skip");
+    expect(couldNotRun(ranAndPassed, "checks")).toBe("missing");
+    expect(classify(with_("passed", "passed", [["lint", "passed"]]), "checks")).toBe("good");
+  });
+  // A very busy Mac can have no room to start one more program. A check that could not start says nothing about the code.
+  test("a step or check the Mac had no room to start cannot tell either", () => {
+    const noRoom = (steps: unknown[], checks?: [string, string][]): LadderResult => ({ ...res("failed", steps), failedAt: (steps as { status: string }[]).find((s) => s.status === "failed") as never, noRoom: true, ...(checks ? { checks: checks.map(([name, status]) => ({ name, status })) as never } : {}) });
+    const tests = noRoom([step("checks", "passed"), step("tests", "failed")]);
+    expect(classify(tests, "tests")).toBe("skip");
+    expect(couldNotRun(tests, "tests")).toBe("other");
+    const lint = noRoom([step("checks", "failed")], [["typecheck", "passed"], ["lint", "not_started"]]);
+    expect(classify(lint, "checks", "lint")).toBe("skip");
+    expect(couldNotRun(lint, "checks", "lint")).toBe("other");
+    expect(classify(lint, "checks", "typecheck")).toBe("good");
+    // The step that fails now passed before the Mac ran out of room for a later one: it passed then.
+    expect(classify(noRoom([step("checks", "passed"), step("tests", "passed"), step("start", "failed")]), "tests")).toBe("good");
   });
 });
 
