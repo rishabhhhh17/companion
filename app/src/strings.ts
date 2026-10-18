@@ -255,7 +255,7 @@ export const S = {
   voiceLanguageHelp: "Automatic works for most people. Pick your language if your words come out in another one.",
   voiceLanguageAuto: "Automatic",
   voiceLanguageNames: { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian", nl: "Dutch", ja: "Japanese", zh: "Chinese", ko: "Korean", ar: "Arabic", ru: "Russian", tr: "Turkish", pl: "Polish", id: "Indonesian", vi: "Vietnamese", uk: "Ukrainian", bn: "Bengali", ta: "Tamil", ur: "Urdu" } as Record<string, string>,
-  voiceWordsHelp: "So your project's own names come out right, such as supabase or useAuth, the speech model on this Mac gets a short list of names from the folder you chose: file, folder and package names. Never what is inside your files, and never your settings files.",
+  voiceWordsHelp: "So your project's own names come out right, such as supabase or useAuth, the speech model on this Mac gets a short list of names from the folder you chose: file, folder and package names, and the names of settings your project needs, never their values. Never what is inside your files, and never your settings files.",
   speakRepliesSetting: "Answer out loud when I ask by voice",
   speakRepliesHelp: "Off until you turn it on. When you ask by holding the talk keys, Companion says its short answer out loud, all of it. A long answer is said up to a point, and the rest is on the card.",
   speakRest: "The rest is on the card.",

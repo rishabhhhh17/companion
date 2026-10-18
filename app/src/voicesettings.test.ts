@@ -2,7 +2,7 @@
 // on. What the app sends is read safely, and everything is said in plain words. Nothing here makes a sound or listens.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { VOICE_START, languageLabel, micDefaultLabel, micLine, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type VoiceSettings } from "./voicesettings.ts";
+import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, spokenSpeed, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type VoiceSettings } from "./voicesettings.ts";
 import { S } from "./strings.ts";
 
 const sample: VoiceSettings = {
@@ -117,5 +117,43 @@ describe("the Settings rows", () => {
   test("Speak to me and Answer out loud are both here, each off until turned on", () => {
     expect(rows).toContain("S.speakSetting"); expect(rows).toContain("S.speakRepliesSetting");
     expect(rows).toContain("speechOn"); expect(rows).toContain("repliesOn");
+  });
+});
+
+// Found in review, 18 Oct 2026: Show me's steps were timed for the normal speed whatever speed was picked, and the line in
+// Settings about the project's words left out the setting names the speech model also gets.
+describe("the picked speed reaches the card's own timing", () => {
+  test("the card knows the speed Settings last read or saved, normal until then", () => {
+    expect(spokenSpeed()).toBe(1);
+    expect(noteSpeed({ ...sample, speed: 0.5 })).toEqual({ ...sample, speed: 0.5 });
+    expect(spokenSpeed()).toBe(0.5);
+    noteSpeed(voiceSettingsFrom({ speed: "fast" }));   // an answer that cannot be read is normal speed
+    expect(spokenSpeed()).toBe(1);
+  });
+  test("the card reads the speed when it starts, and Settings notes every speed it reads or saves", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    const rows = card.slice(card.indexOf("function VoiceRows"), card.indexOf("\n}\n", card.indexOf("function VoiceRows")));
+    expect(rows.match(/setV\(noteSpeed\(voiceSettingsFrom\(x\)\)\)/g)?.length).toBe(2);
+    expect(rows).not.toMatch(/setV\(voiceSettingsFrom\(x\)\)/);
+    // At its start the card asks only for the saved speed (voice_speed), never the lists: listing the microphones waits
+    // until Settings is opened (T13).
+    const main = card.slice(card.indexOf("function Card()"));
+    expect(main).toContain('void invoke("voice_speed").then((x) => noteSpeed(voiceSettingsFrom({ speed: x }))).catch(() => {});');
+    expect(main.slice(0, main.indexOf("function VoiceRows") > 0 ? main.indexOf("function VoiceRows") : undefined)).not.toContain('invoke("voice_settings")');
+    const rs = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const cmd = rs.slice(rs.indexOf("fn voice_speed("), rs.indexOf("\n}\n", rs.indexOf("fn voice_speed(")));
+    expect(cmd).toContain('window.label() != "card"');
+    expect(cmd).toContain("voice_now().speed");
+    expect(cmd).not.toMatch(/inputs\(|voices\(/);
+    expect(/generate_handler!\[[^\]]*\bvoice_speed\b/.test(rs)).toBe(true);
+  });
+});
+
+describe("what Settings says the speech model gets from the project", () => {
+  test("every kind of name it gets is named, and that values never are", () => {
+    // voicewords.rs: package names, the setting names the project check found, file and folder names.
+    for (const w of ["file", "folder", "package names", "settings your project needs"]) expect(S.voiceWordsHelp).toContain(w);
+    expect(S.voiceWordsHelp).toContain("never their values");
+    expect(S.voiceWordsHelp).not.toContain("\u2014");
   });
 });

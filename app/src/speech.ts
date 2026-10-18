@@ -44,13 +44,42 @@ export function setReplies(on: boolean) { try { localStorage.setItem(REPLIES_KEY
 export const VOICE_ASK_MS = 10 * 60 * 1000;
 /** What a question sent from the box asks for: a task (its answer is the result), a research answer, a Show me, a plan. */
 export type AskKind = "task" | "research" | "showme" | "plan";
-/** The last question sent while the box held words from hold to talk, and when. null: the last one was typed or pressed. */
-export type VoiceQuestion = { kind: AskKind; at: number } | null;
+/** The last question sent while the box held words from hold to talk, and when. null: the last one was typed or pressed.
+ *  req: for a Show me, its own request, once its "Finding it" has named it (followVoiceShowMe). */
+export type VoiceQuestion = { kind: AskKind; at: number; req?: string } | null;
 /** Whether an answer of this kind is the answer to the question asked by voice: the same kind, within ten minutes. */
 export const askedByVoice = (q: VoiceQuestion, kind: AskKind, nowMs: number): boolean =>
   q !== null && q.kind === kind && nowMs >= q.at && nowMs - q.at < VOICE_ASK_MS;
-/** Which kind of question a spoken line (lineFor) answers: a Show me line answers a Show me; a lesson's line answers none. */
-export const lineAnswers = (key: string): AskKind | null => (key.startsWith("show:") ? "showme" : null);
+/** Which question a spoken line (lineFor) answers: a Show me line answers the Show me request its key names (empty when it
+ *  names none: Point at the problem, a hint, a window that changed); a lesson's line answers none. */
+export function lineAnswers(key: string): { kind: AskKind; req: string } | null {
+  return key.startsWith("show:") ? { kind: "showme", req: key.split(":")[1] ?? "" } : null;
+}
+/** Whether a Show me request is the one the person asked for by voice: its own request, within ten minutes. Only that
+ *  answer's lines are its answer; any other line that shows meanwhile is not. */
+export const voiceShowMe = (q: VoiceQuestion, req: string, nowMs: number): boolean =>
+  askedByVoice(q, "showme", nowMs) && !!q?.req && q.req === req;
+/** Whether a spoken line (by its lineFor key) is the answer to the question asked by voice. */
+export function lineByVoice(q: VoiceQuestion, key: string, nowMs: number): boolean {
+  const a = lineAnswers(key);
+  return a !== null && a.kind === "showme" && voiceShowMe(q, a.req, nowMs);
+}
+/** How a Show me asked by voice is ended. Not "done": the last step said in words takes the pointer away first and its
+ *  words come after, and they are still its answer. */
+const SHOWME_ENDS = ["your_turn_done", "done_for_you", "error", "needs_permission", "window_changed"];
+/** A Show me asked by voice, as Show me's own events arrive (app.showme, and assist.error for a request): it takes the
+ *  request the first "Finding it" after it names, and it ends when that answer ends (the click, Do it for me, an error, a
+ *  missing permission, a window that changed) or another question takes the pointer (another request's "Finding it").
+ *  A question of another kind is left alone. */
+export function followVoiceShowMe(q: VoiceQuestion, ev: unknown): VoiceQuestion {
+  if (!q || q.kind !== "showme" || typeof ev !== "object" || ev === null) return q;
+  const e = ev as { type?: unknown; stage?: unknown; req?: unknown };
+  const req = typeof e.req === "string" ? e.req : "";
+  if (e.type === "assist.error") return req && req === q.req ? null : q;
+  if (e.type !== "app.showme" || typeof e.stage !== "string") return q;
+  if (e.stage === "thinking" && req.startsWith("sm_")) return q.req === undefined ? { ...q, req } : q.req === req ? q : null;
+  return SHOWME_ENDS.includes(e.stage) ? null : q;
+}
 
 /** Whether to say something, and whether as a whole answer: "Speak to me" says short lines; "Answer out loud" says the
  *  whole short answer, and only to a question the person asked by voice. */

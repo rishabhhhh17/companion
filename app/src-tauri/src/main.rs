@@ -1390,13 +1390,16 @@ static SOUND_NOTE: Mutex<voiceset::SoundNote> = Mutex::new(voiceset::SoundNote::
 /// Says one short line with the Mac's built in voice, in the voice and at the speed picked in Settings (voice.json). The
 /// page only calls this when the person turned "Speak to me" on, or "Answer out loud" for a question they asked by voice
 /// (`whole`: a whole short answer, with `rest` said when it had to be cut). Only from the card, only plain text of a
-/// sensible length, nothing secret looking, never during a call, and never into a Mac whose sound is off: then nothing is
-/// said, the words stay on the card, and the page is told once so it can say so.
+/// sensible length, nothing secret looking, never over the person's own voice (nothing is said while hold to talk listens,
+/// so the Mac's voice never plays into the open microphone), never during a call, and never into a Mac whose sound is off:
+/// then nothing is said, the words stay on the card, and the page is told once so it can say so.
 #[tauri::command]
 fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Option<bool>, rest: Option<String>) -> Result<Value, String> {
     if window.label() != "card" { return Err("Speaking can only be started from the card.".into()); }
     let line = if whole == Some(true) { speak::prepare_reply(&text, rest.as_deref().unwrap_or("")) } else { speak::prepare(&text) };
     let Some(line) = line else { return Ok(json!({ "said": false, "why": "nothing" })) };
+    // The person is talking: the line is dropped, its words stay on the card.
+    if listening_now() { log("speak_listening", json!({})); return Ok(json!({ "said": false, "why": "listening" })); }
     // Quiet during calls (rule 7): nothing is said while a call app is in front (presentation.rs).
     if quiet() { log("speak_quiet", json!({})); return Ok(json!({ "said": false, "why": "quiet" })); }
     let sound = speak::mac::sound_now();
@@ -1435,6 +1438,14 @@ fn voice_state(set: &voiceset::Saved, voices: &[voiceset::VoiceInfo]) -> Value {
 fn voice_settings(window: tauri::WebviewWindow) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }
     Ok(voice_state(&voice_now(), &speak::mac::voices()))
+}
+
+/// The card's start: only the speed picked in Settings, for Show me's timing (sequence.ts lineMs). Nothing is listed: the
+/// voices and microphones are read only when Settings is opened.
+#[tauri::command]
+fn voice_speed(window: tauri::WebviewWindow) -> Result<f64, String> {
+    if window.label() != "card" { return Err("not_card".into()); }
+    Ok(voice_now().speed)
 }
 
 /// Settings: pick a voice, a speed, a microphone and a language. Only from the card, only what is on this Mac now (or what
@@ -1890,6 +1901,11 @@ fn set_talk_keys(app: AppHandle, window: tauri::WebviewWindow, id: String) -> Re
 
 enum VoiceMsg { Down(u64), Up(u64), Cancel }
 const LISTENING: &str = "Listening. Let go of the keys when you are done.";
+/// Hold to talk is listening: from just before the light comes on until the microphone is closed (let go, Stop everything,
+/// the minute running out, or a microphone that would not start). Nothing is said meanwhile (`speak`).
+static LISTENING_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+fn listening_now() -> bool { LISTENING_NOW.load(std::sync::atomic::Ordering::SeqCst) }
+fn listening(on: bool) { LISTENING_NOW.store(on, std::sync::atomic::Ordering::SeqCst); }
 static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(None);
 
 fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
@@ -1930,6 +1946,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
         // The microphone is closed by force after a minute, whatever the key is doing.
         if hold.too_long(now() as u64) {
             if let Some(r) = rec.take() { let _ = r.finish(); }
+            listening(false);
             hold.cancel();
             say_voice(&app, "error", "I stopped listening after a minute. Hold the keys and talk again.", json!({}));
         }
@@ -1948,6 +1965,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                     say_voice(&app, "error", "Companion is hidden right now, so I cannot show you that I am listening, and I will not record without that. Show Companion from the menu bar icon, then hold the keys again.", json!({}));
                     continue;
                 }
+                // From here nothing is said, and a line that began after the keys went down is cut off before the microphone opens.
+                listening(true);
+                speech_off(&app);
                 say_voice(&app, "listening", LISTENING, json!({}));
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
                 // The microphone picked in Settings, or the Mac's default (voiceset::pick_mic).
@@ -1969,14 +1989,15 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                             std::thread::spawn(move || { if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); } });
                         }
                     }
-                    Err(e) => { hold.cancel(); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
+                    Err(e) => { hold.cancel(); listening(false); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
                 }
             }
             Ok(VoiceMsg::Up(t)) => {
                 let (step, long_enough) = hold.up(t);
                 if step != voice::Step::Stop { continue; }
-                let Some(r) = rec.take() else { hold.finished(); continue };
+                let Some(r) = rec.take() else { listening(false); hold.finished(); continue };
                 let heard = r.finish();
+                listening(false);
                 if !long_enough { hold.finished(); say_voice(&app, "idle", "", json!({})); continue; }
                 match heard {
                     Err(e) => { hold.finished(); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
@@ -2015,7 +2036,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                     }
                 }
             }
-            Ok(VoiceMsg::Cancel) => { if let Some(r) = rec.take() { let _ = r.finish(); } if hold.cancel() { say_voice(&app, "idle", "", json!({})); } }
+            Ok(VoiceMsg::Cancel) => { if let Some(r) = rec.take() { let _ = r.finish(); } listening(false); if hold.cancel() { say_voice(&app, "idle", "", json!({})); } }
             Err(_) => {}
         }
     }
@@ -2217,7 +2238,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

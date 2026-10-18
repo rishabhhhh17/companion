@@ -137,6 +137,40 @@ pub fn replaces(waiting: Option<&str>, new: &str) -> bool {
     waiting.is_none_or(|w| rank(new) > rank(w))
 }
 
+/// The problems an open microphone reports, from its audio thread, for the recorder to look at between its waits. The most
+/// serious one waiting is kept (`replaces`), and a look takes it in the same step, so one reported meanwhile is never
+/// erased: a microphone going away is reported only once.
+#[derive(Debug, Default)]
+pub struct Trouble(std::sync::Mutex<Option<String>>);
+impl Trouble {
+    pub fn report(&self, kind: &str) {
+        let mut t = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if replaces(t.as_deref(), kind) { *t = Some(kind.to_string()); }
+    }
+    pub fn take(&self) -> Option<String> { self.0.lock().unwrap_or_else(|e| e.into_inner()).take() }
+}
+
+/// What came of opening another microphone while the keys are held.
+#[derive(Debug, PartialEq)]
+pub enum Reopen<T> { Opened(usize, T), NoneOpened, Stopped }
+/// Tries the candidates in order and keeps the first that opens. A stop (the keys let go, Stop everything) is looked for
+/// before each try and after one that opened: then nothing more is tried, and a microphone that opened meanwhile is let go
+/// at once, with nothing it heard kept.
+pub fn reopen_first<T>(candidates: impl IntoIterator<Item = usize>, mut open: impl FnMut(usize) -> Option<T>, mut stopped: impl FnMut() -> bool) -> Reopen<T> {
+    for i in candidates {
+        if stopped() { return Reopen::Stopped; }
+        if let Some(o) = open(i) {
+            if stopped() { drop(o); return Reopen::Stopped; }
+            return Reopen::Opened(i, o);
+        }
+    }
+    Reopen::NoneOpened
+}
+/// Whether the recorder was told to stop, or went away, without waiting.
+pub fn stop_waiting(rx: &std::sync::mpsc::Receiver<()>) -> bool { !matches!(rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)) }
+/// A device's name for Settings and the card: no control characters, at most MAX_NAME characters.
+pub fn device_name(raw: &str) -> String { raw.chars().filter(|c| !c.is_control()).take(MAX_NAME).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ") }
+
 /// The one plain line about a picked microphone that is not connected: said once each time it goes away.
 #[derive(Default, Debug)]
 pub struct MicNote { told: Option<String> }
@@ -359,6 +393,73 @@ mod tests {
         assert!(!replaces(Some("StreamInvalidated"), "StreamInvalidated"), "the first of the same kind is kept");
         assert!(!replaces(Some("StreamInvalidated"), "DeviceChanged"), "a reroute never hides a changed rate");
     }
+    // Found in review, 18 Oct 2026: the recorder read the problem waiting and cleared it in a second step, so a microphone
+    // that went away in between (an overload waiting, then the AirPods switched off) was erased and nothing opened another.
+    #[test]
+    fn looking_at_a_problem_takes_it_in_one_step_so_one_reported_meanwhile_is_kept() {
+        let t = Trouble::default();
+        assert_eq!(t.take(), None);
+        t.report("Xrun");
+        assert_eq!(t.take().as_deref(), Some("Xrun"), "the overload is looked at");
+        t.report("DeviceNotAvailable");   // right after the look, before the next one
+        assert_eq!(t.take().as_deref(), Some("DeviceNotAvailable"), "the loss is still there for the next look");
+        assert_eq!(t.take(), None, "taken once");
+        t.report("Xrun"); t.report("DeviceNotAvailable"); t.report("Xrun");
+        assert_eq!(t.take().as_deref(), Some("DeviceNotAvailable"), "the most serious one waiting wins");
+    }
+    // Found in review, 18 Oct 2026: a reopen opened the next microphone without looking for a stop first, so after the keys
+    // were let go or Stop everything was pressed, a slow Bluetooth or USB microphone could still come on, and a few
+    // milliseconds of it were kept.
+    struct Mic(std::rc::Rc<std::cell::Cell<bool>>);
+    impl Drop for Mic { fn drop(&mut self) { self.0.set(true); } }
+    #[test]
+    fn a_reopen_keeps_the_first_microphone_that_opens() {
+        let tried = std::cell::RefCell::new(Vec::new());
+        let r = reopen_first([3, 1, 0], |i| { tried.borrow_mut().push(i); (i == 1).then_some(i * 10) }, || false);
+        assert_eq!(r, Reopen::Opened(1, 10));
+        assert_eq!(*tried.borrow(), [3, 1], "nothing after the one that opened");
+        assert_eq!(reopen_first([2, 5], |_| None::<u8>, || false), Reopen::NoneOpened);
+        assert_eq!(reopen_first(std::iter::empty(), |_| Some(1u8), || false), Reopen::NoneOpened);
+    }
+    #[test]
+    fn a_reopen_stops_when_the_keys_are_let_go_and_never_keeps_a_microphone_opened_meanwhile() {
+        // Let go before anything is tried: nothing is opened.
+        let opened = std::cell::Cell::new(0);
+        assert_eq!(reopen_first([0, 1], |_| { opened.set(opened.get() + 1); Some(1u8) }, || true), Reopen::Stopped);
+        assert_eq!(opened.get(), 0);
+        // Let go while a slow microphone was opening: it is let go at once, and nothing it heard is kept.
+        let gone = std::rc::Rc::new(std::cell::Cell::new(false));
+        let looks = std::cell::Cell::new(0);
+        let g = gone.clone();
+        let r = reopen_first([0], move |_| Some(Mic(g.clone())), || { looks.set(looks.get() + 1); looks.get() > 1 });
+        assert!(matches!(r, Reopen::Stopped));
+        assert!(gone.get(), "the microphone opened meanwhile was closed");
+        // Let go after the first one would not open: the next is not tried.
+        let tried = std::cell::RefCell::new(Vec::new());
+        let looks = std::cell::Cell::new(0);
+        let r = reopen_first([4, 7], |i| { tried.borrow_mut().push(i); None::<u8> }, || { looks.set(looks.get() + 1); looks.get() > 1 });
+        assert_eq!(r, Reopen::Stopped);
+        assert_eq!(*tried.borrow(), [4]);
+    }
+    #[test]
+    fn a_stop_is_seen_whether_it_was_sent_or_the_recorder_went_away_and_is_not_seen_otherwise() {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        assert!(!stop_waiting(&rx));
+        tx.send(()).unwrap();
+        assert!(stop_waiting(&rx));
+        drop(tx);
+        assert!(stop_waiting(&rx), "the recorder was dropped");
+    }
+    // Found in review, 18 Oct 2026: a device's name was read through its Display, which cpal fails when the device is going
+    // away, and turning that into text panics (the recorder thread died and everything heard was lost).
+    #[test]
+    fn a_device_name_has_no_control_characters_and_a_sensible_length() {
+        assert_eq!(device_name("AirPods Pro"), "AirPods Pro");
+        assert_eq!(device_name(" Blue\u{7} Yeti\n "), "Blue Yeti");
+        assert_eq!(device_name(&"m".repeat(500)).chars().count(), MAX_NAME);
+        assert_eq!(device_name(""), "");
+    }
+
     #[test]
     fn the_missing_microphone_line_is_said_once_each_time_it_goes_away() {
         let mut n = MicNote::default();
@@ -451,6 +552,29 @@ mod tests {
     #[test]
     fn speaking_checks_calls_then_the_sound_then_repeats_and_uses_the_picked_voice_and_speed() {
         in_order(body("fn speak("), &["speak::prepare_reply(&text", "if quiet()", "speak::mac::sound_now()", "if sound != voiceset::Sound::On", "should_say(&line", "speak::mac::say(&line, set.voice.as_ref(), set.speed)"]);
+    }
+    // Found in review, 18 Oct 2026: key down silenced speech once, but a line or a whole reply (up to 600 characters) that
+    // arrived while the keys were held was still said, into the open microphone, and could be written into the box.
+    #[test]
+    fn nothing_is_said_while_hold_to_talk_listens() {
+        let sp = body("fn speak(");
+        in_order(sp, &["speak::prepare_reply(&text", "if listening_now()", "\"why\": \"listening\"", "if quiet()", "speak::mac::sound_now()", "speak::mac::say(&line"]);
+        assert!(MAIN.contains("never over the person's own voice"), "the promise is kept in the doc comment");
+        let w = body("fn voice_worker(");
+        // On before the light and the microphone, with anything already being said cut off.
+        in_order(w, &["listening(true);", "speech_off(&app);", "say_voice(&app, \"listening\", LISTENING", "voice_mac::Recorder::start("]);
+        // Off once the microphone is closed: let go, the minute running out, a cancel, or a microphone that would not start.
+        let up = &w[w.find("let heard = r.finish();").unwrap()..]; assert!(up[..up.find("if !long_enough").unwrap()].contains("listening(false);"), "let go");
+        assert!(w.matches("listening(false);").count() >= 5, "every way the microphone closes turns it off");
+        let tl = &w[w.find("if hold.too_long(").unwrap()..]; assert!(tl[..tl.find("\n        }").unwrap()].contains("listening(false);"));
+        let c = &w[w.find("Ok(VoiceMsg::Cancel)").unwrap()..]; assert!(c[..c.find('\n').unwrap()].contains("listening(false);"));
+        let st = &w[w.find("match voice_mac::Recorder::start(").unwrap()..]; let e = &st[st.find("Err(e) =>").unwrap()..]; assert!(e[..e.find('\n').unwrap()].contains("listening(false);"), "would not start");
+    }
+    #[test]
+    fn the_card_reads_only_the_saved_speed_at_its_start() {
+        let b = body("fn voice_speed(");
+        assert!(b.contains("window.label() != \"card\"") && b.contains("voice_now().speed"));
+        assert!(!b.contains("inputs(") && !b.contains("voices("), "no device or voice is listed for it");
     }
     #[test]
     fn hold_to_talk_lights_first_then_opens_the_picked_microphone_and_listens_with_the_projects_words() {

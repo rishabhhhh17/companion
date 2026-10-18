@@ -5,8 +5,8 @@ import { allScreensOn, setAllScreens, PRESENTATION_DEFAULT, presentationFrom, ty
 import { layoutDiagram } from "./layout.ts";
 import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
-import { askedByVoice, lineAnswers, lineFor, newReply, repliesIn, repliesOn, setReplies, setSpeech, speakWhen, speechOn, spokenNote, type AskKind, type VoiceQuestion } from "./speech.ts";
-import { VOICE_START, languageLabel, micDefaultLabel, micLine, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
+import { askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, setReplies, setSpeech, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
+import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, spokenSpeed, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
 import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
@@ -223,9 +223,9 @@ function VoiceRows() {
   const [replies, setRepliesState] = useState(repliesOn);
   const [problem, setProblem] = useState("");
   const [tried, setTried] = useState("");
-  const load = () => void invoke("voice_settings").then((x) => setV(voiceSettingsFrom(x))).catch(() => {});
+  const load = () => void invoke("voice_settings").then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch(() => {});
   useEffect(() => { load(); const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
-  const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(voiceSettingsFrom(x))).catch((e) => setProblem(voiceProblem(String(e)))); };
+  const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch((e) => setProblem(voiceProblem(String(e)))); };
   const heard = (r: unknown) => { const o = (r ?? {}) as { said?: boolean; why?: string; sound?: Sound }; setTried(o.said === false && o.why === "sound" ? soundLine(o.sound ?? "muted") : o.said === false && o.why === "quiet" ? S.voiceQuietNow : ""); };
   return (<>
     <h3>{S.voiceSettingsTitle}</h3>
@@ -549,7 +549,7 @@ function Card() {
     void invoke("create_practice", { which: PRACTICES[kind].folder }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
   };
   // The setting practice after its lesson: run the project's own checks again, so the fix is proven, not assumed.
-  useEffect(() => { if (m.practice?.stage === "proving" && m.practice.project === project) { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); } }, [m.practice?.stage]);
+  useEffect(() => { if (m.practice?.stage === "proving" && m.practice.project === project) { pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); } }, [m.practice?.stage]);
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
   // About this project: asked each time a folder is opened (reads files only).
@@ -575,7 +575,7 @@ function Card() {
   const voiceAsked = useRef<VoiceQuestion>(null);   // the last question sent by voice, what it asked for and when (null: typed or pressed)
   const fromVoice = useRef(false);    // the box holds words that came from hold to talk
   const sayIt = (text: string, whole: boolean) => void invoke("speak", { text, whole, rest: S.speakRest }).then((r) => { const n = spokenNote(r); if (n) dispatch({ type: "app.notice", message: n }); }).catch(() => {});
-  const answersVoice = (key: string) => { const k = lineAnswers(key); return k !== null && askedByVoice(voiceAsked.current, k, Date.now()); };
+  const answersVoice = (key: string) => lineByVoice(voiceAsked.current, key, Date.now());
   const saidKey = useRef("");
   const spoken = lineFor({ walk: m.walk, showme: m.showme });
   useEffect(() => {
@@ -602,6 +602,19 @@ function Card() {
   }, [replyKeys]);
   // A question sent from the box counts as asked by voice when the box still held words from hold to talk.
   const sentFromBox = (kind: AskKind) => { voiceAsked.current = fromVoice.current ? { kind, at: Date.now() } : null; fromVoice.current = false; };
+  // A Show me asked by voice keeps to its own request and ends with its answer (speech.ts followVoiceShowMe), so no other
+  // line that shows meanwhile (Point at the problem, a hint, a window that changed) is ever said as its answer.
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string } | null;
+      if (ev?.type === "app.showme" || ev?.type === "assist.error") voiceAsked.current = followVoiceShowMe(voiceAsked.current, ev);
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  // Pressed, not asked by voice: whatever answer comes next is not said as the answer to an earlier spoken question.
+  const pressed = () => { voiceAsked.current = null; };
+  // The speed picked in Settings, for Show me's timing (Settings notes every change); only the saved number is read here.
+  useEffect(() => { void invoke("voice_speed").then((x) => noteSpeed(voiceSettingsFrom({ speed: x }))).catch(() => {}); }, []);
   // The daily update check: only looks, never installs. Off if the person turned it off or updates are not set up.
   useEffect(() => {
     let last: number | null = null, enabled = true;
@@ -683,11 +696,14 @@ function Card() {
       player.current.hush();
       const steps = planSteps(targetsOf(ev), { lesson: inLesson.current });
       if (!steps.length) return;
-      const speaking = speechOn();
+      // Spoken when either switch says this answer is (Answer out loud: the Show me asked by voice), at the picked speed, so
+      // each line is said whole before the next step's line cuts in (sequence.ts lineMs).
+      const speaking = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: voiceShowMe(voiceAsked.current, req, Date.now()) }).say;
+      const speed = spokenSpeed();
       const aim = (s: Step) => invoke("showme_aim", {
         req, x: s.target.x, y: s.target.y, ocrId: s.target.ocrId ?? null, targetText: s.target.targetText, caption: s.target.caption,
         mark: s.target.mark ?? null, screen: s.target.screen ?? 1, step: s.index + 1, of: s.total, hold: s.hold,
-        flyMs: s.total > 1 ? LEAD_MS : null, fadeMs: lineMs(s.text, speaking),
+        flyMs: s.total > 1 ? LEAD_MS : null, fadeMs: lineMs(s.text, speaking, speed),
       }).then((r) => {
         const out = r as { ok?: boolean; why?: string } | undefined;
         // The window the picture was taken of changed: nothing more is drawn over it (rule 22). Say so in words.
@@ -699,7 +715,7 @@ function Card() {
         // The last step said in words ends it: what was seen is forgotten. Before that, only the pointer is taken away.
         if (s.index === s.total - 1) void invoke("showme_clear").then(say); else void invoke("showme_hide").then(say);
       };
-      player.current.start(steps, { aim, words }, speaking);
+      player.current.start(steps, { aim, words }, speaking, speed);
       if (steps.some((s) => s.draw)) setWalk((w) => (w ? { ...w, steps: [...w.steps, stepsLine(steps)] } : w));
     });
     return () => { off.then((f) => f()); player.current.hush(); };
@@ -712,6 +728,7 @@ function Card() {
   const projectRef = useRef(project); projectRef.current = project;
   useEffect(() => {
     const offKey = listen("find-problem", () => {
+      pressed();
       if (!projectRef.current) { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
       dispatch({ type: "ui.findProblem" }); homeDispatch({ type: "pick", tab: "now" }); count("hero_press"); count("builder_use");
       void send(findProblem(projectRef.current));
@@ -798,6 +815,7 @@ function Card() {
   }, [home.tab, project]);
   const beginLesson = (lesson: string, fresh: boolean) => {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
+    pressed();
     const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
     noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
     const walk = (c as { id: string }).id;
@@ -849,7 +867,7 @@ function Card() {
   const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
   const rescue = () => {
     if (!project) return;
-    voiceAsked.current = null;   // pressed, not asked by voice
+    pressed();
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(diagnose(project));
@@ -935,7 +953,7 @@ function Card() {
             <div className="line">{m.practice.kind === "setting" ? S.practiceSettingStart : S.practiceStart}</div>
             <div className="line muted">{S.practiceKeys}</div>
             <div className="row">
-              <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
+              <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
               <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
             </div>
           </>}
@@ -1022,7 +1040,7 @@ function Card() {
           <div className="row">
             {m.walk.stage === "step" && <>
               <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}`, allScreens: allScreensOn() }); }}>{S.lessonPoint}</button>
-              {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>}
+              {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => { pressed(); void invoke("do_it_for_me"); }}>{S.doItForMe}</button>}
               <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
             </>}
             {m.walk.stage === "already" && <>
@@ -1086,7 +1104,7 @@ function Card() {
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
           <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
-          <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); }}>{S.showMe}</button>
+          <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>
           <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
         </div>
       )}
@@ -1447,7 +1465,7 @@ function Card() {
           <div className="line">{m.showme.message}</div>
           {["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && (walk || m.showme.turn) && (
             <div className="row">
-              <button className="btn" type="button" onClick={() => void invoke("do_it_for_me")}>{S.doItForMe}</button>
+              <button className="btn" type="button" onClick={() => { pressed(); void invoke("do_it_for_me"); }}>{S.doItForMe}</button>
               {walk && <button className="btn" type="button" onClick={() => nextStep()}>{S.showMeNext}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.showMeDone}</button>
             </div>

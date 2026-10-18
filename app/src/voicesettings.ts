@@ -38,6 +38,13 @@ export function voiceSettingsFrom(v: unknown): VoiceSettings {
   };
 }
 
+// The speed picked in Settings, as the card last read or saved it (the card reads it when it starts; Settings notes every
+// answer). Show me's steps wait as long as each line takes to say at that speed (sequence.ts lineMs).
+let speedNow = 1;
+export const spokenSpeed = (): number => speedNow;
+/** Notes the speed in an answer read with voiceSettingsFrom (always one of the offered speeds), and gives it back. */
+export function noteSpeed(s: VoiceSettings): VoiceSettings { speedNow = s.speed; return s; }
+
 /** A language code in words, from the Mac's own names for languages ("en-GB" gives English and the place). */
 function langWords(code: string): string {
   try { return new Intl.DisplayNames(["en"], { type: "language", languageDisplay: "standard" }).of(code) ?? code; } catch { return code; }

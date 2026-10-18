@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { askedByVoice, lineAnswers, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, VOICE_ASK_MS } from "./speech.ts";
+import { askedByVoice, followVoiceShowMe, lineAnswers, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, VOICE_ASK_MS, type VoiceQuestion } from "./speech.ts";
 import { initial, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
@@ -59,16 +59,15 @@ describe("answers said out loud for a question asked by voice (off by default, T
     expect(askedByVoice(q, "showme", 2000)).toBe(false);
     expect(askedByVoice({ kind: "showme", at: 1000 }, "showme", 2000)).toBe(true);
   });
-  test("a Show me line answers a Show me question; a lesson's line answers no question, so it is never said whole", () => {
+  test("a Show me line answers the Show me request it names; a lesson's line answers no question, so it is never said whole", () => {
     const show = lineFor({ walk: null, showme: { stage: "pointing", message: "Click Save.", req: "sm_1" } })!;
-    expect(lineAnswers(show.key)).toBe("showme");
+    expect(lineAnswers(show.key)).toEqual({ kind: "showme", req: "sm_1" });
     const lesson = lineFor({ walk: walk(), showme: null })!;
     expect(lineAnswers(lesson.key)).toBeNull();
     // Right after a question asked by voice, with only Answer out loud on, a lesson step is not said at all.
-    const asked = { kind: "showme", at: 1000 } as const;
-    const byVoice = (key: string) => { const k = lineAnswers(key); return k !== null && askedByVoice(asked, k, 2000); };
-    expect(speakWhen({ speech: false, replies: true, byVoice: byVoice(lesson.key) })).toEqual({ say: false, whole: false });
-    expect(speakWhen({ speech: false, replies: true, byVoice: byVoice(show.key) })).toEqual({ say: true, whole: true });
+    const asked = { kind: "showme", at: 1000, req: "sm_1" } as const;
+    expect(speakWhen({ speech: false, replies: true, byVoice: lineByVoice(asked, lesson.key, 2000) })).toEqual({ say: false, whole: false });
+    expect(speakWhen({ speech: false, replies: true, byVoice: lineByVoice(asked, show.key, 2000) })).toEqual({ say: true, whole: true });
   });
   const m = (o: Partial<Model>): Model => ({ ...initial(), ...o });
   test("the answers on the card: a research answer and a finished task's result, each under its own key and kind", () => {
@@ -111,5 +110,84 @@ describe("answers said out loud for a question asked by voice (off by default, T
     expect(effect).toContain("newReply(all, seenReplies.current)");
     expect(effect).toContain("askedByVoice(voiceAsked.current, r.kind, Date.now())");
     expect(effect).toContain("voiceAsked.current = null");
+  });
+});
+
+// Found in review, 18 Oct 2026: with Speak to me off and Answer out loud on, any Show me line counted as the answer to a
+// Show me asked by voice, for ten minutes. Point at the problem's line, the "type what you want to find" hint and a window
+// that changed were said whole, sounds nobody asked for. A Show me asked by voice now counts only its own request's lines.
+describe("a Show me asked by voice counts only its own answer", () => {
+  const asked: VoiceQuestion = { kind: "showme", at: 1000 };
+  const thinking = (req: string) => ({ type: "app.showme", stage: "thinking", message: "Finding it", req });
+  const show = (stage: string, req?: string, more: Record<string, unknown> = {}) => ({ stage, message: "Click Save.", ...(req ? { req } : {}), ...more });
+  // What is said with Speak to me off and Answer out loud on (null: the card has no line for it).
+  const said = (q: VoiceQuestion, s: ReturnType<typeof show>, now = 2000) => {
+    const line = lineFor({ walk: null, showme: s as never });
+    return line ? speakWhen({ speech: false, replies: true, byVoice: lineByVoice(q, line.key, now) }) : null;
+  };
+  const quiet = { say: false, whole: false }, whole = { say: true, whole: true };
+  const mine = followVoiceShowMe(asked, thinking("sm_7"));
+
+  test("it takes the request its Finding it names, and that answer's lines are said whole", () => {
+    expect(mine).toEqual({ kind: "showme", at: 1000, req: "sm_7" });
+    expect(said(mine, show("pointing", "sm_7"))).toEqual(whole);
+    expect(said(mine, show("pointing_roughly", "sm_7", { step: 1, of: 2 }))).toEqual(whole);
+    expect(said(mine, show("not_sure", "sm_7", { step: 2, of: 2 }))).toEqual(whole);   // a step said in words
+    expect(voiceShowMe(mine, "sm_7", 2000)).toBe(true);
+  });
+  test("then Point at the problem, the empty box hint and a window that changed are not said", () => {
+    expect(said(mine, show("pointing"))).toEqual(quiet);   // Point at the problem's ring carries no Show me request
+    expect(said(mine, show("pointing_roughly"))).toEqual(quiet);
+    expect(said(mine, show("error"))).toEqual(quiet);   // Show me pressed with an empty box
+    expect(said(mine, show("window_changed"))).toEqual(quiet);
+    // With Speak to me on they are said as short lines, as before.
+    const line = lineFor({ walk: null, showme: show("pointing") as never })!;
+    expect(speakWhen({ speech: true, replies: true, byVoice: lineByVoice(mine, line.key, 2000) })).toEqual({ say: true, whole: false });
+  });
+  test("before its request is known no Show me line counts, and another request never does", () => {
+    expect(said(asked, show("pointing", "sm_7"))).toEqual(quiet);
+    expect(said(mine, show("pointing", "sm_8"))).toEqual(quiet);
+    expect(voiceShowMe(asked, "sm_7", 2000)).toBe(false);
+    expect(voiceShowMe(mine, "sm_8", 2000)).toBe(false);
+    expect(voiceShowMe(mine, "sm_7", 1000 + VOICE_ASK_MS)).toBe(false);   // ten minutes at most
+  });
+  test("another Show me taking the pointer ends it (a typed one, a lesson's step)", () => {
+    expect(followVoiceShowMe(mine, thinking("sm_8"))).toBeNull();
+    expect(followVoiceShowMe(mine, thinking("sm_7"))).toEqual(mine);   // its own Finding it again changes nothing
+  });
+  test("it ends when its answer ends: the click, Do it for me, an error, a missing permission, a window that changed", () => {
+    for (const stage of ["your_turn_done", "done_for_you", "error", "needs_permission", "window_changed"]) expect(followVoiceShowMe(mine, { type: "app.showme", stage })).toBeNull();
+    expect(followVoiceShowMe(asked, { type: "app.showme", stage: "error" })).toBeNull();   // a password box was active: nothing was looked at
+    expect(followVoiceShowMe(mine, { type: "assist.error", req: "sm_7" })).toBeNull();   // it could not find it
+    expect(followVoiceShowMe(mine, { type: "assist.error", req: "ph_1" })).toEqual(mine);   // Prompt help's, not this one's
+  });
+  test("its own steps, a miss and the pointer going away before a step said in words do not end it", () => {
+    // The last step said in words clears the pointer first ("done"), then its words come: they are still its answer.
+    for (const stage of ["looking", "pointing", "pointing_roughly", "your_turn_miss", "done"]) expect(followVoiceShowMe(mine, { type: "app.showme", stage, req: "sm_7" })).toEqual(mine);
+    for (const odd of [null, undefined, 5, "x", {}]) expect(followVoiceShowMe(mine, odd)).toEqual(mine);
+  });
+  test("a question of another kind is left alone", () => {
+    const task: VoiceQuestion = { kind: "task", at: 1000 };
+    expect(followVoiceShowMe(task, { type: "app.showme", stage: "error" })).toEqual(task);
+    expect(followVoiceShowMe(task, thinking("sm_9"))).toEqual(task);
+    expect(followVoiceShowMe(null, thinking("sm_9"))).toBeNull();
+  });
+  test("the card follows Show me's events, times a voice Show me as spoken, and every pressed flow ends a voice question", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("voiceAsked.current = followVoiceShowMe(voiceAsked.current, ev)");
+    expect(card).toContain("const answersVoice = (key: string) => lineByVoice(voiceAsked.current, key, Date.now());");
+    // The answer's timing: spoken when either switch says it will be, at the picked speed.
+    const point = card.slice(card.indexOf('if (ev.type !== "assist.point"'), card.indexOf("player.current.start(steps"));
+    expect(point).toContain("const speaking = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: voiceShowMe(voiceAsked.current, req, Date.now()) }).say;");
+    expect(point).toContain("const speed = spokenSpeed();");
+    expect(point).toContain("lineMs(s.text, speaking, speed)");
+    expect(card).toContain("player.current.start(steps, { aim, words }, speaking, speed);");
+    expect(card).not.toMatch(/const speaking = speechOn\(\)/);
+    // Pressed, not asked by voice: the hero key, Find the problem, Do it for me, Show me with an empty box, rescue, a lesson.
+    const findKey = card.slice(card.indexOf('listen("find-problem"'), card.indexOf("const offFound"));
+    expect(findKey).toContain("pressed();");
+    for (const l of card.split("\n").filter((x) => x.includes('invoke("do_it_for_me")') || x.includes("send(findProblem(project))") || x.includes("message: S.showMeHint"))) expect(l).toContain("pressed();");
+    expect(card.slice(card.indexOf("const rescue = () => {"), card.indexOf("const rescue = () => {") + 200)).toContain("pressed();");
+    expect(card.slice(card.indexOf("const beginLesson = "), card.indexOf("const beginLesson = ") + 300)).toContain("pressed();");
   });
 });
