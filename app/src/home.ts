@@ -16,6 +16,7 @@ export const tabPanelId = (t: Tab) => `home-panel-${t}`;
 export type Panel =
   | "folder" | "ask" | "urgent" | "notes" | "about" | "diagram" | "promptHelp" | "drive" | "ship" | "research" | "rescue"
   | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "bisect" | "errorHelp" | "showMe" | "recap" | "toast"
+  | "whatsNew"
   | "history"
   | "practice" | "lessons" | "walk"
   | "memory"
@@ -26,7 +27,7 @@ export const PANEL_TAB: Record<Panel, Place> = {
   notes: "every",
   folder: "now", ask: "now", urgent: "now", about: "now", diagram: "now", promptHelp: "now", drive: "now", ship: "now",
   research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now",
-  bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now",
+  bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now",
   history: "did",
   practice: "learn", lessons: "learn", walk: "learn",
   memory: "memory",

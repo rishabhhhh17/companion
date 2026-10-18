@@ -7,15 +7,21 @@ import { answered, atLimit, nextQuestion } from "./anywhere.ts";
 import { answerPlayer, lineMs, LEAD_MS, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { lineFor, setSpeech, speechOn } from "./speech.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError } from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsErase, metricsNote, metricsSet, metricsShow, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, setExplain, editLine, eraseMemory, exportMemory, forgetLine, listMemory, pauseMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, setSpendingLimit, showSpending, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
 import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
+import type { Explain, HistoryItem, MemoryLine, PracticeKind, Spending, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { webLink } from "./links.ts";
+import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
+import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
+import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
+import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
+import { addFiles, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -65,6 +71,7 @@ function ExplainBox({ e }: { e: Explain }) {
     <details className="explain">
       <summary>{S.explainTitle} <span className="muted">· {S.explainCost}</span></summary>
       <ul>{e.bullets.map((b, i) => <li className="line" key={i}>{b}</li>)}</ul>
+      <div className="row"><CopyButton text={explainCopy(e)} label={S.copyAnswer} /></div>
       {e.question && (
         <div>
           <div className="line"><b>{S.explainCheck}:</b> {e.question.text}</div>
@@ -320,6 +327,8 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
       <h3>{S.exportLogsTitle}</h3>
       <div className="line muted">{S.exportLogsHelp}</div>
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
+      <div className="line muted">{S.reportHelp}</div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => setExported(S.reportOpened(String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
       {step === "idle" && <div className="row"><button className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
       {step !== "idle" && (
@@ -339,6 +348,57 @@ function SettingsPanel({ working, explainOn, project, spending, fun, setFun, aut
   );
 }
 
+// Opens a web address in the person's own browser, only when this button is pressed (rule: never from text the model
+// wrote by itself). The site's real name is on the button. The Mac side checks the address again (share.rs web_link).
+// This is the only place Home asks for a link to be opened (links.test.ts checks that).
+function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => void }) {
+  const l = webLink(url);
+  if (!l) return null;
+  return <button className="btn" type="button" onClick={() => void invoke("open_link", { url: l.url }).then(() => onNote("")).catch((e) => onNote(String(e)))}>{S.openSite(l.host)}</button>;
+}
+
+// Copy: puts what the card shows on the clipboard, only on a press (copytext.ts hides anything that looks like a key again
+// first). The Mac side writes it (copy_text, the same clipboard as Copy link); the page's own clipboard is the fallback.
+// The page makes the Mac side's own check first (copyable), so the fallback only ever takes text the Mac side would have
+// taken, never what it refused. Says so when it could not copy, so a failure is never silent.
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  if (!text) return null;
+  const copy = () => {
+    setState("idle");
+    const ok = copyable(text);
+    if (ok === null) { setState("failed"); return; }
+    void invoke("copy_text", { text: ok }).catch(() => navigator.clipboard?.writeText(ok) ?? Promise.reject(new Error("no clipboard"))).then(() => { setState("copied"); setTimeout(() => setState("idle"), 2500); }).catch(() => setState("failed"));
+  };
+  return <>
+    <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : S.copy}</button>
+    {state === "failed" && <span className="line" role="status">{S.copyFailed}</span>}
+  </>;
+}
+
+// One research note and where it came from. Its source was written by the model, so it opens only on a press, and the
+// button names the site it really goes to.
+function ResearchNote({ text, source }: { text: string; source: string }) {
+  const [note, setNote] = useState("");
+  return (
+    <div className="line">
+      {text} <span className="muted">{source}</span> <OpenButton url={source} onNote={setNote} />
+      {note && <div className="line" role="status">{note}</div>}
+    </div>
+  );
+}
+
+// A web address shown on Home, with its Open button.
+function LinkLine({ label, url, strong }: { label: string; url: string; strong?: boolean }) {
+  const [note, setNote] = useState("");
+  return (
+    <div className={`line${strong ? "" : " muted"}`}>
+      {strong ? <b>{label}: {url}</b> : <>{label}: {url}</>} <OpenButton url={url} onNote={setNote} />
+      {note && <div className="line" role="status">{note}</div>}
+    </div>
+  );
+}
+
 function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } }; project: string; onClose: () => void }) {
   const [ask, setAsk] = useState<"live" | "back" | null>(null);
   const [shared, setShared] = useState("");
@@ -347,8 +407,8 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
     <section className={`panel ${f.stage === "failed" || f.stage === "refused" || f.stage === "not_signed_in" ? "amber" : ""}`} role="status" aria-label={S.onlineTitle}>
       <h2>{S.onlineTitle}</h2>
       <div className="line">{f.detail}</div>
-      {f.previewUrl && <div className="line muted">Preview: {f.previewUrl}</div>}
-      {f.productionUrl && <div className="line"><b>Live: {f.productionUrl}</b></div>}
+      {f.previewUrl && <LinkLine label={S.previewAddress} url={f.previewUrl} />}
+      {f.productionUrl && <LinkLine label={S.liveAddress} url={f.productionUrl} strong />}
       {f.stage === "ready" && f.canGoLive && ask !== "live" && <div className="row"><button className="btn primary" type="button" onClick={() => setAsk("live")}>{S.makeLive}</button></div>}
       {ask === "live" && f.previewUrl && (
         <div className="row" role="alert">
@@ -363,6 +423,7 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
           <div className="row">
             <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(String(e)))}>{S.savePicture}</button>
             <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(String(e)))}>{S.copyLink}</button>
+            <OpenButton url={f.card.url} onNote={setShared} />
           </div>
           {shared && <div className="line muted" role="status">{shared}</div>}
         </figure>
@@ -376,6 +437,35 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
         </div>
       )}
       {!busy && <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>}
+    </section>
+  );
+}
+
+// What I did: the project's tasks, newest first, with a search by words in their name and by how they ended (history.ts).
+// Without a search the newest 20 show; with one, every match among the tasks the engine sent.
+function HistoryPanel({ items, q, setQ }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void }) {
+  const filtering = historyFiltering(q);
+  const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
+  return (
+    <section className="panel" aria-label={S.recentTitle}>
+      <h2>{S.recentTitle}</h2>
+      {items.length === 0 && <div className="line muted">{S.homeHistoryNone}</div>}
+      {items.length > 0 && (
+        <div className="row" role="search">
+          <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
+            onChange={(e) => setQ({ ...q, words: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Escape" && !composing(e) && q.words) { e.preventDefault(); e.stopPropagation(); setQ({ ...q, words: "" }); } }} />
+          <select aria-label={S.historyStatusLabel} value={q.status} onChange={(e) => setQ({ ...q, status: e.target.value as HistoryStatus })}>
+            {HISTORY_STATUSES.map((s) => <option key={s} value={s}>{S.historyStatus[s]}</option>)}
+          </select>
+          {filtering && <button className="btn" type="button" onClick={() => setQ(NO_FILTER)}>{S.historyClear}</button>}
+        </div>
+      )}
+      {filtering && <div className="line muted" role="status" aria-live="polite">{shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch}</div>}
+      {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
+      {shown.map((h) => (
+        <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+      ))}
     </section>
   );
 }
@@ -434,14 +524,98 @@ function Card() {
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
   useEffect(() => { if (document.hasFocus() && (!document.activeElement || document.activeElement === document.body)) document.getElementById(tabId(home.tab))?.focus(); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
-  const box = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
+  // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
+  const offNow = useRef(false);
+  const keepDraft = (text: string) => { try { const d = draftToKeep(text, offNow.current); if (d === null) localStorage.removeItem(DRAFT_KEY); else localStorage.setItem(DRAFT_KEY, d); } catch { /* storage may be unavailable */ } };
+  const fitBox = () => { const el = box.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 160)}px`; };
+  const setBox = (text: string) => { if (!box.current) return; box.current.value = text; fitBox(); keepDraft(text); };
+  const clearBox = () => setBox("");
+  // The zero cost warm up: when Home opens or the box gets the keyboard, the engine reads the Claude binary through so
+  // the first task starts sooner (runner/src/warm.ts). Nothing is run or sent. At most once a minute from here.
+  const warmedAt = useRef(0);
+  const warmSoon = () => { const t = Date.now(); if (t - warmedAt.current < 60_000) return; warmedAt.current = t; void send(warmEngine()).catch(() => {}); };
   const [project, setProject] = useState("");
+  // What opening a lesson step's page said, if it could not open it (links.ts); a new step starts with none.
+  const [lessonNote, setLessonNote] = useState("");
+  useEffect(() => { setLessonNote(""); }, [m.walk?.id, m.walk?.index, m.walk?.variant]);
+  // Files into the ask box (attachfiles.ts): dragged onto Home or pasted into the box, read on this Mac, shown as chips that
+  // can be removed, and sent only with Start. Kept while Home is closed, not kept on disk, dropped for a new folder.
+  const [attached, setAttached] = useState<Attached[]>([]);
+  const attachedNow = useRef(attached); attachedNow.current = attached;
+  const [attachNotes, setAttachNotes] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); void addFiles(attachedNow.current, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); }); };
+  const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); };
+  // What Start sent, kept in memory only until the engine says the task began (askbox.ts sentOutcome). If it says no
+  // instead (a file it will not take, no Claude for a picture, something else working, the daily limit), or Stop came
+  // before the task began, the words and the files are put back, never over anything typed or added since, so the person
+  // can do what the refusal says. A new folder forgets it.
+  const sent = useRef<Sent<Attached> | null>(null);
+  const putBackSent = () => {
+    const s = sent.current; sent.current = null;
+    if (!s) return;
+    const r = putBack(s, { text: box.current?.value ?? "", attached: attachedNow.current });
+    if (r.attached) { attachedNow.current = r.attached; setAttached(r.attached); }
+    // Off the record comes back first, so the words put back are never kept on this Mac.
+    if (r.text !== undefined) { if (r.off) { offNow.current = true; setOff(true); } setBox(r.text); }
+  };
+  const onSentEvent = useRef((_: unknown) => {});
+  onSentEvent.current = (payload: unknown) => {
+    if (!sent.current) return;
+    const o = sentOutcome(payload, AGENT);
+    if (o === "started") sent.current = null;
+    else if (o === "refused") putBackSent();
+  };
+  useEffect(() => {
+    const off = listen("runner-event", (e) => onSentEvent.current(e.payload));
+    return () => { off.then((f) => f()); };
+  }, []);
+  useEffect(() => { clearAttached(); sent.current = null; }, [project]);
+  // A file dropped on Home outside the drop handling must never be opened in place of Home's page, and neither may a link
+  // dropped anywhere but the ask box (blocksDrop); words dragged onto the ask box land there.
+  useEffect(() => {
+    const stopOpen = (e: DragEvent) => { if (blocksDrop(e.dataTransfer?.types, e.target)) e.preventDefault(); };
+    window.addEventListener("dragover", stopOpen);
+    window.addEventListener("drop", stopOpen);
+    return () => { window.removeEventListener("dragover", stopOpen); window.removeEventListener("drop", stopOpen); };
+  }, []);
+  // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
+  const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
+  useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
+  // What changed after an update (whatsnew.ts): worked out once when the page starts, then shown on Now until closed. The
+  // version counts as seen once Home has been open with it showing, or it was closed, so it shows once. Kept on this Mac only.
+  const [news, setNews] = useState<{ show: Release[]; remember: string } | null>(null);
+  const newsNow = useRef(news); newsNow.current = news;
+  const rememberVersion = (v: string) => { try { localStorage.setItem(SEEN_VERSION_KEY, v); } catch { /* storage may be unavailable */ } };
+  useEffect(() => {
+    // Read as the page starts: a first run finished later on is a first install, not an update from an older version.
+    const usedBefore = (() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return false; } })();
+    void invoke("update_status").then((v) => {
+      let seen: string | null = null;
+      try { seen = localStorage.getItem(SEEN_VERSION_KEY); } catch { /* storage may be unavailable */ }
+      const w = whatsNew(seen, String((v as { version?: unknown } | null)?.version ?? ""), undefined, { usedBefore });
+      if (w.show.length && w.remember) setNews({ show: w.show, remember: w.remember });
+      else if (w.remember) rememberVersion(w.remember);
+    }).catch(() => {});
+  }, []);
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
+  // Turning off the record on drops the kept draft at once; turning it off again keeps what is in the box. Not at start,
+  // so the draft from last time is not dropped before it is put back.
+  const offWas = useRef(false);
+  useEffect(() => { offNow.current = off; if (off === offWas.current) return; offWas.current = off; keepDraft(box.current?.value ?? ""); }, [off]);
   // The first run: shown until finished, remembered only on this Mac.
   const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });
   const pendingPrompt = useRef<string | null>(null);
-  useEffect(() => { if (onboarded && pendingPrompt.current && box.current) { box.current.value = pendingPrompt.current; box.current.focus(); pendingPrompt.current = null; } }, [onboarded]);
+  useEffect(() => {
+    if (!onboarded || !box.current) return;
+    if (pendingPrompt.current) { setBox(pendingPrompt.current); box.current.focus(); pendingPrompt.current = null; return; }
+    let kept = "";
+    try { kept = localStorage.getItem(DRAFT_KEY) ?? ""; } catch { /* storage may be unavailable */ }
+    if (kept && !box.current.value) { box.current.value = kept; fitBox(); }
+  }, [onboarded]);
   const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
   // The "remembered" toast stays for ten seconds after the last new line.
   useEffect(() => {
@@ -572,6 +746,8 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
+      if (newsNow.current) rememberVersion(newsNow.current.remember);   // what changed has been on screen once
+      warmSoon();
       // Coming back after a break: ask what happened while away. Only Companion's own history is used.
       const last = lastSeen();
       if (last && project && Date.now() - last >= AWAY_MS) void send(askRecap(project, new Date(last).toISOString()));
@@ -668,9 +844,10 @@ function Card() {
       const ev = e.payload as { type?: string; stage?: string; text?: string };
       if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
         homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
-        if (box.current) box.current.value = ev.text;
-        if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (box.current) box.current.value = ""; }
-        else if (autoSend && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submit(), 0);
+        setBox(ev.text);
+        if (askModeRef.current === "showme") { showMeRef.current(ev.text, ev.text, []); setAskMode("task"); clearBox(); }
+        // With files added, the words wait in the box for Start: they never go with files by themselves.
+        else if (autoSend && attachedNow.current.length === 0 && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submitNow.current(), 0);
         else setTimeout(() => box.current?.focus(), 30);
         dispatch({ type: "ui.voiceClosed" });
       }
@@ -760,10 +937,17 @@ function Card() {
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
+    // The engine checks what goes with the request again and refuses all of it if anything is off. That check runs here
+    // first, so a request it would refuse is never sent, and nothing is cleared.
+    const added = forRequest(attachedNow.current);
+    if ("error" in checkAttachments(added)) { setAttachNotes([S.attachCannotSend]); return; }
     dispatch({ type: "ui.undoClosed" });
-    void send(startTask(project, prompt, off)); setOff(false);
-    if (box.current) box.current.value = "";
+    sent.current = { prompt, attached: attachedNow.current, off };
+    void send(startTask(project, prompt, off, added)).catch(() => putBackSent()); setOff(false);
+    clearBox(); clearAttached();
   };
+  // The words from hold to talk send through this, so they always go with the current folder and settings.
+  const submitNow = useRef(submit); submitNow.current = submit;
 
   // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
   const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
@@ -783,7 +967,7 @@ function Card() {
     if (!c || !project) return;
     dispatch({ type: "ui.researchRequested" });
     void send(c);
-    if (box.current) box.current.value = "";
+    clearBox();
   };
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
@@ -791,12 +975,15 @@ function Card() {
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
     void send(planDrive(project, goal, off)); setOff(false);
-    if (box.current) box.current.value = "";
+    clearBox();
   };
 
   return (
-    <main className="card" ref={root}
+    <main className={`card${dragging ? " dropping" : ""}`} ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
+      onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
+      onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
+      onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="row between"><b>{S.characterName}</b><span className="muted" role="status" aria-live="polite">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
 
@@ -844,6 +1031,17 @@ function Card() {
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
       {!project && <div className="notice">{S.folderNone}</div>}
       </>}
+      {show("whatsNew") && news && (
+        <section className="panel" role="status" aria-label={S.whatsNewTitle(news.show[0].version)}>
+          {news.show.map((r) => (
+            <div key={r.version}>
+              <h2>{S.whatsNewTitle(r.version)}</h2>
+              {r.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
+            </div>
+          ))}
+          <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(news.remember); setNews(null); }}>{S.whatsNewClose}</button></div>
+        </section>
+      )}
       {show("settings") && <SettingsPanel working={isBusy(m)} explainOn={m.explainOn} project={project} spending={m.spending} fun={fun} setFun={setFun} autoSend={autoSend} setAutoSend={setAutoSend} yourTurn={yourTurn} setYourTurnOn={(v) => { setYourTurn(v); setYourTurnState(v); }} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
       {show("practice") && m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
@@ -927,6 +1125,8 @@ function Card() {
           {(m.walk.stage === "step" || m.walk.stage === "asking" || m.walk.stage === "already") && <>
             <div className="line muted">{S.lessonStep(m.walk.index + 1, m.walk.total)}{m.walk.variant === "instead" ? ` · ${S.lessonOther}` : ""}</div>
             <div className="line"><b>{m.walk.say}</b></div>
+            {m.walk.link && <div className="row"><OpenButton url={m.walk.link} onNote={setLessonNote} /></div>}
+            {m.walk.link && lessonNote && <div className="line" role="status">{lessonNote}</div>}
           </>}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{m.walk.note}</div>}
           {m.walk.stage === "step" && m.walk.note && <div className="line muted">{m.walk.note}</div>}
@@ -983,17 +1183,40 @@ function Card() {
             <div className="line">{S.aboutMissing} <b>{m.about.missing.join(", ")}</b>{m.about.missingCount > m.about.missing.length ? ` ${S.andMore.replace("{n}", String(m.about.missingCount - m.about.missing.length))}` : ""}. {m.about.example ? S.aboutMissingExample.replace("{file}", m.about.example) : S.aboutMissingHow}</div>
           )}
           {m.about.missingCount > 0 && !m.walk && <div className="row"><button className="btn" type="button" onClick={() => beginLesson(SETTINGS_LESSON_ID, false)}>{S.aboutSettingsLesson}</button></div>}
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
+          <div className="row"><CopyButton text={aboutCopy(m.about)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
       {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
       <div hidden={!show("ask")}>
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
-        <input ref={box} type="text" autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder}
-          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); setAskMode("task"); if (box.current) box.current.value = ""; } } else submit(); } }} />
+        <textarea ref={box} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
+          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); }}
+          onFocus={() => warmSoon()}
+          onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
+          onKeyDown={(e) => {
+            if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
+            e.preventDefault();
+            if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
+          }} />
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
+      <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
+      {dragging && <div className="line" role="status">{S.attachDrop}</div>}
+      {attached.length > 0 && (
+        <div className="chips" role="list" aria-label={S.attachTitle}>
+          {attached.map((a, i) => (
+            <span className="chip" role="listitem" key={`${i}:${a.name}`}>
+              <span className="line">{chipLabel(a)}</span>
+              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => setAttached((l) => removeFile(l, i))}>{S.attachRemoveShort}</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
+      {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
+      {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
+      {attached.length === 0 && <div className="line muted">{S.attachHint}</div>}
       {!working && (
         <div className="row">
           <button className="btn primary" type="button" onClick={submit}>{S.start}</button>
@@ -1153,9 +1376,9 @@ function Card() {
           <h2>{m.research.title}</h2>
           <div className="line">{m.research.answer}</div>
           <div className="line muted"><b>{S.researchNotes}:</b></div>
-          {m.research.notes.map((n, i) => <div className="line" key={i}>{n.text} <span className="muted">{n.source}</span></div>)}
+          {m.research.notes.map((n, i) => <ResearchNote key={i} text={n.text} source={n.source} />)}
           <div className="line muted">{S.researchFiled} {m.research.file}</div>
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.researchClosed" })}>{S.researchClose}</button></div>
+          <div className="row"><CopyButton text={researchCopy(m.research)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.researchClosed" })}>{S.researchClose}</button></div>
         </section>
       )}
 
@@ -1169,6 +1392,7 @@ function Card() {
           {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
           <div className="row">
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
+            <CopyButton text={rescueCopy(m.rescue)} label={S.copyAnswer} />
             <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
           </div>
         </section>
@@ -1213,6 +1437,7 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
+          <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
             <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
           )}
@@ -1351,6 +1576,7 @@ function Card() {
           )}
           <div className="row">
             {["ready", "unexplained"].includes(m.eh.stage) && pointsOnScreen(m.eh.where) && project && m.eh.project === project && <button className="btn" type="button" onClick={() => pointProblem(project, m.eh!.where)}>{S.pointWhere}</button>}
+            {m.eh.stage === "ready" && <CopyButton text={ehCopy(m)} label={S.copyAnswer} />}
             {["ready", "unexplained"].includes(m.eh.stage) && m.eh.evidence && project && m.eh.project === project && <button className="btn primary" type="button" disabled={working} onClick={() => { dispatch({ type: "ui.undoClosed" }); void send(fixError(project, m.eh!.evidence!, m.eh!.where)); void invoke("eh_dismiss"); }}>{S.ehFix}</button>}
             <button className="btn" type="button" onClick={() => { void invoke("eh_dismiss"); dispatch({ type: "ui.ehClosed" }); }}>{["reading", "thinking", "consent"].includes(m.eh.stage) ? S.planCancel : S.ehClose}</button>
           </div>
@@ -1386,7 +1612,7 @@ function Card() {
           <h2>{S.recapTitle}</h2>
           {m.recap.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
           <div className="line muted">{S.recapSource}</div>
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
+          <div className="row"><CopyButton text={recapCopy(m.recap)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
         </section>
       )}
 
@@ -1422,15 +1648,7 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && (
-        <section className="panel" aria-label={S.recentTitle}>
-          <h2>{S.recentTitle}</h2>
-          {(!project || m.history.length === 0) && <div className="line muted">{S.homeHistoryNone}</div>}
-          {project && m.history.slice(0, 20).map((h) => (
-            <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
-          ))}
-        </section>
-      )}
+      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} />}
       </div>
       </>)}
     </main>

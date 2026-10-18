@@ -149,7 +149,13 @@ describe("the engine and lanes the app makes", () => {
     await createLanes(s, { queryFn: c.q, tmpDrive: { ensure: async () => tmp("shots"), wipe: async () => {} } }).vision.locate({ image: { base64: "AA==", mediaType: "image/png" }, question: "where", ocr: [] }, signal());
     return c.seen[0];
   };
-  for (const [name, via] of [["agent tasks", viaEngine], ["the fast lane", viaFast], ["the vision lane", viaVision]] as const) {
+  // Pictures added to a request: the fake says nothing about them, so the look fails, but the options it went with are kept.
+  const viaDescribe = async (s: Settings) => {
+    const c = capture();
+    await createLanes(s, { queryFn: c.q, tmpDrive: { ensure: async () => tmp("shots"), wipe: async () => {} } }).describe({ images: [{ base64: "AA==", mediaType: "image/png" }], question: "match this" }, signal()).catch(() => {});
+    return c.seen[0];
+  };
+  for (const [name, via] of [["agent tasks", viaEngine], ["the fast lane", viaFast], ["the vision lane", viaVision], ["looking at a picture added to a request", viaDescribe]] as const) {
     test(`${name}, API key route: Claude Code's folder is inside Companion's data folder`, async () => {
       const { data, bin, s } = settings("api_key");
       const o = await via(s);

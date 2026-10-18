@@ -17,7 +17,9 @@ export type Check =
   | { kind: "env_name"; name: string }
   | { kind: "file_exists"; path: string }
   | { kind: "file_contains"; path: string; text: string };
-export type Way = { say: string; find: string };
+// link: the one web page the step is about (Go to cursor.com/download), offered as an Open button on the card and opened
+// only on the person's press. A plain https address, checked here (lessonLink) and again by the card and the shell.
+export type Way = { say: string; find: string; link?: string };
 export type Step = Way & { id: string; check: Check; instead?: Way };
 // draft: written from the maker's own docs, not tried by a person yet. tried: someone walked it on a real screen.
 export type LessonStatus = "draft" | "tried";
@@ -36,11 +38,25 @@ const relPath = (v: unknown): string | null => {
   return s;
 };
 
+// Right to left overrides, zero width spaces, a soft hyphen: they change how an address looks without showing.
+const HIDDEN = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+/** A step's page: a plain secure web address with a real site name, no name or password in it, nothing hidden, not too
+ *  long. undefined when there is none, null when it is not one (the lesson is then refused). */
+export function lessonLink(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== "string" || v.length > 300 || !v.startsWith("https://") || /[\s\u0000-\u001f\u007f-\u009f]/.test(v) || HIDDEN.test(v)) return null;
+  let u: URL;
+  try { u = new URL(v); } catch { return null; }
+  if (u.protocol !== "https:" || u.username || u.password || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(u.hostname)) return null;
+  return v;
+}
+
 function parseWay(w: any, what: string): { ok: true; way: Way } | { ok: false; error: string } {
-  const say = plain(w?.say, 200), find = plain(w?.find, 120);
+  const say = plain(w?.say, 200), find = plain(w?.find, 120), link = lessonLink(w?.link);
   if (!say) return { ok: false, error: `${what}: "say" must be plain words (up to 200 letters)` };
   if (!find) return { ok: false, error: `${what}: "find" must be plain words (up to 120 letters)` };
-  return { ok: true, way: { say, find } };
+  if (link === null) return { ok: false, error: `${what}: a "link" must be a plain https web address (up to 300 letters)` };
+  return { ok: true, way: { say, find, ...(link ? { link } : {}) } };
 }
 
 function parseCheck(c: any, what: string): { ok: true; check: Check } | { ok: false; error: string } {
@@ -145,10 +161,10 @@ export class Walkthrough {
 
   /** What to show now: the step's words and what to look for. Null when finished, stopped, or waiting for words from help.
    *  already: the person is first asked whether they did this step while away (nothing is pointed at until they answer). */
-  current(): { index: number; total: number; variant: "main" | "instead"; already: boolean; step: { id: string; say: string; find: string; check: Check } } | null {
+  current(): { index: number; total: number; variant: "main" | "instead"; already: boolean; step: { id: string; say: string; find: string; check: Check; link?: string } } | null {
     const s = this.step; if (!s) return null;
     const instead = this.p.usedInstead.includes(s.id) && s.instead;
-    return { index: this.p.index, total: this.lesson.steps.length, variant: instead ? "instead" : "main", already: this.confirming, step: { id: s.id, say: instead ? s.instead!.say : s.say, find: instead ? s.instead!.find : s.find, check: s.check } };
+    return { index: this.p.index, total: this.lesson.steps.length, variant: instead ? "instead" : "main", already: this.confirming, step: { id: s.id, say: instead ? s.instead!.say : s.say, find: instead ? s.instead!.find : s.find, check: s.check, ...(((instead ? s.instead!.link : s.link) ?? "") ? { link: (instead ? s.instead!.link : s.link)! } : {}) } };
   }
   /** "ask" when only the person can say whether the step worked; "verify" when the project can prove it; "already" while
    *  asking, after a pause, whether the person already did it. */

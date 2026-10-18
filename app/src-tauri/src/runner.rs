@@ -28,6 +28,8 @@ const ALLOWED: &[&str] = &[
     "bisect.start", "bisect.undo",
     // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
     "teach.try", "teach.check",
+    // The zero cost warm up when Home opens or the ask box gets the keyboard (runner/src/warm.ts). Names nothing.
+    "engine.warm",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -382,6 +384,14 @@ mod tests {
             assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t} must not accept another folder");
             assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t} must not work before a folder is chosen");
         }
+    }
+    #[test]
+    fn a_page_may_ask_the_engine_to_get_ready_and_it_names_no_folder() {
+        // The zero cost warm up (runner/src/warm.ts): Home opened or the ask box got the keyboard. It names nothing.
+        let w = json!({ "v": 1, "id": "w", "type": "engine.warm" });
+        assert!(check_command(&w).is_ok());
+        assert!(!PROJECT_BOUND.contains(&"engine.warm"));
+        assert!(check_project(&w, "").is_ok());
     }
     #[test]
     fn a_page_can_never_send_text_to_be_explained_as_if_it_was_read_from_another_app() {

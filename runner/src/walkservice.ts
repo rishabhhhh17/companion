@@ -113,6 +113,6 @@ export class WalkService {
     const c = a.w.current(); if (!c) return;
     // The step stays on the card as it is (nothing is pointed at again), with words on what the project does not show yet.
     if (r === "wait") { this.emit({ type: "walk.wait", walk: a.walk, index: c.index, say: waitWords(c.step.check) }); return; }
-    this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", ...(c.already ? { already: true } : {}), log: a.w.history() });
+    this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", ...(c.step.link ? { link: c.step.link } : {}), ...(c.already ? { already: true } : {}), log: a.w.history() });
   }
 }

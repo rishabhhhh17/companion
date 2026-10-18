@@ -62,3 +62,5 @@
 {"v":1,"id":"c63","type":"walk.acted","walk":"c43","index":2,"how":"pressed"}
 {"v":1,"id":"c70","type":"teach.try","project":"p_9f2c","checkpoint":"cp_0042"}
 {"v":1,"id":"c71","type":"teach.check","project":"p_9f2c","agent":"builder-1","checkpoint":"cp_0042"}
+{"v":1,"id":"cg1","type":"engine.warm"}
+{"v":1,"id":"cg2","type":"agent.start","project":"p_9f2c","agent":"builder-1","mode":"drive","prompt":"Make the button match this","model":"claude-sonnet-5-5","budgetUsd":3,"files":[{"name":"notes.md","text":"Use the brand blue."}],"images":[{"name":"button.png","mediaType":"image/png","base64":"iVBORw0KGgo="}]}

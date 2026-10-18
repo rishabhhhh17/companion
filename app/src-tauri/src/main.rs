@@ -29,6 +29,7 @@ mod redact;
 mod showme;
 mod pointat;
 mod share;
+mod report;
 mod yourturn;
 mod wipe;
 mod logexport;
@@ -1446,9 +1447,33 @@ fn open_permission_page(which: String) -> Result<(), String> {
 /// Finder. Nothing is sent anywhere: the person decides whether to share it.
 #[tauri::command]
 async fn export_logs() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(|| {
+    tauri::async_runtime::spawn_blocking(write_support_log).await.map_err(|_| "The export stopped.".to_string())?
+}
+
+fn cmd_out(c: &str, a: &[&str]) -> String { std::process::Command::new(c).args(a).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default() }
+
+/// Report a problem (Settings, report.rs): saves the same support log as export_logs and shows it in Finder, then opens an
+/// email draft (or the report page set in report.json) with only Companion's version and the Mac's version filled in. The
+/// subject and words are the page's own (strings.ts), with {version} and {macos} filled in here. Only from Home, only on the
+/// person's press. Nothing is sent: the person attaches the file and sends it themselves. Returns the saved file's name.
+#[tauri::command]
+async fn report_problem(window: tauri::WebviewWindow, subject: String, body: String) -> Result<String, String> {
+    if window.label() != "card" { return Err("A report can only be started from Companion's own window.".into()); }
+    let cfg = report::parse_config(include_str!("../report.json"));
+    // The words are checked before anything is written, so a refusal leaves nothing behind.
+    report::address(&cfg, &subject, &body, "0", "0")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = write_support_log()?;
+        let to = report::address(&cfg, &subject, &body, env!("CARGO_PKG_VERSION"), &cmd_out("/usr/bin/sw_vers", &["-productVersion"]))?;
+        let ok = std::process::Command::new("/usr/bin/open").arg(&to).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+        log("report_opened", json!({ "ok": ok, "page": !cfg.page.is_empty() }));
+        if ok { Ok(name) } else { Err(format!("The log was saved as {name} in your Downloads folder, but no email or report page could be opened. Send the file to the person running the beta yourself.")) }
+    }).await.map_err(|_| "The report stopped.".to_string())?
+}
+
+/// The support log itself (blocking): written to Downloads under a new name and shown in Finder. Returns its file name.
+fn write_support_log() -> Result<String, String> {
         let (home, data) = (home_dir(), data_dir());
-        let cmd_out = |c: &str, a: &[&str]| std::process::Command::new(c).args(a).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
         let perms = permissions::current();
         let word = |k: &str| permissions::support_words(match k { "screen_recording" => perms.screen_recording, "accessibility" => perms.accessibility, _ => perms.microphone });
         let pj = projects::load(&projects_path());
@@ -1480,7 +1505,6 @@ async fn export_logs() -> Result<String, String> {
         std::io::Write::write_all(&mut f, text.as_bytes()).map_err(|e| format!("Could not save the log ({e})."))?;
         let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).status();   // shows the file in Finder
         Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
-    }).await.map_err(|_| "The export stopped.".to_string())?
 }
 
 /// A practice project (the first run's unless the page names another on the list): copied into a new folder in the home
@@ -1739,12 +1763,34 @@ fn save_share_card(image: String, title: String) -> Result<String, String> {
     Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
-/// Copy link: only a web address, only on a press.
+/// Copy link: only a web address, only on a press. The address as checked is what is copied.
 #[tauri::command]
 fn copy_link(url: String) -> Result<(), String> {
-    if !share::is_web_link(&url) { return Err("that is not a web address".into()); }
+    let Some(url) = share::web_link(&url) else { return Err("that is not a web address".into()) };
     ax::write_clipboard(&url);
     Ok(())
+}
+
+/// Copy on a reply or a receipt (copytext.ts): only from Home, only on a press, only the lines the card shows (the page hid
+/// anything that looks like a key again first), checked here (share::copyable). The text is not logged.
+#[tauri::command]
+fn copy_text(window: tauri::WebviewWindow, text: String) -> Result<(), String> {
+    if window.label() != "card" { return Err("Only Companion's own window can copy.".into()); }
+    let Some(text) = share::copyable(&text) else { return Err("That could not be copied.".into()) };
+    ax::write_clipboard(text);
+    Ok(())
+}
+
+/// Open a link in the person's own browser, through the Mac's own `open`: only from Home, only a plain web address
+/// (share::web_link), only the address as checked. The page calls this only from a button the person pressed (a test reads
+/// card.tsx for that); nothing the model wrote is ever opened by itself. The address is not logged.
+#[tauri::command]
+fn open_link(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
+    if window.label() != "card" { return Err("Links can only be opened from Companion's own window.".into()); }
+    let Some(url) = share::web_link(&url) else { return Err("That is not a plain web address, so it was not opened.".into()) };
+    let ok = std::process::Command::new("/usr/bin/open").arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+    log("link_opened", json!({ "ok": ok }));
+    if ok { Ok(()) } else { Err("The link could not be opened. Copy it into your browser instead.".into()) }
 }
 
 // ---------- Hold to talk keys (F18.3, the rules are in talkkeys.rs) ----------
@@ -2132,19 +2178,23 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, presentation_settings, set_presentation, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, talk_keys, set_talk_keys, close_card, send_command, drag_dock, drop_dock, dock_settings, set_come_to, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
             let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
             let mk = |label: &str, page: &str, size: (f64, f64)| {
-                WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
+                let b = WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
                     .visible(false)
                     .focused(false)
                     .decorations(false)
                     .accept_first_mouse(true)
-                    .inner_size(size.0, size.1)
-                    .build()
+                    .inner_size(size.0, size.1);
+                // Files into the ask box: Home's page reads a file the person drops on it (attachfiles.ts), so Tauri's own
+                // drop handler, which would keep the file from the page, is off for Home only. The page stops a drop from
+                // ever opening the file in its place. Nothing is read here and no path reaches the shell.
+                let b = if label == "card" { b.disable_drag_drop_handler() } else { b };
+                b.build()
             };
             let dock_w = mk("dock", "dock.html", DOCK)?;
             let card_w = mk("card", "card.html", CARD)?;
