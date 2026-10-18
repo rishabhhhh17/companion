@@ -189,22 +189,27 @@ describe("wrong fixes are told apart from right ones", () => {
   }, 60_000);
 
   // The open notes table: turning row level security on is not enough, the rules must keep each person to their own notes.
+  // These cases once failed under heavy load with only "failed" to show for it; the final check's failing step (which
+  // rung, its words) is in the message, so a failure names its cause.
+  const lastStep = (r: { detail?: Record<string, unknown>; notes: string[] }) => `the final check said ${JSON.stringify(r.detail?.finalVerdict ?? null)}, failing at ${JSON.stringify(r.detail?.finalStep ?? null)}; notes: ${r.notes.join(" | ")}`;
   const rls1 = early(() => run(byId("supabase-open-table"), { agent: turnsOf([{ write: "supabase/migrations/003_notes_rls.sql", content: "alter table public.notes enable row level security;\n" }]) }));
   test("row level security with no rule at all locks everyone out of their own notes: not fixed", async () => {
     const r = await rls1();
-    expect(r.detail?.finalVerdict).toBe("passed");
+    expect(r.detail?.finalVerdict, lastStep(r)).toBe("passed");
     expect(r.outcome).toBe("not_fixed");
     expect(r.notes.join(" ")).toMatch(/own notes/);
   }, 60_000);
   const rls2 = early(() => run(byId("supabase-open-table"), { agent: turnsOf([{ write: "supabase/migrations/003_notes_rls.sql", content: "alter table public.notes enable row level security;\n\ncreate policy \"Signed in people can read notes\"\n  on public.notes for select\n  to authenticated\n  using (true);\n" }]) }));
   test("a rule that lets every signed in person read every note is the same leak: not fixed", async () => {
     const r = await rls2();
-    expect(r.detail?.finalVerdict).toBe("passed");
+    expect(r.detail?.finalVerdict, lastStep(r)).toBe("passed");
     expect(r.outcome).toBe("not_fixed");
   }, 60_000);
   const rls3 = early(() => run(byId("supabase-open-table"), { agent: turnsOf([{ write: "supabase/migrations/003_notes_rls.sql", content: "alter table public.notes enable row level security;\n\ncreate policy \"Own notes\" on public.notes for select to authenticated using ((select auth.uid()) = user_id);\ncreate policy \"Add own notes\" on public.notes for insert to authenticated with check ((select auth.uid()) = user_id);\n" }]) }));
   test("separate rules per action that each keep to the owner are a fix, written the way Supabase suggests", async () => {
-    expect((await rls3()).outcome).toBe("fixed");
+    const r = await rls3();
+    expect(r.outcome, lastStep(r)).toBe("fixed");
+    expect(r.detail?.finalStep).toBeNull();
   }, 60_000);
 
   // A test of the same check that passed before and fails after: the "tests" check failed before and after, so only the
@@ -214,6 +219,10 @@ describe("wrong fixes are told apart from right ones", () => {
     const r = await pt();
     expect(r.outcome).toBe("broke_something");
     expect(r.notes.join(" ")).toMatch(/prices show the currency/);
+    // The final check failed, and the result says where and why.
+    expect(r.detail?.finalVerdict).toBe("failed");
+    expect(r.detail?.finalStep).toMatchObject({ rung: "tests", label: "Running the tests" });
+    expect(String((r.detail?.finalStep as { detail?: string })?.detail)).toMatch(/The tests did not pass/);
   }, 60_000);
 
   const r7 = early(() => run(byId("vite-env-prefix"), { agent: turnsOf([{ edit: "vite.config.js", old: "server: { port: 5173 },", new: "server: { port: 5173 },\n  envPrefix: ['VITE_', 'API_', 'DATABASE_']," }]) }));

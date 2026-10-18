@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { adapterFor, buildContext, grewTooMuch, parseAnswer, protect, restore, systemPrompt, wordDiff } from "../src/prompthelp.ts";
+import { costsAtMost } from "./cost.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -111,9 +112,11 @@ describe("the diff you are shown", () => {
   test("identical text is all kept", () => expect(wordDiff("same", "same").every(([o]) => o === "=")).toBe(true));
   test("very long texts still finish quickly", () => {
     const a = Array.from({ length: 6000 }, (_, i) => `w${i}`).join(" "), b = Array.from({ length: 6000 }, (_, i) => `x${i}`).join(" ");
-    const t0 = Date.now(); const d = wordDiff(a, b);
-    expect(Date.now() - t0).toBeLessThan(2000);
+    const d = wordDiff(a, b);
     expect(joinNew(d)).toBe(b); expect(joinOld(d)).toBe(a);
+    // Past a size the word by word comparison is not tried, so this costs about two references (cost.ts), where the full
+    // comparison would cost thousands. Measured in processor time, never on the clock.
+    costsAtMost("a word diff of two 6,000 word texts", 30, () => wordDiff(a, b));
   });
 });
 

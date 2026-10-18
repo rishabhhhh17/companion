@@ -1,6 +1,6 @@
 // What the runner starts itself (proof checks, dev servers): a small environment, no leftovers, stoppable, never hung.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { minimalEnv, toolPath } from "../src/env.ts";
@@ -12,6 +12,12 @@ afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, for
 const tmp = () => { const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-hx-"))); made.push(d); return d; };
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// None of these checks read the clock to decide: "it did not wait" is shown by what was still running, or had not run yet,
+// when the command came back, and a hang is caught by the test's own time limit, far longer than what it must not wait for.
+// A killed program can take a moment to be gone on a busy Mac, so that is waited for, never assumed after a fixed sleep.
+const gone = async (pid: number, ms = 10_000) => { const end = Date.now() + ms; while (alive(pid) && Date.now() < end) await sleep(50); return !alive(pid); };
+/** Stop, once the command has written its child's number (so the child surely started, however slow the Mac is). */
+const stopOnceStarted = (ac: AbortController, pidFile: string) => void (async () => { while (!existsSync(pidFile)) await sleep(20); ac.abort(); })();
 
 describe("the environment commands run in", () => {
   const parent = { PATH: "/usr/bin:/bin", HOME: "/Users/x", USER: "x", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", TERM: "xterm", TMPDIR: "/tmp/", SHELL: "/bin/zsh",
@@ -44,26 +50,26 @@ describe("the environment commands run in", () => {
 describe("a command that leaves things behind or never ends", () => {
   test("a child that moved to its own session and holds the output open does not hang the check", async () => {
     const d = tmp(); const pidFile = join(d, "pid");
-    const t0 = Date.now();
     const r = await runCommand(`node -e "const c=require('child_process').spawn('sleep',['25'],{detached:true,stdio:'inherit'});require('fs').writeFileSync('${pidFile}',String(c.pid));c.unref()"`, { cwd: d, timeoutMs: 2000 });
-    expect(Date.now() - t0).toBeLessThan(5000);
+    const pid = Number(await Bun.file(pidFile).text());
+    // It came back while that child was still holding the output open (it sleeps 25 seconds): it did not wait for it.
+    expect(alive(pid)).toBe(true);
     expect(r.code).toBe(0);
-    try { process.kill(Number(await Bun.file(pidFile).text()), "SIGKILL"); } catch { /* gone */ }   // tidy up the test's own leftover
+    try { process.kill(pid, "SIGKILL"); } catch { /* gone */ }   // tidy up the test's own leftover
   }, 15000);
   test("a background job in the command's own group is stopped when the command ends", async () => {
     const d = tmp(); const pidFile = join(d, "pid");
     const r = await runCommand(`sleep 25 & echo $! > '${pidFile}'`, { cwd: d, timeoutMs: 3000 });
     expect(r.code).toBe(0);
-    await sleep(300);
-    expect(alive(Number(await Bun.file(pidFile).text())), "the background job is still running").toBe(false);
+    expect(await gone(Number(await Bun.file(pidFile).text())), "the background job is still running").toBe(true);
   }, 15000);
   test("a command can be stopped from outside, and everything it started goes with it", async () => {
     const d = tmp(); const ac = new AbortController();
-    setTimeout(() => ac.abort(), 400);
-    const t0 = Date.now();
-    const r = await runCommand("sleep 30 & sleep 30; wait", { cwd: d, timeoutMs: 20000, signal: ac.signal });
-    expect(Date.now() - t0).toBeLessThan(3000);
+    stopOnceStarted(ac, join(d, "pid"));
+    const r = await runCommand(`sleep 30 & echo $! > '${join(d, "pid")}'; sleep 30; echo finished`, { cwd: d, timeoutMs: 60_000, signal: ac.signal });
     expect(r.aborted).toBe(true);
+    expect(r.stdout).not.toContain("finished");   // it did not run on to its end (that takes 30 seconds; this test may take 15)
+    expect(await gone(Number(await Bun.file(join(d, "pid")).text()))).toBe(true);
   }, 15000);
   test("an already stopped request does not even start", async () => {
     const ac = new AbortController(); ac.abort();
@@ -113,10 +119,10 @@ describe("starting a server", () => {
   test("stopping can be asked for from outside while it is still starting", async () => {
     const d = tmp(); writeFileSync(join(d, "slow.js"), "setInterval(()=>{},1000)");
     const ac = new AbortController(); setTimeout(() => ac.abort(), 500);
-    const t0 = Date.now();
-    const r = await startServer({ kind: "server", command: "node slow.js" } as never, { cwd: d, timeoutMs: 20000, signal: ac.signal });
-    expect(Date.now() - t0).toBeLessThan(4000);
+    // Its own wait would be a minute, three times this test's limit: coming back at all means Stop was heard.
+    const r = await startServer({ kind: "server", command: "node slow.js" } as never, { cwd: d, timeoutMs: 60_000, signal: ac.signal });
     expect(r.ok).toBe(false);
+    expect((r as { aborted?: boolean }).aborted).toBe(true);
   }, 20000);
   test("the server and everything it started are gone after stop", async () => {
     const d = tmp(); writeFileSync(join(d, "pidserver.js"), `require('fs').writeFileSync('pid',String(process.pid));require('http').createServer((q,r)=>r.end('x')).listen(Number(process.env.PORT),'127.0.0.1');`);
@@ -130,10 +136,10 @@ describe("starting a server", () => {
 
 describe("stopping a command when its output says so", () => {
   test("a command that starts something we do not want is stopped at once", async () => {
-    const t0 = Date.now();
-    const r = await runCommand("echo 'Starting login flow'; sleep 30", { cwd: tmp(), timeoutMs: 20000, stopWhen: /login flow/ });
-    expect(r.matched).toBe(true); expect(Date.now() - t0).toBeLessThan(3000);
-  });
+    const r = await runCommand("echo 'Starting login flow'; sleep 30; echo carried on", { cwd: tmp(), timeoutMs: 60_000, stopWhen: /login flow/ });
+    expect(r.matched).toBe(true); expect(r.timedOut).toBe(false);
+    expect(r.stdout).not.toContain("carried on");   // stopped before the rest (30 seconds away; this test may take 15)
+  }, 15000);
   test("without a match nothing changes", async () => {
     const r = await runCommand("echo fine", { cwd: tmp(), timeoutMs: 5000, stopWhen: /login flow/ });
     expect(r.matched).toBeUndefined(); expect(r.code).toBe(0);
@@ -142,12 +148,12 @@ describe("stopping a command when its output says so", () => {
 
 describe("following a command's output as it runs", () => {
   test("each piece of output is passed on while the command is still running, from both streams", async () => {
-    const seen: string[] = [];
-    let atFirst = 0;
-    const t0 = Date.now();
-    const r = await runCommand("echo one; echo two >&2; sleep 0.3; echo three", { cwd: tmp(), timeoutMs: 5000, onOutput: (t) => { if (!seen.length) atFirst = Date.now() - t0; seen.push(t); } });
+    // The command waits, before its last line, until the test has seen the first ones: so the first pieces can only have
+    // been passed on while it was still running, however busy the Mac is.
+    const d = tmp(), seen: string[] = [];
+    const r = await runCommand("echo one; echo two >&2; while [ ! -f go ]; do sleep 0.05; done; echo three", { cwd: d, timeoutMs: 20_000, onOutput: (t) => { seen.push(t); if (/one/.test(seen.join("")) && /two/.test(seen.join(""))) writeFileSync(join(d, "go"), ""); } });
+    expect(r.timedOut).toBe(false);
     expect(seen.join("")).toContain("one"); expect(seen.join("")).toContain("two"); expect(seen.join("")).toContain("three");
-    expect(atFirst).toBeLessThan(r.ms);
     expect(r.code).toBe(0);
   });
   test("a listener that throws does not break the command", async () => {
@@ -204,12 +210,10 @@ describe("a command that must end with the program that started it", () => {
   });
   test("Stop still ends it and everything it started", async () => {
     const d = tmp(); const ac = new AbortController();
-    setTimeout(() => ac.abort(), 300);
-    const t0 = Date.now();
-    const r = await runCommand(`sleep 30 & echo $! > '${join(d, "pid")}'; wait`, { cwd: d, timeoutMs: 20000, signal: ac.signal, endWithUs: true });
-    expect(Date.now() - t0).toBeLessThan(3000);
+    stopOnceStarted(ac, join(d, "pid"));
+    const r = await runCommand(`sleep 30 & echo $! > '${join(d, "pid")}'; wait; echo finished`, { cwd: d, timeoutMs: 60_000, signal: ac.signal, endWithUs: true });
     expect(r.aborted).toBe(true);
-    await sleep(400);
-    expect(alive(Number(await Bun.file(join(d, "pid")).text()))).toBe(false);
+    expect(r.stdout).not.toContain("finished");   // it did not run on to its end (30 seconds away; this test may take 15)
+    expect(await gone(Number(await Bun.file(join(d, "pid")).text()))).toBe(true);
   }, 15000);
 });
