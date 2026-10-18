@@ -456,10 +456,17 @@ describe("the runner driver", () => {
     d.stop();
   });
   test("waiting gives up at its time limit", async () => {
+    // Shown without reading the clock for an upper bound: the short wait gives up while a longer one started with it is
+    // still waiting (each keeps its own limit), and it did wait its time (a busy Mac only adds time). A wait that never gave
+    // up would run into this test's own limit.
     const d = new RunnerDriver(fakeProc(() => {}).proc, {}); d.start();
+    let longDone = false;
+    const long = d.until((e) => e.type === "receipt", 1500).then((r) => { longDone = true; return r; });
     const t0 = Date.now();
     expect(await d.until((e) => e.type === "receipt", 150)).toBeNull();
-    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(140);
+    expect(longDone).toBe(false);
+    expect(await long).toBeNull();
     d.stop();
   });
 });

@@ -47,8 +47,10 @@ export class ScriptedEngine implements Engine {
   private rounds: Step[][];
   // Real Claude does not go quiet when it is stopped: it throws. Set this to behave the same way.
   throwOnAbort = false;
-  // Real Claude also takes a moment to wind down after a stop.
+  // Real Claude also takes a moment to wind down after a stop: abortDelayMs, or (for a test that must not depend on the
+  // clock) until windDown resolves.
   abortDelayMs = 0;
+  windDown: (() => Promise<void>) | null = null;
   constructor(script: Step[] | Step[][]) { this.rounds = Array.isArray(script[0]) ? (script as Step[][]) : [script as Step[]]; }
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
     const n = this.calls.push(opts);
@@ -60,7 +62,8 @@ export class ScriptedEngine implements Engine {
           const t = setTimeout(res, step.delayMs);
           opts.signal.addEventListener("abort", () => { clearTimeout(t); res(); }, { once: true });
         });
-        if (opts.signal.aborted && this.abortDelayMs) await new Promise((r) => setTimeout(r, this.abortDelayMs));
+        if (opts.signal.aborted && this.windDown) await this.windDown();
+        else if (opts.signal.aborted && this.abortDelayMs) await new Promise((r) => setTimeout(r, this.abortDelayMs));
         if (opts.signal.aborted) { if (this.throwOnAbort) throw new Error("Claude Code process aborted by user"); return; }
       }
       const { delayMs: _d, ...turn } = step;

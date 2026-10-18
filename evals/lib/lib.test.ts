@@ -12,7 +12,7 @@ import { estimateUsd as modelsUsd } from "../../runner/src/models.ts";
 import { costTable, estimateUsd, PRICES, uncachedUsd } from "./prices.ts";
 import { checkResults, readResults, type CaseResult } from "./results.ts";
 import { runSet } from "./runset.ts";
-import { changeSize, lineChanges, parsePytest, parseTap, removeDir, tempDir, testRegressions } from "./project.ts";
+import { changeSize, lineChanges, parsePytest, parseTap, removeDir, runCheck, tempDir, testRegressions } from "./project.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) removeDir(made.pop()!); });
@@ -241,3 +241,30 @@ describe("cost estimates", () => {
   });
 });
 
+
+// A very busy Mac can have no room to start one more program. A case's own checks (the hidden ones, each test on its own)
+// are run again after a moment, as the proof ladder does, so that is never what a case's result says.
+describe("a check this Mac had no room to start", () => {
+  // A stand in check: the first `fails` runs say what npm says then, and each run is counted in a file next to it.
+  const check = (dir: string, fails: number) => ["sh", "-c", `n=$(cat runs 2>/dev/null || echo 0); n=$((n+1)); echo $n > runs; if [ $n -le ${fails} ]; then echo 'npm error spawn sh EAGAIN' >&2; exit 1; fi; echo ok`];
+  const runs = (dir: string) => Number(readFileSync(join(dir, "runs"), "utf8").trim());
+  test("is run again, and its real answer counts", async () => {
+    const dir = tmp("nr");
+    const r = await runCheck(check(dir, 1), dir, {}, 10_000, [0, 0]);
+    expect(r).toMatchObject({ pass: true, code: 0 });
+    expect(runs(dir)).toBe(2);
+  });
+  test("one that never starts fails with what it said, after three tries", async () => {
+    const dir = tmp("nr");
+    const r = await runCheck(check(dir, 9), dir, {}, 10_000, [0, 0]);
+    expect(r.pass).toBe(false);
+    expect(r.output).toMatch(/EAGAIN/);
+    expect(runs(dir)).toBe(3);
+  });
+  test("a check that fails for its own reasons is run once", async () => {
+    const dir = tmp("nr");
+    const r = await runCheck(["sh", "-c", "n=$(cat runs 2>/dev/null || echo 0); echo $((n+1)) > runs; echo 'read EAGAIN' >&2; exit 1"], dir, {}, 10_000, [0, 0]);
+    expect(r.pass).toBe(false);
+    expect(runs(dir)).toBe(1);
+  });
+});

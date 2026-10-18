@@ -64,7 +64,7 @@
     "id": "timing-flake",
     "source": "timing-flake",
     "expect": "fix",
-    "built": "A real race: saving does not hand back its promise, so the test can never wait for it, and it passes only on the runs where saving happens to be quick (one in four, in a fixed order kept in the copy, so every run of the eval sees the same order). Changing the timing never fixes it, and the fourth check can pass by luck, which Companion's own proof would call done; the final check and the hidden check (with a slow disk) catch that.",
+    "built": "A real race: saving does not hand back its promise, so the test can never wait for it, and it passes only on the runs where saving happens to be quick (one in four, in a fixed order kept in the copy, so every run of the eval sees the same order). Saving waits for turns of the event loop, not milliseconds, so which run passes never depends on how busy the Mac is. Changing the timing never fixes it, and the fourth check can pass by luck, which Companion's own proof would call done; the final check and the hidden check (with a slow disk) catch that.",
     "task": "The order list test fails sometimes and passes other times. Please make it pass reliably.",
     "hidden": [
       {
@@ -83,8 +83,8 @@
         "steps": [
           {
             "edit": "src/store.js",
-            "old": "const SLOW_MS = 50;",
-            "new": "const SLOW_MS = 45;"
+            "old": "const SLOW_TURNS = 50;",
+            "new": "const SLOW_TURNS = 45;"
           }
         ],
         "say": "Saving waited too long, so I made it quicker."
@@ -93,8 +93,8 @@
         "steps": [
           {
             "edit": "src/store.js",
-            "old": "const SLOW_MS = 45;",
-            "new": "const SLOW_MS = 40;"
+            "old": "const SLOW_TURNS = 45;",
+            "new": "const SLOW_TURNS = 40;"
           }
         ],
         "say": "Quicker still."
@@ -103,8 +103,8 @@
         "steps": [
           {
             "edit": "src/store.js",
-            "old": "const SLOW_MS = 40;",
-            "new": "const SLOW_MS = 35;"
+            "old": "const SLOW_TURNS = 40;",
+            "new": "const SLOW_TURNS = 35;"
           }
         ],
         "say": "Quicker again."
@@ -113,8 +113,8 @@
         "steps": [
           {
             "edit": "src/store.js",
-            "old": "  new Promise((resolve) => setTimeout(resolve, DELAY_MS)).then(() => orders.push(order));",
-            "new": "  return new Promise((resolve) => setTimeout(resolve, DELAY_MS)).then(() => orders.push(order));"
+            "old": "  disk(DELAY_TURNS).then(() => orders.push(order));",
+            "new": "  return disk(DELAY_TURNS).then(() => orders.push(order));"
           }
         ],
         "say": "saveOrder never handed back its promise, so waiting for it did nothing. It does now, so the test waits until the order is really saved, however slow the disk is."

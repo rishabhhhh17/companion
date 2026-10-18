@@ -96,18 +96,27 @@ mod tests {
         let old = ours(try_take(&p));
         let holder = std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(300)); drop(old); });
         let t0 = Instant::now();
-        ours(take_waiting(&p, Duration::from_secs(3), Duration::from_millis(25)));
+        // Up to 30 seconds, so a busy Mac that holds the old copy up for a while cannot fail this; a wait that gave up at
+        // once is still caught by how long it waited (a busy Mac only adds time).
+        ours(take_waiting(&p, Duration::from_secs(30), Duration::from_millis(25)));
         assert!(t0.elapsed() >= Duration::from_millis(250), "it did not wait");
         holder.join().unwrap();
     }
     #[test]
     fn a_second_copy_waits_only_a_moment_then_leaves() {
+        // Shown without an upper bound on the clock: a copy told to wait a moment leaves while another one, told to wait
+        // ten times as long and started first, is still waiting. So each keeps to its own wait, however busy the Mac is.
         let p = dir("leave").join("instance.lock");
         let _first = ours(try_take(&p));
+        let long_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (p2, d2) = (p.clone(), long_done.clone());
+        let long = std::thread::spawn(move || { let t = take_waiting(&p2, Duration::from_secs(2), Duration::from_millis(25)); d2.store(true, std::sync::atomic::Ordering::SeqCst); t });
         let t0 = Instant::now();
         let t = take_waiting(&p, Duration::from_millis(200), Duration::from_millis(25));
         assert!(matches!(t, Taken::Elsewhere), "{t:?}");
-        assert!(t0.elapsed() < Duration::from_secs(2));
+        assert!(t0.elapsed() >= Duration::from_millis(190), "it did not wait at all");
+        assert!(!long_done.load(std::sync::atomic::Ordering::SeqCst), "the short wait lasted as long as the long one");
+        assert!(matches!(long.join().unwrap(), Taken::Elsewhere));
     }
     #[test]
     fn if_the_lock_cannot_be_checked_companion_still_opens() {

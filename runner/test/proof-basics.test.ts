@@ -25,15 +25,16 @@ describe("running a command with a time limit", () => {
     expect(r.stderr).toContain("oops");
   });
   test("a command that runs too long is stopped, children included", async () => {
+    // Coming back at all shows the limit worked: the command itself takes 30 seconds, and this test may take 15. The clock
+    // decides nothing here, so a busy Mac cannot fail it.
     const dir = tmp();
-    const t0 = Date.now();
-    const r = await runCommand(`sh -c 'sleep 30 & echo $! > pid.txt; wait'`, { cwd: dir, timeoutMs: 600 });
+    const r = await runCommand(`sh -c 'sleep 30 & echo $! > pid.txt; wait'`, { cwd: dir, timeoutMs: 1500 });
     expect(r.timedOut).toBe(true);
-    expect(Date.now() - t0).toBeLessThan(5000);
-    await Bun.sleep(200);
     const pid = Number((await Bun.file(join(dir, "pid.txt")).text()).trim());
-    expect(() => process.kill(pid, 0)).toThrow();   // the child is gone too
-  });
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (let i = 0; i < 200 && alive(); i++) await Bun.sleep(50);   // a killed program can take a moment to be gone
+    expect(alive()).toBe(false);   // the child is gone too
+  }, 15000);
   test("it runs in the folder it was given", async () => {
     const dir = tmp();
     expect((await runCommand("pwd", { cwd: dir, timeoutMs: 5000 })).stdout.trim()).toBe(dir);
