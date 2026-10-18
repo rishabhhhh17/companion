@@ -5,6 +5,7 @@ import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 import { withKeys } from "./keys.ts";
+import { webLink } from "./links.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -72,7 +73,8 @@ export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; p
 export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
 // A guided lesson on the card. stage: a step to do, "did you already do this?" after a pause (nothing is pointed at
 // until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
-export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[] };
+// link: the one web page the step is about, only when it is a plain web address (links.ts); Learn offers Open for it.
+export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[]; link?: string };
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string };
 // The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
 // engine says so with needs: "browser", never guessed from its words). installed: what the engine last said. stage: the
@@ -383,7 +385,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
     // A lesson names the usual keys. Its words are kept as sent: the card and the spoken line fill in the keys in use each
     // time they show or say them (keys.ts keysIn), so a change in Settings while a step is up shows at once.
-    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [] } };
+    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [], ...(webLink(e.link) ? { link: String(e.link) } : {}) } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
     // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.

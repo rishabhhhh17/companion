@@ -167,6 +167,10 @@ describe("every hint names the keys in use", () => {
     expect(walkPanel).toContain("{keysIn(h.say, keys)}");
     expect(walkPanel).not.toMatch(/\{m\.walk\.(say|note)\}|\{h\.say\}/);
     expect(card).toContain("const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys);");
+    // What changed after an update names the usual talk keys; the card fills in the keys in use each time it draws.
+    const news = card.slice(card.indexOf('{show("whatsNew") && news && ('), card.indexOf("</section>", card.indexOf('{show("whatsNew") && news && (')));
+    expect(news).toContain("{keysIn(l, keys)}");
+    expect(news).not.toMatch(/>\{l\}</);
   });
   test("no line anywhere names a key that is not registered", () => {
     const letters = new Set(JOBS.filter((j) => j !== "talk").map((j) => letterOf(KEY_DEFAULTS[j])));
@@ -177,6 +181,7 @@ describe("every hint names the keys in use", () => {
       ...(Object.values(S) as unknown[]).filter((v): v is string => typeof v === "string"),
       ...lines.map(([t, j]) => withKeys(t, j, KEYS_START)),
       ...Object.values(S.talkKeyCosts as Record<string, string>),
+      ...Object.values(S.whatsNew as Record<string, readonly string[]>).flat(),
       ...readdirSync(lessonDir).filter((f) => f.endsWith(".json")).map((f) => readFileSync(lessonDir + f, "utf8")),
       ...[...main.matchAll(/"([^"\n]*(?:Control|Option|Command)[^"\n]*)"/g)].map((m) => m[1]),
       ...[shipped(keymapRs), shipped(talkRs)].flatMap((rs) => [...rs.matchAll(/"([^"\n]*(?:Option|Control) and [^"\n]*)"/g)].map((m) => m[1])),

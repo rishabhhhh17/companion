@@ -1,6 +1,6 @@
 // Noticing that the person changed a project file while the agent is thinking. Needs no permission and never sees keystrokes.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, watch as systemWatch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProjectWatcher } from "../src/watcher.ts";
@@ -16,23 +16,35 @@ function watch(dir: string) {
   return { w, seen };
 }
 const settle = () => Bun.sleep(700);
+// A report is waited for, not assumed after a fixed sleep: on a busy Mac the system can take longer to tell about a change.
+// Then a moment more, so a second report that should not come would be seen.
+const reported = async (seen: string[]) => { for (let i = 0; i < 1000 && !seen.length; i++) await Bun.sleep(10); await settle(); };
 
 describe("the project watcher", () => {
   test("a change the agent did not make is reported, with the file's name", async () => {
     const d = tmp(); const { seen } = watch(d);
     await Bun.sleep(100);
     writeFileSync(join(d, "src/app.js"), "hand edit");
-    await settle();
+    await reported(seen);
     expect(seen).toEqual(["src/app.js"]);
   });
-  test("it is reported within a second", async () => {
-    const d = tmp(); const { seen } = watch(d);
+  // How long the system takes to tell about a change is the system's, and grows when the Mac is busy; the watcher must add
+  // no wait of its own. So the report is timed against a plain watch of the same folder, told about the same change.
+  test("it is reported as soon as the system tells about the change, with no wait of its own", async () => {
+    const d = tmp();
+    let systemAt = 0, oursAt = 0;
+    // The system's latest word on a.txt until the watcher reported (so both are about the same change).
+    const plain = systemWatch(d, { recursive: true }, (_e, name) => { if (String(name) === "a.txt" && !oursAt) systemAt = performance.now(); });
+    stops.push(() => plain.close());
+    const w = new ProjectWatcher(d, () => { if (!oursAt) oursAt = performance.now(); });
+    w.start(); stops.push(() => w.stop());
     await Bun.sleep(100);
-    const t0 = Date.now(); writeFileSync(join(d, "a.txt"), "x");
-    while (!seen.length && Date.now() - t0 < 3000) await Bun.sleep(10);
-    expect(seen.length).toBe(1);
-    expect(Date.now() - t0).toBeLessThan(1000);
-  });
+    // The system can take a moment to start telling about files; the change is made again until both have heard of it.
+    for (let i = 0; i < 40 && !(systemAt && oursAt); i++) { writeFileSync(join(d, "a.txt"), `x${i}`); const end = Date.now() + 250; while (!(systemAt && oursAt) && Date.now() < end) await Bun.sleep(10); }
+    expect(systemAt).toBeGreaterThan(0);
+    expect(oursAt).toBeGreaterThan(0);
+    expect(oursAt - systemAt).toBeLessThan(500);   // the same moment, give or take the order the two are told in
+  }, 30_000);
   test("changes while the agent runs a tool are the agent's own and are ignored", async () => {
     const d = tmp(); const { w, seen } = watch(d);
     await Bun.sleep(100);
@@ -53,7 +65,7 @@ describe("the project watcher", () => {
     w.begin("t1"); w.end("t1");
     await Bun.sleep(900);
     writeFileSync(join(d, "later.txt"), "x");
-    await settle();
+    await reported(seen);
     expect(seen).toEqual(["later.txt"]);
   });
   test("two tools at once: the agent is busy until both end", async () => {
@@ -75,7 +87,7 @@ describe("the project watcher", () => {
     const d = tmp(); const { seen } = watch(d);
     await Bun.sleep(100);
     for (let i = 0; i < 5; i++) { writeFileSync(join(d, "a.txt"), String(i)); await Bun.sleep(20); }
-    await settle();
+    await reported(seen);
     expect(seen).toEqual(["a.txt"]);
   });
   test("after stop it reports nothing", async () => {
@@ -90,7 +102,7 @@ describe("the project watcher", () => {
     await Bun.sleep(100);
     w.begin("stuck");
     await Bun.sleep(900);
-    writeFileSync(join(d, "a.txt"), "x"); await settle();
+    writeFileSync(join(d, "a.txt"), "x"); await reported(seen);
     expect(seen).toEqual(["a.txt"]);
   });
 });

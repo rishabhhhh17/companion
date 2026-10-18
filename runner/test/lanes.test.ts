@@ -136,11 +136,16 @@ describe("the vision lane", () => {
     expect(sent).toBe(false);
   });
   test("the answer is taken the moment it arrives, without waiting for the rest", async () => {
-    const slow = (async function* () { yield said({ x: 5, y: 5, targetText: "a", confidence: 0.9, caption: "c" }, { input_tokens: 1500, output_tokens: 40 }); await new Promise((r) => setTimeout(r, 3000)); yield result(0.5); })();
+    // The rest of the answer is held back until after the check, so "it did not wait" is proven by the order of events,
+    // never by the clock (a busy Mac makes everything slower; it never makes the rest arrive first).
+    let release!: () => void; const rest = new Promise<void>((r) => (release = r));
+    let restCame = false;
+    const slow = (async function* () { yield said({ x: 5, y: 5, targetText: "a", confidence: 0.9, caption: "c" }, { input_tokens: 1500, output_tokens: 40 }); await rest; restCame = true; yield result(0.5); })();
     const lane = new VisionLane({ ...cfg, tmpDrive: { ensure: async () => "/tmp/fake-drive", wipe: async () => {} }, queryFn: (() => slow) as never });
-    const t0 = Date.now();
     const r = await lane.locate({ image: { base64: "AAAA", mediaType: "image/png" }, question: "q", ocr: [] }, cfg.signal);
-    expect(Date.now() - t0).toBeLessThan(1000); expect(r.point).not.toBeNull(); expect(r.costUsd).toBeCloseTo(1500 * 2e-6 + 40 * 10e-6, 6);   // Sonnet 5.5's own price ($2 / $10), not an older model's
+    expect(restCame).toBe(false);
+    release();
+    expect(r.point).not.toBeNull(); expect(r.costUsd).toBeCloseTo(1500 * 2e-6 + 40 * 10e-6, 6);   // Sonnet 5.5's own price ($2 / $10), not an older model's
   });
   test("pointing thinks as little as the model allows, because speed is the point (Sonnet 5.5 refuses thinking off)", () => {
     const o: any = buildVisionOptions({ claudeBinary: "/x", env: {}, model: "claude-sonnet-5-5", signal: new AbortController().signal });
@@ -268,13 +273,15 @@ describe("the fast lane, raw requests (Explain, Draw it for me)", () => {
     expect(seen[0].prompt.startsWith("/")).toBe(false);
   });
   test("thinking is off, and the answer comes back the moment it is complete (not after the engine winds down)", async () => {
+    // The engine's wind down is held back until after the check: the answer coming first is proven by the order of events,
+    // not by the clock.
+    let release!: () => void; const windDown = new Promise<void>((r) => (release = r));
     let released = false;
-    const fn = ((_p: any) => (async function* () { yield assistant("done"); await new Promise((r) => setTimeout(r, 400)); released = true; yield result(0.001); })()) as any;
-    const t0 = Date.now();
+    const fn = ((_p: any) => (async function* () { yield assistant("done"); await windDown; released = true; yield result(0.001); })()) as any;
     const r = await new FastLane({ ...cfg, queryFn: fn }).run({ text: "x", system: "s", raw: true }, () => {}, cfg.signal);
     expect(r.text).toBe("done");
-    expect(Date.now() - t0).toBeLessThan(300);
     expect(released).toBe(false);
+    release();
     const o: any = buildFastOptions({ ...cfg, model: "claude-haiku-4-5-20251001" });
     expect(o.thinking).toEqual({ type: "disabled" });
   });

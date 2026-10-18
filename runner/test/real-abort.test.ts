@@ -103,37 +103,45 @@ describe("stopping the read only jobs", () => {
   });
 });
 
+// The step only ends when it is stopped, and its winding down is held back until the test has looked: "the card came
+// first" is shown by the order of events, never by the clock, so a busy Mac cannot fail these.
 describe("the pause is shown at once, even if Claude is slow to wind down", () => {
+  const held = () => {
+    const r = setup([[plan("One")], [write("a.txt", "agent", 600_000)], [write("a.txt", "agent")]]);
+    let release!: () => void; const gate = new Promise<void>((res) => (release = res));
+    let unwound = false;
+    r.engine.windDown = () => gate.then(() => { unwound = true; });
+    return { ...r, release, unwound: () => unwound };
+  };
+  const inTheStep = async (r: ReturnType<typeof held>) => {
+    await Bun.sleep(100);
+    await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "d1", goal: "g", model: "m", budgetUsd: 5 });
+    const run = r.runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "d1", steps: ["One"] });
+    await waitFor(() => r.engine.calls.length >= 2, 10_000);   // the step's own round has started: Claude is thinking
+    return { run };   // not the promise itself, which an async function would wait for
+  };
   test("the paused card appears long before the stopped step has finished unwinding", async () => {
-    const r = setup([[plan("One")], [write("a.txt", "agent", 3000)], [write("a.txt", "agent")]], 1500);
-    await Bun.sleep(100);
-    await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "d1", goal: "g", model: "m", budgetUsd: 5 });
-    const run = r.runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "d1", steps: ["One"] });
-    await waitFor(() => of(r.events, "drive.step").length > 0);
-    await Bun.sleep(300);
-    const t0 = Date.now();
-    writeFileSync(join(r.project, "mine.txt"), "I typed this");
-    await waitFor(() => of(r.events, "drive.paused").length > 0, 3000);
+    const r = held();
+    const { run } = await inTheStep(r);
+    // The system can take a moment to start telling about files; the edit is made again until it is noticed.
+    for (let i = 0; i < 40 && !of(r.events, "drive.paused").length; i++) { writeFileSync(join(r.project, "mine.txt"), `I typed this ${i}`); await waitFor(() => of(r.events, "drive.paused").length > 0, 250); }
     expect(of(r.events, "drive.paused").length).toBe(1);
-    expect(Date.now() - t0).toBeLessThan(900);
+    expect(r.unwound()).toBe(false);
+    r.release();
     await r.runner.handle({ v: 1, id: "r", type: "drive.resume", agent: "d1" });
     await run;
     expect(of(r.events, "drive.paused").length).toBe(1);
-  });
+  }, 30_000);
   test("asking to pause from the app is just as quick", async () => {
-    const r = setup([[plan("One")], [write("a.txt", "agent", 3000)], [write("a.txt", "agent")]], 1500);
-    await Bun.sleep(100);
-    await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "d1", goal: "g", model: "m", budgetUsd: 5 });
-    const run = r.runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "d1", steps: ["One"] });
-    await waitFor(() => of(r.events, "drive.step").length > 0);
-    await Bun.sleep(200);
-    const t0 = Date.now();
+    const r = held();
+    const { run } = await inTheStep(r);
     await r.runner.handle({ v: 1, id: "x", type: "drive.pause", agent: "d1", reason: "editor" } as never);
-    expect(Date.now() - t0).toBeLessThan(300);
     expect(of(r.events, "drive.paused")[0]).toMatchObject({ reason: "editor" });
+    expect(r.unwound()).toBe(false);
+    r.release();
     await r.runner.handle({ v: 1, id: "r", type: "drive.resume", agent: "d1" });
     await run;
-  });
+  }, 30_000);
 });
 
 describe("whichever of Carry on or Stop comes first, nothing hangs", () => {

@@ -4,13 +4,13 @@
 // .venv/bin/python (a Bun script) for real, so binding to 127.0.0.1 on a free port and stopping it afterwards are the
 // real thing. One last test uses this Mac's real Python and FastAPI when they are there, and skips cleanly otherwise.
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CheckpointStore } from "../src/checkpoints.ts";
 import { runLadder, type StepUpdate } from "../src/proof/ladder.ts";
 import { detectProject } from "../src/proof/detect.ts";
-import { findPython } from "../src/proof/python.ts";
+import { editableInside, editableSources, findPython, pythonPaths } from "../src/proof/python.ts";
 import { minimalEnv } from "../src/env.ts";
 import type { BrowserResult } from "../src/proof/browser.ts";
 import type { RunResult } from "../src/proof/exec.ts";
@@ -219,6 +219,173 @@ describe("Point at the problem, when a Python project's packages are missing", (
     expect(result.verdict).toBe("nothing_to_check");
     expect(result.gaps![0]).toContain("pip install -r requirements.txt");
   }, 30000);
+});
+
+// Which task broke it reads an earlier version's check against the step that fails now. A step that is there but could not
+// run (a package not installed, pytest finding no tests, a page never opened) cannot tell, so the ladder names it, and
+// whether a package not installed was why; a step that is not there at all (no tests yet) and a step that ran are not named.
+describe("the steps that could not tell are named", () => {
+  test("the tests, when a listed package is missing or pytest finds no tests", async () => {
+    const missing = await ladder({ "requirements.txt": "flask\npytest\n", "app.py": "from flask import Flask\n", "tests/test_app.py": "from app import Flask\n" }, { noInstall: true, run: async () => res({ code: 2, stdout: "E   ModuleNotFoundError: No module named 'flask'\n" }) });
+    expect(missing.result.unclear).toEqual([{ rung: "tests", missing: true }]);
+    const none = await ladder({ "requirements.txt": "pytest\n", "main.py": "print(1)\n" }, { run: async () => res({ code: 5, stdout: "no tests ran in 0.01s" }) });
+    expect(none.result.unclear).toEqual([{ rung: "tests", missing: false }]);
+  }, 30000);
+  // The checks step is several checks: each is named with how it ended, so which task broke it can tell the check that
+  // fails now from one that could not run (a lint that ran and passed, next to a type checker that is not installed).
+  test("each check, by name: the one that could not run, the ones that passed, and the one that failed", async () => {
+    const files = { "requirements.txt": "pytest\nruff\n", "pyproject.toml": "[tool.mypy]\n", "app.py": "x = 1\n", "tests/test_app.py": "def test_x():\n    pass\n" };
+    const { result } = await ladder(files, { python: "serve", run: async (c) => (/mypy/.test(c) ? res({ code: 1, stderr: "'.venv/bin/python': No module named mypy" }) : res()) });
+    expect(result.steps.find((s) => s.rung === "checks")?.status).toBe("passed");
+    expect(result.checks).toEqual([{ name: "lint", status: "passed" }, { name: "typecheck", status: "missing" }]);
+    expect(result.unclear ?? []).toEqual([]);
+    const failing = await ladder(files, { python: "serve", run: async (c) => (/ruff/.test(c) ? res({ code: 1, stdout: "app.py:1:8: F401 [*] `os` imported but unused\nFound 1 error.\n" }) : res()) });
+    expect(failing.result.failedAt?.rung).toBe("checks");
+    expect(failing.result.checks).toEqual([{ name: "lint", status: "failed" }]);
+  }, 30000);
+  test("the start and the page, when the server's own package is missing", async () => {
+    const { result } = await ladder({ "requirements.txt": "flask\npytest\n", "main.py": FLASK_APP, "tests/test_main.py": "def test_x():\n    pass\n" }, { python: "no-flask" });
+    expect(result.unclear).toEqual([{ rung: "start", missing: true }, { rung: "browser", missing: true }]);
+  }, 30000);
+  test("the page, when the browser check could not run", async () => {
+    const { result } = await ladder({ "requirements.txt": "flask\npytest\n", "main.py": FLASK_APP, "tests/test_main.py": "def test_x():\n    pass\n" }, { python: "serve", browser: async () => ({ ok: true, problems: [], skipped: "The browser check is not set up yet.", notInstalled: true }) as never });
+    expect(result.steps.find((s) => s.rung === "start")?.status).toBe("passed");
+    expect(result.unclear).toEqual([{ rung: "browser", missing: false }]);
+  }, 30000);
+  test("nothing, when every step ran or was not there", async () => {
+    const ran = await ladder({ "requirements.txt": "flask\npytest\nruff\n", "main.py": FLASK_APP, "tests/test_main.py": "def test_home():\n    assert True\n" }, { python: "serve" });
+    expect(ran.result.unclear ?? []).toEqual([]);
+    const noTests = await ladder({ "requirements.txt": "flask\n", "main.py": "print(1)\n" });
+    expect(noTests.result.steps.find((s) => s.rung === "tests")?.status).toBe("skipped");
+    expect(noTests.result.unclear ?? []).toEqual([]);
+  }, 30000);
+});
+
+// An editable install (pip install -e ., Poetry, uv, setup.py develop) makes the virtual environment import the project's
+// code from its folder. A private copy of an earlier version that borrows that environment has its own top folder first
+// on Python's path, so code there is the copy's own; code found from any other folder of the project (src, a build link
+// tree) would be today's, not the earlier version's.
+describe("where a virtual environment imports the project's own code from", () => {
+  test("each .pth folder line (not its import lines), each setuptools editable finder's packages, each .egg-link", () => {
+    const site = "/p/.venv/lib/python3.12/site-packages";
+    expect(editableSources({
+      [`${site}/_shop.pth`]: "/Users/sam/shop/src\n",
+      [`${site}/__editable__.tool-1.0.pth`]: "import __editable___tool_1_0_finder; __editable___tool_1_0_finder.install()\n",
+      [`${site}/__editable___tool_1_0_finder.py`]: "import sys\nMAPPING: dict[str, str] = {'tool': '/Users/sam/shop/lib/tool', \"helpers\": \"/Users/sam/shop/helpers.py\"}\nNAMESPACES: dict[str, list[str]] = {}\n",
+      [`${site}/old.egg-link`]: "/Users/sam/legacy\n.\n",
+      [`${site}/distutils-precedence.pth`]: "import os; var = 'SETUPTOOLS_USE_DISTUTILS'\n",
+      [`${site}/relative.pth`]: "# a comment\n\n../../../../vendored\n",
+    }).sort()).toEqual(["/Users/sam/legacy", "/Users/sam/shop", "/Users/sam/shop/lib", "/Users/sam/shop/src", "/p/vendored"]);
+    expect(editableSources({})).toEqual([]);
+  });
+  const venv = (project: string, files: Record<string, string>) => put(project, Object.fromEntries(Object.entries(files).map(([n, c]) => [`.venv/lib/python3.12/site-packages/${n}`, c])));
+  test("a folder inside the project other than its top one is named; the top folder, a folder elsewhere, or no venv is not", () => {
+    const p = tmp();
+    expect(editableInside(p)).toBeNull();
+    venv(p, { "pytest/__init__.py": "", "distutils-precedence.pth": "import os\n" });
+    expect(editableInside(p)).toBeNull();
+    venv(p, { "_flat.pth": `${p}\n`, "_other.pth": "/opt/somewhere/else\n" });
+    expect(editableInside(p)).toBeNull();
+    // Written the way the Mac's temporary folder is named before its link is followed (/var, not /private/var).
+    const unresolved = join(tmpdir(), p.split("/").at(-1)!, "src");
+    venv(p, { "_shop.pth": `${unresolved}\n` });
+    expect(editableInside(p)).toBeNull();   // Python leaves out a folder that is not there, so nothing is imported from it
+    mkdirSync(join(p, "src"));
+    expect(editableInside(p)).toBe("src");
+  });
+  test("a setuptools editable finder that maps a package into src, and a strict mode link tree in build, are named too", () => {
+    const p = tmp();
+    mkdirSync(join(p, "src", "shop"), { recursive: true });
+    venv(p, { "__editable___shop_0_1_finder.py": `MAPPING: dict[str, str] = {'shop': '${p}/src/shop'}\n` });
+    expect(editableInside(p)).toBe("src");
+    const q = tmp();
+    mkdirSync(join(q, "build", "__editable__.shop-0.1-py3-none-any"), { recursive: true });
+    venv(q, { "__editable__.shop-0.1.pth": `${q}/build/__editable__.shop-0.1-py3-none-any\n` });
+    expect(editableInside(q)).toBe("build/__editable__.shop-0.1-py3-none-any");
+    // A flat project mapped by the finder imports from its top folder: not named.
+    const r = tmp();
+    mkdirSync(join(r, "shop"));
+    venv(r, { "__editable___shop_0_1_finder.py": `MAPPING: dict[str, str] = {'shop': '${r}/shop'}\n` });
+    expect(editableInside(r)).toBeNull();
+  });
+  // Installed without -e (pip install .): the virtual environment keeps its own copy of the packages in src. A copy of an
+  // earlier version never has its src folder on Python's path, so it would import that installed copy, not its own code.
+  test("a package from src that is also installed in the virtual environment (not editable) is named", () => {
+    const p = tmp();
+    put(p, { "src/shop/__init__.py": "", "src/shop/cart.py": "x = 1\n", "src/tool.py": "y = 2\n" });
+    venv(p, { "pytest/__init__.py": "", "__pycache__/x.pyc": "" });
+    expect(editableInside(p)).toBeNull();   // src's packages are not installed: nothing of the project is in the venv
+    venv(p, { "shop/__init__.py": "", "shop-1.0.dist-info/RECORD": "shop/__init__.py,,\n" });
+    expect(editableInside(p)).toBe("src");
+    const q = tmp();
+    put(q, { "src/tool.py": "y = 2\n" });
+    venv(q, { "tool.py": "y = 1\n" });
+    expect(editableInside(q)).toBe("src");
+    // A flat project installed the same way imports its own copy first (its top folder comes first): not named.
+    const r = tmp();
+    put(r, { "shop/__init__.py": "" });
+    venv(r, { "shop/__init__.py": "" });
+    expect(editableInside(r)).toBeNull();
+    // A src folder of something else (a web page's scripts) is not Python code: not named.
+    const s = tmp();
+    put(s, { "src/app/index.js": "", "src/app.js": "" });
+    venv(s, { "app/__init__.py": "" });
+    expect(editableInside(s)).toBeNull();
+  });
+});
+
+// The copies are checked by one Python: the project's own virtual environment, or with none, this Mac's python3. That
+// Python is asked once where it imports code from (its sys.path), so folders outside the project count too: its own site
+// folder, the person's user site (python.org's Python, Apple's with --user, pyenv, conda), and the base Python's packages
+// that a virtual environment can see. Code of the project installed in any of them would be what every copy imports.
+describe("where the Python that checks the copies imports code from", () => {
+  const site = (root: string, files: Record<string, string>) => { const d = join(root, "lib", "python3.9", "site-packages"); put(d, files); return d; };
+  test("a site folder outside the project, as that Python names it: src installed with -e, without -e, or by a finder", () => {
+    const p = tmp();
+    put(p, { "src/shop/__init__.py": "", "src/shop/cart.py": "x = 1\n", "tests/test_cart.py": "" });
+    const s1 = site(tmp(), { "_shop.pth": `${p}/src\n` });
+    expect(editableInside(p)).toBeNull();   // the project's own folder has no virtual environment to say it
+    expect(editableInside(p, { path: ["", "/opt/py/lib/python3.9", s1], base: ["/opt/py"] })).toBe("src");
+    expect(editableInside(p, { path: ["", site(tmp(), { "shop/__init__.py": "" })], base: [] })).toBe("src");
+    expect(editableInside(p, { path: [site(tmp(), { "__editable___shop_1_0_finder.py": `MAPPING: dict[str, str] = {'shop': '${p}/src/shop'}\n` })], base: [] })).toBe("src");
+    // A folder of the project that a .pth file put on the path is on it by name.
+    expect(editableInside(p, { path: ["", join(p, "src")], base: [] })).toBe("src");
+    // A site folder with none of the project's code, and the project's top folder (each copy's own comes first): nothing.
+    expect(editableInside(p, { path: ["", site(tmp(), { "pytest/__init__.py": "", "distutils-precedence.pth": "import os\n" }), p], base: [] })).toBeNull();
+  });
+  test("the standard library is no place for the project's code: a src module that shares one of its names is left alone", () => {
+    const p = tmp(), py = tmp();
+    put(p, { "src/types.py": "x = 1\n" });
+    put(py, { "lib/python3.12/types.py": "", "lib/python3.12/site-packages/pytest/__init__.py": "" });
+    const path = [join(py, "lib/python3.12"), join(py, "lib/python3.12/site-packages")];
+    expect(editableInside(p, { path, base: [py] })).toBeNull();
+    put(py, { "lib/python3.12/site-packages/types.py": "" });
+    expect(editableInside(p, { path, base: [py] })).toBe("src");
+  });
+  test("what is inside the project's own virtual environment is borrowed as it is, so it is never what stops the search", () => {
+    // pywin32 puts folders of its own on the path, and old installs keep eggs: inside the project's folder, not its code.
+    const p = tmp();
+    put(p, { "app.py": "x = 1\n" });
+    const s = join(p, ".venv", "lib", "python3.12", "site-packages");
+    put(s, { "pywin32.pth": "# .pth file for the PyWin32 extensions\nwin32\nwin32/lib\n", "win32/lib/x.py": "", "easy-install.pth": "./foo-1.0-py3.12.egg\n", "foo-1.0-py3.12.egg/foo/__init__.py": "" });
+    expect(editableInside(p)).toBeNull();
+    expect(editableInside(p, { path: ["", s, join(s, "win32"), join(s, "win32", "lib"), join(s, "foo-1.0-py3.12.egg")], base: [] })).toBeNull();
+  });
+  // A stand in for the Python: a shell script that writes down where and how it was asked, and answers as Python would.
+  test("that Python is asked once, from an empty folder, writing no bytecode, and only a whole answer is taken", async () => {
+    const p = tmp(), empty = tmp(), log = join(tmp(), "asked.json");
+    const venvSite = join(p, ".venv/lib/python3.12/site-packages");
+    put(p, { ".venv/bin/python": `#!/bin/sh\nprintf '{"cwd":"%s","noBytecode":"%s","args":%s}' "$(pwd -P)" "$PYTHONDONTWRITEBYTECODE" "$#" > '${log}'\necho 'a line printed by a .pth file'\nprintf '%s\\n' '{"path": ["", "/opt/py/lib/python3.12", "${venvSite}"], "base": ["/opt/py", "/opt/py"]}'\n` });
+    chmodSync(join(p, ".venv/bin/python"), 0o755);
+    expect(await pythonPaths(".venv/bin/python", p, { cwd: empty })).toEqual({ path: ["", "/opt/py/lib/python3.12", venvSite], base: ["/opt/py", "/opt/py"] });
+    expect(JSON.parse(readFileSync(log, "utf8"))).toEqual({ cwd: empty, noBytecode: "1", args: 2 });
+    expect(readdirSync(empty)).toEqual([]);
+    for (const script of ["#!/bin/sh\nexit 1\n", "#!/bin/sh\necho 'not an answer'\n", "#!/bin/sh\necho '{\"path\": \"/x\", \"base\": []}'\n"]) {
+      writeFileSync(join(p, ".venv/bin/python"), script);
+      expect(await pythonPaths(".venv/bin/python", p, { cwd: empty })).toBeNull();
+    }
+    expect(await pythonPaths(join(p, "nothing-here", "python3"), p, { cwd: empty })).toBeNull();
+  });
 });
 
 // The real thing, when this Mac has it: Python, FastAPI and uvicorn (not installed by this test, never downloaded).

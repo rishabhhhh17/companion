@@ -12,8 +12,10 @@ export const DEFAULT_BUDGET_USD = 3;
 export const DRIVE_BUDGET_USD = 5;
 export const AGENT = "builder-1";
 
-export const startTask = (project: string, prompt: string, offTheRecord = false): Command =>
-  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: DEFAULT_MODEL, budgetUsd: DEFAULT_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
+// added: files and pictures from the ask box (attachfiles.ts), only when there are some. The engine checks them again.
+export const startTask = (project: string, prompt: string, offTheRecord = false, added?: { files: { name: string; text: string }[]; images: { name: string; mediaType: "image/png" | "image/jpeg"; base64: string }[] }): Command =>
+  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: DEFAULT_MODEL, budgetUsd: DEFAULT_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}),
+    ...(added?.files.length ? { files: added.files } : {}), ...(added?.images.length ? { images: added.images } : {}) });
 // Fixes it with you: a follow up on the last task (what is still wrong), or Try again (the same request, with what failed).
 // Each one is a new checked task in the same project; the runner refuses it for any other.
 export const followUp = (project: string, text: string): Command | null => {
@@ -118,3 +120,7 @@ export const fixError = (project: string, evidence: string, where?: { kind: stri
 
 /** The stand in project for lessons that need none (see runner/src/walk.ts). */
 export const NO_PROJECT = "no-project";
+
+// The zero cost warm up (runner/src/warm.ts): the engine reads the bundled Claude binary through once so the first task
+// starts sooner. Nothing is run, sent or spent, and it names no folder.
+export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" });

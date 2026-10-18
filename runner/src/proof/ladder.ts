@@ -22,7 +22,18 @@ export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; probl
 export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled";
 // gaps: for a Python project, the plain words for each check that could not run because something is not installed (the
 // project's own packages first, then a lone tool), each with the command the person can run.
-export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[] };
+// unclear: the steps that are there but could not say anything this time (pytest finding no tests, a page that was never
+// opened), each with missing: true when the reason is a package that is not installed. Which task broke it never reads one
+// as a pass. A step that is not there at all (no tests yet) is not in it.
+// checks: each check of the checks step that was tried this time (a lint, a type check, a build: Check.name), in order, and
+// how it ended; "missing" is one that could not run because a package it needs is not installed, "not_started" one this
+// Mac had no room to start (noRoom). The step is several checks, so which task broke it reads the one that fails now on
+// its own. A check after the one that failed is not tried.
+// noRoom: the step that failed is one this Mac could not start, again and again, because too many programs were running
+// (NO_ROOM). It says nothing about the project.
+export type Unclear = { rung: Rung; missing: boolean };
+export type CheckOutcome = { name: string; status: "passed" | "failed" | "missing" | "not_started" };
+export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Unclear[]; checks?: CheckOutcome[]; noRoom?: true };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
 export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_000, testMs: 5 * 60_000, startMs: 60_000, browserMs: 30_000 };
 
@@ -37,6 +48,8 @@ export type LadderOptions = {
   noInstall?: boolean;
   // How the project is read (tests give a fixed one); detectProject by default.
   detect?: (dir: string) => Detected;
+  // How long to wait before each new try of a command this Mac had no room to start (NO_ROOM_WAITS_MS by default).
+  noRoomWaitsMs?: number[];
 };
 
 const LABELS: Record<Rung, string> = {
@@ -62,8 +75,31 @@ export function needsInstall(before: Record<string, string>, after: Record<strin
 export const EVIDENCE_RUNGS = new Set<Rung>(["checks", "tests", "start", "browser", "review"]);
 export const hasEvidence = (steps: { rung: Rung; status: string }[]) => steps.some((s) => s.status === "passed" && EVIDENCE_RUNGS.has(s.rung));
 
+// A line of a stack that points inside the runtime itself (node:internal/..., Bun's native code, older Node's internal/...).
+// It never names the person's code, and how many such lines a stack has depends on how busy the Mac was: when timers run
+// late, Node runs their callbacks from runNextTicks and processTimers, two more lines. Left in, they pushed the last lines
+// of a failing test a few lines further down, so the same failure read differently and the fix loop breaker missed it.
+const RUNTIME_FRAME = /^\s*(?:at\s+)?(?:async\s+)?(?:[^\s()]+(?:\s\[as [^\]]+\])?\s+)?\(?(?:node:|native:|internal\/)[^()\s]*\)?\s*$/;
+export const withoutRuntimeFrames = (text: string) => text.split("\n").filter((l) => !RUNTIME_FRAME.test(l)).join("\n");
+// A very busy Mac can run out of room for more programs (every process slot in use). A command then fails before the
+// project's code ever runs: npm says "spawn sh EAGAIN", the shell "fork: Resource temporarily unavailable", Node and Bun
+// "spawn ... EAGAIN". That says nothing about the project, so the command is run again after a moment, twice; one that
+// still cannot start is said in Companion's words, never as the project's check failing. A test that fails with EAGAIN in
+// its own output (a socket read, say) names no spawn or fork, so it stays the project's own failure. Seen in the fix eval
+// with the process limit set just above what was running: a right fix of the open notes table ended "lint failed. npm
+// error code EAGAIN", the "failed" its row level security case once gave under heavy load.
+const NO_PROCESS = /\b(?:posix_spawn|spawn|fork)\b[^\n]*\bEAGAIN\b|\bfork: (?:retry: )?Resource temporarily unavailable\b/;
+export const couldNotStart = (r: RunResult) => r.code !== 0 && !r.timedOut && NO_PROCESS.test(`${r.stderr}\n${r.stdout}`);
+export const NO_ROOM_WAITS_MS = [1000, 3000];
+export const NO_ROOM = "This Mac could not start the check because too many programs are running. Close some programs, then try again.";
+const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((done) => {
+  if (ms <= 0 || signal?.aborted) return done();
+  const t = setTimeout(done, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(t); done(); }, { once: true });
+});
+
 const gist = (r: RunResult, limitMs: number) =>
-  r.timedOut ? `It took too long (over ${Math.round(limitMs / 1000)} seconds) and was stopped.` : (r.stderr + "\n" + r.stdout).trim().split("\n").slice(-14).join("\n").slice(-900) || `It stopped with exit code ${r.code}.`;
+  r.timedOut ? `It took too long (over ${Math.round(limitMs / 1000)} seconds) and was stopped.` : withoutRuntimeFrames(r.stderr + "\n" + r.stdout).trim().split("\n").slice(-14).join("\n").slice(-900) || `It stopped with exit code ${r.code}.`;
 
 function proofHints(dir: string): BrowserOptions {
   try { const j = JSON.parse(readFileSync(join(dir, ".claude", "proof.json"), "utf8")); return { expectText: Array.isArray(j.expectText) ? j.expectText.map(String) : undefined, click: typeof j.click === "string" ? j.click : undefined, expectAfterClick: typeof j.expectAfterClick === "string" ? j.expectAfterClick : undefined }; }
@@ -88,7 +124,17 @@ export async function runLadder(o: LadderOptions): Promise<LadderResult> {
 
 async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const limits = { ...DEFAULT_LIMITS, ...(o.limits ?? {}) };
-  const run = o.run ?? runCommand;
+  const runOnce = o.run ?? runCommand;
+  const run: typeof runOnce = async (command, ro) => {
+    let r = await runOnce(command, ro);
+    for (const ms of o.noRoomWaitsMs ?? NO_ROOM_WAITS_MS) {
+      if (!couldNotStart(r) || o.signal?.aborted) break;
+      await pause(ms, o.signal);
+      if (o.signal?.aborted) break;
+      r = await runOnce(command, ro);
+    }
+    return r;
+  };
   const browser = o.browser ?? browserCheck;
   const steps: Step[] = [];
   const det: Detected = (o.detect ?? detectProject)(o.project);
@@ -113,7 +159,12 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     steps.push(s); emit(rung, status, detail, s.ms, needs);
     return s;
   };
-  const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict: verdict === "passed" && gaps.length ? "passed_with_gaps" : verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}), ...(gaps.length ? { gaps: [...gaps] } : {}) });
+  const unclear: Unclear[] = [], tried: CheckOutcome[] = [];
+  let outOfRoom = false;
+  const cannotTell = (missing: boolean, ...rungs: Rung[]) => { for (const rung of rungs) if (!unclear.some((u) => u.rung === rung)) unclear.push({ rung, missing }); };
+  const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict: verdict === "passed" && gaps.length ? "passed_with_gaps" : verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}), ...(gaps.length ? { gaps: [...gaps] } : {}), ...(unclear.length ? { unclear: [...unclear] } : {}), ...(tried.length ? { checks: [...tried] } : {}), ...(outOfRoom ? { noRoom: true as const } : {}) });
+  // A command this Mac had no room to start, even after trying again: Companion's own words, nothing on screen to point at.
+  const noRoom = (rung: Rung, t0: number) => { outOfRoom = true; return result("failed", finish(rung, "failed", NO_ROOM, t0, { kind: "message", message: NO_ROOM, from: rung })); };
   // Point at the problem changes nothing, so it cannot install what is missing. When that is why nothing could be
   // checked, that is what it found (as for a Node project whose packages are missing), said with the command to run. No
   // place goes with it: these are Companion's own words, not something on the screen to circle.
@@ -141,6 +192,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       return result("failed", finish("install", "failed", why, t0, { kind: "message", message: why, from: "install" }));
     }
     const r = await run(`${det.packageManager} install`, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
+    if (couldNotStart(r)) return noRoom("install", t0);
     if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install")));
     finish("install", "passed", "Installed.", t0);
   } else finish("install", "skipped", "Nothing new to install.", t0);
@@ -155,11 +207,14 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     const ran: string[] = [], missed: string[] = [];
     for (const c of det.checks) {
       const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
+      if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
         const why = r.timedOut ? null : gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : `the ${c.name} check`);
-        if (why) { missed.push(why); continue; }
+        if (why) { missed.push(why); tried.push({ name: c.name, status: "missing" }); continue; }
+        tried.push({ name: c.name, status: "failed" });
         return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks")));
       }
+      tried.push({ name: c.name, status: "passed" });
       ran.push(c.name);
     }
     if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}`, t0);
@@ -174,10 +229,11 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (!guard.ok) return result("failed", finish("tests", "failed", guard.problems.join(". ") + ".", t0));
   if (det.tests) {
     const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
+    if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
     // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed.
-    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) finish("tests", "skipped", "pytest found no tests to run.", t0);
-    else if (why) finish("tests", "skipped", why, t0);
+    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) { cannotTell(false, "tests"); finish("tests", "skipped", "pytest found no tests to run.", t0); }
+    else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
     else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
   } else finish("tests", "skipped", "This project has no tests to run.", t0);
@@ -205,6 +261,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     }
     const startGap = !srv.ok && det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null;
     if (startGap) {
+      cannotTell(true, "start", "browser");
       finish("start", "skipped", startGap, t0);
       finish("browser", "skipped", "There is no page to open.", Date.now());
       return hasEvidence(steps) ? result("passed") : unchecked();
@@ -214,7 +271,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (cancelled()) return result("cancelled", undefined, srv.url);
     t0 = Date.now(); emit("browser", "running");
     const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs, shot: true });
-    if (b.skipped) { finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
+    if (b.skipped) { cannotTell(false, "browser"); finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
     if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
     finish("browser", "passed", "The page opened with no errors.", t0);
     return { ...result("passed", undefined, srv.url), ...(b.shot ? { shot: b.shot } : {}) };

@@ -150,7 +150,10 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     const finalFrom = s.events.length;
     await s.run({ type: "problem.find", project: dir, agent: AGENT }, timeout);
     const final = s.events.slice(finalFrom).find((e) => e.type === "problem.found");
-    const rungsAfter = s.events.slice(finalFrom).filter((e) => e.type === "proof.step" && e.status === "failed").map((e) => String(e.rung));
+    const failedAfter = s.events.slice(finalFrom).filter((e) => e.type === "proof.step" && e.status === "failed");
+    const rungsAfter = failedAfter.map((e) => String(e.rung));
+    // Where the final check failed and what it said, so a case that fails (once, under load) names its cause, not only "failed".
+    const finalStep = final?.verdict === "failed" ? { rung: failedAfter.length ? String(failedAfter[0].rung) : null, label: final.label ?? null, detail: final.detail ?? null } : null;
     // 4. The hidden checks, and what broke that worked before.
     const after = await runHidden(c, dir);
     const changedTests = testsChanged(printBefore, testPrint(dir));
@@ -173,7 +176,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
       detail: {
         flow, found: { verdict: found.verdict, label: found.label, place, message: found.problem?.message }, locatedRight,
         proof: receipts.at(-1)?.proof ?? null, receipts: receipts.length, checks: during.filter((e) => e.type === "proof.result").length,
-        stuckShown: during.some((e) => e.type === "loop.stuck"), finalVerdict: final?.verdict ?? null,
+        stuckShown: during.some((e) => e.type === "loop.stuck"), finalVerdict: final?.verdict ?? null, finalStep,
         accept, regressions, proofFooled, testsChanged: changedTests, diff, asked, approvalsAsked: s.approvalsAsked.length, capped: ctx.meter.capped,
         hard: c.hard, split: c.split,
       },
