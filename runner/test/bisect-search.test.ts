@@ -1,7 +1,7 @@
 // Which task broke it, the search itself (no git, no checks): how a check of an earlier version is judged, which saved
 // versions belong to which task, and the binary search with its hard cap on runs.
 import { describe, expect, test } from "bun:test";
-import { classify, findFirstBad, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint, type Verdict } from "../src/bisect.ts";
+import { classify, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint, type Verdict } from "../src/bisect.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { TaskRow } from "../src/tasklog.ts";
 
@@ -21,6 +21,24 @@ describe("judging one earlier version against the step that fails now", () => {
     expect(classify(null, "tests")).toBe("skip");
   });
   test("a stopped check is a stop", () => expect(classify(res("cancelled", []), "tests")).toBe("cancelled"));
+  // A step that is there but could not run this time (a package not installed, pytest finding no tests) says nothing
+  // either way. Read as a pass, it would move the search past the version that really broke it, onto an innocent task.
+  test("a step that could not run cannot tell, so it is never read as passing", () => {
+    const unclear = (verdict: LadderResult["verdict"], steps: unknown[], rungs: string[]): LadderResult => ({ ...res(verdict, steps), unclear: rungs as never });
+    // The tests could not run because a package the project lists is not installed (nothing else was checked either).
+    expect(classify(unclear("failed", [step("install", "failed"), step("checks", "skipped"), step("tests", "skipped")], ["tests"]), "tests")).toBe("skip");
+    // pytest found no tests to run.
+    expect(classify(unclear("passed_with_gaps", [step("checks", "passed"), step("tests", "skipped")], ["tests"]), "tests")).toBe("skip");
+    // One check ran and passed, another could not run: the step as a whole cannot say it passed.
+    expect(classify(unclear("passed_with_gaps", [step("checks", "passed"), step("tests", "passed")], ["checks"]), "checks")).toBe("skip");
+    // The server could not start because a package is missing, so the page was never opened.
+    expect(classify(unclear("passed_with_gaps", [step("tests", "passed"), step("start", "skipped"), step("browser", "skipped")], ["start", "browser"]), "browser")).toBe("skip");
+    // What could not run at another step says nothing about this one.
+    expect(classify(unclear("failed", [step("checks", "skipped"), step("tests", "failed")], ["checks"]), "tests")).toBe("bad");
+    expect(classify(unclear("passed_with_gaps", [step("checks", "skipped"), step("tests", "passed")], ["checks"]), "tests")).toBe("good");
+    // A step that was not there yet (no tests in that version at all) is still good, as before.
+    expect(classify(res("nothing_to_check", [step("checks", "skipped"), step("tests", "skipped")]), "tests")).toBe("good");
+  });
 });
 
 const row = (id: number, checkpoint: string | null, changed: number | null, label = `task ${id}`): TaskRow =>
@@ -62,6 +80,65 @@ describe("which versions can use the packages installed today", () => {
     expect(packagesKey({ ...base, "packages/ui/package.json": pj({ dependencies: { clsx: "2.0.0" } }) }, lock)).not.toBe(k);
     expect(packagesKey({ "package.json": "{ not json" }, lock)).not.toBe(packagesKey({ "package.json": "{ not json either" }, lock));
     expect(packagesKey({ "package.json": "{ not json" }, lock)).toBe(packagesKey({ "package.json": "{ not json" }, lock));
+  });
+});
+
+describe("which versions of a Python project can use the virtual environment it has today", () => {
+  test("the requirement files and lockfiles are among the files that decide the packages, at any depth", () => {
+    for (const f of ["requirements.txt", "requirements-dev.txt", "requirements_test.txt", "dev-requirements.txt", "requirements/base.txt", "constraints.txt", "requirements.in", "requirements/dev.in", "dev-requirements.in", "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "setup.py", "backend/requirements.txt", "api/uv.lock"]) expect(isLockfile(f), f).toBe(true);
+    for (const f of ["pyproject.toml", "setup.cfg", "backend/pyproject.toml"]) expect(isManifest(f), f).toBe(true);
+    for (const f of ["notes.txt", "README.md", "app.py", "docs/requirements.md", "tests/test_app.py", "setup.py.bak"]) { expect(isLockfile(f), f).toBe(false); expect(isManifest(f), f).toBe(false); }
+  });
+  test("a change to a requirement file, a lockfile, Pipfile or setup.py means other packages", () => {
+    const locks = { "requirements.txt": "0a1b", "poetry.lock": "2c3d", "setup.py": "4e5f" };
+    const k = packagesKey({}, locks);
+    expect(packagesKey({}, { ...locks })).toBe(k);
+    for (const f of Object.keys(locks)) expect(packagesKey({}, { ...locks, [f]: "ffff" }), f).not.toBe(k);
+    expect(packagesKey({}, { ...locks, "Pipfile": "9999" })).not.toBe(k);
+    expect(packagesKey({}, { "requirements.txt": "0a1b", "poetry.lock": "2c3d" })).not.toBe(k);
+  });
+  const toml = [
+    "[project]", 'name = "shop"', 'version = "1.0.0"', 'description = "A small shop"', "dependencies = [", '  "flask==3.0.0",', '  "requests>=2",', "]",
+    "", "[project.optional-dependencies]", 'dev = ["pytest"]',
+    "", "[tool.ruff]", "line-length = 100", "", "[tool.ruff.lint]", 'select = ["E", "F"]',
+    "", "[tool.pytest.ini_options]", 'testpaths = ["tests"]', "", "[tool.mypy]", "strict = true", "",
+  ].join("\n");
+  const key = (text: string) => packagesKey({ "pyproject.toml": text }, {});
+  test("a pyproject.toml counts by what decides the packages, not by its tool settings or the project's name and version", () => {
+    const k = key(toml);
+    expect(key(toml.replace("line-length = 100", "line-length = 120"))).toBe(k);
+    expect(key(toml.replace('select = ["E", "F"]', 'select = ["E"]'))).toBe(k);
+    expect(key(toml.replace("strict = true", "strict = false"))).toBe(k);
+    expect(key(toml.replace('testpaths = ["tests"]', 'testpaths = ["test"]'))).toBe(k);
+    expect(key(toml.replace('version = "1.0.0"', 'version = "1.1.0"').replace('"A small shop"', '"A shop"'))).toBe(k);
+    expect(key(toml.replace("\n[tool.mypy]\nstrict = true\n", "\n# no type checks for now\n"))).toBe(k);
+  });
+  test("a pyproject.toml whose package lists changed means other packages, whatever tool keeps them", () => {
+    const k = key(toml);
+    expect(key(toml.replace("flask==3.0.0", "flask==3.1.0"))).not.toBe(k);
+    expect(key(toml.replace('  "requests>=2",\n', ""))).not.toBe(k);
+    expect(key(toml.replace('dev = ["pytest"]', 'dev = ["pytest", "ruff"]'))).not.toBe(k);
+    expect(key(toml + '\n[tool.poetry.dependencies]\npython = "^3.11"\nflask = "^3.0"\n')).not.toBe(k);
+    expect(key(toml + '\n[dependency-groups]\ndev = ["pytest"]\n')).not.toBe(k);
+    expect(key(toml + '\n[tool.uv]\ndev-dependencies = ["pytest"]\n')).not.toBe(k);
+    // A section Companion does not know is counted, so a package list kept by some other tool is never missed.
+    expect(key(toml + '\n[tool.newtool]\npackages = ["flask"]\n')).not.toBe(k);
+    expect(key(toml.replace("[project]", '[build-system]\nrequires = ["setuptools>=68"]\n\n[project]'))).not.toBe(k);
+    // The project's own commands: an editable install of it makes them in the virtual environment.
+    expect(key(toml + '\n[project.scripts]\nshop = "shop.cli:main"\n')).not.toBe(k);
+    expect(key(toml + '\n[project.entry-points."shop.plugins"]\nextra = "shop.extra"\n')).not.toBe(k);
+    // Its links are only words about it.
+    expect(key(toml + '\n[project.urls]\nHomepage = "https://example.com"\n')).toBe(k);
+  });
+  test("a setup.cfg counts by its package lists, not by the tool settings kept in it", () => {
+    const cfg = "[metadata]\nname = shop\nversion = 1.0\n\n[options]\ninstall_requires =\n    flask==3.0.0\n\n[flake8]\nmax-line-length = 100\n\n[tool:pytest]\ntestpaths = tests\n";
+    const k = packagesKey({ "setup.cfg": cfg }, {});
+    expect(packagesKey({ "setup.cfg": cfg.replace("max-line-length = 100", "max-line-length = 120").replace("version = 1.0", "version = 1.1") }, {})).toBe(k);
+    expect(packagesKey({ "setup.cfg": cfg.replace("flask==3.0.0", "flask==3.1.0") }, {})).not.toBe(k);
+  });
+  test("a Python project's files and a package.json are kept apart", () => {
+    expect(packagesKey({ "pyproject.toml": toml }, {})).not.toBe(packagesKey({}, {}));
+    expect(packagesKey({ "package.json": JSON.stringify({ dependencies: { a: "1" } }), "pyproject.toml": toml }, {})).not.toBe(packagesKey({ "package.json": JSON.stringify({ dependencies: { a: "1" } }) }, {}));
   });
 });
 

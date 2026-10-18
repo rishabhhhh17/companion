@@ -2,8 +2,8 @@
 // flake8, mypy) and which dev server shows it (Flask, FastAPI, Django, Streamlit). Reads ordinary files only. It always
 // prefers the project's own virtual environment, and it never installs anything: when a package is missing it says
 // which command the person can run, inside a virtual environment.
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { shq } from "./exec.ts";
 
@@ -57,6 +57,69 @@ export function looksPython(dir: string): boolean {
   try { names = readdirSync(dir); } catch { return false; }
   if (names.some((n) => /^requirements.*\.txt$/.test(n))) return true;
   return names.some((n) => n.endsWith(".py")) && !names.includes("index.html");
+}
+
+// ---------- editable installs: code a virtual environment imports from a folder, not from inside itself ----------
+
+const FINDER = /^__editable__.*_finder\.py$/;
+/** The folders a virtual environment's editable installs (pip install -e ., Poetry, uv, setup.py develop) import code from,
+ *  read from its site-packages files (full path to text): each .pth line that is a folder (not one that starts with
+ *  "import", which is code), the folder of each package a setuptools editable finder maps, and each .egg-link's folder. */
+export function editableSources(files: Record<string, string>): string[] {
+  const out = new Set<string>();
+  for (const [path, text] of Object.entries(files)) {
+    const here = dirname(path), name = basename(path);
+    if (name.endsWith(".pth")) {
+      for (const raw of text.split(/\r?\n/)) {
+        const l = raw.trim();
+        if (l && !l.startsWith("#") && !/^import[\s\t]/.test(l)) out.add(resolve(here, l));
+      }
+    } else if (name.endsWith(".egg-link")) {
+      const l = text.split(/\r?\n/)[0]?.trim();
+      if (l) out.add(resolve(here, l));
+    } else if (FINDER.test(name)) {
+      const map = /MAPPING\s*(?::[^=\n]*)?=\s*\{([^}]*)\}/.exec(text)?.[1] ?? "";
+      for (const m of map.matchAll(/(["'])(?:(?!\1).)*\1\s*:\s*(["'])((?:(?!\2).)+)\2/g)) out.add(dirname(resolve(here, m[3])));
+    }
+  }
+  return [...out];
+}
+
+/** The Python packages (a folder with an __init__.py) and modules (name.py) kept in the project's src folder, as the names
+ *  site-packages would hold them. */
+function srcPythonNames(project: string): string[] {
+  let names: string[];
+  try { names = readdirSync(join(project, "src")); } catch { return []; }
+  return names.filter((n) => !n.startsWith(".") && !n.startsWith("__") && (n.endsWith(".py") || existsSync(join(project, "src", n, "__init__.py"))));
+}
+
+/** A folder inside the project, other than its top one, that the project's own virtual environment imports the project's
+ *  code from (relative to the project), or null. A private copy of an earlier version that borrows that environment has
+ *  its own top folder first on Python's path, so code there is the copy's own; code found through any other folder of the
+ *  project (src, a build link tree) would be today's, not the earlier version's. The same goes for a package of the src
+ *  folder installed into the environment without -e (pip install .): the copy would import that installed copy, never its
+ *  own src. Reads a few small files only. */
+export function editableInside(project: string): string | null {
+  let root: string;
+  try { root = realpathSync(project); } catch { return null; }
+  const fromSrc = srcPythonNames(project);
+  for (const v of VENVS) {
+    const sites: string[] = [join(project, v, "Lib", "site-packages")];
+    try { for (const n of readdirSync(join(project, v, "lib"))) if (/^python\d/.test(n)) sites.push(join(project, v, "lib", n, "site-packages")); } catch { /* no lib folder */ }
+    for (const site of sites) {
+      let names: string[];
+      try { names = readdirSync(site); } catch { continue; }
+      const files: Record<string, string> = {};
+      for (const n of names) if (n.endsWith(".pth") || n.endsWith(".egg-link") || FINDER.test(n)) files[join(site, n)] = readText(join(site, n), 100_000);
+      for (const src of editableSources(files)) {
+        let real: string;
+        try { real = realpathSync(src); } catch { continue; }   // Python leaves out a folder that is not there
+        if (real !== root && real.startsWith(root + "/")) return relative(root, real);
+      }
+      if (fromSrc.some((n) => names.includes(n))) return "src";
+    }
+  }
+  return null;
 }
 
 // ---------- the packages the project says it needs (names only) ----------

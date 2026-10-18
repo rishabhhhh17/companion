@@ -33,7 +33,7 @@ import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
 import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
-import { captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
+import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
@@ -42,7 +42,7 @@ import { aboutLine, inspectProject } from "./proof/intake.ts";
 import { cloneTarget } from "./proof/clone.ts";
 import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
 import { detectProject } from "./proof/detect.ts";
-import { looksPython } from "./proof/python.ts";
+import { editableInside } from "./proof/python.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
@@ -1191,7 +1191,9 @@ export class AgentRunner {
    *  are put there, each folder of installed packages (`folders`, from the project as it is now: the top one and, in a
    *  workspace, each package's own) gets a copy of its own (never installed, never linked, so nothing a build writes inside
    *  them reaches the person's), the ladder runs on the copy with its own time limits, and the copy is deleted afterwards.
-   *  Null when the version could not be copied or checked. */
+   *  A Python project's virtual environment (.venv or venv) is borrowed by one link instead, as the visual receipt's earlier
+   *  version does: the Python checks never write into it (no bytecode, no caches: python.ts and the ladder's flags), and
+   *  deleting the copy removes only the link. Null when the version could not be copied or checked. */
   private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal): Promise<LadderResult | null> {
     const work = this.o.bisect!.workDir;
     if (signal.aborted) return { verdict: "cancelled", steps: [] };
@@ -1199,6 +1201,7 @@ export class AgentRunner {
     const dir = mkdtempSync(join(work, BISECT_PREFIX));
     try {
       await store.exportTo(checkpoint, dir);
+      borrowVenv(project, dir);
       for (const f of folders) {
         if (!existsSync(dirname(join(dir, f)))) continue;   // that package was not there yet in this version
         const packages = await ownPackages(join(project, f), join(dir, f), signal);
@@ -1211,7 +1214,8 @@ export class AgentRunner {
     finally { rmSync(dir, { recursive: true, force: true }); }
   }
 
-  /** What the installed packages of a saved version have to match (see packagesKey): its package.json package lists and lockfiles. */
+  /** What the installed packages of a saved version have to match (see packagesKey): its package.json package lists and
+   *  lockfiles, and a Python project's requirement files, pyproject.toml, setup.cfg, Pipfile, setup.py and lockfiles. */
   private async packagesOf(store: CheckpointStore, checkpoint: string): Promise<string> {
     return packagesKey(await store.readFiles(checkpoint, isManifest, 2_000_000), await store.fileIds(checkpoint, isLockfile));
   }
@@ -1222,10 +1226,9 @@ export class AgentRunner {
     if (!this.o.bisect) { result("cannot_check", { detail: "Finding which task broke it is not available here." }); return; }
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { result("busy", { detail: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
     if (!existsSync(cmd.project)) { result("failed", { detail: "That project folder is not there any more." }); return; }
-    // A Python project is checked with its own virtual environment, which a private copy does not have, and its package lists
-    // are not compared between versions (packagesKey reads package.json and lockfiles only): an earlier version could pass or
-    // fail only because of the packages, and an innocent task would be blamed. So no answer is given for one yet.
-    if (!existsSync(join(cmd.project, "package.json")) && looksPython(cmd.project)) { result("cannot_check", { detail: "Finding which task broke it works for JavaScript and TypeScript projects for now, not Python ones. Nothing was changed." }); return; }
+    // A Python project is checked like any other: each private copy borrows its virtual environment (checkCopy), its
+    // requirement files decide which versions can use it (packagesKey), and a step that could not run in a version (a
+    // package not installed, no tests found) says nothing about it (classify), so an innocent task is never blamed.
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });   // Stop and Stop everything end it, and nothing else runs in the project meanwhile
     const key = resolve(cmd.project);
@@ -1235,6 +1238,11 @@ export class AgentRunner {
       const store = this.store(cmd.project);
       const points = taskPoints(this.o.log.list(cmd.project, 200), await store.list()).slice(-WINDOW);
       if (points.length < 2) { result("too_few"); return; }
+      // Its own code installed into its virtual environment from a folder other than its top one (an editable install
+      // from src, or src installed without -e): every copy would import that installed code, so an earlier version
+      // cannot be checked with it.
+      const linked = editableInside(cmd.project);
+      if (linked) { result("cannot_check", { detail: `This project's own code is installed in its virtual environment from its ${linked.split("/")[0]} folder, so an earlier version would still run the installed code, not its own. Companion cannot check earlier versions of this project yet. Nothing was changed.` }); return; }
       this.state(cmd.agent, "checking");
       shown = true;
       const now = await store.snapshot("Find which task broke it: the project as it was found");
@@ -1252,12 +1260,19 @@ export class AgentRunner {
       // The installed packages are today's. A version that asked for other ones (its package lists or lockfile differ) is
       // never checked with them: it could fail only because of the packages, and an innocent task would be blamed.
       const wanted = await this.packagesOf(store, now.id);
-      let otherPackages = false;
+      let otherPackages = false, couldNotRun = null as "missing" | "other" | null;
       const search = await findFirstBad({
         points, nowId: now.id, maxProbes: MAX_RUNS - 1,
         differs: (a, b) => store.differs(a, b),
         usable: async (cp) => { const same = (await this.packagesOf(store, cp)) === wanted; if (!same) otherPackages = true; return same; },
-        probe: async (cp, at) => { runs++; tell(at.side, at.label); return classify(await this.checkCopy(cmd.project, store, cp, folders, abort.signal), failed.rung); },
+        probe: async (cp, at) => {
+          runs++; tell(at.side, at.label);
+          const res = await this.checkCopy(cmd.project, store, cp, folders, abort.signal);
+          const v = classify(res, failed.rung);
+          // Said with an unclear answer: why some versions could not be counted for or against any task.
+          if (v === "skip" && res?.unclear?.includes(failed.rung)) couldNotRun = res.gaps?.length ? "missing" : (couldNotRun ?? "other");
+          return v;
+        },
       });
       const o = search.outcome;
       const brief = (p?: TaskPoint) => (p ? { label: p.label, at: p.at } : undefined);
@@ -1275,8 +1290,13 @@ export class AgentRunner {
       }
       if (o.kind === "already_failing") { result(o.kind, { step, earlier: brief(o.oldest) }); return; }
       if (o.kind === "after_last_task") { result(o.kind, { step, earlier: brief(o.last) }); return; }
+      const why = [
+        ...(otherPackages ? ["Some earlier versions needed other packages than the ones installed now, so they could not be checked."] : []),
+        ...(couldNotRun === "missing" ? ["Some earlier versions could not be checked because a package they need is not installed, so no task is blamed for them."] : []),
+        ...(couldNotRun === "other" ? ["In some earlier versions the step that fails could not run, so no task is blamed for them."] : []),
+      ];
       result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}),
-        ...(o.kind === "unsure" && otherPackages ? { detail: "Some earlier versions needed other packages than the ones installed now, so they could not be checked." } : {}) });
+        ...(o.kind === "unsure" && why.length ? { detail: why.join(" ") } : {}) });
     } catch (e) {
       result("failed", { detail: `Companion could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
     } finally {

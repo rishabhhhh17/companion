@@ -22,7 +22,10 @@ export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; probl
 export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled";
 // gaps: for a Python project, the plain words for each check that could not run because something is not installed (the
 // project's own packages first, then a lone tool), each with the command the person can run.
-export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[] };
+// unclear: the steps that are there but could not say anything this time: a check that could not run because something is
+// not installed, pytest finding no tests, a page that was never opened. Which task broke it never reads one as a pass. A
+// step that is not there at all (no tests yet) is not in it.
+export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Rung[] };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
 export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_000, testMs: 5 * 60_000, startMs: 60_000, browserMs: 30_000 };
 
@@ -113,7 +116,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     steps.push(s); emit(rung, status, detail, s.ms, needs);
     return s;
   };
-  const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict: verdict === "passed" && gaps.length ? "passed_with_gaps" : verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}), ...(gaps.length ? { gaps: [...gaps] } : {}) });
+  const unclear: Rung[] = [];
+  const cannotTell = (...rungs: Rung[]) => { for (const r of rungs) if (!unclear.includes(r)) unclear.push(r); };
+  const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict: verdict === "passed" && gaps.length ? "passed_with_gaps" : verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}), ...(gaps.length ? { gaps: [...gaps] } : {}), ...(unclear.length ? { unclear: [...unclear] } : {}) });
   // Point at the problem changes nothing, so it cannot install what is missing. When that is why nothing could be
   // checked, that is what it found (as for a Node project whose packages are missing), said with the command to run. No
   // place goes with it: these are Companion's own words, not something on the screen to circle.
@@ -162,6 +167,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       }
       ran.push(c.name);
     }
+    if (missed.length) cannotTell("checks");
     if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}`, t0);
     else finish("checks", "skipped", missed.join(" "), t0);
   } else finish("checks", "skipped", "This project has no build or lint steps to run.", t0);
@@ -176,8 +182,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
     const why = r.code !== 0 && !r.timedOut ? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
     // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed.
-    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) finish("tests", "skipped", "pytest found no tests to run.", t0);
-    else if (why) finish("tests", "skipped", why, t0);
+    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) { cannotTell("tests"); finish("tests", "skipped", "pytest found no tests to run.", t0); }
+    else if (why) { cannotTell("tests"); finish("tests", "skipped", why, t0); }
     else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
   } else finish("tests", "skipped", "This project has no tests to run.", t0);
@@ -205,6 +211,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     }
     const startGap = !srv.ok && det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null;
     if (startGap) {
+      cannotTell("start", "browser");
       finish("start", "skipped", startGap, t0);
       finish("browser", "skipped", "There is no page to open.", Date.now());
       return hasEvidence(steps) ? result("passed") : unchecked();
@@ -214,7 +221,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (cancelled()) return result("cancelled", undefined, srv.url);
     t0 = Date.now(); emit("browser", "running");
     const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs, shot: true });
-    if (b.skipped) { finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
+    if (b.skipped) { cannotTell("browser"); finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
     if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
     finish("browser", "passed", "The page opened with no errors.", t0);
     return { ...result("passed", undefined, srv.url), ...(b.shot ? { shot: b.shot } : {}) };
