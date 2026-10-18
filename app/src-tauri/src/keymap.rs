@@ -22,7 +22,9 @@
 //! which can always stop everything (rule 11). A change in Settings registers the new keys before the old ones are let go
 //! and saves them only once they work; keys that fail leave everything as it was, so Stop everything always keeps a
 //! working chord once it has one. Use a suggestion is registered only while a Prompt help result shows (with Esc, which
-//! is not on any list), so at launch and in Settings its keys are only tried and let go again.
+//! is not on any list), so at launch and in Settings its keys are only tried and let go again (`keep_registered`). Each
+//! result tries them again, and keys another app held at launch work from the first result after it lets go (`arm`).
+//! main.rs only calls these rules; a test checks that it does.
 //!
 //! Settings shows a chord as taken when macOS refuses it, which happens only when another app asked for the keys alone
 //! (talkkeys.rs and T13 say what that means for Option and Space).
@@ -167,6 +169,17 @@ impl Map {
 /// holds its keys.
 pub type Using = [Option<Chord>; N];
 
+/// Whether a job's keys stay registered once they work: always, except use a suggestion while no Prompt help result
+/// shows (`armed` is whether one shows with its keys taken). T11: those keys are taken from other apps only for a result.
+pub fn keep_registered(a: Action, armed: bool) -> bool { !a.armed_only() || armed }
+/// What is registered for a job right now: the keys it uses, but use a suggestion's only while a result shows.
+pub fn registered(a: Action, using: Option<Chord>, armed: bool) -> Option<Chord> { using.filter(|_| keep_registered(a, armed)) }
+/// Every other job's keys, in use and picked (they differ after a fall back): Companion's own, so never offered to `a`,
+/// never touched for it, and never saved for it (two jobs on the same keys would be a damaged file at the next launch).
+pub fn others(a: Action, using: &Using, picked: &Map) -> Vec<(Action, Chord)> {
+    ACTIONS.into_iter().filter(|b| *b != a).flat_map(|b| [using[b.index()], Some(picked.get(b))].into_iter().flatten().map(move |c| (b, c))).collect()
+}
+
 /// Every job whose keys another job also has.
 pub fn clashes(m: &Map) -> Vec<Action> {
     ACTIONS.into_iter().filter(|a| ACTIONS.iter().any(|b| b != a && m.get(*b) == m.get(*a))).collect()
@@ -236,14 +249,35 @@ impl Started {
     pub fn picked(&self) -> Chord { match self { Started::Ready(c) | Started::Taken(c) => *c, Started::FellBack { picked, .. } => *picked } }
 }
 
-/// At launch, for each job: the keys picked, else the usual ones. Nothing else is tried behind the person's back.
-pub fn start(picked: &Map, mut register: impl FnMut(Action, Chord) -> bool) -> [Started; N] {
+/// The two tries every job gets: the keys picked, else the usual ones. Nothing else is tried behind the person's back.
+fn try_keys(p: Chord, d: Chord, mut register: impl FnMut(Chord) -> bool) -> Started {
+    if register(p) { Started::Ready(p) }
+    else if p != d && register(d) { Started::FellBack { picked: p, using: d } }
+    else { Started::Taken(p) }
+}
+
+/// At launch, for each job: the keys picked, else the usual ones. Keys that work stay registered, except use a
+/// suggestion's, which are let go again at once (`keep_registered`): they are taken only while a result shows.
+pub fn start(picked: &Map, mut register: impl FnMut(Action, Chord) -> bool, mut unregister: impl FnMut(Chord)) -> [Started; N] {
     ACTIONS.map(|a| {
-        let (p, d) = (picked.get(a), default(a));
-        if register(a, p) { Started::Ready(p) }
-        else if p != d && register(a, d) { Started::FellBack { picked: p, using: d } }
-        else { Started::Taken(p) }
+        let s = try_keys(picked.get(a), default(a), |c| register(a, c));
+        if let Some(c) = s.using() { if !keep_registered(a, false) { unregister(c); } }
+        s
     })
+}
+
+/// When a Prompt help result shows: the keys for use a suggestion (`a`), registered until the result goes. The keys in
+/// use first. When it has none (another app held them at launch), or another app took them since, the keys picked and
+/// then the usual ones, the same two tries as at launch, so keys that are free again work from this result on. None when
+/// every try fails: then only the button and Esc work, and the result names no keys.
+pub fn arm(a: Action, using: Option<Chord>, picked: &Map, mut register: impl FnMut(Chord) -> bool) -> Option<Chord> {
+    let mut tried: Vec<Chord> = vec![];
+    for c in [using, Some(picked.get(a)), Some(default(a))].into_iter().flatten() {
+        if tried.contains(&c) { continue; }
+        tried.push(c);
+        if register(c) { return Some(c); }
+    }
+    None
 }
 
 pub(crate) const WHERE_TO_PICK: &str = "in Settings, under Keys to remember";
@@ -514,9 +548,99 @@ mod tests {
 
     /// A fake hot key service: which chords another app holds, and every chord we asked for, in order.
     fn ask(held_elsewhere: &[Chord], picked: &Map) -> ([Started; N], Vec<String>) {
-        let asked = RefCell::new(vec![]);
-        let s = start(picked, |a, c| { asked.borrow_mut().push(format!("{} {}", a.id(), id(c))); !held_elsewhere.contains(&c) });
-        (s, asked.into_inner())
+        let (s, asked, _) = ask_and_let_go(held_elsewhere, picked);
+        (s, asked)
+    }
+    /// The same, with every chord let go again after it was tried, in order.
+    fn ask_and_let_go(held_elsewhere: &[Chord], picked: &Map) -> ([Started; N], Vec<String>, Vec<Chord>) {
+        let (asked, gone) = (RefCell::new(vec![]), RefCell::new(vec![]));
+        let s = start(picked,
+            |a, c| { asked.borrow_mut().push(format!("{} {}", a.id(), id(c))); !held_elsewhere.contains(&c) },
+            |c| gone.borrow_mut().push(c));
+        (s, asked.into_inner(), gone.into_inner())
+    }
+    #[test]
+    fn at_launch_use_a_suggestions_keys_are_only_tried_and_let_go_at_once_and_every_other_jobs_stay() {
+        // T11: Control, Option, Command and A are taken from other apps only while a Prompt help result shows.
+        let (s, _, gone) = ask_and_let_go(&[], &Map::DEFAULT);
+        assert_eq!(s[Accept.index()], Started::Ready(k(Key::A)), "tried, so Settings and the first result know they are free");
+        assert_eq!(gone, vec![k(Key::A)], "only use a suggestion's keys are let go");
+        // Picked keys another app holds: the usual ones are tried and let go; the ones that failed were never taken.
+        let (s, _, gone) = ask_and_let_go(&[k(Key::U)], &Map::DEFAULT.with(Accept, k(Key::U)));
+        assert_eq!(s[Accept.index()], Started::FellBack { picked: k(Key::U), using: k(Key::A) });
+        assert_eq!(gone, vec![k(Key::A)]);
+        let (_, _, gone) = ask_and_let_go(&[], &Map::DEFAULT.with(Accept, k(Key::U)).with(Card, k(Key::J)));
+        assert_eq!(gone, vec![k(Key::U)]);
+        // Taken altogether: nothing to let go.
+        let (s, _, gone) = ask_and_let_go(&[k(Key::A)], &Map::DEFAULT);
+        assert_eq!(s[Accept.index()], Started::Taken(k(Key::A))); assert!(gone.is_empty(), "{gone:?}");
+    }
+
+    #[test]
+    fn only_use_a_suggestion_lets_its_keys_go_and_only_while_no_result_shows() {
+        for a in ACTIONS {
+            assert!(keep_registered(a, true), "{a:?}");
+            assert_eq!(keep_registered(a, false), a != Accept, "{a:?}");
+        }
+    }
+    #[test]
+    fn what_is_registered_for_use_a_suggestion_is_nothing_while_no_result_shows() {
+        for a in ACTIONS {
+            let c = default(a);
+            assert_eq!(registered(a, Some(c), true), Some(c), "{a:?}");
+            assert_eq!(registered(a, Some(c), false), (a != Accept).then_some(c), "{a:?}");
+            assert_eq!(registered(a, None, true), None); assert_eq!(registered(a, None, false), None);
+        }
+    }
+    #[test]
+    fn every_other_jobs_keys_in_use_and_picked_are_companions_own_and_never_the_jobs_own() {
+        // Show me how fell back to its usual keys (J taken at launch); hold to talk has none; Read picked L.
+        let picked = Map::DEFAULT.with(ShowMe, k(Key::J)).with(Read, k(Key::L));
+        let mut using = all_used(); using[Read.index()] = Some(k(Key::L)); using[Talk.index()] = None;
+        let o = others(Card, &using, &picked);
+        assert!(o.iter().all(|(b, _)| *b != Card), "{o:?}");
+        for (b, c) in [(ShowMe, k(Key::S)), (ShowMe, k(Key::J)), (Read, k(Key::L)), (Talk, OPT_SPACE), (Stop, k(Key::X)), (Accept, k(Key::A))] {
+            assert!(o.contains(&(b, c)), "{b:?} {}: {o:?}", id(c));
+        }
+        assert!(!o.iter().any(|(_, c)| *c == k(Key::K)), "the card's own keys are not another job's");
+        // The keys picked count even when another job uses something else now: saving them for Card would be two jobs on
+        // the same keys, which the next launch reads as a damaged file.
+        let (r, _) = try_switch(Card, k(Key::J), Some(k(Key::K)), true, &picked, &others(Card, &using, &picked), true, true);
+        assert_eq!(r, Err(NotChanged::InUse));
+        let (f, _) = check(Card, Some(k(Key::K)), &others(Card, &using, &picked), &[]);
+        assert!(!f.free.contains(&k(Key::J)) && f.ours.contains(&(k(Key::J), ShowMe)), "{f:?}");
+    }
+
+    /// Records every chord arming tries, in order; `held_elsewhere` are refused.
+    fn try_arm(using: Option<Chord>, picked: &Map, held_elsewhere: &[Chord]) -> (Option<Chord>, Vec<Chord>) {
+        let tried = RefCell::new(vec![]);
+        let r = arm(Accept, using, picked, |c| { tried.borrow_mut().push(c); !held_elsewhere.contains(&c) });
+        (r, tried.into_inner())
+    }
+    #[test]
+    fn a_result_takes_the_use_keys_in_use_and_nothing_else_when_they_are_free() {
+        assert_eq!(try_arm(Some(k(Key::A)), &Map::DEFAULT, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
+        let picked = Map::DEFAULT.with(Accept, k(Key::U));
+        assert_eq!(try_arm(Some(k(Key::U)), &picked, &[]), (Some(k(Key::U)), vec![k(Key::U)]));
+        // After a fall back at launch the usual keys are in use, and stay so while they work.
+        assert_eq!(try_arm(Some(k(Key::A)), &picked, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
+    }
+    #[test]
+    fn use_keys_another_app_held_at_launch_are_tried_again_for_each_result_picked_first_then_the_usual_ones() {
+        // Another app held A when Companion opened and has let go since: the keys work from the next result on.
+        assert_eq!(try_arm(None, &Map::DEFAULT, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
+        let picked = Map::DEFAULT.with(Accept, k(Key::U));
+        assert_eq!(try_arm(None, &picked, &[]), (Some(k(Key::U)), vec![k(Key::U)]));
+        assert_eq!(try_arm(None, &picked, &[k(Key::U)]), (Some(k(Key::A)), vec![k(Key::U), k(Key::A)]));
+        assert_eq!(try_arm(None, &picked, &[k(Key::U), k(Key::A)]), (None, vec![k(Key::U), k(Key::A)]));
+        assert_eq!(try_arm(None, &Map::DEFAULT, &[k(Key::A)]), (None, vec![k(Key::A)]), "the usual keys are tried once");
+    }
+    #[test]
+    fn use_keys_another_app_took_since_launch_fall_back_the_same_way() {
+        let picked = Map::DEFAULT.with(Accept, k(Key::U));
+        assert_eq!(try_arm(Some(k(Key::U)), &picked, &[k(Key::U)]), (Some(k(Key::A)), vec![k(Key::U), k(Key::A)]), "each chord tried once");
+        assert_eq!(try_arm(Some(k(Key::A)), &picked, &[k(Key::A)]), (Some(k(Key::U)), vec![k(Key::A), k(Key::U)]));
+        assert_eq!(try_arm(Some(k(Key::A)), &Map::DEFAULT, &[k(Key::A)]), (None, vec![k(Key::A)]));
     }
     #[test]
     fn at_launch_every_job_gets_its_usual_keys_when_they_are_free() {
@@ -687,7 +811,7 @@ mod tests {
     fn all_used() -> Using { ACTIONS.map(|a| Some(default(a))) }
     fn try_reset(picked: &Map, using: &Using, registered: &Using, held_elsewhere: &[Chord], saves: bool) -> (Result<Reset, NotChanged>, Vec<String>) {
         let log = calls();
-        let r = reset(picked, using, registered, |a| !a.armed_only(),
+        let r = reset(picked, using, registered, |a| keep_registered(a, false),
             |c| { log.borrow_mut().push(format!("register {}", id(c))); !held_elsewhere.contains(&c) },
             |m| { log.borrow_mut().push(format!("save {}", to_json(m)["keys"])); saves },
             |c| log.borrow_mut().push(format!("unregister {}", id(c))));
@@ -767,6 +891,23 @@ mod tests {
         // Only the keys in use reach a job, and the one notice comes from these rules.
         assert!(body("fn key_action(").contains("key_using(*a)"));
         assert!(main.contains("keymap::launch_notice(&launch.started, launch.damaged)"));
+        // Use a suggestion's keys are taken from other apps only while a result shows (T11), and every other job's keys
+        // stay off limits: these rules decide, tested above, and the shell only calls them.
+        let line = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find('\n').unwrap()].to_string() };
+        assert!(start.contains("keymap::start(&picked,") && start.contains("|c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())"), "{start}");
+        assert!(body("fn set_key(").contains("let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
+        assert!(body("fn set_key(").contains("keymap::switch(a, wanted, before, keep, &picked, &key_others(a, &picked),"));
+        assert!(body("fn reset_keys(").contains("keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),"));
+        assert!(body("fn reset_keys(").contains("let registered = keymap::ACTIONS.map(key_registered);"));
+        assert!(line("fn key_registered(").contains("{ keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)) }"));
+        assert!(body("fn key_others(").contains("keymap::others(a, &keys_using(), picked)"));
+        assert!(body("fn key_choices(").contains("keymap::free(a, key_registered(a), &key_others(a, &keys_picked()),"));
+        assert!(!main.contains("armed_only()"), "no job's rule for when its keys stay registered is decided in main.rs");
+        // Each result tries the use keys again (keymap::arm), and the answer names only the keys taken for it.
+        let arm_body = body("fn arm_now(");
+        assert!(arm_body.contains("keymap::arm(accept, was, &keys_picked(), |c| gs.register(keymap::shortcut(c)).is_ok())"), "{arm_body}");
+        assert!(arm_body.contains("if got != was { set_key_using(accept, got);") && arm_body.contains("ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);"), "{arm_body}");
+        assert!(line("#[tauri::command] fn ph_ready(").ends_with("arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id) }"));
     }
     #[test]
     fn the_page_is_told_every_jobs_keys_now_and_picked() {

@@ -71,8 +71,12 @@ describe("the keys main.rs registers", () => {
     expect(main).toContain("fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }");
     expect(main).toMatch(/gs\.register\(sc_esc\(\)\)/);
     const arm = body(main, "fn arm_now(");
-    expect(arm).toContain("key_using(keymap::Action::Accept)");
-    expect(arm).toContain("ACCEPT_ARMED");
+    // Use a suggestion's keys: the ones in use, else the picked then the usual ones, tried again for each result.
+    expect(arm).toContain("let accept = keymap::Action::Accept;");
+    expect(arm).toContain("keymap::arm(accept, was, &keys_picked(),");
+    expect(arm).toContain("let was = key_using(accept);");
+    expect(arm).toContain("ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);");
+    expect(arm).toMatch(/ACCEPT_ARMED\.swap\(false, Ordering::SeqCst\) \{ if let Some\(c\) = key_using\(accept\) \{ let _ = gs\.unregister/);
   });
   test("hold to talk is two keys, Option and Space by default, handled as press and let go", () => {
     const r = rust();
@@ -145,10 +149,11 @@ describe("every hint names the keys in use", () => {
     const card = read("./card.tsx");
     for (const k of ["practiceKeys", "phHotkeys", "cardHint", "pointHint", "showMeKeyHint", "phKeyHint", "errKeyHint", "stopHint"]) expect(card, k).not.toContain(`{S.${k}}`);
     expect(card).toContain('keyHint("problem", S.practiceKeys');
-    // The use keys are named only when the app could take them for this result: ph_ready answers whether it did.
+    // The use keys are named only when the app could take them for this result: ph_ready answers which keys it took
+    // (it tries again for each result, so they may differ from the keys the page knew), or null when it took none.
     expect(card).toContain("acceptHint(phArmed, keys)");
-    expect(card).toMatch(/invoke\("ph_ready", \{[^}]*\}\)\.then\(\(v\) => setPhArmed\(v !== false\)\)/);
-    expect(main).toMatch(/fn ph_ready\([^)]*\) -> bool \{[^\n]*arm_result_keys\(&app, true\); ACCEPT_ARMED\.load\(Ordering::SeqCst\) \}/);
+    expect(card).toMatch(/invoke\("ph_ready", \{[^}]*\}\)\.then\(\(v\) => setPhArmed\(armedFor\(v\)\)\)/);
+    expect(main).toMatch(/fn ph_ready\([^)]*\) -> Option<String> \{[^\n]*arm_result_keys\(&app, true\); key_registered\(keymap::Action::Accept\)\.map\(keymap::id\) \}/);
     const model = read("./model.ts");
     expect(model).not.toMatch(/Control, Option, Command/);
     expect(model).toContain('withKeys(S.phNeedsAccess, "read")');

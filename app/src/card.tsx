@@ -14,7 +14,7 @@ import type { Explain, MemoryLine, PracticeKind, Spending, Problem } from "./mod
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, canInstall, isBusy, updateLine, type UpdateState } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { acceptHint, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
@@ -829,11 +829,11 @@ function Card() {
     dispatch({ type: "ui.planRequested" });
     void send(diagnose(project));
   };
-  // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk). It answers whether
-  // the use keys could be taken for this result, so the line under it names them only when they work.
+  // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk). It answers which
+  // use keys it took for this result, if any, so the line under it names them only when they work.
   const [phArmed, setPhArmed] = useState(true);
   useEffect(() => {
-    if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(v !== false)).catch(() => {});
+    if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
   }, [m.ph?.stage, m.ph?.text]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {

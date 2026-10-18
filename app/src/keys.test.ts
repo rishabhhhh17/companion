@@ -1,7 +1,7 @@
 // The key map as the pages see it (keys.ts): every job's keys, read safely from what the app answers, named in plain
 // words, and filled into every line that names a key. The app keeps and registers the keys (keymap.rs).
 import { afterEach, describe, expect, test } from "bun:test";
-import { acceptHint, canPick, choicesFrom, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keyProblem, keysFrom, keysIn, keysNow, KEYS_START, keysOf, onKeys, setKeysNow, withKeys, type Keys } from "./keys.ts";
+import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keyProblem, keysFrom, keysIn, keysNow, KEYS_START, keysOf, onKeys, setKeysNow, withKeys, type Keys } from "./keys.ts";
 import { S } from "./strings.ts";
 
 const swap = (job: keyof Keys["using"], id: string | null, picked?: string): Keys => ({ using: { ...KEYS_START.using, [job]: id }, picked: { ...KEYS_START.picked, [job]: picked ?? id ?? KEY_DEFAULTS[job] } });
@@ -71,6 +71,31 @@ describe("every line that names a key", () => {
     expect(acceptHint(true, swap("accept", null))).toBe(S.phHotkeysOff);
     expect(acceptHint(false)).toBe(S.phHotkeysOff);
     expect(acceptHint(false)).not.toMatch(/Control|Option|Command/);
+  });
+  test("the keys the app took for a result are the ones its line names, even when the page knew others", () => {
+    // Another app held them at launch and let go since: the app took them for this result, so the line names them.
+    setKeysNow(swap("accept", null, "control-option-command-u"));
+    let drawn = 0;
+    const stop = onKeys(() => { drawn += 1; });
+    expect(armedFor("control-option-command-u")).toBe(true);
+    expect(keysNow().using.accept).toBe("control-option-command-u");
+    expect(keysNow().picked.accept).toBe("control-option-command-u");
+    expect(acceptHint(true)).toContain("Control, Option, Command and U uses it");
+    expect(drawn).toBe(1);
+    // The same keys again change nothing and draw nothing again.
+    expect(armedFor("control-option-command-u")).toBe(true); expect(drawn).toBe(1);
+    // Its picked keys taken since: the usual ones in their place, and only use a suggestion's keys change.
+    expect(armedFor("control-option-command-a")).toBe(true);
+    expect(keysNow().using).toEqual({ ...KEYS_START.using, accept: "control-option-command-a" });
+    expect(keysNow().picked.accept).toBe("control-option-command-u");
+    stop();
+  });
+  test("an answer that names no keys means none were taken, and the line names none", () => {
+    for (const v of [null, undefined, false, true, "", "Control, Option, Command and A", "control-option-command-z", 7, {}]) {
+      setKeysNow(KEYS_START);
+      expect(armedFor(v), String(v)).toBe(false);
+      expect(keysNow(), String(v)).toEqual(KEYS_START);
+    }
   });
   test("a line said after the keys were pressed never shows a blank when the keys are gone", () => {
     expect(withKeys(S.ehOwnApp, "explain", swap("explain", null))).not.toContain("{keys}");

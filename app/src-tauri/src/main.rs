@@ -759,25 +759,32 @@ fn arm_result_keys(app: &AppHandle, on: bool) {
 fn arm_now(app: &AppHandle, on: bool) {
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
-    let accept = key_using(keymap::Action::Accept);
+    let accept = keymap::Action::Accept;
     if on {
         let gen = ARMED.fetch_add(1, Ordering::SeqCst) + 1;
-        // None when another app held these keys at launch: then only the button and Esc work.
-        if !ACCEPT_ARMED.load(Ordering::SeqCst) { if let Some(c) = accept { ACCEPT_ARMED.store(gs.register(keymap::shortcut(c)).is_ok(), Ordering::SeqCst); } }
+        // The keys in use, else the picked then the usual ones (keymap::arm), so keys another app held at launch work once
+        // it lets go. None when another app holds them all: then only the button and Esc work.
+        if !ACCEPT_ARMED.load(Ordering::SeqCst) {
+            let was = key_using(accept);
+            let got = keymap::arm(accept, was, &keys_picked(), |c| gs.register(keymap::shortcut(c)).is_ok());
+            if got != was { set_key_using(accept, got); log("accept_keys", json!({ "id": got.map(keymap::id) })); }
+            ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);
+        }
         let _ = gs.register(sc_esc());
         let a = app.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(90)); if ARMED.load(Ordering::SeqCst) == gen { arm_result_keys(&a, false); } });
     } else {
         ARMED.fetch_add(1, Ordering::SeqCst);
-        if ACCEPT_ARMED.swap(false, Ordering::SeqCst) { if let Some(c) = accept { let _ = gs.unregister(keymap::shortcut(c)); } }
+        if ACCEPT_ARMED.swap(false, Ordering::SeqCst) { if let Some(c) = key_using(accept) { let _ = gs.unregister(keymap::shortcut(c)); } }
         let _ = gs.unregister(sc_esc());
     }
 }
 
 #[tauri::command] fn ph_consent(app: AppHandle, choice: String) { phelp::consent_answer(&app, &choice); }
-/// Answers whether use a suggestion's keys are armed for this result (another app may have taken them since launch), so
-/// the result names them only when they work. A sync command: on the main thread, arming runs before the answer.
-#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> bool { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); ACCEPT_ARMED.load(Ordering::SeqCst) }
+/// Answers which keys use a suggestion has for this result (keymap::arm may take other keys than the page knew, or none
+/// when another app holds them all), so the result names them only when they work. A sync command: on the main thread,
+/// arming runs before the answer.
+#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> Option<String> { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id) }
 #[tauri::command] fn ph_accept(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, false); }
 #[tauri::command] fn ph_restore(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, true); }
 #[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
@@ -1779,10 +1786,10 @@ fn set_key_using(a: keymap::Action, c: Option<keymap::Chord>) { KEYS_USING[a.ind
 fn keys_using() -> keymap::Using { keymap::ACTIONS.map(key_using) }
 fn keys_picked() -> keymap::Map { *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) }
 /// What is registered for a job right now: use a suggestion only while a Prompt help result shows.
-fn key_registered(a: keymap::Action) -> Option<keymap::Chord> { if a.armed_only() && !ACCEPT_ARMED.load(Ordering::SeqCst) { None } else { key_using(a) } }
+fn key_registered(a: keymap::Action) -> Option<keymap::Chord> { keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)) }
 /// Every other job's keys, in use and picked: Companion's own, never offered to this job and never touched for it.
 fn key_others(a: keymap::Action, picked: &keymap::Map) -> Vec<(keymap::Action, keymap::Chord)> {
-    keymap::ACTIONS.into_iter().filter(|b| *b != a).flat_map(|b| [key_using(b), Some(picked.get(b))].into_iter().flatten().map(move |c| (b, c))).collect()
+    keymap::others(a, &keys_using(), picked)
 }
 /// Which job a shortcut the plugin reports belongs to, among the keys in use now.
 fn key_action(s: &Shortcut) -> Option<keymap::Action> {
@@ -1803,20 +1810,18 @@ fn let_go_logged(c: keymap::Chord, gone: bool) { if !gone { log("keys_not_let_go
 struct KeysLaunch { started: [keymap::Started; keymap::N], damaged: bool }
 
 /// At launch: every job's saved keys, else its usual ones (keymap::start). Use a suggestion's are only tried and let go
-/// (they are registered while a result shows). A saved file that could not be read is written back repaired, so the person
-/// is told once. Main thread.
+/// (they are registered while a result shows, keymap::arm). A saved file that could not be read is written back
+/// repaired, so the person is told once. Main thread.
 fn start_keys(app: &AppHandle) -> KeysLaunch {
     // Only a missing keys.json is nothing saved; one that cannot be read as text is damaged (keymap::saved_text).
     let saved = keymap::saved_text(std::fs::read(keys_path()));
     let old_talk = std::fs::read_to_string(data_dir().join(keymap::OLD_TALK_FILE)).ok();
     let (picked, damaged) = keymap::parse(saved.as_deref(), old_talk.as_deref());
     let gs = app.global_shortcut();
-    let started = keymap::start(&picked, |a, c| {
-        let s = keymap::shortcut(c);
-        if gs.register(s).is_err() { return false; }
-        if a.armed_only() { let _ = gs.unregister(s); }
-        true
-    });
+    // Use a suggestion's keys are let go again at once (keymap::keep_registered): they are taken only for a result.
+    let started = keymap::start(&picked,
+        |_, c| gs.register(keymap::shortcut(c)).is_ok(),
+        |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
     *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = picked;
     for a in keymap::ACTIONS { set_key_using(a, started[a.index()].using()); }
     if damaged { let _ = save_keys(&picked); }
@@ -1855,7 +1860,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let (picked, before, was) = (keys_picked(), key_registered(a), key_using(a));
     let gs = app.global_shortcut();
-    let keep = !a.armed_only() || ACCEPT_ARMED.load(Ordering::SeqCst);
+    let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));
     let r = keymap::switch(a, wanted, before, keep, &picked, &key_others(a, &picked),
         |c| gs.register(keymap::shortcut(c)).is_ok(),
         save_keys,
@@ -1883,7 +1888,7 @@ fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, Str
     let registered = keymap::ACTIONS.map(key_registered);
     let armed = ACCEPT_ARMED.load(Ordering::SeqCst);
     let gs = app.global_shortcut();
-    let r = keymap::reset(&picked, &using, &registered, |a| !a.armed_only() || armed,
+    let r = keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),
         |c| gs.register(keymap::shortcut(c)).is_ok(),
         save_keys,
         |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));

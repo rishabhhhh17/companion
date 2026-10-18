@@ -66,6 +66,14 @@ export const keyHint = (job: Job, template: string, k: Keys = now, off?: string)
 /** The Prompt help result's line: its use keys only when the app could take them for this result (ph_ready answers;
  *  another app may have taken them since launch), else only Esc. */
 export const acceptHint = (armed: boolean, k: Keys = now): string => (armed ? keyHint("accept", S.phHotkeys, k, S.phHotkeysOff) : S.phHotkeysOff);
+/** What ph_ready answers: the keys the app took for this result, or null when another app holds them all. The app tries
+ *  again for each result (keymap.rs arm), so they can be keys the page did not know: keys another app held at launch, or
+ *  the usual ones in place of picked keys another app took since. The keys in use follow, so the line names them. */
+export function armedFor(v: unknown): boolean {
+  if (!isChord(v)) return false;
+  if (now.using.accept !== v) setKeysNow({ ...now, using: { ...now.using, accept: v } });
+  return true;
+}
 
 const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Text written with the usual keys (lessons, lines from the engine) with the keys in use instead, each job's once, in a
