@@ -20,8 +20,15 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// Apps whose pixels must never exist in a picture we take.
+/// Apps whose pixels must never exist in a picture we take: these, and every app Prompt help never reads (`left_out_of_pictures`).
 pub const NEVER_CAPTURE: &[&str] = &["com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.apple.keychainaccess", "com.apple.Passwords", "org.keepassxc.keepassxc", "com.lastpass.LastPass", "com.dashlane.dashlanephonefinal"];
+/// Show me how is often asked about System Settings, so it stays in pictures (Prompt help still never reads it).
+const SYSTEM_SETTINGS: &str = "com.apple.systempreferences";
+/// Is this app's every window left out of a picture? The list above, or one Prompt help never reads (the password managers,
+/// Keychain Access, Passwords, the system's own password prompts), except System Settings. Case is ignored, as macOS does.
+pub fn left_out_of_pictures(bundle: &str) -> bool {
+    !bundle.is_empty() && (NEVER_CAPTURE.iter().any(|b| b.eq_ignore_ascii_case(bundle)) || (crate::prompthelp::built_in_never(bundle) && !bundle.eq_ignore_ascii_case(SYSTEM_SETTINGS)))
+}
 
 pub type SendImage = Box<dyn Fn(usize, &[u8], u32, u32) + Send + Sync>;
 pub type AskFn = Box<dyn Fn(&str, &[Pic], &[Cand]) + Send + Sync>;
@@ -127,7 +134,7 @@ fn capture_display(exclude: &[R], small: Option<usize>) -> Result<(Frame, R), St
     for w in unsafe { content.windows() }.iter() {
         let Some(app) = (unsafe { w.owningApplication() }) else { continue };
         let bundle = unsafe { app.bundleIdentifier() }.to_string();
-        if unsafe { app.processID() } == me || NEVER_CAPTURE.contains(&bundle.as_str()) { skip.push(w.clone()); }
+        if unsafe { app.processID() } == me || left_out_of_pictures(&bundle) { skip.push(w.clone()); }
     }
     let skip_arr = NSArray::from_retained_slice(&skip);
     let filter = unsafe { SCContentFilter::initWithDisplay_excludingWindows(SCContentFilter::alloc(), &display, &skip_arr) };
@@ -214,6 +221,29 @@ pub fn read_text_at(frame: &Frame, accurate: bool) -> Vec<OcrBox> {
         out.push(OcrBox { id: format!("o{i}"), text: c.string().to_string(), rect: r });
     }
     out
+}
+
+#[cfg(test)]
+mod never_in_a_picture_tests {
+    use super::*;
+    #[test]
+    fn every_app_prompt_help_never_reads_is_left_out_of_every_picture_but_system_settings() {
+        // One list: the apps Prompt help never reads (prompthelp.rs) are the password managers, Keychain Access, Passwords
+        // and the system's own password prompts, and none of their windows may be in a picture Show me sends. macOS ignores
+        // case in bundle ids, so this does too. System Settings stays in pictures: Show me how is often asked about it.
+        for id in crate::prompthelp::BUILT_IN_NEVER.iter().filter(|b| **b != "com.apple.systempreferences") {
+            assert!(left_out_of_pictures(id), "{id}");
+            assert!(left_out_of_pictures(&id.to_uppercase()) && left_out_of_pictures(&id.to_lowercase()), "{id}, any case");
+        }
+        for id in ["com.agilebits.onepassword-osx", "com.nordsec.nordpass", "com.enpass.Enpass", "in.sinew.Enpass-Desktop", "com.dashlane.dashlane", "com.apple.SecurityAgent", "com.lastpass.lastpass", "com.dashlane.dashlanephonefinal"] {
+            assert!(left_out_of_pictures(id), "{id}");
+        }
+        assert!(!left_out_of_pictures("com.apple.systempreferences") && !left_out_of_pictures("com.apple.Safari") && !left_out_of_pictures(""));
+        // Every look (the picture that is sent, and the small looks while waiting) goes through capture_display, which asks this.
+        let src = include_str!("macos_see.rs");
+        let cap = &src[src.find("fn capture_display(").unwrap()..]; let cap = &cap[..cap.find("\n}\n").unwrap()];
+        assert!(cap.contains("== me || left_out_of_pictures(&bundle)") && !cap.contains("NEVER_CAPTURE.contains("), "{cap}");
+    }
 }
 
 #[cfg(test)]

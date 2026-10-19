@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 // ---------- apps that are never read ----------
 
-const BUILT_IN_NEVER: &[&str] = &[
+/// Also left out of every picture Show me takes (macos_see.rs left_out_of_pictures), except System Settings.
+pub(crate) const BUILT_IN_NEVER: &[&str] = &[
     "com.1password.1password", "com.agilebits.onepassword7", "com.agilebits.onepassword-osx", "com.bitwarden.desktop",
     "com.lastpass.lastpass", "com.dashlane.dashlane", "org.keepassxc.keepassxc", "com.apple.keychainaccess", "com.apple.Passwords",
     "com.nordsec.nordpass", "com.enpass.Enpass", "in.sinew.Enpass-Desktop", "com.apple.systempreferences", "com.apple.SecurityAgent",
