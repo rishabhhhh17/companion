@@ -12,7 +12,7 @@ import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -51,7 +51,8 @@ const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.key
 // was not done. Each one runs as a new checked task. It never takes keyboard focus by itself. Its words are kept by the card
 // (`text`), so hold to talk can put spoken words into it (heardGoesTo, askbox.ts); Esc empties it first, and only an empty
 // box lets Esc close Home as before.
-function FollowUpBox({ project, retry, sending, text, setText, listening, onSent }: { project: string; retry: boolean; sending: boolean; text: string; setText: (t: string) => void; listening: boolean; onSent: (words: boolean) => void }) {
+// answer: the task ended on a question, so what is typed (or spoken) here is the answer to it.
+function FollowUpBox({ project, retry, sending, text, setText, listening, onSent, answer }: { project: string; retry: boolean; sending: boolean; text: string; setText: (t: string) => void; listening: boolean; onSent: (words: boolean) => void; answer?: boolean }) {
   const sendIt = () => {
     const c = followUp(project, text);
     if (!c || sending) return;
@@ -66,7 +67,7 @@ function FollowUpBox({ project, retry, sending, text, setText, listening, onSent
         </div>
       )}
       <div className="row">
-        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={listening ? S.followUpListening : S.followUpPlaceholder} aria-label={S.followUpLabel}
+        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={listening ? S.followUpListening : answer ? S.followUpAnswer : S.followUpPlaceholder} aria-label={answer ? S.followUpAnswerLabel : S.followUpLabel}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !composing(e)) { e.preventDefault(); sendIt(); }
@@ -870,7 +871,8 @@ function Card() {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };
   }, []);
-  const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
+  // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
+  const working = cardWorking(m);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
@@ -1402,6 +1404,12 @@ function Card() {
       {show("receipt") && m.receipt && (
         <section className="panel" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           <h2>{S.receiptTitle}</h2>
+          {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
+            <div className="line" role={w.help ? "status" : undefined}>
+              <div><b>{w.lead}:</b> {plainPath(w.words, project)}</div>
+              {w.help && <div className="muted">{w.help}</div>}
+            </div>
+          ); })()}
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
@@ -1440,10 +1448,10 @@ function Card() {
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {(canFollowUp(m, project) || m.followUp === "sending") && (
-            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)}
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent}
               text={followText} setText={(t) => { setFollowText(t); if (!t) followFromVoice.current = false; }}
               listening={m.voice?.stage === "listening" && overReceipt.current && setting("talk.followUpByPointing") === true}
-              onSent={followSent} />
+              answer={!!m.receipt.asks && !undone} />
           )}
         </section>
       )}

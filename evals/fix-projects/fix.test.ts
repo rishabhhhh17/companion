@@ -119,6 +119,39 @@ const turnsOf = (steps: FixStep[], say = "Done.") => scripted([stepsToTurns(step
 // Started when the file loads, so they run beside the dry cases above; each test waits for its own.
 const early = <T>(f: () => Promise<T>) => { const p = f(); p.catch(() => {}); return () => p; };
 
+// What the person would see: the agent's last words reach the card on the receipt, and a task that ends on a question ends
+// as needs you. An ask case is scored from that, never from what the harness heard the agent say along the way.
+describe("asking is scored from what the card shows", () => {
+  const ask = byId("rescue-missing-setting");
+  const a1 = early(() => run(ask));
+  test("the known good answer is on the receipt, and the task ended as needs you", async () => {
+    const r = await a1();
+    expect(r.outcome).toBe("asked");
+    expect(r.detail?.needsYou).toBe(true);
+    expect(String(r.detail?.said)).toMatch(/Supabase project address/);
+  }, 60_000);
+  const a2 = early(() => run(ask, { agent: scripted([[{ text: ask.say, costUsd: 0 }, { tool: { name: "Read", input: { file_path: "package.json" } }, costUsd: 0 }]]) }));
+  test("a question the agent went past (a tool after it, nothing said at the end) never reached the card, so it is not asking", async () => {
+    const r = await a2();
+    expect(r.outcome).toBe("not_fixed");
+    expect(r.detail?.said ?? null).toBeNull();
+  }, 60_000);
+});
+
+describe("approval cards and the size of the first round", () => {
+  const c = byId("wrong-api-route");
+  const b1 = early(() => run(c, { agent: scripted([[{ tool: { name: "Bash", input: { command: "git init" } }, costUsd: 0 }, { text: "I looked.", costUsd: 0, usage: { in: 1200, cacheRead: 300, out: 40 } }]]) }));
+  test("each approval card in the fix is counted, with the tasks it came in", async () => {
+    const r = await b1();
+    expect(r.detail?.approvalCards).toBe(1);
+    expect(r.detail?.tasks).toBe(1);
+  }, 60_000);
+  test("the first round's tokens are kept, so a leaner setup shows up", async () => {
+    const r = await b1();
+    expect(r.detail?.firstRound).toEqual({ in: 1200, cacheRead: 300, out: 40 });
+  }, 60_000);
+});
+
 describe("wrong fixes are told apart from right ones", () => {
   const r1 = early(() => run(byId("wrong-api-route"), { agent: scripted([[{ text: "I fixed the orders page.", costUsd: 0 }]]) }));
   test("saying it is done without changing anything is not fixed", async () => {
@@ -289,5 +322,15 @@ describe("the scorer", () => {
     expect(s.proofFooled).toBe(1);
     expect([s.locatedRight, s.locatedOf]).toEqual([1, 2]);
     expect(summaryLine(s)).toContain("fixed 2");
+  });
+  test("the summary counts approval cards per task, and the first round's size", () => {
+    const r = (id: string, outcome: string, detail: Record<string, unknown>) => ({ id, outcome, costUsd: 0.1, turns: 4, tokens: { in: 0, cacheRead: 0, out: 0 }, ms: 1, notes: [], detail });
+    const s = summarize([r("a", "fixed", { approvalCards: 2, tasks: 1, firstRound: { in: 1000, cacheRead: 9000, out: 10 } }), r("b", "fixed", { approvalCards: 0, tasks: 3, firstRound: { in: 2000, cacheRead: 0, out: 10 } }), r("c", "asked", { approvalCards: 1, tasks: 1 })]);
+    expect(s.approvalCards).toBe(3);
+    expect(s.tasks).toBe(5);
+    expect(s.approvalsPerTask).toBeCloseTo(0.6);
+    expect(s.casesWithApprovals).toBe(2);
+    expect(s.medianFirstRoundIn).toBe(10000);
+    expect(summaryLine(s)).toMatch(/3 approval cards in 5 tasks \(0\.6 a task\)/);
   });
 });

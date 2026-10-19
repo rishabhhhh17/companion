@@ -7,7 +7,8 @@ export type ToolUse = { name: string; input: Record<string, unknown> };
 // Tokens used since the engine's last turn that reported any. `in` is input not read from the cache (cache writes count
 // here), `cacheRead` is input read from the cache, `out` is output. Absent when the engine did not say.
 export type Usage = { in: number; cacheRead: number; out: number };
-export type Turn = { text?: string; tool?: ToolUse; costUsd: number; sessionId?: string; usage?: Usage };
+// usedTool: the real engine (which runs tools itself) called a tool here, so the agent's words before it are not its last.
+export type Turn = { text?: string; tool?: ToolUse; costUsd: number; sessionId?: string; usage?: Usage; usedTool?: boolean };
 // What a shell command reported about itself: the id of a command it left running in the background. Only this is kept,
 // so the task may read the output of, or stop, what it started itself.
 export type ShellFacts = { backgroundId?: string };
@@ -37,6 +38,8 @@ export type EngineOptions = {
   offTheRecord?: boolean;
   // Most turns this session may take (the setting "Most turns in one task", work.maxTurns, read when the task started).
   maxTurns?: number;
+  // The built in tools this session is given (tools.ts). Without it: the looking tools when planOnly, else the task tools.
+  tools?: readonly string[];
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

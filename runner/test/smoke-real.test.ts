@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
-import { SMOKE_CASES, boxPicture, conversations, pictures } from "../scripts/smoke-real.ts";
+import { SMOKE_CASES, boxPicture, conversations, firstRoundNote, pictures } from "../scripts/smoke-real.ts";
 import { canonicalModel, MODEL_CHOICES } from "../src/models.ts";
 
 const made: string[] = [];
@@ -42,6 +42,13 @@ describe("the plan", () => {
   });
   test("every case has its own stop at or under the per case stop, and its estimate fits under it", () => {
     for (const c of SMOKE_CASES) { expect(c.capUsd!, c.name).toBeLessThanOrEqual(0.3); expect(c.estimateUsd, c.name).toBeLessThanOrEqual(c.capUsd!); expect(c.timeoutS!, c.name).toBeGreaterThan(0); }
+  });
+});
+
+describe("the size of the first round (leaner tasks: only the tools Companion uses)", () => {
+  test("the note says what the first round sent, new and read from the cache", () => {
+    expect(firstRoundNote({ in: 1200, cacheRead: 18000, out: 40 })).toBe("first round: 19200 input tokens (1200 new, 18000 read from the cache), 40 out");
+    expect(firstRoundNote(undefined)).toBe("first round: no token counts");
   });
 });
 

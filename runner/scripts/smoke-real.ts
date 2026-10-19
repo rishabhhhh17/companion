@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { AgentRunner } from "../src/agent.ts";
 import { API_URL, ComputerUseVision } from "../src/aim.ts";
-import type { Authorization, ToolUse, Turn } from "../src/engine.ts";
+import type { Authorization, ToolUse, Turn, Usage } from "../src/engine.ts";
 import { engineEnv } from "../src/engines.ts";
 import { FastLane, VisionLane, type Image } from "../src/lanes.ts";
 import { estimateUsd, requestProblems } from "../src/models.ts";
@@ -83,11 +83,15 @@ const insideOnly = (project: string, write: boolean) => async (t: ToolUse): Prom
   const writes = ["Write", "Edit", "MultiEdit"].includes(t.name);
   return inside && (reads || (write && writes)) ? { allow: true, reason: "" } : { allow: false, reason: "Not in this check: only reading, and writing inside the project." };
 };
-async function turns(gen: AsyncGenerator<Turn, void, any>): Promise<{ text: string; sessionId?: string; usd: number }> {
-  let text = "", sessionId: string | undefined, usd = 0;
-  for (let n = await gen.next(); !n.done; n = await gen.next(undefined)) { if (n.value.text) text += n.value.text + "\n"; if (n.value.sessionId) sessionId = n.value.sessionId; usd += n.value.costUsd; }
-  return { text, sessionId, usd };
+async function turns(gen: AsyncGenerator<Turn, void, any>): Promise<{ text: string; sessionId?: string; usd: number; first?: Usage }> {
+  let text = "", sessionId: string | undefined, usd = 0, first: Usage | undefined;
+  for (let n = await gen.next(); !n.done; n = await gen.next(undefined)) { if (n.value.text) text += n.value.text + "\n"; if (n.value.sessionId) sessionId = n.value.sessionId; usd += n.value.costUsd; if (n.value.usage && !first) first = n.value.usage; }
+  return { text, sessionId, usd, first };
 }
+/** What the first round sent (its main loop's tokens, turnTokens in sdkEngine.ts): every request carries the instructions and
+ *  the tool definitions again, so a leaner tool list shows up here (runner/src/tools.ts). */
+export const firstRoundNote = (u: Usage | undefined): string =>
+  u ? `first round: ${u.in + u.cacheRead} input tokens (${u.in} new, ${u.cacheRead} read from the cache), ${u.out} out` : "first round: no token counts";
 const engineOn = (ctx: CaseCtx, model: string, env = ctx.env, configDirs: string[] = []) =>
   new SdkEngine({ claudeBinary: ctx.claudeBinary, env, queryFn: ctx.guard({ tools: "agent", model, configDirs }) as never, totals: new SessionTotals() });
 
@@ -111,7 +115,7 @@ const mainEngine = (name: string, model: string, estimate: number, cap: number):
     const project = ctx.scratch("project"); const before = conversations(ctx.configDir);
     const r = await turns(engineOn(ctx, model).start({ prompt: "Create a file named hello.txt in this folder containing the single word hi. Do nothing else, then stop.", project, model, signal: ctx.signal, budgetUsd: cap, authorize: insideOnly(project, true) }));
     const saved = added(before, conversations(ctx.configDir));
-    ctx.note(`hello.txt = ${JSON.stringify(read(join(project, "hello.txt")).trim())}; saved conversations: ${saved.length}; in ~/.claude: ${inHomeClaude(project)}; cost ${r.usd}`);
+    ctx.note(`hello.txt = ${JSON.stringify(read(join(project, "hello.txt")).trim())}; saved conversations: ${saved.length}; in ~/.claude: ${inHomeClaude(project)}; cost ${r.usd}; ${firstRoundNote(r.first)}`);
     return read(join(project, "hello.txt")).trim() === "hi" && saved.length >= 1 && !inHomeClaude(project);
   },
 });
@@ -124,7 +128,7 @@ const rescueOn = (name: string, model: string, estimate: number): Case => ({
     const page = `<!doctype html><html><body><button onclick="showGallery()">Show gallery</button><script>function show() { document.title = "ok"; }</script></body></html>`;
     writeFileSync(join(project, "index.html"), page);
     const r = await turns(engineOn(ctx, model).start({ prompt: "Read index.html. In one sentence, say why the Show gallery button does nothing. Change nothing.", project, model, signal: ctx.signal, budgetUsd: 0.3, planOnly: true, authorize: insideOnly(project, false) }));
-    ctx.note(`answer: ${r.text.trim().slice(0, 200)}`);
+    ctx.note(`answer: ${r.text.trim().slice(0, 200)}; ${firstRoundNote(r.first)}`);
     return /showGallery|not defined|named|show\(\)/i.test(r.text) && read(join(project, "index.html")) === page && !inHomeClaude(project);
   },
 });

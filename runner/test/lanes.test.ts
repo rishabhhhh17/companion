@@ -335,3 +335,60 @@ describe("a reply that begins with thinking (the 5.5 models)", () => {
     expect((await lane.locate({ image: { base64: "AAAA", mediaType: "image/png", w: 100, h: 100 }, question: "q", ocr: [] }, cfg.signal)).costUsd).toBeCloseTo(4, 6);
   });
 });
+
+// Claude out of reach in the lanes (HeyClicky v1.0.53 parity, M11). With the Wi-Fi off, Claude Code answers with a message of
+// its own ("API Error: Connection error.", marked as an error) and a result marked is_error. That message is never the
+// improved prompt, the explanation or the point: the request fails, named (reach.ts), so the card says it plainly and
+// nothing can be pasted back. A fake `query` stands in for Claude Code; [verify] the real words with the Wi-Fi off.
+describe("Claude out of reach in the lanes", () => {
+  const apiError = (text: string, kind = "unknown", status: number | null = null) => [
+    { type: "assistant", message: { content: [{ type: "text", text }] }, error: kind },
+    { type: "result", subtype: "success", is_error: true, api_error_status: status, result: text, total_cost_usd: 0 },
+  ];
+  const OFFLINE = apiError("API Error: Connection error.");
+  const drive = { ensure: async () => "/tmp/fake-drive", wipe: async () => {} };
+  const svcOf = (msgs: any[]) => {
+    const events: Event[] = [];
+    const images = new ImageStore();
+    const svc = new AssistService({ fast: new FastLane({ ...cfg, queryFn: fake(msgs) }), vision: new VisionLane({ ...cfg, tmpDrive: drive, queryFn: fake(msgs) }), images, emit: (e) => events.push(e) });
+    return { svc, events, images };
+  };
+  const prompt = { v: 1 as const, id: "c", type: "assist.prompt" as const, req: "ph_1", app: "a", target: "chat", text: "make it work", style: "full" as const };
+  test("Prompt help: no improved prompt, nothing to paste back, and the error is named", async () => {
+    const { svc, events } = svcOf(OFFLINE);
+    await svc.handle(prompt);
+    expect(events.some((e) => e.type === "assist.prompt.done")).toBe(false);
+    expect(events.filter((e) => e.type === "assist.prompt.delta").map((e: any) => e.text).join("")).not.toContain("API Error");
+    expect((events.find((e) => e.type === "assist.error") as any).reason).toMatch(/^no_connection \(ask again\): /);
+  });
+  test("Prompt help with a refused key says that, not a connection problem", async () => {
+    const { svc, events } = svcOf(apiError("Invalid API key · Please run /login", "authentication_failed"));
+    await svc.handle(prompt);
+    expect((events.find((e) => e.type === "assist.error") as any).reason).toMatch(/^claude_stopped:authentication_failed \(ask again\): /);
+  });
+  test("a raw request (Explain, the error explainer, Draw it for me) fails, never answering with Claude Code's message", async () => {
+    const lane = new FastLane({ ...cfg, queryFn: fake(OFFLINE) });
+    await expect(lane.run({ text: "why?", raw: true }, () => {}, cfg.signal)).rejects.toThrow(/^no_connection: /);
+    const busy = new FastLane({ ...cfg, queryFn: fake(apiError("API Error: 529 Overloaded", "overloaded", 529)) });
+    await expect(busy.run({ text: "why?", raw: true }, () => {}, cfg.signal)).rejects.toThrow(/^claude_busy: /);
+  });
+  test("a reply cut at its output limit is not the answer either", async () => {
+    const lane = new FastLane({ ...cfg, queryFn: fake(apiError("API Error: Claude's response exceeded the 32000 output token maximum.", "max_output_tokens")) });
+    await expect(lane.run({ text: "x" }, () => {}, cfg.signal)).rejects.toThrow(/^claude_stopped:max_output_tokens: /);
+  });
+  test("Show me: no point is made up from it, and the error is named, never 'not found'", async () => {
+    const { svc, events, images } = svcOf(OFFLINE);
+    images.put("img_1", { base64: "AAAA", mediaType: "image/png" });
+    await svc.handle({ v: 1, id: "c", type: "assist.locate", req: "sm_1", question: "where is save?", image: { ref: "img_1", w: 100, h: 100 } });
+    expect(events.some((e) => e.type === "assist.point")).toBe(false);
+    expect((events.find((e) => e.type === "assist.error") as any).reason).toMatch(/^no_connection \(ask again\): /);
+  });
+  test("a picture added to a request: the look fails, named", async () => {
+    const lane = new VisionLane({ ...cfg, tmpDrive: drive, queryFn: fake(OFFLINE) });
+    await expect(lane.describe({ images: [{ mediaType: "image/png", base64: "AAAA" }], question: "q" }, cfg.signal)).rejects.toThrow(/^no_connection: /);
+  });
+  test("a normal answer is still the answer", async () => {
+    const lane = new FastLane({ ...cfg, queryFn: fake([assistant("Whole answer"), result(0.001)]) });
+    expect((await lane.run({ text: "x", raw: true }, () => {}, cfg.signal)).text).toBe("Whole answer");
+  });
+});

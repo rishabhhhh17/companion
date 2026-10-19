@@ -12,6 +12,7 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { adapterFor, buildContext, grewTooMuch, handBack, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
+import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -78,7 +79,7 @@ export class FastLane {
     // A leading "/" would run as a Claude Code command, so such text is introduced first.
     const prompt = req.raw ? (req.text.startsWith("/") ? `Input:\n${req.text}` : req.text) : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
     const q = (this.o.queryFn ?? realQuery)({ prompt, options: options as never });
-    let streamed = "", full = "", cost = 0;
+    let streamed = "", full = "", cost = 0, apiError: ApiError | undefined;
     try {
       for await (const m of q as AsyncIterable<any>) {
         if (m.type === "stream_event" && m.event?.type === "content_block_delta" && m.event.delta?.type === "text_delta") {
@@ -86,6 +87,9 @@ export class FastLane {
         } else if (m.type === "assistant") {
           // A message with no text (a thinking block, which the 5.5 models send first) is not the answer.
           const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+          // Claude Code's own message about a failed request ("API Error: Connection error.") is never the answer: the
+          // request fails, named, when its result arrives (reach.ts).
+          if (m.error) { apiError = { kind: String(m.error), text }; continue; }
           if (text) full = text;
           if (req.raw && full) {
             // The answer is complete: hand it back now and let the engine process end in the background. The cost is
@@ -97,7 +101,8 @@ export class FastLane {
             return { text: full, costUsd: round(cost) };
           }
         } else if (m.type === "result") {
-          if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+          const stop = turnStop(m, apiError);
+          if (stop) throw new Error(stop);
           cost = Number(m.total_cost_usd ?? 0);
         }
       }
@@ -241,14 +246,18 @@ export class VisionLane {
     const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model, signal, system: DESCRIBE_SYSTEM });
     try {
       const q = (this.o.queryFn ?? realQuery)({ prompt: buildDescribeMessages(req.images, req.question) as never, options: options as never });
-      let text = "", cost = 0;
+      let text = "", cost = 0, apiError: ApiError | undefined;
       for await (const m of q as AsyncIterable<any>) {
         if (signal.aborted) throw new Error("stopped");
         if (m.type === "assistant") {
-          text += (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+          const said = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+          // Claude Code's own message about a failed request is never what the picture shows (reach.ts).
+          if (m.error) { apiError = { kind: String(m.error), text: said }; continue; }
+          text += said;
           if (m.message?.usage) cost += estimateUsd(model, m.message.usage);
         } else if (m.type === "result") {
-          if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+          const stop = turnStop(m, apiError);
+          if (stop) throw new Error(stop);
           if (Number.isFinite(Number(m.total_cost_usd))) cost = Number(m.total_cost_usd);
         }
       }
@@ -287,10 +296,12 @@ export class VisionLane {
   }
 
   private async read(q: AsyncIterable<any>, model: string, pictures: Image[], set: (targets: Point[], cost: number, last?: LastStep) => void, stop: () => void): Promise<void> {
-    let targets: Point[] = [], cost = 0;
+    let targets: Point[] = [], cost = 0, apiError: ApiError | undefined;
     for await (const m of q) {
       if (m.type === "assistant") {
         const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+        // Claude Code's own message about a failed request is not the answer, and no point is read from it (reach.ts).
+        if (m.error) { apiError = { kind: String(m.error), text }; continue; }
         // A message with no text is the thinking the 5.5 models do first, not the answer: wait for the answer.
         if (!text) continue;
         targets = parseTargetsText(text, pictures);
@@ -301,7 +312,8 @@ export class VisionLane {
         stop();     // end the engine process now; do not wait for it to wind down
         return;
       } else if (m.type === "result") {
-        if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+        const stop = turnStop(m, apiError);
+        if (stop) throw new Error(stop);
         cost = Number(m.total_cost_usd ?? 0);
       }
     }
@@ -430,7 +442,10 @@ export class AssistService {
       const question = cmd.noQuestion ? undefined : parsed.question;
       this.emit({ type: "assist.prompt.done", req: cmd.req, text: final, ...(question ? { question, ...(parsed.options ? { options: parsed.options } : {}) } : {}), diff: wordDiff(cmd.text, final), usdEstimate: round(cost), handback: handBack(adapter, this.o.settings?.get("ph.handBack")) });
     } catch (e) {
-      this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : `Could not improve the prompt (${(e as Error).message})` });
+      // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it in plain words;
+      // Prompt help has no Try again, so it says to ask again.
+      const msg = String((e as Error).message ?? e);
+      this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not improve the prompt (${msg})` });
     } finally { this.active.delete(cmd.req); }
   }
 
@@ -462,7 +477,8 @@ export class AssistService {
       // And, when the question asked for it, whether the step before worked (Did that work? only when unsure).
       this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}), ...(r.lastStepWorked ? { lastStepWorked: r.lastStepWorked } : {}) });
     } catch (e) {
-      this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
+      const msg = String((e as Error).message ?? e);
+      this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not find it (${msg})` });
     } finally {
       clearTimeout(timer);
       dropAll();   // every screenshot is dropped as soon as it has been used

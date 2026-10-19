@@ -121,11 +121,6 @@ describe("allow for the rest of this task", () => {
     ["a global install", bash("npm install -g left-pad")],
     ["stopping programs", bash("kill 1234")],
     ["a web address that carries data", tool("WebFetch", { url: "https://example.com/?q=secret" })],
-    ["a notification", tool("PushNotification", { message: "hello" })],
-    ["feedback", tool("SendFeedback", { feedback: "hi" })],
-    ["a remote trigger", tool("RemoteTrigger", { action: "run", trigger_id: "t1" })],
-    ["publishing a page", tool("Artifact", { file_path: "a.html" })],
-    ["a timer that runs later", tool("CronCreate", { cron: "* * * * *", prompt: "x" })],
     ["a tool nobody knows", tool("MadeUpTool", { x: 1 })],
   ];
   for (const [what, step] of always) test(`never for ${what}: it asks again`, async () => {
@@ -135,6 +130,22 @@ describe("allow for the rest of this task", () => {
     await answer(r, 2, "allow", "once");
     await done;
     expect(requests(r.events).length).toBe(2);
+  });
+
+  // Built in tools that send, publish or run later, which Companion never gives the engine (tools.ts): since M11 they are
+  // refused every time with a plain reason (safety.ts NOT_GIVEN), stricter than asking, so there is no card to say yes to.
+  const neverGiven: [string, Step][] = [
+    ["a notification", tool("PushNotification", { message: "hello" })],
+    ["feedback", tool("SendFeedback", { feedback: "hi" })],
+    ["a remote trigger", tool("RemoteTrigger", { action: "run", trigger_id: "t1" })],
+    ["publishing a page", tool("Artifact", { file_path: "a.html" })],
+    ["a timer that runs later", tool("CronCreate", { cron: "* * * * *", prompt: "x" })],
+  ];
+  for (const [what, step] of neverGiven) test(`never for ${what}: it is refused each time, with no card`, async () => {
+    const r = setup(new ScriptedEngine([step, step]));
+    await r.runner.handle(start(r.project));
+    expect(requests(r.events).length).toBe(0);
+    expect(r.events.filter((e) => e.type === "agent.tool").map((e: any) => e.outcome)).toEqual(["blocked", "blocked"]);
   });
 
   test("never over a refusal: a rule that refuses the action later still refuses it", async () => {
