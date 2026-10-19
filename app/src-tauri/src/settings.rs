@@ -1129,7 +1129,11 @@ mod tests {
         assert!(!change.contains("voiceset::parse(") && !change.contains("keymap::parse("), "{change}");
         // A file that could not be read is never saved over: every path that writes settings.json asks first.
         for c in ["fn settings_migrate(", "fn setting_change(", "fn settings_reset("] { assert!(body(c).contains("settings_writable("), "{c}"); }
-        assert!(body("fn settings_writable(").contains("settings::ready_to_save("));
+        assert!(body("fn settings_writable(").contains("settings::ready_to_save(") && body("fn settings_writable(").contains("-> Result<bool, &'static str>"));
+        // A file read again just now holds the person's own values, which the page was never shown: a reset then changes
+        // nothing, every window is told, and the page asks again (T16: decided from exactly what the page was shown).
+        let read_again = reset.find("if let Ok(true) = settings_writable(&app) { settings_told(&app, &[]); return Err(\"readAgain\".into()); }").expect("a reset after the file was read again");
+        assert!(read_again < reset.find("settings::reset_plan(").unwrap(), "{reset}");
     }
     #[test]
     fn house_rules_are_shown_from_the_projects_own_file_and_no_reset_ever_touches_them() {

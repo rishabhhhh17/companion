@@ -928,11 +928,12 @@ fn settings_line() -> String {
 /// when it starts.
 fn send_settings(app: &AppHandle) { let _ = app.state::<runner::Runner>().send_line(settings_line()); }
 /// Before settings.json is written: one that could not be read is read again (settings::ready_to_save). Still not
-/// readable, the change is refused and nothing is saved over it; readable now, the engine is given what it holds.
-fn settings_writable(app: &AppHandle) -> Result<(), &'static str> {
+/// readable, the change is refused and nothing is saved over it; readable now, the engine is given what it holds, and
+/// Ok(true) says it was read again just now (the page was shown the usual values, not the person's own).
+fn settings_writable(app: &AppHandle) -> Result<bool, &'static str> {
     let again = with_settings(|s| settings::ready_to_save(settings::registry(), &data_dir(), &mut s.file, &mut s.problems))?;
     if again { log("settings_read_again", json!({})); send_settings(app); }
-    Ok(())
+    Ok(again)
 }
 
 /// What the page shows and reads: every value in force, the usual ones, the project, and the problems found.
@@ -1046,8 +1047,10 @@ fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<Stri
     };
     let r = settings::registry();
     // A settings.json that could not be read stays as it is (nothing in it is in force, so the reset below changes
-    // nothing there); one readable again is taken first.
-    let _ = settings_writable(&app);
+    // nothing there). One readable again holds the person's own values, which the page was never shown, so it could
+    // neither name them first nor put them back with Undo: nothing is reset, every window is told what is in force now,
+    // and the page asks again.
+    if let Ok(true) = settings_writable(&app) { settings_told(&app, &[]); return Err("readAgain".into()); }
     let shown = settings_snapshot(&[]);
     let (none, mut problems) = (serde_json::Map::new(), Vec::<&'static str>::new());
     let plan = settings::reset_plan(r, which, shown["values"].as_object().unwrap_or(&none), shown["usual"].as_object().unwrap_or(&none), &engine.unwrap_or_default())?;
