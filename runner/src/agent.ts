@@ -249,9 +249,13 @@ export class AgentRunner {
   private teaching = new Map<string, TeachTurn>();       // project -> the place the person was asked to change
   private lastTask = new Map<string, LastTask>();   // agent -> its last task, for a follow up or Try again
 
-  // Take the wheel: stop the current step now; the plan waits for the person to resume.
+  // Take the wheel: stop the current step now; the plan waits for the person to resume. Not while the plan's loop card
+  // waits: the plan is already waiting for the person, the card is the question, and a pause would hide it (model.ts
+  // clears the card on drive.paused) while the plan kept waiting on the card's answer. An open approval card of the step is
+  // settled as cancelled by its own wait (authorizeTool), so a late Allow never runs anything; what was allowed for the
+  // rest of the task stays allowed, since a pause keeps the task.
   private requestPause(agent: string, reason: string, path?: string) {
-    if (!this.watchers.has(agent) || this.pauseReq.has(agent) || this.driveStop.has(agent)) return;
+    if (!this.watchers.has(agent) || this.pauseReq.has(agent) || this.driveStop.has(agent) || this.choices.has(agent)) return;
     this.pauseReq.set(agent, { reason, path });
     // Say so at once: winding the running step down can take a moment, and the person should not wait for it.
     this.emit({ type: "drive.paused", agent, reason, ...(path ? { path } : {}) } as never);
@@ -767,6 +771,7 @@ export class AgentRunner {
     let finalWords = "", afterTool = true;
 
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
+    const tellCost = () => this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { ...tokens } } as never);
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       finalWords = ""; afterTool = true;
       const gen = this.o.engine.start({
@@ -774,16 +779,19 @@ export class AgentRunner {
         ...(offRecord ? { offTheRecord: true } : {}),
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
         toolDone: (id, shell) => { if (id) this.watchers.get(cmd.agent)?.end(id); this.noteShell(session, shell); },
+        // A round that ended before Claude Code said what it cost (Stop, a pause) still cost something: the engine's estimate.
+        unbilled: (c) => { usd += c; book(); tellCost(); },
       });
       try {
         let next = await gen.next();
         while (!next.done) {
-          if (abort.signal.aborted) { status = "interrupted"; return false; }
           const turn = next.value;
           if (turn.sessionId) sessionId = turn.sessionId;
+          // Booked first: a turn that arrives just after Stop was still spent.
           usd += turn.costUsd; book();
           if (turn.usage) { tokens.in += turn.usage.in; tokens.cacheRead += turn.usage.cacheRead; tokens.out += turn.usage.out; }
-          this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { ...tokens } } as never);
+          tellCost();
+          if (abort.signal.aborted) { status = "interrupted"; return false; }
           if (usd > budget) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
 
           let result: ToolResult | undefined;
@@ -806,10 +814,12 @@ export class AgentRunner {
         if (abort.signal.aborted) { status = "interrupted"; return false; }
         return true;
       } catch (e) {
-        // Real Claude throws when it is stopped. If a stop was asked for, that is a stop, not a crash.
-        if (abort.signal.aborted && !(e instanceof EngineStop)) { status = "interrupted"; return false; }
+        // A run that stopped on a limit, or on a result that came as it was being stopped, still cost something.
+        if (e instanceof EngineStop) { usd += e.costUsd; book(); tellCost(); }
+        // Real Claude throws when it is stopped, and may report the stop as an error. If a stop was asked for (Stop, Stop
+        // everything, a pause), that is a stop, not a crash.
+        if (abort.signal.aborted) { status = "interrupted"; return false; }
         const msg = (e as Error).message;
-        if (e instanceof EngineStop) { usd += e.costUsd; book(); }
         // A limit, or Claude out of reach (no connection, or busy: sdkEngine.ts), has a status of its own; anything else is an error.
         status = /^(error_max_[a-z_]+|no_connection|claude_busy)\b/.exec(msg)?.[1] ?? "error";
         this.fail(status === "error" ? `engine error: ${msg}` : msg, cmd.agent);
@@ -845,7 +855,13 @@ export class AgentRunner {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
       lastAfter = after.id;
       changed = await store.diff(before.id, after.id);
-      if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) { if (status === "done" && asking() && !abort.signal.aborted) status = "needs_you"; break; }
+      if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) {
+        // A round that finished, then Stop (or a pause) while its after state was saved: its change was never checked, so
+        // it is stopped, never done. A paused plan then runs the step again after Carry on, and checks it.
+        if (status === "done" && abort.signal.aborted && changed.length > 0) status = "interrupted";
+        if (status === "done" && asking() && !abort.signal.aborted) status = "needs_you";
+        break;
+      }
 
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
@@ -902,7 +918,9 @@ export class AgentRunner {
         const probe = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
         if ((await store.diff(after.id, probe.id)).length === 0) { status = asking() ? "needs_you" : "not_done"; break; } // the fix changed nothing
       }
-      if (!ok || status !== "done") break;
+      // A fix round that ended early (Stop, a limit, no connection) may still have changed files: the top of the loop saves
+      // the after state and measures the change again before it ends, so the receipt names every file Undo would change.
+      if (!ok || status !== "done") continue;
       proof = "skipped";
     }
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
@@ -996,7 +1014,7 @@ export class AgentRunner {
   private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void, offTheRecord = false): Promise<string> {
     let text = "";
     const gen = this.o.reviewer!.start({
-      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}),
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}), unbilled: spent,
       authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
     });
     try {
@@ -1009,6 +1027,10 @@ export class AgentRunner {
         else if (turn.text) text += turn.text + "\n";
         next = await gen.next(result);
       }
+    } catch (e) {
+      // The reviewer stopped on its limit, its turns or a failed request: what it spent is still the task's.
+      if (e instanceof EngineStop) spent(e.costUsd);
+      throw e;
     } finally { try { await gen.return(undefined); } catch { /* finished */ } }
     return text;
   }
@@ -1048,14 +1070,15 @@ export class AgentRunner {
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
       // Off the record there is no saved conversation, so nothing is ever continued.
-      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, tools: spec.tools ?? LOOK_TOOLS, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}) });
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, tools: spec.tools ?? LOOK_TOOLS, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}),
+        unbilled: (c) => { st.usd += c; book(); } });
       try {
         let next = await gen.next();
         while (!next.done) {
-          if (abort.signal.aborted) break;
           const turn = next.value;
           if (turn.sessionId) st.sessionId = turn.sessionId;
-          st.usd += turn.costUsd; book();
+          st.usd += turn.costUsd; book();   // booked first: a turn that arrives just after Stop was still spent
+          if (abort.signal.aborted) break;
           if (st.usd > budget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
           let result: ToolResult | undefined;
           if (turn.tool) {
@@ -1070,9 +1093,9 @@ export class AgentRunner {
     try {
       await body(ask, st);
     } catch (e) {
-      // A stop is not a crash (real Claude throws when it is stopped).
+      // A stop is not a crash (real Claude throws when it is stopped, and may report the stop as an error).
       if (e instanceof EngineStop) { st.usd += e.costUsd; book(); }   // a run that stopped on its limit still cost something
-      if (abort.signal.aborted && !(e instanceof EngineStop)) { this.state(spec.agent, "idle"); return; }
+      if (abort.signal.aborted) { this.state(spec.agent, "idle"); return; }
       const msg = (e as Error).message;
       // Claude out of reach, or a failed request of a known kind (reach.ts): these flows have no Try again, so the card is
       // told to say ask again instead of pointing at a button that is not there.
@@ -1759,28 +1782,30 @@ export class AgentRunner {
         // A follow up after the plan carries on from this step: its title (never the step's instructions), the plan's goal,
         // and the plan's whole budget (a step's own budget is only what the plan had left).
         const carry = { goal: title, first: plan.goal?.replace(/\s+/g, " ").trim() || title, followBudgetUsd: plan.budgetUsd };
-        let prompt = stepPrompt(index, total, title);
-        let r: Awaited<ReturnType<AgentRunner["run"]>>;
-        for (;;) {
-          r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
-          session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
-          // Paused in the middle of the step: wait, then carry on with the same step.
-          if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
-            if (await pauseHere()) { prompt = pausedPrompt(title); continue; }
-            r = { ...r, status: "interrupted" };
+        // One run of the step, and of the same step after each pause in it: the first run, and a Try a different approach
+        // run after the loop card, are paused and carried on alike.
+        const runStep = async (first: string): Promise<Awaited<ReturnType<AgentRunner["run"]>>> => {
+          let prompt = first;
+          for (;;) {
+            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
+            session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
+            // Paused in the middle of the step: wait, then carry on with the same step.
+            if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
+              if (await pauseHere()) { prompt = pausedPrompt(title); continue; }
+              r = { ...r, status: "interrupted" };
+            }
+            return r;
           }
-          break;
-        }
+        };
+        let r = await runStep(stepPrompt(index, total, title));
         // The same failure on every check (three, as usual), or with work.askOnAnyFailure any failures: stop and ask, once
         // per step.
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
           this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck.failure, options: STUCK_OPTIONS, ...loopHow(r.stuck.end) } as never);
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));   // answerChoice forgets it once answered
-          if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck.failure, r.stuck.end)), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
-            session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
-          } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
+          if (choice === "different" && remaining > 0) r = await runStep(differentPrompt(title, r.stuck.failure, r.stuck.end));
+          else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }
         if (r.status === "done") { completed++; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "done" } as never); continue; }
         status = r.status;
@@ -1845,15 +1870,21 @@ export class AgentRunner {
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),
       } as never);
       this.state(cmd.agent, "needsYou");
-      let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
+      let how = "denied" as "allowed" | "denied" | "expired" | "cancelled";
       let forTask = false;
+      // Stop, Stop everything and a pause settle the card at once as cancelled, so it never stays up with nothing behind it,
+      // and an answer after that changes nothing. Only a yes given while the task still runs is a yes.
       const allowed = await new Promise<boolean>((res) => {
-        const t = setTimeout(() => { s.pending.delete(approval); how = "expired"; res(false); }, timeout);
-        s.pending.set(approval, (ok, scope) => { clearTimeout(t); how = ok ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; forTask = ok && scope === "task"; res(ok); });
+        const end = (ok: boolean) => { clearTimeout(t); s.abort.signal.removeEventListener("abort", stop); s.pending.delete(approval); res(ok); };
+        const stop = () => { how = "cancelled"; end(false); };
+        const t = setTimeout(() => { how = "expired"; end(false); }, timeout);
+        s.abort.signal.addEventListener("abort", stop, { once: true });
+        s.pending.set(approval, (ok, scope) => { how = ok && !s.abort.signal.aborted ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; forTask = how === "allowed" && scope === "task"; end(how === "allowed"); });
       });
       // Tell every page, so none keeps a stale card or badge.
       this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
-      if (!allowed) { tell("denied"); return { allow: false, reason: "The user did not allow this command." }; }
+      if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : "The user did not allow this command." }; }
+      if (s.abort.signal.aborted) { tell("blocked"); return { allow: false, reason: "Stopped: nothing more runs in this task." }; }
       if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);
       tell("ran");
     }
