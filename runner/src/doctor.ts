@@ -3,7 +3,9 @@
 import { runCommand } from "./proof/exec.ts";
 import { browserInstalled } from "./proof/browser.ts";
 
-export type Item = { id: string; label: string; ok: boolean; detail: string; fix?: string };
+// missing: the tool is not on this Mac at all (an old version is not missing). The practice projects wait for Node only
+// when it is missing, since their checks (node --test) run on an older Node too.
+export type Item = { id: string; label: string; ok: boolean; detail: string; fix?: string; missing?: true };
 
 export function parseVersion(text: string): number[] | null {
   const m = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(text);
@@ -20,7 +22,7 @@ export async function doctor(run: Run = defaultRun, hasBrowser: () => boolean = 
   const items: Item[] = [];
   items.push(node
     ? atLeast(node, [20, 0]) ? { id: "node", label: "Node", ok: true, detail: `Version ${node.join(".")} is fine.` } : { id: "node", label: "Node", ok: false, detail: `Version ${node.join(".")} is too old for installing packages while Companion is working (it needs 20 or newer).`, fix: "Install the current version from nodejs.org." }
-    : { id: "node", label: "Node", ok: false, detail: "Node is not installed. Many web projects need it to build and check.", fix: "Install it from nodejs.org." });
+    : { id: "node", label: "Node", ok: false, detail: "Node is not installed. Many web projects need it to build and check.", fix: "Install it from nodejs.org.", missing: true });
   items.push(git ? { id: "git", label: "Git", ok: true, detail: `Version ${git.join(".")}.` } : { id: "git", label: "Git", ok: false, detail: "Git is not installed. Some projects need it.", fix: "Open Terminal and run: xcode-select --install" });
   // Nothing downloads it on its own: the person presses the button the card shows after a check that had to skip the page.
   items.push(hasBrowser() ? { id: "browser", label: "Page checker", ok: true, detail: "The hidden browser used to check pages is installed." } : { id: "browser", label: "Page checker", ok: false, detail: "The hidden browser that opens your pages during a check is not on this Mac yet, so checks skip that step.", fix: "After a check that skipped the page, press Get the browser check on the result. It downloads once (about 200 MB) and only when you press it." });

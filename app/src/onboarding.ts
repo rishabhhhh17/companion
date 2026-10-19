@@ -2,7 +2,9 @@
 // Nothing here touches the screen, so every rule can be tested.
 import type { Command } from "../../protocol/index.ts";
 
-export const STEPS = ["welcome", "connect", "folder", "questions", "permissions", "first"] as const;
+// The practice comes right after Connect, so everyone can see the hero in minute one (F17); it can be skipped, and taking
+// it ends the first run there (the practice opens its own folder; Back to my project asks for the person's own later).
+export const STEPS = ["welcome", "connect", "practice", "folder", "questions", "permissions", "first"] as const;
 export type Step = (typeof STEPS)[number];
 export type Answers = { explain: boolean; short: boolean; plain: boolean; autoSend: boolean };
 export const DEFAULT_ANSWERS: Answers = { explain: true, short: false, plain: true, autoSend: false };

@@ -146,7 +146,8 @@ describe("every hint names the keys in use", () => {
     expect(read("./card.tsx")).toMatch(/e\.key === "Escape"[^\n]*close_card/);
   });
   test("every page fills its key lines from the key map, never from a fixed line", () => {
-    const card = read("./card.tsx");
+    // The practice panel (practicePanel.tsx) is part of Home's card.
+    const card = read("./card.tsx") + read("./practicePanel.tsx");
     for (const k of ["practiceKeys", "phHotkeys", "cardHint", "pointHint", "showMeKeyHint", "phKeyHint", "errKeyHint", "stopHint"]) expect(card, k).not.toContain(`{S.${k}}`);
     expect(card).toContain('keyHint("problem", S.practiceKeys');
     // The use keys are named only when the app could take them for this result: ph_ready answers which keys it took

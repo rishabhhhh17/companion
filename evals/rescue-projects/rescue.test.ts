@@ -2,7 +2,8 @@
 // and line known by construction. For each, the project's own check is run for real, and Companion's locator must turn
 // its real output into that exact place. No model is involved: this measures the part that decides where the ring goes.
 // The practice stuck moments that ship with the app (app/sample) are cases too, so the projects people practise on are
-// held to the same bar; their expected failing checks live in practice.json, outside the projects.
+// held to the same bar; their expected failing checks live in the practice catalog (app/sample/practices.json), outside
+// the projects.
 // Run: cd evals/rescue-projects && bun test
 import { describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
@@ -47,11 +48,13 @@ describe("the hero finds the real failing place in fifteen kinds of broken proje
 });
 
 // The practice stuck moments: the same bar, plus the open table, which no program shows; Companion's own database access
-// check (a ship gate, reading the migration files) must find it.
+// check (a ship gate, reading the migration files) must find it, at the line that makes the table.
 const samples = join(import.meta.dir, "../../app/sample");
-const practice = JSON.parse(readFileSync(join(import.meta.dir, "practice.json"), "utf8")) as Record<string, Expected | { gate: "database_access"; findings: string[] }>;
+type GateExpected = { gate: "database_access"; findings: string[]; file: string; line: number };
+const catalog = JSON.parse(readFileSync(join(samples, "practices.json"), "utf8")) as { practices: { folder: string; expect: Expected | GateExpected }[] };
+const practice: Record<string, Expected | GateExpected> = Object.fromEntries(catalog.practices.map((p) => [p.folder, p.expect]));
 describe("the practice stuck moments fail where they are meant to", () => {
-  test("every practice project that ships has its expected failing check here", () => {
+  test("every practice project that ships has an entry in the catalog, and every entry has its folder", () => {
     const shipped = readdirSync(samples).filter((n) => statSync(join(samples, n)).isDirectory()).sort();
     expect(shipped).toEqual(Object.keys(practice).sort());
   });
@@ -65,6 +68,7 @@ describe("the practice stuck moments fail where they are meant to", () => {
           expect(g.id).toBe(exp.gate);
           expect(g.status).toBe("blocked");
           expect(g.findings).toEqual(exp.findings);
+          expect(g.places?.[0]).toMatchObject({ file: exp.file, line: exp.line });
         } finally { rmSync(dir, { recursive: true, force: true }); }
       });
       continue;

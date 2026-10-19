@@ -50,6 +50,12 @@ describe("beta numbers", () => {
     expect(m.note("my password is hunter2")).toBe(false);
     expect(m.summary().days["2026-10-12"]).toEqual({ session: 1 });
   });
+  test("the practice projects count their start, their found problem and their finish, with no names or paths", () => {
+    const { m } = mk(); m.setEnabled(true);
+    for (const n of ["practice_started", "practice_found", "practice_done", "practice_done"]) expect(m.note(n), n).toBe(true);
+    expect(m.note("practice_signup")).toBe(false);
+    expect(m.summary().days["2026-10-12"]).toEqual({ practice_started: 1, practice_found: 1, practice_done: 2 });
+  });
   test("the file holds counts and day names only: no words, paths or ids", () => {
     const { dir, m } = mk(); m.setEnabled(true);
     m.observe(ev({ type: "walk.done", walk: "w-secret-id", project: "/Users/me/secret-project", lesson: "private-lesson", title: "My private title", steps: 3 }));

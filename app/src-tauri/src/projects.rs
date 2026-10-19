@@ -41,6 +41,11 @@ impl Projects {
         self.recent.insert(0, folder.to_string());
         self.recent.truncate(8);
     }
+    /// A folder that went to the Trash (a practice copy the person removed): off the list, and no longer the current one.
+    pub fn forget(&mut self, folder: &str) {
+        self.recent.retain(|r| r != folder);
+        if self.current.as_deref() == Some(folder) { self.current = None; }
+    }
     /// Recent folders that still exist, so a deleted project never lingers in the list.
     pub fn still_there(&self) -> Vec<String> { self.recent.iter().filter(|r| Path::new(r).is_dir()).cloned().collect() }
 }
@@ -87,6 +92,17 @@ mod tests {
     }
     fn tmp(name: &str) -> PathBuf { let d = std::env::temp_dir().join(format!("proj-{}-{}", name, std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d }
 
+    #[test]
+    fn a_folder_can_be_forgotten_from_the_list_and_as_the_current_one() {
+        let mut p = Projects::default();
+        p.use_folder("/Users/sam/a"); p.use_folder("/Users/sam/Companion practice signup page");
+        p.forget("/Users/sam/Companion practice signup page");
+        assert_eq!(p, Projects { current: None, recent: vec!["/Users/sam/a".into()] });
+        p.forget("/Users/sam/never-there");
+        assert_eq!(p.recent, vec!["/Users/sam/a".to_string()]);
+        p.use_folder("/Users/sam/b"); p.forget("/Users/sam/a");
+        assert_eq!(p, Projects { current: Some("/Users/sam/b".into()), recent: vec!["/Users/sam/b".into()] });
+    }
     #[test]
     fn an_ordinary_project_folder_is_accepted() {
         let home = tmp("home"); let p = home.join("Developer/shop"); std::fs::create_dir_all(&p).unwrap();

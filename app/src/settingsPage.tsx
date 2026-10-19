@@ -11,7 +11,7 @@ import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRAS
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
-import type { PracticeKind, Spending } from "./model.ts";
+import type { Spending } from "./model.ts";
 import { canPick, choicesFrom, chordLabel, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
@@ -657,8 +657,10 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
   );
 }
 
+// working: a task or a check works (isBusy). practiceBusy: that, or a lesson or a practice's own checks (practice.ts
+// workingOn), so the practice copy open now is never moved to the Trash under them.
 // onStepAside: the email for Report a problem, or Finder showing the support log, opened (home.stepAside decides).
-export function SettingsPage({ working, project, spending, onClose, onPractice, onLesson, onStepAside = () => {} }: { working: boolean; project: string; spending: Spending | null; onClose: () => void; onPractice: (kind?: PracticeKind) => void; onLesson: (lesson: string) => void; onStepAside?: () => void }) {
+export function SettingsPage({ working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {} }: { working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
   // Every setting, except a model row that could offer only one option so far (modelChoice.ts), and a row that only
@@ -668,6 +670,12 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
   const [withProjects, setWithProjects] = useState(false);
+  const [withPractice, setWithPractice] = useState(false);
+  // Move all my practice copies to the Trash: asked first, then what happened in one line.
+  const [askPractice, setAskPractice] = useState(false);
+  const [practiceSaid, setPracticeSaid] = useState("");
+  const practiceAllId = useId();
+  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(String(e))); };
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
@@ -717,7 +725,7 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   const remove = () => {
     if (busy.current) return;
     busy.current = true; setStep("deleting"); setProblem("");
-    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects }).catch((e) => { busy.current = false; setProblem(String(e)); setStep("confirm"); });
+    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects, withPractice }).catch((e) => { busy.current = false; setProblem(String(e)); setStep("confirm"); });
   };
   // Reset all settings to usual, asked first, naming every setting that changes; then Undo for ten seconds puts every
   // value back through the shell.
@@ -788,7 +796,17 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
       </Group>}
       {fixedShown("key") && inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
       {fixedShown("practice") && <Group title={S.fixedGroups.practice.title}>
-      <div className="row"><button className="btn" type="button" onClick={() => onPractice("signup")}>{S.practiceAgainFromSettings}</button> <button className="btn" type="button" onClick={() => onPractice("setting")}>{S.practiceSettingFromSettings}</button></div>
+      <div className="line muted">{S.practiceListHelp}</div>
+      {!askPractice && <div className="row">
+        <button className="btn" type="button" onClick={onPracticeList}>{S.practiceOpenList}</button>
+        {(inv?.practiceCopies ?? 0) > 0 && <button id={practiceAllId} className="btn" type="button" onClick={() => { setPracticeSaid(""); setAskPractice(true); }}>{S.practiceRemoveAll}</button>}
+      </div>}
+      {askPractice && (
+        <ConfirmStep className="line" label={S.practiceRemoveAllSure} back={practiceAllId} onCancel={() => setAskPractice(false)}><div>{S.practiceRemoveAllSure}</div>
+          <div className="row"><button className="btn danger" type="button" onClick={trashPractice}>{S.practiceRemoveAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskPractice(false)}>{S.planCancel}</button></div>
+        </ConfirmStep>
+      )}
+      {practiceSaid && <div className="line" role="status">{practiceSaid}</div>}
       </Group>}
       {fixedShown("kept") && <Group title={S.settingsKept}>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
@@ -799,6 +817,7 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
           <b>{S.deleteSure}</b>
           <div className="line">{S.deleteExplain}</div>
           {inv && inv.projectsWithNotes > 0 && <label className="check"><input type="checkbox" checked={withProjects} onChange={(e) => setWithProjects(e.target.checked)} /> {S.deleteProjects.replace("{n}", String(inv.projectsWithNotes))}</label>}
+          {inv && (inv.practiceCopies ?? 0) > 0 && <label className="check"><input type="checkbox" checked={withPractice} onChange={(e) => setWithPractice(e.target.checked)} /> {S.deletePractice.replace("{n}", String(inv.practiceCopies))}</label>}
           <div className="row">
             <button className="btn danger" type="button" disabled={step === "deleting"} onClick={remove}>{step === "deleting" ? S.deleting : S.deleteYes}</button>
             <button className="btn" type="button" data-cancel disabled={step === "deleting"} onClick={() => setStep("idle")}>{S.planCancel}</button>

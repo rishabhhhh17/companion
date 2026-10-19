@@ -1953,7 +1953,10 @@ fn key_saved() -> bool { keystore::exists(&keystore::service(), keystore::ACCOUN
 async fn data_inventory() -> Value {
     tauri::async_runtime::spawn_blocking(|| {
         let projects: Vec<std::path::PathBuf> = projects::load(&projects_path()).still_there().into_iter().map(std::path::PathBuf::from).collect();
-        wipe::inventory(std::path::Path::new(&home_dir()), &data_dir(), key_saved(), &projects)
+        let mut v = wipe::inventory(std::path::Path::new(&home_dir()), &data_dir(), key_saved(), &projects);
+        // How many practice copies Delete everything could also move to the Trash (only when the person ticks that line).
+        v["practiceCopies"] = json!(practice::copies(&practice_record().0, std::path::Path::new(&home_dir())).len());
+        v
     }).await.unwrap_or(Value::Null)
 }
 
@@ -2039,16 +2042,146 @@ fn write_support_log() -> Result<String, String> {
         Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
-/// A practice project (the first run's unless the page names another on the list): copied into a new folder in the home
-/// folder, then chosen as the project. Never over anything that is there already.
-#[tauri::command]
-fn create_practice(app: AppHandle, which: Option<String>) -> Result<String, String> {
-    let name = practice::pick(which.as_deref())?;
+// ---------- the practice projects (practice.rs, app/sample/practices.json) ----------
+
+fn practice_path() -> PathBuf { data_dir().join("practice.json") }
+/// One change to the practice record at a time (a read, a change, a write).
+static PRACTICE: Mutex<()> = Mutex::new(());
+fn today() -> String { let d = cmd_out("/bin/date", &["+%Y-%m-%d"]); if d.len() == 10 { d } else { "1970-01-01".into() } }
+/// The record as it is on disk, checked (a damaged file reads as empty, and the page says so once).
+fn practice_record() -> (practice::Record, bool) {
+    practice::Record::parse(std::fs::read_to_string(practice_path()).ok().as_deref(), std::path::Path::new(&home_dir()))
+}
+fn save_practice(r: &practice::Record) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(data_dir());
+    logfile::write_atomic(&practice_path(), r.to_text().as_bytes()).map_err(|_| "Could not save your practice progress.".to_string())
+}
+fn practice_source(e: &practice::Entry) -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|_| "Could not find the practice project.".to_string())?;
-    let src = practice::source_of(name, &exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())?;
-    let dst = practice::make(&src, std::path::Path::new(&home_dir()))?;
-    log("practice_created", json!({}));
+    practice::source_of(&e.folder, &exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())
+}
+/// The Mac's own Trash (NSFileManager), so a removed copy can always be put back from there. Nothing is deleted outright.
+fn move_to_trash(p: &std::path::Path) -> Result<(), String> {
+    use objc2_foundation::{NSFileManager, NSURL};
+    let url = NSURL::fileURLWithPath(&NSString::from_str(&p.to_string_lossy()));
+    NSFileManager::defaultManager().trashItemAtURL_resultingItemURL_error(&url, None).map_err(|e| e.localizedDescription().to_string())
+}
+/// The folder Companion was in is gone (its practice copy went to the Trash): it leaves the recent list, and if it was the
+/// project in use, Companion has no folder until the person picks one.
+fn forget_folder(app: &AppHandle, folder: &std::path::Path) {
+    let f = folder.to_string_lossy().to_string();
+    let mut p = projects::load(&projects_path());
+    p.forget(&f);
+    let _ = logfile::write_atomic(&projects_path(), serde_json::to_string(&p).unwrap_or_default().as_bytes());
+    let mut cur = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
+    if cur.as_deref() == Some(f.as_str()) { *cur = None; drop(cur); let _ = app.emit("project-changed", ""); }
+}
+
+/// A practice project (the first one unless the page names another in the catalog): copied into a new folder in the home
+/// folder, named after the practice, with its house rules, recorded, then chosen as the project. Never over anything, and
+/// never a second copy while the recorded one is still there (the page opens that one instead; this refuses it anyway).
+#[tauri::command]
+fn create_practice(window: tauri::WebviewWindow, app: AppHandle, which: Option<String>) -> Result<String, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let e = practice::pick(which.as_deref())?;
+    let src = practice_source(e)?;
+    let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
+    let (mut r, _) = practice_record();
+    let dst = practice::create(&mut r, e, &src, std::path::Path::new(&home_dir()), &data_dir(), &today())?;
+    let _ = save_practice(&r);   // the copy is there either way; the list only loses its progress line
+    log("practice_created", json!({ "practice": e.id }));
     use_project_inner(app, dst.to_string_lossy().to_string())
+}
+
+/// The practice record for the Learn tab's list: every practice in order, its copy and the days it was started, found
+/// and done. `damaged`: the file could not be read as a record, so the list starts empty (said once on the list).
+#[tauri::command]
+fn practice_list() -> Value {
+    let (r, damaged) = practice_record();
+    let mut v = r.listed();
+    v["damaged"] = json!(damaged);
+    v
+}
+
+/// The practice open now reached a stage ("found" or "done"). Only counts for its own recorded copy, open as the project.
+#[tauri::command]
+fn practice_mark(window: tauri::WebviewWindow, which: String, stage: String) -> Result<(), String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let e = practice::pick(Some(&which))?;
+    let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
+    let (mut r, _) = practice_record();
+    if !r.mark(&e.id, &stage, &today(), std::path::Path::new(&current_project())) { return Err("That practice is not the project open now.".into()); }
+    save_practice(&r)
+}
+
+/// Continue: opens a practice's recorded copy as the project (it may have left the recent list).
+#[tauri::command]
+fn open_practice(window: tauri::WebviewWindow, app: AppHandle, which: String) -> Result<String, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let e = practice::pick(Some(&which))?;
+    let (r, _) = practice_record();
+    let p = r.practices.get(&e.id).and_then(|p| p.path.clone()).ok_or("There is no copy of that practice yet. Press Start.".to_string())?;
+    if !practice::copy_path_ok(std::path::Path::new(&p), std::path::Path::new(&home_dir())) || !std::path::Path::new(&p).is_dir() { return Err("That practice copy is not there any more. Press Start for a fresh one.".into()); }
+    use_project_inner(app, p)
+}
+
+/// Start over, after the person confirmed it: the old copy goes to the Trash, a fresh copy is made in a new folder and
+/// opened. `busy`: something works on the project open now (the page knows), so its copy is left alone.
+#[tauri::command]
+fn restart_practice(window: tauri::WebviewWindow, app: AppHandle, which: String, busy: bool) -> Result<Value, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let e = practice::pick(Some(&which))?;
+    let src = practice_source(e)?;
+    let out = {
+        let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
+        let (mut r, _) = practice_record();
+        let home = PathBuf::from(home_dir());
+        let out = practice::restart(&mut r, e, &src, &home, &data_dir(), &current_project(), busy, &today(), move_to_trash)?;
+        let _ = save_practice(&r);
+        out
+    };
+    log("practice_restarted", json!({ "practice": e.id, "keptOld": out.kept_old.is_some() }));
+    let path = use_project_inner(app.clone(), out.path.to_string_lossy().to_string())?;
+    Ok(json!({ "path": path, "keptOld": out.kept_old.map(|p| p.to_string_lossy().to_string()) }))
+}
+
+/// Remove my copy, after the person confirmed it: to the Trash, and out of the recent list.
+#[tauri::command]
+fn remove_practice(window: tauri::WebviewWindow, app: AppHandle, which: String, busy: bool) -> Result<String, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let e = practice::pick(Some(&which))?;
+    let moved = {
+        let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
+        let (mut r, _) = practice_record();
+        let moved = practice::remove(&mut r, &e.id, std::path::Path::new(&home_dir()), &current_project(), busy, move_to_trash)?;
+        let _ = save_practice(&r);
+        moved
+    };
+    log("practice_removed", json!({ "practice": e.id }));
+    forget_folder(&app, &moved);
+    Ok(moved.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+/// Settings: every practice copy to the Trash, after the person confirmed it. A copy something works on stays.
+/// Returns how many went and the names of any that stayed.
+#[tauri::command]
+fn remove_all_practices(window: tauri::WebviewWindow, app: AppHandle, busy: bool) -> Result<Value, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let (moved, kept) = trash_practice_copies(&current_project(), busy);
+    for p in &moved { forget_folder(&app, p); }
+    log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() }));
+    Ok(json!({ "moved": moved.len(), "kept": kept }))
+}
+fn trash_practice_copies(current: &str, busy: bool) -> (Vec<PathBuf>, Vec<String>) {
+    let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
+    let (mut r, _) = practice_record();
+    let home = PathBuf::from(home_dir());
+    let (mut moved, mut kept) = (vec![], vec![]);
+    for (id, p) in practice::copies(&r, &home) {
+        match practice::remove(&mut r, &id, &home, current, busy, move_to_trash) { Ok(m) => moved.push(m), Err(_) => kept.push(p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()) }
+    }
+    let _ = save_practice(&r);
+    (moved, kept)
 }
 
 static WIPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -2064,7 +2197,7 @@ fn confirm_delete_natively() -> bool {
 /// The person is asked twice: on the page, and by macOS itself. `with_projects` also removes Companion's own notes inside
 /// the person's recent projects.
 #[tauri::command]
-async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool) -> Result<(), String> {
+async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool, with_practice: Option<bool>) -> Result<(), String> {
     use std::sync::atomic::Ordering::SeqCst;
     if confirm != "delete everything" { return Err("Not confirmed.".into()); }
     if WIPING.swap(true, SeqCst) { return Err("Already deleting.".into()); }
@@ -2082,6 +2215,10 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool)
     showme_stop(&app);
     let _ = app.state::<runner::Runner>().stop_everything("delete everything");
     app.state::<runner::Runner>().shut_down();
+    // The person ticked "Also move my practice copies to the Trash": each copy Companion made and recorded goes to the
+    // Trash now that the engine has stopped (so no task, check or lesson still works in one), and before the record itself
+    // is deleted with everything else by the helper, which waits for the app to quit.
+    if with_practice == Some(true) { let (moved, kept) = trash_practice_copies("", false); log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() })); }
     app.exit(0);
     Ok(())
 }
@@ -2896,7 +3033,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

@@ -11,10 +11,12 @@ import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, ne
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
+import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
+import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
+import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
+import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
+import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
@@ -269,6 +271,8 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 
 function Card() {
   const [m, dispatch] = useModel();
+  // The model as it is now, for callbacks set up once (a click elsewhere, a practice button pressed after a change).
+  const nowModel = useRef(m); nowModel.current = m;
   // The keys every job uses now (keymap.rs keeps them): every line on the card that names a key is filled from them.
   const keys = useKeys();
   useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, []);
@@ -449,22 +453,116 @@ function Card() {
 
   const [recent, setRecent] = useState<string[]>([]);
   const [folderNote, setFolderNote] = useState("");
+  // The folder was changed while Companion runs (not the one it started with): only then does an opened practice copy run
+  // Find again by itself, so nothing is checked at launch without a press.
+  const switched = useRef(false);
   const loadRecent = () => void invoke("list_projects").then((l) => setRecent(Array.isArray(l) ? (l as string[]) : []));
   useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); loadRecent(); }, []);
   useEffect(() => {
-    const off = listen("project-changed", (e) => { setProject(String(e.payload ?? "")); dispatch({ type: "ui.projectChanged", project: String(e.payload ?? "") }); setFolderNote(""); loadRecent(); });
+    const off = listen("project-changed", (e) => { switched.current = true; setProject(String(e.payload ?? "")); dispatch({ type: "ui.projectChanged", project: String(e.payload ?? "") }); setFolderNote(""); loadRecent(); });
     return () => { off.then((f) => f()); };
   }, []);
-  // The practice project: copied into a new folder, chosen as the project, and followed step by step.
-  const practiceBusy = useRef(false);
-  const beginPractice = (which?: unknown) => {
-    if (practiceBusy.current) return;   // one practice folder per press
-    practiceBusy.current = true;
-    const kind: PracticeKind = which === "setting" ? "setting" : "signup";   // the first run's unless the setting one was asked for
-    void invoke("create_practice", { which: PRACTICES[kind].folder }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind })).catch((e) => setFolderNote(String(e))).finally(() => { practiceBusy.current = false; });
+  // The practice projects (practice.ts): each copied into a new folder in the home folder, chosen as the project, and
+  // followed step by step. The shell keeps which were started, found and done (practice.json), for the list on Learn.
+  const [practiceRec, setPracticeRec] = useState<PracticeRecord>(NO_RECORD);
+  const [practiceNote, setPracticeNote] = useState("");
+  const loadPractice = () => void invoke("practice_list").then((v) => setPracticeRec(recordFrom(v))).catch(() => {});
+  useEffect(loadPractice, [project]);
+  const practiceBusy = useRef(false);   // one copy per press
+  const practiceAction = (run: () => Promise<unknown>) => {
+    if (practiceBusy.current) return;
+    practiceBusy.current = true; setPracticeNote("");
+    void run().catch((e) => { if (String(e)) setPracticeNote(String(e)); }).finally(() => { practiceBusy.current = false; loadPractice(); });
   };
-  // The setting practice after its lesson: run the project's own checks again, so the fix is proven, not assumed.
-  useEffect(() => { if (m.practice?.stage === "proving" && m.practice.project === project) { pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); } }, [m.practice?.stage]);
+  // The folder in use before a practice (never a practice copy), for Back to my project.
+  const before = () => (project && !copyOf(practiceRec, project) ? project : nowModel.current.practice?.previous);
+  const beginPractice = (id: string) => {
+    const e = practiceOf(id);
+    homeDispatch({ type: "pick", tab: "learn" });
+    if (!e) return;
+    // A practice whose copy is still there (Next on one left half way, say) opens that copy: a second copy would be lost to
+    // the record, which keeps one per practice (the shell refuses one too).
+    if (startOrOpen(practiceRec, id) === "open") { continuePractice(id); return; }
+    // A practice opens its own folder, so never while something works on the project (it would switch it under the work).
+    if (!canStart(workingOn(nowModel.current), e, nowModel.current.doctor)) { setPracticeNote(workingOn(nowModel.current) ? S.practiceBusy : S.practiceNodeLine(nodeMissing(nowModel.current.doctor)?.fix ?? "")); return; }
+    const previous = before();
+    practiceAction(() => invoke("create_practice", { which: id }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind: id, ...(previous ? { previous } : {}) })));
+  };
+  // Continue: the recorded copy opens as the project; the practice comes back and Find runs again (resume, below). When that
+  // copy is already the project (its panel was closed), opening the same folder again changes nothing, so it comes back here.
+  const continuePractice = (id: string) => {
+    homeDispatch({ type: "pick", tab: "learn" });
+    if (workingOn(nowModel.current)) { setPracticeNote(S.practiceBusy); return; }
+    if (project && copyOf(practiceRec, project) === id) { resumedKey.current = ""; dispatch({ type: "ui.practiceStarted", project, kind: id, resumed: true }); return; }
+    practiceAction(() => invoke("open_practice", { which: id }));
+  };
+  // Start over (asked first): the old copy to the Trash, a fresh copy in a new folder. The fresh copy opens as the project,
+  // so, like Start, never while something works.
+  const restartPractice = (id: string) => {
+    if (workingOn(nowModel.current)) { setPracticeNote(S.practiceBusy); return; }
+    const previous = before();
+    practiceAction(() => invoke("restart_practice", { which: id, busy: workingOn(nowModel.current) }).then((v) => {
+      const r = v as { path?: string; keptOld?: string | null };
+      dispatch({ type: "ui.practiceStarted", project: String(r.path ?? ""), kind: id, ...(previous ? { previous } : {}) });
+      if (r.keptOld) setPracticeNote(S.practiceKeptOld(r.keptOld.split("/").filter(Boolean).at(-1) ?? r.keptOld));
+    }));
+  };
+  // Remove my copy (asked first): to the Trash, and out of the recent folders.
+  const removePractice = (id: string) => practiceAction(() => invoke("remove_practice", { which: id, busy: workingOn(nowModel.current) }).then((n) => {
+    if (nowModel.current.practice?.kind === id) dispatch({ type: "ui.practiceClosed" });
+    setPracticeNote(S.practiceRemoved(String(n)));
+    loadRecent();
+  }));
+  // A recorded copy opened again (Continue, or the recent folders): its practice comes back and Find runs again to see where
+  // it is, instead of trusting the record. At launch it comes back too, and waits for Find to be pressed. Once per visit to
+  // the folder (practice.ts resumeOnOpen): the record is read again after every action, so a closed practice stays closed.
+  const resumeSeen = useRef("");   // the folder whose practice this visit already brought back (or found open)
+  useEffect(() => { resumeSeen.current = ""; resumedKey.current = ""; }, [project]);
+  useEffect(() => {
+    const r = resumeOnOpen(project, practiceRec, nowModel.current.practice, resumeSeen.current);
+    resumeSeen.current = r.seen;
+    if (r.resume) dispatch({ type: "ui.practiceStarted", project, kind: r.resume, resumed: true });
+  }, [project, practiceRec]);
+  // Find for the practice: the key's own check, or for the open table the check before going live (the files only).
+  const practiceFind = () => {
+    const e = practiceOf(nowModel.current.practice?.kind);
+    if (!e || !project) return;
+    if (e.find === "gate") { void send(checkShip(project)); return; }
+    pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project));
+  };
+  // The practice's own fix (Fix it with me on Learn, and Point at the problem's Fix it in a practice copy): one small checked
+  // task named for its practice. Like the Point panel's own Fix it, it takes the ring off and closes that panel.
+  const practiceFix = (pr: Practice) => {
+    pressed(); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.practiceFixing" });
+    void send(fixFound(pr.project, { label: pr.label, detail: pr.where?.message ?? pr.why, problem: pr.problem }, { practice: pr.kind }));
+  };
+  const resumedKey = useRef("");
+  const quietFind = useRef("");   // the project whose next Find answer is not pointed at (a copy opened again)
+  useEffect(() => {
+    const pr = m.practice;
+    if (!pr?.resumed || pr.stage !== "start" || pr.project !== project || isBusy(m) || !switched.current) return;
+    if (resumedKey.current === pr.project) return;
+    resumedKey.current = pr.project;
+    // Only the key's checks answer with problem.found; the open table's check before going live never points at all.
+    if (practiceOf(pr.kind)?.find === "checks") quietFind.current = pr.project;
+    practiceFind();
+  }, [m.practice?.project, m.practice?.stage, m.practice?.resumed]);
+  // After its lesson or its fix: the practice's own checks again, so done is proven, not assumed.
+  useEffect(() => {
+    const pr = m.practice, e = practiceOf(pr?.kind);
+    if (pr?.stage !== "proving" || pr.project !== project || !e) return;
+    if (e.prove === "gate") void send(checkShip(project));
+    else { pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }
+  }, [m.practice?.stage]);
+  // Each stage counts once in the beta numbers (only if they are on), and found and done go in the shell's record.
+  const practiceWas = useRef<Practice | null>(null);
+  useEffect(() => {
+    const was = practiceWas.current, now = m.practice;
+    practiceWas.current = now;
+    for (const n of practiceNotes(was, now)) count(n);
+    const mark = markFor(was, now);
+    if (mark && now) void invoke("practice_mark", { which: now.kind, stage: mark }).then(loadPractice).catch(() => {});
+  }, [m.practice]);
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
   // About this project: asked each time a folder is opened (reads files only).
@@ -687,6 +785,9 @@ function Card() {
     });
     const offFound = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; verdict?: string; problem?: Problem; project?: string };
+      // A practice copy opened again runs Find by itself (resume): that answer is shown on the card, never pointed at on the
+      // screen, since nobody pressed anything (rule 5). Show me where points at it on a press.
+      if (ev.type === "problem.found" && quietFind.current === ev.project) { quietFind.current = ""; return; }
       if (ev.type === "problem.found" && ev.verdict === "failed" && pointsOnScreen(ev.problem) && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
     });
     return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
@@ -811,7 +912,7 @@ function Card() {
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
   useEffect(() => {
-    if (home.tab === "learn") void send(walkList(project || NO_PROJECT));
+    if (home.tab === "learn") { void send(walkList(project || NO_PROJECT)); loadPractice(); if (!m.doctor) void send(checkMac()); }
     if (home.tab === "memory" && project) void send(listMemory(project));
     if (home.tab === "did" && project) void send(listTasks(project));
   }, [home.tab, project]);
@@ -852,7 +953,6 @@ function Card() {
     actTimer.current = setTimeout(() => { afterAct.current = true; void send(walkActed(wk.id, m.showme?.stage === "done_for_you" ? "done_for_you" : "clicked", wk.index)); }, 700);
   }, [m.showme?.stage, m.showme?.req, wkKey]);
   // A click in another app while Home is open (the shell sees only that a press started outside Companion's windows).
-  const nowModel = useRef(m); nowModel.current = m;
   const onboardingNow = useRef(!onboarded); onboardingNow.current = !onboarded;
   // Step aside for what Home opens (home.stepAside, off unless turned on): after a link, the email for Report a problem or
   // Finder showing the support log, Home closes the way Esc does, unless something on it waits for the person (home.ts).
@@ -954,7 +1054,7 @@ function Card() {
       <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} onDone={finishOnboarding} />}
+      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} pickPractice={() => homeDispatch({ type: "pick", tab: "learn" })} onDone={finishOnboarding} />}
       {onboarded && (<>
       <div className="tabs" role="tablist" aria-label={S.homeLabel}>
         {TABS.map((t) => {
@@ -1016,68 +1116,44 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
-      {show("settings") && <SettingsPage working={isBusy(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} />}
-      {show("practice") && m.practice && m.practice.project === project && (
-        <section className="panel" aria-label={S.practiceTitle}>
-          <h2>{S.practiceTitle}</h2>
-          {m.practice.stage === "start" && <>
-            <div className="line">{m.practice.kind === "setting" ? S.practiceSettingStart : S.practiceStart}</div>
-            <div className="line muted">{keyHint("problem", S.practiceKeys, keys)}</div>
-            <div className="row">
-              <button className="btn primary" type="button" disabled={m.point?.stage === "checking"} onClick={() => { pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.practiceFind}</button>
-              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
-            </div>
-          </>}
-          {m.practice.stage === "found" && <>
-            <div className="line"><b>{S.practiceFound}</b> {m.practice.where?.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where?.message}</div>
-            <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingFoundMore : S.practiceFoundMore}</div>
-            <div className="row">
-              {m.practice.kind === "setting"
-                ? <button className="btn primary" type="button" onClick={practiceLesson}>{S.practiceSettingFix}</button>
-                : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceFix}</button>}
-              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button>
-            </div>
-          </>}
-          {m.practice.stage === "lesson" && <>
-            <div className="line">{S.practiceSettingLesson}</div>
-            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
-          </>}
-          {m.practice.stage === "proving" && <div className="line">{S.practiceProving}</div>}
-          {m.practice.stage === "fixing" && <>
-            <div className="line">{S.practiceFixing}</div>
-            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.practiceSkip}</button></div>
-          </>}
-          {m.practice.stage === "blocked" && <>
-            <div className="line">{S.practiceBlocked}</div>
-            {m.practice.why && <div className="line muted">{m.practice.why}</div>}
-            <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button></div>
-          </>}
-          {m.practice.stage === "done" && <>
-            <div className="line"><b>{S.practiceDone}</b></div>
-            <div className="line muted">{m.practice.kind === "setting" ? S.practiceSettingDoneMore : S.practiceDoneMore}</div>
-            <div className="row">
-              <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceClosed" }); pickFolder(); }}>{S.practiceOwn}</button>
-              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
-            </div>
-          </>}
-          {m.practice.stage === "failed" && <>
-            <div className="line">{m.practice.kind !== "setting" ? S.practiceFailed : m.practice.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed}</div>
-            {m.practice.kind === "setting" && m.practice.where?.message && <div className="line muted">{m.practice.where.file ? `${m.practice.where.file}, line ${m.practice.where.line}: ` : ""}{m.practice.where.message}</div>}
-            <div className="row">
-              {m.practice.kind === "setting" && m.practice.nameSet && <button className="btn primary" type="button" onClick={() => dispatch({ type: "ui.practiceProving" })}>{S.practiceCheckAgain}</button>}
-              {m.practice.kind === "setting"
-                ? <button className={`btn${m.practice.nameSet ? "" : " primary"}`} type="button" onClick={practiceLesson}>{S.practiceAgain}</button>
-                : <button className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.practiceFixing" }); void send(practiceFixCommand(project)); }}>{S.practiceAgain}</button>}
-              <button className="btn" type="button" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.pointClose}</button>
-            </div>
-          </>}
-        </section>
+      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} />}
+      {show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
+        const pr = m.practice!, entry = practiceOf(pr.kind)!;
+        return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}
+          nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={practiceNote} next={pr.stage === "done" ? nextPractice(practiceRec, pr.kind) : null}
+          undo={m.undo} explain={pr.result && m.explain?.checkpoint === pr.result.checkpoint ? <ExplainBox e={m.explain} key={m.explain.checkpoint} /> : null}
+          act={{
+            find: practiceFind,
+            fix: () => practiceFix(pr),
+            lesson: practiceLesson,
+            stopFix: () => { void send(stopAgent()); dispatch({ type: "ui.practiceClosed" }); },
+            stopChecks: () => { void send(stopAgent()); dispatch({ type: "ui.practiceStopProving" }); },
+            checkAgain: () => dispatch({ type: "ui.practiceProving" }),
+            close: () => dispatch({ type: "ui.practiceClosed" }),
+            where: (p) => { if (pointsOnScreen(p)) pointProblem(project, p); },
+            why: (p) => drawIt("Why did this break?", p.kind === "line" ? { kind: "line", file: p.file, line: p.line, message: p.message } : { message: p.message }),
+            showChanged: (at) => pointAt(pointChange(project, at, S.changedHere)),
+            showResult: () => pickTab("now"),
+            undoAsk: (checkpoint) => dispatch({ type: "ui.undoAsked", checkpoint }),
+            undoYes: (checkpoint) => { dispatch({ type: "ui.undoSent" }); void send(undo(project, checkpoint)); },
+            undoCancel: () => dispatch({ type: "ui.undoCancelled" }),
+            startOver: () => restartPractice(pr.kind),
+            remove: () => removePractice(pr.kind),
+            next: (id) => beginPractice(id),
+            // Back to my project: the folder used before the practice, else the newest of the person's own, else the chooser.
+            back: () => { const to = backTo(pr.previous, recent, practiceRec); dispatch({ type: "ui.practiceClosed" }); if (to) useFolder(to); else pickFolder(); },
+          }} />;
+      })()}
+      {show("practice") && (
+        <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
+          openId={m.practice && m.practice.project === project ? m.practice.kind : null}
+          act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} />
       )}
       {show("lessons") && !m.walk && (
         <section className="panel" role="status" aria-label={S.lessonsTitle}>
           <h2>{S.lessonsTitle}</h2>
-          {(m.lessons ?? []).length === 0 && <div className="line">{S.lessonsNone}</div>}
-          {(m.lessons ?? []).map((l) => (
+          {lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID).length === 0 && <div className="line">{S.lessonsNone}</div>}
+          {lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID).map((l) => (
             <div className="line" key={l.id}>
               <b>{l.title}</b> <span className="muted">{l.app}</span>
               {l.fromProject && <div className="line muted">{S.lessonFromProject}</div>}
@@ -1516,7 +1592,18 @@ function Card() {
             <div className="row">
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
-              {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); if (project) void send(diagnose(project)); }}>{S.pointFix}</button>}
+              {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => {
+                const pt = m.point!;
+                void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" });
+                if (!project) return;
+                // In a practice copy whose problem was found: the practice's own fix, the same as Fix it with me on Learn. Else
+                // look deeper first (Rescue), as usual; one small checked fix (the practices' own request) when Settings says so
+                // and the problem is one line (point.fixWith).
+                const route = pointFixRoute(setting("point.fixWith"), pt.problem, nowModel.current.practice, project);
+                if (route === "practice") practiceFix(nowModel.current.practice!);
+                else if (route === "smallFix") { pressed(); dispatch({ type: "ui.undoClosed" }); void send(fixFound(project, { label: pt.label, detail: pt.message, problem: pt.problem })); }
+                else void send(diagnose(project));
+              }}>{S.pointFix}</button>}
               {m.point.stage === "found" && canBisect(m) && project && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
             </div>

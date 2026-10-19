@@ -1,5 +1,5 @@
 // The practice stuck moments that ship with the app (app/sample): each is broken in one common way on purpose. Companion's
-// own checks must fail where the eval says (evals/rescue-projects/practice.json), and the small fix a person would make
+// own checks must fail where the practice catalog says (app/sample/practices.json), and the small fix a person would make
 // must make them pass. Needs Node, which Companion requires anyway. Nothing here reaches the network.
 import { afterEach, describe, expect, test } from "bun:test";
 import { cpSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { lessonsFromProject, SETTINGS_LESSON } from "../src/lessongen.ts";
 import { projectChecker } from "../src/walk.ts";
 
 const SAMPLES = join(import.meta.dir, "../../app/sample");
-const EXPECTED = JSON.parse(readFileSync(join(import.meta.dir, "../../evals/rescue-projects/practice.json"), "utf8")) as Record<string, { file?: string; line?: number; about?: string }>;
+const EXPECTED: Record<string, { file?: string; line?: number; about?: string }> = Object.fromEntries((JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: { folder: string; expect: { file?: string; line?: number; about?: string } }[] }).practices.map((p) => [p.folder, p.expect]));
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = () => { const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-practice-"))); made.push(d); return d; };

@@ -53,6 +53,15 @@ describe("protocol refuses what it does not understand", () => {
     expect(parseCommand('{"v":1,"id":"x","type":"agent.start","project":"p"}').ok).toBe(false);
     expect(parseCommand('{"v":1,"id":"x","type":"approval.resolve","approval":"a","decision":"maybe","scope":"once"}').ok).toBe(false);
   });
+  test("a practice task names its practice by a short id, nothing else", () => {
+    const base = { v: 1, id: "x", type: "agent.start", project: "p", agent: "a", mode: "drive", prompt: "hi", model: "m", budgetUsd: 0.6 };
+    expect(parseCommand(JSON.stringify({ ...base, practice: "open-table" })).ok).toBe(true);
+    for (const bad of ["", "../x", "Signup", 7, "a b", "x".repeat(41)]) expect(parseCommand(JSON.stringify({ ...base, practice: bad })).ok, String(bad)).toBe(false);
+    const cp = { v: 1, id: "e", type: "checkpoint.created", project: "p", agent: "a", checkpoint: "cp", label: "Before: x", files: 1, skipped: [] };
+    expect(parseEvent(JSON.stringify({ ...cp, practice: 3 })).ok).toBe(false);
+    const rc = { v: 1, id: "e", type: "receipt", agent: "a", checkpoint: "cp", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 };
+    expect(parseEvent(JSON.stringify({ ...rc, practice: "../x" })).ok).toBe(false);
+  });
   test("a negative or non numeric budget is refused", () => {
     const base = { v: 1, id: "x", type: "agent.start", project: "p", agent: "a", mode: "drive", prompt: "hi", model: "m" };
     expect(parseCommand(JSON.stringify({ ...base, budgetUsd: -1 })).ok).toBe(false);

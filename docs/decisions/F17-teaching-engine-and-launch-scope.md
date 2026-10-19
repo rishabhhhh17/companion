@@ -49,7 +49,7 @@ Everything else in F16 is unchanged: the hero, the fun hypothesis, the beta plan
 | **Lesson packs** | Ready made lessons as data files: Lovable, Vercel, Supabase first | To build |
 | **Settings guidance** | Walks the user to the exact permission, env var or API key | To build |
 | **Works on any app** | Pointing, drawing and walkthroughs on any app on screen, best effort | To build (same engine) |
-| Sample stuck moment | A guided practice run in the first run so everyone sees the hero in minute one | To build (not started) |
+| Sample stuck moment | A guided practice run in the first run so everyone sees the hero in minute one | Built, tested with no model (19 Oct 2026): five practices in one catalog, offered right after Connect in the first run and listed on Learn; real Claude runs of the new four and a person trying them are still owed |
 
 ### 3.3 Fun layer
 
@@ -196,3 +196,75 @@ Anthropic's docs say Claude Free, Pro and Max subscription logins must not be us
 ## 12. Source for the competitor facts
 
 HeyClicky changelog, https://www.heyclicky.com/changelog (v1.0.21 rings and narration, v1.0.25 drawing, v1.0.26 step by step with click detection, v1.0.28 teaching skills for 89 apps, v1.0.48 walkthroughs up to 15 steps, v1.0.52 floating cursor removed "for now", v1.0.53 progress log). HeyClicky review by The Rundown, https://www.therundown.ai/tools/clicky (pointing can pick the wrong control; screen content goes to several third party providers). Competitor claims should be rechecked before they are used in public.
+
+## 13. Settled in the build: the practice library (19 Oct 2026)
+
+Build details for section 3.2's sample stuck moment, not new founder decisions; the founder can change any of them. Built and
+tested with no model (`runner/test/practice-e2e.test.ts`, `app/src/practice.test.ts`, `practice.rs`); no real Claude run of
+the new four and no person has tried any of them yet (`docs/milestones/M11-real-run-checklist.md`, "The practice library").
+
+- **One catalog.** `app/sample/practices.json` lists the five practices for the shell, the pages, the engine's tests and the
+  rescue eval (it replaces `evals/rescue-projects/practice.json`): order, folder, the failure Find must show, how it is
+  fixed and proven, the files its house rule protects, whether it needs Node, its cap, and about how long and how much.
+  The words are in `strings.ts` (`S.practices`).
+- **Order and titles (the founder approves them, they are product copy):** 1 A Join button that fails (signup), 2 A setting
+  only you can add (setting, free, no Claude), 3 A link to a missing page (route), 4 A file that was renamed (import), 5 A
+  database table anyone can read (open table). Times and costs are estimates until measured.
+- **Each copy** is a new folder in the home folder named after its practice ("Companion practice signup page", a number
+  added only when the name is taken, including by the undo history an old copy left), never over anything, never git.
+  A copy that fails halfway removes only the folder it just made itself; a folder already at that name is never touched,
+  and when every name up to 99 is taken nothing is made and the person is told to move or rename an old copy. A practice
+  whose recorded copy is still there is never copied again (Start, Next and the first run open that copy instead, and the
+  shell refuses a second one), so no copy is ever lost to the record (review fix, 20 Oct 2026).
+  Into it the shell writes `.companion/rules.txt` with one "never edit" rule per protected file (the check), so a fix
+  cannot pass by changing the check (rule 12). Its first line says Companion added it.
+- **The fix** is one shipped request (`runner/src/fixfound.ts`, which the coding eval now measures too) as a normal task on
+  the record, on a $0.60 cap and the usual model, naming its practice; the engine echoes the practice id on the task's
+  checkpoint and receipt, and only that receipt finishes the practice. Done needs the checks to pass and the protected file
+  untouched. In a practice copy whose problem was found, Point at the problem's own Fix it on Now starts that same practice
+  fix (`practice.ts` `pointFixRoute`), so the two panels never offer two different fixes for one problem. **Founder
+  decision owed:** whether Point at the problem's own Fix it should use the same small fix for one located line on a
+  person's own project. Built as the setting `point.fixWith` ("Fix it after Point at the problem"), usual value Look deeper
+  first (Rescue, as before), the other One small checked fix.
+- **The open table** is found by the check before going live (the ship gates, the files only, no database touched), not
+  by the key, so Point at the problem still never reports an open table on a person's own project (that would need the
+  founder's OK). Its done means the next check shows no open table in the files; the words say the live database is checked
+  once it is connected. A table with row level security on but a rule that says "true" (anyone may read) is still open:
+  the check answers that it could not be sure, with the table named, and the practice says the fix did not pass. The real
+  run measures it by the same rule (`runner/src/ship/opentables.ts`; review fix, 20 Oct 2026; before it, that counted as
+  done). The database check now says where each open table is made (`ship/rls.ts` `places`).
+- **Where it shows.** The practice panel stays on Learn (F18) and now carries the result, Undo, Explain, Show me where and
+  Why? Draw it, so nothing points at a card on another tab. **Founder OK owed** for a one line coach strip on Now while a
+  practice runs; not built.
+- **The list on Learn**, above the lessons: each practice's title, what it teaches, about how long, the cost, Needs Node when
+  Node is missing, and a plain state (not started, in progress, done), with Start, Continue, Start over and Remove my copy.
+  It never brings Learn forward by itself. Settings keeps Open the practice list and Move all my practice copies to the
+  Trash; Delete everything can also move them to the Trash, only when that line is ticked.
+- **Kept on this Mac:** `practice.json` in Companion's own folder (the copy's path and the days each practice was started,
+  found and done; nothing from its files), checked when read like `keys.json`, removed by Delete everything (T14).
+- **Start over and Remove my copy** move a copy to the Trash after a tap (NSFileManager, already in `objc2-foundation`, no
+  new dependency), only a copy Companion made and recorded, directly in the home folder, never a link, never one the person
+  made with the same name, never the open project while something works on it (a task, a check, or a lesson that is open;
+  `practice.ts` `workingOn`). A refused Trash leaves the copy as it is. Start, Continue and Start over also wait while
+  something works, since each opens another folder.
+  The shell takes the page's word for whether something works on the open copy (the page knows about lessons and the
+  practice's own checks; the shell does not), and Delete everything moves the copies to the Trash only after the engine has
+  stopped. Companion's undo history for a removed copy stays in its own folder until Delete everything: the engine may hold it open,
+  and a fresh copy never reuses that name, so it never shows the old history (the build plan said to remove it; this is the
+  safer of the two and the confirm says so).
+- **The first run** offers the practice right after Connect (minute one), with Pick another and Skip. Taking it ends the first
+  run there: the folder, the questions and the key hints are not shown on that path (the practice opens its own folder,
+  Back to my project asks for the person's own, the answers stay at their usual values and nothing is added to the profile,
+  and permissions are asked when first used anyway). The founder judges this order in the hands on session.
+- **After a practice:** Next names the next one not done (one left half way opens its copy), and Back to my project returns
+  to the folder used before (else the newest folder of the person's own, else the folder chooser).
+- **A copy opened again** (Continue, the recent folders, or at launch) brings its practice back once per visit to that
+  folder. Closing the panel (Skip, Close, Stop the fix) keeps it closed until the folder is opened again or Continue is
+  pressed; its Find runs by itself only when the folder was changed while Companion runs, never at launch.
+- **The Vercel lesson** is left out of Learn only in a practice copy, which is never on Vercel; on a person's own project it
+  is offered as before (most Vercel projects deploy from GitHub with no vercel.json, so a file check would hide it).
+- **Beta numbers** count `practice_started`, `practice_found` and `practice_done`, with no names or paths (off unless the
+  person turns them on).
+- **Left out:** a failed deploy practice (no real one can be made without a Vercel account and a real failed deploy; a fake
+  log would teach a screen that never looks like that), streaks, badges or praise (rule 16), choosing where copies go, and a
+  practice before Connect.

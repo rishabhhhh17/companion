@@ -9,10 +9,13 @@ import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
+import { FIRST_PRACTICE, costWords, nodeMissing, practiceOf, timeWords } from "./practice.ts";
 
-type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; useTask: (prompt: string) => void; startPractice: () => void; onDone: () => void };
+// startPractice: copy a practice and open it (the first run ends there); pickPractice: end the first run on the Learn
+// tab's list of practices.
+type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; useTask: (prompt: string) => void; startPractice: (id: string) => void; pickPractice: () => void; onDone: () => void };
 
-export function Onboarding({ doctor, connected, project, send, pickFolder, useTask, startPractice, onDone }: Props) {
+export function Onboarding({ doctor, connected, project, send, pickFolder, useTask, startPractice, pickPractice, onDone }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   const [key, setKey] = useState("");
@@ -35,7 +38,9 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
     const k = key; setKey("");
     void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
   };
-  useEffect(() => { if (step === "permissions") void send(checkMac()); }, [step]);
+  // The Mac check: at the practice (it waits only when Node is missing) and with the permissions.
+  useEffect(() => { if (step === "permissions" || (step === "practice" && !doctor)) void send(checkMac()); }, [step]);
+  const first = practiceOf(FIRST_PRACTICE)!, noNode = nodeMissing(doctor);
   // After Continue, Back or Skip (the person's own press; nothing else changes the step) the keyboard goes to the new step's
   // heading, so VoiceOver reads where they are. By the rule a question follows: Home has the keyboard, nobody is typing.
   const box = useRef<HTMLElement>(null), shown = useRef(step);
@@ -65,6 +70,16 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
           <div className="line muted">{S.obPlanLater}</div>
         </>)}
       </>)}
+      {step === "practice" && (<>
+        <h2>{S.obPracticeTitle}</h2>
+        <div className="line">{S.obPracticeHelp}</div>
+        {first.needsNode && noNode && <div className="line blocked" role="status">{S.practiceNodeLine(noNode.fix ?? "")}</div>}
+        <div className="row">
+          {/* Taking it ends the first run here: the practice opens its own folder. Nothing from the questions is kept. */}
+          <button className="btn primary" type="button" disabled={first.needsNode && !!noNode} onClick={() => { onDone(); startPractice(first.id); }}>{S.obPractice(S.practices[first.id].title, timeWords(first), costWords(first))}</button>
+          <button className="btn" type="button" onClick={() => { onDone(); pickPractice(); }}>{S.obPracticePick}</button>
+        </div>
+      </>)}
       {step === "folder" && (<>
         <h2>{S.obFolderTitle}</h2><div className="line">{S.obFolderHelp}</div>
         <div className="line"><b>{project ? project : "-"}</b></div>
@@ -92,8 +107,7 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
       </>)}
       {step === "first" && (<>
         <h2>{S.obFirstTitle}</h2>
-        <div className="line">{S.obPracticeHelp}</div>
-        <div className="row"><button className="btn primary" type="button" onClick={() => { finish(); startPractice(); }}>{S.obPractice}</button></div>
+        <div className="line muted">{S.obPracticeLater}</div>
         <div className="line muted">{S.obOrOwn}</div>
         <div className="row">{FIRST_TASKS.map((t) => <button key={t.label} className="btn" type="button" onClick={() => { finish(); useTask(t.prompt); }}>{t.label}</button>)}</div>
         <h2>{S.keysTitle}</h2>
@@ -104,7 +118,7 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
       <div className="row">
         {back(step) && <button className="btn" type="button" onClick={() => go(back(step))}>{S.obBack}</button>}
         {step === "welcome" && <button className="btn primary" type="button" onClick={() => go(next(step))}>{S.obStart}</button>}
-        {step !== "welcome" && step !== "first" && <button className="btn primary" type="button" disabled={!canContinue(step, ctx)} onClick={() => go(next(step))}>{S.obContinue}</button>}
+        {step !== "welcome" && step !== "first" && <button className={`btn${step === "practice" ? "" : " primary"}`} type="button" disabled={!canContinue(step, ctx)} onClick={() => go(next(step))}>{step === "practice" ? S.obPracticeSkip : S.obContinue}</button>}
         {step === "questions" && <button className="btn" type="button" onClick={() => { setAnswers(DEFAULT_ANSWERS); go("permissions"); }}>{S.obSkip}</button>}
         {step === "first" && <button className="btn primary" type="button" onClick={finish}>{S.obFinish}</button>}
       </div>

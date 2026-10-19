@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { defOf, PAGE_STORAGE_MARK, REGISTRY } from "../../protocol/settings.ts";
 import { canonicalModel, MODEL_CHOICES, MODELS, priceRatio } from "../../runner/src/models.ts";
-import { askResearch, budgetFor, DEFAULT_BUDGET_USD, DEFAULT_MODEL, diagnose, DIAGNOSE_MODEL, DRIVE_BUDGET_USD, fixError, planDrive, startPractice, startTask } from "./commands.ts";
+import { askResearch, budgetFor, DEFAULT_BUDGET_USD, DEFAULT_MODEL, diagnose, DIAGNOSE_MODEL, DRIVE_BUDGET_USD, fixError, fixFound, planDrive, startTask } from "./commands.ts";
 import { modelFor, offeredOptions, shownSettings } from "./modelChoice.ts";
 import { initial, planCutWords, reduce, stuckHelpWords, type Model } from "./model.ts";
 import { S } from "./strings.ts";
@@ -45,7 +45,9 @@ describe("the budgets a page starts work with", () => {
   });
   test("the practice task stays at $0.60 on the usual model, whatever Settings say", () => {
     snap({ "budget.task": 40, "model.work": "careful" });
-    expect(c(startPractice("/p"))).toMatchObject({ budgetUsd: 0.6, model: DEFAULT_MODEL });
+    expect(c(fixFound("/p", { label: "Running the tests", detail: "x" }, { practice: "signup" }))).toMatchObject({ budgetUsd: 0.6, model: DEFAULT_MODEL, practice: "signup" });
+    // The same request outside a practice (Point at the problem's small fix) follows Settings, like any task.
+    expect(c(fixFound("/p", { label: "Running the tests", detail: "x" }))).toMatchObject({ budgetUsd: 40 });
   });
   test("every command is still valid protocol", () => {
     snap({ "budget.task": 50, "budget.plan": 0.5 });

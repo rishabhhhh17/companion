@@ -44,7 +44,10 @@ describe("every command it sends is one today's runner accepts", () => {
     "house-rule-and-undo": ["agent.start", "checkpoint.restore"],
     drive: ["drive.plan", "drive.approve", "checkpoint.restore"],
     "visual-receipt": ["agent.start"],
-    practice: ["problem.find", "agent.start"],
+    practice: ["problem.find", "agent.start", "problem.find"],
+    "practice-route": ["problem.find", "agent.start", "problem.find"],
+    "practice-import": ["problem.find", "agent.start", "problem.find"],
+    "practice-open-table": ["ship.check", "agent.start", "ship.check"],
     diagram: ["diagram.ask"],
     "take-the-wheel": ["drive.plan", "drive.approve", "drive.resume"],
     rescue: ["rescue.diagnose", "drive.approve"],
@@ -231,4 +234,27 @@ describe("running the script", () => {
     expect(r.out).toContain(service);
     expect(r.out).not.toMatch(/=== /);
   });
+});
+
+// Review fix (20 Oct 2026): the open table practice counted as fixed whenever the check was not blocked, so a fix with a
+// rule that says "true" (the table still open) would have been measured as a pass. It now uses the page's own rule.
+describe("the open table practice is measured as fixed only when the check shows no open table", () => {
+  const openTable = SCENARIOS.find((s) => s.name === "practice-open-table")!;
+  const found = { id: "database_access", label: "Database access is protected", status: "blocked", findings: ["notes"], detail: "This table is open to anyone with your site address: notes.", places: [{ table: "notes", file: "supabase/migrations/20261001090000_create_notes.sql", line: 2, lineText: "create table public.notes (" }] };
+  const play = async (after: Record<string, unknown>) => {
+    const answers = [found, after];
+    const receipt = { type: "receipt", agent: "builder-1", checkpoint: "cp1", changed: [{ file: "supabase/migrations/20261003090000_protect_notes.sql", kind: "added" }], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0.1, practice: "open-table" };
+    const kit: Kit = {
+      runner: (project: string): Live => ({ project, data: tmp("data"), events: [], send: (c) => { checkedCommand(c); }, of: () => [],
+        until: async (pred) => { const gates = { type: "ship.gates", canShip: false, gates: [answers[0]] }; if (pred(gates)) { answers.shift(); return gates; } return pred(receipt) ? receipt : null; },
+        ready: async () => true, usd: () => 0, stop: () => {} }),
+      scratch: (l) => tmp(l), agentModel: "claude-sonnet-5-5", diagnoseModel: "claude-opus-5-5", reviewModel: "claude-opus-5-5", cheap: false, ctx: {} as CaseCtx,
+    };
+    return openTable.run(kit, () => {});
+  };
+  test("a rule that says true leaves the table open: not fixed; protected in the files: fixed", async () => {
+    expect(await play({ id: "database_access", status: "could_not_check", findings: ["notes"], detail: "notes can be read or changed by anyone, signed in or not, because of a rule that says \"true\"." })).toBe(false);
+    expect(await play({ id: "database_access", status: "not_applicable", detail: "This project does not use Supabase." })).toBe(false);
+    expect(await play({ id: "database_access", status: "could_not_check", detail: "The tables in your migration files are protected, but I could not check your live database." })).toBe(true);
+  }, 15_000);
 });

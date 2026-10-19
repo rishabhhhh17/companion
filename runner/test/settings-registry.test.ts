@@ -46,6 +46,8 @@ describe("the shipped list of settings", () => {
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
       "ph.handBack": "paste", "ph.appAnswers": null, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
+      // The practice library: Point at the problem's Fix it looks deeper first (Rescue), as it always has.
+      "point.fixWith": "rescue",
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
       "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
     };

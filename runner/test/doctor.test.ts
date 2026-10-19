@@ -23,6 +23,14 @@ describe("your Mac check", () => {
     expect(by("node")).toMatchObject({ ok: false }); expect(by("node").detail).toMatch(/20 or newer/); expect(by("node").fix).toMatch(/nodejs\.org/);
     expect(by("git").fix).toMatch(/xcode-select/); expect(by("vercel").fix).toMatch(/npm install -g vercel/); expect(by("browser").ok).toBe(false);
   });
+  test("Node that is not there at all is marked missing, so a practice can wait for it; an old one still runs the practice's checks", async () => {
+    const none = (await doctor(run({}), () => true)).find((i) => i.id === "node")!;
+    expect(none).toMatchObject({ ok: false, missing: true });
+    const old = (await doctor(run({ "node --version": { code: 0, out: "v18.20.8" } }), () => true)).find((i) => i.id === "node")!;
+    expect(old.ok).toBe(false); expect(old.missing).toBeUndefined();
+    const fine = (await doctor(run({ "node --version": { code: 0, out: "v22.1.0" } }), () => true)).find((i) => i.id === "node")!;
+    expect(fine.missing).toBeUndefined();
+  });
   test("the browser line tells the truth: nothing downloads on its own, and it says how to get it", async () => {
     const items = await doctor(run({}), () => false);
     const b = items.find((i) => i.id === "browser")!;
