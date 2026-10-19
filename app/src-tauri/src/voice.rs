@@ -240,6 +240,21 @@ mod tests {
         assert!(up[..said].contains(stopped), "and none are turned into text after a Stop");
     }
     #[test]
+    fn the_speech_model_downloads_once_at_a_time() {
+        // A second Download while one runs used to remove the first one's half written file, and each then threw the other's
+        // away. A second press does nothing now, and holding the talk keys meanwhile says the download is still going
+        // (with how far it got) instead of offering Download again.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let d = body("fn voice_download(");
+        assert!(d.find("if DOWNLOADING.swap(true, Ordering::SeqCst) { return; }").expect("one at a time") < d.find("std::thread::spawn(").unwrap(), "{d}");
+        assert!(d.contains("DOWNLOAD_PERCENT.store(pct, Ordering::SeqCst);") && d.contains("DOWNLOADING.store(false, Ordering::SeqCst)"), "{d}");
+        let w = body("fn voice_worker(");
+        let ready = &w[w.find("if !voice_mac::model_ready(&data) {").unwrap()..];
+        let ready = &ready[..ready.find('\n').unwrap()];
+        assert!(ready.contains("if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, \"downloading\", \"Downloading the speech model\", json!({ \"percent\": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); }"), "{ready}");
+    }
+    #[test]
     fn both_ways_of_hiding_close_the_microphone_at_once() {
         let main = include_str!("main.rs");
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };

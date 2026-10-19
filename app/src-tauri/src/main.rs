@@ -2827,7 +2827,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 if hold.down_for(t, cap) != voice::Step::Start { continue; }
                 stops_at = VOICE_STOPS.load(Ordering::SeqCst);
                 voice_mac::set_buffer_room(voice::buffer_samples(cap));
-                if !voice_mac::model_ready(&data) { hold.cancel(); say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); continue; }
+                if !voice_mac::model_ready(&data) { hold.cancel(); if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); } else { say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); } continue; }
                 match voice_mac::mic_status() {
                     voice_mac::Mic::NotAsked => { hold.cancel(); voice_mac::ask_for_mic(); say_voice(&app, "needs_mic", "Allow the microphone in the box macOS shows, then hold the keys again.", json!({})); continue; }
                     voice_mac::Mic::Refused => { hold.cancel(); say_voice(&app, "mic_refused", "The microphone is switched off for Companion. Turn it on in System Settings, Privacy and Security, Microphone. If it is not in the list, run this in Terminal and reopen Companion: tccutil reset Microphone dev.companion.app", json!({})); continue; }
@@ -2934,17 +2934,26 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     }
 }
 
-/// Download the speech model once (the person asked for it with a button).
+/// A speech model download is running, and how far it got: one at a time (a second one would remove the first one's half
+/// written file), and holding the talk keys meanwhile says it is still going instead of offering Download again.
+static DOWNLOADING: AtomicBool = AtomicBool::new(false);
+static DOWNLOAD_PERCENT: AtomicU64 = AtomicU64::new(0);
+
+/// Download the speech model once (the person asked for it with a button). A press while one runs does nothing.
 #[tauri::command]
 fn voice_download(app: AppHandle) {
+    if DOWNLOADING.swap(true, Ordering::SeqCst) { return; }
+    DOWNLOAD_PERCENT.store(0, Ordering::SeqCst);
     std::thread::spawn(move || {
         let data = data_dir();
         say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": 0 }));
         let a = app.clone();
         let r = voice_mac::download_model(&data, &move |got| {
             let pct = ((got as f64 / voice_mac::MODEL_BYTES as f64) * 100.0).min(99.0) as u64;
+            DOWNLOAD_PERCENT.store(pct, Ordering::SeqCst);
             say_voice(&a, "downloading", "Downloading the speech model", json!({ "percent": pct }));
         });
+        DOWNLOADING.store(false, Ordering::SeqCst);
         match r {
             Ok(()) => say_voice(&app, "model_ready", &talkkeys::ready_words(key_using(keymap::Action::Talk)), json!({})),
             Err(e) => say_voice(&app, "error", &e, json!({})),
