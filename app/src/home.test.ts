@@ -2,8 +2,8 @@
 // and the island's one line of status. All plain code, tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { initial, reduce, type Model } from "./model.ts";
-import { PANEL_TAB, PLACES, TABS, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, need, panelsIn, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { initial, reduce, visualState, type Model } from "./model.ts";
+import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 
@@ -14,6 +14,7 @@ const approval = (id = "ap_1", title = "git push sends your work to a remote") =
 const stuck = ev({ type: "loop.stuck", agent: "a", index: 2, title: "Fix the form", failure: { label: "Tests", detail: "1 failed" }, options: [{ id: "different", label: "Try a different way" }, { id: "stop", label: "Stop here" }] });
 const walkStep = (index = 0) => [ev({ type: "ui.walkRequested", walk: "w1" }), ev({ type: "walk.step", walk: "w1", lesson: "k", title: "Turn on Screen Recording", index, total: 3, say: "Open System Settings", find: "System Settings", ask: false })];
 const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
 describe("Home's tabs", () => {
   test("five tabs in a fixed order, named in the strings file", () => {
@@ -198,7 +199,8 @@ describe("the Home reducer", () => {
     expect(typing(null, true)).toBe(false);
   });
   test("the card tells the reducer whether the person is typing", () => {
-    expect(card).toMatch(/homeDispatch\(\{ type: "need", need: needNow, typing: typing\(/);
+    expect(card).toMatch(/const act = \{ type: "need" as const, need: needNow, typing: typing\(/);
+    expect(card).toContain("homeDispatch(act);");
   });
   test("a need already on its tab is not announced again", () => {
     const s = go(homeStart(), { type: "pick", tab: "learn" }, { type: "need", need: { key: "walk:w1:0:step", tab: "learn", why: S.lessonsTitle } });
@@ -303,3 +305,160 @@ describe("the island's status", () => {
     expect(islandWord(run([ev({ type: "app.runner_down" })])).length).toBeLessThanOrEqual(12);
   });
 });
+
+// ---- M11 area 4: the settings for Home (protocol/settings.json) ----
+describe("When something needs me (home.goToNeeds)", () => {
+  const go = (s: HomeState, ...a: Parameters<typeof homeReduce>[1][]) => a.reduce(homeReduce, s);
+  const lesson = () => need(run(walkStep()))!;
+  test("Go to it is today's: Home goes to the tab where it waits", () => {
+    expect(go(homeStart(), { type: "pick", tab: "memory" }, { type: "need", need: lesson() }).tab).toBe("learn");
+    expect(markedLine(go(homeStart(), { type: "pick", tab: "memory" }), { type: "need", need: lesson() })).toBeNull();
+  });
+  test("Only mark the tab keeps the person where they are, counts the need as seen, and says what is waiting", () => {
+    const at = go(homeStart(), { type: "pick", tab: "memory" });
+    const a = { type: "need" as const, need: lesson(), markOnly: true };
+    const s = go(at, a);
+    expect(s.tab).toBe("memory");
+    expect(s.needKey).toBe(lesson().key);
+    expect(markedLine(at, a)).toBe(S.homeWaiting(tabName("learn"), S.lessonsTitle));
+    // The tab is marked (card.tsx draws the dot for the need's tab when it is not the open one) and VoiceOver hears it.
+    expect(card).toContain("const waits = needNow?.tab === t && t !== home.tab;");
+    expect(newsOf(run(walkStep()), "memory").map((n) => n.text)).toContain(S.homeWaiting(tabName("learn"), S.lessonsTitle));
+    // Said once: the same need again says nothing and moves nothing.
+    expect(markedLine(s, a)).toBeNull();
+    expect(go(s, a).tab).toBe("memory");
+    // Nothing is said for a need on the tab that is open, or for no need.
+    expect(markedLine(go(homeStart(), { type: "pick", tab: "learn" }), a)).toBeNull();
+    expect(markedLine(at, { type: "need", need: null, markOnly: true })).toBeNull();
+  });
+  test("a question waiting for an answer is never hidden: it still opens Now", () => {
+    for (const m of [run([...task(), approval()]), run([...task(), stuck]), run([...task(), ev({ type: "plan.ready", agent: "a", steps: [{ title: "One" }], estimateUsd: 0.1 })]), run([...task(), ev({ type: "drive.paused", agent: "a", reason: "editor" })])]) {
+      const n = need(m)!;
+      expect(n.question, n.key).toBe(true);
+      const at = go(homeStart(), { type: "pick", tab: "settings" });
+      expect(go(at, { type: "need", need: n, markOnly: true }).tab, n.key).toBe("now");
+      expect(markedLine(at, { type: "need", need: n, markOnly: true }), n.key).toBeNull();
+    }
+    // Everything else is not a question. Prompt help's question before the first read is not one of these either, but it
+    // must always show (below): its panel is the light for reading another app.
+    for (const m of [run(walkStep()), run([ev({ type: "app.showme", stage: "pointing", message: "Here", req: "sm_1" })])]) {
+      expect(need(m)!.question, need(m)!.key).toBeFalsy();
+      expect(need(m)!.mustShow, need(m)!.key).toBeFalsy();
+    }
+    expect(need(run([ev({ type: "app.prompt_help", stage: "consent", app: "Notes" })]))!.mustShow).toBe(true);
+    // While typing, a question marks its tab as it always has, and with Only mark the tab that is said out loud too.
+    const n = need(run([...task(), approval()]))!;
+    const at = go(homeStart(), { type: "pick", tab: "settings" });
+    expect(go(at, { type: "need", need: n, typing: true, markOnly: true }).tab).toBe("settings");
+    expect(markedLine(at, { type: "need", need: n, typing: true, markOnly: true })).toBe(S.homeWaiting(tabName("now"), S.needsYouTitle));
+    expect(markedLine(at, { type: "need", need: n, typing: true })).toBeNull();
+  });
+  // Prompt help and the error explainer start from the person's own hotkey, and their panel on Now is the light for reading
+  // another app's text (rule 5), holds the question asked before the first read, and shows the rewrite before its keys
+  // work in every app. So they are never only marked: from every tab, typing or not, each of their steps shows Now.
+  const PH_STAGES = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
+  const EH_STAGES = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
+  const phAt = (stage: string) => run(stage === "ready"
+    ? [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]
+    : [ev({ type: "app.prompt_help", stage, app: "Notes" })]);
+  const ehAt = (stage: string) => run([ev({ type: "app.explain_error", stage, app: "Terminal", req: "r1" })]);
+  test("Prompt help and the error explainer always show Now, from every tab, with Only mark the tab and while typing", () => {
+    const cases: [string, Model, Panel][] = [...PH_STAGES.map((s) => [`ph ${s}`, phAt(s), "promptHelp"] as [string, Model, Panel]), ...EH_STAGES.map((s) => [`eh ${s}`, ehAt(s), "errorHelp"] as [string, Model, Panel])];
+    for (const [name, m, panel] of cases) {
+      const n = need(m)!;
+      expect(n, name).toBeTruthy();
+      expect(n.mustShow, name).toBe(true);
+      for (const t of TABS) {
+        const at = go(homeStart(), { type: "pick", tab: t });
+        for (const extra of [{ markOnly: true }, { typing: true }, { markOnly: true, typing: true }, {}]) {
+          const a = { type: "need" as const, need: n, ...extra };
+          const s = go(at, a);
+          expect(s.tab, `${name} from ${t} ${JSON.stringify(extra)}`).toBe("now");
+          expect(shownOn(panel, s.tab, m), `${name} from ${t}`).toBe(true);
+          expect(markedLine(at, a), `${name} from ${t}: shown, so nothing is said for it`).toBeNull();
+        }
+      }
+    }
+  });
+  test("a whole Prompt help press from Settings with Only mark the tab: each step that needs the person is on screen", () => {
+    let s = go(homeStart(), { type: "pick", tab: "settings" });
+    let m = initial();
+    for (const e of [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "consent", app: "Notes" }), ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "thinking", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]) {
+      m = reduce(m, e as never);
+      s = homeReduce(s, { type: "need", need: need(m), markOnly: true });
+      if (need(m)) expect(shownOn("promptHelp", s.tab, m), String(m.ph?.stage)).toBe(true);
+    }
+    expect(m.ph?.stage).toBe("ready");
+    expect(phArmable(m, s.tab)).toBe(true);
+  });
+  test("the result's keys, which work in every app, are armed only while its panel with the change shows", () => {
+    const m = phAt("ready");
+    for (const t of TABS) expect(phArmable(m, t), t).toBe(shownOn("promptHelp", t, m));
+    expect(phArmable(m, "settings")).toBe(false);
+    expect(phArmable(m, "now")).toBe(true);
+    // Not before there is a result, and never with no text to put back.
+    expect(phArmable(phAt("reading"), "now")).toBe(false);
+    expect(phArmable(run([ev({ type: "app.prompt_help", stage: "ready", app: "Notes" })]), "now")).toBe(false);
+    expect(phArmable(initial(), "now")).toBe(false);
+    // The card arms them in one place only, behind this check, once for each result.
+    expect(card.match(/invoke\("ph_ready"/g)?.length).toBe(1);
+    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab);"), card.indexOf("const shipIt = "));
+    expect(fx).toContain('if (m.ph?.stage !== "ready") { phArmedFor.current = null; return; }');
+    expect(fx).toContain("if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;");
+    expect(fx.indexOf("if (!phShown")).toBeLessThan(fx.indexOf('invoke("ph_ready"'));
+    expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown]);");
+  });
+  test("with Only mark the tab, anything that needs the person shows the island's mark", () => {
+    const m = run(walkStep());
+    expect(islandAlert(m)).toBe(islandAlert(m, false));
+    expect(islandAlert(m, true)).toBe(true);
+    expect(islandAlert(initial(), true), "nothing waiting: no mark").toBe(false);
+    expect(islandAlert(run([ev({ type: "app.runner_down" })]), true)).toBe(false);
+    const island = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
+    expect(island).toContain('const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");');
+  });
+  test("with Only mark the tab and no island, the character shows that mark instead, and keeps its own lights", () => {
+    const lesson = run(walkStep());
+    // The usual settings, or the island shown: the character is drawn exactly as before.
+    for (const [markTab, island] of [[false, true], [false, false], [true, true]]) {
+      for (const m of [lesson, initial(), run(task())]) expect(characterShows(m, markTab, island)).toBe(visualState(m));
+    }
+    // Only mark the tab with the island off: anything that needs the person lights the character (the island's mark).
+    expect(characterShows(lesson, true, false)).toBe("needsYou");
+    expect(characterShows(run([ev({ type: "app.showme", stage: "error", message: "x", req: "sm_1" })]), true, false)).toBe("needsYou");
+    expect(characterShows(run([ev({ type: "app.voice", stage: "needs_mic", message: "x" })]), true, false)).toBe("needsYou");
+    // Nothing waiting: no mark. The engine down: as before.
+    expect(characterShows(initial(), true, false)).toBe("idle");
+    expect(characterShows(run([ev({ type: "app.runner_down" })]), true, false)).toBe(visualState(run([ev({ type: "app.runner_down" })])));
+    // Its own lights (listening, looking at the screen) and an error are never covered by the mark.
+    const looking = run([...walkStep(), ev({ type: "app.showme", stage: "looking", message: "Looking at your screen", req: "sm_1" })]);
+    expect(characterShows(looking, true, false)).toBe("checking");
+    const listening = run([...walkStep(), ev({ type: "app.voice", stage: "listening", message: "Listening" })]);
+    expect(characterShows(listening, true, false)).toBe("listening");
+    // needsYou has a ring that shows with no motion at all, so it is a visible light with reduced motion too.
+    expect(read("./style.css")).toMatch(/\.character\[data-state="needsYou"\] \{ box-shadow:/);
+    // The character's page draws it from the two settings.
+    const dock = read("./dock.tsx");
+    expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');
+    expect(dock).toContain("data-state={state} data-motion={motionFor(state, reduced)}");
+  });
+  test("the card reads the setting for each new need, and says what was only marked when Speak to me is on", () => {
+    const eff = card.slice(card.indexOf("const needNow = need(m);"), card.indexOf("// A tab shown by itself took away"));
+    expect(eff).toContain('markOnly: setting("home.goToNeeds") === "markTab"');
+    expect(eff).toContain("const said = markedLine(home, act);");
+    expect(eff).toContain("if (said && speechOn()) sayIt(said, false);");
+  });
+});
+
+describe("Close Home when I click another app (home.closeOnClickAway)", () => {
+  test("on is today's rule", () => {
+    for (const m of [initial(), run(task()), run([...task(), approval()]), run(walkStep())]) expect(closesOnClickAway(m, false, true)).toBe(closesOnClickAway(m, false));
+  });
+  test("off, a click elsewhere never closes Home; Esc, Close and the island or the character still do", () => {
+    for (const m of [initial(), run(task()), run([...task(), approval()])]) expect(closesOnClickAway(m, false, false)).toBe(false);
+    expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(nowModel\.current, onboardingNow\.current, setting\("home\.closeOnClickAway"\) === true\)/);
+    // The shell does not even watch for clicks while it is off (main.rs open_card, homeset.rs wiring test).
+    expect(read("../src-tauri/src/main.rs")).toContain("if !was_open && home_set().click_away { watch_click_away(&a); }");
+  });
+});
+

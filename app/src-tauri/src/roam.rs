@@ -18,7 +18,7 @@ pub const GAP: f64 = 12.0;
 /// If home is already this close (beyond where it would go), it stays home rather than move for nothing.
 pub const CLOSE_SLACK: f64 = 160.0;
 /// How long nothing about the visit (no ring, no card) must be up before it goes home, so a short gap between two
-/// steps of an answer does not send it home and back.
+/// steps of an answer does not send it home and back, unless Settings says otherwise (character.linger, read each tick).
 pub const LINGER_MS: u64 = 1500;
 /// How long the named states that do not travel last.
 pub const SURFACE_MS: u64 = 160;
@@ -209,21 +209,21 @@ pub fn still_there(v: &Visit, wins: &[Win], ours: i32, front_pid: i32) -> Verdic
     anchor::check(wins, ours, &v.anchor, front, x, y)
 }
 
-/// Waits for nothing about the visit to have been up for LINGER_MS.
+/// Waits for nothing about the visit to have been up for the wait in force (LINGER_MS unless changed in Settings).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Linger { since: Option<u64> }
 impl Linger {
-    /// `up`: is a ring or the card up. True once nothing has been up for LINGER_MS.
-    pub fn done(&mut self, up: bool, now: u64) -> bool {
+    /// `up`: is a ring or the card up. True once nothing has been up for `wait_ms`.
+    pub fn done(&mut self, up: bool, now: u64, wait_ms: u64) -> bool {
         if up { self.since = None; return false; }
         let since = *self.since.get_or_insert(now);
-        now.saturating_sub(since) >= LINGER_MS
+        now.saturating_sub(since) >= wait_ms
     }
     pub fn reset(&mut self) { self.since = None; }
 }
 
-/// What each tick knows.
-pub struct TickIn<'a> { pub now: u64, pub on: bool, pub hidden: bool, pub up: bool, pub wins: &'a [Win], pub ours: i32, pub front_pid: i32 }
+/// What each tick knows. `linger_ms`: how long it stays once nothing about the visit is up (character.linger).
+pub struct TickIn<'a> { pub now: u64, pub on: bool, pub hidden: bool, pub up: bool, pub wins: &'a [Win], pub ours: i32, pub front_pid: i32, pub linger_ms: u64 }
 
 /// A move to start: where to, and whether it goes out to a window (true) or home (false).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -254,7 +254,8 @@ impl Roamer {
                 Verdict::Covered => Some(EndWhy::Covered),
             }
         };
-        let why = why.or_else(|| self.linger.done(t.up, t.now).then_some(EndWhy::Done));
+        // The window or its app changed, Companion was hidden or the setting turned off: at once, whatever the wait.
+        let why = why.or_else(|| self.linger.done(t.up, t.now, t.linger_ms).then_some(EndWhy::Done));
         if why.is_some() { self.end(); }
         why
     }
@@ -520,7 +521,7 @@ mod tests {
     const WIN: Rect = [100.0, 100.0, 900.0, 700.0];
     const TARGET: Rect = [300.0, 300.0, 100.0, 30.0];
     fn visit() -> Visit { Visit { anchor: Anchor { pid: EDITOR, bounds: WIN, front_pid: EDITOR }, target: TARGET, spot: [1012.0, 235.0, 160.0, 160.0], side: Side::Right } }
-    fn tin(now: u64, up: bool, wins: &[Win], front: i32) -> TickIn<'_> { TickIn { now, on: true, hidden: false, up, wins, ours: OURS, front_pid: front } }
+    fn tin(now: u64, up: bool, wins: &[Win], front: i32) -> TickIn<'_> { TickIn { now, on: true, hidden: false, up, wins, ours: OURS, front_pid: front, linger_ms: LINGER_MS } }
 
     #[test]
     fn the_window_it_came_to_must_still_be_there_where_it_was_with_its_app_in_front() {
@@ -560,8 +561,8 @@ mod tests {
             assert_eq!(r.tick(&tin(t, up, &wins, EDITOR)), None, "{t}");
         }
         let mut l = Linger::default();
-        assert!(!l.done(false, 10)); assert!(!l.done(false, 10 + LINGER_MS - 1)); assert!(l.done(false, 10 + LINGER_MS));
-        assert!(!l.done(true, 10 + LINGER_MS + 1)); assert!(!l.done(false, 20 + LINGER_MS));
+        assert!(!l.done(false, 10, LINGER_MS)); assert!(!l.done(false, 10 + LINGER_MS - 1, LINGER_MS)); assert!(l.done(false, 10 + LINGER_MS, LINGER_MS));
+        assert!(!l.done(true, 10 + LINGER_MS + 1, LINGER_MS)); assert!(!l.done(false, 20 + LINGER_MS, LINGER_MS));
     }
     #[test]
     fn it_goes_home_at_once_when_the_window_moves_closes_is_covered_or_another_app_comes_to_the_front() {
@@ -719,7 +720,7 @@ mod tests {
         for s in [laptop(), ext(), dock_left(), small] {
             let w = s.work;
             for edge in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] { for pct in [0.0, 0.3, 0.5, 0.8, 1.0] {
-                let home = crate::docking::place(&s, SIZE, edge, pct);
+                let home = crate::docking::place(&s, SIZE, edge, pct, crate::island::HomeSize::STANDARD);
                 let tallest = crate::docking::card_frame(home, (CARD.0, CARD_MAX_H), w, edge);
                 for h in (CARD.1 as i32..=CARD_MAX_H as i32).step_by(10) {
                     let c = crate::docking::card_frame(home, (CARD.0, h as f64), w, edge);
@@ -736,7 +737,7 @@ mod tests {
         for s in [laptop(), ext(), dock_left()] {
             let w = s.work;
             for (edge, pct) in [(Edge::Left, 0.5), (Edge::Right, 0.5), (Edge::Right, 0.1), (Edge::Top, 0.2), (Edge::Bottom, 0.7)] {
-                let home = crate::docking::place(&s, SIZE, edge, pct);
+                let home = crate::docking::place(&s, SIZE, edge, pct, crate::island::HomeSize::STANDARD);
                 let tallest = crate::docking::card_frame(home, (CARD.0, CARD_MAX_H), w, edge);
                 for wx in [0.0, 60.0, 300.0, 520.0, 800.0] { for wy in [0.0, 40.0, 200.0, 420.0] { for ww in [300.0, 600.0, 900.0, 1300.0] { for wh in [200.0, 450.0, 700.0] {
                     let window = [w[0] + wx, w[1] + wy, ww, wh];
@@ -807,13 +808,14 @@ mod tests {
     #[test]
     fn the_card_opening_or_growing_plans_the_visit_again_and_trips_keep_clear_of_its_tallest() {
         let pc = body(MAIN, "fn place_card(");
-        assert!(pc.contains("roam_card_moved(") && pc.contains("CARD_MAX_H"), "every time the card opens or grows, checked against its tallest");
+        assert!(pc.contains("roam_card_moved(") && pc.contains("home_size().max_h"), "every time the card opens or grows, checked against its tallest");
         assert!(pc.find("setFrame_display").unwrap() < pc.find("roam_card_moved(").unwrap(), "after the card is placed");
         let moved = body(MAIN, "fn roam_card_moved(");
         assert!(moved.contains(".card_moved(") && moved.contains("roam_kick("), "planned again by the rule, and the trip starts");
         assert!(body(MAIN, "fn roam_to(").contains("card_room("), "planned clear of where the card can grow to");
-        assert!(body(MAIN, "fn card_room(").contains("CARD_MAX_H"));
-        assert!(body(MAIN, "fn resize_card(").contains("CARD_MAX_H"), "the card never grows past what the plan keeps clear of");
+        // The same size in force for both (home.size): the tallest the trips keep clear of is the tallest Home grows to.
+        assert!(body(MAIN, "fn card_room(").contains("home_size().max_h"));
+        assert!(body(MAIN, "fn resize_card(").contains("home_size()") && body(MAIN, "fn resize_card(").contains("hs.max_h"), "the card never grows past what the plan keeps clear of");
         for name in ["fn open_card(", "fn resize_card("] { assert!(body(MAIN, name).contains("place_card("), "{name} places the card, so it rechecks the visit"); }
     }
     #[test]
@@ -854,12 +856,12 @@ mod tests {
     /// Where Home is at the tallest it can grow, as the shell keeps clear of it (main.rs `card_room` and `place_card`,
     /// both through card_spot), with the island on this display.
     fn home_open(s: &Screen, home: Rect, h: f64) -> Rect {
-        crate::island::card_spot(Some(s), home, std::slice::from_ref(s), |_: &str| Edge::Right, h).unwrap()
+        crate::island::card_spot(Some(s), home, std::slice::from_ref(s), |_: &str| Edge::Right, (CARD.0, h)).unwrap()
     }
     #[test]
     fn a_trip_keeps_clear_of_home_under_the_notch_at_the_tallest_it_can_grow() {
         let s = notched_laptop();
-        let home = crate::docking::place(&s, SIZE, Edge::Right, 0.5);
+        let home = crate::docking::place(&s, SIZE, Edge::Right, 0.5, crate::island::HomeSize::STANDARD);
         let open = home_open(&s, home, CARD_MAX_H);
         assert!(open[1] < 100.0 && (open[0] + open[2] / 2.0 - 756.0).abs() < 0.01, "Home is under the notch, not beside the character: {open:?}");
         // Only above the window has room, and the target is right under the notch.
@@ -896,7 +898,7 @@ mod tests {
             let w = s.work;
             let island = crate::island::island_frame(&s, crate::island::Mode::Peek);
             for (edge, pct) in [(Edge::Left, 0.5), (Edge::Right, 0.5), (Edge::Top, 0.2), (Edge::Top, 0.8), (Edge::Bottom, 0.5)] {
-                let home = crate::docking::place(&s, SIZE, edge, pct);
+                let home = crate::docking::place(&s, SIZE, edge, pct, crate::island::HomeSize::STANDARD);
                 let open = home_open(&s, home, CARD_MAX_H);
                 assert!(!overlaps(home, open) && !overlaps(home, island), "{} {edge:?}: home itself is clear", s.id);
                 for wx in [0.0, 60.0, 300.0, 520.0, 800.0] { for wy in [0.0, 40.0, 200.0, 420.0] { for ww in [300.0, 600.0, 900.0, 1300.0] { for wh in [200.0, 450.0, 700.0] {
@@ -930,5 +932,47 @@ mod tests {
             }
         }
         assert!(cases > 2_000 && clear_already > 100 && replans > 50, "not vacuous: {cases} trips, {clear_already} clear already, {replans} planned again, {homes} sent home");
+    }
+
+    // ---- M11 area 4: how long it stays beside a window (character.linger, protocol/settings.json) ----
+    #[test]
+    fn the_wait_beside_a_window_follows_the_setting_at_both_ends() {
+        let wins = [win(EDITOR, WIN)];
+        for wait in [500u64, LINGER_MS, 10_000] {
+            let mut r = Roamer::new();
+            r.placed_home(HOME_LEFT);
+            r.begin(visit());
+            assert_eq!(r.tick(&TickIn { linger_ms: wait, ..tin(0, true, &wins, EDITOR) }), None);
+            assert_eq!(r.tick(&TickIn { linger_ms: wait, ..tin(100, false, &wins, EDITOR) }), None, "{wait}: just gone");
+            assert_eq!(r.tick(&TickIn { linger_ms: wait, ..tin(100 + wait - 1, false, &wins, EDITOR) }), None, "{wait}: not yet");
+            assert_eq!(r.tick(&TickIn { linger_ms: wait, ..tin(100 + wait, false, &wins, EDITOR) }), Some(EndWhy::Done), "{wait}");
+        }
+        assert_eq!(LINGER_MS, 1500, "the usual wait is today's");
+        assert_eq!(tin(0, false, &wins, EDITOR).linger_ms, LINGER_MS);
+        let mut l = Linger::default();
+        assert!(!l.done(false, 0, 500)); assert!(l.done(false, 500, 500));
+    }
+    #[test]
+    fn a_long_wait_still_goes_home_at_once_when_the_window_or_the_app_changes_or_stop_is_pressed() {
+        for (wins, front, why) in [
+            (vec![win(EDITOR, [160.0, 100.0, 900.0, 700.0])], EDITOR, EndWhy::WindowChanged),
+            (vec![], EDITOR, EndWhy::WindowChanged),
+            (vec![win(EDITOR, WIN)], OTHER, EndWhy::SwitchedApp),
+        ] {
+            let mut r = Roamer::new();
+            r.placed_home(HOME_LEFT);
+            r.begin(visit());
+            assert_eq!(r.tick(&TickIn { linger_ms: 10_000, ..tin(0, false, &wins, front) }), Some(why), "at once, not after ten seconds");
+            assert_eq!(r.want(), Some(HOME_LEFT));
+        }
+        // Stop everything ends the visit (main.rs roam_end), however long the wait.
+        let wins = [win(EDITOR, WIN)];
+        let mut r = Roamer::new(); r.placed_home(HOME_LEFT); r.begin(visit());
+        assert_eq!(r.tick(&TickIn { linger_ms: 10_000, ..tin(0, false, &wins, EDITOR) }), None);
+        r.end();
+        assert_eq!(r.want(), Some(HOME_LEFT));
+        let stop = body(MAIN, "fn showme_stop_rest(");
+        assert!(stop.contains("roam_end(app)"), "Stop everything sends it home");
+        assert!(body(MAIN, "fn roam_tick(").contains("linger_ms: home_set().linger_ms"), "each tick reads the wait in force");
     }
 }

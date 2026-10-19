@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { startSettings } from "./settingsStore.ts";
+import { startSettings, useSetting } from "./settingsStore.ts";
+import { followLessMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
 import { islandAlert, islandLine, islandWord } from "./home.ts";
 import { visualState } from "./model.ts";
@@ -30,8 +31,9 @@ function Island() {
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     return () => { off.then((f) => f()); };
   }, []);
-  // A question waiting, listening, or just done: a mark shows (the lip under the notch, or the pill).
-  const alert = islandAlert(m);
+  // A question waiting, listening, or just done: a mark shows (the lip under the notch, or the pill). With When something
+  // needs me set to only mark the tab (home.goToNeeds), anything that needs the person shows it too.
+  const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");
   useEffect(() => { void invoke("island_alert", { on: alert }).catch(() => {}); }, [alert]);
   const line = islandLine(m);
   const state = visualState(m);
@@ -50,4 +52,5 @@ function Island() {
 }
 // The settings in force, kept in step with every change (settingsStore.ts), so the island reads them the same way.
 startSettings();
+followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Island /></StrictMode>);

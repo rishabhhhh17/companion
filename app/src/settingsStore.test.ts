@@ -241,9 +241,11 @@ describe("what the page names and keeps for Undo is exactly what the shell reset
   for (const c of cases) {
     test(c.name, async () => {
       _resetForTests();
-      takeSnapshot(snap(c.values, [PAGE_STORAGE_MARK], c.usual));
+      // A place dragged off its step: the snapshot also carries the exact place, which only Undo uses.
+      const shown = () => ({ ...snap(c.values, [PAGE_STORAGE_MARK], c.usual), ...(c.restore ? { restore: c.restore } : {}) });
+      takeSnapshot(shown());
       for (const [k, v] of Object.entries(c.engine)) heard(k, v);
-      const calls = shell(() => snap(c.values, [PAGE_STORAGE_MARK], c.usual));
+      const calls = shell(() => shown());
       const sent = (): Record<string, unknown> => ({ ...calls[0].args, engine: [...(calls[0].args!.engine as string[])].sort() });
       let named: string[];
       if (c.which.key) {
@@ -254,8 +256,9 @@ describe("what the page names and keeps for Undo is exactly what the shell reset
         const section: string | undefined = c.which.section;
         named = changedNow(section);
         expect(undoValues(section).map(([k]) => k)).toEqual(named);
-        // Every value kept for Undo is the one in force now.
-        for (const [k, v] of undoValues(section)) expect(v, k).toEqual(c.values[k] ?? c.engine[k]);
+        // Every value kept for Undo is the one in force now, or for a dragged place the exact place behind it.
+        for (const [k, v] of undoValues(section)) expect(v, k).toEqual(c.restore?.[k] ?? c.values[k] ?? c.engine[k]);
+        if (c.undo) expect(undoValues(section)).toEqual(c.undo);
         await (section ? resetSection(section) : resetAll());
         expect(sent()).toEqual(section ? { section, engine: c.sent } : { all: true, engine: c.sent });
       }

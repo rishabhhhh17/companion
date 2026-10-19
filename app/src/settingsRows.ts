@@ -98,6 +98,22 @@ export function searchSettings(query: string, settings: readonly Def[] = REGISTR
   return { all, sections, fixed, count: sections.reduce((n, s) => n + s.keys.length, 0) + fixed.length };
 }
 
+/** Rows that only mean something with another setting's value, shown only then: how long before the island moves to
+ *  another display is only for Follow me (island.display). Every other row always shows. */
+const ONLY_WITH: Record<string, [string, unknown]> = { "island.followDelay": ["island.display", "follow"] };
+export function shownNow(key: string, valueOf: (key: string) => unknown): boolean {
+  const w = ONLY_WITH[key];
+  return !w || valueOf(w[0]) === w[1];
+}
+
+/** The character's place, put back together by Reset the character's place (Settings, Home and the character). */
+export const PLACE_KEYS = ["character.edge", "character.position", "character.sameEverywhere"] as const;
+
+/** Under Home size: Large may suit text larger than usual (display.textSize larger or largest), while Home is standard. */
+export function homeSizeHint(textSize: unknown, homeSize: unknown): string | null {
+  return (textSize === "larger" || textSize === "largest") && homeSize === "standard" ? S.setHomeLarger : null;
+}
+
 /** The words for a setting's fixed part (its floor), from strings.ts. */
 export const floorWords = (id: string): string => (S.floors as Record<string, string>)[id] ?? "";
 

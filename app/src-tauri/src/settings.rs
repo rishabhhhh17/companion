@@ -504,10 +504,59 @@ pub fn for_project<'a>(d: &Def, asked: Option<&'a str>, current: Option<&'a str>
 
 // ---------- the stores that stay where they were (wrapped) ----------
 
-/// dock.json: "Come to what it is about".
-pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> { (key == "character.comeTo").then(|| json!(p.come_to)) }
+/// dock.json: "Come to what it is about", and the character's place on the display it is on now (`last_screen`, the
+/// display apply_dock put it on): its edge, its position along it in percent on the row's step (0 the top or left end,
+/// 100 the bottom or right end; a place dragged by hand is shown on the nearest step, and kept exactly in dock.json), and
+/// "Same place on every display".
+pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> {
+    let (edge, pct) = crate::docking::choice(p, &p.last_screen);
+    Some(match key {
+        "character.comeTo" => json!(p.come_to),
+        "character.edge" => json!(edge.word()),
+        "character.position" => { let d = registry().get(key)?; snap(pct * 100.0, d.min, d.step, d.max) }
+        "character.sameEverywhere" => json!(p.same_everywhere.is_some()),
+        _ => return None,
+    })
+}
+/// A place dragged off the step is shown on the nearest one, so Undo after a reset needs more to put the character back
+/// exactly where it was: the position's Undo value, the fraction along the edge as dock.json keeps it. None when the
+/// place is on its step (Undo then sends the shown value, as for every other setting).
+pub fn dock_restore(p: &crate::docking::Prefs) -> Option<(&'static str, Value)> {
+    let (_, pct) = crate::docking::choice(p, &p.last_screen);
+    let shown = dock_value(p, "character.position")?.as_f64()?;
+    ((shown - pct * 100.0).abs() > 1e-9).then(|| ("character.position", json!({ "fraction": pct })))
+}
+/// Undo's exact place for the position: `{"fraction": 0 to 1}` and nothing else.
+pub fn place_from(v: &Value) -> Option<f64> {
+    let o = v.as_object().filter(|o| o.len() == 1)?;
+    o.get("fraction")?.as_f64().filter(|f| f.is_finite() && (0.0..=1.0).contains(f))
+}
+/// What a change to a dock.json setting may be: a value its definition allows (put on its step), or for the position
+/// Undo's exact place (`place_from`). The error is a code, as from `validate`.
+pub fn dock_input(d: &Def, v: &Value) -> Result<Value, &'static str> {
+    if d.key == "character.position" && place_from(v).is_some() { return Ok(v.clone()); }
+    validate(d, v)
+}
+/// The same, changed: a place is changed on the display the character is on now, and only there (each other display keeps
+/// its own), and with Same place on every display on the copy follows it. None when nothing can change (a value that is
+/// not one, or no display known yet).
 pub fn dock_with(p: &crate::docking::Prefs, key: &str, v: &Value) -> Option<crate::docking::Prefs> {
-    (key == "character.comeTo").then(|| v.as_bool()).flatten().map(|b| crate::docking::Prefs { come_to: b, ..p.clone() })
+    let mut next = p.clone();
+    let here = p.last_screen.clone();
+    let place = |next: &mut crate::docking::Prefs, at: (crate::docking::Edge, f64)| {
+        next.per_screen.insert(here.clone(), at);
+        if next.same_everywhere.is_some() { next.same_everywhere = Some(at); }
+    };
+    let (edge, pct) = crate::docking::choice(p, &here);
+    match key {
+        "character.comeTo" => next.come_to = v.as_bool()?,
+        _ if here.is_empty() => return None,
+        "character.edge" => place(&mut next, (crate::docking::Edge::of(v.as_str()?)?, pct)),
+        "character.position" => place(&mut next, (edge, match place_from(v) { Some(f) => f, None => (v.as_f64().filter(|n| n.is_finite())? / 100.0).clamp(0.0, 1.0) })),
+        "character.sameEverywhere" => next.same_everywhere = if v.as_bool()? { Some((edge, pct)) } else { None },
+        _ => return None,
+    }
+    Some(next)
 }
 /// presentation.json: hide from screen sharing and quiet during calls.
 pub fn presentation_value(s: &crate::presentation::Settings, key: &str) -> Option<Value> {
@@ -568,9 +617,11 @@ pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, prob
         let u = match d.store.as_str() { "keys" => keys_value(&crate::keymap::Map::DEFAULT), "voice" => voice_value(&crate::voiceset::Saved::default()), _ => d.default.clone() };
         usual.insert(d.key.clone(), u);
     }
+    // A value shown rounded, and what Undo sends to put it back exactly (settingsStore.ts undoValues).
+    let restore: Map<String, Value> = dock_restore(&w.dock).into_iter().map(|(k, v)| (k.to_string(), v)).collect();
     json!({
         "values": values, "usual": usual, "project": project.unwrap_or(""), "migrated": f.migrated,
-        "problems": problems.iter().map(Problem::to_json).collect::<Vec<_>>(), "changed": changed,
+        "problems": problems.iter().map(Problem::to_json).collect::<Vec<_>>(), "changed": changed, "restore": restore,
     })
 }
 
@@ -1131,5 +1182,87 @@ mod tests {
         assert_eq!(snap["usual"]["spend.dailyLimit"], json!(10));
         assert_eq!(snap["changed"], json!(["calls.quiet"]));
         assert_eq!(snap["project"], "/p");
+    }
+
+    #[test]
+    fn the_characters_place_is_read_and_changed_on_the_display_it_is_on_in_dock_json() {
+        use crate::docking::{Edge, Prefs};
+        // The usual place (nothing saved): the right edge, halfway, the same as today.
+        let none = Prefs { last_screen: "a".into(), ..Default::default() };
+        assert_eq!((dock_value(&none, "character.edge"), dock_value(&none, "character.position"), dock_value(&none, "character.sameEverywhere")), (Some(json!("right")), Some(json!(50)), Some(json!(false))));
+        // A place dragged by hand is shown on its step (5 percent), as the row's plus and minus move it.
+        let mut p = Prefs { last_screen: "a".into(), ..Default::default() };
+        p.per_screen.insert("a".into(), (Edge::Left, 0.3712));
+        p.per_screen.insert("b".into(), (Edge::Bottom, 0.9));
+        assert_eq!(dock_value(&p, "character.edge"), Some(json!("left")));
+        assert_eq!(dock_value(&p, "character.position"), Some(json!(35)));
+        for (at, shown) in [(0.0, 0), (0.024, 0), (0.026, 5), (0.4812, 50), (0.9, 90), (0.99, 100), (1.0, 100)] {
+            let q = Prefs { last_screen: "a".into(), per_screen: [("a".to_string(), (Edge::Right, at))].into_iter().collect(), ..Default::default() };
+            assert_eq!(dock_value(&q, "character.position"), Some(json!(shown)), "{at}");
+        }
+        // A change is made on the display the character is on, and only there; the other keeps its own place.
+        let top = dock_with(&p, "character.edge", &json!("top")).unwrap();
+        assert_eq!(top.per_screen["a"], (Edge::Top, 0.3712));
+        assert_eq!(top.per_screen["b"], (Edge::Bottom, 0.9));
+        let at = dock_with(&p, "character.position", &json!(80)).unwrap();
+        assert_eq!(at.per_screen["a"], (Edge::Left, 0.8));
+        for (v, want) in [(0, 0.0), (100, 1.0), (50, 0.5)] { assert_eq!(dock_with(&none, "character.position", &json!(v)).unwrap().per_screen["a"], (Edge::Right, want), "{v}"); }
+        // Same place on every display: on copies this display's place; a change here then moves the copy too; off drops it.
+        let same = dock_with(&p, "character.sameEverywhere", &json!(true)).unwrap();
+        assert_eq!(same.same_everywhere, Some((Edge::Left, 0.3712)));
+        assert_eq!(dock_value(&same, "character.sameEverywhere"), Some(json!(true)));
+        assert_eq!(dock_with(&same, "character.edge", &json!("bottom")).unwrap().same_everywhere, Some((Edge::Bottom, 0.3712)));
+        assert_eq!(dock_with(&same, "character.sameEverywhere", &json!(false)).unwrap().same_everywhere, None);
+        // Come to what it is about is untouched by these, and they leave it alone.
+        assert_eq!(dock_with(&p, "character.edge", &json!("top")).unwrap().come_to, p.come_to);
+        // Nothing to change it on (no display known yet), or a value that is not one: nothing changes.
+        assert!(dock_with(&Prefs::default(), "character.edge", &json!("top")).is_none());
+        assert!(dock_with(&p, "character.edge", &json!("middle")).is_none());
+        assert!(dock_with(&p, "character.position", &json!("half")).is_none());
+        assert!(dock_with(&p, "character.sameEverywhere", &json!(1)).is_none());
+        // What every page is told, and what a reset of the section puts back.
+        let w = Wrapped { dock: p.clone(), presentation: Default::default(), keys: crate::keymap::Map::DEFAULT, voice: Default::default(), rules: Ok(None) };
+        let snap = snapshot(registry(), &File::default(), None, &w, &[], &[]);
+        assert_eq!((snap["values"]["character.edge"].clone(), snap["values"]["character.position"].clone()), (json!("left"), json!(35)));
+        let mut plan = reset_plan(registry(), Which::Section("home"), snap["values"].as_object().unwrap(), snap["usual"].as_object().unwrap(), &[]).unwrap();
+        plan.sort();
+        assert_eq!(plan, vec!["character.edge".to_string(), "character.position".to_string()]);
+        // The exact place behind the shown one, for Undo only: a place on its step needs none.
+        assert_eq!(snap["restore"], json!({ "character.position": { "fraction": 0.3712 } }));
+        let on_step = Wrapped { dock: at.clone(), ..w };
+        assert_eq!(snapshot(registry(), &File::default(), None, &on_step, &[], &[])["restore"], json!({}));
+    }
+
+    #[test]
+    fn undo_after_a_reset_puts_a_dragged_place_back_exactly() {
+        use crate::docking::{Edge, Prefs};
+        let d = registry().get("character.position").unwrap();
+        let p = Prefs { last_screen: "a".into(), per_screen: [("a".to_string(), (Edge::Left, 0.5))].into_iter().collect(), ..Default::default() };
+        // Undo's value is the exact fraction along the edge, as dock.json keeps it: it is not snapped to the step.
+        let v = dock_input(d, &json!({ "fraction": 0.3712 })).unwrap();
+        assert_eq!(dock_with(&p, "character.position", &v).unwrap().per_screen["a"], (Edge::Left, 0.3712));
+        // A plain number is still checked and put on its step, as from the row.
+        let n = dock_input(d, &json!(37)).unwrap();
+        assert_eq!(n, json!(35));
+        assert_eq!(dock_with(&p, "character.position", &n).unwrap().per_screen["a"], (Edge::Left, 0.35));
+        assert_eq!(dock_input(d, &json!(120)), Err("tooHigh"));
+        // Anything else is refused: outside the edge, not a number, more than the one field, or for another setting.
+        for bad in [json!({ "fraction": 1.5 }), json!({ "fraction": -0.1 }), json!({ "fraction": "half" }), json!({ "fraction": 0.3, "edge": "top" }), json!({})] { assert!(dock_input(d, &bad).is_err(), "{bad}"); }
+        assert!(dock_input(registry().get("character.edge").unwrap(), &json!({ "fraction": 0.3 })).is_err());
+        assert!(place_from(&json!(0.3)).is_none());
+        // Every Undo value in the shared reset cases is one the shell takes and puts back exactly (settingsStore.test.ts
+        // checks the page keeps exactly these).
+        let mut seen = 0;
+        for c in reset_cases().iter().filter(|c| c.get("undo").is_some()) {
+            for pair in c["undo"].as_array().unwrap() {
+                let (k, v) = (pair[0].as_str().unwrap(), &pair[1]);
+                let def = registry().get(k).unwrap();
+                if def.store != "dock" { continue; }
+                let next = dock_with(&p, k, &dock_input(def, v).unwrap()).unwrap();
+                assert_eq!(dock_value(&next, k).unwrap(), c["values"][k], "{k}: shown as before the reset");
+                if let Some(f) = place_from(v) { assert_eq!(next.per_screen["a"].1, f, "{k}: exactly"); seen += 1; }
+            }
+        }
+        assert!(seen > 0, "a shared case covers a dragged place");
     }
 }

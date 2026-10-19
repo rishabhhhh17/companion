@@ -1,6 +1,6 @@
 //! When the character should be on screen. By default it stays out of full screen apps, so it
 //! never covers a video, a presentation or a game (product doc, section 4); a setting can keep
-//! it visible. The user's own "hide" always wins. Pure logic, tested.
+//! it visible (character.overFullScreen). The user's own "hide" always wins. Pure logic, tested.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Inputs {
@@ -8,6 +8,10 @@ pub struct Inputs {
     pub show_over_full_screen: bool,   // the setting
     pub user_hid_it: bool,             // hidden from the menu bar icon
 }
+
+/// Whether Companion stays on screen over a full screen app: the person's setting (character.overFullScreen, off unless
+/// turned on), or a developer's COMPANION_OVER_FULLSCREEN=1 (kept for developers).
+pub fn over_full_screen(env: Option<&str>, setting: bool) -> bool { setting || env == Some("1") }
 
 pub fn should_show(i: Inputs) -> bool {
     if i.user_hid_it { return false; }
@@ -66,5 +70,16 @@ mod tests {
     #[test] fn changing_back_also_takes_three_in_a_row() {
         let mut d = Debounce::new(true, 3);
         assert!(d.push(false)); assert!(d.push(false)); assert!(!d.push(false));
+    }
+
+    // M11 area 4: the setting (character.overFullScreen), with the developer's COMPANION_OVER_FULLSCREEN kept.
+    #[test] fn over_full_screen_apps_only_when_the_setting_or_the_developer_switch_says_so() {
+        assert!(!over_full_screen(None, false), "off unless turned on, as today");
+        assert!(over_full_screen(None, true));
+        assert!(over_full_screen(Some("1"), false), "the developer switch still works");
+        for v in ["0", "", "yes", "true"] { assert!(!over_full_screen(Some(v), false), "{v}"); }
+        // The person's own hide still wins over both.
+        assert!(!should_show(i(true, over_full_screen(Some("1"), true), true)));
+        assert!(should_show(i(true, over_full_screen(None, true), false)));
     }
 }

@@ -15,6 +15,11 @@ pub type Rect = [f64; 4]; // x, y, width, height
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Edge { Left, Right, Top, Bottom }
+impl Edge {
+    /// The word dock.json and Settings use (character.edge).
+    pub fn word(self) -> &'static str { match self { Edge::Left => "left", Edge::Right => "right", Edge::Top => "top", Edge::Bottom => "bottom" } }
+    pub fn of(word: &str) -> Option<Edge> { match word { "left" => Some(Edge::Left), "right" => Some(Edge::Right), "top" => Some(Edge::Top), "bottom" => Some(Edge::Bottom), _ => None } }
+}
 
 /// A display: its frame and work area (top left points), whether it is the primary one, and its camera housing if it has
 /// one (read from macOS, island.rs `notch_from`). The island in the notch reads the same type (island.rs `Display`).
@@ -22,7 +27,9 @@ pub enum Edge { Left, Right, Top, Bottom }
 pub struct Screen { pub id: String, pub frame: Rect, pub work: Rect, pub primary: bool, pub notch: Option<crate::island::Notch> }
 
 /// Saved choices (`dock.json`): the display used last, per display which edge and where along it (0 is the top or
-/// left end, 1 the bottom or right end), and the "Come to what it is about" switch (on unless turned off).
+/// left end, 1 the bottom or right end), the "Come to what it is about" switch (on unless turned off), and "Same place on
+/// every display" (off unless turned on: then the place copied when it was turned on, or set in Settings since, for every
+/// display with no place of its own yet).
 /// A file saved before F18 (left or right with a height) reads back unchanged: the height along a side edge is the
 /// position along it.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -31,9 +38,11 @@ pub struct Prefs {
     pub per_screen: BTreeMap<String, (Edge, f64)>,
     #[serde(default = "on")]
     pub come_to: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_everywhere: Option<(Edge, f64)>,
 }
 fn on() -> bool { true }
-impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true } } }
+impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true, same_everywhere: None } } }
 
 impl Prefs {
     /// Reads `dock.json`. Never loses more than it must: an entry that cannot be read (an edge this version does not
@@ -50,6 +59,8 @@ impl Prefs {
             }
         }
         p.come_to = v.get("come_to").and_then(Value::as_bool) != Some(false);
+        // Anything that is not a place leaves "Same place on every display" off.
+        p.same_everywhere = v.get("same_everywhere").and_then(|e| serde_json::from_value::<(Edge, f64)>(e.clone()).ok()).filter(|(_, pct)| pct.is_finite()).map(|(e, pct)| (e, pct.clamp(0.0, 1.0)));
         p
     }
 }
@@ -72,10 +83,10 @@ pub fn notch_zone(s: &Screen) -> Rect {
 pub const CLEAR_MARGIN: f64 = 8.0;
 
 /// Where Home reaches at its widest and tallest, with CLEAR_MARGIN around it: Home drops down from the island, centred
-/// under it and inside the work area (island.rs `home_frame`), CARD wide and up to CARD_MAX_H tall. Taken from the very
-/// top of the display, so with the island it makes one column.
-pub fn home_zone(s: &Screen) -> Rect {
-    let h = island::home_frame(s, (island::CARD.0, island::CARD_MAX_H));
+/// under it and inside the work area (island.rs `home_frame`), at the size in force (`home`: as wide as it is and as tall
+/// as it grows). Taken from the very top of the display, so with the island it makes one column.
+pub fn home_zone(s: &Screen, home: island::HomeSize) -> Rect {
+    let h = island::home_frame(s, (home.w, home.max_h));
     widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN)
 }
 
@@ -84,7 +95,7 @@ pub fn home_zone(s: &Screen) -> Rect {
 /// it all the time: Home never covers the character and the character never has to move out of its way. Trips beside a
 /// window keep clear of the island always and of Home only while it is open (roam.rs, main.rs `card_room`), so a closed
 /// Home costs them no room.
-pub fn dock_zone(s: &Screen) -> Rect { union(notch_zone(s), home_zone(s)) }
+pub fn dock_zone(s: &Screen, home: island::HomeSize) -> Rect { union(notch_zone(s), home_zone(s, home)) }
 
 /// The smallest rectangle holding both.
 fn union(a: Rect, b: Rect) -> Rect {
@@ -135,9 +146,9 @@ fn clear_of_zone(f: Rect, zone: Rect, work: Rect, edge: Edge) -> Rect {
 }
 
 /// Where the character sits on a display: on its edge at its position, inside the work area, out of the island's zone
-/// and Home's drop down area (`dock_zone`).
-pub fn place(s: &Screen, size: (f64, f64), edge: Edge, pct: f64) -> Rect {
-    clear_of_zone(dock_frame(s.work, size, edge, pct), dock_zone(s), s.work, edge)
+/// and Home's drop down area at Home's size in force (`dock_zone`).
+pub fn place(s: &Screen, size: (f64, f64), edge: Edge, pct: f64, home: island::HomeSize) -> Rect {
+    clear_of_zone(dock_frame(s.work, size, edge, pct), dock_zone(s, home), s.work, edge)
 }
 
 /// The card sits beside the character, on the side facing into the screen, and is kept inside the work area: beside a
@@ -163,7 +174,7 @@ pub const CORNER_REACH: f64 = 140.0;
 /// Dragging snaps to the nearest of the four edges, at the pointer's place along it; near a corner, exactly into the
 /// corner. What is returned places the character where it is shown (out of the clear zone), so what is saved is what
 /// the person saw when they let go.
-pub fn snap_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64) -> (Edge, f64) {
+pub fn snap_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64, home: island::HomeSize) -> (Edge, f64) {
     let w = s.work;
     let x = cursor_x.clamp(w[0], w[0] + w[2]);
     let y = cursor_y.clamp(w[1], w[1] + w[3]);
@@ -180,7 +191,7 @@ pub fn snap_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64) -> (E
     }
     let pct = along(pct);
     // What is shown, read back as a position, so it is saved out of the clear zone too.
-    (edge, pct_of(w, size, edge, place(s, size, edge, pct)))
+    (edge, pct_of(w, size, edge, place(s, size, edge, pct, home)))
 }
 
 pub fn inside(frame: Rect, work: Rect) -> bool {
@@ -201,9 +212,10 @@ pub fn pick<'a>(list: &'a [Screen], prefs: &Prefs, mouse: (f64, f64)) -> Option<
     list.iter().find(|s| s.primary).map(|s| (s, "primary"))
 }
 
-/// The edge and height to use on a display: its saved choice, or the right edge, halfway down.
+/// The edge and height to use on a display: its saved choice, else the place copied for every display (Same place on
+/// every display, when on), else the right edge, halfway down.
 pub fn choice(prefs: &Prefs, screen_id: &str) -> (Edge, f64) {
-    prefs.per_screen.get(screen_id).copied().unwrap_or((Edge::Right, 0.5))
+    prefs.per_screen.get(screen_id).copied().or(prefs.same_everywhere).unwrap_or((Edge::Right, 0.5))
 }
 
 /// A signature of the display layout including each work area, so moving or resizing the Dock
@@ -258,12 +270,12 @@ mod tests {
     }
     #[test]
     fn dragging_snaps_to_the_nearer_edge_and_a_height() {
-        assert_eq!(snap_on(&mac(), (160.0, 160.0), 30.0, 33.0 + 300.0).0, Edge::Left);
-        assert_eq!(snap_on(&mac(), (160.0, 160.0), 1490.0, 500.0).0, Edge::Right);
-        let (e, top) = snap_on(&mac(), (160.0, 160.0), 1500.0, 0.0);
-        assert_eq!(place(&mac(), SIZE, e, top), [1352.0, 33.0, 160.0, 160.0], "past the top right is the top right corner");
-        let (e, bottom) = snap_on(&mac(), (160.0, 160.0), 1500.0, 5000.0);
-        assert_eq!(place(&mac(), SIZE, e, bottom), [1352.0, 982.0 - 160.0, 160.0, 160.0], "past the bottom right is the bottom right corner");
+        assert_eq!(snap_on(&mac(), (160.0, 160.0), 30.0, 33.0 + 300.0, STD).0, Edge::Left);
+        assert_eq!(snap_on(&mac(), (160.0, 160.0), 1490.0, 500.0, STD).0, Edge::Right);
+        let (e, top) = snap_on(&mac(), (160.0, 160.0), 1500.0, 0.0, STD);
+        assert_eq!(place(&mac(), SIZE, e, top, STD), [1352.0, 33.0, 160.0, 160.0], "past the top right is the top right corner");
+        let (e, bottom) = snap_on(&mac(), (160.0, 160.0), 1500.0, 5000.0, STD);
+        assert_eq!(place(&mac(), SIZE, e, bottom, STD), [1352.0, 982.0 - 160.0, 160.0, 160.0], "past the bottom right is the bottom right corner");
     }
     #[test]
     fn prefers_the_saved_display_then_the_same_size_then_the_mouse_then_the_primary() {
@@ -280,7 +292,7 @@ mod tests {
     }
     #[test]
     fn unplugging_the_screen_the_character_was_on_brings_it_back_inside_the_laptop_screen() {
-        let p = Prefs { last_screen: "1920x1080@1512,0".into(), per_screen: [("1920x1080@1512,0".to_string(), (Edge::Left, 0.2))].into(), come_to: true };
+        let p = Prefs { last_screen: "1920x1080@1512,0".into(), per_screen: [("1920x1080@1512,0".to_string(), (Edge::Left, 0.2))].into(), come_to: true, same_everywhere: None };
         let only = [mac()];
         let (s, _) = pick(&only, &p, (400.0, 400.0)).unwrap();
         let (e, pct) = choice(&p, &s.id);
@@ -333,28 +345,28 @@ mod tests {
     #[test]
     fn docks_flush_on_every_edge_inside_the_work_area() {
         let s = mac();
-        assert_eq!(place(&s, SIZE, Edge::Left, 0.5)[0], 0.0);
-        let r = place(&s, SIZE, Edge::Right, 0.5); assert_eq!(r[0] + r[2], 1512.0);
-        let t = place(&s, SIZE, Edge::Top, 0.2); assert_eq!(t[1], 33.0, "the top edge is just below the menu bar");
+        assert_eq!(place(&s, SIZE, Edge::Left, 0.5, STD)[0], 0.0);
+        let r = place(&s, SIZE, Edge::Right, 0.5, STD); assert_eq!(r[0] + r[2], 1512.0);
+        let t = place(&s, SIZE, Edge::Top, 0.2, STD); assert_eq!(t[1], 33.0, "the top edge is just below the menu bar");
         assert_eq!(t[0], 0.2 * (1512.0 - 160.0));
-        let b = place(&s, SIZE, Edge::Bottom, 0.7); assert_eq!(b[1] + b[3], 982.0);
+        let b = place(&s, SIZE, Edge::Bottom, 0.7, STD); assert_eq!(b[1] + b[3], 982.0);
         assert_eq!(b[0], 0.7 * (1512.0 - 160.0));
-        let bd = place(&dock_bottom(), SIZE, Edge::Bottom, 0.5); assert_eq!(bd[1] + bd[3], 33.0 + 879.0, "the bottom edge stops above the Dock");
-        for e in EDGES { assert!(inside(place(&s, SIZE, e, 0.3), s.work), "{e:?}"); }
+        let bd = place(&dock_bottom(), SIZE, Edge::Bottom, 0.5, STD); assert_eq!(bd[1] + bd[3], 33.0 + 879.0, "the bottom edge stops above the Dock");
+        for e in EDGES { assert!(inside(place(&s, SIZE, e, 0.3, STD), s.work), "{e:?}"); }
     }
     #[test]
     fn each_corner_is_reachable_and_both_ways_of_naming_it_agree() {
         for s in screens() {
             let w = s.work;
             let (l, t, r, b) = (w[0], w[1], w[0] + w[2] - 160.0, w[1] + w[3] - 160.0);
-            assert_eq!(place(&s, SIZE, Edge::Left, 0.0), [l, t, 160.0, 160.0], "{} top left", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Top, 0.0), [l, t, 160.0, 160.0], "{} top left", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Right, 0.0), [r, t, 160.0, 160.0], "{} top right", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Top, 1.0), [r, t, 160.0, 160.0], "{} top right", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Left, 1.0), [l, b, 160.0, 160.0], "{} bottom left", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Bottom, 0.0), [l, b, 160.0, 160.0], "{} bottom left", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Right, 1.0), [r, b, 160.0, 160.0], "{} bottom right", s.id);
-            assert_eq!(place(&s, SIZE, Edge::Bottom, 1.0), [r, b, 160.0, 160.0], "{} bottom right", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Left, 0.0, STD), [l, t, 160.0, 160.0], "{} top left", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Top, 0.0, STD), [l, t, 160.0, 160.0], "{} top left", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Right, 0.0, STD), [r, t, 160.0, 160.0], "{} top right", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Top, 1.0, STD), [r, t, 160.0, 160.0], "{} top right", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Left, 1.0, STD), [l, b, 160.0, 160.0], "{} bottom left", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Bottom, 0.0, STD), [l, b, 160.0, 160.0], "{} bottom left", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Right, 1.0, STD), [r, b, 160.0, 160.0], "{} bottom right", s.id);
+            assert_eq!(place(&s, SIZE, Edge::Bottom, 1.0, STD), [r, b, 160.0, 160.0], "{} bottom right", s.id);
         }
     }
     #[test]
@@ -372,26 +384,26 @@ mod tests {
         for s in screens() {
             let z = notch_zone(&s);
             for e in EDGES { for i in 0..=200 {
-                let f = place(&s, SIZE, e, i as f64 / 200.0);
+                let f = place(&s, SIZE, e, i as f64 / 200.0, STD);
                 assert!(!overlaps(f, z), "{} {e:?} {i}: {f:?} is in the clear zone {z:?}", s.id);
                 assert!(inside(f, s.work), "{} {e:?} {i}: {f:?}", s.id);
             } }
         }
         // Just left of the middle it goes to the left of the zone its place keeps clear of (the island, and Home below it
         // since the merge of F18 items 1 and 2), just right of it to the right; either way out of the island's zone.
-        let (s, z) = (mac(), dock_zone(&mac()));
-        let l = place(&s, SIZE, Edge::Top, 0.49); assert!(l[0] + l[2] <= z[0] && z[0] - (l[0] + l[2]) < 2.0, "{l:?} {z:?}");
-        let r = place(&s, SIZE, Edge::Top, 0.51); assert!(r[0] >= z[0] + z[2] && r[0] - (z[0] + z[2]) < 2.0, "{r:?} {z:?}");
+        let (s, z) = (mac(), dock_zone(&mac(), STD));
+        let l = place(&s, SIZE, Edge::Top, 0.49, STD); assert!(l[0] + l[2] <= z[0] && z[0] - (l[0] + l[2]) < 2.0, "{l:?} {z:?}");
+        let r = place(&s, SIZE, Edge::Top, 0.51, STD); assert!(r[0] >= z[0] + z[2] && r[0] - (z[0] + z[2]) < 2.0, "{r:?} {z:?}");
         for f in [l, r] { assert!(!overlaps(f, notch_zone(&s)), "{f:?}"); }
         // Away from the middle the top edge is untouched.
-        assert_eq!(place(&s, SIZE, Edge::Top, 0.1), [0.1 * 1352.0, 33.0, 160.0, 160.0]);
+        assert_eq!(place(&s, SIZE, Edge::Top, 0.1, STD), [0.1 * 1352.0, 33.0, 160.0, 160.0]);
     }
     #[test]
     fn never_under_the_menu_bar_the_dock_or_off_the_screen_whatever_was_saved() {
         let tiny = screen("640x480@0,0", [0.0, 0.0, 640.0, 480.0], [0.0, 25.0, 640.0, 455.0], true);
         for s in screens().into_iter().chain([tiny]) {
             for e in EDGES { for pct in [-3.0, 0.0, 0.3, 0.5, 1.0, 9.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-                let f = place(&s, SIZE, e, pct);
+                let f = place(&s, SIZE, e, pct, STD);
                 assert!(f.iter().all(|v| v.is_finite()), "{} {e:?} {pct}: {f:?}", s.id);
                 assert!(inside(f, s.work), "{} {e:?} {pct}: {f:?}", s.id);
             } }
@@ -400,16 +412,16 @@ mod tests {
     #[test]
     fn dragging_snaps_to_the_nearest_of_the_four_edges_at_the_pointers_place() {
         let s = mac();
-        assert_eq!(snap_on(&s, SIZE, 30.0, 500.0).0, Edge::Left);
-        assert_eq!(snap_on(&s, SIZE, 1490.0, 500.0).0, Edge::Right);
-        assert_eq!(snap_on(&s, SIZE, 400.0, 50.0).0, Edge::Top);
-        assert_eq!(snap_on(&s, SIZE, 900.0, 960.0).0, Edge::Bottom);
-        let (e, p) = snap_on(&s, SIZE, 400.0, 50.0);
-        assert!((place(&s, SIZE, e, p)[0] - (400.0 - 80.0)).abs() < 0.5, "it follows the pointer along the top");
-        let (e, p) = snap_on(&s, SIZE, 900.0, 960.0);
-        assert!((place(&s, SIZE, e, p)[0] - (900.0 - 80.0)).abs() < 0.5, "and along the bottom");
-        let (e, p) = snap_on(&s, SIZE, 20.0, 600.0);
-        assert!((place(&s, SIZE, e, p)[1] - (600.0 - 80.0)).abs() < 0.5, "and along a side, as before");
+        assert_eq!(snap_on(&s, SIZE, 30.0, 500.0, STD).0, Edge::Left);
+        assert_eq!(snap_on(&s, SIZE, 1490.0, 500.0, STD).0, Edge::Right);
+        assert_eq!(snap_on(&s, SIZE, 400.0, 50.0, STD).0, Edge::Top);
+        assert_eq!(snap_on(&s, SIZE, 900.0, 960.0, STD).0, Edge::Bottom);
+        let (e, p) = snap_on(&s, SIZE, 400.0, 50.0, STD);
+        assert!((place(&s, SIZE, e, p, STD)[0] - (400.0 - 80.0)).abs() < 0.5, "it follows the pointer along the top");
+        let (e, p) = snap_on(&s, SIZE, 900.0, 960.0, STD);
+        assert!((place(&s, SIZE, e, p, STD)[0] - (900.0 - 80.0)).abs() < 0.5, "and along the bottom");
+        let (e, p) = snap_on(&s, SIZE, 20.0, 600.0, STD);
+        assert!((place(&s, SIZE, e, p, STD)[1] - (600.0 - 80.0)).abs() < 0.5, "and along a side, as before");
     }
     #[test]
     fn dragging_into_a_corner_snaps_exactly_into_it() {
@@ -418,8 +430,8 @@ mod tests {
             let (l, t, r, b) = (w[0], w[1], w[0] + w[2] - 160.0, w[1] + w[3] - 160.0);
             for ((x, y), want) in [((w[0] + 40.0, w[1] + 60.0), [l, t]), ((w[0] + w[2] - 50.0, w[1] + 30.0), [r, t]),
                                    ((w[0] + 70.0, w[1] + w[3] - 20.0), [l, b]), ((w[0] + w[2] - 10.0, w[1] + w[3] - 90.0), [r, b])] {
-                let (e, p) = snap_on(&s, SIZE, x, y);
-                let f = place(&s, SIZE, e, p);
+                let (e, p) = snap_on(&s, SIZE, x, y, STD);
+                let f = place(&s, SIZE, e, p, STD);
                 assert_eq!([f[0], f[1]], want, "{} pointer at {x},{y}", s.id);
             }
         }
@@ -431,8 +443,8 @@ mod tests {
             let w = s.work;
             let mut x = w[0];
             while x <= w[0] + w[2] {
-                let (e, p) = snap_on(&s, SIZE, x, w[1] + 20.0);
-                let f = place(&s, SIZE, e, p);
+                let (e, p) = snap_on(&s, SIZE, x, w[1] + 20.0, STD);
+                let f = place(&s, SIZE, e, p, STD);
                 assert!(!overlaps(f, z), "{} x {x}: {f:?}", s.id);
                 // Saved and loaded again (the position alone, on the same screen), it is in the same place.
                 let again = dock_frame(s.work, SIZE, e, p);
@@ -445,14 +457,14 @@ mod tests {
     fn the_card_faces_into_the_screen_from_every_edge() {
         let s = mac();
         let card = (CARD.0, 300.0);
-        let t = place(&s, SIZE, Edge::Top, 0.2);
+        let t = place(&s, SIZE, Edge::Top, 0.2, STD);
         let ct = card_frame(t, card, s.work, Edge::Top);
         assert!(ct[1] >= t[1] + t[3], "below a character on the top edge: {ct:?}");
-        let b = place(&s, SIZE, Edge::Bottom, 0.6);
+        let b = place(&s, SIZE, Edge::Bottom, 0.6, STD);
         let cb = card_frame(b, card, s.work, Edge::Bottom);
         assert!(cb[1] + cb[3] <= b[1], "above a character on the bottom edge: {cb:?}");
         for e in EDGES { for pct in [0.0, 0.5, 1.0] {
-            let d = place(&s, SIZE, e, pct);
+            let d = place(&s, SIZE, e, pct, STD);
             let c = card_frame(d, card, s.work, e);
             assert!(inside(c, s.work), "{e:?} {pct}: {c:?}");
             assert!(!overlaps(c, d), "{e:?} {pct}: the card never covers the character");
@@ -471,8 +483,8 @@ mod tests {
         for s in [mac(), ext(), dock_bottom(), dock_left(), dock_right(), no_menu_bar()] {
             for i in 0..=20 {
                 let pct = i as f64 / 20.0;
-                assert_eq!(place(&s, SIZE, Edge::Left, pct), old_dock_frame(s.work, SIZE, true, pct), "{} left {pct}", s.id);
-                assert_eq!(place(&s, SIZE, Edge::Right, pct), old_dock_frame(s.work, SIZE, false, pct), "{} right {pct}", s.id);
+                assert_eq!(place(&s, SIZE, Edge::Left, pct, STD), old_dock_frame(s.work, SIZE, true, pct), "{} left {pct}", s.id);
+                assert_eq!(place(&s, SIZE, Edge::Right, pct, STD), old_dock_frame(s.work, SIZE, false, pct), "{} right {pct}", s.id);
             }
         }
     }
@@ -493,17 +505,17 @@ mod tests {
     }
     #[test]
     fn a_top_place_on_a_screen_that_went_away_comes_back_inside_the_laptop_screen_and_out_of_the_zone() {
-        let p = Prefs { last_screen: "1920x1080@1512,-98".into(), per_screen: [("1920x1080@1512,-98".to_string(), (Edge::Top, 0.5))].into(), come_to: true };
+        let p = Prefs { last_screen: "1920x1080@1512,-98".into(), per_screen: [("1920x1080@1512,-98".to_string(), (Edge::Top, 0.5))].into(), come_to: true, same_everywhere: None };
         let only = [mac()];
         let (s, _) = pick(&only, &p, (400.0, 400.0)).unwrap();
         let (e, pct) = choice(&p, &s.id);
-        let f = place(s, SIZE, e, pct);
+        let f = place(s, SIZE, e, pct, STD);
         assert!(inside(f, s.work) && !overlaps(f, notch_zone(s)), "{f:?}");
         // Plugged back in, each screen still has its own place.
         let both = [mac(), ext_menu()];
         let (s2, how) = pick(&both, &p, (400.0, 400.0)).unwrap();
         assert_eq!((s2.id.as_str(), how), ("1920x1080@1512,-98", "exact"));
-        let f2 = place(s2, SIZE, Edge::Top, 0.5);
+        let f2 = place(s2, SIZE, Edge::Top, 0.5, STD);
         assert!(inside(f2, s2.work) && !overlaps(f2, notch_zone(s2)), "{f2:?}");
     }
 
@@ -540,7 +552,7 @@ mod tests {
     #[test]
     fn the_zones_hold_the_island_at_every_size_and_home_at_every_height_as_island_rs_draws_them() {
         for s in island_screens() {
-            let (nz, hz, dz) = (notch_zone(&s), home_zone(&s), dock_zone(&s));
+            let (nz, hz, dz) = (notch_zone(&s), home_zone(&s, STD), dock_zone(&s, STD));
             for m in MODES {
                 let i = island::island_frame(&s, m);
                 assert!(holds(nz, i) && holds(dz, i), "{} {m:?}: the island {i:?} is outside the zone {nz:?}", s.id);
@@ -567,20 +579,20 @@ mod tests {
             let island_big = island::island_frame(&s, island::Mode::Peek);
             let homes: Vec<Rect> = [CARD.1, 300.0, 450.0, CARD_MAX_H].iter().map(|h| island::home_frame(&s, (CARD.0, *h))).collect();
             for e in EDGES { for i in 0..=200 {
-                let f = place(&s, SIZE, e, i as f64 / 200.0);
+                let f = place(&s, SIZE, e, i as f64 / 200.0, STD);
                 let why = format!("{} {e:?} {i}: {f:?}", s.id);
                 assert!(inside(f, s.work), "outside the work area: {why}");
                 for m in MODES { assert!(!overlaps(f, island::island_frame(&s, m)), "under the island ({m:?}): {why}"); }
                 for home in &homes { assert!(!overlaps(f, *home), "under Home {home:?}: {why}"); }
-                assert!(!overlaps(f, dock_zone(&s)), "{why}");
+                assert!(!overlaps(f, dock_zone(&s, STD)), "{why}");
             } }
             // A drag along the top and along the bottom, the whole width: what is shown, and so saved, is clear too.
             let w = s.work;
             let mut x = w[0];
             while x <= w[0] + w[2] {
                 for y in [w[1] + 10.0, w[1] + w[3] - 10.0] {
-                    let (e, p) = snap_on(&s, SIZE, x, y);
-                    let f = place(&s, SIZE, e, p);
+                    let (e, p) = snap_on(&s, SIZE, x, y, STD);
+                    let f = place(&s, SIZE, e, p, STD);
                     assert!(!overlaps(f, island_big) && !overlaps(f, homes[3]), "{} drag at {x},{y}: {f:?}", s.id);
                 }
                 x += 9.0;
@@ -590,10 +602,62 @@ mod tests {
         // the bottom edge, below Home at its tallest, is not moved at all.
         let s = &island_screens()[0];
         let home = island::home_frame(s, (CARD.0, CARD_MAX_H));
-        let l = place(s, SIZE, Edge::Top, 0.49);
+        let l = place(s, SIZE, Edge::Top, 0.49, STD);
         assert!((home[0] - (l[0] + l[2]) - CLEAR_MARGIN).abs() < 0.01, "{l:?} {home:?}");
-        let r = place(s, SIZE, Edge::Top, 0.51);
+        let r = place(s, SIZE, Edge::Top, 0.51, STD);
         assert!((r[0] - (home[0] + home[2]) - CLEAR_MARGIN).abs() < 0.01, "{r:?} {home:?}");
-        assert_eq!(place(s, SIZE, Edge::Bottom, 0.5), dock_frame(s.work, SIZE, Edge::Bottom, 0.5));
+        assert_eq!(place(s, SIZE, Edge::Bottom, 0.5, STD), dock_frame(s.work, SIZE, Edge::Bottom, 0.5));
+    }
+
+    // ---- M11 area 4: Home's size, and the character's place from Settings (protocol/settings.json) ----
+    const STD: island::HomeSize = island::HomeSize::STANDARD;
+    const LARGE: island::HomeSize = island::HomeSize::LARGE;
+    #[test]
+    fn with_a_large_home_the_character_never_docks_under_it_at_its_tallest() {
+        for s in island_screens() {
+            let homes: Vec<Rect> = [LARGE.min_h, 300.0, 600.0, LARGE.max_h].iter().map(|h| island::home_frame(&s, (LARGE.w, *h))).collect();
+            let hz = home_zone(&s, LARGE);
+            for home in &homes { assert!(holds(hz, *home), "{} {home:?} outside {hz:?}", s.id); }
+            assert!(holds(home_zone(&s, LARGE), home_zone(&s, STD)), "{}: the large zone holds the usual one", s.id);
+            for e in EDGES { for i in 0..=100 {
+                let f = place(&s, SIZE, e, i as f64 / 100.0, LARGE);
+                assert!(inside(f, s.work), "{} {e:?} {i}: {f:?}", s.id);
+                for home in &homes { assert!(!overlaps(f, *home), "{} {e:?} {i}: under the large Home {home:?}: {f:?}", s.id); }
+            } }
+            // A drag along the top: what is shown, and so saved, is clear of the large Home too.
+            let w = s.work;
+            let mut x = w[0];
+            while x <= w[0] + w[2] { let (e, p) = snap_on(&s, SIZE, x, w[1] + 10.0, LARGE); assert!(!overlaps(place(&s, SIZE, e, p, LARGE), homes[3]), "{} drag at {x}", s.id); x += 11.0; }
+        }
+        // The usual size keeps every place exactly where it was.
+        let s = &island_screens()[0];
+        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (380.0, 640.0)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
+    }
+    #[test]
+    fn same_place_on_every_display_fills_only_displays_with_no_place_yet() {
+        let mut p = Prefs::default();
+        assert_eq!(p.same_everywhere, None, "off unless turned on");
+        p.per_screen.insert("a".into(), (Edge::Top, 0.7));
+        assert_eq!(choice(&p, "b"), (Edge::Right, 0.5), "off: the usual place, as today");
+        p.same_everywhere = Some((Edge::Left, 0.2));
+        assert_eq!(choice(&p, "a"), (Edge::Top, 0.7), "a display with its own place keeps it");
+        assert_eq!(choice(&p, "b"), (Edge::Left, 0.2), "one with no place yet gets the copy");
+        // Kept in dock.json, read back carefully; a file from before has it off.
+        let back = Prefs::from_text(Some(&serde_json::to_string(&p).unwrap()));
+        assert_eq!(back, p);
+        let old = r#"{"last_screen":"a","per_screen":{"a":["left",0.25]},"come_to":true}"#;
+        assert_eq!(Prefs::from_text(Some(old)).same_everywhere, None);
+        for junk in [r#"{"same_everywhere":"left"}"#, r#"{"same_everywhere":["sideways",0.5]}"#, r#"{"same_everywhere":["left","x"]}"#, r#"{"same_everywhere":null}"#] {
+            assert_eq!(Prefs::from_text(Some(junk)).same_everywhere, None, "{junk}");
+        }
+        assert_eq!(Prefs::from_text(Some(r#"{"same_everywhere":["bottom",4]}"#)).same_everywhere, Some((Edge::Bottom, 1.0)), "pulled back to the nearest end");
+    }
+    #[test]
+    fn each_edge_has_the_word_settings_use() {
+        for e in EDGES { assert_eq!(Edge::of(e.word()), Some(e)); }
+        assert_eq!([Edge::Left.word(), Edge::Right.word(), Edge::Top.word(), Edge::Bottom.word()], ["left", "right", "top", "bottom"]);
+        assert_eq!(Edge::of("middle"), None);
+        // The same words dock.json has always used.
+        assert_eq!(serde_json::to_string(&Edge::Top).unwrap(), "\"top\"");
     }
 }

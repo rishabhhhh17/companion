@@ -11,7 +11,9 @@ import { useSyncExternalStore } from "react";
 import { defOf, defaultOf, fromPageStorage, PAGE_STORAGE_MARK, REGISTRY, RUNNER_STORES, type Def } from "../../protocol/settings.ts";
 import { invoke, listen } from "./tauri.ts";
 
-export type Snapshot = { values: Record<string, unknown>; usual: Record<string, unknown>; project: string; migrated: string[]; problems: { key: string | null; code: string }[]; changed: string[] };
+/** `restore`: for a value shown rounded, what Undo sends to put back exactly what is in force (a character's place dragged
+ *  off its step: the exact fraction along the edge, settings.rs place_from). Nothing else reads it. */
+export type Snapshot = { values: Record<string, unknown>; usual: Record<string, unknown>; project: string; migrated: string[]; problems: { key: string | null; code: string }[]; changed: string[]; restore: Record<string, unknown> };
 type Storage = { getItem(k: string): string | null; setItem?(k: string, v: string): void } | null | undefined;
 type Invoke = typeof invoke;
 let call: Invoke = invoke;
@@ -38,6 +40,7 @@ export function snapshotFrom(v: unknown): Snapshot | null {
     migrated: Array.isArray(v.migrated) ? v.migrated.filter((x): x is string => typeof x === "string") : [],
     problems: Array.isArray(v.problems) ? v.problems.filter(isObj).map((p) => ({ key: typeof p.key === "string" ? p.key : null, code: String(p.code ?? "") })) : [],
     changed: Array.isArray(v.changed) ? v.changed.filter((x): x is string => typeof x === "string") : [],
+    restore: isObj(v.restore) ? v.restore : {},
   };
 }
 export function takeSnapshot(v: unknown, st: Storage = pageStorage()): void {
@@ -104,9 +107,10 @@ export function changedNow(section?: string): string[] {
     return v !== undefined && !same(v, usualOf(d.key));
   }).map((d) => d.key);
 }
-/** What Undo after a reset of a section (or of everything) puts back: every changed setting with the value it has now.
+/** What Undo after a reset of a section (or of everything) puts back: every changed setting with the value it has now
+ *  (exactly: a place dragged off its step comes back where it was, not on the step it is shown on, `restore`).
  *  It is the same list the shell resets (settings.rs reset_plan; both run protocol/fixtures/settings-reset-cases.jsonl). */
-export const undoValues = (section?: string): [string, unknown][] => changedNow(section).map((k) => [k, defOf(k)!.kind === "custom" ? snap?.values[k] : setting(k)]);
+export const undoValues = (section?: string): [string, unknown][] => changedNow(section).map((k) => [k, snap && Object.hasOwn(snap.restore, k) ? snap.restore[k] : defOf(k)!.kind === "custom" ? snap?.values[k] : setting(k)]);
 const isEngines = (k: string) => RUNNER_STORES.includes(defOf(k)!.store);
 /** The engine's own settings in a reset that the page has not heard from the engine yet: the shell leaves them as they
  *  are (the page could neither name them nor put them back), and the confirm says so. */

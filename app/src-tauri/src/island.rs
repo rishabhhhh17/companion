@@ -8,12 +8,25 @@
 use crate::docking::{card_frame, Edge, Rect};
 use std::path::{Path, PathBuf};
 
-/// Home's size (the card, F18): CARD is its width, wide enough for its five tabs, and the least height it has;
-/// CARD_MAX_H is the tallest it grows (its page asks for its content's height, and main.rs `resize_card` holds it
-/// between the two). The character keeps clear of Home at CARD_MAX_H: its own place always (docking.rs `dock_zone`), a
-/// trip beside a window while Home is open (main.rs `card_room`, from `card_spot`).
-pub const CARD: (f64, f64) = (380.0, 150.0);
-pub const CARD_MAX_H: f64 = 640.0;
+/// Home's size (the card, F18; the home.size setting): its width, wide enough for its five tabs, the least height it has,
+/// and the tallest it grows (its page asks for its content's height, and main.rs `resize_card` holds it between the two).
+/// The character keeps clear of Home at its tallest: its own place always (docking.rs `dock_zone`), a trip beside a window
+/// while Home is open (main.rs `card_room`, from `card_spot`). Both come from the size in force (main.rs `home_size`), so
+/// they always agree with where Home is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HomeSize { pub w: f64, pub min_h: f64, pub max_h: f64 }
+impl HomeSize {
+    /// The usual size: 380 wide, 150 to 640 tall (today's).
+    pub const STANDARD: HomeSize = HomeSize { w: 380.0, min_h: 150.0, max_h: 640.0 };
+    /// Large: 460 wide, up to 760 tall, for larger text.
+    pub const LARGE: HomeSize = HomeSize { w: 460.0, min_h: 150.0, max_h: 760.0 };
+    /// The size a home.size word names; anything else is the usual one.
+    pub fn of(word: &str) -> HomeSize { if word == "large" { HomeSize::LARGE } else { HomeSize::STANDARD } }
+}
+/// The usual size, as Home's window is made at launch (before any setting is read) and as the tests name it.
+pub const CARD: (f64, f64) = (HomeSize::STANDARD.w, HomeSize::STANDARD.min_h);
+#[cfg_attr(not(test), allow(dead_code))]   // the tests name the usual tallest; the app reads the size in force
+pub const CARD_MAX_H: f64 = HomeSize::STANDARD.max_h;
 
 /// The camera housing of a display that has one: its left edge counted from the display's left edge, its width and height.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,13 +144,13 @@ pub fn home_frame(d: &Display, size: (f64, f64)) -> Rect {
     [around(center_x(d), w, wx, ww), top, w, h]
 }
 
-/// Where Home (the card) is when it is `h` tall: the one answer used both to place it and to keep the character clear of
-/// it (main.rs `place_card`, `card_room`). With the island's display known (`on`), it drops down from the island
-/// (`home_frame`). Otherwise (no display found for the island yet) it goes beside the character's home as before F18,
-/// on the display that home is on (else the first), facing into the screen from that display's edge (`edge_of`, then
-/// docking.rs `card_frame`). Never beside where the character may be visiting a window.
-pub fn card_spot(on: Option<&Display>, home: Rect, screens: &[Display], edge_of: impl FnOnce(&str) -> Edge, h: f64) -> Option<Rect> {
-    let size = (CARD.0, h);
+/// Where Home (the card) is at `size` (its width and its height now): the one answer used both to place it and to keep the
+/// character clear of it (main.rs `place_card`, `card_room`). With the island's display known (`on`), it drops down from
+/// the island (`home_frame`). Otherwise (no display found for the island yet, or the island turned off in Settings) it
+/// goes beside the character's home as before F18, on the display that home is on (else the first), facing into the
+/// screen from that display's edge (`edge_of`, then docking.rs `card_frame`). Never beside where the character may be
+/// visiting a window.
+pub fn card_spot(on: Option<&Display>, home: Rect, screens: &[Display], edge_of: impl FnOnce(&str) -> Edge, size: (f64, f64)) -> Option<Rect> {
     if let Some(d) = on { return Some(home_frame(d, size)); }
     let c =(home[0] + home[2] / 2.0, home[1] + home[3] / 2.0);
     let s = screens.iter().find(|s| contains(s.frame, c)).or(screens.first())?;
@@ -161,7 +174,30 @@ pub fn pick<'a>(list: &'a [Display], last: &str, mouse: (f64, f64), follow_mouse
     list.iter().find(|d| d.primary).or(list.first()).map(|d| (d, "primary"))
 }
 
-/// How long the pointer must stay on another display before the island moves there (main.rs looks twice a second).
+/// Which display the island and Home use (the island.display setting). Follow me: the one the person is using (`pick`,
+/// today's rule). Built in: the Mac's own screen, else the main one (the lid is closed, or the Mac has no screen of its
+/// own). Main: the display with the menu bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Where { Follow, BuiltIn, Main }
+impl Where {
+    /// The display an island.display word names; anything else is Follow me (the usual one).
+    pub fn of(word: &str) -> Where { match word { "builtIn" => Where::BuiltIn, "main" => Where::Main, _ => Where::Follow } }
+}
+
+/// Which display the island lives on, with the setting: `builtin` is the id of the Mac's own screen when it is connected
+/// and on (main.rs reads it from macOS), never a guess. The main display is the first macOS lists (the one with the menu
+/// bar), marked `primary`.
+pub fn pick_where<'a>(list: &'a [Display], wanted: Where, builtin: Option<&str>, last: &str, mouse: (f64, f64), follow_mouse: bool) -> Option<(&'a Display, &'static str)> {
+    let main = || list.iter().find(|d| d.primary).or(list.first()).map(|d| (d, "main"));
+    match wanted {
+        Where::Follow => pick(list, last, mouse, follow_mouse),
+        Where::BuiltIn => builtin.and_then(|id| list.iter().find(|d| d.id == id)).map(|d| (d, "built_in")).or_else(main),
+        Where::Main => main(),
+    }
+}
+
+/// How long the pointer must stay on another display before the island moves there, unless Settings says otherwise
+/// (island.followDelay; main.rs looks twice a second).
 pub const FOLLOW_MS: u64 = 3000;
 
 /// The island goes to the display the person is using: the one the pointer has stayed on for a few seconds. A quick trip
@@ -172,11 +208,12 @@ pub struct Follow { on: String, since: u64 }
 impl Follow {
     pub const fn new() -> Self { Follow { on: String::new(), since: 0 } }
     /// `under`: the display the pointer is on now (None in a gap between displays); `current`: the island's display;
-    /// `hold`: Home is open. Returns the display to move to, once.
-    pub fn sample(&mut self, under: Option<&str>, current: &str, hold: bool, t: u64) -> Option<String> {
+    /// `hold`: Home is open; `wait_ms`: how long the pointer must stay (FOLLOW_MS unless changed in Settings). Returns the
+    /// display to move to, once.
+    pub fn sample(&mut self, under: Option<&str>, current: &str, hold: bool, t: u64, wait_ms: u64) -> Option<String> {
         let Some(u) = under.filter(|u| !hold && *u != current) else { self.on.clear(); return None };
         if self.on != u { self.on = u.to_string(); self.since = t; return None; }
-        if t.saturating_sub(self.since) < FOLLOW_MS { return None; }
+        if t.saturating_sub(self.since) < wait_ms { return None; }
         self.on.clear();
         Some(u.to_string())
     }
@@ -192,27 +229,38 @@ pub fn mode(s: State) -> Mode {
 }
 
 /// How long the pointer must rest on the island before the line opens (crossing the notch on the way along the menu bar,
-/// even slowly, does not open it), and how long off it before the line closes (a slip off the edge does not close it).
+/// even slowly, does not open it), and how long off it before the line closes (a slip off the edge does not close it),
+/// unless Settings says otherwise (island.openDelay, island.closeDelay).
 pub const HOVER_IN_MS: u64 = 400;
 pub const HOVER_OUT_MS: u64 = 300;
 
+/// The waits in force, and whether resting on the island opens the status at all (island.peekOnHover; off, the island
+/// opens only on a click).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HoverTimes { pub in_ms: u64, pub out_ms: u64, pub peek: bool }
+impl HoverTimes { pub const USUAL: HoverTimes = HoverTimes { in_ms: HOVER_IN_MS, out_ms: HOVER_OUT_MS, peek: true }; }
+
 /// The pointer on our own island. macOS tells us only when it enters and leaves that one window (a tracking area on it);
 /// nothing is read anywhere else.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Hover { inside: bool, since: u64, shown: bool }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Hover { inside: bool, since: u64, shown: bool, times: HoverTimes }
+impl Default for Hover { fn default() -> Self { Hover::new() } }
 impl Hover {
-    pub const fn new() -> Self { Hover { inside: false, since: 0, shown: false } }
+    pub const fn new() -> Self { Hover { inside: false, since: 0, shown: false, times: HoverTimes::USUAL } }
+    /// The waits from Settings (main.rs gives them each time the pointer comes or goes).
+    pub fn set_times(&mut self, times: HoverTimes) { self.times = times; }
     pub fn enter(&mut self, t: u64) { if !self.inside { self.inside = true; self.since = t; } }
     pub fn exit(&mut self, t: u64) { if self.inside { self.inside = false; self.since = t; } }
-    fn need(&self) -> u64 { if self.inside { HOVER_IN_MS } else { HOVER_OUT_MS } }
-    /// Whether the line shows at time `t`.
+    fn need(&self) -> u64 { if self.inside { self.times.in_ms } else { self.times.out_ms } }
+    /// Whether the line shows at time `t`. Never with the status on pointing turned off.
     pub fn at(&mut self, t: u64) -> bool {
+        if !self.times.peek { self.shown = false; return false; }
         if self.inside != self.shown && t.saturating_sub(self.since) >= self.need() { self.shown = self.inside; }
         self.shown
     }
     /// How long until the answer may change, if it may.
     pub fn wait_ms(&self, t: u64) -> Option<u64> {
-        (self.inside != self.shown).then(|| self.need().saturating_sub(t.saturating_sub(self.since)))
+        (self.times.peek && self.inside != self.shown).then(|| self.need().saturating_sub(t.saturating_sub(self.since)))
     }
 }
 
@@ -406,33 +454,33 @@ mod tests {
         let mut asked: Vec<String> = Vec::new();
         for h in [CARD.1, 420.0, CARD_MAX_H] {
             // The island's display known: Home drops from the island, wherever the character lives, and no edge is read.
-            let spot = card_spot(Some(&mac), home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, h).unwrap();
+            let spot = card_spot(Some(&mac), home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, (CARD.0, h)).unwrap();
             assert_eq!(spot, home_frame(&mac, (CARD.0, h)), "{h}");
             assert!((cx(spot) - cx(island_frame(&mac, Mode::Rest))).abs() < 0.01 && spot[1] >= 32.0 + GAP, "under the notch: {spot:?}");
             assert!(!crate::docking::overlaps(spot, home), "never over the character");
             // On the external display when the island is there, even with the character on the laptop.
-            assert_eq!(card_spot(Some(&ext), home, &both, |_: &str| Edge::Right, h), Some(home_frame(&ext, (CARD.0, h))));
+            assert_eq!(card_spot(Some(&ext), home, &both, |_: &str| Edge::Right, (CARD.0, h)), Some(home_frame(&ext, (CARD.0, h))));
             // No display known for the island: beside the character's home, facing into the screen from its edge, as before F18.
-            let beside = card_spot(None, home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, h).unwrap();
+            let beside = card_spot(None, home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, (CARD.0, h)).unwrap();
             assert_eq!(beside, card_frame(home, (CARD.0, h), mac.work, Edge::Right), "{h}");
             assert!(beside[0] + beside[2] <= home[0], "to the left of a character on the right edge: {beside:?}");
             // At its tallest it holds every shorter Home, so keeping clear of the tallest keeps clear of Home however it grows.
             for on in [Some(&mac), None] {
-                let tallest = card_spot(on, home, &both, |_: &str| Edge::Right, CARD_MAX_H).unwrap();
-                let now = card_spot(on, home, &both, |_: &str| Edge::Right, h).unwrap();
+                let tallest = card_spot(on, home, &both, |_: &str| Edge::Right, (CARD.0, CARD_MAX_H)).unwrap();
+                let now = card_spot(on, home, &both, |_: &str| Edge::Right, (CARD.0, h)).unwrap();
                 assert!(inside(now, tallest), "{on:?} {h}: {now:?} not in {tallest:?}");
             }
         }
         assert_eq!(asked, vec![mac.id.clone(); 3], "an edge is read only for Home beside the character, for the display home is on");
         // A home on the external display, with no island display known: beside it there, with that display's edge.
         let on_ext = [3912.0, 300.0, 160.0, 160.0];
-        let e = card_spot(None, on_ext, &both, |id: &str| if id == ext.id { Edge::Right } else { Edge::Left }, 300.0).unwrap();
+        let e = card_spot(None, on_ext, &both, |id: &str| if id == ext.id { Edge::Right } else { Edge::Left }, (CARD.0, 300.0)).unwrap();
         assert_eq!(e, card_frame(on_ext, (CARD.0, 300.0), ext.work, Edge::Right));
         // A home on no display at all: kept on the first display.
-        let l = card_spot(None, [-5000.0, -5000.0, 160.0, 160.0], &both, |_: &str| Edge::Left, 300.0).unwrap();
+        let l = card_spot(None, [-5000.0, -5000.0, 160.0, 160.0], &both, |_: &str| Edge::Left, (CARD.0, 300.0)).unwrap();
         assert!(inside(l, mac.work), "{l:?}");
-        assert_eq!(card_spot(None, home, &[], |_: &str| Edge::Right, 300.0), None, "no display at all: nowhere");
-        assert_eq!(card_spot(Some(&mac), home, &[], |_: &str| Edge::Right, 300.0), Some(home_frame(&mac, (CARD.0, 300.0))));
+        assert_eq!(card_spot(None, home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), None, "no display at all: nowhere");
+        assert_eq!(card_spot(Some(&mac), home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), Some(home_frame(&mac, (CARD.0, 300.0))));
         assert_eq!((CARD, CARD_MAX_H), ((380.0, 150.0), 640.0), "Home is 380 wide for its tabs and grows to 640");
     }
     fn main_body(name: &str) -> String {
@@ -447,11 +495,19 @@ mod tests {
         assert!(spot.contains("island::card_spot(") && spot.contains("ISLAND_ON") && spot.contains("roamer().home()"), "card_spot asks the rule, with the island's display and the character's home");
         assert_eq!(main.matches("island::home_frame(").count(), 0, "Home is placed only through card_spot");
         assert_eq!(main.matches("card_frame(").count(), 0, "and only card_spot puts it beside the character");
-        assert!(main.contains("use island::{CARD, CARD_MAX_H};") && !main.contains("const CARD:") && !main.contains("const CARD_MAX_H"), "one card size, defined here");
-        assert!(main_body("fn resize_card(").contains("height.clamp(CARD.1, CARD_MAX_H)"), "Home never grows past what the character keeps clear of");
-        assert!(main_body("fn card_room(").contains("card_spot(mtm, d, CARD_MAX_H)"), "trips keep clear of Home where card_spot says, at its tallest");
+        // One size definition (island.rs HomeSize), and the size in force comes from one place (home.size, home_size()).
+        assert!(main.contains("use island::CARD;") && !main.contains("const CARD:") && !main.contains("CARD_MAX_H") && !main.contains("HomeSize { w:"), "one card size, defined here");
+        assert!(main.contains("fn home_size() -> island::HomeSize { home_set().size }"));
+        let rc = main_body("fn resize_card(");
+        assert!(rc.contains("let hs = home_size();") && rc.contains("height.clamp(hs.min_h, hs.max_h)"), "Home never grows past what the character keeps clear of");
+        assert!(main_body("fn card_room(").contains("card_spot(mtm, d, home_size().max_h)"), "trips keep clear of Home where card_spot says, at its tallest");
         let pc = main_body("fn place_card(");
-        assert!(pc.contains("card_spot(mtm, d, CARD_H.load(") && pc.contains("card_spot(mtm, d, CARD_MAX_H)"), "placed, then the visit checked against the tallest");
+        assert!(pc.contains("card_spot(mtm, d, CARD_H.load(") && pc.contains("card_spot(mtm, d, home_size().max_h)"), "placed, then the visit checked against the tallest");
+        // Home is placed at its width in force, its height held inside its range, and the character keeps clear of it at
+        // the same size, on its own place and when dragged.
+        assert!(spot.contains("(hs.size.w, h.clamp(hs.size.min_h, hs.size.max_h))"), "{spot}");
+        assert!(main_body("fn apply_dock(").contains("docking::place(&target, DOCK, edge, pct, home_size())"));
+        assert!(main_body("fn drag_dock(").contains("snap_on(&target, DOCK, x, y, home_size())"));
     }
     #[test]
     fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
@@ -560,34 +616,34 @@ mod tests {
     fn the_island_follows_the_person_to_another_display_after_the_pointer_stays_there() {
         let (mac, ext) = ("1512x982@0,0", "2560x1440@1512,-458");
         let mut f = Follow::new();
-        assert_eq!(f.sample(Some(mac), mac, false, 0), None, "already there");
+        assert_eq!(f.sample(Some(mac), mac, false, 0, FOLLOW_MS), None, "already there");
         // A quick trip to the other display and back does not move it.
-        assert_eq!(f.sample(Some(ext), mac, false, 1000), None);
-        assert_eq!(f.sample(Some(ext), mac, false, 1000 + FOLLOW_MS - 1), None);
-        assert_eq!(f.sample(Some(mac), mac, false, 1000 + FOLLOW_MS + 10), None);
-        assert_eq!(f.sample(Some(ext), mac, false, 1000 + FOLLOW_MS + 500), None, "the wait starts again");
+        assert_eq!(f.sample(Some(ext), mac, false, 1000, FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(ext), mac, false, 1000 + FOLLOW_MS - 1, FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(mac), mac, false, 1000 + FOLLOW_MS + 10, FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(ext), mac, false, 1000 + FOLLOW_MS + 500, FOLLOW_MS), None, "the wait starts again");
         // Staying there does, once.
         let t = 1000 + FOLLOW_MS + 500;
-        assert_eq!(f.sample(Some(ext), mac, false, t + FOLLOW_MS), Some(ext.to_string()));
-        assert_eq!(f.sample(Some(ext), ext, false, t + FOLLOW_MS + 500), None, "it is there now");
-        assert_eq!(f.sample(Some(ext), ext, false, t + 10 * FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(ext), mac, false, t + FOLLOW_MS, FOLLOW_MS), Some(ext.to_string()));
+        assert_eq!(f.sample(Some(ext), ext, false, t + FOLLOW_MS + 500, FOLLOW_MS), None, "it is there now");
+        assert_eq!(f.sample(Some(ext), ext, false, t + 10 * FOLLOW_MS, FOLLOW_MS), None);
     }
     #[test]
     fn the_island_stays_with_home_while_home_is_open_and_a_third_display_starts_the_wait_again() {
         let (a, b, c) = ("A", "B", "C");
         let mut f = Follow::new();
-        assert_eq!(f.sample(Some(b), a, true, 0), None);
-        assert_eq!(f.sample(Some(b), a, true, 10 * FOLLOW_MS), None, "Home is open: it drops from the island, so neither moves");
+        assert_eq!(f.sample(Some(b), a, true, 0, FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(b), a, true, 10 * FOLLOW_MS, FOLLOW_MS), None, "Home is open: it drops from the island, so neither moves");
         // Home closed: the wait starts from now, not from when the pointer first went there.
-        assert_eq!(f.sample(Some(b), a, false, 10 * FOLLOW_MS + 1), None);
-        assert_eq!(f.sample(Some(c), a, false, 10 * FOLLOW_MS + FOLLOW_MS / 2), None);
-        assert_eq!(f.sample(Some(c), a, false, 11 * FOLLOW_MS + 2), None, "C only since half a wait ago");
-        assert_eq!(f.sample(Some(c), a, false, 11 * FOLLOW_MS + FOLLOW_MS / 2), Some(c.to_string()));
+        assert_eq!(f.sample(Some(b), a, false, 10 * FOLLOW_MS + 1, FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(c), a, false, 10 * FOLLOW_MS + FOLLOW_MS / 2, FOLLOW_MS), None);
+        assert_eq!(f.sample(Some(c), a, false, 11 * FOLLOW_MS + 2, FOLLOW_MS), None, "C only since half a wait ago");
+        assert_eq!(f.sample(Some(c), a, false, 11 * FOLLOW_MS + FOLLOW_MS / 2, FOLLOW_MS), Some(c.to_string()));
         // The pointer between displays (in a gap) is no reading at all.
         let mut g = Follow::new();
-        assert_eq!(g.sample(Some(b), a, false, 0), None);
-        assert_eq!(g.sample(None, a, false, FOLLOW_MS / 2), None);
-        assert_eq!(g.sample(Some(b), a, false, FOLLOW_MS + 1), None, "a gap starts the wait again");
+        assert_eq!(g.sample(Some(b), a, false, 0, FOLLOW_MS), None);
+        assert_eq!(g.sample(None, a, false, FOLLOW_MS / 2, FOLLOW_MS), None);
+        assert_eq!(g.sample(Some(b), a, false, FOLLOW_MS + 1, FOLLOW_MS), None, "a gap starts the wait again");
         assert!(FOLLOW_MS >= 1500 && FOLLOW_MS <= 5000, "a few seconds");
     }
     #[test]
@@ -640,5 +696,93 @@ mod tests {
         assert!(settings.paths.contains(&p), "delete everything removes it with the settings");
         assert_eq!(items.iter().filter(|i| i.paths.contains(&p)).count(), 1, "and only once");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ---- M11 area 4: the settings for Home, the island and the character (protocol/settings.json) ----
+    #[test]
+    fn home_is_380_by_up_to_640_as_today_and_large_is_460_by_up_to_760() {
+        assert_eq!(HomeSize::STANDARD, HomeSize { w: 380.0, min_h: 150.0, max_h: 640.0 });
+        assert_eq!(HomeSize::LARGE, HomeSize { w: 460.0, min_h: 150.0, max_h: 760.0 });
+        assert_eq!((CARD, CARD_MAX_H), ((HomeSize::STANDARD.w, HomeSize::STANDARD.min_h), HomeSize::STANDARD.max_h), "the usual size is today's");
+        assert_eq!(HomeSize::of("standard"), HomeSize::STANDARD);
+        assert_eq!(HomeSize::of("large"), HomeSize::LARGE);
+        for junk in ["", "Large", "huge"] { assert_eq!(HomeSize::of(junk), HomeSize::STANDARD, "{junk}"); }
+    }
+    #[test]
+    fn a_large_home_drops_from_the_island_or_sits_beside_the_character_at_its_own_size() {
+        let (mac, ext) = (mbp14(), ext());
+        let both = [mac.clone(), ext.clone()];
+        let home = [1352.0, 427.5, 160.0, 160.0];
+        let l = HomeSize::LARGE;
+        for h in [l.min_h, 420.0, l.max_h] {
+            let spot = card_spot(Some(&mac), home, &both, |_: &str| Edge::Right, (l.w, h)).unwrap();
+            assert_eq!(spot, home_frame(&mac, (l.w, h)));
+            assert_eq!((spot[2], spot[3]), (460.0, h));
+            assert!(inside(spot, mac.work) && !crate::docking::overlaps(spot, home), "{spot:?}");
+            let beside = card_spot(None, home, &both, |_: &str| Edge::Right, (l.w, h)).unwrap();
+            assert_eq!(beside, card_frame(home, (l.w, h), mac.work, Edge::Right));
+            assert!(beside[0] + beside[2] <= home[0], "{beside:?}");
+        }
+        // The usual size gives exactly today's places.
+        assert_eq!(card_spot(Some(&mac), home, &both, |_: &str| Edge::Right, (CARD.0, 420.0)), Some(home_frame(&mac, (380.0, 420.0))));
+    }
+    #[test]
+    fn the_waits_before_the_status_opens_and_closes_follow_the_setting_at_both_ends() {
+        assert_eq!(HoverTimes::USUAL, HoverTimes { in_ms: 400, out_ms: 300, peek: true }, "the usual waits are today's");
+        assert_eq!(Hover::new(), Hover::default());
+        for (open, close) in [(100u64, 100u64), (1500, 1000), (HOVER_IN_MS, HOVER_OUT_MS)] {
+            let mut h = Hover::new();
+            h.set_times(HoverTimes { in_ms: open, out_ms: close, peek: true });
+            h.enter(1000);
+            assert!(!h.at(1000 + open - 1), "{open}: not yet");
+            assert_eq!(h.wait_ms(1000), Some(open));
+            assert!(h.at(1000 + open), "{open}: open");
+            h.exit(5000);
+            assert!(h.at(5000 + close - 1), "{close}: still open");
+            assert!(!h.at(5000 + close), "{close}: closed");
+        }
+    }
+    #[test]
+    fn with_status_on_pointing_turned_off_the_island_never_opens_by_itself() {
+        let mut h = Hover::new();
+        h.set_times(HoverTimes { peek: false, ..HoverTimes::USUAL });
+        h.enter(0);
+        for t in [0, HOVER_IN_MS, 10 * HOVER_IN_MS, 60_000] { assert!(!h.at(t), "{t}"); }
+        assert_eq!(h.wait_ms(10), None, "nothing to look at again");
+        // Turned back on, resting opens it again after the usual wait.
+        h.set_times(HoverTimes::USUAL);
+        h.exit(70_000); h.enter(70_001);
+        assert!(h.at(70_001 + HOVER_IN_MS));
+    }
+    #[test]
+    fn the_wait_before_the_island_moves_to_another_display_follows_the_setting() {
+        let (mac, ext) = ("A", "B");
+        for wait in [1000u64, FOLLOW_MS, 10_000] {
+            let mut f = Follow::new();
+            assert_eq!(f.sample(Some(ext), mac, false, 0, wait), None);
+            assert_eq!(f.sample(Some(ext), mac, false, wait - 1, wait), None, "{wait}: not yet");
+            assert_eq!(f.sample(Some(ext), mac, false, wait, wait), Some(ext.to_string()), "{wait}");
+        }
+        assert_eq!(FOLLOW_MS, 3000, "the usual wait is today's");
+    }
+    #[test]
+    fn the_island_lives_on_the_display_the_setting_names() {
+        let (mac, ext) = (mbp14(), ext());
+        let both = [mac.clone(), ext.clone()];
+        let on_ext = (2000.0, 100.0);
+        // Follow me is today's rule, whatever the built in display is.
+        for (last, mouse, open) in [("1512x982@0,0", on_ext, true), ("2560x1440@1512,-458", (100.0, 500.0), false), ("", on_ext, false)] {
+            assert_eq!(pick_where(&both, Where::Follow, Some(&mac.id), last, mouse, open), pick(&both, last, mouse, open));
+        }
+        // Built in: the laptop's own screen, wherever the pointer is and wherever it was last.
+        assert_eq!(pick_where(&both, Where::BuiltIn, Some(&mac.id), &ext.id, on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((mac.id.clone(), "built_in")));
+        // With the lid closed (or a Mac with no screen of its own) there is no built in display: the main one.
+        let main_ext = Display { primary: true, ..ext.clone() };
+        assert_eq!(pick_where(&[main_ext.clone()], Where::BuiltIn, None, "", on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((ext.id.clone(), "main")));
+        assert_eq!(pick_where(&[main_ext], Where::BuiltIn, Some(&mac.id), "", on_ext, true).map(|(_, w)| w), Some("main"), "a built in display that is not there");
+        // Main: the display with the menu bar (the first macOS lists), even with the pointer on the other one.
+        assert_eq!(pick_where(&both, Where::Main, Some(&mac.id), &ext.id, on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((mac.id.clone(), "main")));
+        assert!(pick_where(&[], Where::Main, None, "", on_ext, true).is_none());
+        assert_eq!((Where::of("follow"), Where::of("builtIn"), Where::of("main"), Where::of("junk")), (Where::Follow, Where::BuiltIn, Where::Main, Where::Follow));
     }
 }
