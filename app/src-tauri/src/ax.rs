@@ -170,11 +170,15 @@ fn read_field(el: &Cf) -> Option<(String, bool)> {
     None
 }
 
+/// A password box (its role or subrole). Never read, whatever else is true.
+fn secure_field(f: &Focused) -> bool { f.role == "AXSecureTextField" || f.subrole == "AXSecureTextField" }
+
 /// Reads the focused box. Chromium and Electron apps build their Accessibility tree late, so this wakes it and retries
-/// a few times. It never touches the clipboard. Returns None when the app exposes nothing readable.
+/// a few times. It never touches the clipboard, and never reads a password box the person moved to meanwhile. Returns None
+/// when the app exposes nothing readable.
 pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
     ladder(pid, |rung| {
-        let f = focused(pid)?;
+        let f = focused(pid).filter(|f| !secure_field(f))?;
         let (text, sel) = read_field(&f.element)?;
         let sel_start = if sel { selection_start(&f.element) } else { None };
         Some((f.element, Read { text, had_selection: sel, sel_start, rung }))
@@ -185,7 +189,7 @@ pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
 /// box. The same wake up steps as `read_ladder`. None when nothing is selected or the app exposes nothing readable.
 pub fn read_selection(pid: i32) -> Option<(String, &'static str)> {
     ladder(pid, |rung| {
-        let f = focused(pid)?;
+        let f = focused(pid).filter(|f| !secure_field(f))?;
         text_attr(&f.element, "AXSelectedText").filter(|s| !s.trim().is_empty()).map(|s| (s, rung))
     })
 }

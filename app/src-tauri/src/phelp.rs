@@ -150,6 +150,14 @@ fn finish_read(app: &AppHandle, mut session: rules::ReadSession, gen: u64, pid: 
     if session.begin_read().is_err() { return; }
     // Stopped since the press: nothing is read.
     if GEN.load(Ordering::SeqCst) != gen { session.finish(); return; }
+    // The box and the keyboard as they are now: after a question about this app was answered, the person may be in a
+    // password box, or typing a password (sudo in Terminal). Never read then.
+    let now = ax::focused(pid);
+    let (role, subrole) = now.as_ref().map(|f| (f.role.as_str(), f.subrole.as_str())).unwrap_or(("", ""));
+    if let Some(v) = rules::secure_now(role, subrole, ax::secure_input_enabled()) {
+        say(app, "refused", json!({ "message": v.plain() })); note("read", &bundle, 0, 0, "refused"); session.finish(); return;
+    }
+    drop(now);
     let read = ax::read_ladder(pid);
     // Stop everything (or a newer press) came while the text was being read: it is dropped here, never sent to the model.
     if GEN.load(Ordering::SeqCst) != gen { session.finish(); return; }
