@@ -170,6 +170,20 @@ describe("the runner kit keeps every task inside the stops", () => {
     await k.cleanup();
     expect(k.meter.caseSpent).toBeCloseTo(0.25, 6);
   }, 10_000);
+  test("the notes count the approval cards a person would have answered, per task", async () => {
+    const k = kitCtx(0.5); const f = fakeRunner();
+    const r = realKit(k.ctx, { cheap: false, loopChoice: "stop", spawn: () => f.proc }).runner("/p");
+    await r.ready();
+    r.send(start(0.25));
+    f.emit({ type: "checkpoint.created", project: "/p", agent: "b1", checkpoint: "cp_1", label: "Before: x", files: 1, skipped: [] });
+    f.emit({ type: "approval.request", approval: "ap_1", agent: "b1", checkpoint: "cp_1", toolUseId: "t", risk: "git", title: "git init changes your repository", expiresAt: "2999-01-01T00:00:00Z" });
+    f.emit({ type: "approval.request", approval: "ap_2", agent: "b1", checkpoint: "cp_1", toolUseId: "t2", risk: "network", title: "curl reaches outside your project", expiresAt: "2999-01-01T00:00:00Z" });
+    f.emit({ type: "checkpoint.created", project: "/p", agent: "b1", checkpoint: "cp_2", label: "Before: y", files: 1, skipped: [] });
+    f.emit({ type: "agent.state", agent: "b1", state: "done" });
+    await r.until((e) => e.type === "agent.state" && e.state === "done", 2000);
+    await k.cleanup();
+    expect(k.notes.join(" | ")).toMatch(/approval cards: 2 in 2 tasks \(1 a task\)/);
+  }, 10_000);
   test("a task that finished is counted only by what the runner booked", async () => {
     const k = kitCtx(0.5); const f = fakeRunner();
     const r = realKit(k.ctx, { cheap: false, loopChoice: "stop", spawn: () => f.proc }).runner("/p");

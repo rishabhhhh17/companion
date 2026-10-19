@@ -599,6 +599,43 @@ export const S = {
   followUpHelp: "It carries on from this task, with a new undo point and a new check.",
   tryAgain: "Try again",
   tryAgainHelp: "Runs the same request again, and tells it what failed.",
+  // The agent's last words on the receipt. When they ask the person something, the task needs them, and the follow up box
+  // is where to answer.
+  receiptSaid: "What it said",
+  receiptAsks: "It needs your answer",
+  receiptAsksToo: "It asks",
+  receiptAnswerHelp: "Type your answer below. It carries on from here, with a new undo point and a new check. A key or a password never goes here: add it to your project's settings yourself.",
+  followUpAnswer: "Your answer (never a key or a password)",
+  followUpAnswerLabel: "Your answer",
+  historyNeedsYou: "Waiting for your answer",
+  driveNeedsYou: "a step needs your answer",
+  // Claude out of reach: what happened and what to do, never blaming the project or the key.
+  noConnection: "Companion could not reach Claude. Check that your Mac is online, then press Try again.",
+  claudeBusy: "Claude is busy or having trouble right now. This is on Anthropic's side. Wait a minute, then press Try again.",
+  // The same where there is no Try again: planning, Rescue's look, Research, Prompt help, Show me, the error explainer,
+  // Draw it for me and looking at a picture.
+  noConnectionAsk: "Companion could not reach Claude. Check that your Mac is online, then ask again.",
+  claudeBusyAsk: "Claude is busy or having trouble right now. This is on Anthropic's side. Wait a minute, then ask again.",
+  // A failed request of another kind (runner/src/reach.ts), never in Claude Code's own words. again: what to do once it can
+  // work again, "press Try again", or "ask again" where there is no Try again.
+  againTryAgain: "press Try again",
+  againAsk: "ask again",
+  claudeStopped: (kind: string, again: string): string => {
+    switch (kind) {
+      case "authentication_failed": case "cloud_credential_error": return "Claude did not accept your key or your sign in. Check it in Settings.";
+      case "billing_error": return "Your Anthropic account has no credit left. Add some at console.anthropic.com.";
+      case "rate_limit": return `Too many requests reached Claude at once. Wait a minute, then ${again}.`;
+      case "oauth_org_not_allowed": case "account_on_hold": case "verification_required": return "Anthropic is not letting Claude work for your account right now. Sign in at console.anthropic.com or claude.ai to see why.";
+      case "invalid_request": return "Claude could not take this request, often because it is too long. Ask for a smaller part of it, or start a new task.";
+      case "model_not_found": return "The Claude model for this is not available on your account. Choose another one in Settings.";
+      case "max_output_tokens": return `Claude's reply got too long and was cut off. Ask for a smaller part of it, or ${again}.`;
+      default: return `Claude stopped with an error before it finished. Wait a moment, then ${again}.`;
+    }
+  },
+  historyNoConnection: "Stopped: could not reach Claude",
+  historyClaudeBusy: "Stopped: Claude was busy",
+  driveNoConnection: "Companion could not reach Claude",
+  driveClaudeBusy: "Claude was busy",
   // What the agent is doing right now, in plain words (never the raw command).
   toolReading: (file: string) => `Reading ${file}`,
   toolWriting: (file: string) => `Writing ${file}`,
@@ -713,6 +750,8 @@ export const S = {
     "work.tries": { label: "Checks before Companion asks you what to do", help: "When a check on the work fails, Claude tries again. After this many failed checks Claude stops, and if they all failed the same way Companion asks you what to do next. Try a different approach gets as many again. The spending limit still caps the cost.", also: ["tries", "retries", "attempts", "loop", "stuck", "checks"] },
     "work.askOnAnyFailure": { label: "Ask me when the tries run out, even if each failure was different", help: "Off, a task whose checks failed in different ways ends as not done. On, Companion asks you whether to try a different approach. It asks at most once in a task.", also: ["tries", "loop", "stuck", "ask", "different approach"] },
     "work.tryAgain": { label: "Try again", help: "What Try again does after a task that did not work. Fresh starts a new conversation with Claude, which is still told what you asked, how the last attempt ended and which check failed.", also: ["retry", "again", "conversation", "fresh"], options: { carry_on: "Carry on the conversation", fresh: "Start a fresh conversation" } },
+    "work.stopOnQuestion": { label: "Stop and wait when Claude asks me something", help: "When Claude needs something only you can give, such as a setting's value or a choice, it does what it can, then asks you one short question and waits for your answer under the result. Off, it is sent the failed checks to fix, as it was before, and its question is only shown.", also: ["question", "ask", "answer", "wait", "needs you", "fix"] },
+    "work.webSearch": { label: "Let tasks search the web", help: "Claude can search the web while it works on a task, for example to read how a library is used. Each search is a small extra cost on your own key. Research always searches the web.", also: ["web", "search", "internet", "cost", "money", "google"] },
     "drive.maxSteps": { label: "Most steps in a plan", help: "A Drive plan is asked for no more steps than this, and a longer one is cut. The estimate shown and the plan's spending limit still apply. Rescue plans keep their own 3 to 7 steps.", also: ["drive", "plan", "steps", "long"] },
     "approval.waitMinutes": { label: "How long a question waits for your answer", help: "When Companion asks before doing something, the question waits this long for you. A question already waiting keeps its time.", also: ["approval", "question", "ask", "timeout", "wait", "minutes"] },
     "explain.mode": { label: "Explain after a task", help: "Two short reasons under each result, in plain words, and if you like one quick question to check them. For all your projects. Each one is a small cost on your own Claude.", also: ["why", "learn", "teach", "reasons", "question", "quiz"], options: { off: "Off", reasons: "Short reasons", reasonsAndQuestion: "Reasons and a quick check question" } },
@@ -863,6 +902,7 @@ export const S = {
       stuck: "This keeps failing. Companion needs you to choose what to do next.",
       paused: "Companion paused and is waiting for you.",
       plan: "A plan is ready for you to look at on Home.",
+      asks: "Companion has a question for you about the task. It is waiting on Home.",
     },
     taskDone: {
       passed: "The task is done, and its checks passed.",

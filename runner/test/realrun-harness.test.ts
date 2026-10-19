@@ -10,7 +10,7 @@ import { AssistService, FastLane, ImageStore, buildFastOptions } from "../src/la
 import { buildSdkOptions } from "../src/sdkEngine.ts";
 import { Ledger } from "../src/ledger.ts";
 import {
-  AGENT_TOOLS, DEFAULT_KEYCHAIN_SERVICE, HarnessRefusal, RunnerDriver, SpendMeter, SpendStop, autoAnswer, checkInit, checkOptions, guardQuery,
+  AGENT_TOOLS, approvalTally, DEFAULT_KEYCHAIN_SERVICE, HarnessRefusal, RunnerDriver, SpendMeter, SpendStop, autoAnswer, checkInit, checkOptions, guardQuery,
   harnessEnv, hideKey, isHarnessStop, keychainRefFrom, ledgerSpent, makeThrowawayConfigDir, parseArgs, runCases, type Case, type Proc,
 } from "../scripts/realrun-harness.ts";
 const HAIKU = "claude-haiku-4-5-20251001";
@@ -478,5 +478,16 @@ describe("reading what a runner process spent", () => {
     const l = new Ledger(join(data, "ledger.db"));
     l.add("/p1", 0.12); l.add("/p2", 0.03);
     expect(ledgerSpent(data)).toBeCloseTo(0.15, 6);
+  });
+});
+
+describe("approval cards per task", () => {
+  const ev = (type: string, extra: Record<string, unknown> = {}) => ({ type, ...extra });
+  test("cards and the tasks they came in, from the runner's own events", () => {
+    expect(approvalTally([])).toEqual({ cards: 0, tasks: 0, perTask: 0, line: "approval cards: 0 in 0 tasks" });
+    const t = approvalTally([ev("checkpoint.created"), ev("approval.request"), ev("approval.resolved"), ev("approval.request"), ev("checkpoint.created"), ev("approval.request")]);
+    expect([t.cards, t.tasks, t.perTask]).toEqual([3, 2, 1.5]);
+    expect(t.line).toBe("approval cards: 3 in 2 tasks (1.5 a task)");
+    expect(approvalTally([ev("checkpoint.created"), ev("approval.request")]).line).toBe("approval cards: 1 in 1 task (1 a task)");
   });
 });

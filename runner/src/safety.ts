@@ -14,7 +14,8 @@ export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason:
 export type ToolCall = { tool: string; input: Record<string, unknown> };
 // started: the ids of the background commands this task's own shell commands reported starting.
 export type Started = { shells: ReadonlySet<string> };
-export type Context = { project: string; userAskedCommit?: boolean; started?: Started; claudeTemp?: string };
+// webSearch: false when the person turned off Let tasks search the web (work.webSearch) for this task.
+export type Context = { project: string; userAskedCommit?: boolean; started?: Started; claudeTemp?: string; webSearch?: boolean };
 export const claudeTempRoot = (env: Record<string, string | undefined> = process.env): string => resolve(env.CLAUDE_CODE_TMPDIR || "/tmp", `claude-${process.getuid?.() ?? 0}`);
 
 const allow = (reason = "ok"): Verdict => ({ decision: "allow", reason, undoable: true });
@@ -69,7 +70,30 @@ const insideProject = (project: string, file: string) => { const w = whereIs(pro
 
 const WRITE_TOOLS: Record<string, string> = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
 const READ_PATHS: Record<string, string> = { Read: "file_path", Grep: "path", Glob: "path", LS: "path", NotebookRead: "notebook_path" };
-const SAFE_TOOLS = new Set(["TodoWrite", "Task", "WebSearch", "Agent", "ExitPlanMode", "ToolSearch"]);
+const SAFE_TOOLS = new Set(["TodoWrite", "WebSearch", "ExitPlanMode", "ToolSearch"]);
+const WEB_SEARCH_OFF = "Web search is turned off for tasks in Companion's Settings. Carry on without searching the web.";
+
+// Built in tools the pinned SDK (0.3.293) has that Companion never gives the engine (tools.ts lists what it does give). The
+// engine is handed an exact list, so none of these should be asked for; if one is (an older or newer Claude, or the list
+// not honoured), it is refused here with a plain reason, which Claude reads and the person never has to judge: before this,
+// each one fell through to an approval card about an "unknown tool". A refusal only makes things stricter (rule 12).
+const ASK_IN_WORDS = "Companion gives Claude no question box. Do every part you can, then end your final message with one short question; the person answers it under the receipt.";
+const NOT_GIVEN_WHY = "Companion does not give Claude this tool. Carry on with the tools you have.";
+// A sub agent would run with no card for anything it does, and Agent can also start Claude in a git worktree written into
+// the person's .git (rule 10), in a remote environment (the project leaves this Mac), or on a dearer model.
+const NO_SUB_AGENTS = "Companion does not give Claude sub agents. Do the work yourself with the tools you have.";
+export const NOT_GIVEN: ReadonlyMap<string, string> = new Map<string, string>([
+  ["AskUserQuestion", ASK_IN_WORDS],
+  ["Agent", NO_SUB_AGENTS],
+  ["Task", NO_SUB_AGENTS],
+  ["EnterPlanMode", "Companion does its own planning. Carry on with the task, or end your final message with one short question if you need the person to choose."],
+  ...[
+    "Skill", "SlashCommand", "Monitor", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList", "Workflow", "CronCreate", "CronDelete", "CronList",
+    "ScheduleWakeup", "RemoteTrigger", "PushNotification", "EnterWorktree", "ExitWorktree", "ListMcpResourcesTool", "ReadMcpResourceTool",
+    "ReadMcpResourceDirTool", "RefreshMcpTools", "SendFeedback", "ReportFindings", "ClaudeDesign", "ProposeSkills", "ProposeGoal", "OfferChromeSetup",
+    "ReadNotifications", "ShowOnboardingRolePicker", "Artifact", "Projects", "SendUserMessage", "LSP", "EndConversation",
+  ].map((t): [string, string] => [t, NOT_GIVEN_WHY]),
+]);
 
 const protectedWhy = (part: string): string => part.startsWith(".git") ? "agents never write the project's .git folder or git settings" : "Companion's and Claude's own settings are not for the agent to change";
 
@@ -152,7 +176,10 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     if (why === "invalid") return deny("network", "that is not a web address");
     return why ? ask("network", why, false) : allow();
   }
+  if (tool === "WebSearch" && ctx.webSearch === false) return deny("network", WEB_SEARCH_OFF);
   if (SAFE_TOOLS.has(tool)) return allow();
+  const notGiven = NOT_GIVEN.get(tool);
+  if (notGiven) return deny("irreversible", notGiven);
   if (tool === "Bash") {
     const cmd = input.command;
     if (typeof cmd !== "string") return ask("irreversible", "no command given");
