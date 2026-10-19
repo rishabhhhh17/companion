@@ -30,7 +30,7 @@ pub const PAGE_STORAGE_MARK: &str = "pageStorage.v1";
 /// metrics.set), which only the shell sends.
 pub const RUNNER_STORES: &[&str] = &["spending", "memory", "metrics"];
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
-const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics"];
+const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics", "rules"];
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
 const UNITS: &[&str] = &["dollars", "seconds", "minutes", "percent", "count", "words"];
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
@@ -50,7 +50,7 @@ impl Kind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     pub key: String, pub section: String, pub kind: Kind, pub default: Value,
-    pub options: Vec<String>, pub min: f64, pub max: f64, pub step: f64, pub unit: String,
+    pub options: Vec<String>, pub options_from: Option<String>, pub min: f64, pub max: f64, pub step: f64, pub unit: String,
     pub max_length: usize, pub max_items: usize, pub item_max_length: usize, pub allowed_items: Option<Vec<String>>,
     pub project: bool, pub applies: Vec<String>, pub store: String, pub live: bool, pub protective: bool,
     pub floor: Option<String>, pub renamed_from: Vec<String>, pub from_page: Option<(String, String)>,
@@ -94,7 +94,7 @@ pub fn parse_registry(text: &str) -> Result<Registry, String> {
         if d.get("floor").is_some_and(|f| !f.as_str().is_some_and(|t| !t.is_empty())) { problems.push(format!("{key}: floor must name its words")); }
         defs.push(Def {
             key: key.clone(), section: s("section"), kind, default: d.get("default").cloned().unwrap_or(Value::Null),
-            options: strs(d.get("options")), min: n("min"), max: n("max"), step: n("step"), unit: s("unit"),
+            options: strs(d.get("options")), options_from: d.get("optionsFrom").and_then(Value::as_str).map(str::to_string), min: n("min"), max: n("max"), step: n("step"), unit: s("unit"),
             max_length: u("maxLength"), max_items: u("maxItems"), item_max_length: d.get("item").and_then(|i| i.get("maxLength")).and_then(Value::as_u64).unwrap_or(0) as usize,
             allowed_items: d.get("allowedItems").map(|a| strs(Some(a))),
             project: scope == "project", applies: strs(d.get("applies")), store: s("store"), live: d.get("live").and_then(Value::as_bool).unwrap_or(false),
@@ -129,8 +129,10 @@ pub fn check_registry(r: &Registry) -> Vec<String> {
             continue;
         }
         if d.store == "keys" || d.store == "voice" { bad("that store has its own editor"); }
+        if d.store == "rules" && !(d.kind == Kind::List && d.protective && d.project) { bad("the house rules file holds only a protective list for a project"); }
+        if d.options_from.as_deref().is_some_and(|f| f != "projectScripts") || (d.options_from.is_some() && d.kind != Kind::Choice) { bad("only a choice can take its other options from the project's scripts"); }
         if d.runner_store() && (d.applies != ["runner"] || d.project) { bad("the engine's own stores are applied by the engine, for every project"); }
-        if d.kind == Kind::Choice { let mut u = std::collections::BTreeSet::new(); if d.options.len() < 2 || !d.options.iter().all(|o| !o.is_empty() && u.insert(o.clone())) { bad("a choice needs two or more different options"); } }
+        if d.kind == Kind::Choice { let mut u = std::collections::BTreeSet::new(); if d.options.len() < if d.options_from.is_some() { 1 } else { 2 } || !d.options.iter().all(|o| !o.is_empty() && u.insert(o.clone())) { bad("a choice needs two or more different options"); } }
         if d.kind == Kind::Number {
             if !(d.min.is_finite() && d.max.is_finite() && d.step.is_finite() && d.min < d.max && d.step > 0.0) { bad("a number needs min below max and a step above 0"); }
             else { let n = (d.max - d.min) / d.step; if (n - n.round()).abs() > 1e-9 { bad("the step must fit from min to max"); } }
@@ -186,11 +188,26 @@ fn one_line(v: &Value, max: usize) -> Result<String, &'static str> {
     Ok(t.to_string())
 }
 
+/// A choice whose other options come from the project (check.start) takes a script's name, never a command: a letter or
+/// digit first, then letters, digits and : . _ -, up to 60 of them (the same as settings.ts SCRIPT_NAME).
+pub fn script_name(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty() && b.len() <= 60 && b[0].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || b":._-".contains(c))
+}
+
+/// And only a script that starts the project: dev, develop, start, serve or preview, alone or with more after a : . _ or -
+/// (dev:web, start.local). Never a build, a lint, the tests, an install step or a deploy (the same as settings.ts
+/// isStartScript); the engine checks again at use that the script is there and does not sound like it deploys or deletes.
+pub fn start_script(s: &str) -> bool {
+    const WORDS: [&str; 5] = ["dev", "develop", "start", "serve", "preview"];
+    script_name(s) && WORDS.iter().any(|w| s == *w || (s.len() > w.len() + 1 && s.starts_with(w) && b":._-".contains(&s.as_bytes()[w.len()])))
+}
+
 /// Checks one value against its definition and gives it back tidied (trimmed, on its step). The error is a code.
 pub fn validate(d: &Def, v: &Value) -> Result<Value, &'static str> {
     match d.kind {
         Kind::Switch => v.as_bool().map(Value::Bool).ok_or("notSwitch"),
-        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s)).map(|s| json!(s)).ok_or("notChoice"),
+        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s) || (d.options_from.as_deref() == Some("projectScripts") && start_script(s))).map(|s| json!(s)).ok_or("notChoice"),
         Kind::Number => {
             let Some(n) = v.as_f64().filter(|_| v.is_number()) else { return Err("notNumber") };
             if !n.is_finite() { return Err("notNumber"); }
@@ -403,17 +420,16 @@ pub fn reset_plan(r: &Registry, which: Which, values: &Map<String, Value>, usual
     }).map(|d| d.key.clone()).collect())
 }
 
-/// Puts the settings kept in settings.json back to their usual values (removing them). One setting or a section: the
-/// app's value and this project's. Everything: the app's and every project's. Names this version does not know stay.
+/// Puts the settings kept in settings.json back to their usual values (removing them): the app's value and this project's,
+/// for one setting, a section or everything. Another project's own values stay as they are: the page was shown only this
+/// project's, so it could neither name the others first nor put them back with Undo. Names this version does not know stay.
 /// Returns the settings whose value in force changed.
 pub fn reset(r: &Registry, f: &mut File, which: Which, project: Option<&str>) -> Result<Vec<String>, &'static str> {
     let targets: Vec<Def> = reset_targets(r, which)?.into_iter().filter(|d| d.store == "settings" && d.kind != Kind::Custom).cloned().collect();
     let before = effective(r, f, project);
     for d in &targets {
         f.values.remove(&d.key);
-        if which == Which::All {
-            for (_, m) in f.projects.iter_mut() { if let Some(m) = m.as_object_mut() { m.remove(&d.key); } }
-        } else if let Some(p) = project.filter(|p| !p.is_empty()) {
+        if let Some(p) = project.filter(|p| !p.is_empty()) {
             if let Some(m) = f.projects.get_mut(&project_key(p)).and_then(Value::as_object_mut) { m.remove(&d.key); }
         }
     }
@@ -473,6 +489,19 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
 /// Only Home's own window may change settings (as with every other change in Settings).
 pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card" { Ok(()) } else { Err("not_card") } }
 
+/// The project a change is for. A page that says which project it was shown (house rules always do) has its change kept
+/// only while that is still the project in Home: the folder can change by itself in between (a copy from a link that
+/// finishes opens its folder), and one project's house rules must never be written over another's ("projectChanged").
+/// A change that names no project (Undo after a reset) is for the current one, as before.
+pub fn for_project<'a>(d: &Def, asked: Option<&'a str>, current: Option<&'a str>) -> Result<Option<&'a str>, &'static str> {
+    match asked {
+        Some(a) if Some(a) == current => Ok(Some(a)),
+        Some(_) => Err("projectChanged"),
+        None if d.store == "rules" => Err("projectChanged"),
+        None => Ok(current),
+    }
+}
+
 // ---------- the stores that stay where they were (wrapped) ----------
 
 /// dock.json: "Come to what it is about".
@@ -509,7 +538,8 @@ pub fn keys_from(v: &Value) -> Result<crate::keymap::Map, &'static str> {
 }
 
 /// What the wrapped stores hold now, read by main.rs.
-pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved }
+/// `rules`: the current project's own .companion/rules.txt (houserules.rs): Ok(None) when there is none or no project.
+pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved, pub rules: Result<Option<String>, &'static str> }
 
 /// What every page is told ("settings-changed", and settings_get's answer): each value in force the shell keeps (the
 /// engine's own three come from its events), each setting's usual value (for keys and voice, their own usual ones),
@@ -517,6 +547,8 @@ pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::p
 pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, problems: &[Problem], changed: &[String]) -> Value {
     let mut values = Map::new();
     let mut usual = Map::new();
+    let mut problems = problems.to_vec();
+    let has_project = project.is_some_and(|p| !p.is_empty() && p != crate::runner::NO_PROJECT);
     for d in &r.defs {
         if d.runner_store() { usual.insert(d.key.clone(), d.default.clone()); continue; }
         let v = match d.store.as_str() {
@@ -525,6 +557,11 @@ pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, prob
             "presentation" => presentation_value(&w.presentation, &d.key),
             "keys" => Some(keys_value(&w.keys)),
             "voice" => Some(voice_value(&w.voice)),
+            // The project's own rules file: shown only for a project, and a file that cannot be read here is a problem.
+            "rules" if has_project => match &w.rules {
+                Ok(text) => Some(json!(crate::houserules::value(text.as_deref()))),
+                Err(code) => { problems.push(Problem { key: Some(d.key.clone()), code }); None }
+            },
             _ => None,
         };
         if let Some(v) = v { values.insert(d.key.clone(), v); }
@@ -755,11 +792,14 @@ mod tests {
         assert_eq!(reset(&r, &mut f, Which::Section("checks"), Some(site)).unwrap(), vec!["checks.mustSee".to_string()]);
         assert_eq!(value_of(&r, &f, "checks.rules", Some(site)), Some(json!(["never edit .env"])));
         assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!(["Hello"])), "another project is left alone by a section");
-        // Everything: the app's and every project's, still never the protective list; the migration mark stays.
+        // Everything: the app's and this project's, still never the protective list; the migration mark stays. Another
+        // project keeps its own: the page was shown only this project's values, so Undo could only put those back.
+        set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), Some(site)).unwrap();
         f.migrated.push(PAGE_STORAGE_MARK.into());
         reset(&r, &mut f, Which::All, Some(site)).unwrap();
         assert_eq!(value_of(&r, &f, "work.fun", None), Some(json!(true)));
-        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!([])));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(site)), Some(json!([])));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!(["Hello"])), "another project keeps its own");
         assert_eq!(value_of(&r, &f, "checks.rules", Some(site)), Some(json!(["never edit .env"])));
         assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
         // The engine's own store is in a reset's targets (main.rs sends its command), and the protective one is not.
@@ -813,7 +853,7 @@ mod tests {
         // Fake stores: come to off, quiet during calls off, other keys for Stop everything, another voice.
         let stop = keymap::choices(keymap::Action::Stop)[1];
         let voice = crate::voiceset::Saved { voice: Some(crate::voiceset::Named { id: "v".into(), name: "Ava".into(), lang: "en-US".into() }), speed: 1.25, ..Default::default() };
-        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice };
+        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice, rules: Ok(None) };
         let mut f = File::default();
         set(registry(), &mut f, "fun.reactions", &json!(false), None).unwrap();
         let snap = snapshot(registry(), &f, None, &w, &[], &[]);
@@ -824,7 +864,7 @@ mod tests {
         assert_eq!(reset_plan(registry(), Which::Section("sharing"), values, usual, &[]).unwrap(), vec!["calls.quiet".to_string()]);
         assert!(reset_plan(registry(), Which::Key("sharing.hide"), values, usual, &[]).unwrap().is_empty(), "already usual");
         // Every store at its usual value: nothing to reset.
-        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default() };
+        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default(), rules: Ok(None) };
         let s2 = snapshot(registry(), &File::default(), None, &plain, &[], &[]);
         assert!(reset_plan(registry(), Which::All, s2["values"].as_object().unwrap(), s2["usual"].as_object().unwrap(), &[]).unwrap().is_empty());
     }
@@ -986,6 +1026,66 @@ mod tests {
         assert!(body("fn settings_writable(").contains("settings::ready_to_save("));
     }
     #[test]
+    fn house_rules_are_shown_from_the_projects_own_file_and_no_reset_ever_touches_them() {
+        let w = |rules: Result<Option<String>, &'static str>| Wrapped { dock: Default::default(), presentation: Default::default(), keys: crate::keymap::Map::DEFAULT, voice: Default::default(), rules };
+        let snap = snapshot(registry(), &File::default(), Some("/p"), &w(Ok(Some("# mine\nnever edit .env\nask before installing packages\n".into()))), &[], &[]);
+        assert_eq!(snap["values"]["rules.house"], json!(["never edit .env", "ask before installing packages"]));
+        assert_eq!(snap["usual"]["rules.house"], json!([]));
+        // A file that cannot be read here: no value, and one plain problem, so the row can say so and Save is refused.
+        let bad = snapshot(registry(), &File::default(), Some("/p"), &w(Err(crate::houserules::UNREADABLE)), &[], &[]);
+        assert!(bad["values"].get("rules.house").is_none());
+        assert_eq!(bad["problems"], json!([{ "key": "rules.house", "code": "rulesUnreadable" }]));
+        // No project chosen: no rules shown.
+        let none = snapshot(registry(), &File::default(), None, &w(Ok(None)), &[], &[]);
+        assert!(none["values"].get("rules.house").is_none());
+        // Protective: never in a reset, whatever the page was shown, and never reset on its own.
+        let (values, usual) = (snap["values"].as_object().unwrap(), snap["usual"].as_object().unwrap());
+        for which in [Which::All, Which::Section("checks")] { assert!(!reset_plan(registry(), which, values, usual, &[]).unwrap().contains(&"rules.house".to_string())); }
+        assert_eq!(reset_targets(registry(), Which::Key("rules.house")).err(), Some("protective"));
+        // And it is never in the engine's settings line: the engine reads the file itself.
+        assert!(!apply_line(registry(), &File::default(), Some("/p"), "x").contains("rules.house"));
+    }
+    #[test]
+    fn a_change_for_one_project_is_never_kept_for_another() {
+        let r = registry();
+        let (rules, skip, reactions) = (r.get("rules.house").unwrap(), r.get("check.skip").unwrap(), r.get("fun.reactions").unwrap());
+        // House rules always say which project's list they are; kept only while that is still the project in Home.
+        assert_eq!(for_project(rules, Some("/a"), Some("/a")), Ok(Some("/a")));
+        assert_eq!(for_project(rules, Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(rules, None, Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(rules, Some("/a"), None), Err("projectChanged"));
+        // Any other change that says its project is refused the same way; one that does not (Undo after a reset) is as before.
+        assert_eq!(for_project(skip, Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(skip, None, Some("/b")), Ok(Some("/b")));
+        assert_eq!(for_project(reactions, None, None), Ok(None));
+        // The shell asks it for every change, and writes the rules file of the project the list came from.
+        let main = include_str!("main.rs");
+        let set = &main[main.find("fn settings_set(").unwrap()..];
+        let set = &set[..set.find("\n}\n").unwrap()];
+        assert!(set.contains("project: Option<String>"), "settings_set takes the project the page was shown");
+        let change = &main[main.find("fn setting_change(").unwrap()..];
+        assert!(change.contains("settings::for_project(d, asked, project_opt().as_deref())?"));
+        let rules_arm = &change[change.find("\"rules\" => {").unwrap()..];
+        let rules_arm = &rules_arm[..rules_arm.find("\n        }\n").unwrap()];
+        assert!(!rules_arm.contains("project_opt()"), "the rules are written to the project they came from, never to whichever is current");
+    }
+    #[test]
+    fn a_start_is_one_of_the_projects_own_scripts_and_never_a_command() {
+        let d = registry().get("check.start").unwrap();
+        assert_eq!(d.options_from.as_deref(), Some("projectScripts"));
+        for ok in ["auto", "dev", "start:prod", "serve.b_c-d"] { assert_eq!(validate(d, &json!(ok)), Ok(json!(ok)), "{ok}"); }
+        for no in ["dev; rm -rf ~", "npm run dev", "", "-x", "dev server", "$(id)", "a.b_c-d"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); }
+        // Only a script that starts the project: never a build, a lint, the tests, an install step or a deploy.
+        for no in ["build", "lint", "test", "deploy", "postinstall", "predev", "devserver", "dev:"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); assert!(!start_script(no), "{no}"); }
+        // Only a choice may take its options from the project, and it still needs its fixed one.
+        let broken = |key: &str, patch: Value| { let mut v: Value = serde_json::from_str(REGISTRY_TEXT).unwrap(); let d = v["settings"].as_array_mut().unwrap().iter_mut().find(|d| d["key"] == key).unwrap(); for (k, x) in patch.as_object().unwrap() { d[k] = x.clone(); } check_registry(&parse_registry(&v.to_string()).unwrap()) };
+        assert!(!broken("check.start", json!({ "optionsFrom": null })).is_empty());
+        assert!(!broken("check.start", json!({ "optionsFrom": "files" })).is_empty());
+        assert!(!broken("check.press", json!({ "optionsFrom": "projectScripts" })).is_empty());
+        assert!(!broken("rules.house", json!({ "protective": false })).is_empty(), "the house rules store holds only a protective list");
+        assert!(broken("check.time", json!({ "optionsFrom": "projectScripts" })).is_empty());
+    }
+    #[test]
     fn the_wrapped_stores_read_and_change_through_their_own_files() {
         let p = crate::docking::Prefs::default();
         assert_eq!(dock_value(&p, "character.comeTo"), Some(json!(true)));
@@ -999,7 +1099,7 @@ mod tests {
         assert!(q.hide_from_sharing && !q.quiet_on_calls);
         assert!(presentation_with(&s, "sharing.hide", &json!(1)).is_none());
         // What every page is told: values the shell keeps, usual values, never the engine's own three as values.
-        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default() };
+        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default(), rules: Ok(None) };
         let snap = snapshot(registry(), &File::default(), Some("/p"), &w, &[], &["calls.quiet".to_string()]);
         assert_eq!(snap["values"]["character.comeTo"], json!(false));
         assert_eq!(snap["values"]["calls.quiet"], json!(false));

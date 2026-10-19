@@ -29,6 +29,9 @@ describe("the shipped list of settings", () => {
       "showme.allScreens": false, "fun.reactions": true, "teach.yourTurn": false, "display.textSize": "standard", "updates.daily": true,
       "spend.dailyLimit": 10, "explain.on": true, "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
       ...AREA_1,
+      // Area 2, checking your project (settings-checks-registry.test.ts).
+      "rules.house": [], "check.mustSee": [], "check.press": "", "check.afterPress": "", "check.start": "auto", "check.skip": [], "check.time": "normal",
+      "check.install": "auto", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true, "pictures.keep": 200, "rescue.readDeployLog": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

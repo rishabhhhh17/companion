@@ -7,29 +7,38 @@ import registryJson from "./settings.json";
 
 export type Kind = "switch" | "choice" | "number" | "text" | "list" | "custom";
 export type Applies = "shell" | "runner" | "pages";
-export type Store = "settings" | "dock" | "presentation" | "keys" | "voice" | "spending" | "memory" | "metrics";
+export type Store = "settings" | "dock" | "presentation" | "keys" | "voice" | "spending" | "memory" | "metrics" | "rules";
 export type Unit = "dollars" | "seconds" | "minutes" | "percent" | "count" | "words";
 export type MapName = "isOn" | "notOff" | "isOne" | "notZero" | "textSize";
 export type Def = {
   key: string; section: string; kind: Kind; default: unknown;
-  options?: string[]; min?: number; max?: number; step?: number; unit?: Unit; maxLength?: number;
+  options?: string[]; optionsFrom?: "projectScripts"; min?: number; max?: number; step?: number; unit?: Unit; maxLength?: number;
   maxItems?: number; item?: { maxLength: number }; allowedItems?: string[];
   scope: "app" | "project"; applies: Applies[]; store: Store; live: boolean;
   protective?: boolean; floor?: string; renamedFrom?: string[];
   from?: { pageStorage?: { name: string; map: MapName } };
 };
 export type Registry = { version: number; sections: string[]; settings: Def[] };
-export type Reason = "unknown" | "custom" | "notSwitch" | "notChoice" | "notNumber" | "tooLow" | "tooHigh" | "notText" | "notOneLine" | "tooLong" | "secret" | "notList" | "tooMany" | "duplicate" | "empty" | "notAllowed";
+export type Reason = "unknown" | "custom" | "notSwitch" | "notChoice" | "notNumber" | "tooLow" | "tooHigh" | "notText" | "notOneLine" | "tooLong" | "secret" | "notList" | "tooMany" | "duplicate" | "empty" | "notAllowed" | "notRule";
 export type Checked = { ok: true; value: unknown } | { ok: false; reason: Reason };
 
 export const REGISTRY: Registry = registryJson as unknown as Registry;
 export const KINDS: readonly Kind[] = ["switch", "choice", "number", "text", "list", "custom"];
-export const STORES: readonly Store[] = ["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics"];
+export const STORES: readonly Store[] = ["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics", "rules"];
 export const UNITS: readonly Unit[] = ["dollars", "seconds", "minutes", "percent", "count", "words"];
 /** The stores the engine keeps itself (spending.json, memory-settings.json, metrics.json), changed only by the shell. */
 export const RUNNER_STORES: readonly Store[] = ["spending", "memory", "metrics"];
 /** The one migration so far: the page storage choices from before the registry. */
 export const PAGE_STORAGE_MARK = "pageStorage.v1";
+/** A choice whose other options come from the project (check.start: the project's own scripts) takes a script's name, never a
+ *  command: a letter or digit first, then letters, digits and : . _ -, up to 60 of them. The shell checks the same. */
+export const SCRIPT_NAME = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,59}$/;
+/** And only the name of a script that starts the project: dev, develop, start, serve or preview, alone or with more after a
+ *  : . _ or - (dev:web, start.local). A build, a lint, the tests, an install step or a deploy can never be chosen, so a
+ *  check never runs one as a way to start the project. The shell checks the same (settings.rs start_script); the engine
+ *  checks again at use that the script is in package.json and does not sound like it deploys or deletes (detect.ts). */
+export const START_WORDS: readonly string[] = ["dev", "develop", "start", "serve", "preview"];
+export const isStartScript = (v: string): boolean => SCRIPT_NAME.test(v) && START_WORDS.some((w) => v === w || (v.length > w.length + 1 && v.startsWith(w) && ":._-".includes(v[w.length])));
 const KEY = /^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*)+$/;
 
 const byKey = new Map(REGISTRY.settings.map((d) => [d.key, d]));
@@ -131,7 +140,7 @@ export function snap(v: number, min: number, step: number, max: number): number 
 export function validate(d: Def, v: unknown): Checked {
   switch (d.kind) {
     case "switch": return typeof v === "boolean" ? { ok: true, value: v } : { ok: false, reason: "notSwitch" };
-    case "choice": return typeof v === "string" && (d.options ?? []).includes(v) ? { ok: true, value: v } : { ok: false, reason: "notChoice" };
+    case "choice": return typeof v === "string" && ((d.options ?? []).includes(v) || (d.optionsFrom === "projectScripts" && isStartScript(v))) ? { ok: true, value: v } : { ok: false, reason: "notChoice" };
     case "number": {
       if (typeof v !== "number" || !Number.isFinite(v)) return { ok: false, reason: "notNumber" };
       const min = d.min ?? 0, max = d.max ?? 0, step = d.step ?? 1;
@@ -167,6 +176,33 @@ export function validate(d: Def, v: unknown): Checked {
 export function validateKey(key: string, v: unknown): Checked {
   const d = defOf(key);
   return d ? validate(d, v) : { ok: false, reason: "unknown" };
+}
+
+// ---------- house rules (rules.house, the project's own .companion/rules.txt) ----------
+
+/** The five kinds of house rule. A rule can only make things stricter (runner/src/rules.ts enforces them). */
+export const RULE_KINDS = ["never_edit", "never_run", "ask_edit", "ask_run", "ask_install"] as const;
+export type RuleKind = (typeof RULE_KINDS)[number];
+const RULE_LINES: [RegExp, RuleKind][] = [
+  [/^never\s+edit\s+(.+)$/i, "never_edit"],
+  [/^never\s+run\s+(.+)$/i, "never_run"],
+  [/^ask\s+before\s+editing\s+(.+)$/i, "ask_edit"],
+  [/^ask\s+before\s+running\s+(.+)$/i, "ask_run"],
+  [/^ask\s+before\s+installing\s+packages$/i, "ask_install"],
+];
+/** One line of a rules file read as a rule (spaces tidied), or null for a note, an empty line or a line not understood.
+ *  The shell reads lines the same way (houserules.rs); both run fixtures/rules-cases.jsonl. */
+export function ruleOf(raw: string): { kind: RuleKind; pattern: string; text: string } | null {
+  const line = raw.replace(/\s+/g, " ").trim();
+  if (!line || line.startsWith("#")) return null;
+  for (const [re, kind] of RULE_LINES) { const m = re.exec(line); if (m) return { kind, pattern: (m[1] ?? "").trim(), text: line }; }
+  return null;
+}
+const RULE_START: Record<RuleKind, string> = { never_edit: "never edit", never_run: "never run", ask_edit: "ask before editing", ask_run: "ask before running", ask_install: "ask before installing packages" };
+/** The line for a rule built from one of the five kinds and what it is about; null when that does not make a rule. */
+export function ruleText(kind: RuleKind, pattern: string): string | null {
+  const r = ruleOf(kind === "ask_install" ? RULE_START[kind] : `${RULE_START[kind]} ${pattern}`);
+  return r && r.kind === kind ? r.text : null;
 }
 
 // ---------- the old page storage, read with exactly today's meaning ----------
@@ -215,8 +251,10 @@ export function checkRegistry(r: Registry): string[] {
       continue;
     }
     if (d.store === "keys" || d.store === "voice") bad("that store has its own editor");
+    if (d.store === "rules" && !(d.kind === "list" && d.protective === true && d.scope === "project")) bad("the house rules file holds only a protective list for a project");
     if (RUNNER_STORES.includes(d.store) && (d.applies.join() !== "runner" || d.scope !== "app")) bad("the engine's own stores are applied by the engine, for every project");
-    if (d.kind === "choice" && (!Array.isArray(d.options) || d.options.length < 2 || new Set(d.options).size !== d.options.length || d.options.some((o) => typeof o !== "string" || !o))) bad("a choice needs two or more different options");
+    if (d.optionsFrom !== undefined && (d.optionsFrom !== "projectScripts" || d.kind !== "choice")) bad("only a choice can take its other options from the project's scripts");
+    if (d.kind === "choice" && (!Array.isArray(d.options) || d.options.length < (d.optionsFrom ? 1 : 2) || new Set(d.options).size !== d.options.length || d.options.some((o) => typeof o !== "string" || !o))) bad("a choice needs two or more different options");
     if (d.kind === "number") {
       const { min, max, step } = d;
       if (typeof min !== "number" || typeof max !== "number" || typeof step !== "number" || !(min < max) || !(step > 0)) bad("a number needs min below max and a step above 0");
