@@ -80,12 +80,23 @@ export function summarize(cases: CaseResult[]) {
     locatedOf: located.length,
     // The size of a fix: lines added and removed, over the fixed cases.
     medianLinesChanged: median(cases.filter((c) => c.outcome === "fixed").map((c) => { const d = c.detail?.diff as { added: number; removed: number } | undefined; return d ? d.added + d.removed : 0; })),
+    // How often a fix stops for the person: approval cards during the fix, and the tasks they came in (HeyClicky v1.0.53
+    // "long tasks pause less often for approval"; measured before anything is changed).
+    approvalCards: sumOf(cases, "approvalCards"),
+    tasks: sumOf(cases, "tasks"),
+    approvalsPerTask: sumOf(cases, "tasks") ? Math.round((sumOf(cases, "approvalCards") / sumOf(cases, "tasks")) * 100) / 100 : 0,
+    casesWithApprovals: cases.filter((c) => Number(c.detail?.approvalCards) > 0).length,
+    // The first round's input (new and read from the cache): what the setup and tool definitions cost on every request.
+    medianFirstRoundIn: median(cases.map((c) => c.detail?.firstRound as { in: number; cacheRead: number } | null | undefined).filter((t): t is { in: number; cacheRead: number } => !!t).map((t) => t.in + t.cacheRead)),
   };
 }
+const sumOf = (cases: CaseResult[], k: string) => cases.reduce((a, c) => a + (Number.isFinite(Number(c.detail?.[k])) ? Number(c.detail?.[k]) : 0), 0);
 
 export function summaryLine(s: ReturnType<typeof summarize>): string {
   const c = s.counts;
   return `${notCleanLine(c)}fixed ${c.fixed}, asked ${c.asked}, not fixed ${c.not_fixed}, broke something ${c.broke_something}, invented ${c.invented}, could not run ${c.cannot_run}, errors ${c.error}, not started ${c.not_started}. ` +
     `Good ${Math.round(s.goodRate * 100)}% of ${s.ran}. Problem found in the right place ${s.locatedRight} of ${s.locatedOf}. Cost $${s.costUsd.toFixed(2)}${s.costPerFixedUsd !== null ? ` ($${s.costPerFixedUsd.toFixed(2)} per fixed case)` : ""}, median ${s.medianTurns} turns, median fix ${s.medianLinesChanged} lines changed.` +
+    ` ${s.approvalCards} approval ${s.approvalCards === 1 ? "card" : "cards"} in ${s.tasks} ${s.tasks === 1 ? "task" : "tasks"} (${s.approvalsPerTask} a task).` +
+    `${s.medianFirstRoundIn ? ` First round median ${s.medianFirstRoundIn} input tokens.` : ""}` +
     `${s.proofFooled ? ` ${s.proofFooled} passed the checks but not the hidden ones.` : ""}${s.testsChanged ? ` ${s.testsChanged} changed a test file.` : ""}`;
 }

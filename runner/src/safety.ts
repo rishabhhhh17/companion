@@ -71,6 +71,23 @@ const WRITE_TOOLS: Record<string, string> = { Write: "file_path", Edit: "file_pa
 const READ_PATHS: Record<string, string> = { Read: "file_path", Grep: "path", Glob: "path", LS: "path", NotebookRead: "notebook_path" };
 const SAFE_TOOLS = new Set(["TodoWrite", "Task", "WebSearch", "Agent", "ExitPlanMode", "ToolSearch"]);
 
+// Built in tools the pinned SDK (0.3.293) has that Companion never gives the engine (tools.ts lists what it does give). The
+// engine is handed an exact list, so none of these should be asked for; if one is (an older or newer Claude, or the list
+// not honoured), it is refused here with a plain reason, which Claude reads and the person never has to judge: before this,
+// each one fell through to an approval card about an "unknown tool". A refusal only makes things stricter (rule 12).
+const ASK_IN_WORDS = "Companion gives Claude no question box. Do every part you can, then end your final message with one short question; the person answers it under the receipt.";
+const NOT_GIVEN_WHY = "Companion does not give Claude this tool. Carry on with the tools you have.";
+export const NOT_GIVEN: ReadonlyMap<string, string> = new Map<string, string>([
+  ["AskUserQuestion", ASK_IN_WORDS],
+  ["EnterPlanMode", "Companion does its own planning. Carry on with the task, or end your final message with one short question if you need the person to choose."],
+  ...[
+    "Skill", "SlashCommand", "Monitor", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList", "Workflow", "CronCreate", "CronDelete", "CronList",
+    "ScheduleWakeup", "RemoteTrigger", "PushNotification", "EnterWorktree", "ExitWorktree", "ListMcpResourcesTool", "ReadMcpResourceTool",
+    "ReadMcpResourceDirTool", "RefreshMcpTools", "SendFeedback", "ReportFindings", "ClaudeDesign", "ProposeSkills", "ProposeGoal", "OfferChromeSetup",
+    "ReadNotifications", "ShowOnboardingRolePicker", "Artifact", "Projects", "SendUserMessage", "LSP", "EndConversation",
+  ].map((t): [string, string] => [t, NOT_GIVEN_WHY]),
+]);
+
 const protectedWhy = (part: string): string => part.startsWith(".git") ? "agents never write the project's .git folder or git settings" : "Companion's and Claude's own settings are not for the agent to change";
 
 // Background commands, as the pinned SDK (0.3.293) names them. TaskStop stops one (KillShell and KillBash are its old names,
@@ -153,6 +170,8 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     return why ? ask("network", why, false) : allow();
   }
   if (SAFE_TOOLS.has(tool)) return allow();
+  const notGiven = NOT_GIVEN.get(tool);
+  if (notGiven) return deny("irreversible", notGiven);
   if (tool === "Bash") {
     const cmd = input.command;
     if (typeof cmd !== "string") return ask("irreversible", "no command given");

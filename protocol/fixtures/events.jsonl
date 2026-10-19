@@ -93,3 +93,5 @@
 {"v":1,"id":"e105","type":"teach.step","project":"p_9f2c","checkpoint":"cp_0042","rung":"tests","label":"Running the tests","status":"running","detail":"","ms":0}
 {"v":1,"id":"eg1","type":"walk.step","walk":"c43","project":"no-project","lesson":"cursor-install","title":"Install Cursor and open your project","index":0,"total":6,"variant":"main","say":"Go to cursor.com/download and press the download button for macOS.","find":"the macOS download button on cursor.com/download","ask":true,"link":"https://cursor.com/download"}
 {"v":1,"id":"es1","type":"settings.applied","accepted":["work.maxTurns"],"refused":[]}
+{"v":1,"id":"ea1","type":"receipt","agent":"builder-1","checkpoint":"cp_0043","changed":[],"commands":0,"notUndoable":[],"proof":"skipped","usdEstimate":0.03,"said":"SUPABASE_URL is not set. What is your Supabase project address? You can copy it from the Supabase dashboard.","asks":true}
+{"v":1,"id":"ea2","type":"protocol.error","agent":"builder-1","reason":"no_connection: Companion could not reach Claude (API Error: Connection error.)"}

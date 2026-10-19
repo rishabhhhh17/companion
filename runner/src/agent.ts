@@ -12,8 +12,9 @@ import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
-import { differentTaskPrompt, endingOf, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
+import { answerPrompt, differentTaskPrompt, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore } from "./checkpoints.ts";
+import { asksPerson, saidLine } from "./asks.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS, usualModel } from "./models.ts";
 import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
@@ -32,7 +33,8 @@ import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLog
 import { readDeployFailure } from "./ship/buildlog.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
+import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, TASK_TOOLS } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
@@ -152,7 +154,8 @@ type Stuck = { failure: { label: string; detail: string }; end: LoopEnd };
 // What a follow up needs from the agent's last task. Kept in memory only, never on disk, and replaced by each new task.
 // sessionId is never kept for an off the record task: nothing of it was saved, so nothing can be continued. ending: how it
 // ended, so Try again says it truly. undone: Undo put the project back, so the conversation no longer matches the files.
-type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean };
+// asked: it ended on a question to the person (asks.ts), so a follow up is their answer.
+type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean; asked?: boolean };
 type Step1 = NonNullable<RunOpts["step"]>;
 
 // "Your turn": a proven fix that made the same small change in two places can be offered to the person (teach.ts). offer: the
@@ -563,6 +566,7 @@ export class AgentRunner {
     const fresh = off || (retry && this.setting<string>("work.tryAgain", last.project) === "fresh");
     const prompt = retry
       ? (fresh ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
+      : last.asked ? (off ? freshAnswerPrompt(last.first, text) : answerPrompt(text))
       : (off ? freshFollowUpPrompt(last.first, text) : followUpPrompt(text));
     const start: StartCmd = { v: PROTOCOL_VERSION, id: cmd.id, type: "agent.start", project: last.project, agent: cmd.agent, mode: last.mode, prompt, model: last.model, budgetUsd: last.budgetUsd, ...(off ? { offTheRecord: true } : {}) };
     const goal = retry ? last.goal : text;
@@ -738,11 +742,14 @@ export class AgentRunner {
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
     let said = "";
+    // The agent's last words in the latest round: its text after its last tool, the message it ended on (asks.ts).
+    let finalWords = "", afterTool = true;
 
     // One conversation with the engine. Returns false when the task must stop (stopped, over budget, error).
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
+      finalWords = ""; afterTool = true;
       const gen = this.o.engine.start({
-        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled, maxTurns,
+        prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled, maxTurns, tools: TASK_TOOLS,
         ...(offRecord ? { offTheRecord: true } : {}),
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
         toolDone: (id, shell) => { if (id) this.watchers.get(cmd.agent)?.end(id); this.noteShell(session, shell); },
@@ -760,6 +767,7 @@ export class AgentRunner {
 
           let result: ToolResult | undefined;
           if (turn.tool) {
+            finalWords = ""; afterTool = true;   // what it said before a tool is not what it ended on
             const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
             try { result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason }; }
             finally { if (a.wid) this.watchers.get(cmd.agent)?.end(a.wid); }
@@ -767,8 +775,11 @@ export class AgentRunner {
             if (abort.signal.aborted) { status = "interrupted"; return false; }
           } else if (turn.text) {
             said = (said + " " + turn.text).slice(-1500);
+            finalWords = afterTool ? turn.text : `${finalWords}\n${turn.text}`;
+            afterTool = false;
             this.state(cmd.agent, "working");
           }
+          if (turn.usedTool) { finalWords = ""; afterTool = true; }
           next = await gen.next(result);
         }
         if (abort.signal.aborted) { status = "interrupted"; return false; }
@@ -778,7 +789,8 @@ export class AgentRunner {
         if (abort.signal.aborted && !(e instanceof EngineStop)) { status = "interrupted"; return false; }
         const msg = (e as Error).message;
         if (e instanceof EngineStop) { usd += e.costUsd; book(); }
-        status = /^error_max_[a-z_]+/.exec(msg)?.[0] ?? "error";
+        // A limit, or Claude out of reach (no connection, or busy: sdkEngine.ts), has a status of its own; anything else is an error.
+        status = /^(error_max_[a-z_]+|no_connection|claude_busy)\b/.exec(msg)?.[1] ?? "error";
         this.fail(status === "error" ? `engine error: ${msg}` : msg, cmd.agent);
         return false;
       } finally {
@@ -800,13 +812,16 @@ export class AgentRunner {
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
     let ok = await round(cmd.prompt, opts.resumeSession);
+    // Did the round that just ended stop to ask the person something? Then the task needs them: its work is checked once,
+    // and no fix round is started over the question (it would bury it, and spend the person's money on a guess).
+    const asking = () => ok && asksPerson(finalWords);
     // tries: this approach's tries, for the limit of three. checks: every check in this task, which is what the card is told,
     // so work that needed a different approach is never shown as a first try.
     for (let tries = 1, checks = 1; ; tries++, checks++) {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
       lastAfter = after.id;
       changed = await store.diff(before.id, after.id);
-      if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) break;
+      if (!ok || status !== "done" || changed.length === 0 || abort.signal.aborted) { if (status === "done" && asking() && !abort.signal.aborted) status = "needs_you"; break; }
 
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
@@ -832,6 +847,7 @@ export class AgentRunner {
 
       proof = "failed"; status = "not_done";
       { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail }; } }
+      if (asking()) { status = "needs_you"; break; }
       if (usd >= budget) { status = "error_max_budget_usd"; break; }
       let next: string;
       if (tries >= MAX_TRIES) {
@@ -860,7 +876,7 @@ export class AgentRunner {
       ok = await round(next, sessionId);
       if (ok && status === "done") {
         const probe = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
-        if ((await store.diff(after.id, probe.id)).length === 0) { status = "not_done"; break; } // the fix changed nothing
+        if ((await store.diff(after.id, probe.id)).length === 0) { status = asking() ? "needs_you" : "not_done"; break; } // the fix changed nothing
       }
       if (!ok || status !== "done") break;
       proof = "skipped";
@@ -880,14 +896,17 @@ export class AgentRunner {
     // Off the record work gets no saved picture (nothing about it is kept), and none when "Make before and after pictures"
     // is off (the check itself is the same either way).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord && pictures.make;
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
-    this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
+    // The agent's last words reach the card (secrets hidden, clipped), and whether they ask the person something: only for a
+    // task that ended as needs you or done, never one that stopped or failed (that is tried again, not answered).
+    const lastSaid = saidLine(finalWords), asked = (status === "needs_you" || status === "done") && asksPerson(finalWords);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
+    this.state(cmd.agent, status === "done" ? "done" : status === "needs_you" ? "needsYou" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
     if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
-    this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
+    this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(lastSaid && asked ? { asked: true } : {}), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
     const stuck: Stuck | undefined = proof === "failed" && lastFailure && (sameRun(sigs) || (askAny && ranOut)) ? { failure: lastFailure, end: endOf() } : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
@@ -953,7 +972,7 @@ export class AgentRunner {
   private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void, offTheRecord = false): Promise<string> {
     let text = "";
     const gen = this.o.reviewer!.start({
-      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, ...(offTheRecord ? { offTheRecord: true } : {}),
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}),
       authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
     });
     try {
@@ -972,7 +991,7 @@ export class AgentRunner {
 
   // A session that may only look. Anything that is not a plain look is refused here, in code.
   // `body` gets a way to ask Claude and finishes by setting the right state itself.
-  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; offTheRecord?: boolean; said?: string; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null },
+  private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; offTheRecord?: boolean; said?: string; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null; tools?: readonly string[] },
     body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
     if (this.sessions.has(spec.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", spec.agent); return; }
     if (this.projectBusy.has(resolve(spec.project))) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", spec.agent); return; }
@@ -993,7 +1012,9 @@ export class AgentRunner {
     const exec = this.o.executor ?? defaultExecutor;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
     const authorize = async (tool: ToolUse) => {
-      let refusal = allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.
+      const notGiven = NOT_GIVEN.get(tool.name);
+      let refusal = notGiven ? `Blocked by Companion: ${notGiven}` : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
       // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
       if (!refusal && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refusal = `Blocked by Companion: ${v.reason}.`; }
       const ok = allowed.has(tool.name) && !refusal;
@@ -1003,7 +1024,7 @@ export class AgentRunner {
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
       // Off the record there is no saved conversation, so nothing is ever continued.
-      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}) });
+      const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, tools: spec.tools ?? LOOK_TOOLS, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}) });
       try {
         let next = await gen.next();
         while (!next.done) {
@@ -1064,7 +1085,7 @@ export class AgentRunner {
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
     const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
-    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }

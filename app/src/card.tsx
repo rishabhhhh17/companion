@@ -12,7 +12,7 @@ import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, waitsForAnswer, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -49,7 +49,8 @@ const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.key
 
 // Fixes it with you: under the receipt, one line to say what is still wrong (Enter sends), and Try again after a task that
 // was not done. Each one runs as a new checked task. It never takes keyboard focus by itself.
-function FollowUpBox({ project, retry, sending, onSent }: { project: string; retry: boolean; sending: boolean; onSent: () => void }) {
+// answer: the task ended on a question, so what is typed here is the answer to it.
+function FollowUpBox({ project, retry, sending, onSent, answer }: { project: string; retry: boolean; sending: boolean; onSent: () => void; answer?: boolean }) {
   const [text, setText] = useState("");
   const sendIt = () => {
     const c = followUp(project, text);
@@ -65,7 +66,7 @@ function FollowUpBox({ project, retry, sending, onSent }: { project: string; ret
         </div>
       )}
       <div className="row">
-        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={S.followUpPlaceholder} aria-label={S.followUpLabel}
+        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={answer ? S.followUpAnswer : S.followUpPlaceholder} aria-label={answer ? S.followUpAnswerLabel : S.followUpLabel}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); sendIt(); } }} />
         <button className="btn" type="button" disabled={sending || !text.trim()} onClick={sendIt}>{sending ? S.followUpSending : S.followUpSend}</button>
@@ -791,7 +792,8 @@ function Card() {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };
   }, []);
-  const working = ["thinking", "working", "checking", "needsYou"].includes(m.character);
+  // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
+  const working = ["thinking", "working", "checking", "needsYou"].includes(m.character) && !waitsForAnswer(m);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
@@ -1298,6 +1300,12 @@ function Card() {
       {show("receipt") && m.receipt && (
         <section className="panel">
           <h2>{S.receiptTitle}</h2>
+          {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
+            <div className="line" role={w.help ? "status" : undefined}>
+              <div><b>{w.lead}:</b> {plainPath(w.words, project)}</div>
+              {w.help && <div className="muted">{w.help}</div>}
+            </div>
+          ); })()}
           {m.receipt.changed.length === 0 ? <div className="line">{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
@@ -1336,7 +1344,7 @@ function Card() {
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {(canFollowUp(m, project) || m.followUp === "sending") && (
-            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)}
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} answer={!!m.receipt.asks && !undone}
               onSent={() => { pressed(); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
           )}
         </section>

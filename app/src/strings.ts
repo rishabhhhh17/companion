@@ -599,6 +599,23 @@ export const S = {
   followUpHelp: "It carries on from this task, with a new undo point and a new check.",
   tryAgain: "Try again",
   tryAgainHelp: "Runs the same request again, and tells it what failed.",
+  // The agent's last words on the receipt. When they ask the person something, the task needs them, and the follow up box
+  // is where to answer.
+  receiptSaid: "What it said",
+  receiptAsks: "It needs your answer",
+  receiptAsksToo: "It asks",
+  receiptAnswerHelp: "Type your answer below. It carries on from here, with a new undo point and a new check.",
+  followUpAnswer: "Your answer, for example: my Supabase address is https://abc.supabase.co",
+  followUpAnswerLabel: "Your answer",
+  historyNeedsYou: "Waiting for your answer",
+  driveNeedsYou: "a step needs your answer",
+  // Claude out of reach: what happened and what to do, never blaming the project or the key.
+  noConnection: "Companion could not reach Claude. Check that your Mac is online, then press Try again.",
+  claudeBusy: "Claude is busy or having trouble right now. This is on Anthropic's side. Wait a minute, then press Try again.",
+  historyNoConnection: "Stopped: could not reach Claude",
+  historyClaudeBusy: "Stopped: Claude was busy",
+  driveNoConnection: "Companion could not reach Claude",
+  driveClaudeBusy: "Claude was busy",
   // What the agent is doing right now, in plain words (never the raw command).
   toolReading: (file: string) => `Reading ${file}`,
   toolWriting: (file: string) => `Writing ${file}`,
@@ -863,6 +880,7 @@ export const S = {
       stuck: "This keeps failing. Companion needs you to choose what to do next.",
       paused: "Companion paused and is waiting for you.",
       plan: "A plan is ready for you to look at on Home.",
+      asks: "Companion has a question for you about the task. It is waiting on Home.",
     },
     taskDone: {
       passed: "The task is done, and its checks passed.",
