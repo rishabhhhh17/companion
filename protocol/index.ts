@@ -31,8 +31,10 @@ export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
 export type RunnerPing = Envelope & { type: "runner.ping" };
 export type ShipCheck = Envelope & { type: "ship.check"; project: string; runChecks?: boolean; confirm?: string[] };
-export type ResearchAsk = Envelope & { type: "research.ask"; project: string; agent: string; question: string; model: string; budgetUsd: number };
-export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number };
+// offTheRecord: the Off the record box was ticked. Nothing is learned or told from memory, no conversation is saved, Research
+// files no notes, and the steps of a Rescue plan run off the record too.
+export type ResearchAsk = Envelope & { type: "research.ask"; project: string; agent: string; question: string; model: string; budgetUsd: number; offTheRecord?: boolean };
+export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DriveApprove = Envelope & { type: "drive.approve"; agent: string; steps: string[] };
 export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice: "different" | "stop" };
@@ -48,7 +50,11 @@ export type MemoryErase = Envelope & { type: "memory.erase"; project: string; sc
 export type MemoryExport = Envelope & { type: "memory.export"; project: string };
 export type MemoryAgents = Envelope & { type: "memory.agents"; project: string; answer: "yes" | "no" | "remove" };
 export type RecapAsk = Envelope & { type: "recap.ask"; project: string; since: string };
-export type ExplainSet = Envelope & { type: "explain.set"; project: string; enabled: boolean };
+// Explain after a task (the setting explain.mode, T16): off, two short reasons, or the reasons and a quick check question.
+// Only the shell sends explain.set; the engine keeps the choice in memory-settings.json.
+export const EXPLAIN_MODES = ["off", "reasons", "reasonsAndQuestion"] as const;
+export type ExplainMode = (typeof EXPLAIN_MODES)[number];
+export type ExplainSet = Envelope & { type: "explain.set"; project: string; mode: ExplainMode };
 export type ShipPreview = Envelope & { type: "ship.preview"; project: string };
 export type ShipLive = Envelope & { type: "ship.live"; project: string; url: string; confirm: true };
 export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; confirm: true };
@@ -172,7 +178,8 @@ export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: n
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
 export type RunnerPong = Envelope & { type: "runner.pong" };
 export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
-export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file: string };
+// file: where the notes were filed in the project; none off the record, where nothing is kept.
+export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
 export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reason: "files_changed" | "editor" | "terminal" | "you"; path?: string };
 // index: the Drive step (from 1); 0 for a single task, whose title is the task's label.
@@ -316,7 +323,7 @@ const COMMANDS: Record<string, Check[]> = {
   "project.clone": [str("url"), str("parent")],
   "memory.add": [str("project"), oneOf("scope", ["project", "profile"]), str("text"), str("source")],
   "recap.ask": [str("project"), str("since")],
-  "explain.set": [str("project"), bool("enabled")],
+  "explain.set": [str("project"), oneOf("mode", [...EXPLAIN_MODES])],
   "memory.list": [str("project")],
   "memory.forget": [str("project"), oneOf("scope", ["project", "profile"]), str("line")],
   "memory.edit": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text")],
@@ -379,14 +386,14 @@ const EVENTS: Record<string, Check[]> = {
   "teach.ready": [str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || isPlace(m.target) ? null : "a made turn needs a \"target\" place")],
   "teach.result": [str("project"), str("checkpoint"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), bool("same")],
   "teach.step": [str("project"), str("checkpoint"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
-  "explain.state": [str("project"), bool("enabled")],
+  "explain.state": [str("project"), bool("enabled"), oneOf("mode", [...EXPLAIN_MODES])],
   "recap.ready": [str("project"), list("lines")],
   "memory.agents_ask": [str("project"), list("files")],
   "memory.agents_written": [str("project"), list("files")],
   "memory.refused": [str("project"), str("reason")],
   "memory.exported": [str("project"), str("text")],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
-  "research.done": [str("agent"), str("title"), str("answer"), list("notes"), str("file")],
+  "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],
   "drive.paused": [str("agent"), oneOf("reason", ["files_changed", "editor", "terminal", "you"])],
   "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options"), opt("tries", (m) => (Number.isInteger(m.tries) && (m.tries as number) >= 1 ? null : '"tries" must be a whole number from 1')), opt("same", bool("same"))],

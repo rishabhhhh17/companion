@@ -27,7 +27,8 @@ export type DriveProgress = { index: number; total: number; title: string; statu
 export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[]; tries?: number; same?: boolean };
 export type Paused = { reason: string; path?: string };
 export type RescueCard = { summary: string; works: string[]; broken: string; evidence: { label: string; status: string; detail: string }[] };
-export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file: string };
+// file: where the notes were filed; none when it was asked off the record.
+export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
 export type PromptHelp = {
   stage: string; app?: string; message?: string; streaming?: string;
   text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
@@ -473,7 +474,7 @@ export function reduce(m: Model, e: Ev): Model {
     // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.
     case "ship.card": return m.shipFlow?.stage === "live" && typeof e.image === "string" ? { ...m, shipFlow: { ...m.shipFlow, card: { image: e.image, url: String(e.url ?? ""), title: String(e.title ?? "") } } } : m;
     case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
-    case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], file: e.file }, task: null, receipt: null, error: null, notice: null };
+    case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], ...(typeof e.file === "string" && e.file ? { file: e.file } : {}) }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
     case "ui.planRequested": return { ...m, ship: null, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
     case "ui.planCancelled": return { ...m, plan: null, rescue: null };

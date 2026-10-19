@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { screenLine } from "./filter.ts";
+import { EXPLAIN_MODES, type ExplainMode } from "../../../protocol/index.ts";
 
 export type Scope = "project" | "profile";
 export type Entry = { id: string; text: string; source: string; date: string };
@@ -20,7 +21,9 @@ const LINE = /^- (.+?) — (.+?), (\d{4}-\d{2}-\d{2})(?: \{(m_[a-z0-9]{6,})\})?\
 const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
 const idFor = (text: string) => "m_" + createHash("sha256").update(text.toLowerCase()).digest("hex").slice(0, 8);
 
-type Prefs = { paused: boolean; forgotten: Record<string, string[]>; agents: Record<string, "approved" | "declined">; explain: boolean };
+// explain is the switch before Explain after a task had three choices (explainMode); both are written, so going back a
+// version keeps Explain on or off.
+type Prefs = { paused: boolean; forgotten: Record<string, string[]>; agents: Record<string, "approved" | "declined">; explain: boolean; explainMode: ExplainMode };
 type Raw = { kind: "other"; text: string } | { kind: "entry"; entry: Entry; hand: boolean };
 
 export class MemoryStore {
@@ -64,7 +67,12 @@ export class MemoryStore {
   }
 
   private prefs(): Prefs {
-    try { const j = JSON.parse(readFileSync(this.settings(), "utf8")); return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {}, explain: j.explain !== false }; } catch { return { paused: false, forgotten: {}, agents: {}, explain: true }; }
+    try {
+      const j = JSON.parse(readFileSync(this.settings(), "utf8"));
+      // A file from before the choice: the old switch off is off, on (or nothing) is reasons and a question, as it was.
+      const explainMode: ExplainMode = (EXPLAIN_MODES as readonly string[]).includes(j.explainMode) ? j.explainMode : j.explain === false ? "off" : "reasonsAndQuestion";
+      return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {}, explain: explainMode !== "off", explainMode };
+    } catch { return { paused: false, forgotten: {}, agents: {}, explain: true, explainMode: "reasonsAndQuestion" }; }
   }
   // Whether the person said yes or no to Companion adding its block to their own AGENTS.md and CLAUDE.md.
   agentsChoice(): "approved" | "declined" | undefined { return this.prefs().agents[this.key("project")]; }
@@ -77,9 +85,10 @@ export class MemoryStore {
   }
   // A line that was forgotten stays forgotten: it is not learned again from the same file or the same words.
   private key(scope: Scope) { return scope === "profile" ? "profile" : "project:" + createHash("sha256").update(this.o.project).digest("hex").slice(0, 12); }
-  // Explanations after each task are on unless the person turns them off.
-  explainEnabled(): boolean { return this.prefs().explain; }
-  setExplain(enabled: boolean) { this.savePrefs({ ...this.prefs(), explain: enabled }); }
+  // Explain after a task (the setting explain.mode): reasons and a check question unless the person chooses otherwise.
+  explainMode(): ExplainMode { return this.prefs().explainMode; }
+  explainEnabled(): boolean { return this.explainMode() !== "off"; }
+  setExplainMode(mode: ExplainMode) { this.savePrefs({ ...this.prefs(), explainMode: mode, explain: mode !== "off" }); }
   isPaused(): boolean { return this.prefs().paused; }
   setPaused(paused: boolean) { this.savePrefs({ ...this.prefs(), paused }); }
 

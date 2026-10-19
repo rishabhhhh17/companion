@@ -29,7 +29,8 @@ describe("the questions", () => {
   test("answers become lines in the profile with their source, and settings changed through the shell", () => {
     const cmds = commandsFor({ explain: false, short: true, plain: true, autoSend: false }, "/p", (scope, text, source) => addMemory("/p", scope, text, source)) as any[];
     expect(cmds.some((c) => c.type === "explain.set")).toBe(false);
-    expect(settingsFor({ explain: false, short: true, plain: true, autoSend: true })).toEqual([["explain.on", false], ["talk.autoSend", true]]);
+    expect(settingsFor({ explain: false, short: true, plain: true, autoSend: true })).toEqual([["explain.mode", "off"], ["talk.autoSend", true]]);
+    expect(settingsFor(DEFAULT_ANSWERS)).toEqual([["explain.mode", "reasonsAndQuestion"], ["talk.autoSend", false]]);
     // Explain and auto send are settings (T16): the first run changes them the way Settings does, never by its own command.
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     expect(ui).toContain("for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);");

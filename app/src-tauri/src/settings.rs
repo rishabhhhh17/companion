@@ -479,7 +479,7 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
     let p = if project.is_empty() { crate::runner::NO_PROJECT } else { project };
     Some(match key {
         "spend.dailyLimit" => json!({ "v": 1, "id": id, "type": "spending.set", "project": p, "limitUsd": v.as_f64()? }),
-        "explain.on" => json!({ "v": 1, "id": id, "type": "explain.set", "project": p, "enabled": v.as_bool()? }),
+        "explain.mode" => json!({ "v": 1, "id": id, "type": "explain.set", "project": p, "mode": v.as_str()? }),
         "memory.paused" => json!({ "v": 1, "id": id, "type": "memory.pause", "project": p, "paused": v.as_bool()? }),
         "numbers.on" => json!({ "v": 1, "id": id, "type": "metrics.set", "enabled": v.as_bool()? }),
         _ => return None,
@@ -960,6 +960,25 @@ mod tests {
         set(registry(), &mut g, "fun.reactions", &json!(false), None).unwrap();
         let l: Value = serde_json::from_str(&apply_line(registry(), &g, None, "s4")).unwrap();
         assert_eq!(l["values"], json!({ "work.maxTurns": 150 }));
+        // Memory, Explain and teaching (area 3): what the engine reads reaches it, Your turn included; the pages' own do not.
+        let mut h = File::default();
+        let area = [("explain.after", json!("plansOnly")), ("memory.learnFromFiles", json!(false)), ("memory.learnFromWords", json!(false)), ("memory.rememberGoals", json!(false)), ("memory.tellClaude", json!(false)), ("memory.recallLength", json!("long")), ("teach.yourTurn", json!(true)), ("task.offRecordByDefault", json!(true)), ("memory.toastSeconds", json!("60")), ("recap.after", json!("off"))];
+        for (k, v) in area.iter() { assert!(set(registry(), &mut h, k, v, None).unwrap(), "{k}"); }
+        let l: Value = serde_json::from_str(&apply_line(registry(), &h, None, "s5")).unwrap();
+        assert_eq!(l["values"], json!({ "explain.after": "plansOnly", "memory.learnFromFiles": false, "memory.learnFromWords": false, "memory.rememberGoals": false, "memory.tellClaude": false, "memory.recallLength": "long", "teach.yourTurn": true }));
+        // Explain after a task is the engine's own (memory-settings.json), so it is never kept here.
+        assert!(set(registry(), &mut h, "explain.mode", &json!("off"), None).is_err());
+    }
+    #[test]
+    fn a_migrated_setting_the_engine_reads_reaches_it_at_once() {
+        // Your turn came from page storage, and the engine reads it now (it works out an offer only when it is on), so the
+        // migration sends the engine its settings again, as any other change it applies does.
+        let d = registry().get("teach.yourTurn").unwrap();
+        assert!(d.from_page.is_some() && needs_apply(d));
+        let main = include_str!("main.rs");
+        let at = main.find("fn settings_migrate(").unwrap();
+        let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
+        assert!(body.contains("if written.iter().any(|k| settings::registry().get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }"), "{body}");
     }
     #[test]
     fn area_1_the_engine_is_given_how_work_runs_and_never_the_budgets_or_models_the_pages_send() {
@@ -988,11 +1007,13 @@ mod tests {
     fn the_engines_own_settings_go_to_it_as_its_own_commands() {
         let c = runner_command("spend.dailyLimit", &json!(25), "", "i").unwrap();
         assert_eq!((c["type"].as_str(), c["project"].as_str(), c["limitUsd"].as_f64()), (Some("spending.set"), Some(crate::runner::NO_PROJECT), Some(25.0)));
-        assert_eq!(runner_command("explain.on", &json!(false), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "explain.set", "project": "/p", "enabled": false }));
+        assert_eq!(runner_command("explain.mode", &json!("reasons"), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "explain.set", "project": "/p", "mode": "reasons" }));
+        assert_eq!(runner_command("explain.mode", &json!("off"), "", "i").unwrap()["project"], crate::runner::NO_PROJECT);
         assert_eq!(runner_command("memory.paused", &json!(true), "/p", "i").unwrap()["type"], "memory.pause");
         assert_eq!(runner_command("numbers.on", &json!(true), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "metrics.set", "enabled": true }));
         assert!(runner_command("fun.reactions", &json!(true), "/p", "i").is_none());
-        assert!(runner_command("explain.on", &json!("yes"), "/p", "i").is_none());
+        assert!(runner_command("explain.mode", &json!(true), "/p", "i").is_none());
+        assert!(runner_command("explain.on", &json!(false), "/p", "i").is_none());   // replaced by explain.mode
         // Every one of the engine's own settings in the registry has its command.
         for d in registry().defs.iter().filter(|d| d.runner_store()) { assert!(runner_command(&d.key, &d.default, "", "i").is_some(), "{}", d.key); }
     }

@@ -51,10 +51,11 @@ export const pauseDrive = (): Command => ({ v: 1, id: id(), type: "drive.pause",
 export const resumeDrive = (): Command => ({ v: 1, id: id(), type: "drive.resume", agent: AGENT });
 export const DIAGNOSE_MODEL = MODELS.diagnose;
 // Rescue's budget covers looking at the project and the plan that fixes it (the plan's steps share what is left of it).
-export const diagnose = (project: string): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: rescueModel(), budgetUsd: budgetFor("budget.rescue") });
-export const askResearch = (project: string, question: string): Command | null => {
+// offTheRecord: the Off the record box was ticked (it covers Rescue and Look up too).
+export const diagnose = (project: string, offTheRecord = false): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: rescueModel(), budgetUsd: budgetFor("budget.rescue"), ...(offTheRecord ? { offTheRecord: true } : {}) });
+export const askResearch = (project: string, question: string, offTheRecord = false): Command | null => {
   const q = question.replace(/\s+/g, " ").trim();
-  return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: workModel(), budgetUsd: budgetFor("budget.research") } : null;
+  return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: workModel(), budgetUsd: budgetFor("budget.research"), ...(offTheRecord ? { offTheRecord: true } : {}) } : null;
 };
 export const checkShip = (project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
   ({ v: 1, id: id(), type: "ship.check", project, ...(o.runChecks ? { runChecks: true } : {}), ...(o.confirm?.length ? { confirm: o.confirm } : {}) });
@@ -68,7 +69,6 @@ export const eraseMemory = (project: string, scope: "project" | "profile"): Comm
 export const exportMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.export", project });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
-export const setExplain = (project: string, enabled: boolean): Command => ({ v: 1, id: id(), type: "explain.set", project, enabled });
 export const shipPreview = (project: string): Command => ({ v: 1, id: id(), type: "ship.preview", project });
 export const shipLive = (project: string, url: string): Command => ({ v: 1, id: id(), type: "ship.live", project, url, confirm: true });
 export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });

@@ -110,7 +110,7 @@ choices from before the update back.
 - Everything: "Reset all settings to usual" at the bottom, with a confirm that names every setting that will change (so
   someone who paused learning reads "Pause learning" there). It resets `settings.json` (the app's and every project's
   values), the wrapped shell stores (come to, presentation, keys through Reset to the usual keys, voice to the Mac's own
-  choices) and the engine's (daily limit $10, Explain on, learning on, beta numbers off; their counts stay). It never
+  choices) and the engine's (daily limit $10, Explain back to reasons and a question, learning on, beta numbers off; their counts stay). It never
   touches the key, project folders, memory lines, history, undo points, pictures, per app answers or anything protective.
   A toast then offers Undo for 10 seconds, which puts the previous values back through `settings_set`.
 - What a reset changes is decided by the shell from exactly what the page was shown (`settings.rs` `reset_plan`), and the
@@ -265,6 +265,25 @@ check starts (`runner/src/proof/options.ts`). How it was built, where it differs
 
 ### Area 3: Memory, Explain and teaching (engine builder, with small page changes)
 
+Status (19 Oct 2026): built on `m11/set-memory-teach` and tested with fakes (every suite); not tried in the built app by a
+person. `explain.on` is gone: `explain.mode` replaced it, in memory-settings.json, and `explain.set` and `explain.state`
+carry the choice (`mode`). The other engine settings are kept in settings.json and read when a task (or its planning)
+starts. `teach.yourTurn` is now read by the engine too (it is sent with `settings.apply`, again after the migration), and
+shows "From the next task", because an offer is worked out as a task ends. Found and fixed while building it: the goal of
+an approved plan was written just before the plan's watcher started, so the memory file and a new AGENTS.md could arrive
+as file events and pause the plan as if the person had changed the project; it is now written once the watcher is
+looking, as Companion's own write. Also found: Home asked for Where was I with the folder as it was when Home first drew
+(none yet), so it was never asked for; it now reads the folder chosen when Home opens, so after a 30 minute break it shows
+as designed (to be seen on a real Mac). Every row below is built; nothing was left out.
+
+After review: the setting going off (on the Settings tab, Reset all, Reset this section, Undo, or an unreadable settings
+file) unticked a box with words in it, so words typed off the record were then kept as the draft; the box now never
+unticks itself while words are in it (`memorySettings.ts` `offBoxAfter`). Rescue and Look up sat under the box but ignored
+it; they now go off the record with it (`offTheRecord` on `rescue.diagnose` and `research.ask`): nothing learned or told,
+no saved conversation, a Rescue plan's steps off the record too, and Look up files no notes. Words put back after a refusal
+come back with the box as they were sent. The one usual value that changes what a person sees is `recap.after`: Where
+was I now appears after a 30 minute break, as designed, where before it never did. That default waits for the founder's yes.
+
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|
 | `explain.mode` Explain after a task | choice off / reasons / reasonsAndQuestion, reasonsAndQuestion | runner | memory/store.ts, explain.ts, card.tsx | | Replaces the core's explain.on, kept in memory-settings.json (old explain false becomes off, true becomes reasonsAndQuestion). Remove the copy on the Memory tab. |
@@ -274,7 +293,7 @@ check starts (`runner/src/proof/options.ts`). How it was built, where it differs
 | `memory.rememberGoals` Remember the goals of plans I approve | switch, on | runner | agent.ts | | |
 | `memory.tellClaude` Tell Claude what Companion remembers | switch, on | runner | memory/store.ts forAgent, agent.ts, main.ts | | Covers tasks and Prompt help. The Pause row says plainly it only stops new lines. |
 | `memory.recallLength` How much Claude is told from memory | choice short / normal / long, normal | runner | store.ts, main.ts | 500 and 100, 1500 and 300, 3000 and 600 words | Longer costs more on every task; the help says so. |
-| `task.offRecordByDefault` Start every task off the record | switch, off | pages | card.tsx | | What off the record keeps can never be loosened. |
+| `task.offRecordByDefault` Start every task off the record | switch, off | pages | card.tsx | | What off the record keeps can never be loosened. The box covers Start, Plan it, Rescue and Look up, and never unticks itself while words are in it. |
 | `memory.toastSeconds` How long "Remembered" stays, with Undo | choice 5 / 10 / 20 / 60 / untilClosed, 10 | pages | card.tsx | | Timing a person can change (accessibility). |
 | `recap.after` Show Where was I after a break of | choice off / 30min / 2h / nextDay, 30min | pages | card.tsx AWAY_MS | | Also: teach.yourTurn (moved by the core) should make the engine skip working out Your turn when off. |
 
@@ -366,7 +385,7 @@ and `calls.quiet` (on, presentation.json, shell), `showme.allScreens` (off, migr
 migrated, pages), `teach.yourTurn` (off, migrated, pages), `display.textSize` (Standard, Large, Larger, Largest; migrated;
 pages), `updates.daily` (on, migrated, pages), `spend.dailyLimit` (1 to 500 dollars, step 0.01, usual 10; spending.json;
 the engine), `explain.on` (on; memory-settings.json; the engine), `memory.paused` (off; memory-settings.json; the engine),
-`numbers.on` (off; metrics.json; the engine), and `work.maxTurns`.
+`numbers.on` (off; metrics.json; the engine), and `work.maxTurns`. (Area 3 replaced `explain.on` with `explain.mode`.)
 
 ### The worked example
 `work.maxTurns`: number, section work, usual 80, 20 to 200, step 10, a count, for every project, applied by the engine,

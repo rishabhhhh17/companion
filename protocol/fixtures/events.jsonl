@@ -25,6 +25,7 @@
 {"v":1,"id":"e35","type":"drive.paused","agent":"driver-1","reason":"files_changed","path":"src/app.js"}
 {"v":1,"id":"e36","type":"rescue.report","agent":"rescuer-1","summary":"A portfolio site made with Vite.","works":["The pages are all there"],"broken":"The build fails because a package is missing.","steps":[{"id":1,"title":"Install the missing package"},{"id":2,"title":"Run the build again"}],"evidence":[{"label":"Building and checking the code","status":"failed","detail":"Cannot find module left-pad"}],"estimateUsd":0.5}
 {"v":1,"id":"e37","type":"research.done","agent":"researcher-1","title":"Taking payments","answer":"Use a hosted checkout page.","notes":[{"text":"Checkout is a hosted payment page.","source":"https://docs.stripe.com/payments/checkout"}],"file":".companion/research/2026-10-09-taking-payments.md"}
+{"v":1,"id":"em1","type":"research.done","agent":"builder-1","title":"Taking payments","answer":"Use a hosted checkout page.","notes":[{"text":"Checkout is a hosted payment page.","source":"https://docs.stripe.com/payments/checkout"}]}
 {"v":1,"id":"e38","type":"ship.gates","project":"p_9f2c","canShip":false,"gates":[{"id":"checked","label":"The work was checked","status":"passed","detail":"The checks passed on this exact version."},{"id":"secrets","label":"No secrets would be published","status":"blocked","detail":"Found a Stripe live key in src/pay.js (line 3).","findings":["Found a Stripe live key in src/pay.js (line 3)."]}],"blockedBy":["secrets"],"needsYou":[],"confirmed":[],"allowedCount":0}
 {"v":1,"id":"e39","type":"runner.pong"}
 {"v":1,"id":"e40","type":"memory.state","project":"p_9f2c","paused":false,"projectLines":[{"id":"m_1a2b3c4d","text":"Uses React and Vite","source":"package.json","date":"2026-10-09"}],"profileLines":[],"problems":[]}
@@ -34,7 +35,7 @@
 {"v":1,"id":"e44","type":"memory.agents_ask","project":"p_9f2c","files":["AGENTS.md","CLAUDE.md"]}
 {"v":1,"id":"e45","type":"memory.agents_written","project":"p_9f2c","files":["AGENTS.md"]}
 {"v":1,"id":"e46","type":"explain.ready","agent":"builder-1","checkpoint":"cp_0001","bullets":["A plain form works in every browser."],"question":{"text":"Why a plain form?","options":["It works everywhere","It is faster"],"correct":0},"usdEstimate":0.002}
-{"v":1,"id":"e47","type":"explain.state","project":"p_9f2c","enabled":true}
+{"v":1,"id":"e47","type":"explain.state","project":"p_9f2c","enabled":true,"mode":"reasonsAndQuestion"}
 {"v":1,"id":"e48","type":"recap.ready","project":"p_9f2c","lines":["You were working on: Add a page","While you were away: 1 task ended, 1 checked","Nothing is waiting for you"]}
 {"v":1,"id":"e49","type":"ship.status","project":"p_9f2c","stage":"ready","detail":"The preview works. You can make it live.","previewUrl":"https://shop-abc.vercel.app","canGoLive":true}
 {"v":1,"id":"e50","type":"doctor.report","items":[{"id":"node","label":"Node","ok":true,"detail":"Version 22.1.0 is fine."}]}

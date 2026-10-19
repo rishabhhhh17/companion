@@ -55,7 +55,7 @@ export function engineEvent(ev: unknown): boolean {
   const set = (k: string, v: unknown) => { if (!same(engine.get(k), v)) { engine.set(k, v); notify(); } return true; };
   switch (ev.type) {
     case "spending.state": return typeof ev.limitUsd === "number" ? set("spend.dailyLimit", ev.limitUsd) : false;
-    case "explain.state": return typeof ev.enabled === "boolean" ? set("explain.on", ev.enabled) : false;
+    case "explain.state": return typeof ev.mode === "string" && (defOf("explain.mode")?.options ?? []).includes(ev.mode) ? set("explain.mode", ev.mode) : false;
     case "memory.state": return typeof ev.paused === "boolean" ? set("memory.paused", ev.paused) : false;
     case "metrics.summary": return typeof ev.enabled === "boolean" ? set("numbers.on", ev.enabled) : false;
     default: return false;

@@ -27,11 +27,14 @@ describe("the shipped list of settings", () => {
     const want: Record<string, unknown> = {
       "talk.speak": false, "talk.speakReplies": false, "talk.autoSend": false, "character.comeTo": true, "sharing.hide": true, "calls.quiet": true,
       "showme.allScreens": false, "fun.reactions": true, "teach.yourTurn": false, "display.textSize": "standard", "updates.daily": true,
-      "spend.dailyLimit": 10, "explain.on": true, "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
+      "spend.dailyLimit": 10, "explain.mode": "reasonsAndQuestion", "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
       ...AREA_1,
       // Area 2, checking your project (settings-checks-registry.test.ts).
       "rules.house": [], "check.mustSee": [], "check.press": "", "check.afterPress": "", "check.start": "auto", "check.skip": [], "check.time": "normal",
       "check.install": "auto", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true, "pictures.keep": 200, "rescue.readDeployLog": true,
+      // Area 3: memory, Explain and teaching (settings-memory.test.ts)
+      "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
+      "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "recap.after": "30min",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -55,7 +58,7 @@ describe("the shipped list of settings", () => {
     for (const k of Object.keys(AREA_1)) expect(defOf(k)!.scope, k).toBe("app");
   });
   test("the three settings the engine keeps itself are reached only through the engine", () => {
-    for (const k of ["spend.dailyLimit", "explain.on", "memory.paused", "numbers.on"]) expect(defOf(k)!.applies, k).toEqual(["runner"]);
+    for (const k of ["spend.dailyLimit", "explain.mode", "memory.paused", "numbers.on"]) expect(defOf(k)!.applies, k).toEqual(["runner"]);
   });
 });
 
@@ -153,7 +156,7 @@ describe("a broken list of settings is caught", () => {
   });
   test("the engine's own stores only for settings the engine applies, for every project", () => {
     expect(one({ applies: ["pages"] }, "spend.dailyLimit").length).toBeGreaterThan(0);
-    expect(one({ scope: "project" }, "explain.on").length).toBeGreaterThan(0);
+    expect(one({ scope: "project" }, "explain.mode").length).toBeGreaterThan(0);
   });
 });
 
