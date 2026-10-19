@@ -520,8 +520,14 @@ fn home_closed() {
     HOME_GEN.fetch_add(1, Ordering::SeqCst);
     reset_hover();
     if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "home_closed"); }
-    // The page is told, so it forgets the pointer was on a part of it (a hidden window sends no pointerleave).
-    if let Some(a) = APP.get() { let _ = a.emit_to("card", "closed", json!({})); }
+    if let Some(a) = APP.get() {
+        // A Prompt help result no longer shows, so the keys it borrows from every app (Esc, and Use a suggestion's) go back
+        // now, whichever way Home went away (T11); the page takes them again if the result shows again. On its own thread,
+        // because this can run inside a hotkey handler, where changing shortcuts can deadlock.
+        { let a = a.clone(); std::thread::spawn(move || arm_result_keys(&a, false)); }
+        // The page is told, so it forgets the pointer was on a part of it (a hidden window sends no pointerleave).
+        let _ = a.emit_to("card", "closed", json!({}));
+    }
 }
 
 /// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
@@ -1164,8 +1170,14 @@ fn arm_now(app: &AppHandle, on: bool) {
 #[tauri::command] fn ph_consent(app: AppHandle, choice: String) { phelp::consent_answer(&app, &choice); }
 /// Answers which keys use a suggestion has for this result (keymap::arm may take other keys than the page knew, or none
 /// when another app holds them all), so the result names them only when they work. A sync command: on the main thread,
-/// arming runs before the answer.
-#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> Option<String> { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id) }
+/// arming runs before the answer. Only while Home shows: the keys work in every app, so never for a result nobody sees.
+#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> Option<String> {
+    if !card_visible() { return None; }
+    phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id)
+}
+/// The result stopped showing (another tab was picked, or Home closed): the keys go back; ph_ready takes them again when it
+/// shows again. Nothing else changes, so the result can still be used with its button.
+#[tauri::command] fn ph_disarm(app: AppHandle) { arm_result_keys(&app, false); }
 #[tauri::command] fn ph_accept(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, false); }
 #[tauri::command] fn ph_restore(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, true); }
 #[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
@@ -1371,8 +1383,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
 
 #[tauri::command]
 fn close_card(app: AppHandle) {
-    card_closed_hush(&app);   // closing the card silences it
-    { let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false)); }   // and gives back Esc and Accept, which Prompt help borrows system wide while a result waits
+    card_closed_hush(&app);   // closing the card silences it (home_closed gives back the keys Prompt help borrowed)
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         with_panels(|_, c| c.orderOut(None));
@@ -3033,7 +3044,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

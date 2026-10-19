@@ -423,22 +423,28 @@ describe("When something needs me (home.goToNeeds)", () => {
       if (need(m)) expect(shownOn("promptHelp", s.tab, m), String(m.ph?.stage)).toBe(true);
     }
     expect(m.ph?.stage).toBe("ready");
-    expect(phArmable(m, s.tab)).toBe(true);
+    expect(phArmable(m, s.tab, true)).toBe(true);
   });
   test("the result's keys, which work in every app, are armed only while its panel with the change shows", () => {
     const m = phAt("ready");
-    for (const t of TABS) expect(phArmable(m, t), t).toBe(shownOn("promptHelp", t, m));
-    expect(phArmable(m, "settings")).toBe(false);
-    expect(phArmable(m, "now")).toBe(true);
+    for (const t of TABS) expect(phArmable(m, t, true), t).toBe(shownOn("promptHelp", t, m));
+    expect(phArmable(m, "settings", true)).toBe(false);
+    expect(phArmable(m, "now", true)).toBe(true);
+    // Home closed (Esc, the island or the character clicked, a full screen app, Hide): nothing shows, so never armed.
+    for (const t of TABS) expect(phArmable(m, t, false), t).toBe(false);
     // Not before there is a result, and never with no text to put back.
-    expect(phArmable(phAt("reading"), "now")).toBe(false);
-    expect(phArmable(run([ev({ type: "app.prompt_help", stage: "ready", app: "Notes" })]), "now")).toBe(false);
-    expect(phArmable(initial(), "now")).toBe(false);
-    // The card arms them in one place only, behind this check, once for each result.
+    expect(phArmable(phAt("reading"), "now", true)).toBe(false);
+    expect(phArmable(run([ev({ type: "app.prompt_help", stage: "ready", app: "Notes" })]), "now", true)).toBe(false);
+    expect(phArmable(initial(), "now", true)).toBe(false);
+    // The card arms them in one place only, behind this check, once for each result, and gives them back the moment the
+    // result stops showing (Home closed, another tab), to take them again when it shows again.
     expect(card.match(/invoke\("ph_ready"/g)?.length).toBe(1);
-    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab);"), card.indexOf("const shipIt = "));
-    expect(fx).toContain('if (m.ph?.stage !== "ready") { phArmedFor.current = null; return; }');
-    expect(fx).toContain("if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;");
+    expect(card).toContain("const [homeOpen, setHomeOpen] = useState(false);");
+    expect(card).toMatch(/listen\("opened", [\s\S]*?setHomeOpen\(true\);/);
+    expect(card).toMatch(/listen\("closed", \(\) => \{[^\n]*setHomeOpen\(false\);/);
+    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab, homeOpen);"), card.indexOf("const shipIt = "));
+    expect(fx).toContain('if (!phShown) { if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }');
+    expect(fx).toContain("if (!m.ph?.text || phArmedFor.current === m.ph.text) return;");
     expect(fx.indexOf("if (!phShown")).toBeLessThan(fx.indexOf('invoke("ph_ready"'));
     expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown]);");
   });
