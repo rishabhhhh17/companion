@@ -13,7 +13,8 @@
       "link": "https://github.com",
       "check": {
         "kind": "ask"
-      }
+      },
+      "maybeDone": true
     },
     {
       "id": "plus",

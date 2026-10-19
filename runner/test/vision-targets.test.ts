@@ -2,7 +2,7 @@
 // each with a short line and a kind of mark, on any of the screens it was shown. Every model reply here is written by hand
 // (a stand in for real output, which needs an API key); none of it reaches the network.
 import { describe, expect, test } from "bun:test";
-import { AssistService, buildVisionMessages, buildVisionOptions, clickPoint, ImageStore, MAX_TARGETS, parsePointText, parseTargetsText, VisionLane } from "../src/lanes.ts";
+import { AssistService, buildVisionMessages, buildVisionOptions, clickPoint, ImageStore, MAX_TARGETS, parseLastStep, parsePointText, parseTargetsText, VisionLane } from "../src/lanes.ts";
 import { ComputerUseVision, withFallback } from "../src/aim.ts";
 import { parseCommand, parseEvent, serialize, type Event } from "../../protocol/index.ts";
 
@@ -227,5 +227,46 @@ describe("the target the person clicks is the last one (found in review, 16 Oct 
     expect(script).toContain("runAimAsk(");
     expect(src).toContain("const hit = clickPoint(r);");
     for (const s of [script, src]) expect(s).not.toMatch(/r\.point!?\.(x|y|targetText)/);
+  });
+});
+
+// HeyClicky v1.0.53 parity, found in review (19 Oct 2026): with Did that work? only when unsure, a step moved on from
+// without asking is written down as clicked, not checked, and the next look is asked to check it first. Its judgement was
+// never read back, so a step that had not worked stayed "not checked" and could be suggested again. The answer now carries
+// it: lastStepWorked, yes, no or unsure, only when the model gives one of those words.
+describe("the next look says whether the last step worked", () => {
+  test("the verdict is read from the same one line of JSON, and anything else is no verdict", () => {
+    expect(parseLastStep(JSON.stringify({ lastStepWorked: "yes", targets: [t({})] }))).toBe("yes");
+    expect(parseLastStep(JSON.stringify({ lastStepWorked: "no", targets: [t({})] }))).toBe("no");
+    expect(parseLastStep(JSON.stringify({ lastStepWorked: "unsure", none: true }))).toBe("unsure");
+    for (const reply of [JSON.stringify({ targets: [t({})] }), JSON.stringify({ lastStepWorked: "YES" }), JSON.stringify({ lastStepWorked: true }), "I think it worked", "{ broken"]) {
+      expect(parseLastStep(reply), reply).toBeUndefined();
+    }
+  });
+  test("the prompt asks for it only when the question says a step is not checked yet", () => {
+    const system = buildVisionOptions({ ...cfg, model: "claude-sonnet-5" }).systemPrompt as string;
+    expect(system).toContain('"lastStepWorked"');
+    expect(system).toMatch(/not checked yet/);
+  });
+  const rig = (reply: unknown) => {
+    const events: Event[] = [], images = new ImageStore();
+    const vision = new VisionLane({ ...cfg, tmpDrive: drive, queryFn: fake([said(reply)]) });
+    const svc = new AssistService({ fast: { run: async () => ({ text: "", costUsd: 0 }) }, vision, images, emit: (e) => events.push(e) });
+    return { events, images, svc };
+  };
+  test("the point event carries the verdict, and it is a valid event; with none it carries nothing", async () => {
+    for (const [reply, want] of [[{ lastStepWorked: "no", targets: [t({ caption: "Try Settings" })] }, "no"], [{ targets: [t({})] }, undefined]] as const) {
+      const r = rig(reply);
+      r.images.put("sm_9", img());
+      await r.svc.handle({ v: 1, id: "c", type: "assist.locate", req: "sm_9", question: "q", image: { ref: "sm_9", w: 1280, h: 800 } });
+      const pt = r.events.find((e) => e.type === "assist.point") as any;
+      expect(pt.lastStepWorked).toBe(want);
+      expect(parseEvent(serialize(pt)).ok).toBe(true);
+    }
+  });
+  test("the protocol takes yes, no or unsure, and nothing else", () => {
+    const base = { v: 1, id: "e", type: "assist.point", req: "sm_1", step: 1, x: 1, y: 2, targetText: "A", confidence: 0.9, caption: "c" };
+    for (const v of ["yes", "no", "unsure"]) expect(parseEvent(JSON.stringify({ ...base, lastStepWorked: v })).ok).toBe(true);
+    for (const v of ["maybe", true, 1, ""]) expect(parseEvent(JSON.stringify({ ...base, lastStepWorked: v })).ok).toBe(false);
   });
 });

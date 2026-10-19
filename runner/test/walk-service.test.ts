@@ -17,17 +17,69 @@ const lessonFile = { id: "keys", title: "Add your keys", app: "Demo", goal: "Get
   { id: "copy", say: "Copy the key name", find: "the key name", check: { kind: "env_name", name: "DEMO_KEY" }, instead: { say: "Use the menu", find: "the menu" } },
   { id: "done", say: "Save", find: "the Save button", check: { kind: "file_exists", path: "saved.txt" } },
 ] };
-function setup() {
+function setup(o: { startWhereYouAre?: () => boolean; ship?: boolean } = {}) {
   const project = tmp("p"), lessons = tmp("l"), data = tmp("d");
   writeFileSync(join(lessons, "keys.json"), JSON.stringify(lessonFile));
+  if (o.ship) writeFileSync(join(lessons, "ship.json"), JSON.stringify(shipFile));
   const lessonsDir = lessons;
   const events: any[] = [];
   const store = new FileWalkStore(join(data, "walks"));
-  const svc = new WalkService({ emit: (e) => events.push(e), lessonDirs: [lessons], store, checker: projectChecker, now: () => "2026-10-12T10:00:00Z" });
+  const svc = new WalkService({ emit: (e) => events.push(e), lessonDirs: [lessons], store, checker: projectChecker, now: () => "2026-10-12T10:00:00Z", ...(o.startWhereYouAre ? { startWhereYouAre: o.startWhereYouAre } : {}) });
   const cmd = (type: string, extra: Record<string, unknown> = {}) => svc.handle({ v: 1, id: "w1", type, ...extra } as never);
   const of = (t: string) => events.filter((e) => e.type === t);
   return { project, svc, events, cmd, of, store, lessonsDir };
 }
+
+// A lesson whose first two steps the project can prove, then one people often have done already (an account).
+const shipFile = { id: "ship", title: "Put it online", app: "Demo", goal: "Get the site online", steps: [
+  { id: "key", say: "Add the key", find: "the key box", check: { kind: "env_name", name: "SHIP_KEY" } },
+  { id: "file", say: "Save the settings file", find: "the Save button", check: { kind: "file_exists", path: "ship.txt" } },
+  { id: "account", say: "Sign in to the host", find: "the Sign in button", check: { kind: "ask" }, maybeDone: true },
+  { id: "go", say: "Press Deploy", find: "the Deploy button", check: { kind: "ask" } },
+] };
+
+describe("starting where the person already is (teach.startWhereYouAre)", () => {
+  const ready = (p: string) => { writeFileSync(join(p, ".env"), "SHIP_KEY=x\n"); writeFileSync(join(p, "ship.txt"), "ok"); };
+  test("off unless turned on: a new start begins at step one, as before", async () => {
+    const s = setup({ ship: true }); ready(s.project);
+    await s.cmd("walk.start", { project: s.project, lesson: "ship" });
+    expect(s.of("walk.step")[0]).toMatchObject({ index: 0, say: "Add the key" });
+    expect(s.of("walk.step")[0].passed).toBeUndefined();
+  });
+  test("on: the steps the project proves are passed by and counted, and a step people often have done is asked about first", async () => {
+    const s = setup({ startWhereYouAre: () => true, ship: true }); ready(s.project);
+    await s.cmd("walk.start", { project: s.project, lesson: "ship" });
+    const first = s.of("walk.step")[0];
+    expect(first).toMatchObject({ index: 2, say: "Sign in to the host", already: true, passed: 2 });
+    expect(first.log).toEqual([{ say: "Add the key", how: "done" }, { say: "Save the settings file", how: "done" }]);
+    expect(parseEvent(JSON.stringify(first)).ok).toBe(true);
+    await s.cmd("walk.answer", { walk: "w1", worked: true });
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 3, say: "Press Deploy" });
+    expect(s.of("walk.step").at(-1).passed).toBeUndefined();
+  });
+  test("on, with nothing done yet: step one, nothing passed", async () => {
+    const s = setup({ startWhereYouAre: () => true, ship: true });
+    await s.cmd("walk.start", { project: s.project, lesson: "ship" });
+    expect(s.of("walk.step")[0]).toMatchObject({ index: 0 });
+    expect(s.of("walk.step")[0].passed).toBeUndefined();
+  });
+  test("Start over always begins at step one, so the person can do them again", async () => {
+    const s = setup({ startWhereYouAre: () => true, ship: true }); ready(s.project);
+    await s.cmd("walk.start", { project: s.project, lesson: "ship", fresh: true });
+    expect(s.of("walk.step")[0]).toMatchObject({ index: 0, say: "Add the key" });
+  });
+  test("a saved place is picked up as before, whatever the setting", async () => {
+    const s = setup({ startWhereYouAre: () => true });
+    await s.cmd("walk.start", { project: s.project, lesson: "keys" });
+    await s.cmd("walk.acted", { walk: "w1", how: "clicked" }); await s.cmd("walk.answer", { walk: "w1", worked: true });
+    await s.cmd("walk.start", { project: s.project, lesson: "keys" });
+    expect(s.of("walk.step").at(-1)).toMatchObject({ index: 1 });
+  });
+  test("the engine reads the setting when a lesson starts", () => {
+    const main = require("node:fs").readFileSync(new URL("../src/main.ts", import.meta.url), "utf8") as string;
+    expect(main).toContain('startWhereYouAre: () => runnerSettings.get("teach.startWhereYouAre") === true');
+  });
+});
 
 describe("walkthrough service", () => {
   test("it lists the lessons it can teach", async () => {

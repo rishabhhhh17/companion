@@ -353,6 +353,71 @@ describe("checking the real result in the project", () => {
   });
 });
 
+// HeyClicky v1.0.53 parity: guided setups ask what you already have instead of assuming you start from scratch. With
+// "Lessons start where you are" on (teach.startWhereYouAre, off unless turned on), a new start passes by the steps the
+// project already proves, and asks "Did you already do this?" only for steps marked maybeDone (having an account, an app
+// already installed). Start over always begins at step one, so a person can practise again.
+describe("starting where the person already is", () => {
+  const auto = (id: string, name: string) => step(id, { check: { kind: "env_name", name } });
+  const has = (...names: string[]) => async (c: { kind: string; name?: string }) => names.includes(c.name ?? "");
+  test("a step can say people often have done it already, but only a step the person confirms", () => {
+    const ok = parseLesson(raw([step("a", { maybeDone: true }), step("b")]));
+    expect(ok.ok && ok.lesson.steps.map((x) => x.maybeDone ?? false)).toEqual([true, false]);
+    expect(parseLesson(raw([step("a", { maybeDone: "yes" })])).ok).toBe(false);
+    // A step the project proves is passed by when it is done; asking about it would only slow the person down.
+    expect(parseLesson(raw([auto("a", "ONE")].map((x) => ({ ...x, maybeDone: true })))).ok).toBe(false);
+  });
+  test("steps the project proves are passed by and written down as already done", async () => {
+    const w = new Walkthrough(lesson([auto("a", "ONE"), auto("b", "TWO"), step("c"), auto("d", "FOUR")]), null, { now: T, project: "/p" });
+    await w.startHere(has("ONE", "TWO", "FOUR"));
+    expect(w.current()).toMatchObject({ index: 2, already: false, step: { id: "c" } });
+    expect(w.needs()).toBe("ask");
+    expect(w.passed()).toBe(2);
+    expect(w.progress().log.map((l) => [l.step, l.outcome])).toEqual([["a", "already_done"], ["b", "already_done"]]);
+    expect(w.history()).toEqual([{ say: "Do a", how: "done" }, { say: "Do b", how: "done" }]);
+  });
+  test("a step people often have done is asked about first, and nothing is pointed at until the answer", async () => {
+    const w = new Walkthrough(lesson([step("account", { maybeDone: true }), auto("b", "TWO"), step("c", { maybeDone: true }), step("d")]), null, { now: T, project: "/p" });
+    await w.startHere(has("TWO"));
+    expect(w.needs()).toBe("already");
+    expect(w.current()).toMatchObject({ index: 0, already: true });
+    // Yes: passed by, b is proven on the way, and c (also often done) is asked about too.
+    expect(await w.confirm(true, has("TWO"))).toBe("advance");
+    expect(w.current()).toMatchObject({ index: 2, already: true, step: { id: "c" } });
+    // No: c itself is shown, the normal way, and nothing more is asked.
+    expect(await w.confirm(false, has("TWO"))).toBe("advance");
+    expect(w.current()).toMatchObject({ index: 2, already: false });
+    expect(w.needs()).toBe("ask");
+  });
+  test("a step the person must confirm that is not marked stops the pass there without a question", async () => {
+    const w = new Walkthrough(lesson([step("a"), step("b", { maybeDone: true })]), null, { now: T, project: "/p" });
+    await w.startHere(has());
+    expect(w.current()).toMatchObject({ index: 0, already: false });
+    expect(w.passed()).toBe(0);
+    // After yes to a question asked at the start, the pass goes on the same way: only marked steps are asked about.
+    const w2 = new Walkthrough(lesson([step("a", { maybeDone: true }), step("b"), step("c", { maybeDone: true })]), null, { now: T, project: "/p" });
+    await w2.startHere(has());
+    await w2.confirm(true, has());
+    expect(w2.current()).toMatchObject({ index: 1, already: false, step: { id: "b" } });
+  });
+  test("a lesson the project already proves to the end is done at once", async () => {
+    const w = new Walkthrough(lesson([auto("a", "ONE"), auto("b", "TWO")]), null, { now: T, project: "/p" });
+    await w.startHere(has("ONE", "TWO"));
+    expect(w.progress().done).toBe(true);
+    expect(w.current()).toBeNull();
+  });
+  test("Stop while it looks ends it, and a resume still asks about every step only the person knows, as before", async () => {
+    const w = new Walkthrough(lesson([auto("a", "ONE"), auto("b", "TWO")]), null, { now: T, project: "/p" });
+    w.stop(); await w.startHere(has("ONE", "TWO"));
+    expect(w.current()).toBeNull(); expect(w.progress().log).toEqual([]);
+    const lp = lesson([step("a"), step("b"), step("c")]);
+    const w1 = new Walkthrough(lp, null, { now: T, project: "/p" }); await w1.answer(true);
+    const w2 = new Walkthrough(lp, JSON.parse(JSON.stringify(w1.progress())), { now: T, project: "/p" });
+    await w2.resume(has());
+    expect(w2.needs()).toBe("already");
+  });
+});
+
 describe("the lessons that ship with the app", () => {
   test("every one is valid, has a unique id, and fits the step limit", () => {
     const r = loadLessons([join(import.meta.dir, "../../lessons")]);
@@ -361,6 +426,13 @@ describe("the lessons that ship with the app", () => {
     // Nothing is called tried until a person has walked it on a real screen (written down in docs/lessons.md).
     for (const l of r.lessons) expect(l.status, l.id).toBe("draft");
     for (const l of r.lessons) expect(l.steps.length).toBeLessThanOrEqual(MAX_STEPS);
+  });
+  test("steps people often have done already say so: having a GitHub account, and Cursor already installed and signed in", () => {
+    const r = loadLessons([join(import.meta.dir, "../../lessons")]);
+    const marked = r.lessons.flatMap((l) => l.steps.filter((s) => s.maybeDone).map((s) => `${l.id}/${s.id}`));
+    expect(marked.sort()).toEqual(["cursor-install/download", "cursor-install/drag", "cursor-install/launch", "cursor-install/signin", "github-new-repo/signin"]);
+    // Each is only asked about with "Lessons start where you are" on, and always a step the person confirms.
+    for (const l of r.lessons) for (const s of l.steps.filter((x) => x.maybeDone)) expect(s.check.kind, `${l.id}/${s.id}`).toBe("ask");
   });
   test("a shipped lesson that needs a project proves at least one step from it (otherwise it would not need one)", () => {
     const r = loadLessons([join(import.meta.dir, "../../lessons")]);

@@ -4,6 +4,7 @@ import { startSettings, useSetting } from "./settingsStore.ts";
 import { followLessMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
 import { islandAlert, islandLine, islandWord } from "./home.ts";
+import { readyVersion } from "./updates.ts";
 import { visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -26,16 +27,19 @@ const shapeFrom = (v: unknown): Shape | null => {
 function Island() {
   const [m] = useModel();
   const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill" });
+  // A new version a check found (the shell's "update-ready"): the status says so when nothing else is going on.
+  const [update, setUpdate] = useState<string | null>(null);
   useEffect(() => {
-    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); }).catch(() => {});
+    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); }).catch(() => {});
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
-    return () => { off.then((f) => f()); };
+    const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
+    return () => { off.then((f) => f()); offUp.then((f) => f()); };
   }, []);
   // A question waiting, listening, or just done: a mark shows (the lip under the notch, or the pill). With When something
   // needs me set to only mark the tab (home.goToNeeds), anything that needs the person shows it too.
   const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");
   useEffect(() => { void invoke("island_alert", { on: alert }).catch(() => {}); }, [alert]);
-  const line = islandLine(m);
+  const line = islandLine(m, { update });
   const state = visualState(m);
   const waiting = m.approvals.length;
   const pill = <span className="pillrow" aria-hidden="true"><span className="mark" data-state={state} />{islandWord(m)}</span>;

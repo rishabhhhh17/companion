@@ -5,7 +5,7 @@ import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
-import { answered, atLimit, nextQuestion } from "./anywhere.ts";
+import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, waitsForPage } from "./anywhere.ts";
 import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
@@ -16,19 +16,19 @@ import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, c
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
-import { autoCheckDue, found, isBusy } from "./updates.ts";
+import { autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
-import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
+import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
-import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
+import { DRAFT_KEY, askKey, draftToKeep, heardGoesTo, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
@@ -48,27 +48,31 @@ const touch = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); 
 const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
 
 // Fixes it with you: under the receipt, one line to say what is still wrong (Enter sends), and Try again after a task that
-// was not done. Each one runs as a new checked task. It never takes keyboard focus by itself.
-// answer: the task ended on a question, so what is typed here is the answer to it.
-function FollowUpBox({ project, retry, sending, onSent, answer }: { project: string; retry: boolean; sending: boolean; onSent: () => void; answer?: boolean }) {
-  const [text, setText] = useState("");
+// was not done. Each one runs as a new checked task. It never takes keyboard focus by itself. Its words are kept by the card
+// (`text`), so hold to talk can put spoken words into it (heardGoesTo, askbox.ts); Esc empties it first, and only an empty
+// box lets Esc close Home as before.
+// answer: the task ended on a question, so what is typed (or spoken) here is the answer to it.
+function FollowUpBox({ project, retry, sending, text, setText, listening, onSent, answer }: { project: string; retry: boolean; sending: boolean; text: string; setText: (t: string) => void; listening: boolean; onSent: (words: boolean) => void; answer?: boolean }) {
   const sendIt = () => {
     const c = followUp(project, text);
     if (!c || sending) return;
-    onSent(); void send(c); setText("");
+    onSent(true); void send(c); setText("");
   };
   return (
     <div className="followup">
       {retry && (
         <div className="row">
-          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(); void send(retryTask(project)); }}>{S.tryAgain}</button>
+          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)); }}>{S.tryAgain}</button>
           <span className="muted">{S.tryAgainHelp}</span>
         </div>
       )}
       <div className="row">
-        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={answer ? S.followUpAnswer : S.followUpPlaceholder} aria-label={answer ? S.followUpAnswerLabel : S.followUpLabel}
+        <input type="text" autoComplete="off" spellCheck={false} value={text} disabled={sending} placeholder={listening ? S.followUpListening : answer ? S.followUpAnswer : S.followUpPlaceholder} aria-label={answer ? S.followUpAnswerLabel : S.followUpLabel}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !composing(e)) { e.preventDefault(); sendIt(); } }} />
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !composing(e)) { e.preventDefault(); sendIt(); }
+            if (e.key === "Escape" && !composing(e) && text) { e.preventDefault(); e.stopPropagation(); setText(""); }
+          }} />
         <button className="btn" type="button" disabled={sending || !text.trim()} onClick={sendIt}>{sending ? S.followUpSending : S.followUpSend}</button>
       </div>
       <div className="line muted">{S.followUpHelp}</div>
@@ -99,10 +103,12 @@ function ExplainBox({ e }: { e: Explain }) {
 // Opens a web address in the person's own browser, only when this button is pressed (rule: never from text the model
 // wrote by itself). The site's real name is on the button. The Mac side checks the address again (share.rs web_link).
 // This is the only place Home asks for a link to be opened (links.test.ts checks that).
+// Once the page really opened, Home may step aside so the browser is not under it (home.stepAside; Card sets this).
+const opened = { stepAside: () => {} };
 function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => void }) {
   const l = webLink(url);
   if (!l) return null;
-  return <button className="btn" type="button" onClick={() => void invoke("open_link", { url: l.url }).then(() => onNote("")).catch((e) => onNote(String(e)))}>{S.openSite(l.host)}</button>;
+  return <button className="btn" type="button" onClick={() => void invoke("open_link", { url: l.url }).then(() => { onNote(""); opened.stepAside(); }).catch((e) => onNote(String(e)))}>{S.openSite(l.host)}</button>;
 }
 
 // Copy: puts what the card shows on the clipboard, only on a press (copytext.ts hides anything that looks like a key again
@@ -357,6 +363,13 @@ function Card() {
     window.addEventListener("drop", stopOpen);
     return () => { window.removeEventListener("dragover", stopOpen); window.removeEventListener("drop", stopOpen); };
   }, []);
+  // The follow up box's words (FollowUpBox), kept here so hold to talk can fill it. overReceipt: the pointer is over the
+  // finished task's receipt (a hover inside Home's own window, nothing else). followShown: the box shows and can be sent.
+  const [followText, setFollowText] = useState("");
+  const overReceipt = useRef(false), followShown = useRef(false), followFromVoice = useRef(false);
+  // homeShown: Home is on screen (the shell's "opened" and "closed"). keysDown: where spoken words may go, as the talk keys
+  // went down (askbox.ts FollowAim), used once when the words come back.
+  const homeShown = useRef(false), keysDown = useRef<FollowAim | null>(null);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
@@ -547,7 +560,8 @@ function Card() {
       return invoke("check_update").then((r) => {
         try { localStorage.setItem("companion.updateChecked", String(Date.now())); } catch { /* storage may be unavailable */ }   // a failed or offline check is tried again next time
         const f = r as { available?: boolean; version?: string; notes?: string };
-        if (f.available) { found.update = { stage: "found", version: f.version ?? "", notes: f.notes ?? "" }; dispatch({ type: "app.notice", message: S.updatesReady }); }
+        // Home's notice and the island's status come from the shell's "update-ready", sent by the check itself.
+        if (f.available) found.update = { stage: "found", version: f.version ?? "", notes: f.notes ?? "" };
       });
     }).catch(() => {});
   }, []);
@@ -584,6 +598,8 @@ function Card() {
   useEffect(() => {
     const off = listen("opened", (e) => {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
+      overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
+      homeShown.current = true;
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
@@ -596,7 +612,9 @@ function Card() {
       if (!last || Date.now() - last >= SESSION_GAP_MS) count("session");   // a new visit after a break, not every time the card opens
       touch();
     });
-    return () => { off.then((f) => f()); };
+    // Every way Home goes away goes through the shell, which says so: a window that was just hidden sends no pointerleave.
+    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null; });
+    return () => { off.then((f) => f()); offClosed.then((f) => f()); };
   }, []);
   // Tell the app how tall the content is, so the panel fits it.
   useEffect(() => {
@@ -615,7 +633,7 @@ function Card() {
   const showmeNow = useRef(m.showme); showmeNow.current = m.showme;
   useEffect(() => {
     const off = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; req?: string };
+      const ev = e.payload as { type?: string; req?: string; lastStepWorked?: unknown };
       if (ev.type !== "assist.point" || !ev.req?.startsWith("sm_")) return;
       // Its question was ended while it was being answered (the card closed, Stop): nothing of it is shown or said.
       if (!stillWanted(showmeNow.current)) return;
@@ -647,7 +665,10 @@ function Card() {
         if (s.index === s.total - 1) void invoke("showme_clear").then(say); else void invoke("showme_hide").then(say);
       };
       player.current.start(steps, { aim, words }, speaking, speed, pace);
-      if (steps.some((s) => s.draw)) setWalk((w) => (w ? { ...w, steps: [...w.steps, stepsLine(steps)] } : w));
+      // The look's verdict on a step moved on from without asking (Did that work? only when unsure) is written down first.
+      const verdict = ev.lastStepWorked;
+      if (steps.some((s) => s.draw)) setWalk((w) => (w ? { ...w, steps: [...judged(w, verdict).steps, stepsLine(steps)] } : w));
+      else setWalk((w) => (w ? judged(w, verdict) : w));
     });
     return () => { off.then((f) => f()); player.current.hush(); };
   }, []);
@@ -687,6 +708,9 @@ function Card() {
   // Hold to talk: the words come back as text, are put in the box, and are sent only if the person turned auto send on.
   // Reactions and celebrations: one setting for the whole app, on unless turned off.
   const fun = useSetting("fun.reactions") === true;
+  // Why spoken words waited in the box although auto send is on (they mean wait or stop, or ask about the screen). Gone
+  // once the box is changed.
+  const [voiceHint, setVoiceHint] = useState<HeardKind | null>(null);
   // Hold to talk sends by itself only when turned on (talk.autoSend); changed here, on Now and in the first run, always
   // through the shell (settingsStore.ts).
   const autoSend = useSetting("talk.autoSend") === true;
@@ -698,20 +722,42 @@ function Card() {
   useEffect(() => { void migrateFromPageStorage(); }, []);
   useEffect(() => {
     const off = listen("runner-event", (e) => {
-      const ev = e.payload as { type?: string; stage?: string; text?: string };
+      const ev = e.payload as { type?: string; stage?: string; text?: string; language?: string; micMissing?: unknown };
+      // Where the words may go is taken as the keys go down (listening begins; the line that follows for a microphone that
+      // is away keeps it), never from where the pointer is when they come back. A hold that ends any other way forgets it.
+      if (ev.type === "app.voice" && ev.stage === "listening" && !ev.micMissing) keysDown.current = { followUpShown: followShown.current, overReceipt: overReceipt.current, byPointing: setting("talk.followUpByPointing") === true, homeShown: homeShown.current };
+      else if (ev.type === "app.voice" && ev.stage !== "listening" && ev.stage !== "transcribing" && ev.stage !== "heard") keysDown.current = null;
       if (ev.type === "app.voice" && ev.stage === "heard" && ev.text) {
-        homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
-        setBox(ev.text);
-        fromVoice.current = true;
-        if (askModeRef.current === "showme") { sentFromBox("showme"); showMeRef.current(ev.text, ev.text, []); setAskMode("task"); clearBox(); }
-        // With files added, the words wait in the box for Start: they never go with files by themselves.
-        else if (autoSend && attachedNow.current.length === 0 && ev.text.trim().split(/\s+/).length >= 3) setTimeout(() => submitNow.current(), 0);
-        else setTimeout(() => box.current?.focus(), 30);
+        // The language picked in Settings comes with the words (English only at first: another one waits for Start).
+        const lang = typeof ev.language === "string" ? ev.language : "auto";
+        // Into the follow up box of the finished task the pointer was on as the keys went down (Follow up by pointing),
+        // while that box still shows; else the ask box.
+        const to = heardGoesTo({ showme: askModeRef.current === "showme", atKeysDown: keysDown.current, followUpShownNow: followShown.current });
+        keysDown.current = null;
+        if (to === "followUp") {
+          // Never sent by itself unless auto send is on, and then only a clear request for work.
+          setFollowText(ev.text); followFromVoice.current = true;
+          if (autoSend && sendsItself(ev.text, lang)) setTimeout(() => sendFollowNow.current(), 0);
+        } else {
+          homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
+          setBox(ev.text);
+          fromVoice.current = true;
+          const kind = heardKind(ev.text, lang);
+          setVoiceHint(autoSend && kind !== "work" && kind !== "short" ? kind : null);
+          // After the Show me key the words are a question about the screen; "wait" or "never mind" waits in the box instead.
+          if (to === "showme" && kind !== "holdOff") { sentFromBox("showme"); showMeRef.current(ev.text, ev.text, []); setAskMode("task"); clearBox(); setVoiceHint(null); }
+          else if (to === "showme") setVoiceHint("holdOff");
+          // With files added, the words wait in the box for Start: they never go with files by themselves. Words that mean
+          // wait or stop, or ask about the screen, wait too (askbox.ts sendsItself).
+          else if (autoSend && attachedNow.current.length === 0 && sendsItself(ev.text, lang)) setTimeout(() => submitNow.current(), 0);
+          else setTimeout(() => box.current?.focus(), 30);
+        }
         dispatch({ type: "ui.voiceClosed" });
       }
     });
     return () => { off.then((f) => f()); };
   }, [autoSend]);
+
   // Pressed from the keyboard: the next question typed or spoken is about the screen.
   const [askMode, setAskMode] = useState<"task" | "showme">("task");
   const askModeRef = useRef(askMode); askModeRef.current = askMode;
@@ -720,16 +766,29 @@ function Card() {
     const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
     return () => { off.then((f) => f()); };
   }, []);
-  const showMe = (question: string, goal: string, steps: string[]) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); player.current.hush(); setWalk({ goal, steps }); void invoke("showme_start", { question, allScreens: allScreensOn() }); };
+  // settle: this look follows an action (a click, an answer), so the shell may wait for the page to stop changing first
+  // (waitsForPage: bounded, the light on throughout, Stop ends it).
+  const showMe = (question: string, goal: string, steps: string[], settle = false) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); player.current.hush(); setWalk({ goal, steps }); void invoke("showme_start", { question, allScreens: allScreensOn(), settle }); };
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
+  // With "Ask Did that work? after each step" set to only when unsure (showme.askWorked), a clean click on a solid ring
+  // moves on by itself: the step is written down as clicked, not checked, and the next look checks it first.
   const [asking, setAsking] = useState(false);
-  const nextStep = (worked = true) => {
+  const nextStep = (worked = true, notChecked = false) => {
     if (!walk) return;
     setAsking(false);
-    const w = answered(walk, worked);
+    const w = notChecked ? clicked(walk) : answered(walk, worked);
     if (atLimit(w)) { void invoke("showme_clear"); setWalk(null); dispatch({ type: "app.showme", stage: "error", message: S.anywhereLimit }); return; }
-    showMe(nextQuestion(w), w.goal, w.steps);
+    showMe(nextQuestion(w), w.goal, w.steps, waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked")));
   };
+  // How this answer's ring went, for asksWorked: a soft ring (a guess), or a click off the target before the hit.
+  const ringLook = useRef({ req: "", soft: false, missed: false });
+  useEffect(() => {
+    const r = m.showme?.req ?? "", st = m.showme?.stage;
+    if (!r) return;
+    if (ringLook.current.req !== r) ringLook.current = { req: r, soft: false, missed: false };
+    if (st === "pointing_roughly") ringLook.current.soft = true;
+    if (st === "your_turn_miss") ringLook.current.missed = true;
+  }, [m.showme?.stage, m.showme?.req]);
   // In a walkthrough, once the person clicked the step (or it was clicked for them), the next step follows on its own.
   const stage = m.showme?.stage;
   // The walkthrough ends whenever the pointer goes away (Esc, Stop everything, closing, waiting too long).
@@ -738,6 +797,10 @@ function Card() {
   useEffect(() => {
     // Only a walkthrough's own ring moves it on (a Show me ring carries an "sm_" request; Point at the problem's does not).
     if (!walk || !m.showme?.req?.startsWith("sm_") || (stage !== "your_turn_done" && stage !== "done_for_you")) return;
+    if (!asksWorked({ setting: setting("showme.askWorked"), how: stage, soft: ringLook.current.soft, missed: ringLook.current.missed })) {
+      const t = setTimeout(() => nextStep(true, true), 400);
+      return () => clearTimeout(t);
+    }
     const t = setTimeout(() => setAsking(true), 900);
     return () => clearTimeout(t);
   }, [stage]);
@@ -756,14 +819,14 @@ function Card() {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     pressed();
     const c = walkStart(projectRef.current || NO_PROJECT, lesson, fresh);
-    noAim.current = false; aimed.current = ""; acted.current = ""; clearTimeout(actTimer.current);
+    noAim.current = false; aimed.current = ""; acted.current = ""; afterAct.current = false; clearTimeout(actTimer.current);
     const walk = (c as { id: string }).id;
     dispatch({ type: "ui.walkRequested", walk }); homeDispatch({ type: "pick", tab: "learn" }); void send(c);
     return walk;
   };
   // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
   const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
-  const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false);
+  const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false), afterAct = useRef(false);
   const wk = m.walk;
   const wkKey = wk ? `${wk.id}:${wk.index}:${wk.variant}` : "";
   useEffect(() => {
@@ -771,7 +834,10 @@ function Card() {
     if (aimed.current === wkKey) return;
     aimed.current = wkKey; staleReq.current = m.showme?.req;
     if (noAim.current) return;   // the screen permission was not given: words only, and it is not asked for again at every step
-    void invoke("showme_start", { question: `Where do I click for this: ${wk.find}`, allScreens: allScreensOn() });
+    // A step that follows the person's action (a click, I did it, an answer) may wait for the page to settle first.
+    const settle = afterAct.current && waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked"));
+    afterAct.current = false;
+    void invoke("showme_start", { question: `Where do I click for this: ${wk.find}`, allScreens: allScreensOn(), settle });
   }, [wkKey, wk?.stage]);
   useEffect(() => { if (wk && m.showme?.stage === "needs_permission") noAim.current = true; }, [m.showme?.stage, wkKey]);
   useEffect(() => { if (!wk) { clearTimeout(actTimer.current); } }, [wk]);
@@ -783,11 +849,24 @@ function Card() {
     if ((m.showme?.stage !== "your_turn_done" && m.showme?.stage !== "done_for_you") || acted.current === wkKey) return;
     acted.current = wkKey;
     clearTimeout(actTimer.current);
-    actTimer.current = setTimeout(() => void send(walkActed(wk.id, m.showme?.stage === "done_for_you" ? "done_for_you" : "clicked", wk.index)), 700);
+    actTimer.current = setTimeout(() => { afterAct.current = true; void send(walkActed(wk.id, m.showme?.stage === "done_for_you" ? "done_for_you" : "clicked", wk.index)); }, 700);
   }, [m.showme?.stage, m.showme?.req, wkKey]);
   // A click in another app while Home is open (the shell sees only that a press started outside Companion's windows).
   const nowModel = useRef(m); nowModel.current = m;
   const onboardingNow = useRef(!onboarded); onboardingNow.current = !onboarded;
+  // Step aside for what Home opens (home.stepAside, off unless turned on): after a link, the email for Report a problem or
+  // Finder showing the support log, Home closes the way Esc does, unless something on it waits for the person (home.ts).
+  const stepAside = () => { if (stepsAside(nowModel.current, onboardingNow.current, setting("home.stepAside") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } };
+  opened.stepAside = stepAside;
+  // A new version is ready (the shell's "update-ready", from the daily check or Settings): a notice on every tab with
+  // Install, pressed by the person, never while something runs (updates.ts installAllowed; the shell checks again).
+  const [updateReady, setUpdateReady] = useState<string | null>(null);
+  const [updateNote, setUpdateNote] = useState("");
+  useEffect(() => {
+    const off = listen("update-ready", (e) => { setUpdateReady(readyVersion(e.payload)); setUpdateNote(""); });
+    return () => { off.then((f) => f()); };
+  }, []);
+  const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); found.update = null; void invoke("install_update").catch((e) => setUpdateNote(String(e))); };
   useEffect(() => {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };
@@ -809,6 +888,18 @@ function Card() {
   };
   // The words from hold to talk send through this, so they always go with the current folder and settings.
   const submitNow = useRef(submit); submitNow.current = submit;
+  // The follow up box under a finished task's receipt: shown, sent, and sent by itself from hold to talk (auto send on).
+  followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project);
+  useEffect(() => { if (!(canFollowUp(m, project) || m.followUp === "sending")) { setFollowText(""); followFromVoice.current = false; } }, [canFollowUp(m, project) || m.followUp === "sending"]);
+  // A follow up asked by voice is answered out loud like any spoken question (Answer out loud); a typed one is not.
+  // Try again is always a press, whatever words wait in the box.
+  const followSent = (words: boolean) => { if (words && followFromVoice.current) voiceAsked.current = { kind: "task", at: Date.now() }; else pressed(); followFromVoice.current = false; dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); };
+  const sendFollowNow = useRef(() => {});
+  sendFollowNow.current = () => {
+    const c = followUp(project, followText);
+    if (!c || m.followUp === "sending" || !followShown.current) return;
+    followSent(true); void send(c); setFollowText("");
+  };
 
   // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
   const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
@@ -880,6 +971,14 @@ function Card() {
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any tab): on every tab. */}
       {show("notes") && <>
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
+      {updateReady && (
+        <div className="notice" role="status">
+          <span>{S.homeUpdateReady(updateReady)}</span>{" "}
+          <button className="btn primary" type="button" disabled={!installAllowed(m)} onClick={installUpdate}>{S.updatesInstall}</button>
+          {!installAllowed(m) && <div className="line muted">{S.updatesBusy}</div>}
+          {updateNote && <div className="line">{updateNote}</div>}
+        </div>
+      )}
       {m.error && <div className="error">{m.error}</div>}
       </>}
       <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
@@ -917,7 +1016,7 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
-      {show("settings") && <SettingsPage working={isBusy(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} />}
+      {show("settings") && <SettingsPage working={isBusy(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPractice={(k) => { homeDispatch({ type: "pick", tab: "learn" }); beginPractice(k); }} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} />}
       {show("practice") && m.practice && m.practice.project === project && (
         <section className="panel" aria-label={S.practiceTitle}>
           <h2>{S.practiceTitle}</h2>
@@ -1003,6 +1102,10 @@ function Card() {
             {m.walk.link && <div className="row"><OpenButton url={m.walk.link} onNote={setLessonNote} /></div>}
             {m.walk.link && lessonNote && <div className="line" role="status">{lessonNote}</div>}
           </>}
+          {/* Started where the person already is (teach.startWhereYouAre): what was passed by, and the way to do it again. */}
+          {m.walk.passed && m.walk.stage !== "done" && m.walk.stage !== "stopped" && (
+            <div className="row"><span className="line muted">{S.lessonPassed(m.walk.passed)}</span><button className="btn" type="button" onClick={() => beginLesson(m.walk!.lesson, true)}>{S.lessonDoAgain}</button></div>
+          )}
           {(m.walk.stage === "help" || m.walk.stage === "stopped") && <div className="line">{keysIn(m.walk.note ?? "", keys)}</div>}
           {m.walk.stage === "step" && m.walk.note && <div className="line muted">{keysIn(m.walk.note ?? "", keys)}</div>}
           {m.walk.log.length > 0 && (
@@ -1015,7 +1118,7 @@ function Card() {
             {m.walk.stage === "step" && <>
               <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}`, allScreens: allScreensOn() }); }}>{S.lessonPoint}</button>
               {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => { pressed(); void invoke("do_it_for_me"); }}>{S.doItForMe}</button>}
-              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
+              <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; afterAct.current = true; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
             </>}
             {m.walk.stage === "already" && <>
               <div className="line">{S.lessonAlready}</div>
@@ -1024,8 +1127,8 @@ function Card() {
             </>}
             {m.walk.stage === "asking" && <>
               <div className="line">{S.lessonWorked}</div>
-              <button className="btn primary" type="button" onClick={() => void send(walkAnswer(m.walk!.id, true, m.walk!.index))}>{S.lessonYes}</button>
-              <button className="btn" type="button" onClick={() => void send(walkAnswer(m.walk!.id, false, m.walk!.index))}>{S.lessonNo}</button>
+              <button className="btn primary" type="button" onClick={() => { afterAct.current = true; void send(walkAnswer(m.walk!.id, true, m.walk!.index)); }}>{S.lessonYes}</button>
+              <button className="btn" type="button" onClick={() => { afterAct.current = true; void send(walkAnswer(m.walk!.id, false, m.walk!.index)); }}>{S.lessonNo}</button>
             </>}
             {m.walk.stage === "help" && <button className="btn primary" type="button" onClick={() => void send(walkSkip(m.walk!.id, m.walk!.index))}>{S.lessonSkip}</button>}
             {["step", "already", "asking", "help"].includes(m.walk.stage) && <button className="btn" type="button" onClick={() => { void send(walkStop(m.walk!.id)); void invoke("showme_clear"); }}>{S.lessonStop}</button>}
@@ -1066,7 +1169,7 @@ function Card() {
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
       <div className="ask">
         <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
-          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); if (!e.currentTarget.value) fromVoice.current = false; }}
+          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
           onFocus={() => warmSoon()}
           onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
           onKeyDown={(e) => {
@@ -1077,6 +1180,7 @@ function Card() {
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
       <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
+      {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
       {dragging && <div className="line" role="status">{S.attachDrop}</div>}
       {attached.length > 0 && (
         <div className="chips" role="list" aria-label={S.attachTitle}>
@@ -1298,7 +1402,7 @@ function Card() {
       )}
 
       {show("receipt") && m.receipt && (
-        <section className="panel">
+        <section className="panel" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           <h2>{S.receiptTitle}</h2>
           {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
             <div className="line" role={w.help ? "status" : undefined}>
@@ -1344,8 +1448,10 @@ function Card() {
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {(canFollowUp(m, project) || m.followUp === "sending") && (
-            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} answer={!!m.receipt.asks && !undone}
-              onSent={() => { pressed(); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); }} />
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent}
+              text={followText} setText={(t) => { setFollowText(t); if (!t) followFromVoice.current = false; }}
+              listening={m.voice?.stage === "listening" && overReceipt.current && setting("talk.followUpByPointing") === true}
+              answer={!!m.receipt.asks && !undone} />
           )}
         </section>
       )}

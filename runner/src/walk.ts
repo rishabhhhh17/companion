@@ -20,7 +20,9 @@ export type Check =
 // link: the one web page the step is about (Go to cursor.com/download), offered as an Open button on the card and opened
 // only on the person's press. A plain https address, checked here (lessonLink) and again by the card and the shell.
 export type Way = { say: string; find: string; link?: string };
-export type Step = Way & { id: string; check: Check; instead?: Way };
+// maybeDone: a step only the person can confirm that people often have done already (having an account, an app already
+// installed). With "Lessons start where you are" on, a new start asks "Did you already do this?" for it before pointing.
+export type Step = Way & { id: string; check: Check; instead?: Way; maybeDone?: true };
 // draft: written from the maker's own docs, not tried by a person yet. tried: someone walked it on a real screen.
 export type LessonStatus = "draft" | "tried";
 export type Lesson = { id: string; title: string; app: string; goal: string; status: LessonStatus; needsProject: boolean; steps: Step[] };
@@ -91,7 +93,10 @@ export function parseLesson(raw: unknown): { ok: true; lesson: Lesson } | { ok: 
     const check = parseCheck(s.check ?? { kind: "ask" }, what); if (!check.ok) return check;
     let instead: Way | undefined;
     if (s.instead !== undefined) { const w = parseWay(s.instead, `${what} instead`); if (!w.ok) return w; instead = w.way; }
-    steps.push({ id: s.id, ...way.way, check: check.check, ...(instead ? { instead } : {}) });
+    if (s.maybeDone !== undefined && typeof s.maybeDone !== "boolean") return { ok: false, error: `${what}: "maybeDone" is true or false` };
+    // A step the project proves is passed by when it is done, so asking whether it was done would only slow the person down.
+    if (s.maybeDone === true && check.check.kind !== "ask") return { ok: false, error: `${what}: "maybeDone" is only for a step the person confirms ("ask")` };
+    steps.push({ id: s.id, ...way.way, check: check.check, ...(instead ? { instead } : {}), ...(s.maybeDone === true ? { maybeDone: true as const } : {}) });
   }
   if (r.status !== undefined && r.status !== "draft" && r.status !== "tried") return { ok: false, error: 'the "status" is "draft" or "tried"' };
   if (r.needsProject !== undefined && typeof r.needsProject !== "boolean") return { ok: false, error: '"needsProject" is true or false' };
@@ -133,6 +138,9 @@ export class Walkthrough {
   // After a pause, on a step only the person can confirm: "Did you already do this?" is asked before anything is pointed
   // at. Never saved: it is worked out again at every resume.
   private confirming = false;
+  // askAll: after a pause, every step only the person can confirm is asked about (resume). A new start that begins where
+  // the person already is (startHere) asks only about the steps marked maybeDone.
+  private askAll = true;
   constructor(private lesson: Lesson, saved: Progress | null, private o: { now: () => string; project: string }) {
     const shape = lesson.steps.map((x) => x.id).join(",");
     const goodLog = (l: unknown) => !!l && typeof l === "object" && typeof (l as LogEntry).step === "string" && typeof (l as LogEntry).outcome === "string" && typeof (l as LogEntry).at === "string";
@@ -227,7 +235,7 @@ export class Walkthrough {
   private async passDone(check: Checker): Promise<void> {
     while (!this.stopped && this.p.index < this.lesson.steps.length) {
       const s = this.lesson.steps[this.p.index];
-      if (s.check.kind === "ask") { this.confirming = true; return; }
+      if (s.check.kind === "ask") { if (this.askAll || s.maybeDone) this.confirming = true; return; }
       if ((await this.prove(s, check)) !== true || this.stopped) return;
       this.log(s.id, "already_done");
       this.advance();
@@ -247,6 +255,18 @@ export class Walkthrough {
     }
     await this.passDone(check);
   }
+
+  /** A new start that begins where the person already is (teach.startWhereYouAre, HeyClicky v1.0.53 parity): from step
+   *  one, steps the project proves are passed by and written down as already done; at a step only the person can confirm,
+   *  "Did you already do this?" is asked first only when the step is marked maybeDone, else the lesson begins there. */
+  async startHere(check: Checker): Promise<void> {
+    if (this.stopped || this.p.blocked || this.p.done || this.p.index !== 0 || this.p.log.length) return;
+    this.askAll = false;
+    this.confirming = false;
+    await this.passDone(check);
+  }
+  /** How many steps were passed by as already done (by the project, or by the person's own yes). */
+  passed(): number { return new Set(this.p.log.filter((l) => l.outcome === "already_done").map((l) => l.step)).size; }
 
   /** The person's answer to "Did you already do this?". Yes: the step counts as done and the lesson carries on to the
    *  first step not proven done. No: the step itself is shown, the normal way. A question nobody asked changes nothing. */

@@ -151,7 +151,7 @@ describe("Show me on all screens", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     const starts = card.split("\n").filter((l) => l.includes('invoke("showme_start"'));
     expect(starts.length).toBeGreaterThanOrEqual(3);
-    for (const l of starts) expect(l.slice(l.indexOf('invoke("showme_start"'))).toMatch(/^invoke\("showme_start", \{ question[^;]*, allScreens: allScreensOn\(\) \}\)/);
+    for (const l of starts) expect(l.slice(l.indexOf('invoke("showme_start"'))).toMatch(/^invoke\("showme_start", \{ question[^;]*, allScreens: allScreensOn\(\)(, settle)? \}\)/);   // settle: a look after an action may wait for the page (anywhere.ts waitsForPage)
     expect(defOf("showme.allScreens")).toMatchObject({ kind: "switch", default: false, section: "pointing" });
     expect(S.set["showme.allScreens"].label).toBe(S.allScreensSetting);
   });

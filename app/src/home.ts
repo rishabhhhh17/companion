@@ -163,6 +163,14 @@ export function closesOnClickAway(m: Model, onboarding: boolean, on = true): boo
   return true;
 }
 
+/** May Home step aside for what it just opened (a link in the browser, the email for Report a problem, Finder showing the
+ *  support log), so that is not under Home? Only with Step aside for what Home opens on (home.stepAside), and never while
+ *  something on Home waits for the person: the same rule as a click elsewhere, whatever Close Home when I click another
+ *  app says. A lesson's link is part of its step, so the lesson keeps Home there. */
+export function stepsAside(m: Model, onboarding: boolean, on: boolean): boolean {
+  return on && closesOnClickAway(m, onboarding, true);
+}
+
 // ---- the island ----
 
 export const ISLAND_LINE_MAX = 64;
@@ -196,8 +204,10 @@ export function islandWord(m: Model): string {
   return v === "error" ? S.islandWordError : stateLabel(v);
 }
 
-/** The one line shown when the pointer is on the island. */
-export function islandLine(m: Model): string {
+/** The one line shown when the pointer is on the island. `update`: the version a check found ready to install (the shell's
+ *  "update-ready"). With nothing else going on, it says what is next instead of Ready: connect Claude first (Not connected
+ *  yet), then the update waiting for Install on Home. Neither shows the mark (islandAlert). */
+export function islandLine(m: Model, o: { update?: string | null } = {}): string {
   if (!m.runnerUp) return S.islandOff;
   if (m.voice?.stage === "listening") return S.islandListening;
   if (m.approvals.length) return cut(S.islandNeedsYou(m.approvals[0].title));
@@ -210,5 +220,7 @@ export function islandLine(m: Model): string {
   if (v === "done") return cut(own && label ? S.islandDone(label) : stateLabel("done"));
   if (v === "thinking" || v === "working" || v === "checking") return cut(own && label ? S.islandWorkingOn(label) : characterWords(m));
   if (v === "error") return cut(stateLabel("error"));
+  if (m.connected === "none") return S.islandNotConnected;
+  if (o.update) return cut(S.islandUpdate(o.update));
   return S.islandReady;
 }

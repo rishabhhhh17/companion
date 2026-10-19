@@ -13,7 +13,8 @@
       "link": "https://cursor.com/download",
       "check": {
         "kind": "ask"
-      }
+      },
+      "maybeDone": true
     },
     {
       "id": "drag",
@@ -21,7 +22,8 @@
       "find": "the Cursor icon and the Applications folder in the window",
       "check": {
         "kind": "ask"
-      }
+      },
+      "maybeDone": true
     },
     {
       "id": "launch",
@@ -33,7 +35,8 @@
       "instead": {
         "say": "If macOS blocks it, open System Settings, Privacy & Security, and press Open Anyway.",
         "find": "Open Anyway in Privacy & Security"
-      }
+      },
+      "maybeDone": true
     },
     {
       "id": "signin",
@@ -41,7 +44,8 @@
       "find": "the sign in button in Cursor",
       "check": {
         "kind": "ask"
-      }
+      },
+      "maybeDone": true
     },
     {
       "id": "open-folder",

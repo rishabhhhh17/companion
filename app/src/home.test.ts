@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, visualState, type Model } from "./model.ts";
-import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 
@@ -260,6 +260,40 @@ describe("a click elsewhere closes Home, unless something there needs the person
   test("the card asks before it closes, and closes the way Esc does", () => {
     expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(/);
     expect(card).toMatch(/home-click-away[^\n]*player\.current\.hush\(\);[^\n]*invoke\("close_card"\)/);
+  });
+});
+
+// HeyClicky v1.0.53 parity: Report a bug moves Home aside, so the email it opens is visible. Ours, with "Step aside for
+// what Home opens" on (home.stepAside, off unless turned on): after a link, the email for Report a problem, or Finder for
+// the support log opened, Home closes the way Esc does, unless something on it waits for the person (the same rule as a
+// click elsewhere). What it said (the log's name) is still there when Home opens again.
+describe("Home steps aside for what it opens", () => {
+  test("off unless turned on; on, it steps aside when nothing waits, also while a task works", () => {
+    expect(stepsAside(initial(), false, false)).toBe(false);
+    expect(stepsAside(initial(), false, true)).toBe(true);
+    expect(stepsAside(run(task()), false, true)).toBe(true);
+  });
+  test("never while something waits: a question, a lesson (its link is part of the step), a pointer, the first run", () => {
+    expect(stepsAside(run([...task(), approval()]), false, true)).toBe(false);
+    expect(stepsAside(run(walkStep()), false, true)).toBe(false);
+    expect(stepsAside(run([ev({ type: "app.showme", stage: "thinking", message: "Finding it", req: "sm_1" })]), false, true)).toBe(false);
+    expect(stepsAside(initial(), true, true)).toBe(false);
+  });
+  test("it does not depend on Close Home when I click another app", () => {
+    const page = read("./card.tsx");
+    const fn = page.slice(page.indexOf("const stepAside = () =>"), page.indexOf("\n", page.indexOf("const stepAside = () =>")));
+    expect(fn).toContain('stepsAside(nowModel.current, onboardingNow.current, setting("home.stepAside") === true)');
+    expect(fn).toContain('invoke("close_card")');
+    expect(fn).not.toContain("home.closeOnClickAway");
+  });
+  test("only after the link, the email or Finder really opened, never on a failure", () => {
+    const page = read("./card.tsx");
+    const open = page.slice(page.indexOf("function OpenButton("), page.indexOf("function CopyButton("));
+    expect(open).toMatch(/invoke\("open_link", \{ url: l\.url \}\)\.then\(\(\) => \{ onNote\(""\); opened\.stepAside\(\); \}\)\.catch/);
+    const settings = read("./settingsPage.tsx");
+    expect(settings).toMatch(/invoke\("report_problem", [^\n]*\.then\(\(n\) => \{ setExported\(S\.reportOpened\(String\(n\)\)\); onStepAside\(\); \}\)\.catch/);
+    expect(settings).toMatch(/invoke\("export_logs"\)\.then\(\(n\) => \{ setExported\(S\.exportLogsDone[^\n]*\); onStepAside\(\); \}\)\.catch/);
+    expect(page).toContain("onStepAside={stepAside}");
   });
 });
 

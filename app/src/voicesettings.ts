@@ -10,12 +10,14 @@ export type Sound = "on" | "muted" | "zero" | "none";
 export type VoiceSettings = {
   voices: VoiceChoice[]; macLang: string; voice: string | null; voiceMissing: string | null; voiceUsing: string | null;
   speed: number; speeds: number[]; inputs: MicChoice[]; defaultInput: string | null; mic: string | null; micMissing: string | null;
+  /** micQuiet: the microphone that would listen with the lid open and cannot now; lidOnly: none listed can hear. */
+  micQuiet: string | null; lidOnly: boolean;
   language: string; languages: string[]; sound: Sound;
 };
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5];
 export const VOICE_START: VoiceSettings = {
   voices: [], macLang: "", voice: null, voiceMissing: null, voiceUsing: null, speed: 1, speeds: SPEEDS, inputs: [], defaultInput: null,
-  mic: null, micMissing: null, language: "auto", languages: ["auto"], sound: "on",
+  mic: null, micMissing: null, micQuiet: null, lidOnly: false, language: "auto", languages: ["auto"], sound: "on",
 };
 
 const text = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
@@ -33,7 +35,7 @@ export function voiceSettingsFrom(v: unknown): VoiceSettings {
   return {
     voices, macLang: typeof o.macLang === "string" ? o.macLang : "", voice: text(o.voice), voiceMissing: text(o.voiceMissing), voiceUsing: text(o.voiceUsing),
     speed: typeof o.speed === "number" && SPEEDS.includes(o.speed) ? o.speed : 1, speeds: speeds.length ? speeds : SPEEDS,
-    inputs, defaultInput: text(o.defaultInput), mic: text(o.mic), micMissing: text(o.micMissing),
+    inputs, defaultInput: text(o.defaultInput), mic: text(o.mic), micMissing: text(o.micMissing), micQuiet: text(o.micQuiet), lidOnly: o.lidOnly === true,
     language: typeof o.language === "string" && languages.includes(o.language) ? o.language : "auto", languages: languages.includes("auto") ? languages : ["auto", ...languages], sound,
   };
 }
@@ -60,10 +62,13 @@ export const languageLabel = (code: string): string => (code === "auto" ? S.voic
 
 /** The picked voice is gone from this Mac: which one, and what speaks instead. Empty when nothing is away. */
 export const voiceLine = (s: VoiceSettings): string => (s.voiceMissing ? S.voiceMissingLine(s.voiceMissing, s.voiceUsing) : "");
-/** The picked microphone is not connected (the default listens until it is back), or there is no microphone at all. */
+/** The picked microphone is not connected (the default listens until it is back), there is no microphone at all, or the
+ *  lid is closed (the Mac's own is off: which one listens instead, or that none can). */
 export function micLine(s: VoiceSettings): string {
   if (s.inputs.length === 0) return S.micNone;
-  return s.micMissing ? S.micMissingLine(s.micMissing, s.defaultInput) : "";
+  if (s.lidOnly) return S.voiceSilent.lid;
+  if (s.micMissing) return S.micMissingLine(s.micMissing, s.defaultInput);
+  return s.micQuiet && s.defaultInput ? S.micLidLine(s.micQuiet, s.defaultInput) : "";
 }
 export const micDefaultLabel = (s: VoiceSettings): string => (s.defaultInput ? S.micDefaultNamed(s.defaultInput) : S.micDefault);
 /** The Mac's sound is off: spoken lines are shown as words only, and what to do. Empty when the sound is on. */

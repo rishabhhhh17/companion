@@ -166,6 +166,7 @@ const VISION_SYSTEM = [
   "mark: ring for a button, link, tab or icon; underline for a line of text or a field's label; box for a field, panel or area; arrow for something small that is easy to miss.",
   'When there are several screenshots, each is labelled "Screen N of M" and "screen" is that N; with one screenshot "screen" is 1.',
   'If you cannot find it, reply {"none":true}.',
+  'When the question says a step was clicked but is not checked yet, also put "lastStepWorked" in the same JSON object: "yes" only when the screen clearly shows that step worked, "no" when it clearly did not, otherwise "unsure".',
 ].join(" ");
 
 export function buildVisionOptions(c: Common & { model: string; system?: string }) {
@@ -288,13 +289,13 @@ export class VisionLane {
     // An error after the answer has already been handed back (the engine complaining as it is ended) is not an error: `fail`
     // does nothing once the answer is settled, where a stray rejected promise would crash the whole engine.
     const pictures = req.screens && req.screens.length > 1 ? req.screens.map((s) => s.image) : [req.image];
-    const finished = this.read(q as AsyncIterable<any>, model, pictures, (ts, c) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c) }), () => ac.abort())
+    const finished = this.read(q as AsyncIterable<any>, model, pictures, (ts, c, last) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c), ...(last ? { lastStepWorked: last } : {}) }), () => ac.abort())
       .then(() => got({ point: null, targets: [], costUsd: 0 }), (e) => { fail(e); });
     void finished.catch(() => {}).finally(() => { drive.wipe().catch(() => {}); });   // once the engine has closed, the copy is erased
     try { return await answer; } finally { done(); }
   }
 
-  private async read(q: AsyncIterable<any>, model: string, pictures: Image[], set: (targets: Point[], cost: number) => void, stop: () => void): Promise<void> {
+  private async read(q: AsyncIterable<any>, model: string, pictures: Image[], set: (targets: Point[], cost: number, last?: LastStep) => void, stop: () => void): Promise<void> {
     let targets: Point[] = [], cost = 0, apiError: ApiError | undefined;
     for await (const m of q) {
       if (m.type === "assistant") {
@@ -307,7 +308,7 @@ export class VisionLane {
         // The answer is one line. Estimated from the tokens used at this model's price, because the run is not waited on.
         const u = m.message?.usage;
         cost = u ? estimateUsd(model, u) : 0.01;
-        set(targets, cost);
+        set(targets, cost, parseLastStep(text));
         stop();     // end the engine process now; do not wait for it to wind down
         return;
       } else if (m.type === "result") {
@@ -342,6 +343,16 @@ export function parseTargetsText(text: string, pictures: Image | Image[]): Point
   return out;
 }
 
+/** Whether the step before worked, from the same one line of JSON (lastStepWorked): only "yes", "no" or "unsure" count. */
+export function parseLastStep(text: string): LastStep | undefined {
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) return undefined;
+  try {
+    const v = (JSON.parse(text.slice(a, b + 1)) as { lastStepWorked?: unknown } | null)?.lastStepWorked;
+    return v === "yes" || v === "no" || v === "unsure" ? v : undefined;
+  } catch { return undefined; }
+}
+
 /** The first target of the answer, or null. */
 export function parsePointText(text: string, img: Image): Point | null { return parseTargetsText(text, img)[0] ?? null; }
 
@@ -361,7 +372,9 @@ function validPoint(i: any, pics: Image[]): Point | null {
 
 export type LocateReq = { image: Image; question: string; ocr: Ocr[]; screens?: Screen[] };
 /** point: the first target (or none). targets: every target in order, when the lane can name more than one. */
-export type Located = { point: Point | null; targets?: Point[]; costUsd: number };
+/** lastStepWorked: the model's judgment of a step that was clicked but not checked yet, when the question asked for it. */
+export type Located = { point: Point | null; targets?: Point[]; costUsd: number; lastStepWorked?: LastStep };
+export type LastStep = "yes" | "no" | "unsure";
 /** Where the person clicks: the last target (the prompt lists them in the order to look at them, ending with the click),
  *  or the point when there is no list. What the aim eval scores, and what a lesson rings. */
 export function clickPoint(r: Located): Point | null { return r.targets?.length ? r.targets[r.targets.length - 1] : r.point; }
@@ -461,7 +474,8 @@ export class AssistService {
       const list = (r.targets?.length ? r.targets : r.point ? [r.point] : []).slice(0, MAX_TARGETS);
       if (!list.length) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
       // The first target as before; when there are several, the whole ordered list as well (the page plays them in turn).
-      this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}) });
+      // And, when the question asked for it, whether the step before worked (Did that work? only when unsure).
+      this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}), ...(r.lastStepWorked ? { lastStepWorked: r.lastStepWorked } : {}) });
     } catch (e) {
       const msg = String((e as Error).message ?? e);
       this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not find it (${msg})` });
