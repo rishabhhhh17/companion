@@ -50,7 +50,7 @@ pub fn ready_words(using: Option<Chord>) -> String {
 
 /// The Mac may send the press again while the keys are held (key repeat). Only the first press of a hold counts, and only
 /// a let go that ends one. If a let go never arrives (it can be lost), a press long after the last one counts as new, so
-/// hold to talk can never get stuck; the microphone itself is closed after a minute whatever happens (voice.rs).
+/// hold to talk can never get stuck; the microphone itself is closed at its cap whatever happens (a minute unless changed, voice.rs).
 #[derive(Debug)]
 pub struct Held { down: bool, last_ms: u64 }
 /// Longer than the slowest key repeat macOS offers (about 2 seconds between repeats).

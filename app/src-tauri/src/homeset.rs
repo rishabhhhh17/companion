@@ -220,7 +220,10 @@ mod wiring {
         }
         // Hold to talk: refused while the character cannot be seen (hidden for a full screen app, or by the person), never
         // because of the island; the character says "listening" and gets a moment before the microphone opens.
-        let gate = voice.find("if HIDDEN_BY_US.load(std::sync::atomic::Ordering::SeqCst) || USER_HID.load(std::sync::atomic::Ordering::SeqCst) {").expect("the hidden check");
+        // The hidden check is one helper (area 5 also closes an open microphone with it the moment Companion is hidden),
+        // and it reads only those two ways of hiding, never the island.
+        assert!(MAIN.contains("fn companion_hidden() -> bool { HIDDEN_BY_US.load(Ordering::SeqCst) || USER_HID.load(Ordering::SeqCst) }"), "the hidden check reads only the two ways of hiding");
+        let gate = voice.find("if companion_hidden() {").expect("the hidden check");
         let listening = voice.find("say_voice(&app, \"listening\", LISTENING").unwrap();
         let wait = voice.find("std::thread::sleep(Duration::from_millis(150));").unwrap();
         let mic = voice.find("voice_mac::Recorder::start(").unwrap();

@@ -9,7 +9,8 @@ import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { Command, Event } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
-import { adapterFor, buildContext, grewTooMuch, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
+import { adapterFor, buildContext, grewTooMuch, handBack, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
+import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
@@ -358,7 +359,8 @@ export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promi
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
-  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number }) {}
+  // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack.
+  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
@@ -389,7 +391,9 @@ export class AssistService {
       // Code, links, commands and error text are set aside first, so they come back exactly as they were.
       const { masked, spans } = protect(cmd.text);
       const adapter = adapterFor(TERMINAL_APPS.has(cmd.app) ? cmd.app : cmd.target);
-      const context = buildContext(cmd.project);
+      // Use project info in Prompt help (on unless turned off): the folder's short description. What Companion remembers
+      // follows its own setting, not this one.
+      const context = this.o.settings?.get("ph.useProjectInfo") === false ? null : buildContext(cmd.project);
       const remembered = (() => { try { return this.o.memory?.(cmd.project) ?? ""; } catch { return ""; } })();
       const system = systemPrompt({ style: cmd.style, adapter, hasContext: !!context || !!remembered, noQuestion: !!cmd.noQuestion });
       const bits = [context ? `Project information (background only):\n${context}` : "", remembered ? `What Companion remembers (background only, never copy it wholesale):\n${remembered}` : "", cmd.answer ? `The person answered your question: ${cmd.answer}` : ""].filter(Boolean);
@@ -411,7 +415,7 @@ export class AssistService {
         if (grewTooMuch(cmd.text, final)) return this.emit({ type: "assist.error", req: cmd.req, reason: "The improved version came out much longer than yours, so I left yours alone." });
       }
       const question = cmd.noQuestion ? undefined : parsed.question;
-      this.emit({ type: "assist.prompt.done", req: cmd.req, text: final, ...(question ? { question, ...(parsed.options ? { options: parsed.options } : {}) } : {}), diff: wordDiff(cmd.text, final), usdEstimate: round(cost), handback: adapter.handback });
+      this.emit({ type: "assist.prompt.done", req: cmd.req, text: final, ...(question ? { question, ...(parsed.options ? { options: parsed.options } : {}) } : {}), diff: wordDiff(cmd.text, final), usdEstimate: round(cost), handback: handBack(adapter, this.o.settings?.get("ph.handBack")) });
     } catch (e) {
       this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : `Could not improve the prompt (${(e as Error).message})` });
     } finally { this.active.delete(cmd.req); }

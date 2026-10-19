@@ -10,6 +10,24 @@ fn num_ok(v: &Value, lo: f64, hi: f64) -> bool { v.as_f64().is_some_and(|n| n.is
 fn text_ok(v: &Value, max: usize) -> bool { v.as_str().is_some_and(|s| s.chars().count() <= max && !s.contains('<') && !s.chars().any(|c| c.is_control())) }
 
 /// A laid out diagram: `{ nodes:[{id,label,x,y,w,h,broken}], edges:[{from,to,label?,points:[[x,y],[x,y]],broken}], width, height, caption, reason }`.
+/// How long the picture stays (How long Draw it for me stays, drawIt.seconds): 10, 15 or 30 seconds, or None until it is
+/// closed. Anything else is the usual 15 seconds. The page fades it then; the shell tidies up one second later.
+pub fn shown_ms(v: &Value) -> Option<u64> {
+    match v.as_str() { Some("10") => Some(10_000), Some("30") => Some(30_000), Some("untilClosed") => None, _ => Some(15_000) }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Timing { pub hide_after_ms: Option<u64>, pub busy_ms: u64 }
+/// The shell's side of the same setting: it hides the overlay one second after the page's time (15 s gives today's 16 s)
+/// and keeps it busy half a second more (16.5 s), so nothing else lands on the picture meanwhile. Until closed: no timer.
+pub fn timing(v: &Value) -> Timing {
+    match shown_ms(v) { Some(ms) => Timing { hide_after_ms: Some(ms + 1000), busy_ms: ms + 1500 }, None => Timing { hide_after_ms: None, busy_ms: u64::MAX } }
+}
+
+/// Whether what is on the overlay keeps the character beside a window (main.rs roam_tick): a ring or a timed picture does,
+/// for its own time (at most 31.5 seconds for a picture); a picture kept until closed has no time, so it does not, and the
+/// character goes home as it would with nothing up.
+pub fn holds_a_visit(overlay_busy: bool, kept_until_closed: bool) -> bool { overlay_busy && !kept_until_closed }
+
 pub fn validate(d: &Value) -> Result<(), String> {
     let o = d.as_object().ok_or("not a diagram")?;
     let nodes = o.get("nodes").and_then(Value::as_array).ok_or("no boxes")?;
@@ -30,6 +48,44 @@ pub fn validate(d: &Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn draw_it_for_me_stays_as_long_as_the_setting_says_and_the_shell_keeps_one_second_more() {
+        // drawIt.seconds: 10, 15 or 30 seconds, or until it is closed; usual 15 (today). One setting drives the page's fade
+        // and the shell's tidy up, which comes one second later (busy half a second more, so nothing lands on it meanwhile).
+        assert_eq!(shown_ms(&serde_json::json!("15")), Some(15_000));
+        assert_eq!(timing(&serde_json::json!("15")), Timing { hide_after_ms: Some(16_000), busy_ms: 16_500 }, "today's numbers");
+        assert_eq!(timing(&serde_json::json!("10")), Timing { hide_after_ms: Some(11_000), busy_ms: 11_500 });
+        assert_eq!(timing(&serde_json::json!("30")), Timing { hide_after_ms: Some(31_000), busy_ms: 31_500 });
+        // Until closed: no timer at all; Close and Stop everything still take it away (hide_overlay), and so does Companion
+        // being hidden (main.rs show_diagram).
+        assert_eq!(shown_ms(&serde_json::json!("untilClosed")), None);
+        assert_eq!(timing(&serde_json::json!("untilClosed")), Timing { hide_after_ms: None, busy_ms: u64::MAX });
+        for odd in [serde_json::json!("5"), serde_json::json!(15), serde_json::json!(null), serde_json::json!("forever")] {
+            assert_eq!(timing(&odd), timing(&serde_json::json!("15")), "{odd}");
+        }
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn show_diagram(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("let chosen = setting_now(\"drawIt.seconds\");") && f.contains("diagram::timing(&chosen)"));
+        assert!(f.contains("\"ms\": diagram::shown_ms(&chosen)"), "the page is sent the same time");
+        assert!(!f.contains("16_000") && !f.contains("16_500"), "no second number of its own");
+        assert!(f.contains("HIDDEN_BY_US") && f.contains("USER_HID"), "a picture kept until closed goes when Companion is hidden");
+        let overlay = include_str!("../../src/overlay.ts");
+        let draw = &overlay[overlay.find("function drawDiagram(").unwrap()..overlay.find("void listen(\"overlay-diagram\"").unwrap()];
+        assert!(!draw.contains("15_000") && draw.contains("if (ms !== null) timer = setTimeout("), "the page fades it after the time it is sent");
+    }
+    #[test]
+    fn a_picture_kept_until_closed_never_keeps_the_character_beside_a_window() {
+        // The character goes home once nothing about the window it visits is up (roam.rs). A ring and a timed picture keep
+        // it there for their own time, as today; a picture kept until closed has no time, so it does not keep it at all.
+        assert!(holds_a_visit(true, false), "a ring or a timed picture");
+        assert!(!holds_a_visit(true, true), "a picture kept until closed");
+        assert!(!holds_a_visit(false, false) && !holds_a_visit(false, true), "nothing on the overlay");
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn roam_tick(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("let up = diagram::holds_a_visit(overlay_busy(), DIAGRAM_KEPT.load(SeqCst)) ||"), "roam_tick asks the rule");
+    }
     use serde_json::json;
     fn good() -> Value {
         json!({ "nodes": [{ "id": "a", "label": "Page", "x": 0, "y": 0, "w": 120, "h": 46, "broken": false }, { "id": "b", "label": "API", "x": 176, "y": 0, "w": 120, "h": 46, "broken": true }],

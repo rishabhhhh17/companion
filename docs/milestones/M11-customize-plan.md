@@ -20,15 +20,16 @@ built app by a person: see "What done means" at the end.
     read once on load.
   - `section`: one of the sections.
   - `kind`: switch, choice, number, text, list or custom. Custom is only for the editors that already exist (keys, voice)
-    and the per app answers editor area 5 adds; never for a new plain setting.
+    and the per app answers editor area 5 adds (promptHelpApps, the only protective custom row); never for a new plain
+    setting.
   - `default`: the value that matches today's behaviour.
   - choice: `options`. number: `min`, `max`, `step`, `unit` (dollars, seconds, minutes, percent, count, words). text:
-    `maxLength`. list: `maxItems` with `item.maxLength` or `allowedItems`.
+    `maxLength`. list: `maxItems` with `item.maxLength` (and optionally `item.shape`, today only `appId`) or `allowedItems`.
   - `scope`: app or project. A project value is kept per project folder; with no folder chosen the row is disabled and
     says why.
   - `applies`: who reads it (shell, runner, pages).
   - `store`: where the value lives: `settings` (the new shell file) or a wrapped store: dock, presentation, keys, voice,
-    spending, memory, metrics (later: rules, promptHelpApps).
+    spending, memory, metrics, rules (area 2), promptHelpApps (area 5).
   - `live`: true takes effect at once; false shows "From the next task" and is read when a task starts.
   - `protective`: true for lists a person adds protections to (house rules, never read apps). Never touched by Reset this
     section or Reset all; only its own control removes an item, after an inline confirm.
@@ -336,23 +337,34 @@ every capture.
 
 ### Area 5: Pointing, talking and other apps (pages and shell builder)
 
+Status (19 Oct 2026): built on `m11/set-pointing-talk` and tested with fakes (all suites), then fixed after review (the
+microphone closes the moment Companion is hidden, the spoken line for a task waits for how it really ended, captions fit
+narrow windows, call apps keep ids only, Add the app in front names the app first). Not yet tried in the built app on a
+real Mac. Where the build differs from the first draft of this table, the row says so: the usual value always keeps
+today's behaviour, so the ring colour's usual option is today's orange (red is offered as a choice, as the draft listed)
+and the lettering's is today's plain caption (not handwritten).
+
+For the founder (open, not decided here): the first draft asked for red as the usual ring colour and handwritten as the
+usual lettering. Today's ring is orange with plain lettering, and plan section 1 says the usual value is today's
+behaviour, so both stay as today. Say if either usual should change.
+
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|
-| `point.ringSeconds` How long a ring stays | number, 10 | pages | pointer.ts RING_MS, overlay.ts, anchor.rs, main.rs | 5 to 30 seconds | Needs a floor: the window watch is the ring time plus 0.5 seconds, from the same setting. A ring still clears when its window changes. |
-| `point.yourTurnSeconds` How long a your turn ring waits for your click | number, 90 | shell | yourturn.rs WAIT_MS | 30 to 300 seconds, step 15 | The mouse is read only while the ring is up. |
-| `point.colour` Ring colour | choice red / yellow / blue / highContrast, red | pages | overlay.ts | | The soft guess ring keeps its look. |
-| `point.lettering` Ring lettering | choice handwritten / plain, handwritten | pages | overlay.ts | | Captions also follow text size. |
-| `point.guesses` When Companion is only guessing | choice softRing / wordsOnly, softRing | pages | main.rs, snap.rs, pointer.ts | | Needs a floor: a guess is never solid; nothing below confidence 0.4. |
-| `point.pace` Pace of step by step pointing | choice slower / normal / faster, normal | pages | sequence.ts, pointer.ts | x1.5, normal, x0.75 | Still scaled by the voice speed. |
-| `drawIt.seconds` How long Draw it for me stays | choice 10 / 15 / 30 / untilClosed, 15 | pages | overlay.ts, main.rs | | One setting drives both numbers (the shell keeps the overlay busy for it plus 1 second). |
-| `talk.maxHold` Longest hold to talk | choice 30 / 60 / 120, 60 | shell | voice.rs MAX_HOLD_MS, main.rs | | Needs a floor: there is always a cap; the microphone is open only while held and lit. |
-| `speak.alsoSay` Also say out loud | list, none | pages | speech.ts | items from: needsYou, taskDone | Only with Speak to me on; quiet during calls holds. Move "All done. Every step is finished." into strings.ts. |
-| `ph.style` Prompt help rewrites | choice full / light, full | shell | phelp.rs, prompthelp.ts | | The engine already supports light. |
-| `ph.useProjectInfo` Use project info in Prompt help | switch, on | runner | lanes.ts | | Memory follows memory.tellClaude. |
-| `ph.handBack` Give the suggestion back by | choice paste / copy, paste | runner | prompthelp.ts | | Terminals always get copy (T11). |
-| `ph.appAnswers` Apps Prompt help and the error explainer may read | custom: each app Allow always / Ask each time / Never, with Forget, Forget all and Add the app in front to never read | shell | prompthelp.rs, phelp.rs (prompt_help.json), errhelp.rs | | Needs a floor: the built in never list and password apps can never be removed; never entries the person added are protective. |
-| `pointat.editor` Open files in | choice editorInFront / cursor / vscode / windsurf / macDefault, editorInFront | shell | pointat.rs | | One not installed falls back and says so. |
-| `calls.apps` Apps that count as a call | list, the seven built in apps on | shell | presentation.rs CALL_APPS | each built in on or off, plus up to 20 added | Only the front app's id is compared (rule 7). |
+| `point.ringSeconds` How long a ring stays | number, 10 | shell and pages | anchor.rs `ring_ms`, `watch_ms`, `watch_polls`; main.rs `draw_pointer_with` sends `ringMs`; overlay.ts `ringMsOf` | 5 to 30 seconds, step 1 | Floor, tested for every value: the window watch and the overlay's busy time are the ring time plus 0.5 seconds, from the same reading. A ring still clears at once when its window changes. |
+| `point.yourTurnSeconds` How long a your turn ring waits for your click | number, 90 | shell | yourturn.rs `wait_ms`, main.rs `your_turn` | 30 to 300 seconds, step 15 | The mouse is read only inside that loop, while the ring is up. |
+| `point.colour` Ring colour | choice orange / red / yellow / blue / highContrast, orange | pages | pointer.ts `ringLook`, overlay.ts | | Orange is today's ring (the draft's usual red is a choice; see the founder note above). High contrast is white with a dark edge. The guess ring keeps its dashed amber look in every colour. |
+| `point.lettering` Ring lettering | choice plain / handwritten, plain | pages | pointer.ts `captionStyle`, `captionPlace`, overlay.ts | | Plain is today's caption. Captions now follow text size (standard is today's 15 points), and in a window narrower than the caption it gets narrower (never under 120 points), so the words stay inside the window; in a wide one it is where it always was. |
+| `point.guesses` When Companion is only guessing | choice softRing / wordsOnly, softRing | shell | showme.rs `solid`, `said_in_words`; main.rs `showme_aim`, `point_problem`, `draw_pointer_with`; card.tsx | | Floor: solid needs a confirmed target in a known window whatever the setting; below 0.4 nothing is drawn (sequence.ts). Words only answers `why: "guess"` and the page says where to look. The window under the target is looked up once and both the words only choice and the ring use it. |
+| `point.pace` Pace of step by step pointing | choice slower / normal / faster, normal | pages | pointer.ts `paceFactor`, `flightMs`; sequence.ts `leadMs`, `afterMs`, `lineMs`; speech.ts `lineFor` | x1.5, normal, x0.75 | Still scaled by the voice speed. Faster never shortens a spoken line. |
+| `drawIt.seconds` How long Draw it for me stays | choice 10 / 15 / 30 / untilClosed, 15 | shell and pages | diagram.rs `shown_ms`, `timing`; main.rs `show_diagram`; overlay.ts | | One setting drives both sides: the shell hides one second after the page's time (busy half a second more), so 15 gives today's 16 and 16.5 seconds. Until closed: Close and Stop everything clear it, and so does Companion being hidden; a new picture may replace it; it never keeps the character beside a window (diagram.rs `holds_a_visit`), and confetti waits until it is closed. |
+| `talk.maxHold` Longest hold to talk | choice 30 / 60 / 120, 60 | shell | voice.rs `max_hold_ms`, `Hold::down_for`, `Hold::must_close`, `stopped_words`, `buffer_samples`; voice_mac.rs `buffer_room`; main.rs `voice_worker`, `voice_tell_hidden` | | Floor: there is always a cap, at most two minutes, read when the keys go down; the recorder keeps room for the cap and ten seconds (70 seconds for a minute, as before). The microphone is open only while the keys are held and the light is on: if Companion is hidden during a hold (a full screen app comes forward, or Hide from the menu bar), the microphone closes at once, what was heard is dropped and the person is told why; hidden between the light and the microphone, it never opens. Tested for every cap. |
+| `speak.alsoSay` Also say out loud | list from needsYou, taskDone; none | pages | speech.ts `alsoSayLines`, `taskEndLines`, card.tsx | | Only with Speak to me on; fixed words only, never the task's or the question's text; quiet during calls and the secret check still hold in the shell. A task's line waits for the agent's state after its receipt: done says what the proof says (passed, some checks skipped for `partial`, not checked), an error says a check failed or that it stopped before it was finished (never "done"), and a task that was stopped, or anything after Stop everything, says nothing. A Drive plan is one task: its steps say nothing and the plan says one line when it ends, unless stopped. Tested against every proof value in the protocol. "All done. Every step is finished." comes from strings.ts (`S.lessonDone`). |
+| `ph.style` Prompt help rewrites | choice full / light, full | shell | prompthelp.rs `style_of`, phelp.rs `send_prompt` | | The engine already supported light. |
+| `ph.useProjectInfo` Use project info in Prompt help | switch, on | runner | lanes.ts `AssistService.prompt`, prompthelp.ts `buildContext` | | Off sends no project description. The help line names exactly what is sent (the name, script and package names from package.json, top level names, house rules), tied to `buildContext` by a test. What Companion remembers is left to its own setting (area 3). |
+| `ph.handBack` Give the suggestion back by | choice paste / copy, paste | runner | prompthelp.ts `handBack`, lanes.ts | | Terminals always get copy (T11, fixed). |
+| `ph.appAnswers` Apps Prompt help and the error explainer may read | custom (store promptHelpApps, prompt_help.json), protective | shell | prompthelp.rs `apps_op`, `Consent::change`; phelp.rs `apps_value`, `apps_change`; settingsPage.tsx `AppAnswers`; appanswers.ts | per app answer | Floor: the built in never list (any case) can never be changed or forgotten; a never the person added is loosened only after the inline confirm; Forget all keeps the nevers; no reset touches it. Answers given on the card show in Settings at once. Add the app in front to never read names the app first ("Never read Notes?") and sends its id; the shell changes it only while that app is still in front. |
+| `pointat.editor` Open files in | choice editorInFront / cursor / vscode / windsurf / macDefault, editorInFront | shell | pointat.rs `choose_editor_for`, `missing_words`; main.rs `point_problem` | | One not on this Mac falls back to today's order and says so. |
+| `calls.apps` Apps that count as a call | list, the seven built in ids | shell | presentation.rs `call_apps_from`, `quiet_with`; main.rs `quiet`, `front_app`, `app_names`; callapps.ts, settingsPage.tsx `CallApps` | each built in app on or off, plus up to 20 added | Only the front app's id is stored and compared (rule 7): the list's items have the shape `appId` (`item.shape`, the same rule in settings.rs and settings.ts and in the shared cases), so anything else is refused. At most 20 added apps count, whatever the list holds. A call in a browser still cannot be noticed. |
 
 ## 3. Never a setting
 - Deny rules and protected places (.git, .claude, .companion never written; nothing outside the project; no sudo; no

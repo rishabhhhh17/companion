@@ -22,7 +22,8 @@ export function valueWords(d: Def, v: unknown): string {
     case "choice": return w.options?.[String(v)] ?? String(v ?? "");
     case "number": return typeof v === "number" ? numberWords(v, d.unit) : "";
     case "text": return typeof v === "string" && v ? v : S.setNone;
-    case "list": return Array.isArray(v) && v.length ? v.map((x) => w.options?.[String(x)] ?? String(x)).join(", ") : S.setNone;
+    // A list with its own words for its usual value (the call apps) says them; one from a fixed set says each item's words.
+    case "list": return w.usual && JSON.stringify(v) === JSON.stringify(d.default) ? w.usual : Array.isArray(v) && v.length ? v.map((x) => w.options?.[String(x)] ?? String(x)).join(", ") : S.setNone;
     default: return w.usual ?? "";
   }
 }

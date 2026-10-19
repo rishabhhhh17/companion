@@ -112,11 +112,11 @@ describe("search", () => {
   test("words are matched from their start, and every word typed must match", () => {
     const keys = (q: string) => searchSettings(q).sections.flatMap((s) => s.keys);
     expect(keys("eactions")).not.toContain("fun.reactions");
-    expect(keys("quiet calls")).toEqual(["calls.quiet"]);
+    expect(keys("quiet calls")).toEqual(["calls.quiet", "calls.apps"]);   // both are about staying quiet during calls
   });
   test("results stay under their section titles, and a section title finds its whole section", () => {
     const r = searchSettings("screen sharing");
-    expect(r.sections.find((s) => s.id === "sharing")?.keys.sort()).toEqual(["calls.quiet", "sharing.hide"]);
+    expect(r.sections.find((s) => s.id === "sharing")?.keys.sort()).toEqual(["calls.apps", "calls.quiet", "sharing.hide"]);
     expect(r.sections.every((s) => s.title === S.sections[s.id as keyof typeof S.sections])).toBe(true);
   });
   test("the parts that are not settings are found too, and the count says how many match", () => {

@@ -198,8 +198,8 @@ describe("a Show me asked by voice counts only its own answer", () => {
     const point = card.slice(card.indexOf('if (ev.type !== "assist.point"'), card.indexOf("player.current.start(steps"));
     expect(point).toContain("const speaking = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: voiceShowMe(voiceAsked.current, req, Date.now()) }).say;");
     expect(point).toContain("const speed = spokenSpeed();");
-    expect(point).toContain("lineMs(s.text, speaking, speed)");
-    expect(card).toContain("player.current.start(steps, { aim, words }, speaking, speed);");
+    expect(point).toContain("lineMs(s.text, speaking, speed, pace)");   // and at the chosen pace (pointtalk.test.ts)
+    expect(card).toContain("player.current.start(steps, { aim, words }, speaking, speed, pace);");
     expect(card).not.toMatch(/const speaking = speechOn\(\)/);
     // Pressed, not asked by voice: the hero key, Find the problem, Do it for me, Show me with an empty box, rescue, a lesson.
     const findKey = card.slice(card.indexOf('listen("find-problem"'), card.indexOf("const offFound"));

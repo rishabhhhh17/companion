@@ -39,6 +39,10 @@ describe("the shipped list of settings", () => {
       "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false,
+      // Area 5: pointing, talking and other apps.
+      "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
+      "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
+      "ph.handBack": "paste", "ph.appAnswers": null, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -88,6 +92,47 @@ describe("the shipped list of settings", () => {
   });
   test("the three settings the engine keeps itself are reached only through the engine", () => {
     for (const k of ["spend.dailyLimit", "explain.mode", "memory.paused", "numbers.on"]) expect(defOf(k)!.applies, k).toEqual(["runner"]);
+  });
+});
+
+// The call apps the shell knows (presentation.rs CALL_APPS), read from its source so the usual list can never drift from it.
+const CALL_APPS: string[] = [...readFileSync(new URL("../../app/src-tauri/src/presentation.rs", import.meta.url), "utf8").split("pub const CALL_APPS")[1].split("];")[0].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+describe("area 5: pointing, talking and other apps keep their fixed parts", () => {
+  test("hold to talk always has a cap: every choice is a number of seconds, none is longer than two minutes", () => {
+    const d = defOf("talk.maxHold")!;
+    expect(d.options).toEqual(["30", "60", "120"]);
+    for (const o of d.options!) expect(Number(o) > 0 && Number(o) <= 120, o).toBe(true);
+    for (const v of ["0", "none", "off", "never", ""]) expect(validateKey("talk.maxHold", v).ok, v).toBe(false);
+  });
+  test("a guess is never drawn solid: the only choices are the soft ring or words", () => {
+    expect(defOf("point.guesses")!.options).toEqual(["softRing", "wordsOnly"]);
+    for (const v of ["solid", "ring", "always"]) expect(validateKey("point.guesses", v).ok, v).toBe(false);
+  });
+  test("a ring that does not wait for a click stays 5 to 30 seconds, and nothing else", () => {
+    expect(defOf("point.ringSeconds")).toMatchObject({ kind: "number", min: 5, max: 30, step: 1, unit: "seconds", default: 10 });
+    expect(validateKey("point.ringSeconds", 0).ok).toBe(false);
+    expect(validateKey("point.ringSeconds", 3600).ok).toBe(false);
+  });
+  test("the per app answers are protective: never in a section reset or Reset all, kept in prompt_help.json by the shell", () => {
+    expect(defOf("ph.appAnswers")).toMatchObject({ kind: "custom", store: "promptHelpApps", protective: true, applies: ["shell"], default: null });
+  });
+  test("what may be said out loud is only from a fixed list, and the call apps start as the seven built in ones", () => {
+    expect(defOf("speak.alsoSay")!.allowedItems).toEqual(["needsYou", "taskDone"]);
+    expect(CALL_APPS.length).toBe(7);
+    expect(defOf("calls.apps")).toMatchObject({ kind: "list", maxItems: 27 });
+  });
+  test("custom and protective stay narrow: no other store gets a custom editor, and only lists and the per app answers protect", () => {
+    const base = (): Registry => JSON.parse(JSON.stringify(REGISTRY));
+    const r = base();
+    r.settings = r.settings.map((d) => (d.key === "point.colour" ? { ...d, protective: true } : d));
+    expect(checkRegistry(r).join()).toContain("point.colour");
+    const r3 = base();
+    r3.settings = r3.settings.map((d) => (d.key === "ph.style" ? { ...d, store: "promptHelpApps" } as Def : d));
+    expect(checkRegistry(r3).join()).toContain("ph.style");   // a plain setting can never use the per app answers' store
+    const r4 = base();
+    r4.settings = r4.settings.map((d) => (d.key === "ph.appAnswers" ? { ...d, store: "settings" } as Def : d));
+    expect(checkRegistry(r4).join()).toContain("ph.appAnswers");   // and a custom one only the stores with their own editors
   });
 });
 

@@ -120,6 +120,12 @@ export function adapterFor(kindOrApp: string): Adapter {
   return { kind, guidance: GUIDANCE[kind], handback: kind === "claude_code" ? "copy" : "paste" };
 }
 
+/** How the suggestion goes back (ph.handBack in Settings): paste unless the person chose copy. A terminal always gets copy
+ *  (T11, fixed): pasting into a running terminal could run it. */
+export function handBack(adapter: Adapter, chosen: unknown): "paste" | "copy" {
+  return adapter.handback === "copy" || chosen === "copy" ? "copy" : "paste";
+}
+
 export function systemPrompt(o: { style: "full" | "light"; adapter: Adapter; hasContext: boolean; noQuestion: boolean }): string {
   return [
     "You improve prompts that people send to AI tools. The person is not an engineer. Return only the improved prompt, in the person's own language, keeping their meaning.",

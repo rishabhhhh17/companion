@@ -1,11 +1,12 @@
 // The Prompt help service end to end, with a stand in for Claude: what is sent, what comes back, and what is checked.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AssistService, ImageStore, type FastLike } from "../src/lanes.ts";
-import { StreamRestorer } from "../src/prompthelp.ts";
+import { buildContext, StreamRestorer } from "../src/prompthelp.ts";
 import type { Event } from "../../protocol/index.ts";
+import { RunnerSettings } from "../src/settings.ts";
 
 type Req = { text: string; system?: string; extra?: string };
 function mk(replies: string[], opts: { deltas?: string[][] } = {}) {
@@ -155,5 +156,74 @@ describe("streaming without showing markers", () => {
     const shown = r.events.filter((e) => e.type === "assist.prompt.delta").map((e: any) => e.text).join("");
     expect(shown).not.toContain("KEEP");
     expect(shown).toContain("`a()`");
+  });
+});
+
+// M11 area 5 (Settings, the registry T16): Use project info in Prompt help (ph.useProjectInfo) and Give the suggestion back
+// by (ph.handBack), applied by the shell's settings.apply and read on each request. The usual values are today's.
+describe("Prompt help settings", () => {
+  const withSettings = (values: Record<string, unknown>) => {
+    const s = new RunnerSettings();
+    s.apply({ v: 1, id: "s", type: "settings.apply", values });
+    const events: Event[] = [];
+    const calls: Req[] = [];
+    const fast = { async run(req: Req, onDelta: (t: string) => void) { calls.push(req); onDelta("Better"); return { text: "Better", costUsd: 0.001 }; } } as unknown as FastLike;
+    const svc = new AssistService({ fast, vision: { locate: async () => ({ point: null, costUsd: 0 }) }, images: new ImageStore(), emit: (e) => events.push(e), memory: () => "- Prefers short answers", settings: s });
+    const ask = (extra: Record<string, unknown> = {}) => svc.handle({ v: 1, id: "c", type: "assist.prompt", req: "ph", app: "com.openai.codex", target: "chat", text: "do it", style: "full", ...extra } as never);
+    const done = () => events.find((e) => e.type === "assist.prompt.done") as any;
+    return { calls, ask, done };
+  };
+  const folder = () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-ph-")));
+    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "studio-site", dependencies: { react: "19" } }));
+    return d;
+  };
+  test("project info is sent by default, and not at all when it is turned off; what Companion remembers is left to its own setting", async () => {
+    const d = folder();
+    const on = withSettings({});
+    await on.ask({ project: d });
+    expect(on.calls[0].extra).toContain("studio-site");
+    const off = withSettings({ "ph.useProjectInfo": false });
+    await off.ask({ project: d });
+    expect(off.calls[0].extra ?? "").not.toContain("studio-site");
+    expect(off.calls[0].extra ?? "").not.toMatch(/Project information/);
+    expect(off.calls[0].extra).toContain("Prefers short answers");
+  });
+  test("the suggestion goes back by paste by default, by copy when chosen, and a terminal always gets copy", async () => {
+    const usual = withSettings({}); await usual.ask();
+    expect(usual.done().handback).toBe("paste");
+    const copy = withSettings({ "ph.handBack": "copy" }); await copy.ask();
+    expect(copy.done().handback).toBe("copy");
+    const term = withSettings({ "ph.handBack": "paste" }); await term.ask({ app: "com.apple.Terminal", target: "other" });
+    expect(term.done().handback).toBe("copy");
+  });
+  test("the help line says exactly what project info may be sent, and nothing else from a file is", () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-ph-")));
+    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "studio-site", description: "a private description", scripts: { dev: "vite --open-the-door" }, dependencies: { react: "19.1.0" } }));
+    mkdirSync(join(d, "src"));
+    writeFileSync(join(d, "src", "app.ts"), "const insideTheCode = 1;");
+    mkdirSync(join(d, ".companion"));
+    writeFileSync(join(d, ".companion", "rules.txt"), "Use British spelling\n");
+    const ctx = buildContext(d)!;
+    for (const sent of ["studio-site", "dev", "react", "src", "Use British spelling"]) expect(ctx).toContain(sent);
+    for (const kept of ["vite --open-the-door", "a private description", "insideTheCode", "19.1.0"]) expect(ctx).not.toContain(kept);
+    // Every kind of line buildContext can send is named in the help line the person reads, and the help line makes no
+    // promise the code does not keep.
+    const named: Record<string, string> = { "Project name": "its name", Scripts: "script", "Built with": "package names", "Top level": "top level", "House rules": "house rules" };
+    const code = readFileSync(new URL("../src/prompthelp.ts", import.meta.url), "utf8");
+    const body = code.slice(code.indexOf("export function buildContext("), code.indexOf("// Shows streamed text"));
+    expect([...body.matchAll(/lines\.push\(`([A-Z][a-z ]+):/g)].map((x) => x[1]).sort()).toEqual(Object.keys(named).sort());
+    const strings = readFileSync(new URL("../../app/src/strings.ts", import.meta.url), "utf8");
+    const help = /"ph\.useProjectInfo": \{ label: "[^"]+", help: "([^"]+)"/.exec(strings)![1];
+    for (const line of ctx.split("\n")) { const label = line.slice(0, line.indexOf(":")); expect(named[label], label).toBeDefined(); expect(help).toContain(named[label]); }
+    expect(help).toContain("Nothing else from your files is sent.");
+    expect(help).not.toContain("never sends what is inside your files");
+  });
+  test("a value the rules refuse is the usual one", async () => {
+    const odd = withSettings({ "ph.handBack": "clipboard", "ph.useProjectInfo": "no" });
+    const d = folder();
+    await odd.ask({ project: d });
+    expect(odd.done().handback).toBe("paste");
+    expect(odd.calls[0].extra).toContain("studio-site");
   });
 });

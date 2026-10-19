@@ -15,6 +15,10 @@ const BUILT_IN_NEVER: &[&str] = &[
     "com.nordsec.nordpass", "com.enpass.Enpass", "in.sinew.Enpass-Desktop", "com.apple.systempreferences", "com.apple.SecurityAgent",
 ];
 
+/// One of the apps that are never read (password managers, Keychain Access, Passwords, System Settings, the system's own
+/// password prompts). macOS ignores case in bundle ids, so this does too: the list can only refuse more, never less.
+pub fn built_in_never(bundle_id: &str) -> bool { BUILT_IN_NEVER.iter().any(|b| b.eq_ignore_ascii_case(bundle_id)) }
+
 #[derive(Default, Clone)]
 pub struct Denylist { user: BTreeSet<String> }
 impl Denylist {
@@ -23,7 +27,7 @@ impl Denylist {
     pub fn add(&mut self, bundle_id: &str) { if !bundle_id.is_empty() { self.user.insert(bundle_id.to_string()); } }
     #[cfg(test)]
     pub fn remove(&mut self, bundle_id: &str) { self.user.remove(bundle_id); }
-    pub fn contains(&self, bundle_id: &str) -> bool { BUILT_IN_NEVER.contains(&bundle_id) || self.user.contains(bundle_id) }
+    pub fn contains(&self, bundle_id: &str) -> bool { built_in_never(bundle_id) || self.user.contains(bundle_id) }
     /// The built in apps cannot be removed from the list, only the ones the person added.
     #[cfg(test)]
     pub fn user_apps(&self) -> Vec<String> { self.user.iter().cloned().collect() }
@@ -31,13 +35,15 @@ impl Denylist {
 
 // ---------- asking once per app ----------
 
+/// Once is the card's "Just this once" (used up by being used, never kept). Ask is Settings' "Ask each time": kept, so the
+/// app stays in the list, and it asks every time, like an app with no answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Choice { Once, Always, Never }
+pub enum Choice { Once, Always, Ask, Never }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision { Allow, Ask, Refuse }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Consent { map: BTreeMap<String, Choice> }
 impl Consent {
     /// Asks what to do for this app right now. "Once" is used up by being used.
@@ -46,27 +52,106 @@ impl Consent {
             None => Decision::Ask,
             Some(Choice::Always) => Decision::Allow,
             Some(Choice::Never) => Decision::Refuse,
+            Some(Choice::Ask) => Decision::Ask,
             Some(Choice::Once) => { self.map.remove(bundle_id); Decision::Allow }
         }
     }
     pub fn record(&mut self, bundle_id: &str, c: Choice) { if !bundle_id.is_empty() { self.map.insert(bundle_id.to_string(), c); } }
     #[cfg(test)]
     pub fn forget(&mut self, bundle_id: &str) { self.map.remove(bundle_id); }
-    /// Only "always" and "never" are kept on disk. "Once" never survives a restart.
+    /// "always", "ask" and "never" are kept on disk. "Once" never survives a restart. (A version before Settings had "ask"
+    /// reads it as no answer, which also asks: the same meaning.)
     pub fn to_json(&self) -> Value {
-        let m: BTreeMap<&String, &str> = self.map.iter().filter_map(|(k, v)| match v { Choice::Always => Some((k, "always")), Choice::Never => Some((k, "never")), Choice::Once => None }).collect();
+        let m: BTreeMap<&String, &str> = self.map.iter().filter_map(|(k, v)| match v { Choice::Always => Some((k, "always")), Choice::Ask => Some((k, "ask")), Choice::Never => Some((k, "never")), Choice::Once => None }).collect();
         json!({ "apps": m })
     }
     pub fn from_json(v: &Value) -> Consent {
         let mut c = Consent::default();
         if let Some(o) = v.get("apps").and_then(Value::as_object) {
             for (k, val) in o {
-                match val.as_str() { Some("always") => c.record(k, Choice::Always), Some("never") => c.record(k, Choice::Never), _ => {} }
+                match val.as_str() { Some("always") => c.record(k, Choice::Always), Some("ask") => c.record(k, Choice::Ask), Some("never") => c.record(k, Choice::Never), _ => {} }
             }
         }
         c
     }
 }
+
+// ---------- the per app answers in Settings (ph.appAnswers, the registry T16) ----------
+
+/// What Settings may do to the answers. Each comes from the page as `{ "op": ... }` through settings_set.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AppsOp {
+    /// Allow always, Ask each time or Never for one app. Loosening a never needs `confirmed` (the inline confirm).
+    Answer { app: String, answer: Choice, confirmed: bool },
+    /// Forget one app's answer (it asks again). Forgetting a never needs `confirmed`.
+    Forget { app: String, confirmed: bool },
+    /// Forget every answer except the apps never to read (those are protections, each removed only on its own).
+    ForgetAll,
+    /// Add the app in front to never read. `app` is the id the page showed the person ("Never read Notes?"); the shell
+    /// changes it only while that app is still the one in front (only its bundle id is read, never its content).
+    NeverFront { app: String },
+}
+
+/// The page's value as an operation; anything else is refused with the same code as any other custom value.
+pub fn apps_op(v: &Value) -> Result<AppsOp, &'static str> {
+    let app = || v.get("app").and_then(Value::as_str).map(str::to_string).ok_or("custom");
+    let confirmed = v.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
+    match v.get("op").and_then(Value::as_str) {
+        Some("answer") => {
+            let answer = match v.get("answer").and_then(Value::as_str) { Some("always") => Choice::Always, Some("ask") => Choice::Ask, Some("never") => Choice::Never, _ => return Err("custom") };
+            Ok(AppsOp::Answer { app: app()?, answer, confirmed })
+        }
+        Some("forget") => Ok(AppsOp::Forget { app: app()?, confirmed }),
+        Some("forgetAll") => Ok(AppsOp::ForgetAll),
+        Some("neverFront") => Ok(AppsOp::NeverFront { app: app()? }),
+        _ => Err("custom"),
+    }
+}
+
+/// An app's bundle id as macOS gives them (the same rule as everywhere in Settings).
+fn app_id_ok(id: &str) -> bool { crate::settings::app_id_ok(id) }
+
+impl Consent {
+    /// Applies one change from Settings. The built in never list can never be changed or forgotten; a never the person
+    /// added is loosened (another answer, or forgotten) only with `confirmed`; making anything stricter never needs it.
+    /// Returns how many answers changed.
+    pub fn change(&mut self, op: &AppsOp, front: &str) -> Result<usize, &'static str> {
+        let loosens = |c: &Consent, app: &str| c.map.get(app) == Some(&Choice::Never);
+        match op {
+            AppsOp::Answer { app, answer, confirmed } => {
+                if !app_id_ok(app) { return Err("notApp"); }
+                if built_in_never(app) { return Err("builtIn"); }
+                if *answer != Choice::Never && loosens(self, app) && !confirmed { return Err("confirm"); }
+                self.record(app, *answer);
+                Ok(1)
+            }
+            AppsOp::Forget { app, confirmed } => {
+                if !app_id_ok(app) { return Err("notApp"); }
+                if built_in_never(app) { return Err("builtIn"); }
+                if loosens(self, app) && !confirmed { return Err("confirm"); }
+                Ok(usize::from(self.map.remove(app).is_some()))
+            }
+            AppsOp::ForgetAll => {
+                let before = self.map.len();
+                self.map.retain(|_, c| *c == Choice::Never);
+                Ok(before - self.map.len())
+            }
+            AppsOp::NeverFront { app } => {
+                if front.is_empty() || front.starts_with("dev.companion") { return Err("ownApp"); }
+                // Another app came to the front after the page named one: nothing changes, so only the app the person was
+                // shown is ever added.
+                if !app.eq_ignore_ascii_case(front) { return Err("frontChanged"); }
+                if !app_id_ok(front) { return Err("notApp"); }
+                if built_in_never(front) { return Ok(0); }
+                self.record(front, Choice::Never);
+                Ok(1)
+            }
+        }
+    }
+}
+
+/// The rewrite style sent with a prompt (ph.style in Settings): "light" only when the person chose it, else "full".
+pub fn style_of(v: &Value) -> &'static str { if v.as_str() == Some("light") { "light" } else { "full" } }
 
 // ---------- may we read this field? ----------
 
@@ -325,6 +410,102 @@ mod tests {
             let mut c = Consent::from_json(&v);
             assert_eq!(c.decide("a"), Decision::Ask);
         }
+    }
+
+    // ---- the per app answers in Settings (ph.appAnswers, M11 area 5) ----
+    fn op(v: Value) -> AppsOp { apps_op(&v).unwrap() }
+    #[test] fn settings_can_set_each_answer_and_ask_each_time_is_kept_and_survives_a_restart() {
+        let mut c = Consent::default();
+        c.change(&op(json!({ "op": "answer", "app": APP, "answer": "always" })), "").unwrap();
+        assert_eq!(c.decide(APP), Decision::Allow);
+        c.change(&op(json!({ "op": "answer", "app": APP, "answer": "ask" })), "").unwrap();
+        assert_eq!(c.decide(APP), Decision::Ask);
+        assert_eq!(c.decide(APP), Decision::Ask, "ask each time is not used up");
+        assert_eq!(c.to_json(), json!({ "apps": { APP: "ask" } }), "kept, so the app stays in the list");
+        let mut back = Consent::from_json(&c.to_json());
+        assert_eq!(back.decide(APP), Decision::Ask);
+        // Just this once is only ever an answer on the card, never a setting.
+        assert!(apps_op(&json!({ "op": "answer", "app": APP, "answer": "once" })).is_err());
+    }
+    #[test] fn the_built_in_never_list_can_never_be_changed_or_forgotten_from_settings() {
+        for id in ["com.1password.1password", "com.apple.Passwords", "com.apple.keychainaccess", "COM.BITWARDEN.DESKTOP"] {
+            let mut c = Consent::default();
+            for v in [json!({ "op": "answer", "app": id, "answer": "always", "confirmed": true }), json!({ "op": "answer", "app": id, "answer": "ask", "confirmed": true }), json!({ "op": "forget", "app": id, "confirmed": true })] {
+                assert_eq!(c.change(&op(v.clone()), ""), Err("builtIn"), "{id} {v}");
+            }
+            // Still never read, whatever is stored for it.
+            c.record(id, Choice::Always);
+            assert_eq!(read_verdict("AXTextArea", "", false, id, &Denylist::default(), &mut c), ReadVerdict::RefuseNeverApp, "{id}: macOS ignores case in ids, so the list does too");
+        }
+    }
+    #[test] fn a_never_the_person_added_is_a_protection_loosened_only_after_a_confirm() {
+        let mut c = Consent::default();
+        c.record("com.mybank.app", Choice::Never);
+        for v in [json!({ "op": "answer", "app": "com.mybank.app", "answer": "always" }), json!({ "op": "answer", "app": "com.mybank.app", "answer": "ask" }), json!({ "op": "forget", "app": "com.mybank.app" })] {
+            assert_eq!(c.change(&op(v.clone()), ""), Err("confirm"), "{v}");
+            assert_eq!(c.decide("com.mybank.app"), Decision::Refuse, "unchanged: {v}");
+        }
+        c.change(&op(json!({ "op": "forget", "app": "com.mybank.app", "confirmed": true })), "").unwrap();
+        assert_eq!(c.decide("com.mybank.app"), Decision::Ask);
+        // Making something stricter never needs a confirm.
+        c.record(APP, Choice::Always);
+        c.change(&op(json!({ "op": "answer", "app": APP, "answer": "never" })), "").unwrap();
+        assert_eq!(c.decide(APP), Decision::Refuse);
+    }
+    #[test] fn forget_all_forgets_every_answer_except_the_apps_never_to_read() {
+        let mut c = Consent::default();
+        c.record("a.a", Choice::Always); c.record("b.b", Choice::Ask); c.record("n.n", Choice::Never);
+        assert_eq!(c.change(&AppsOp::ForgetAll, ""), Ok(2));
+        assert_eq!(c.to_json(), json!({ "apps": { "n.n": "never" } }));
+    }
+    #[test] fn the_app_in_front_can_be_added_to_never_read_but_never_companion_itself() {
+        let front = |app: &str| AppsOp::NeverFront { app: app.to_string() };
+        let mut c = Consent::default();
+        c.record("com.notes.app", Choice::Always);
+        c.change(&front("com.notes.app"), "com.notes.app").unwrap();
+        assert_eq!(c.decide("com.notes.app"), Decision::Refuse);
+        assert_eq!(c.change(&front("dev.companion.app"), "dev.companion.app"), Err("ownApp"));
+        assert_eq!(c.change(&front(""), ""), Err("ownApp"));
+        assert_eq!(c.change(&front("com.1password.1password"), "com.1password.1password"), Ok(0), "already never read");
+    }
+    #[test] fn add_the_app_in_front_changes_only_the_app_the_person_was_shown() {
+        // The page names the app in front first ("Never read Notes?") and sends that id; another app in front by the time
+        // the person says yes changes nothing.
+        let mut c = Consent::default();
+        assert_eq!(c.change(&AppsOp::NeverFront { app: "com.notes.app".into() }, "com.mail.app"), Err("frontChanged"));
+        assert_eq!(c.to_json(), json!({ "apps": {} }), "nothing was recorded");
+        assert_eq!(c.change(&AppsOp::NeverFront { app: "COM.NOTES.APP".into() }, "com.notes.app"), Ok(1), "macOS ignores case in ids");
+        assert_eq!(c.decide("com.notes.app"), Decision::Refuse);
+        // The page must say which app: an operation that names none is refused like any other odd value.
+        assert_eq!(apps_op(&json!({ "op": "neverFront" })).err(), Some("custom"));
+        assert_eq!(apps_op(&json!({ "op": "neverFront", "app": "com.notes.app" })), Ok(AppsOp::NeverFront { app: "com.notes.app".into() }));
+        // The same shape of id as everywhere else in Settings (settings.rs app_id_ok), one rule for both.
+        assert!(include_str!("prompthelp.rs").contains("fn app_id_ok(id: &str) -> bool { crate::settings::app_id_ok(id) }"));
+    }
+    #[test] fn only_real_looking_app_ids_and_known_operations_are_taken() {
+        let mut c = Consent::default();
+        for bad in ["", "two words", "../etc", "a\nb", &"x".repeat(201)] {
+            assert_eq!(c.change(&op(json!({ "op": "answer", "app": bad, "answer": "never" })), ""), Err("notApp"), "{bad:?}");
+        }
+        for v in [json!(null), json!("forget"), json!({ "op": "wipe" }), json!({ "op": "answer", "app": APP }), json!({ "op": "answer", "app": 5, "answer": "never" })] {
+            assert_eq!(apps_op(&v).err(), Some("custom"), "{v}");
+        }
+    }
+
+    #[test] fn prompt_help_rewrites_in_full_unless_a_light_touch_was_chosen() {
+        assert_eq!(style_of(&json!("full")), "full");
+        assert_eq!(style_of(&json!("light")), "light");
+        for odd in [json!(null), json!("Light"), json!(true), json!("none")] { assert_eq!(style_of(&odd), "full", "{odd}"); }
+        let phelp = include_str!("phelp.rs");
+        assert!(phelp.contains("\"style\": rules::style_of(&crate::setting_now(\"ph.style\"))"), "the prompt is sent with the chosen style");
+        assert!(!phelp.contains("\"style\": \"full\""));
+        // An answer given on the card (Prompt help or the error explainer) shows in Settings at once.
+        assert!(phelp.contains("crate::settings_told(&app, &[\"ph.appAnswers\".to_string()])"));
+        assert!(include_str!("errhelp.rs").contains("crate::settings_told(&app, &[\"ph.appAnswers\".to_string()])"));
+        // Settings changes the answers only through these rules, and a failed save changes nothing.
+        let change = &phelp[phelp.find("pub fn apps_change(").unwrap()..];
+        let change = &change[..change.find("\n}\n").unwrap()];
+        assert!(change.contains("next.change(&op, front)?") && change.contains("try_save_consent(&next)?") && change.find("try_save_consent(&next)?") < change.find("st.consent = Some(next)"));
     }
 
     fn verdict(role: &str, sub: &str, secure: bool, app: &str, c: &mut Consent) -> ReadVerdict { read_verdict(role, sub, secure, app, &Denylist::default(), c) }

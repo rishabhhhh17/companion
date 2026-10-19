@@ -7,24 +7,34 @@ import registryJson from "./settings.json";
 
 export type Kind = "switch" | "choice" | "number" | "text" | "list" | "custom";
 export type Applies = "shell" | "runner" | "pages";
-export type Store = "settings" | "dock" | "presentation" | "keys" | "voice" | "spending" | "memory" | "metrics" | "rules";
+export type Store = "settings" | "dock" | "presentation" | "keys" | "voice" | "promptHelpApps" | "spending" | "memory" | "metrics" | "rules";
 export type Unit = "dollars" | "seconds" | "minutes" | "percent" | "count" | "words";
 export type MapName = "isOn" | "notOff" | "isOne" | "notZero" | "textSize";
 export type Def = {
   key: string; section: string; kind: Kind; default: unknown;
   options?: string[]; optionsFrom?: "projectScripts"; min?: number; max?: number; step?: number; unit?: Unit; maxLength?: number;
-  maxItems?: number; item?: { maxLength: number }; allowedItems?: string[];
+  maxItems?: number; item?: { maxLength: number; shape?: ItemShape }; allowedItems?: string[];
   scope: "app" | "project"; applies: Applies[]; store: Store; live: boolean;
   protective?: boolean; floor?: string; renamedFrom?: string[];
   from?: { pageStorage?: { name: string; map: MapName } };
 };
 export type Registry = { version: number; sections: string[]; settings: Def[] };
-export type Reason = "unknown" | "custom" | "notSwitch" | "notChoice" | "notNumber" | "tooLow" | "tooHigh" | "notText" | "notOneLine" | "tooLong" | "secret" | "notList" | "tooMany" | "duplicate" | "empty" | "notAllowed" | "notRule";
+export type Reason = "unknown" | "custom" | "notSwitch" | "notChoice" | "notNumber" | "tooLow" | "tooHigh" | "notText" | "notOneLine" | "tooLong" | "secret" | "notList" | "tooMany" | "duplicate" | "empty" | "notAllowed" | "notAppId" | "notRule";
 export type Checked = { ok: true; value: unknown } | { ok: false; reason: Reason };
+/** A shape a list's items must also have: "appId", an app's bundle id (Apps that count as a call keeps ids only, rule 7). */
+export type ItemShape = "appId";
+export const ITEM_SHAPES: readonly ItemShape[] = ["appId"];
+/** An app's bundle id as macOS gives them: letters, digits, dots, dashes and underscores, up to 200 characters, never
+ *  starting with a dot or holding two dots in a row. The same rule as settings.rs `app_id_ok`. */
+export const appIdOk = (id: string): boolean => id.length > 0 && id.length <= 200 && !id.startsWith(".") && !id.includes("..") && /^[A-Za-z0-9._-]+$/.test(id);
 
 export const REGISTRY: Registry = registryJson as unknown as Registry;
 export const KINDS: readonly Kind[] = ["switch", "choice", "number", "text", "list", "custom"];
-export const STORES: readonly Store[] = ["settings", "dock", "presentation", "keys", "voice", "spending", "memory", "metrics", "rules"];
+export const STORES: readonly Store[] = ["settings", "dock", "presentation", "keys", "voice", "promptHelpApps", "spending", "memory", "metrics", "rules"];
+/** The stores with their own editor, shown by a custom row: the keys, the voice, and the per app answers (prompt_help.json). */
+export const EDITOR_STORES: readonly Store[] = ["keys", "voice", "promptHelpApps"];
+/** The one custom setting that holds protections a person added (apps never to read): never reset, only its own controls. */
+export const PROTECTIVE_EDITOR: Store = "promptHelpApps";
 export const UNITS: readonly Unit[] = ["dollars", "seconds", "minutes", "percent", "count", "words"];
 /** The stores the engine keeps itself (spending.json, memory-settings.json, metrics.json), changed only by the shell. */
 export const RUNNER_STORES: readonly Store[] = ["spending", "memory", "metrics"];
@@ -164,6 +174,7 @@ export function validate(d: Def, v: unknown): Checked {
           if (!c.ok) return c;
           one = c.value as string;
           if (!one) return { ok: false, reason: "empty" };
+          if (d.item?.shape === "appId" && !appIdOk(one)) return { ok: false, reason: "notAppId" };
         }
         if (out.includes(one)) return { ok: false, reason: "duplicate" };
         out.push(one);
@@ -243,14 +254,14 @@ export function checkRegistry(r: Registry): string[] {
     if (!Array.isArray(d.applies) || d.applies.length === 0 || d.applies.some((a) => !["shell", "runner", "pages"].includes(a)) || new Set(d.applies).size !== d.applies.length) bad("applies must name shell, runner or pages");
     if (!STORES.includes(d.store)) bad("its store does not exist");
     if (typeof d.live !== "boolean") bad("live must be true or false");
-    if (d.protective !== undefined && (typeof d.protective !== "boolean" || (d.protective && d.kind !== "list"))) bad("only a list can be protective");
+    if (d.protective !== undefined && (typeof d.protective !== "boolean" || (d.protective && d.kind !== "list" && !(d.kind === "custom" && d.store === PROTECTIVE_EDITOR)))) bad("only a list (or the per app answers) can be protective");
     if (d.floor !== undefined && (typeof d.floor !== "string" || !d.floor)) bad("floor must name its words");
     if (d.kind === "custom") {
-      if (d.store !== "keys" && d.store !== "voice") bad("custom is only for the editors that already exist");
+      if (!EDITOR_STORES.includes(d.store)) bad("custom is only for the editors that already exist");
       if (d.default !== null) bad("a custom setting's usual value lives in its own store");
       continue;
     }
-    if (d.store === "keys" || d.store === "voice") bad("that store has its own editor");
+    if (EDITOR_STORES.includes(d.store)) bad("that store has its own editor");
     if (d.store === "rules" && !(d.kind === "list" && d.protective === true && d.scope === "project")) bad("the house rules file holds only a protective list for a project");
     if (RUNNER_STORES.includes(d.store) && (d.applies.join() !== "runner" || d.scope !== "app")) bad("the engine's own stores are applied by the engine, for every project");
     if (d.optionsFrom !== undefined && (d.optionsFrom !== "projectScripts" || d.kind !== "choice")) bad("only a choice can take its other options from the project's scripts");
@@ -267,6 +278,7 @@ export function checkRegistry(r: Registry): string[] {
       const allowed = d.allowedItems;
       if (allowed !== undefined && (!Array.isArray(allowed) || allowed.length === 0 || new Set(allowed).size !== allowed.length)) bad("allowedItems must be different words");
       if (allowed === undefined && !(d.item && Number.isInteger(d.item.maxLength) && d.item.maxLength > 0)) bad("a list needs item.maxLength or allowedItems");
+      if (d.item?.shape !== undefined && !ITEM_SHAPES.includes(d.item.shape)) bad("item.shape must be one the rules know (appId)");
     }
     const p = d.from?.pageStorage;
     if (d.from !== undefined && (!p || typeof p.name !== "string" || !p.name || !(p.map in MIGRATION_MAPS))) bad("its migration names a map that does not exist");

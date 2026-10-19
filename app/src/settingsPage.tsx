@@ -21,6 +21,8 @@ import { defOf, validate, type Def, type RuleKind } from "../../protocol/setting
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
+import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, neverFrontOp, type Answer, type AppRow } from "./appanswers.ts";
+import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
@@ -297,6 +299,144 @@ function ListControl({ d, value, disabled, onChange, onProblem }: { d: Def; valu
   </div>);
 }
 
+/** A list from a fixed set (Also say out loud): each item a switch, in the set's own order. */
+function AllowedList({ d, value, disabled, onChange }: { d: Def; value: string[]; disabled: boolean; onChange: (v: string[]) => void }) {
+  const w = wordsOf(d.key);
+  const all = d.allowedItems ?? [];
+  return (
+    <div className="row" role="group" aria-label={w.label}>
+      {all.map((id) => {
+        const on = value.includes(id);
+        return <button key={id} className={on ? "btn primary" : "btn"} type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange(all.filter((x) => (x === id ? !on : value.includes(x))))}>{w.options?.[id] ?? id}</button>;
+      })}
+    </div>
+  );
+}
+
+/** Apps that count as a call (calls.apps): the call apps Companion knows, each on or off, and apps added with Add the app
+ *  in front (the shell names the app in front: its id and name only), each with Remove. Every change goes to the shell. */
+function CallApps({ value, disabled, onChange, onProblem }: { value: string[]; disabled: boolean; onChange: (v: string[]) => void; onProblem: (p: string) => void }) {
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [note, setNote] = useState("");
+  const rows = callAppRows(value, names);
+  const addedKey = rows.added.map((a) => a.id).join("|");
+  useEffect(() => {
+    const ids = rows.added.map((a) => a.id);
+    if (!ids.length) return;
+    void invoke("app_names", { ids }).then((v) => setNames((n) => ({ ...n, ...(v as Record<string, string>) }))).catch(() => {});
+  }, [addedKey]);
+  const addFront = () => {
+    setNote(""); onProblem("");
+    void invoke("front_app").then((v) => {
+      const f = v as { id: string; name: string };
+      const r = addCallApp(value, f.id);
+      if (!r.ok) { onProblem(r.why === "full" ? S.callApps.full : r.why === "already" ? S.callApps.already : S.callApps.ownApp); return; }
+      setNames((n) => ({ ...n, [f.id]: f.name || f.id }));
+      onChange(r.list);
+      setNote(S.callApps.addedNote(f.name || f.id));
+    }).catch((e) => onProblem(String(e) === "ownApp" ? S.callApps.ownApp : problemWords(String(e))));
+  };
+  return (<div>
+    <div role="group" aria-label={S.callApps.builtIn}>
+      <div className="line muted">{S.callApps.builtIn}</div>
+      {rows.builtIn.map((b) => (
+        <div className="row" key={b.id}>
+          <span className="line">{b.name}</span>
+          <button className="btn" type="button" role="switch" aria-checked={b.on} aria-label={b.name} disabled={disabled} onClick={() => onChange(toggleCallApp(value, b.id, !b.on))}>{b.on ? S.on : S.off}</button>
+        </div>
+      ))}
+    </div>
+    {rows.added.length > 0 && (
+      <div role="group" aria-label={S.callApps.added}>
+        <div className="line muted">{S.callApps.added}</div>
+        {rows.added.map((a) => (
+          <div className="row" key={a.id}>
+            <span className="line">{a.name}</span>
+            <button className="btn" type="button" aria-label={S.callApps.removeFor(a.name)} disabled={disabled} onClick={() => onChange(value.filter((x) => x !== a.id))}>{S.attachRemoveShort}</button>
+          </div>
+        ))}
+      </div>
+    )}
+    <div className="row"><button className="btn" type="button" disabled={disabled} onClick={addFront}>{S.callApps.addFront}</button></div>
+    {note && <div className="line" role="status">{note}</div>}
+  </div>);
+}
+
+/** Apps Prompt help and the error explainer may read (ph.appAnswers): each app the person answered for, with Allow always,
+ *  Ask each time or Never, and Forget; Forget all (never the apps never to read); Add the app in front to never read. The
+ *  rules are the shell's (prompthelp.rs): an app said never to read is loosened only after the inline confirm here, and
+ *  the built in never list is not in this list at all. It is protective, so no reset ever changes it. */
+function AppAnswers() {
+  const v = useSetting("ph.appAnswers");
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [asking, setAsking] = useState<{ row: AppRow; next: Answer | "forget" } | null>(null);
+  const [askAll, setAskAll] = useState(false);
+  const [askFront, setAskFront] = useState<{ id: string; name: string } | null>(null);
+  const [problem, setProblem] = useState("");
+  const [note, setNote] = useState("");
+  const baseId = useId(), allId = useId(), frontId = useId();
+  const idsKey = appAnswersFrom(v, {}).map((r) => r.id).join("|");
+  useEffect(() => {
+    const ids = idsKey ? idsKey.split("|") : [];
+    if (!ids.length) return;
+    void invoke("app_names", { ids }).then((x) => setNames(x as Record<string, string>)).catch(() => {});
+  }, [idsKey]);
+  const rows = appAnswersFrom(v, names);
+  const done = (p: Promise<Done>, after = "") => { setProblem(""); setNote(""); void p.then((d) => { if (!d.ok) setProblem(problemWords(d.code)); else if (after) setNote(after); }); };
+  const pick = (r: AppRow, next: Answer | "forget") => {
+    if (next === r.answer) return;
+    if (needsConfirm(r.answer, next)) { setAsking({ row: r, next }); return; }
+    done(changeSetting("ph.appAnswers", answerOp(r.id, next, false)));
+  };
+  const yes = () => { const a = asking; setAsking(null); if (a) done(changeSetting("ph.appAnswers", answerOp(a.row.id, a.next, true))); };
+  // Add the app in front to never read: name the app first (only its id and name are read), then change only that one.
+  const front = () => {
+    setProblem(""); setNote("");
+    void invoke("front_app").then((x) => { const f = x as { id: string; name: string }; setAskFront({ id: f.id, name: f.name || f.id }); })
+      .catch((e) => setProblem(problemWords(String(e))));
+  };
+  const frontYes = () => { const f = askFront; setAskFront(null); if (f) done(changeSetting("ph.appAnswers", neverFrontOp(f.id)), S.appAnswers.neverFrontDone(f.name)); };
+  const options = (["always", "ask", "never"] as const).map((id) => ({ id, label: S.appAnswers.choices[id] }));
+  const forgettable = forgetAllCount(rows);
+  return (<div>
+    {rows.length === 0 && <div className="line muted">{S.appAnswers.none}</div>}
+    {rows.map((r, i) => (
+      <div key={r.id} role="group" aria-label={S.appAnswers.answerFor(r.name)}>
+        <div className="row">
+          <span className="line" id={`${baseId}-l${i}`}>{r.name}</span>
+          <ChoiceControl value={r.answer} options={[...options]} labelId={`${baseId}-l${i}`} disabled={!!asking} onChange={(x) => pick(r, x as Answer)} />
+          <button id={`${baseId}-f${i}`} className="btn" type="button" aria-label={S.appAnswers.forgetFor(r.name)} disabled={!!asking} onClick={() => pick(r, "forget")}>{S.appAnswers.forget}</button>
+        </div>
+        {asking?.row.id === r.id && (
+          <ConfirmStep className="line" label={S.appAnswers.loosenSure(r.name)} back={`${baseId}-f${i}`} onCancel={() => setAsking(null)}>
+            <div className="line">{S.appAnswers.loosenSure(r.name)}</div>
+            <div className="row"><button className="btn danger" type="button" onClick={yes}>{S.appAnswers.loosenYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
+          </ConfirmStep>
+        )}
+      </div>
+    ))}
+    <div className="row">
+      {!askFront && <button id={frontId} className="btn" type="button" onClick={front}>{S.appAnswers.neverFront}</button>}
+      {forgettable > 0 && !askAll && <button id={allId} className="btn" type="button" onClick={() => setAskAll(true)}>{S.appAnswers.forgetAll}</button>}
+    </div>
+    {askFront && (
+      <ConfirmStep className="line" label={S.appAnswers.neverFrontSure(askFront.name)} back={frontId} onCancel={() => setAskFront(null)}>
+        <div className="line">{S.appAnswers.neverFrontSure(askFront.name)}</div>
+        <div className="row"><button className="btn" type="button" onClick={frontYes}>{S.appAnswers.neverFrontYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskFront(null)}>{S.planCancel}</button></div>
+      </ConfirmStep>
+    )}
+    {askAll && (
+      <ConfirmStep className="line" label={S.appAnswers.forgetAll} back={allId} onCancel={() => setAskAll(false)}>
+        <div className="line">{S.appAnswers.forgetAllSure(forgettable)}</div>
+        <div className="row"><button className="btn" type="button" onClick={() => { setAskAll(false); done(changeSetting("ph.appAnswers", { op: "forgetAll" })); }}>{S.appAnswers.forgetAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskAll(false)}>{S.planCancel}</button></div>
+      </ConfirmStep>
+    )}
+    {note && <div className="line" role="status">{note}</div>}
+    {problem && <div className="error" role="alert">{problem}</div>}
+  </div>);
+}
+// end AppAnswers
+
 /** A choice of up to four as a radio group (the arrows move and pick, as macOS does), more as a menu. */
 function ChoiceControl({ value, options, labelId, disabled, onChange }: { value: string; options: { id: string; label: string }[]; labelId: string; disabled: boolean; onChange: (v: string) => void }) {
   const box = useRef<HTMLDivElement>(null);
@@ -446,13 +586,17 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
       case "choice": return <ChoiceControl value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
       case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
       case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
-      case "list": return <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} />;
+      // A list from a fixed set (Also say out loud) is a row of switches; the call apps have their own editor below.
+      case "list": return d.allowedItems ? <AllowedList d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} /> : d.key === "calls.apps" ? null : <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} />;
       default: return null;
     }
   })();
   // The keys and the voice keep their own editors; the keys' editor has its own Reset to the usual keys.
+  // The per app answers have their own editor too (protective: no Reset), and the call apps their own list.
   const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : d.key === "rules.house" ? <HouseRules key={shownFor} project={shownFor} saved={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled || rulesBlocked} />
-    : d.key === "check.skip" ? <SkipControl d={d} value={Array.isArray(value) ? (value as string[]) : []} facts={facts_} disabled={off} onChange={change} /> : null;
+    : d.key === "check.skip" ? <SkipControl d={d} value={Array.isArray(value) ? (value as string[]) : []} facts={facts_} disabled={off} onChange={change} />
+    : d.key === "ph.appAnswers" ? <AppAnswers />
+    : d.key === "calls.apps" ? <CallApps value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} /> : null;
   return (
     <div role="group" aria-labelledby={labelId} className="setting">
       <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
