@@ -8,6 +8,8 @@ import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/clau
 import { homedir } from "node:os";
 import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
 import { thinkingFor } from "./models.ts";
+import { toolsFor } from "./tools.ts";
+import { turnStop, type ApiError } from "./reach.ts";
 import { APPROVAL_TIMEOUT_MS, EngineStop, MAX_APPROVAL_WAIT_MS, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
 
 // The safety hook waits while an approval card is open. Its own time limit (in seconds, the SDK's unit) is set longer than a
@@ -30,7 +32,11 @@ export function shellFacts(input: any): ShellFacts | undefined {
   return id ? { backgroundId: id } : undefined;
 }
 
-const COMPANION_APPEND = "You are working inside a user's project folder for a Companion task. Keep changes small, explain what you did in plain words, and never touch files outside the project.";
+// The last sentences are behaviour, not safety (safety is in the hook): when only the person has what is missing, Claude does
+// every part it can and ends on one short question, on its own last line, which the card shows with the follow up box under
+// the receipt (asks.ts); otherwise it ends on no question and no offer, so a habitual "Want me to add a test?" is never
+// taken for one. It never asks for a secret in chat: the answer would be sent to Claude and saved in its conversation.
+const COMPANION_APPEND = "You are working inside a user's project folder for a Companion task. Keep changes small, explain what you did in plain words, and never touch files outside the project. If something only the person can give is missing (a setting's value, an account, a choice between two ways), do every part you can without it, then end your final message with one short question about it, on its own last line. Otherwise never end your final message with a question or an offer to do more. Never make up a value they have to give. Never ask for a password, a key or any other secret: say which setting is needed and where to add it (the project's .env file, or the host's settings), so the person adds it themselves.";
 
 // The Claude binary that ships inside the pinned SDK package. Never one found on PATH.
 export function resolveClaudeBinary(override?: string): string {
@@ -53,6 +59,8 @@ export type SdkConfig = {
   offTheRecord?: boolean;
   // Most turns (work.maxTurns, T16); 80 when none is given, as before.
   maxTurns?: number;
+  // The built in tools this session is given (tools.ts toolsFor): exactly these, never the whole Claude Code set.
+  tools?: readonly string[];
 };
 
 export function buildSdkOptions(c: SdkConfig) {
@@ -86,6 +94,9 @@ export function buildSdkOptions(c: SdkConfig) {
       return out;
     })() },
     permissionMode: (c.planOnly ? "plan" : "acceptEdits") as "plan" | "acceptEdits",
+    // Only the built in tools this flow uses, so each request carries only their definitions (tools.ts). Grep and Glob are
+    // named here because native builds may otherwise leave them out (the pinned sdk.d.ts, `tools`).
+    tools: toolsFor(c),
     disallowedTools: ["Bash(sudo *)", "Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)", ...readDenyRules()],
     hooks: { PreToolUse: [gate], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
     canUseTool: async () => ({ behavior: "deny" as const, message: "Companion decides in its safety hook, not here." }),
@@ -137,18 +148,25 @@ export class SdkEngine implements Engine {
   constructor(private o: { claudeBinary: string; env: Record<string, string>; queryFn?: typeof realQuery; totals?: SessionTotals }) {}
 
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
-    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone, memory: opts.memory, offTheRecord: opts.offTheRecord, maxTurns: opts.maxTurns });
+    const options = buildSdkOptions({ project: opts.project, model: opts.model, budgetUsd: opts.budgetUsd, claudeBinary: this.o.claudeBinary, env: this.o.env, authorize: opts.authorize, signal: opts.signal, resumeSession: opts.resumeSession, planOnly: opts.planOnly, toolDone: opts.toolDone, memory: opts.memory, offTheRecord: opts.offTheRecord, maxTurns: opts.maxTurns, tools: opts.tools });
     const q = (this.o.queryFn ?? realQuery)({ prompt: opts.prompt, options: options as never });
     const totals = this.o.totals ?? SHARED_TOTALS;
     // A continued conversation starts from what it had already cost, so that is not booked again.
     let lastTotal = (opts.resumeSession && totals.get(opts.resumeSession)) || 0, sessionId: string | undefined;
+    let apiError: ApiError | undefined;
     for await (const m of q as AsyncIterable<any>) {
       if (m.session_id) sessionId = String(m.session_id);
       if (m.type === "assistant") {
         // An assistant message's own usage is not counted: the result already holds it, and one reply can arrive as
         // several messages that each repeat the same usage.
-        const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+        const content: any[] = Array.isArray(m.message?.content) ? m.message.content : [];
+        const text = content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+        // Claude Code's own message about a failed request (an API error, or a reply cut at its output limit) is not the
+        // agent speaking: it is kept to name the failure if the turn ends on it, and never shown as the agent's words.
+        if (m.error) { apiError = { kind: String(m.error), text }; continue; }
         if (text) yield { text, costUsd: 0, sessionId };
+        // A tool call: whatever the agent said before it is not what it ended on (asks.ts reads the last words).
+        if (content.some((b: any) => b.type === "tool_use")) yield { costUsd: 0, sessionId, usedTool: true };
       } else if (m.type === "result") {
         const total = count(Number(m.total_cost_usd ?? 0));
         // Below what was already counted: the saved conversation held no total, so this one started from nothing.
@@ -156,7 +174,12 @@ export class SdkEngine implements Engine {
         lastTotal = total;
         // A zeroed total (a crash or start up error) is not what the conversation cost, so it is not remembered.
         if (sessionId && total > 0 && !opts.offTheRecord) totals.set(sessionId, total);
-        if (m.subtype && m.subtype !== "success") throw new EngineStop(`${m.subtype}: the run stopped`, delta);
+        // A turn that ended on a failed request is not a finished turn, whatever its subtype says. Claude out of reach and
+        // each kind of failed request are named (reach.ts), so the card can say so in plain words; a limit keeps its own
+        // name. After Stop the runner ends the task as stopped; an error the stop itself caused is not named here.
+        const stop = opts.signal.aborted ? (m.subtype && m.subtype !== "success" ? `${m.subtype}: the run stopped` : null) : turnStop(m, apiError);
+        if (stop) throw new EngineStop(stop, delta);
+        apiError = undefined;
         const usage = turnTokens(m.usage);
         yield { costUsd: delta, sessionId, ...(usage ? { usage } : {}) };
       }

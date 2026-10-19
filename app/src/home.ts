@@ -1,7 +1,7 @@
 // Home in the notch (F18.1): the card, moved under the island and laid out in tabs. Which part of the old card lives on
 // which tab, which tab opens by itself when something needs the person, when a click elsewhere may close Home, and the
 // island's own words. Plain code, tested in home.test.ts; card.tsx and island.tsx only draw what this decides.
-import { characterWords, stateLabel, visualState, type CharacterState, type Model } from "./model.ts";
+import { characterWords, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
 export type Tab = "now" | "did" | "learn" | "memory" | "settings";
@@ -74,6 +74,8 @@ export function need(m: Model): Need | null {
   if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle, question: true };
   if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle, question: true };
   if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle, question: true };
+  // The last task ended on a question to the person: its words and the box to answer in are under its receipt, on Now.
+  if (waitsForAnswer(m)) return { key: `asks:${m.receipt?.checkpoint ?? ""}`, tab: "now", why: S.receiptAsks, question: true };
   if (m.walk && m.showme && SHOWME_PROBLEMS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "learn", why: S.showMe };
   if (m.walk && WALK_NEEDS.includes(m.walk.stage)) return { key: `walk:${m.walk.id}:${m.walk.index}:${m.walk.stage}`, tab: "learn", why: S.lessonsTitle };
   if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: "learn", why: S.practiceTitle };
@@ -161,6 +163,14 @@ export function closesOnClickAway(m: Model, onboarding: boolean, on = true): boo
   return true;
 }
 
+/** May Home step aside for what it just opened (a link in the browser, the email for Report a problem, Finder showing the
+ *  support log), so that is not under Home? Only with Step aside for what Home opens on (home.stepAside), and never while
+ *  something on Home waits for the person: the same rule as a click elsewhere, whatever Close Home when I click another
+ *  app says. A lesson's link is part of its step, so the lesson keeps Home there. */
+export function stepsAside(m: Model, onboarding: boolean, on: boolean): boolean {
+  return on && closesOnClickAway(m, onboarding, true);
+}
+
 // ---- the island ----
 
 export const ISLAND_LINE_MAX = 64;
@@ -194,8 +204,10 @@ export function islandWord(m: Model): string {
   return v === "error" ? S.islandWordError : stateLabel(v);
 }
 
-/** The one line shown when the pointer is on the island. */
-export function islandLine(m: Model): string {
+/** The one line shown when the pointer is on the island. `update`: the version a check found ready to install (the shell's
+ *  "update-ready"). With nothing else going on, it says what is next instead of Ready: connect Claude first (Not connected
+ *  yet), then the update waiting for Install on Home. Neither shows the mark (islandAlert). */
+export function islandLine(m: Model, o: { update?: string | null } = {}): string {
   if (!m.runnerUp) return S.islandOff;
   if (m.voice?.stage === "listening") return S.islandListening;
   if (m.approvals.length) return cut(S.islandNeedsYou(m.approvals[0].title));
@@ -208,5 +220,7 @@ export function islandLine(m: Model): string {
   if (v === "done") return cut(own && label ? S.islandDone(label) : stateLabel("done"));
   if (v === "thinking" || v === "working" || v === "checking") return cut(own && label ? S.islandWorkingOn(label) : characterWords(m));
   if (v === "error") return cut(stateLabel("error"));
+  if (m.connected === "none") return S.islandNotConnected;
+  if (o.update) return cut(S.islandUpdate(o.update));
   return S.islandReady;
 }

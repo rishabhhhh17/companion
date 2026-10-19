@@ -111,3 +111,23 @@ describe("lesson commands", () => {
     expect(walkStart("p", SETTINGS_LESSON_ID)).toMatchObject({ type: "walk.start", project: "p", lesson: "from-project-settings" });
   });
 });
+
+// HeyClicky v1.0.53 parity: a lesson that starts where the person already is (teach.startWhereYouAre, off unless turned
+// on) says how many steps it passed by, once, on its first step, and offers to do them again (Start over from step one).
+describe("a lesson that starts where the person already is", () => {
+  test("the first step says how many steps were passed by; the next step no longer does", () => {
+    const m = run([...started, step({ index: 2, passed: 2, log: [{ say: "Add the key", how: "done" }, { say: "Save the file", how: "done" }] })]);
+    expect(m.walk?.passed).toBe(2);
+    expect(run([step({ index: 3 })], m).walk?.passed).toBeUndefined();
+    for (const bad of [0, -1, 1.5, "2", null]) expect(run([...started, step({ passed: bad })]).walk?.passed).toBeUndefined();
+  });
+  test("the card says it in plain words, and Do them again starts the same lesson over from step one", async () => {
+    const { S } = await import("./strings.ts");
+    expect(S.lessonPassed(1)).toMatch(/1 step/);
+    expect(S.lessonPassed(3)).toMatch(/3 steps/);
+    for (const t of [S.lessonPassed(2), S.lessonDoAgain]) expect(/[–—]/.test(t), t).toBe(false);
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("S.lessonPassed(m.walk.passed)");
+    expect(card).toMatch(/onClick=\{\(\) => beginLesson\(m\.walk!\.lesson, true\)\}>\{S\.lessonDoAgain\}/);
+  });
+});

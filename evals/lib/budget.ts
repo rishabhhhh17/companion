@@ -53,6 +53,9 @@ export class CaseMeter {
   /** What the second model review said. */
   reviewerSaid: string[] = [];
   tools: string[] = [];
+  /** The tokens of the agent's first round (its first turn that reported any), so a leaner setup shows up: every request in
+   *  a round carries the instructions and the tool definitions again, mostly read from the cache. */
+  firstRound: Tokens | null = null;
   /** The case reached its cap (a later round would be refused). */
   capped = false;
   /** Why work was cut short by the cap, or null: set only when something was refused or stopped, not merely reached. */
@@ -67,7 +70,10 @@ export class CaseMeter {
     if (this.over()) this.capped = true;
   }
   private turn(t: Turn, who: Speaker, planOnly: boolean) {
+    // The real engine marks a tool call it ran itself (usedTool) with a turn of its own; that is not a turn of the model.
+    if (t.usedTool && !t.text && !t.tool && !t.costUsd && !t.usage) return;
     this.turns++;
+    if (t.usage && who === "agent" && !this.firstRound) this.firstRound = { ...t.usage };
     this.charge(t.costUsd, t.usage);
     if (t.text) (who === "reviewer" ? this.reviewerSaid : planOnly ? this.planSaid : this.said).push(t.text);
     if (t.tool) this.tools.push(t.tool.name);

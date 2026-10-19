@@ -12,6 +12,9 @@ const AREA_1: Record<string, unknown> = {
   "budget.task": 3, "budget.plan": 5, "budget.rescue": 5, "budget.research": 2,
   "model.work": "recommended", "model.rescue": "careful", "model.quick": "fast",
   "work.tries": 3, "work.askOnAnyFailure": false, "drive.maxSteps": 12, "work.tryAgain": "carry_on", "approval.waitMinutes": 30,
+  // HeyClicky v1.0.53 parity: a task that ends on a question stops and waits (on, as built), and tasks may search the web (on,
+  // as before; each search is paid on the person's key, so the fix eval decides whether it stays on).
+  "work.stopOnQuestion": true, "work.webSearch": true,
 };
 
 describe("the shipped list of settings", () => {
@@ -45,6 +48,8 @@ describe("the shipped list of settings", () => {
       "ph.handBack": "paste", "ph.appAnswers": null, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
       // The practice library: Point at the problem's Fix it looks deeper first (Rescue), as it always has.
       "point.fixWith": "rescue",
+      // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
+      "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

@@ -26,7 +26,7 @@ export const QUESTIONS: { key: keyof Answers; ask: string; yes: string; no: stri
   { key: "explain", ask: "After a task, should I explain why I did it?", yes: "Yes, briefly", no: "No, just do it", yesEffect: "I will add two or three short reasons under each result.", noEffect: "I will skip the explanations." },
   { key: "short", ask: "How long should my answers be?", yes: "As short as possible", no: "A normal amount", yesEffect: "I will keep answers short.", noEffect: "I will answer in a normal amount of words." },
   { key: "plain", ask: "How should I talk?", yes: "Plain words, no jargon", no: "Technical is fine", yesEffect: "I will use plain words and explain terms.", noEffect: "I will use the usual technical words." },
-  { key: "autoSend", ask: "When you talk to me, should I send it as soon as you let go?", yes: "Yes, send it", no: "No, let me check it first", yesEffect: "Spoken requests of three words or more are sent straight away.", noEffect: "Your words wait in the box until you press Start." },
+  { key: "autoSend", ask: "When you talk to me, should I send it as soon as you let go?", yes: "Yes, send it", no: "No, let me check it first", yesEffect: "Spoken requests for work of three words or more are sent straight away. Words that mean wait or stop, and questions about your screen, still wait in the box.", noEffect: "Your words wait in the box until you press Start." },
 ];
 
 /// What the answers change in Settings (the registry, T16): Explain after a task for every project (yes is its usual,

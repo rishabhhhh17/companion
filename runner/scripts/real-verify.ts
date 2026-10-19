@@ -30,7 +30,7 @@ import { SdkEngine, SessionTotals } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../src/fixfound.ts";
 import { noTableOpen } from "../src/ship/opentables.ts";
-import { RunnerDriver, ledgerSpent, parseArgs, runCases, spawnRunner, type ApproveRule, type Case, type CaseCtx, type Proc } from "./realrun-harness.ts";
+import { RunnerDriver, approvalTally, ledgerSpent, parseArgs, runCases, spawnRunner, type ApproveRule, type Case, type CaseCtx, type Proc } from "./realrun-harness.ts";
 
 type Ev = Record<string, any>;
 const CHEAP = "claude-haiku-4-5-20251001";
@@ -521,6 +521,7 @@ export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | 
       end("the scenario ended");
       await Bun.sleep(1600);   // the runner finishes its receipts and books them before it ends
       for (const line of d.log()) ctx.note(line);
+      ctx.note(approvalTally(d.events).line);
       for (const s of d.stuck) ctx.note(`the fix loop breaker stopped a task (loop.stuck): ${s.failure?.label}: ${String(s.failure?.detail ?? "").slice(0, 120)}`);
       try { ctx.meter.settle(meterKey, spent() + cutUsd); } catch { /* the stop is reported by the case */ }
     });

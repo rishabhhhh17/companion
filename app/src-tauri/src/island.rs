@@ -132,6 +132,36 @@ pub fn island_frame(d: &Display, mode: Mode) -> Rect {
     [r[0], r[1], r[2], r[3] + grow]
 }
 
+// ---- the motion (HeyClicky v1.0.53 parity: the notch peek and Home open smoothly) ----
+// Kept here so the timing can become a setting later. Never with Reduce motion or Less motion (main.rs reduce_motion).
+
+/// How long the island takes to grow downward, and Home to drop open, in seconds.
+pub const OPEN_SECS: f64 = 0.18;
+/// How far above its place Home starts its drop, in points: the gap under the island, so it never starts over the island.
+pub const DROP: f64 = GAP;
+/// Only taller, with the same left edge, top and width: the part inside the menu bar never moves (F18 item 1).
+pub fn grows_down(from: Rect, to: Rect) -> bool {
+    (from[0] - to[0]).abs() < 0.5 && (from[1] - to[1]).abs() < 0.5 && (from[2] - to[2]).abs() < 0.5 && to[3] > from[3] + 0.5
+}
+/// The island's change of frame shown as a short motion: only when it grows downward, never when it shrinks back (that is
+/// at once), moves to another display, or `reduced` motion is asked for.
+pub fn island_motion(from: Rect, to: Rect, reduced: bool) -> Option<f64> { (!reduced && grows_down(from, to)).then_some(OPEN_SECS) }
+/// The frames asked of one moving panel (the island, Home). AppKit lets a motion that is still running finish on its old
+/// target when the frame is then set at once, so each change is noted here, and a motion that ends sets the frame asked
+/// last again when that was set at once after it (`ended`). A newer motion ends on its own target.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Moves { n: u64, last: Option<(Rect, bool)> }
+impl Moves {
+    pub const fn new() -> Self { Moves { n: 0, last: None } }
+    /// A frame is asked, as a motion (`moving`) or at once. Gives the number to hand back when that motion ends.
+    pub fn ask(&mut self, f: Rect, moving: bool) -> u64 { self.n += 1; self.last = Some((f, moving)); self.n }
+    /// The motion asked as `mine` ended: the frame to set again now, if a newer one was set at once meanwhile.
+    pub fn ended(&self, mine: u64) -> Option<Rect> { match self.last { Some((f, false)) if self.n != mine => Some(f), _ => None } }
+}
+/// Where Home starts its drop when it opens (`opening`; a resize while it is open is never animated): the same place
+/// across and the same size, DROP higher, then down to `to` while it fades in. None with `reduced` motion.
+pub fn home_drop(to: Rect, opening: bool, reduced: bool) -> Option<Rect> { (opening && !reduced).then_some([to[0], to[1] - DROP, to[2], to[3]]) }
+
 /// Where Home drops down to: centered under the island, just below the menu bar (or the thin line), kept inside the work
 /// area (a tall Home is made shorter, and scrolls, rather than running under the Dock).
 pub fn home_frame(d: &Display, size: (f64, f64)) -> Rect {
@@ -785,4 +815,97 @@ mod tests {
         assert!(pick_where(&[], Where::Main, None, "", on_ext, true).is_none());
         assert_eq!((Where::of("follow"), Where::of("builtIn"), Where::of("main"), Where::of("junk")), (Where::Follow, Where::BuiltIn, Where::Main, Where::Follow));
     }
+
+    // ---- HeyClicky v1.0.53 parity: the island and Home open with a short motion, instead of jumping ----
+    #[test]
+    fn the_island_grows_downward_with_a_short_motion_and_the_part_in_the_menu_bar_never_moves() {
+        for d in [mbp14(), mbp16(), ext(), air()] {
+            let rest = island_frame(&d, Mode::Rest);
+            for m in [Mode::Alert, Mode::Peek] {
+                let to = island_frame(&d, m);
+                if to[3] > rest[3] {
+                    assert!(grows_down(rest, to), "{}: only taller, same left, top and width", d.id);
+                    assert_eq!(island_motion(rest, to, false), Some(OPEN_SECS), "{}", d.id);
+                }
+                // Shrinking back, or the same size, is at once: nothing is left hanging below the menu bar.
+                assert_eq!(island_motion(to, rest, false), None, "{}", d.id);
+            }
+        }
+        assert!((0.15..=0.2).contains(&OPEN_SECS), "short: it should feel like opening, not waiting");
+    }
+    #[test]
+    fn reduce_motion_or_less_motion_makes_it_appear_at_once() {
+        let d = mbp14();
+        assert_eq!(island_motion(island_frame(&d, Mode::Rest), island_frame(&d, Mode::Peek), true), None);
+        let to = home_frame(&d, (380.0, 400.0));
+        assert_eq!(home_drop(to, true, true), None);
+    }
+    #[test]
+    fn a_move_to_another_display_or_sideways_is_never_animated() {
+        let (a, b) = (mbp14(), ext());
+        assert_eq!(island_motion(island_frame(&a, Mode::Rest), island_frame(&b, Mode::Peek), false), None);
+        let r = island_frame(&a, Mode::Rest);
+        assert!(!grows_down(r, [r[0] + 10.0, r[1], r[2], r[3] + 40.0]));
+        assert!(!grows_down(r, [r[0], r[1], r[2] + 10.0, r[3] + 40.0]));
+    }
+    #[test]
+    fn home_drops_open_from_just_under_the_island_only_when_it_opens_never_on_a_resize() {
+        for d in [mbp14(), ext(), air()] {
+            let to = home_frame(&d, (380.0, 500.0));
+            let start = home_drop(to, true, false).expect("opening");
+            assert_eq!([start[0], start[2], start[3]], [to[0], to[2], to[3]], "same place across and the same size");
+            assert!(start[1] < to[1] && to[1] - start[1] <= DROP + 0.01, "{}: a little higher, then down", d.id);
+            let rest = island_frame(&d, Mode::Rest);
+            assert!(start[1] >= rest[1] + rest[3] - 0.01, "{}: never over the island", d.id);
+            // Home grows and shrinks as its page changes: that is never animated.
+            assert_eq!(home_drop(to, false, false), None);
+        }
+    }
+    // Found in review (19 Oct 2026): AppKit lets a running motion finish on its old target when the frame is then set at
+    // once. The island grew for the peek, the pointer left within 0.18 s, the rest frame was set at once, and the grow
+    // finished anyway: the island stayed peek sized while its page was in rest mode. Home's drop overwrote a resize the
+    // same way. Each moving panel now keeps the frame asked last, and a motion that ends sets it again when it was newer.
+    #[test]
+    fn a_frame_set_at_once_during_a_motion_wins_when_the_motion_ends() {
+        let (peek, rest) = ([10.0, 0.0, 200.0, 80.0], [10.0, 0.0, 200.0, 37.0]);
+        let mut m = Moves::new();
+        let grow = m.ask(peek, true);
+        m.ask(rest, false);
+        assert_eq!(m.ended(grow), Some(rest), "the grow ends on the peek frame: the rest frame is set again");
+        // A motion that ends with nothing newer asked leaves its frame alone.
+        let mut m = Moves::new();
+        let drop = m.ask(peek, true);
+        assert_eq!(m.ended(drop), None);
+        // A frame set at once is never set again for itself.
+        let mut m = Moves::new();
+        let now = m.ask(rest, false);
+        assert_eq!(m.ended(now), None);
+        // A newer motion ends on its own target: the older one leaves it alone, and the newer one sets nothing either.
+        let mut m = Moves::new();
+        let first = m.ask(peek, true);
+        let second = m.ask(rest, true);
+        assert_eq!((m.ended(first), m.ended(second)), (None, None));
+        // Several at once while one motion runs: the last one wins.
+        let mut m = Moves::new();
+        let grow = m.ask(peek, true);
+        m.ask([1.0, 2.0, 3.0, 4.0], false);
+        m.ask(rest, false);
+        assert_eq!(m.ended(grow), Some(rest));
+    }
+    #[test]
+    fn every_frame_of_the_island_and_home_goes_through_the_one_helper() {
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let pc = body("fn place_card(");
+        assert!(pc.contains("set_frame_moving(c, to_appkit(cf, ph), None, None, &CARD_MOVES)"), "a resize is at once, never a motion: {pc}");
+        assert!(!pc.contains("setFrame_display"), "{pc}");
+        let helper = body("fn set_frame_moving(");
+        assert!(helper.contains("let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());"), "{helper}");
+        assert!(helper.contains(".ended(mine)"), "{helper}");
+        // At once is a motion of no length, which replaces one still running, and then set at once as well.
+        assert!(helper.contains("setDuration(secs.unwrap_or(0.0))"), "{helper}");
+        assert!(body("fn place_island(").contains("&ISLAND_MOVES)"));
+        assert!(body("fn open_card(").contains("&CARD_MOVES)"));
+    }
+
 }

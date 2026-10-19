@@ -11,6 +11,7 @@
       "from": { "pageStorage": { "name": "companion.speakReplies", "map": "isOne" } } },
     { "key": "talk.autoSend", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.voiceAutoSend", "map": "isOne" } } },
+    { "key": "talk.followUpByPointing", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "talk.maxHold", "section": "talking", "kind": "choice", "default": "60", "options": ["30", "60", "120"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "talk.maxHold" },
     { "key": "speak.alsoSay", "section": "talking", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["needsYou", "taskDone"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "speak.alsoSay" },
 
@@ -21,6 +22,7 @@
     { "key": "island.display", "section": "home", "kind": "choice", "default": "follow", "options": ["follow", "builtIn", "main"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "island.followDelay", "section": "home", "kind": "number", "default": 3, "min": 1, "max": 10, "step": 1, "unit": "seconds", "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "home.closeOnClickAway", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
+    { "key": "home.stepAside", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "home.goToNeeds", "section": "home", "kind": "choice", "default": "goToIt", "options": ["goToIt", "markTab"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "needsMarked" },
     { "key": "home.size", "section": "home", "kind": "choice", "default": "standard", "options": ["standard", "large"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "character.edge", "section": "home", "kind": "choice", "default": "right", "options": ["left", "right", "top", "bottom"], "scope": "app", "applies": ["shell"], "store": "dock", "live": true },
@@ -35,6 +37,8 @@
 
     { "key": "showme.allScreens", "section": "pointing", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.showmeAllScreens", "map": "isOne" } } },
+    { "key": "showme.askWorked", "section": "pointing", "kind": "choice", "default": "everyStep", "options": ["everyStep", "whenUnsure"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "showme.waitForPage", "section": "pointing", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "point.ringSeconds", "section": "pointing", "kind": "number", "default": 10, "min": 5, "max": 30, "step": 1, "unit": "seconds", "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "floor": "point.ringSeconds" },
     { "key": "point.yourTurnSeconds", "section": "pointing", "kind": "number", "default": 90, "min": 30, "max": 300, "step": 15, "unit": "seconds", "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "point.yourTurnSeconds" },
     { "key": "point.colour", "section": "pointing", "kind": "choice", "default": "orange", "options": ["orange", "red", "yellow", "blue", "highContrast"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "point.colour" },
@@ -57,6 +61,8 @@
     { "key": "work.tries", "section": "work", "kind": "number", "default": 3, "min": 1, "max": 5, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "work.askOnAnyFailure", "section": "work", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "work.tryAgain", "section": "work", "kind": "choice", "default": "carry_on", "options": ["carry_on", "fresh"], "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+    { "key": "work.stopOnQuestion", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+    { "key": "work.webSearch", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "drive.maxSteps", "section": "work", "kind": "number", "default": 12, "min": 3, "max": 20, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "approval.waitMinutes", "section": "work", "kind": "number", "default": 30, "min": 5, "max": 30, "step": 5, "unit": "minutes", "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "noAnswerIsNo" },
 
@@ -85,6 +91,7 @@
     { "key": "memory.toastSeconds", "section": "memory", "kind": "choice", "default": "10", "options": ["5", "10", "20", "60", "untilClosed"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "task.offRecordByDefault", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "recap.after", "section": "memory", "kind": "choice", "default": "30min", "options": ["off", "30min", "2h", "nextDay"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "teach.startWhereYouAre", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "teach.yourTurn", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false,
       "from": { "pageStorage": { "name": "companion.yourTurn", "map": "isOn" } } },
 

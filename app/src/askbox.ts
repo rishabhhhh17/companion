@@ -48,3 +48,47 @@ export function putBack<A>(sent: Sent<A>, now: { text: string; attached: A[] }):
   if (sent.attached.length && !now.attached.length) out.attached = sent.attached;
   return out;
 }
+
+// ---- words from hold to talk ----
+
+/** What a spoken request is, for sending it by itself (talk.autoSend). work: a clear request for work, three words or
+ *  more. short: fewer words. holdOff: it is, starts with or ends with a word that means wait or stop ("Wait, hold on a
+ *  sec", "never mind", "not yet"), so it is never sent by itself. screenQuestion: a plain question about the screen ("Where
+ *  is the settings button?"), which waits in the box with Show me offered. otherLanguage: English only at first, so with
+ *  another speech language picked in Settings the words wait for Start. Matching is on whole words only, so "waiting
+ *  list" or "stopwatch" are still work. */
+export type HeardKind = "work" | "short" | "holdOff" | "screenQuestion" | "otherLanguage";
+const HOLD_OFF = ["wait", "hold on", "hang on", "one second", "one sec", "a second", "a sec", "just a second", "just a sec", "one moment", "just a moment", "a moment",
+  "a minute", "give me a second", "give me a sec", "give me a minute", "give me a moment", "not yet", "never mind", "nevermind", "cancel", "cancel that", "stop", "stop that", "forget it", "no wait"];
+const SCREEN_QUESTION = /^(where (is|are|do|does|can|should)|how (do|can|would) i|what (is|are|does) (this|that|these|those|the)\b|what's (this|that)|which (button|menu|tab|link|one)|show me|can you show me|could you show me)\b/;
+const words = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, " ").split(/\s+/).filter(Boolean);
+const startsWith = (w: string[], p: string[]) => p.length <= w.length && p.every((x, i) => w[i] === x);
+const endsWith = (w: string[], p: string[]) => p.length <= w.length && p.every((x, i) => w[w.length - p.length + i] === x);
+/** Each sentence or clause on its own, so "Make the button blue. No wait." ends with a hold off. */
+const clauses = (t: string) => t.split(/[.,;:!?]+/).map(words).filter((c) => c.length > 0);
+export function heardKind(text: string, language = "auto"): HeardKind {
+  const all = words(String(text ?? ""));
+  if (language !== "auto" && language !== "en") return all.length ? "otherLanguage" : "short";
+  if (all.length === 0) return "short";
+  const parts = clauses(String(text));
+  const offs = HOLD_OFF.map((p) => p.split(" "));
+  const first = parts[0] ?? all, last = parts[parts.length - 1] ?? all;
+  if (offs.some((p) => startsWith(first, p) || endsWith(last, p) || (last.length <= 3 && startsWith(last, p)))) return "holdOff";
+  if (SCREEN_QUESTION.test(all.join(" "))) return "screenQuestion";
+  return all.length >= 3 ? "work" : "short";
+}
+/** May words from hold to talk send themselves (with talk.autoSend on)? Only a clear request for work. */
+export const sendsItself = (text: string, language = "auto") => heardKind(text, language) === "work";
+
+/** What decides whether spoken words go into a finished task's follow up box, taken as the keys go down (when listening
+ *  begins), never when the words come back: the box shows, Home shows, the pointer is over that task's receipt (a hover
+ *  inside Home's own window; nothing else is read), and Follow up by pointing is on (talk.followUpByPointing). */
+export type FollowAim = { followUpShown: boolean; overReceipt: boolean; byPointing: boolean; homeShown: boolean };
+/** Where words from hold to talk go. showme: the Show me key was pressed first, so they are a question about the screen.
+ *  followUp: everything in `atKeysDown` was true as the keys went down, and the follow up box still shows now. box: the
+ *  ask box, as always (also with no start known). */
+export function heardGoesTo(o: { showme: boolean; atKeysDown: FollowAim | null; followUpShownNow: boolean }): "showme" | "followUp" | "box" {
+  if (o.showme) return "showme";
+  const d = o.atKeysDown;
+  return d && d.byPointing && d.homeShown && d.followUpShown && d.overReceipt && o.followUpShownNow ? "followUp" : "box";
+}

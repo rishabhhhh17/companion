@@ -10,7 +10,7 @@ import { parseCommand, serialize } from "../../protocol/index.ts";
 import { DEFAULT_MODEL, SETTINGS_LESSON_ID, VERCEL_LESSON_ID, fixFound } from "./commands.ts";
 import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
-import { initial, reduce, type Model } from "./model.ts";
+import { canFollowUp, canRetry, initial, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
 import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
 import { S } from "./strings.ts";
@@ -124,6 +124,31 @@ describe("the fix is the practice's own task, matched by its practice id", () =>
     expect(again.practice).toMatchObject({ stage: "done", checkpoint: "cp_0002" });
     // A task of another practice, or none, still never touches it.
     expect(run([cp(e, "cp_0003", null)], failed).practice?.stage).toBe("failed");
+  });
+  // Merge of main (PR 120): a task that ends on a question ends as needs you, with the question on its receipt, and is
+  // answered in the follow up box. A practice's fix that asks is not passed, says what it asked, and its answer (a follow up
+  // of the same task, carrying the practice id) is still the practice's fix.
+  test("a fix that stops to ask is answered in the follow up box on Now, and the answer is still the practice's fix", () => {
+    const Q = "The form could post to /api/register or /api/signup. Which one does your server use?";
+    const state = (s: string) => ev({ type: "agent.state", agent: "builder-1", state: s });
+    const asked = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), state("working"), receipt(e, "skipped", { changed: [], commands: 0, said: Q, asks: true }), state("needsYou")]);
+    expect(asked.practice).toMatchObject({ stage: "failed", result: { asks: Q } });
+    expect(asked.practice?.checksFailed).toBeUndefined();
+    expect(canFollowUp(asked, P(e))).toBe(true);
+    expect(canRetry(asked, P(e))).toBe(false);
+    const answered = run([ev({ type: "ui.followUpSent" }), cp(e, "cp_0002"), state("working"), receipt(e, "passed", { checkpoint: "cp_0002" }), state("done")], asked);
+    expect(answered.practice).toMatchObject({ stage: "done", checkpoint: "cp_0002" });
+    expect(answered.practice?.result?.asks).toBeUndefined();
+    // Words only: a receipt that says something without asking leaves nothing to answer.
+    expect(run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), receipt(e, "failed", { said: "I changed the form." })]).practice?.result?.asks).toBeUndefined();
+  });
+  test("the panel says what the fix asked and where to answer it, with Answer it first", () => {
+    const panel = readFileSync(join(import.meta.dir, "./practicePanel.tsx"), "utf8");
+    const failed = panel.slice(panel.indexOf('p.stage === "failed" && <>'));
+    expect(failed).toContain("S.receiptAsks");
+    expect(failed).toContain("S.practiceAsksHelp");
+    expect(failed).toMatch(/asks && <button className="btn primary" type="button" onClick=\{act\.showResult\}>\{S\.practiceAnswer\}/);
+    expect(S.practiceAsksHelp).toContain("box under the result");
   });
   test("a fix that changed the practice's own check does not count, even when the checks pass", () => {
     const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), receipt(e, "passed", { changed: [{ file: "test/signup.test.js", kind: "modified" }, { file: "public/signup.js", kind: "modified" }] })]);

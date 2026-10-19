@@ -75,8 +75,11 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
   const task = entry.fix === "task", gate = entry.find === "gate";
   const findButton = <button className="btn primary" type="button" disabled={checking} onClick={act.find}>{gate ? S.practiceFindGate : S.practiceFind}</button>;
   const doneWords = p.already ? S.practiceDoneAlready : p.gaps ? S.practiceDoneGaps : entry.prove === "gate" ? S.practiceDoneGate : S.practiceDone;
+  // The fix stopped to ask something: it is answered in the follow up box under the result on Now, never tried again blind.
+  const asks = p.stage === "failed" && !p.checksFailed && !p.result?.protectedChanged?.length ? p.result?.asks : undefined;
   const failedWords = p.checksFailed ? S.practiceChecksDidNotRun
     : p.result?.protectedChanged?.length ? S.practiceProtectedChanged
+    : asks ? S.practiceAsks
     : entry.fix === "lesson" ? (p.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed)
     : entry.prove === "gate" && p.result?.proof !== "failed" ? S.practiceGateFailed : S.practiceFailed;
   return (
@@ -140,12 +143,15 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
       </>}
       {p.stage === "failed" && <>
         <div className="line">{failedWords}</div>
-        {!p.checksFailed && p.where?.message && <div className="line muted">{placeLine(p.where)}</div>}
+        {asks && <div className="line" role="status"><b>{S.receiptAsks}:</b> {asks}</div>}
+        {asks && <div className="line muted">{S.practiceAsksHelp}</div>}
+        {!p.checksFailed && !asks && p.where?.message && <div className="line muted">{placeLine(p.where)}</div>}
         {p.result && <ResultBox r={p.result} undo={undo} explain={explain} act={act} />}
         <div className="row">
+          {asks && <button className="btn primary" type="button" onClick={act.showResult}>{S.practiceAnswer}</button>}
           {(p.checksFailed || p.nameSet) && <button className="btn primary" type="button" onClick={act.checkAgain}>{S.practiceCheckAgain}</button>}
           {task
-            ? <button className={`btn${p.checksFailed ? "" : " primary"}`} type="button" disabled={busy} onClick={act.fix}>{S.practiceAgain}</button>
+            ? <button className={`btn${p.checksFailed || asks ? "" : " primary"}`} type="button" disabled={busy} onClick={act.fix}>{S.practiceAgain}</button>
             : <button className={`btn${p.checksFailed || p.nameSet ? "" : " primary"}`} type="button" onClick={act.lesson}>{S.practiceAgain}</button>}
         </div>
         <CopyButtons act={act} busy={busy} title={w.title} />

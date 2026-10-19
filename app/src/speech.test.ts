@@ -244,7 +244,13 @@ describe("answers in another project", () => {
   test("a typed follow up, Try again, the error explainer's Fix it and Let me try the next one are pressed, not asked by voice", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     const followUp = card.slice(card.indexOf("<FollowUpBox project={project}"), card.indexOf("<FollowUpBox project={project}") + 400);
-    expect(followUp).toMatch(/onSent=\{\(\) => \{ pressed\(\);/);
+    expect(followUp).toContain("onSent={followSent}");
+    // Typed words and Try again are pressed; only words hold to talk put in the box count as asked by voice.
+    const sent = card.slice(card.indexOf("const followSent = "), card.indexOf("\n", card.indexOf("const followSent = ")));
+    expect(sent).toMatch(/if \(words && followFromVoice\.current\) voiceAsked\.current = \{ kind: "task", at: Date\.now\(\) \}; else pressed\(\);/);
+    const box = card.slice(card.indexOf("function FollowUpBox("), card.indexOf("function ExplainBox("));
+    expect(box).toContain("onSent(false); void send(retryTask(project));");
+    expect(card).toMatch(/setText=\{\(t\) => \{ setFollowText\(t\); if \(!t\) followFromVoice\.current = false; \}\}/);
     const fix = card.split("\n").find((l) => l.includes("send(fixError("))!;
     expect(fix).toContain("pressed();");
     expect(card.slice(card.indexOf("const tryTheNextOne = "), card.indexOf("const tryTheNextOne = ") + 200)).toContain("pressed();");

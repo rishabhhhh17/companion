@@ -1,7 +1,7 @@
 // Spoken replies, page side: the switch (off unless turned on) and which line, if any, goes with what the card shows.
 // The Mac side says it with the built in voice and refuses anything unsafe; nothing here makes a sound.
 import { leadMs } from "./sequence.ts";
-import { receiptProofWords, type Model } from "./model.ts";
+import { receiptProofWords, waitsForAnswer, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { keysIn, keysNow, type Keys } from "./keys.ts";
 import { setting } from "./settingsStore.ts";
@@ -52,6 +52,7 @@ export function alsoSayLines(m: Model, project: string, items: readonly string[]
     else if (m.stuck) out.push({ key: `needs:stuck:${m.stuck.index}:${m.stuck.title}`, text: n.stuck });
     else if (m.paused) out.push({ key: `needs:paused:${m.paused.reason}`, text: n.paused });
     else if (m.plan) out.push({ key: `needs:plan:${m.plan.agent}:${m.plan.steps.length}`, text: n.plan });
+    else if (waitsForAnswer(m)) out.push({ key: `needs:asks:${m.receipt?.checkpoint ?? ""}`, text: n.asks });
   }
   if (items.includes("taskDone")) out.push(...taskEndLines(m, project));
   return out;

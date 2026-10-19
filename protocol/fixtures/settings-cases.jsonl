@@ -260,6 +260,10 @@
 {"key": "drive.maxSteps", "value": 21, "ok": false, "reason": "tooHigh"}
 {"key": "work.tryAgain", "value": "fresh", "ok": true, "normalized": "fresh"}
 {"key": "work.tryAgain", "value": "carryOn", "ok": false, "reason": "notChoice"}
+{"key": "work.stopOnQuestion", "value": false, "ok": true, "normalized": false}
+{"key": "work.stopOnQuestion", "value": "off", "ok": false, "reason": "notSwitch"}
+{"key": "work.webSearch", "value": false, "ok": true, "normalized": false}
+{"key": "work.webSearch", "value": 0, "ok": false, "reason": "notSwitch"}
 {"key": "approval.waitMinutes", "value": 5, "ok": true, "normalized": 5}
 {"key": "approval.waitMinutes", "value": 30, "ok": true, "normalized": 30}
 {"key": "approval.waitMinutes", "value": 4, "ok": false, "reason": "tooLow"}

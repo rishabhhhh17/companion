@@ -12,6 +12,7 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { adapterFor, buildContext, grewTooMuch, handBack, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
+import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -78,7 +79,7 @@ export class FastLane {
     // A leading "/" would run as a Claude Code command, so such text is introduced first.
     const prompt = req.raw ? (req.text.startsWith("/") ? `Input:\n${req.text}` : req.text) : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
     const q = (this.o.queryFn ?? realQuery)({ prompt, options: options as never });
-    let streamed = "", full = "", cost = 0;
+    let streamed = "", full = "", cost = 0, apiError: ApiError | undefined;
     try {
       for await (const m of q as AsyncIterable<any>) {
         if (m.type === "stream_event" && m.event?.type === "content_block_delta" && m.event.delta?.type === "text_delta") {
@@ -86,6 +87,9 @@ export class FastLane {
         } else if (m.type === "assistant") {
           // A message with no text (a thinking block, which the 5.5 models send first) is not the answer.
           const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+          // Claude Code's own message about a failed request ("API Error: Connection error.") is never the answer: the
+          // request fails, named, when its result arrives (reach.ts).
+          if (m.error) { apiError = { kind: String(m.error), text }; continue; }
           if (text) full = text;
           if (req.raw && full) {
             // The answer is complete: hand it back now and let the engine process end in the background. The cost is
@@ -97,7 +101,8 @@ export class FastLane {
             return { text: full, costUsd: round(cost) };
           }
         } else if (m.type === "result") {
-          if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+          const stop = turnStop(m, apiError);
+          if (stop) throw new Error(stop);
           cost = Number(m.total_cost_usd ?? 0);
         }
       }
@@ -161,6 +166,7 @@ const VISION_SYSTEM = [
   "mark: ring for a button, link, tab or icon; underline for a line of text or a field's label; box for a field, panel or area; arrow for something small that is easy to miss.",
   'When there are several screenshots, each is labelled "Screen N of M" and "screen" is that N; with one screenshot "screen" is 1.',
   'If you cannot find it, reply {"none":true}.',
+  'When the question says a step was clicked but is not checked yet, also put "lastStepWorked" in the same JSON object: "yes" only when the screen clearly shows that step worked, "no" when it clearly did not, otherwise "unsure".',
 ].join(" ");
 
 export function buildVisionOptions(c: Common & { model: string; system?: string }) {
@@ -240,14 +246,18 @@ export class VisionLane {
     const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model, signal, system: DESCRIBE_SYSTEM });
     try {
       const q = (this.o.queryFn ?? realQuery)({ prompt: buildDescribeMessages(req.images, req.question) as never, options: options as never });
-      let text = "", cost = 0;
+      let text = "", cost = 0, apiError: ApiError | undefined;
       for await (const m of q as AsyncIterable<any>) {
         if (signal.aborted) throw new Error("stopped");
         if (m.type === "assistant") {
-          text += (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+          const said = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+          // Claude Code's own message about a failed request is never what the picture shows (reach.ts).
+          if (m.error) { apiError = { kind: String(m.error), text: said }; continue; }
+          text += said;
           if (m.message?.usage) cost += estimateUsd(model, m.message.usage);
         } else if (m.type === "result") {
-          if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+          const stop = turnStop(m, apiError);
+          if (stop) throw new Error(stop);
           if (Number.isFinite(Number(m.total_cost_usd))) cost = Number(m.total_cost_usd);
         }
       }
@@ -279,28 +289,31 @@ export class VisionLane {
     // An error after the answer has already been handed back (the engine complaining as it is ended) is not an error: `fail`
     // does nothing once the answer is settled, where a stray rejected promise would crash the whole engine.
     const pictures = req.screens && req.screens.length > 1 ? req.screens.map((s) => s.image) : [req.image];
-    const finished = this.read(q as AsyncIterable<any>, model, pictures, (ts, c) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c) }), () => ac.abort())
+    const finished = this.read(q as AsyncIterable<any>, model, pictures, (ts, c, last) => got({ point: ts[0] ?? null, targets: ts, costUsd: round(c), ...(last ? { lastStepWorked: last } : {}) }), () => ac.abort())
       .then(() => got({ point: null, targets: [], costUsd: 0 }), (e) => { fail(e); });
     void finished.catch(() => {}).finally(() => { drive.wipe().catch(() => {}); });   // once the engine has closed, the copy is erased
     try { return await answer; } finally { done(); }
   }
 
-  private async read(q: AsyncIterable<any>, model: string, pictures: Image[], set: (targets: Point[], cost: number) => void, stop: () => void): Promise<void> {
-    let targets: Point[] = [], cost = 0;
+  private async read(q: AsyncIterable<any>, model: string, pictures: Image[], set: (targets: Point[], cost: number, last?: LastStep) => void, stop: () => void): Promise<void> {
+    let targets: Point[] = [], cost = 0, apiError: ApiError | undefined;
     for await (const m of q) {
       if (m.type === "assistant") {
         const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => String(b.text ?? "")).join("");
+        // Claude Code's own message about a failed request is not the answer, and no point is read from it (reach.ts).
+        if (m.error) { apiError = { kind: String(m.error), text }; continue; }
         // A message with no text is the thinking the 5.5 models do first, not the answer: wait for the answer.
         if (!text) continue;
         targets = parseTargetsText(text, pictures);
         // The answer is one line. Estimated from the tokens used at this model's price, because the run is not waited on.
         const u = m.message?.usage;
         cost = u ? estimateUsd(model, u) : 0.01;
-        set(targets, cost);
+        set(targets, cost, parseLastStep(text));
         stop();     // end the engine process now; do not wait for it to wind down
         return;
       } else if (m.type === "result") {
-        if (m.subtype && m.subtype !== "success") throw new Error(String(m.subtype));
+        const stop = turnStop(m, apiError);
+        if (stop) throw new Error(stop);
         cost = Number(m.total_cost_usd ?? 0);
       }
     }
@@ -330,6 +343,16 @@ export function parseTargetsText(text: string, pictures: Image | Image[]): Point
   return out;
 }
 
+/** Whether the step before worked, from the same one line of JSON (lastStepWorked): only "yes", "no" or "unsure" count. */
+export function parseLastStep(text: string): LastStep | undefined {
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) return undefined;
+  try {
+    const v = (JSON.parse(text.slice(a, b + 1)) as { lastStepWorked?: unknown } | null)?.lastStepWorked;
+    return v === "yes" || v === "no" || v === "unsure" ? v : undefined;
+  } catch { return undefined; }
+}
+
 /** The first target of the answer, or null. */
 export function parsePointText(text: string, img: Image): Point | null { return parseTargetsText(text, img)[0] ?? null; }
 
@@ -349,7 +372,9 @@ function validPoint(i: any, pics: Image[]): Point | null {
 
 export type LocateReq = { image: Image; question: string; ocr: Ocr[]; screens?: Screen[] };
 /** point: the first target (or none). targets: every target in order, when the lane can name more than one. */
-export type Located = { point: Point | null; targets?: Point[]; costUsd: number };
+/** lastStepWorked: the model's judgment of a step that was clicked but not checked yet, when the question asked for it. */
+export type Located = { point: Point | null; targets?: Point[]; costUsd: number; lastStepWorked?: LastStep };
+export type LastStep = "yes" | "no" | "unsure";
 /** Where the person clicks: the last target (the prompt lists them in the order to look at them, ending with the click),
  *  or the point when there is no list. What the aim eval scores, and what a lesson rings. */
 export function clickPoint(r: Located): Point | null { return r.targets?.length ? r.targets[r.targets.length - 1] : r.point; }
@@ -417,7 +442,10 @@ export class AssistService {
       const question = cmd.noQuestion ? undefined : parsed.question;
       this.emit({ type: "assist.prompt.done", req: cmd.req, text: final, ...(question ? { question, ...(parsed.options ? { options: parsed.options } : {}) } : {}), diff: wordDiff(cmd.text, final), usdEstimate: round(cost), handback: handBack(adapter, this.o.settings?.get("ph.handBack")) });
     } catch (e) {
-      this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : `Could not improve the prompt (${(e as Error).message})` });
+      // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it in plain words;
+      // Prompt help has no Try again, so it says to ask again.
+      const msg = String((e as Error).message ?? e);
+      this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not improve the prompt (${msg})` });
     } finally { this.active.delete(cmd.req); }
   }
 
@@ -446,9 +474,11 @@ export class AssistService {
       const list = (r.targets?.length ? r.targets : r.point ? [r.point] : []).slice(0, MAX_TARGETS);
       if (!list.length) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
       // The first target as before; when there are several, the whole ordered list as well (the page plays them in turn).
-      this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}) });
+      // And, when the question asked for it, whether the step before worked (Did that work? only when unsure).
+      this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}), ...(r.lastStepWorked ? { lastStepWorked: r.lastStepWorked } : {}) });
     } catch (e) {
-      this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : `Could not find it (${(e as Error).message})` });
+      const msg = String((e as Error).message ?? e);
+      this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not find it (${msg})` });
     } finally {
       clearTimeout(timer);
       dropAll();   // every screenshot is dropped as soon as it has been used

@@ -22,16 +22,30 @@ export const followUpPrompt = (text: string) =>
   `The person has a follow up about the work you just did:\n${said(text)}\n\nKeep the change small, and keep what already works.`;
 export const freshFollowUpPrompt = (goal: string, text: string) =>
   `${freshStart(goal)}\n\nThe person now says:\n${said(text)}\n\nKeep the change small, and keep what already works.`;
+// The last task ended on a question to the person (asks.ts), so what they type next is their answer. Claude is told never
+// to ask for a secret (sdkEngine.ts), but a person may paste one anyway: anything in the answer that looks like a key or a
+// password is hidden before Claude is sent it, since Claude's conversation is saved, and Claude is told what to do instead.
+const answered = (text: string) => {
+  const hidden = redact(text);
+  return hidden === text ? said(text) : `${said(hidden)}\n\n(Companion hid something in the answer that looked like a key or a password. Do not ask for it again: say which setting is needed and where to add it, so the person adds it themselves.)`;
+};
+export const answerPrompt = (text: string) =>
+  `The person answered your question:\n${answered(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
+export const freshAnswerPrompt = (goal: string, text: string) =>
+  `${freshStart(goal)}\n\nYou asked the person a question, and they answered:\n${answered(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
 
 /** How the last attempt ended, so Try again never tells Claude something false about it. */
-export type Ending = "failed_check" | "spending_limit" | "error" | "stopped" | "unfinished" | "finished";
+export type Ending = "failed_check" | "spending_limit" | "error" | "no_connection" | "claude_busy" | "asked" | "stopped" | "unfinished" | "finished";
 /** From the task's status and its check: a check that failed is said first, even if the task then stopped. */
 export const endingOf = (status: string, proof: string): Ending =>
-  proof === "failed" ? "failed_check" : status === "error_max_budget_usd" ? "spending_limit" : status === "error" ? "error" : status === "interrupted" ? "stopped" : status === "done" ? "finished" : "unfinished";
+  proof === "failed" ? "failed_check" : status === "error_max_budget_usd" ? "spending_limit" : status === "error" ? "error" : status === "no_connection" ? "no_connection" : status === "claude_busy" ? "claude_busy" : status === "needs_you" ? "asked" : status === "interrupted" ? "stopped" : status === "done" ? "finished" : "unfinished";
 const ENDED: Record<Ending, string> = {
   failed_check: "The last attempt did not pass the checks.",
   spending_limit: "The last attempt stopped before it finished, because it reached its spending limit.",
   error: "The last attempt stopped before it finished, because of an error.",
+  no_connection: "The last attempt stopped before it finished, because the connection to Claude dropped.",
+  claude_busy: "The last attempt stopped before it finished, because Claude was busy.",
+  asked: "The last attempt stopped to ask the person a question, and they want it tried again without an answer.",
   stopped: "The last attempt was stopped before it finished.",
   unfinished: "The last attempt stopped before it finished.",
   finished: "The last attempt finished, and the person wants it tried again.",

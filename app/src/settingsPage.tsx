@@ -659,7 +659,8 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
 
 // working: a task or a check works (isBusy). practiceBusy: that, or a lesson or a practice's own checks (practice.ts
 // workingOn), so the practice copy open now is never moved to the Trash under them.
-export function SettingsPage({ working, practiceBusy, project, spending, onClose, onPracticeList, onLesson }: { working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void }) {
+// onStepAside: the email for Report a problem, or Finder showing the support log, opened (home.stepAside decides).
+export function SettingsPage({ working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {} }: { working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
   // Every setting, except a model row that could offer only one option so far (modelChoice.ts), and a row that only
@@ -831,9 +832,9 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       </Group>}
       {fixedShown("logs") && <Group title={S.exportLogsTitle}>
       <div className="line muted">{S.exportLogsHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => setExported(S.exportLogsDone.replace("{name}", String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); onStepAside(); }).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
       <div className="line muted">{S.reportHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => setExported(S.reportOpened(String(n)))).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
       </Group>}
       {results.all && !askAll && <div className="row"><button id={resetAllId} className="btn" type="button" disabled={changedAll.length === 0} onClick={() => setAskAll(true)}>{S.setResetAll}</button></div>}

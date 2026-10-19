@@ -27,6 +27,7 @@ import { DEFAULT_REF, getApiKey, type KeychainRef } from "../src/keychain.ts";
 import { buildChildEnv } from "../src/safety.ts";
 import { resolveClaudeBinary } from "../src/sdkEngine.ts";
 import { canonicalModel, estimateUsd, requestProblems } from "../src/models.ts";
+import { GIVEN_TOOLS } from "../src/tools.ts";
 
 export const DEFAULT_KEYCHAIN_SERVICE = "companion-dev";
 type Ev = Record<string, any>;
@@ -150,13 +151,16 @@ export function harnessEnv(o: { apiKey: string; configDir: string; parent?: Reco
 
 export type Expect = { tools: readonly string[] | "agent"; model?: string; claudeBinary: string; configDirs: string[] };
 
-/** Plain built in Claude Code tools an agent session may list. Anything else (a connector, a scheduler, a hosted feature)
- *  fails the check, so a first real run shows it to a person instead of letting it pass. */
-export const AGENT_TOOLS: readonly string[] = [
-  "Task", "Agent", "Bash", "BashOutput", "KillShell", "KillBash", "TaskOutput", "TaskStop", "Glob", "Grep", "LS", "Read", "Edit", "MultiEdit", "Write",
-  "NotebookEdit", "NotebookRead", "WebFetch", "WebSearch", "TodoWrite", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion", "Skill", "SlashCommand",
-  "ToolSearch", "Monitor", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList",
-];
+/** The built in Claude Code tools an agent session may list: exactly the ones Companion gives in any flow (runner/src/tools.ts
+ *  GIVEN_TOOLS). Anything else (a sub agent, Claude's own question box, a connector, a scheduler, a hosted feature) fails
+ *  the check, so a first real run shows it to a person instead of letting it pass. If system/init lists a tool Claude Code
+ *  adds by itself, read what it does before giving it a place in tools.ts (or a plain refusal in safety.ts NOT_GIVEN). */
+export const AGENT_TOOLS: readonly string[] = GIVEN_TOOLS;
+/** Tools Claude Code lists in an agent session whatever its tools list says, so system/init may name them: the tools
+ *  reference says a list cannot remove EndConversation while any other tool remains (docs/milestones/M0-desk-research-details.md,
+ *  section g; technical_research.md question 26). Never named in options.tools, and still refused if Claude calls it
+ *  (safety.ts NOT_GIVEN). A lane that names no tools may list none of them. */
+export const ALWAYS_LISTED: readonly string[] = ["EndConversation"];
 
 /** Claude Code settings read from the environment that change what is sent (effort, thinking, output length, extra body
  *  fields, the model behind a lane) or what it costs (prompt caching). The app never sets them; a real run must not either. */
@@ -165,9 +169,16 @@ export const REQUEST_CHANGERS: readonly string[] = [
   "DISABLE_PROMPT_CACHING", "DISABLE_INTERLEAVED_THINKING",
 ];
 
-/** Every reason the options must not start Claude. Never repeats a value (a value could be the key). */
-export function checkOptions(options: Record<string, any>, ex: { claudeBinary: string; configDirs: string[]; model?: string }): string[] {
+/** Every reason the options must not start Claude. Never repeats a value (a value could be the key). With `tools`, the
+ *  options must name their built in tools as a list, all of them expected ("agent": AGENT_TOOLS): an agent session that
+ *  names none would carry every built in tool Claude Code has. */
+export function checkOptions(options: Record<string, any>, ex: { claudeBinary: string; configDirs: string[]; model?: string; tools?: Expect["tools"] }): string[] {
   const p: string[] = [];
+  if (ex.tools !== undefined) {
+    const allowed = ex.tools === "agent" ? AGENT_TOOLS : ex.tools;
+    if (!Array.isArray(options.tools)) { if (ex.tools === "agent" || options.tools !== undefined) p.push("the session does not name its tools as a list, so it would carry every built in tool"); }
+    else { const extra = options.tools.map(String).filter((t: string) => !allowed.includes(t)); if (extra.length) p.push(`the session asks for tools this check does not expect: ${extra.join(", ")}`); }
+  }
   if (options.permissionMode === "bypassPermissions") p.push("permissionMode is bypassPermissions");
   if (options.allowDangerouslySkipPermissions) p.push("allowDangerouslySkipPermissions is set");
   if (!Array.isArray(options.settingSources)) p.push("settingSources is not an explicit list");
@@ -201,9 +212,9 @@ export function checkOptions(options: Record<string, any>, ex: { claudeBinary: s
 export function checkInit(m: Ev, ex: { tools: readonly string[] | "agent"; model?: string }): string[] {
   const p: string[] = [];
   const tools: string[] = Array.isArray(m.tools) ? m.tools.map(String) : [];
-  const allowed = ex.tools === "agent" ? AGENT_TOOLS : ex.tools;
+  const allowed = ex.tools === "agent" ? [...AGENT_TOOLS, ...ALWAYS_LISTED] : ex.tools;
   const extra = tools.filter((t) => t.startsWith("mcp__") || !allowed.includes(t));
-  if (extra.length) p.push(`tools this check does not expect: ${extra.join(", ")}${ex.tools === "agent" ? " (if one is a plain built in Claude Code tool, read what it does, then add it to AGENT_TOOLS in runner/scripts/realrun-harness.ts)" : ""}`);
+  if (extra.length) p.push(`tools this check does not expect: ${extra.join(", ")}${ex.tools === "agent" ? " (if one is a plain built in Claude Code tool, read what it does, then give it in runner/src/tools.ts, or refuse it in plain words in NOT_GIVEN in runner/src/safety.ts and add it to ALWAYS_LISTED here only if no tools list can leave it out)" : ""}`);
   if (Array.isArray(m.mcp_servers) && m.mcp_servers.length) p.push(`MCP servers were loaded: ${m.mcp_servers.map((s: Ev) => String(s?.name)).join(", ")}`);
   if (Array.isArray(m.plugins) && m.plugins.length) p.push(`plugins were loaded: ${m.plugins.map((s: Ev) => String(s?.name)).join(", ")}`);
   if (m.apiKeySource !== "ANTHROPIC_API_KEY") p.push(`the key came from "${String(m.apiKeySource)}", not ANTHROPIC_API_KEY (the API key route)`);
@@ -292,6 +303,16 @@ export function autoAnswer(e: Ev, o: { loopChoice?: "stop" | "different"; allow?
   if (e?.type === "loop.stuck") return { v: 1, id, type: "loop.choose", agent: String(e.agent), choice: o.loopChoice ?? "stop" };
   if (e?.type === "memory.agents_ask") return { v: 1, id, type: "memory.agents", project: String(e.project), answer: "yes" };
   return null;
+}
+
+/** How often the work stopped for the person: approval cards, and the tasks they came in (a task starts with
+ *  checkpoint.created). HeyClicky v1.0.53 "long tasks pause less often for approval": measured here and in the fix eval
+ *  before anything is changed. */
+export function approvalTally(events: readonly Ev[]): { cards: number; tasks: number; perTask: number; line: string } {
+  const cards = events.filter((e) => e?.type === "approval.request").length;
+  const tasks = events.filter((e) => e?.type === "checkpoint.created").length;
+  const perTask = tasks ? Math.round((cards / tasks) * 100) / 100 : 0;
+  return { cards, tasks, perTask, line: `approval cards: ${cards} in ${tasks} ${tasks === 1 ? "task" : "tasks"}${tasks ? ` (${perTask} a task)` : ""}` };
 }
 
 export type Proc = { write(line: string): void; lines: AsyncIterable<string>; kill(): void; exited: Promise<number> };

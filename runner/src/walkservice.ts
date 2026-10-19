@@ -7,14 +7,16 @@ import { MADE_PREFIX, VERCEL_LESSON } from "./lessongen.ts";
 // keeps its names), the lessons this project gets now.
 export type FromProject = (project: string, saved: (lesson: string) => string | undefined) => Lesson[];
 
-type Active = { walk: string; project: string; lesson: Lesson; w: Walkthrough; busy: boolean; asked: boolean };
+// passed: steps passed by as already done when this lesson started where the person is, said once with the first step.
+type Active = { walk: string; project: string; lesson: Lesson; w: Walkthrough; busy: boolean; asked: boolean; passed?: number };
 // After a ring click the project cannot prove yet: what is not there, and what to do next. The card's button says "I did it".
 const waitWords = (c: Check) => `${notThereYet(c)} ${c.kind === "file_exists" ? 'When it is there, press "I did it".' : 'Save the file, then press "I did it".'}`;
 type WalkCmd = Extract<Command, { type: `walk.${string}` }>;
 
 export class WalkService {
   private active = new Map<string, Active>();   // by walk id
-  constructor(private o: { emit: (e: Event) => void; lessonDirs: string[]; store: FileWalkStore; checker: (project: string) => Checker; now: () => string; fromProject?: FromProject }) {}
+  // startWhereYouAre: "Lessons start where you are" (teach.startWhereYouAre), read as each lesson starts.
+  constructor(private o: { emit: (e: Event) => void; lessonDirs: string[]; store: FileWalkStore; checker: (project: string) => Checker; now: () => string; fromProject?: FromProject; startWhereYouAre?: () => boolean }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: 1, id: `walk-${Date.now().toString(36)}`, ...e } as never); }
 
   /** The lessons made from this project (none without a real folder), then the lesson files. A lesson file cannot take a
@@ -87,6 +89,9 @@ export class WalkService {
     this.active.set(a.walk, a);
     try {
       if (saved) { try { await w.resume(this.o.checker(cmd.project)); } catch { this.o.store.forget(cmd.project, lesson.id); } }
+      // A new start, not Start over (which always begins at step one, so the person can do the steps again): with the
+      // setting on, steps already done are passed by, and the first step shown says how many (passed).
+      else if (!cmd.fresh && this.o.startWhereYouAre?.() === true) { try { await w.startHere(this.o.checker(cmd.project)); } catch { /* looking is a nicety; the lesson starts at step one */ } a.passed = w.passed(); }
       if (this.active.get(a.walk) !== a) return;   // Stop came while it was looking
       this.after(a, w.progress().done ? "done" : w.progress().blocked ? "help" : "advance");
     } finally { a.busy = false; }
@@ -113,6 +118,7 @@ export class WalkService {
     const c = a.w.current(); if (!c) return;
     // The step stays on the card as it is (nothing is pointed at again), with words on what the project does not show yet.
     if (r === "wait") { this.emit({ type: "walk.wait", walk: a.walk, index: c.index, say: waitWords(c.step.check) }); return; }
-    this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", ...(c.step.link ? { link: c.step.link } : {}), ...(c.already ? { already: true } : {}), log: a.w.history() });
+    const passed = a.passed; a.passed = undefined;
+    this.emit({ type: "walk.step", walk: a.walk, project: a.project, lesson: l.id, title: l.title, index: c.index, total: c.total, variant: c.variant, say: c.step.say, find: c.step.find, ask: c.step.check.kind === "ask", ...(c.step.link ? { link: c.step.link } : {}), ...(c.already ? { already: true } : {}), ...(passed ? { passed } : {}), log: a.w.history() });
   }
 }

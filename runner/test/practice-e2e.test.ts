@@ -168,4 +168,28 @@ describe("a follow up or Try again on a practice's fix is still that practice's"
     await s.runner.handle({ v: 1, id: "c", type: "agent.start", project: p, agent: "builder-1", mode: "drive", prompt: "add a footer", model: "m", budgetUsd: 1 });
     for (const ev of s.events.slice(n).filter((x) => x.type === "receipt" || x.type === "checkpoint.created")) expect((ev as any).practice).toBeUndefined();
   }, 240_000);
+
+  // Merge of main (PR 120): a task that ends on a question ends as needs you and is answered in the follow up box. A
+  // practice's fix that asks says so on its receipt with its practice id, and the answer is that practice's fix, checked.
+  test("a fix that stops to ask ends as needs you with the practice id, and the answer is the practice's fix, checked", async () => {
+    const e = CATALOG.practices.find((x) => x.id === "signup")!;
+    const p = copyOf(e);
+    const Q = "The form could post to /api/register or /api/signup. Which one does your server use?";
+    const s = runnerFor(p, [[{ text: Q, costUsd: 0.01 }], [...FIX.signup, { text: "Done: the form posts to /api/register now.", costUsd: 0.01 }]]);
+    const prompt = fixFoundPrompt(foundFor(e, await s.find(e)));
+    await s.runner.handle({ v: 1, id: "fix", type: "agent.start", project: p, agent: "builder-1", mode: "drive", prompt, model: "m", budgetUsd: PRACTICE_BUDGET_USD, practice: e.id });
+    const first = of(s.events, "receipt")[0];
+    expect(first).toMatchObject({ practice: e.id, changed: [], asks: true, said: Q });
+    expect(of(s.events, "agent.state").at(-1)).toMatchObject({ agent: "builder-1", state: "needsYou" });
+    const n = s.events.length;
+    await s.runner.handle({ v: 1, id: "ans", type: "agent.send", project: p, agent: "builder-1", text: "Use /api/register" });
+    const later = s.events.slice(n);
+    const cp = later.find((x) => x.type === "checkpoint.created") as any, rc = later.find((x) => x.type === "receipt") as any;
+    expect(cp.practice).toBe(e.id); expect(rc.practice).toBe(e.id); expect(rc.checkpoint).toBe(cp.checkpoint);
+    expect(cp.label).toContain("Answer to:");
+    expect(["passed", "partial"]).toContain(rc.proof);
+    expect(rc.asks).toBeUndefined();
+    for (const ev of [first, cp, rc]) expect(parseEvent(JSON.stringify(ev)).ok).toBe(true);
+    expect((await s.find(e)).verdict).not.toBe("failed");
+  }, 240_000);
 });

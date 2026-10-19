@@ -159,20 +159,30 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
       ...testRegressions(testsBefore, await perTest(dir)),
     ];
     const accept = c.hidden.filter((h) => h.kind === "accept").map((h) => ({ name: h.name, pass: after.state[h.name] }));
-    const asked = askedFor(ctx.meter.said, c.ask?.names);
+    // What the person would see: the last receipt's own words (the agent's last message, as the card shows it), and whether
+    // the task ended as needs you. Never what the harness heard the agent say along the way.
+    const lastReceipt = receipts.at(-1);
+    const said = typeof lastReceipt?.said === "string" && lastReceipt.said ? lastReceipt.said : null;
+    const needsYou = lastReceipt?.asks === true;
+    const asked = needsYou && askedFor(said ? [said] : [], c.ask?.names);
+    // Approval cards the person would have had to answer during the fix, and the tasks they came in.
+    const approvalCards = during.filter((e) => e.type === "approval.request").length;
+    const tasks = during.filter((e) => e.type === "checkpoint.created").length;
     const { outcome, proofFooled } = classify({ expect: c.expect, ladder: final ? String(final.verdict) : null, accept, regressions, asked });
     if (proofFooled) notes.push("The project's checks passed, but a hidden check did not: the fix did not really work.");
     for (const r of regressions) notes.push(`Broke: ${r}`);
     for (const a of accept.filter((x) => !x.pass)) notes.push(`Hidden check failed: ${c.hidden.find((h) => h.name === a.name)?.what} (${after.why[a.name] ?? ""})`);
     if (changedTests.length) notes.push(`Test files changed: ${changedTests.join(", ")}`);
     if (s.approvalsAsked.length) notes.push(`Companion asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "deny"}): ${s.approvalsAsked.slice(0, 2).join("; ")}`);
+    if (c.expect === "ask" && said && !asked) notes.push(`The card showed: ${said.slice(0, 200)}${needsYou ? "" : " (not as a question: the task did not end as needs you)"}`);
     return {
       id: c.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: Date.now() - t0, notes,
       detail: {
         flow, found: { verdict: found.verdict, label: found.label, place, message: found.problem?.message }, locatedRight,
         proof: receipts.at(-1)?.proof ?? null, receipts: receipts.length, checks: during.filter((e) => e.type === "proof.result").length,
         stuckShown: during.some((e) => e.type === "loop.stuck"), finalVerdict: final?.verdict ?? null, finalStep,
-        accept, regressions, proofFooled, testsChanged: changedTests, diff, asked, approvalsAsked: s.approvalsAsked.length, capped: ctx.meter.capped,
+        accept, regressions, proofFooled, testsChanged: changedTests, diff, asked, said, needsYou, approvalsAsked: s.approvalsAsked.length, approvalCards, tasks,
+        firstRound: ctx.meter.firstRound, capped: ctx.meter.capped,
         hard: c.hard, split: c.split,
       },
     };

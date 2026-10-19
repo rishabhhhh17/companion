@@ -10,7 +10,7 @@ const sample: VoiceSettings = {
   voices: [{ id: "ava", name: "Ava", lang: "en-US", quality: 2 }, { id: "jamie", name: "Jamie", lang: "en-GB", quality: 3 }, { id: "lekha", name: "Lekha", lang: "hi-IN", quality: 1 }],
   macLang: "en-US", voice: "ava", voiceMissing: null, voiceUsing: null, speed: 1.25, speeds: [0.5, 0.75, 1, 1.25, 1.5],
   inputs: [{ id: "coreaudio:built-in", name: "MacBook Pro Microphone" }, { id: "coreaudio:usb", name: "Blue Yeti" }], defaultInput: "MacBook Pro Microphone",
-  mic: "coreaudio:usb", micMissing: null, language: "hi", languages: ["auto", "en", "hi"], sound: "on",
+  mic: "coreaudio:usb", micMissing: null, micQuiet: null, lidOnly: false, language: "hi", languages: ["auto", "en", "hi"], sound: "on",
 };
 const lang = (code: string) => new Intl.DisplayNames(["en"], { type: "language", languageDisplay: "standard" }).of(code);
 
@@ -69,6 +69,19 @@ describe("voice settings in plain words", () => {
     expect(micLine(sample)).toBe("");
     expect(micDefaultLabel(sample)).toBe("Your Mac's default (MacBook Pro Microphone)");
     expect(micDefaultLabel({ ...sample, defaultInput: null })).toBe("Your Mac's default");
+  });
+  // Found in review (19 Oct 2026): with the lid closed, Settings named the Mac's own microphone as the one in use while
+  // hold to talk listened with another. The app now says which one cannot hear and which one listens.
+  test("with the lid closed Settings says the Mac's own microphone is off and which one listens", () => {
+    const lid = voiceSettingsFrom({ ...sample, defaultInput: "Blue Yeti", micQuiet: "MacBook Pro Microphone", lidOnly: false });
+    expect(lid.micQuiet).toBe("MacBook Pro Microphone");
+    expect(micLine(lid)).toBe("Your Mac's lid is closed, so MacBook Pro Microphone is off. Blue Yeti listens instead.");
+    expect(micLine(voiceSettingsFrom({ ...sample, defaultInput: "MacBook Pro Microphone", micQuiet: "MacBook Pro Microphone", lidOnly: true }))).toBe(S.voiceSilent.lid);
+    // A picked microphone that is away still says so first.
+    expect(micLine(voiceSettingsFrom({ ...sample, micMissing: "AirPods Pro", defaultInput: "Blue Yeti", micQuiet: "MacBook Pro Microphone" }))).toBe("AirPods Pro is not connected, so your Mac's default microphone (Blue Yeti) listens until it is back.");
+    // Nothing said unless the app clearly said so.
+    const plain = voiceSettingsFrom({ ...sample, micQuiet: 3, lidOnly: "yes" });
+    expect([plain.micQuiet, plain.lidOnly, micLine(plain)]).toEqual([null, false, ""]);
   });
   test("the sound being off is said plainly, with what to do", () => {
     expect(soundLine("on")).toBe("");

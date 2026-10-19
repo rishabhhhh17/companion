@@ -55,3 +55,24 @@ describe("what the character looks like", () => {
     expect(visualState(run([{ type: "agent.state", agent: "a", state: "working" }]))).toBe("working");
   });
 });
+
+// HeyClicky v1.0.53 parity: with the lid closed another microphone listens, and silence is never blamed on the permission
+// when the permission is granted. The shell says why (`why`); the words are the page's own.
+describe("why the microphone gave only silence", () => {
+  test("each reason has its own plain words, and only a missing permission names System Settings' microphone switch", () => {
+    const blocked = (why: unknown) => run([{ type: "app.voice", stage: "blocked", message: "The microphone gave me only silence. It may be switched off for Companion in System Settings.", why }]).voice!.message;
+    expect(blocked("lid")).toBe(S.voiceSilent.lid);
+    expect(blocked("device")).toBe(S.voiceSilent.device);
+    expect(blocked("permission")).toBe(S.voiceSilent.permission);
+    expect(S.voiceSilent.lid).toMatch(/lid is closed/);
+    expect(S.voiceSilent.device).not.toMatch(/System Settings|Privacy|permission|switched off for Companion/i);
+    expect(S.voiceSilent.lid).not.toMatch(/Privacy|permission|switched off for Companion/i);
+    expect(S.voiceSilent.permission).toMatch(/Privacy and Security/);
+    for (const t of Object.values(S.voiceSilent)) expect(/[–—]/.test(t), t).toBe(false);
+  });
+  test("an older shell with no reason keeps its own words, and an odd reason is ignored", () => {
+    expect(run([{ type: "app.voice", stage: "blocked", message: "Old words." }]).voice!.message).toBe("Old words.");
+    expect(run([{ type: "app.voice", stage: "blocked", message: "Old words.", why: "toString" }]).voice!.message).toBe("Old words.");
+    expect(run([{ type: "app.voice", stage: "silent", message: "I did not hear anything.", why: "lid" }]).voice!.message).toBe("I did not hear anything.");
+  });
+});

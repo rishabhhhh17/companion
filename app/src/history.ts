@@ -12,7 +12,7 @@ export function statusGroup(s: string): Exclude<HistoryStatus, "all"> {
   switch (s) {
     case "done": return "done";
     case "running": return "running";
-    case "interrupted": case "error_max_budget_usd": case "error_max_turns": return "stopped";
+    case "interrupted": case "error_max_budget_usd": case "error_max_turns": case "no_connection": case "claude_busy": return "stopped";
     default: return "not_done";
   }
 }

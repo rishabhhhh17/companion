@@ -141,6 +141,8 @@ export type Receipt = Envelope & {
   changedAt?: ChangeAt;   // the first changed line, for "Show me what changed"
   repeat?: { first: ChangeAt; second: ChangeAt; was: string; now: string };   // the same small change made in two places (was -> now)
   practice?: string;   // the practice id the task was started with, echoed back
+  said?: string;   // the agent's last words, the message it ended on: secrets hidden, clipped (runner/src/asks.ts)
+  asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
 };
 // Explain: two short lines of why and one check question. step: which Drive step it explains.
 export type ExplainReady = Envelope & { type: "explain.ready"; agent: string; checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number }; step?: { index: number; title: string }; usdEstimate: number };
@@ -160,7 +162,9 @@ export type AssistPromptDone = Envelope & { type: "assist.prompt.done"; req: str
 // mark: how it is drawn when confirmed (a guess only ever gets the soft ring). screen: 1 is the screen the pointer is on.
 export type PointMark = "ring" | "arrow" | "underline" | "box";
 export type PointTarget = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: PointMark; screen?: number };
-export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: PointMark; screen?: number; targets?: PointTarget[] };
+/** lastStepWorked: when the question said the step before was clicked but not checked yet, whether the screen shows it
+ *  worked (a judgment from the picture, never proof). */
+export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: PointMark; screen?: number; targets?: PointTarget[]; lastStepWorked?: "yes" | "no" | "unsure" };
 export type AssistError = Envelope & { type: "assist.error"; req: string; reason: string };
 
 // Where a check failed: a line in the project, a button in the app, or at least the error sentence.
@@ -207,8 +211,9 @@ export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; 
 // fromProject: made from this project's own setting names (runner/src/lessongen.ts), not a lesson file.
 export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
 // already: after a pause, the person is first asked "Did you already do this?" and nothing is pointed at until they answer
-// (Yes and No come back as walk.answer). Absent on every other step.
-export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[]; link?: string };
+// (Yes and No come back as walk.answer). Absent on every other step. passed: on the first step of a lesson that started
+// where the person already is (teach.startWhereYouAre), how many steps were passed by as already done.
+export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[]; link?: string; passed?: number };
 export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number };
 export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
 // The step stays as it is: the project does not show its result yet (say: what is not there, in plain words). Not a failure.
@@ -276,6 +281,7 @@ const pointExtrasOk: Check = (m) => {
   if (m.mark !== undefined && !MARKS.includes(m.mark as string)) return `"mark" must be one of ${MARKS.join(", ")}`;
   if (m.screen !== undefined && !screenNo(m.screen)) return '"screen" must be a whole number from 1 to 4';
   if (m.targets !== undefined && !(Array.isArray(m.targets) && m.targets.length >= 1 && m.targets.length <= 5 && m.targets.every(targetOk))) return '"targets" must be a list of 1 to 5 targets';
+  if (m.lastStepWorked !== undefined && !["yes", "no", "unsure"].includes(m.lastStepWorked as string)) return '"lastStepWorked" must be yes, no or unsure';
   return null;
 };
 const screensOk: Check = (m) => {
@@ -413,7 +419,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network"]), str("title"), str("expiresAt")],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],

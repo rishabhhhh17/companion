@@ -206,10 +206,24 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(main).toMatch(/fn reduce_motion\(\) -> bool \{ home_set\(\)\.less_motion \|\| NSWorkspace::sharedWorkspace\(\)\.accessibilityDisplayShouldReduceMotion\(\) \}/);
     expect(main).toContain("roam_animate(app, mv, reduce_motion())");
   });
-  test("nothing in the shell animates a window: the island opens and closes in place, Home drops down in place", () => {
-    for (const [f, s] of all) expect(s, f).not.toMatch(/setFrame_display_animate|\.animator\(\)|NSAnimationContext/);
-    const place = main.slice(main.indexOf("fn place_island("), main.indexOf("\n}\n", main.indexOf("fn place_island(")));
-    expect(place).toContain("setFrame_display(");
+  // Until 19 Oct 2026 nothing in the shell animated a window. HeyClicky v1.0.53 parity: the island's downward grow and
+  // Home's drop when it opens are a short motion, and both appear in place with reduced motion (island.rs decides).
+  test("the shell's only window motion is the island's grow and Home's drop, and with reduced motion they appear in place", () => {
+    const helper = main.slice(main.indexOf("fn set_frame_moving("), main.indexOf("\n}\n", main.indexOf("fn set_frame_moving(")));
+    for (const [f, s] of all) {
+      expect(s, f).not.toMatch(/setFrame_display_animate/);
+      const outside = f === "main.rs" ? s.replace(helper, "") : s;
+      expect(outside, f).not.toMatch(/\.animator\(\)|NSAnimationContext::run/);
+    }
+    // No motion asked: a motion of no length (it replaces one still running), and the frame set at once as well.
+    expect(helper).toContain("setDuration(secs.unwrap_or(0.0))");
+    expect(helper).toContain("if secs.is_none() { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } }");
+    // Every motion passed to it comes from island.rs with the one reader of reduced motion; Home's resize is at once.
+    const calls = [...main.matchAll(/set_frame_moving\(([^;]*)\)/g)].map((m) => m[1]).filter((c) => !c.startsWith("p: &NSPanel"));
+    expect(calls.length).toBe(3);
+    expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
+    expect(main).toContain("island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion())");
+    expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
   });
 });
 
