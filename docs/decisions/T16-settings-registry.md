@@ -44,8 +44,8 @@ One setting (Reset, only when it differs from usual), a section (Reset this sect
 - The engine's own stores stay its own, so the spending limit and memory rules keep their tested code paths.
 
 ## Stored data added by area 5 (pointing, talking and other apps)
-- `settings.json` may now hold the bundle ids of up to 20 apps the person added to Apps that count as a call (`calls.apps`), with Add the app in front. Only the id of the app in front is read, on that press (rule 7). It is in Companion's own folder, so Delete everything removes it.
-- `prompt_help.json` may now hold `"ask"` for an app, and Settings' "Add the app in front to never read" writes `"never"` for the app in front (its id only).
+- `settings.json` may now hold the bundle ids of up to 20 apps the person added to Apps that count as a call (`calls.apps`), with Add the app in front. Only the id of the app in front is read, on that press (rule 7). Only ids can be kept: a list may name an item shape (`item.shape`, today only `appId`: letters, digits, dots, dashes and underscores, up to 200 characters, no leading dot and no two dots in a row), checked by both rule sets and the shared cases, so anything else is refused with "Only an app's id can be kept here". It is in Companion's own folder, so Delete everything removes it.
+- `prompt_help.json` may now hold `"ask"` for an app, and Settings' "Add the app in front to never read" writes `"never"` for the app in front (its id only). The page names the app first and sends its id; the shell refuses if another app has come to the front since.
 
 ## What this means for the build
 - A new setting needs a definition in `protocol/settings.json`, its words in `S.set` (a test fails without them), and its reader. Never a plain setting as `custom`.
