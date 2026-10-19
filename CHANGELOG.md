@@ -476,3 +476,14 @@ None of this has been seen on a real screen yet.
 - **Small things that add up:** links open in your browser, a short "what changed" note after an update, Report a problem (it saves a cleaned log and opens a ready report; it sends nothing itself), a multi line ask box that keeps your draft, Copy on replies, drop or paste files into the ask box (secrets hidden, settings and key files refused), search in What I did, and a faster first reply at no cost.
 - **Which task broke it** now works for Python projects too.
 - Tests no longer fail just because the Mac is busy.
+
+## M11: make it yours, everything in Settings (19 Oct 2026)
+None of this has been seen on a real screen yet. Every setting starts at what Companion did before, and Reset puts it back.
+- **One Settings page for everything,** with sections, a search box, and Reset for one setting, a section or everything. Things you add to protect yourself (house rules, apps Companion must never read) are never reset by accident.
+- **Spending and how work runs:** budgets for a task, a plan, a Rescue and a Research question (always within your daily limit), how many failed checks before Companion stops and asks, how many steps a plan may have, whether Try again carries on or starts fresh, and how long a question waits for you (no answer always counts as no).
+- **Checking your project:** house rules, what the check must see on the page, a button it should press and what must show after, which start script to use (only scripts that start the project, never one like deploy), checks to leave out (shown as "partly checked", never as passed; the page check always runs), how long checks may take, whether packages are installed automatically, after asking, or never, page size, a slow internet mode, and receipt pictures.
+- **Memory and teaching:** Explain off, reasons only, or reasons and a question; what Companion learns from; how much it recalls; off the record by default; how long the "remembered" note stays; when to offer a recap.
+- **Home, the island and the character:** whether the island shows and peeks on hover, how fast it opens and closes, which display it uses, whether Home closes when you click away, whether it jumps to what needs you, its size, and where the character lives and how long it stays beside a window.
+- **Pointing, talking and other apps:** how long rings stay, their colour and lettering, guesses as a soft ring or words only, the pace of multi step answers, how long a sketch stays, the longest hold to talk, what else is said out loud, Prompt help's style and whether it pastes or copies, your answers per app, which editor opens, and which call apps count.
+- The microphone now closes the moment Companion is hidden while you hold to talk.
+- One test run reached the internet by mistake while these were built (a real package install and a clone attempt in a temporary folder; nothing of yours was touched). The test cannot run real commands any more.
