@@ -657,7 +657,9 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
   );
 }
 
-export function SettingsPage({ working, project, spending, onClose, onPracticeList, onLesson }: { working: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void }) {
+// working: a task or a check works (isBusy). practiceBusy: that, or a lesson or a practice's own checks (practice.ts
+// workingOn), so the practice copy open now is never moved to the Trash under them.
+export function SettingsPage({ working, practiceBusy, project, spending, onClose, onPracticeList, onLesson }: { working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
   // Every setting, except a model row that could offer only one option so far (modelChoice.ts), and a row that only
@@ -672,7 +674,7 @@ export function SettingsPage({ working, project, spending, onClose, onPracticeLi
   const [askPractice, setAskPractice] = useState(false);
   const [practiceSaid, setPracticeSaid] = useState("");
   const practiceAllId = useId();
-  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: working }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(String(e))); };
+  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(String(e))); };
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");

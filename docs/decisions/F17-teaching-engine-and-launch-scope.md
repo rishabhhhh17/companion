@@ -212,6 +212,10 @@ the new four and no person has tried any of them yet (`docs/milestones/M11-real-
   database table anyone can read (open table). Times and costs are estimates until measured.
 - **Each copy** is a new folder in the home folder named after its practice ("Companion practice signup page", a number
   added only when the name is taken, including by the undo history an old copy left), never over anything, never git.
+  A copy that fails halfway removes only the folder it just made itself; a folder already at that name is never touched,
+  and when every name up to 99 is taken nothing is made and the person is told to move or rename an old copy. A practice
+  whose recorded copy is still there is never copied again (Start, Next and the first run open that copy instead, and the
+  shell refuses a second one), so no copy is ever lost to the record (review fix, 20 Oct 2026).
   Into it the shell writes `.companion/rules.txt` with one "never edit" rule per protected file (the check), so a fix
   cannot pass by changing the check (rule 12). Its first line says Companion added it.
 - **The fix** is one shipped request (`runner/src/fixfound.ts`, which the coding eval now measures too) as a normal task on
@@ -225,7 +229,10 @@ the new four and no person has tried any of them yet (`docs/milestones/M11-real-
 - **The open table** is found by the check before going live (the ship gates, the files only, no database touched), not
   by the key, so Point at the problem still never reports an open table on a person's own project (that would need the
   founder's OK). Its done means the next check shows no open table in the files; the words say the live database is checked
-  once it is connected. The database check now says where each open table is made (`ship/rls.ts` `places`).
+  once it is connected. A table with row level security on but a rule that says "true" (anyone may read) is still open:
+  the check answers that it could not be sure, with the table named, and the practice says the fix did not pass. The real
+  run measures it by the same rule (`runner/src/ship/opentables.ts`; review fix, 20 Oct 2026; before it, that counted as
+  done). The database check now says where each open table is made (`ship/rls.ts` `places`).
 - **Where it shows.** The practice panel stays on Learn (F18) and now carries the result, Undo, Explain, Show me where and
   Why? Draw it, so nothing points at a card on another tab. **Founder OK owed** for a one line coach strip on Now while a
   practice runs; not built.
@@ -240,15 +247,20 @@ the new four and no person has tried any of them yet (`docs/milestones/M11-real-
   made with the same name, never the open project while something works on it (a task, a check, or a lesson that is open;
   `practice.ts` `workingOn`). A refused Trash leaves the copy as it is. Start, Continue and Start over also wait while
   something works, since each opens another folder.
-  Companion's undo history for a removed copy stays in its own folder until Delete everything: the engine may hold it open,
+  The shell takes the page's word for whether something works on the open copy (the page knows about lessons and the
+  practice's own checks; the shell does not), and Delete everything moves the copies to the Trash only after the engine has
+  stopped. Companion's undo history for a removed copy stays in its own folder until Delete everything: the engine may hold it open,
   and a fresh copy never reuses that name, so it never shows the old history (the build plan said to remove it; this is the
   safer of the two and the confirm says so).
 - **The first run** offers the practice right after Connect (minute one), with Pick another and Skip. Taking it ends the first
   run there: the folder, the questions and the key hints are not shown on that path (the practice opens its own folder,
   Back to my project asks for the person's own, the answers stay at their usual values and nothing is added to the profile,
   and permissions are asked when first used anyway). The founder judges this order in the hands on session.
-- **After a practice:** Next names the next one not done, and Back to my project returns to the folder used before (else the
-  newest folder of the person's own, else the folder chooser).
+- **After a practice:** Next names the next one not done (one left half way opens its copy), and Back to my project returns
+  to the folder used before (else the newest folder of the person's own, else the folder chooser).
+- **A copy opened again** (Continue, the recent folders, or at launch) brings its practice back once per visit to that
+  folder. Closing the panel (Skip, Close, Stop the fix) keeps it closed until the folder is opened again or Continue is
+  pressed; its Find runs by itself only when the folder was changed while Companion runs, never at launch.
 - **The Vercel lesson** is left out of Learn only in a practice copy, which is never on Vercel; on a person's own project it
   is offered as before (most Vercel projects deploy from GitHub with no vercel.json, so a file check would hide it).
 - **Beta numbers** count `practice_started`, `practice_found` and `practice_done`, with no names or paths (off unless the

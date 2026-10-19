@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeMigrations, detectSupabase, liveRows, LIVE_RLS_SQL, rlsGate } from "../src/ship/rls.ts";
+import { noTableOpen } from "../src/ship/opentables.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -122,5 +123,24 @@ describe("the gate", () => {
   });
   test("a live check alone, with no migration files, can pass", async () => {
     expect((await rlsGate({ project: supa(), query: async () => [{ table: "notes", rls: true }] })).status).toBe("passed");
+  });
+});
+
+// Review fix (20 Oct 2026): "fixed" for the open table practice (the page and real-verify) was "not blocked", so a fix that
+// turned row level security on with a rule that says "true" counted as fixed. One rule now says what fixed means.
+describe("does the check show no open table (what fixed means for the open table practice)", () => {
+  const rls = (sql: Record<string, string>) => { const d = tmp(); put(d, { "supabase/config.toml": "x", ...Object.fromEntries(Object.entries(sql).map(([f, c]) => [`supabase/migrations/${f}`, c])) }); return rlsGate({ project: d }); };
+  const made = "create table public.notes (id int, user_id uuid);\n";
+  test("protected in the files, with only the live database left unchecked: no table open", async () => {
+    expect(noTableOpen(await rls({ "1.sql": made + "alter table public.notes enable row level security;\ncreate policy \"own\" on public.notes for select to authenticated using ((select auth.uid()) = user_id);\n" }))).toBe(true);
+    expect(noTableOpen(await rlsGate({ project: tmp(), query: async () => [] }))).toBe(false);   // not Supabase at all: nothing was proven
+    expect(noTableOpen({ status: "passed" })).toBe(true);
+  });
+  test("row level security on with a rule that says true is still open, and so is any table without it", async () => {
+    const wide = await rls({ "1.sql": made + "alter table public.notes enable row level security;\ncreate policy \"anyone\" on public.notes for select using (true);\n" });
+    expect(wide).toMatchObject({ status: "could_not_check", findings: ["notes"] });
+    expect(noTableOpen(wide)).toBe(false);
+    expect(noTableOpen(await rls({ "1.sql": made }))).toBe(false);
+    for (const g of [null, undefined, {}, { status: "blocked" }, { status: "not_applicable" }, { status: "could_not_check", findings: ["x"] }, { status: "new" }]) expect(noTableOpen(g as never), JSON.stringify(g)).toBe(false);
   });
 });

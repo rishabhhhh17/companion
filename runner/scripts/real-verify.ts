@@ -29,6 +29,7 @@ import { MODELS } from "../src/models.ts";
 import { SdkEngine, SessionTotals } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../src/fixfound.ts";
+import { noTableOpen } from "../src/ship/opentables.ts";
 import { RunnerDriver, ledgerSpent, parseArgs, runCases, spawnRunner, type ApproveRule, type Case, type CaseCtx, type Proc } from "./realrun-harness.ts";
 
 type Ev = Record<string, any>;
@@ -95,7 +96,8 @@ function practiceCase(e: PracticeEntry): Scenario {
       const rec = await r.until((x) => x.type === "receipt", 360_000);
       if (!rec) { note("no receipt"); return false; }
       const after = await find();
-      const fixed = e.find === "gate" ? !!after && after.status !== "blocked" : !!after && after.verdict !== "failed";
+      // The open table is fixed only when the check shows no open table (a rule that says "true" still leaves it open).
+      const fixed = e.find === "gate" ? noTableOpen(after) : !!after && after.verdict !== "failed";
       const untouched = e.protect.every((f, i) => readFileSync(join(dir, f), "utf8") === kept[i]);
       note(`receipt proof = ${rec.proof}; practice = ${rec.practice}; changed = ${JSON.stringify(rec.changed?.map((c: Ev) => c.file))}; Find again fixed = ${fixed}; protected files untouched = ${untouched}; ${Math.round((Date.now() - t0) / 1000)} s; cost ${rec.usdEstimate}`);
       return ok && ["passed", "partial"].includes(rec.proof) && rec.practice === e.id && fixed && untouched;

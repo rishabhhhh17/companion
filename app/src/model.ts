@@ -242,11 +242,13 @@ function practiceGates(m: Model, e: Ev): Model {
   if (pr.stage === "start") {
     if (g.state === "found") return { ...m, practice: { ...pr, stage: "found", label: g.label ?? "", where: whereOf(g.problem), problem: g.problem, block: undefined, why: undefined } };
     if (g.state === "clear" && pr.resumed) return { ...m, practice: { ...pr, stage: "done", already: true } };
-    return { ...m, practice: { ...pr, stage: "blocked", block: g.state === "clear" ? "nothing" : g.state === "other" ? "elsewhere" : "couldNotRun", why: g.detail } };
+    // Open some other way (a rule that says "true", another table): the panel shows what the check says under it.
+    return { ...m, practice: { ...pr, stage: "blocked", block: g.state === "clear" ? "nothing" : g.state === "other" ? "elsewhere" : "couldNotRun", why: g.detail, ...(g.state === "other" ? { where: { message: g.detail } } : {}) } };
   }
   if (pr.stage === "proving" && entry.prove === "gate") {
     if (g.state === "missing") return { ...m, practice: { ...pr, stage: "failed", checksFailed: true } };
-    return { ...m, practice: { ...pr, stage: g.state === "clear" ? "done" : "failed", ...(g.state !== "clear" ? { where: whereOf(g.problem), why: g.detail } : {}) } };
+    // Done only when no table is open (gateFinding); else failed, with the line when there is one and the check's words.
+    return { ...m, practice: { ...pr, stage: g.state === "clear" ? "done" : "failed", ...(g.state !== "clear" ? { where: g.problem ? whereOf(g.problem) : { message: g.detail }, why: g.detail } : {}) } };
   }
   return m;
 }

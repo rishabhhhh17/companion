@@ -2002,17 +2002,16 @@ fn forget_folder(app: &AppHandle, folder: &std::path::Path) {
 }
 
 /// A practice project (the first one unless the page names another in the catalog): copied into a new folder in the home
-/// folder, named after the practice, with its house rules, recorded, then chosen as the project. Never over anything.
+/// folder, named after the practice, with its house rules, recorded, then chosen as the project. Never over anything, and
+/// never a second copy while the recorded one is still there (the page opens that one instead; this refuses it anyway).
 #[tauri::command]
 fn create_practice(window: tauri::WebviewWindow, app: AppHandle, which: Option<String>) -> Result<String, String> {
     settings::only_card(window.label())?;   // only Home, on the person's press
     let e = practice::pick(which.as_deref())?;
     let src = practice_source(e)?;
     let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
-    let data = data_dir();
-    let dst = practice::make(&src, std::path::Path::new(&home_dir()), e, practice::taken(&data))?;
     let (mut r, _) = practice_record();
-    r.started(&e.id, &dst, &today());
+    let dst = practice::create(&mut r, e, &src, std::path::Path::new(&home_dir()), &data_dir(), &today())?;
     let _ = save_practice(&r);   // the copy is there either way; the list only loses its progress line
     log("practice_created", json!({ "practice": e.id }));
     use_project_inner(app, dst.to_string_lossy().to_string())
@@ -2130,9 +2129,6 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool,
     let asked = tauri::async_runtime::spawn_blocking(confirm_delete_natively).await.unwrap_or(false);
     drop(dialog);
     if !asked { WIPING.store(false, SeqCst); return Err(String::new()); }   // cancelled: nothing happened, nothing to say
-    // The person ticked "Also move my practice copies to the Trash": each copy Companion made and recorded goes to the
-    // Trash now, before the record itself is deleted with everything else. Everything is about to stop, so nothing is busy.
-    if with_practice == Some(true) { let (moved, kept) = trash_practice_copies("", false); log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() })); }
     let projects: Vec<String> = if with_projects { projects::load(&projects_path()).still_there() } else { vec![] };
     let exe = std::env::current_exe().map_err(|_| { WIPING.store(false, SeqCst); "Could not start the cleanup.".to_string() })?;
     let mut helper = std::process::Command::new(exe);
@@ -2143,6 +2139,10 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool,
     showme_stop(&app);
     let _ = app.state::<runner::Runner>().stop_everything("delete everything");
     app.state::<runner::Runner>().shut_down();
+    // The person ticked "Also move my practice copies to the Trash": each copy Companion made and recorded goes to the
+    // Trash now that the engine has stopped (so no task, check or lesson still works in one), and before the record itself
+    // is deleted with everything else by the helper, which waits for the app to quit.
+    if with_practice == Some(true) { let (moved, kept) = trash_practice_copies("", false); log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() })); }
     app.exit(0);
     Ok(())
 }

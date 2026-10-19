@@ -135,6 +135,24 @@ describe("every practice in the catalog, start to finish, with no model", () => 
   }
 });
 
+describe("the open table's fix is proven by its check, not by the task's own checks", () => {
+  // Review fix (20 Oct 2026): row level security turned on with a rule that says "true" still leaves the table open. The
+  // task's checks pass, so only the database check can tell; its answer (the table still in its findings) is what the page
+  // must never take for fixed (app/src/practice.ts gateFinding, tested with the same check in app/src/practice.test.ts).
+  test("a fix that adds a rule that says true passes the task's checks, and the check still finds the table open", async () => {
+    const e = CATALOG.practices.find((x) => x.id === "open-table")!;
+    const p = copyOf(e);
+    const wide: Step[] = [{ tool: { name: "Write", input: { file_path: "supabase/migrations/20261003090000_protect_notes.sql", content: "alter table public.notes enable row level security;\ncreate policy \"Anyone reads notes\" on public.notes for select using (true);\n" } }, costUsd: 0.01 }];
+    const s = runnerFor(p, [wide]);
+    const prompt = fixFoundPrompt(foundFor(e, await s.find(e)));
+    await s.runner.handle({ v: 1, id: "fix", type: "agent.start", project: p, agent: "builder-1", mode: "drive", prompt, model: "m", budgetUsd: PRACTICE_BUDGET_USD, practice: e.id });
+    expect(["passed", "partial"]).toContain(of(s.events, "receipt")[0].proof);
+    const g = gateOf(await s.find(e), e);
+    expect(g.status).not.toBe("passed");
+    expect(g.findings).toContain("notes");
+  }, 240_000);
+});
+
 describe("a follow up or Try again on a practice's fix is still that practice's", () => {
   test("the practice id carries on to the next task, and a task started without one has none", async () => {
     const e = CATALOG.practices.find((x) => x.id === "signup")!;

@@ -70,6 +70,8 @@ again, Undo), and the pages follow the same events (`app/src/practice.test.ts`).
    `app/sample/practices.json`, and say in the change that they are measured.
 5. If a fix tried to edit its protected file, read the house rule's refusal in the run's notes: it should be refused and the
    fix should then go elsewhere. The open table's fix should add a new migration, never change the old one.
+6. The open table passes only when the check shows no open table (`runner/src/ship/opentables.ts`, the rule the page uses
+   too): a fix that turns row level security on with a rule that says "true" leaves the table open, and is a FAIL.
 
 **A person tries each practice (item 23; the founder Mac session, one step per message):**
 1. A fresh first run: after Connect, the practice step. Try the recommended one; also check Pick another opens the list,
@@ -81,10 +83,13 @@ again, Undo), and the pages follow the same events (`app/src/practice.test.ts`).
 5. Remove my copy: it goes to the Trash and leaves the recent folders.
 6. Quit in the middle of a practice and open Companion again: the practice is there and waits for Find; open the copy from
    the recent folders: Find runs by itself and nothing is pointed at on the screen until Show me where is pressed.
-7. Next and Back to my project after a Done.
-8. With Node moved out of the way (a test account), the list says Needs Node and Start waits.
-9. VoiceOver and the keyboard alone through the list and the panel, including each are you sure step.
-10. Record each answer in the readiness table in `docs/status/`.
+7. Next and Back to my project after a Done. Leave one practice half way, finish another, press Next until it names the
+   one left half way: its copy opens, and no second copy appears in the home folder.
+8. In a practice copy, press Skip the practice, then open the Learn tab again and wait: the panel stays closed and nothing
+   is checked. Continue on its row brings it back.
+9. With Node moved out of the way (a test account), the list says Needs Node and Start waits.
+10. VoiceOver and the keyboard alone through the list and the panel, including each are you sure step.
+11. Record each answer in the readiness table in `docs/status/`.
 
 ## Known gaps: unproven, and no script covers them yet
 

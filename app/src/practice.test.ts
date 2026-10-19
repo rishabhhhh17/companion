@@ -3,7 +3,8 @@
 // events the engine really records from each sample (protocol/fixtures/practice-found.jsonl, checked against the engine in
 // runner/test/practice-e2e.test.ts), so the two agree.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { DEFAULT_MODEL, SETTINGS_LESSON_ID, VERCEL_LESSON_ID, fixFound } from "./commands.ts";
@@ -11,7 +12,7 @@ import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
-import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, practiceNotes, practiceOf, recordFrom, rowState, type PracticeEntry, type PracticeRecord } from "./practice.ts";
+import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -236,6 +237,65 @@ describe("closing, stopping and opening a copy again", () => {
   });
 });
 
+// Review fix (20 Oct 2026): the record is read again after every practice action, every mark and each time Learn opens, so
+// bringing a copy's practice back on every new record made a closed panel come back by itself and run Find again unasked.
+describe("a copy opened again comes back once per visit, so a closed practice stays closed", () => {
+  const e = entry("import");
+  const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+  const r = recordFrom({ practices: [{ id: "import", path: P(e), there: true }] });
+  test("opening the copy brings it back once; a record read again after the person closed it brings back nothing", () => {
+    const first = resumeOnOpen(P(e), r, null, "");
+    expect(first).toEqual({ resume: "import", seen: P(e) });
+    // Skip the practice, Close or Stop the fix, then the record is read again (Learn opened, an action, a mark)
+    const later = recordFrom({ practices: [{ id: "import", path: P(e), there: true, started: "2026-10-20", found: "2026-10-20" }] });
+    expect(resumeOnOpen(P(e), later, null, first.seen)).toEqual({ resume: null, seen: P(e) });
+    // the record not read yet: nothing yet, and the visit is not counted as handled
+    expect(resumeOnOpen(P(e), NO, null, "")).toEqual({ resume: null, seen: "" });
+    // the practice already open in this copy (it was just started): handled, never started a second time
+    expect(resumeOnOpen(P(e), r, run([start(e)]).practice, "")).toEqual({ resume: null, seen: P(e) });
+    // the person's own folder, or no folder
+    expect(resumeOnOpen("/Users/sam/shop", r, null, "").resume).toBeNull();
+    expect(resumeOnOpen("", r, null, "").resume).toBeNull();
+    // opened again on another visit (the folder changed in between, so the card forgot what it handled): it comes back
+    expect(resumeOnOpen(P(e), r, null, "").resume).toBe("import");
+  });
+  test("the card forgets what it handled only when the folder changes, so Find runs by itself at most once per visit", () => {
+    expect(card).toContain("resumeOnOpen(project, practiceRec, nowModel.current.practice, resumeSeen.current)");
+    const reset = 'useEffect(() => { resumeSeen.current = ""; resumedKey.current = ""; }, [project]);';
+    expect(card).toContain(reset);
+    expect(card.indexOf(reset)).toBeLessThan(card.indexOf("resumeOnOpen(project"));   // effects run in order: forget, then look
+    // Find's own key is forgotten only there and when Continue is pressed for the copy already open (a press)
+    expect(card.match(/resumedKey\.current = ""/g)?.length).toBe(2);
+  });
+  test("Continue on the copy already open brings its practice back, since opening the same folder again changes nothing", () => {
+    const body = card.slice(card.indexOf("const continuePractice = "), card.indexOf("\n  };", card.indexOf("const continuePractice = ")));
+    expect(body).toContain('if (project && copyOf(practiceRec, project) === id) { resumedKey.current = ""; dispatch({ type: "ui.practiceStarted", project, kind: id, resumed: true }); return; }');
+    expect(body).toContain('invoke("open_practice", { which: id })');
+  });
+});
+
+// Review fix (20 Oct 2026): Next on a practice in progress made a second copy, and the record forgot the first one, so it
+// could never be removed or listed again.
+describe("a practice whose copy is still there is opened, never copied a second time", () => {
+  const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+  const rt = entry("route");
+  test("Next, Start and the first run open the copy that is there; only a practice with no copy left is copied", () => {
+    expect(startOrOpen(recordFrom({ practices: [{ id: "route", path: P(rt), there: true }] }), "route")).toBe("open");
+    expect(startOrOpen(recordFrom({ practices: [{ id: "route", path: P(rt), there: true, done: "2026-10-20" }] }), "route")).toBe("open");
+    expect(startOrOpen(recordFrom({ practices: [{ id: "route", path: P(rt), there: false }] }), "route")).toBe("start");
+    expect(startOrOpen(NO, "route")).toBe("start");
+    // Next after the import practice, with the route practice left half way: its copy opens
+    const rec2 = recordFrom({ practices: [{ id: "import", path: P(entry("import")), there: true, done: "2026-10-20" }, { id: "signup", there: false, done: "2026-10-19" }, { id: "setting", there: false, done: "2026-10-19" }, { id: "route", path: P(rt), there: true }] });
+    expect(nextPractice(rec2, "import")?.id).toBe("open-table");
+    expect(startOrOpen(rec2, nextPractice(rec2, "signup")!.id)).toBe("open");
+  });
+  test("the card asks first, so every way to start a practice goes through it", () => {
+    const body = card.slice(card.indexOf("const beginPractice = "), card.indexOf("\n  };", card.indexOf("const beginPractice = ")));
+    expect(body).toContain('if (startOrOpen(practiceRec, id) === "open") { continuePractice(id); return; }');
+    expect(body.indexOf("startOrOpen")).toBeLessThan(body.indexOf('invoke("create_practice"'));
+  });
+});
+
 describe("the record and the list on Learn", () => {
   const rec = (rows: unknown[], damaged = false): PracticeRecord => recordFrom({ practices: rows, damaged });
   test("the shell's list is checked: only catalog ids, real days and text paths", () => {
@@ -370,6 +430,51 @@ describe("the open table's gate", () => {
     expect(gateFinding(t, [{ id: "database_access", status: "blocked", findings: ["notes", "orders"] }]).state).toBe("other");
     expect(gateFinding(t, "nonsense").state).toBe("missing");
   });
+  // Review fix (20 Oct 2026): a fix that turns row level security on but adds a rule that says "true" leaves the table open.
+  // The files only check then says could_not_check with that table in its findings, which is not "no table is open".
+  const cnc = (findings?: string[]) => [{ id: "database_access", label: "Database access is protected", status: "could_not_check", detail: findings?.length ? `${findings.join(", ")} can be read or changed by anyone, signed in or not, because of a rule that says "true".` : "The tables in your migration files are protected, but I could not check your live database.", overridable: true, ...(findings ? { findings } : {}) }];
+  test("clear only when no table is open in the files: a rule that says true, another open table or no Supabase at all is not fixed", () => {
+    expect(gateFinding(t, cnc()).state).toBe("clear");
+    expect(gateFinding(t, cnc([])).state).toBe("clear");
+    expect(gateFinding(t, cnc(["notes"]))).toMatchObject({ state: "other", detail: expect.stringContaining("notes can be read") });
+    expect(gateFinding(t, cnc(["profiles"])).state).toBe("other");
+    expect(gateFinding(t, [{ id: "database_access", label: "L", status: "not_applicable", detail: "This project does not use Supabase." }]).state).toBe("other");
+    expect(gateFinding(t, [{ id: "database_access", label: "L", status: "something new", detail: "x" }]).state).toBe("other");
+  });
+  test("after its fix, a table still open by a rule that says true ends in failed with the check's words, never done", () => {
+    const proving = run([start(t), found(t), ...fix(t, true)]);
+    expect(proving.practice?.stage).toBe("proving");
+    const m = run([ev({ ...gates(t, false), gates: cnc(["notes"]) })], proving);
+    expect(m.practice?.stage).toBe("failed");
+    expect(m.practice?.where?.message).toContain("notes can be read");   // the panel shows it under the failed words
+    expect(run([ev({ ...gates(t, false), gates: [{ id: "database_access", label: "L", status: "not_applicable", detail: "This project does not use Supabase." }] })], proving).practice?.stage).toBe("failed");
+    expect(run([ev({ ...gates(t, false), gates: cnc() })], proving).practice?.stage).toBe("done");
+  });
+  test("a copy opened again whose table is still open by such a rule is not already fixed, and says what the check found", () => {
+    const m = run([start(t, { resumed: true }), ev({ ...gates(t, false), gates: cnc(["notes"]) })]);
+    expect(m.practice).toMatchObject({ stage: "blocked", block: "elsewhere" });
+    expect(m.practice?.already).toBeUndefined();
+    expect(m.practice?.where?.message).toContain("notes can be read");
+    // blocked on another table: the panel shows what the check says, not an empty line
+    expect(run([start(t), ev({ ...gates(t, true), gates: [{ id: "database_access", label: "L", status: "blocked", detail: "This table is open to anyone with your site address: orders.", findings: ["orders"] }] })]).practice?.where?.message).toContain("orders");
+  });
+  test("with the real check on a copy of the sample: the fix with a rule that says true is failed, the real fix is done", async () => {
+    const { rlsGate } = await import("../../runner/src/ship/rls.ts");
+    const dir = mkdtempSync(join(tmpdir(), "companion-opentable-"));
+    try {
+      const copy = join(dir, "copy");
+      cpSync(join(import.meta.dir, "../sample/stuck-open-table"), copy, { recursive: true });
+      const proving = run([start(t), found(t), ...fix(t, true)]);
+      const after = async (sql: string) => {
+        writeFileSync(join(copy, "supabase/migrations/20261003090000_protect_notes.sql"), sql);
+        return run([ev({ ...gates(t, false), gates: [await rlsGate({ project: copy })] })], proving).practice;
+      };
+      const wide = await after('alter table public.notes enable row level security;\ncreate policy "Anyone reads notes" on public.notes for select using (true);\n');
+      expect(wide).toMatchObject({ stage: "failed", where: { message: expect.stringContaining("notes") } });
+      const right = await after('alter table public.notes enable row level security;\ncreate policy "Each person reads their own notes" on public.notes for select to authenticated using ((select auth.uid()) = user_id);\n');
+      expect(right?.stage).toBe("done");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });
 
 describe("Point at the problem's own Fix it (point.fixWith)", () => {
@@ -464,5 +569,14 @@ describe("the panel's buttons do what they say (bugs 1, 5 and starting while bus
     expect(card.match(/busy: isBusy\(nowModel\.current\)/g)).toBeNull();
     expect(card.match(/busy: workingOn\(nowModel\.current\)/g)?.length).toBe(2);
     expect(card).toContain("<PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)}");
+  });
+  // Review fix (20 Oct 2026): Settings' Move all my practice copies to the Trash told the shell only about tasks and checks,
+  // so the copy open while its lesson or its proving check ran could go to the Trash under it.
+  test("Move all my practice copies to the Trash tells the shell about an open lesson and the practice's own checks too", () => {
+    expect(settings).toContain('invoke("remove_all_practices", { busy: practiceBusy })');
+    expect(settings).not.toContain('invoke("remove_all_practices", { busy: working })');
+    expect(card).toMatch(/<SettingsPage working=\{isBusy\(m\)\} practiceBusy=\{workingOn\(m\)\}/);
+    // and every busy the card sends the shell for a practice is workingOn, never isBusy alone
+    for (const call of card.match(/invoke\("(?:restart|remove)_practice"[^)]*\)/g) ?? []) expect(call).toContain("busy: workingOn(nowModel.current)");
   });
 });

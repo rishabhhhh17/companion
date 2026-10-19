@@ -55,15 +55,12 @@ pub fn source_of(folder: &str, exe: &Path, env: Option<&str>) -> Option<PathBuf>
     candidates.into_iter().find(|p| p.join("package.json").is_file())
 }
 
-/// "Companion practice signup page", then "Companion practice signup page 2" ... in the home folder: a name nobody uses.
-pub fn destination(home: &Path, e: &Entry, taken: impl Fn(&Path) -> bool) -> PathBuf {
+/// "Companion practice signup page", then "Companion practice signup page 2" ... in the home folder: a name nobody uses,
+/// or none when every one of them is taken (names are never freed, since an old copy's undo history keeps its name).
+pub fn destination(home: &Path, e: &Entry, taken: impl Fn(&Path) -> bool) -> Option<PathBuf> {
     // `taken` should say yes to anything that exists, a broken link included (use `exists_at` or `taken`).
     let name = format!("{} {}", copy_base(), e.copy_name);
-    for n in 1..100 {
-        let p = home.join(if n == 1 { name.clone() } else { format!("{name} {n}") });
-        if !taken(&p) { return p; }
-    }
-    home.join(format!("{name} {}", std::process::id()))
+    (1..100).map(|n| home.join(if n == 1 { name.clone() } else { format!("{name} {n}") })).find(|p| !taken(p))
 }
 
 /// True for anything at that path, even a link that leads nowhere.
@@ -79,10 +76,18 @@ pub fn shadow_of(data: &Path, project: &Path) -> PathBuf {
 /// an old copy's undo points or tasks as its own.
 pub fn taken(data: &Path) -> impl Fn(&Path) -> bool + '_ { move |p| exists_at(p) || exists_at(&shadow_of(data, p)) }
 
-/// Copies the project's files. Links are never copied and nothing is ever written over.
+/// Makes a new folder, only if nothing is at that path (one step, so a folder that appears at the same moment is never
+/// taken over).
+fn new_folder(dst: &Path) -> Result<(), String> {
+    fs::create_dir(dst).map_err(|e| if e.kind() == std::io::ErrorKind::AlreadyExists { "That folder is already there.".to_string() } else { e.to_string() })
+}
+/// Copies the project's files into a new folder. Links are never copied and nothing is ever written over.
 pub fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
-    if exists_at(dst) { return Err("That folder is already there.".into()); }
-    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    new_folder(dst)?;
+    copy_into(src, dst)
+}
+/// Copies the files into a folder this copy has just made.
+fn copy_into(src: &Path, dst: &Path) -> Result<(), String> {
     for e in fs::read_dir(src).map_err(|e| e.to_string())?.flatten() {
         let (from, to) = (e.path(), dst.join(e.file_name()));
         let m = fs::symlink_metadata(&from).map_err(|e| e.to_string())?;
@@ -100,12 +105,14 @@ pub const RULES_MARK: &str = "# Companion added these rules to its practice copy
 /// action (runner/src/rules.ts), so a fix that changes the check is refused (rule 12), not only asked against in words.
 pub fn rules_text(e: &Entry) -> String { let mut s = format!("{RULES_MARK}\n"); for f in &e.protect { s.push_str(&format!("never edit {f}\n")); } s }
 
-/// Makes the practice folder and its house rules, or leaves nothing behind: a copy that fails halfway is removed.
+/// Makes the practice folder and its house rules, or leaves nothing behind: a copy that fails halfway is removed. Only a
+/// folder this call made is ever removed: when the name is already in use, or no name is free, nothing is touched.
 pub fn make(src: &Path, home: &Path, e: &Entry, taken: impl Fn(&Path) -> bool) -> Result<PathBuf, String> {
     if !home.is_absolute() { return Err("Your home folder was not found.".into()); }
-    let dst = destination(home, e, taken);
-    let done = copy_tree(src, &dst).and_then(|_| {
-        // The folder is brand new, so nothing of the person's is there to write over.
+    let dst = destination(home, e, taken).ok_or("Every name for a copy of this practice is in use in your home folder. Move or rename an old copy, then try again.".to_string())?;
+    new_folder(&dst).map_err(|err| format!("Could not make the practice project ({err})."))?;
+    // From here the folder is this call's own and brand new, so nothing of the person's is in it to write over or remove.
+    let done = copy_into(src, &dst).and_then(|_| {
         fs::create_dir_all(dst.join(".companion")).map_err(|e| e.to_string())?;
         fs::write(dst.join(".companion/rules.txt"), rules_text(e)).map_err(|e| e.to_string())
     });
@@ -113,6 +120,17 @@ pub fn make(src: &Path, home: &Path, e: &Entry, taken: impl Fn(&Path) -> bool) -
         Ok(()) => Ok(dst),
         Err(err) => { let _ = fs::remove_dir_all(&dst); Err(format!("Could not make the practice project ({err}).")) }
     }
+}
+
+/// Start (and Next, and the first run): a new copy, recorded with the day. Never a second copy while the recorded one is
+/// still there: the record keeps one copy per practice, and a copy it forgot could never be listed or removed again.
+pub fn create(r: &mut Record, e: &Entry, src: &Path, home: &Path, data: &Path, day: &str) -> Result<PathBuf, String> {
+    if r.practices.get(&e.id).and_then(|p| p.path.as_deref()).is_some_and(|x| copy_path_ok(Path::new(x), home) && Path::new(x).is_dir()) {
+        return Err("Your copy of this practice is still in your home folder. Press Continue to open it, or Start over for a fresh one.".into());
+    }
+    let p = make(src, home, e, taken(data))?;
+    r.started(&e.id, &p, day);
+    Ok(p)
 }
 
 // ---------- the record ----------
@@ -256,11 +274,11 @@ mod tests {
     #[test]
     fn each_copy_is_named_after_its_practice_with_a_number_only_when_the_name_is_taken() {
         let h = Path::new("/Users/sam");
-        assert_eq!(destination(h, signup(), |_| false), h.join("Companion practice signup page"));
-        assert_eq!(destination(h, signup(), |p| p.ends_with("Companion practice signup page")), h.join("Companion practice signup page 2"));
+        assert_eq!(destination(h, signup(), |_| false), Some(h.join("Companion practice signup page")));
+        assert_eq!(destination(h, signup(), |p| p.ends_with("Companion practice signup page")), Some(h.join("Companion practice signup page 2")));
         let route = pick(Some("route")).unwrap();
-        assert_eq!(destination(h, route, |p| p.ends_with("Companion practice signup page")), h.join("Companion practice missing page"));
-        let names: Vec<PathBuf> = entries().iter().map(|e| destination(h, e, |_| false)).collect();
+        assert_eq!(destination(h, route, |p| p.ends_with("Companion practice signup page")), Some(h.join("Companion practice missing page")));
+        let names: Vec<PathBuf> = entries().iter().map(|e| destination(h, e, |_| false).unwrap()).collect();
         for (i, a) in names.iter().enumerate() { for b in &names[i + 1..] { assert_ne!(a, b); } }
     }
     #[test]
@@ -298,6 +316,31 @@ mod tests {
         let bad = root.join("missing");
         assert!(make(&bad, &home, signup(), exists_at).is_err());
         assert!(!home.join("Companion practice signup page 3").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+    // Review fix (20 Oct 2026): names are never freed (an old copy's undo history keeps its name taken), and a copy that
+    // failed used to remove its destination whatever the reason, even a folder that was already there.
+    #[test]
+    fn when_every_name_is_taken_nothing_is_made_and_a_folder_of_the_persons_is_never_touched() {
+        let root = tmp("full"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
+        let src = root.join("src"); fs::create_dir_all(&src).unwrap(); fs::write(src.join("package.json"), "{}").unwrap();
+        let theirs = home.join("Companion practice signup page"); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
+        assert_eq!(destination(&home, signup(), |_| true), None);
+        let err = make(&src, &home, signup(), |_| true).unwrap_err();
+        assert!(err.contains("name"), "{err}");
+        assert_eq!(fs::read_dir(&home).unwrap().count(), 1);   // nothing new in the home folder
+        assert_eq!(fs::read_to_string(theirs.join("mine.txt")).unwrap(), "mine");
+        let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_folder_already_at_the_chosen_name_is_never_written_into_or_removed() {
+        // `taken` says the name is free (the folder appeared a moment after the name was chosen): the copy refuses and leaves it.
+        let root = tmp("raced"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-signup");
+        let theirs = home.join("Companion practice signup page"); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
+        assert!(make(&src, &home, signup(), |_| false).is_err());
+        assert_eq!(fs::read_to_string(theirs.join("mine.txt")).unwrap(), "mine");
+        assert_eq!(fs::read_dir(&theirs).unwrap().count(), 1);   // nothing copied into it, no house rules written
         let _ = fs::remove_dir_all(&root);
     }
     #[test]
@@ -500,5 +543,38 @@ mod tests {
         r.started("route", &home.join("Companion practice missing page"), D);   // recorded, but gone
         assert_eq!(copies(&r, &home), vec![("signup".to_string(), p)]);
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // Review fix (20 Oct 2026): Next on a practice in progress made a second copy and the record forgot the first, so Remove
+    // my copy, Move all and Delete everything's line could never reach it.
+    #[test]
+    fn a_practice_whose_copy_is_still_there_is_never_copied_again_so_the_record_never_loses_a_copy() {
+        let root = tmp("again"); let (home, data) = (root.join("home"), root.join("data")); fs::create_dir_all(&home).unwrap();
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-signup");
+        let (mut r, p) = copy_for(&home, "signup");
+        let err = create(&mut r, signup(), &src, &home, &data, D).unwrap_err();
+        assert!(err.contains("Continue") && err.contains("Start over"), "{err}");
+        assert_eq!(r.practices["signup"].path.as_deref(), p.to_str());
+        assert_eq!(fs::read_dir(&home).unwrap().count(), 1);   // no second copy
+        // Once that copy is gone (removed, or moved away by the person), Start makes a fresh one and records it.
+        fs::remove_dir_all(&p).unwrap();
+        let made = create(&mut r, signup(), &src, &home, &data, "2026-10-20").unwrap();
+        assert!(made.join("package.json").is_file());
+        assert_eq!(r.practices["signup"].path.as_deref(), made.to_str());
+        assert_eq!(r.practices["signup"].started.as_deref(), Some("2026-10-20"));
+        // A practice never started is made at once, and its record has its own row.
+        let route = create(&mut r, pick(Some("route")).unwrap(), &Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-route"), &home, &data, D).unwrap();
+        assert_eq!(r.practices["route"].path.as_deref(), route.to_str());
+        let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn the_shell_starts_a_practice_through_that_check_and_moves_copies_to_the_trash_only_once_the_engine_has_stopped() {
+        let main = include_str!("main.rs");
+        let body = |start: &str| { let s = &main[main.find(start).unwrap_or_else(|| panic!("{start}"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let c = body("fn create_practice(");
+        assert!(c.contains("practice::create(") && !c.contains("practice::make("), "create_practice must refuse a practice whose copy is there");
+        let d = body("async fn delete_everything(");
+        let (spawned, stopped, trashed) = (d.find("helper.spawn()").unwrap(), d.find(".shut_down()").unwrap(), d.find("trash_practice_copies(").unwrap());
+        assert!(spawned < stopped && stopped < trashed, "the cleanup starts (or is refused) first, then the engine stops, then the copies go");
     }
 }

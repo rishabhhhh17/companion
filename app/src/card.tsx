@@ -15,7 +15,7 @@ import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metric
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
-import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, workingOn, type PracticeRecord } from "./practice.ts";
+import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, found, isBusy } from "./updates.ts";
@@ -466,13 +466,22 @@ function Card() {
     const e = practiceOf(id);
     homeDispatch({ type: "pick", tab: "learn" });
     if (!e) return;
+    // A practice whose copy is still there (Next on one left half way, say) opens that copy: a second copy would be lost to
+    // the record, which keeps one per practice (the shell refuses one too).
+    if (startOrOpen(practiceRec, id) === "open") { continuePractice(id); return; }
     // A practice opens its own folder, so never while something works on the project (it would switch it under the work).
     if (!canStart(workingOn(nowModel.current), e, nowModel.current.doctor)) { setPracticeNote(workingOn(nowModel.current) ? S.practiceBusy : S.practiceNodeLine(nodeMissing(nowModel.current.doctor)?.fix ?? "")); return; }
     const previous = before();
     practiceAction(() => invoke("create_practice", { which: id }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind: id, ...(previous ? { previous } : {}) })));
   };
-  // Continue: the recorded copy opens as the project; the practice comes back and Find runs again (resume, below).
-  const continuePractice = (id: string) => { homeDispatch({ type: "pick", tab: "learn" }); if (workingOn(nowModel.current)) { setPracticeNote(S.practiceBusy); return; } practiceAction(() => invoke("open_practice", { which: id })); };
+  // Continue: the recorded copy opens as the project; the practice comes back and Find runs again (resume, below). When that
+  // copy is already the project (its panel was closed), opening the same folder again changes nothing, so it comes back here.
+  const continuePractice = (id: string) => {
+    homeDispatch({ type: "pick", tab: "learn" });
+    if (workingOn(nowModel.current)) { setPracticeNote(S.practiceBusy); return; }
+    if (project && copyOf(practiceRec, project) === id) { resumedKey.current = ""; dispatch({ type: "ui.practiceStarted", project, kind: id, resumed: true }); return; }
+    practiceAction(() => invoke("open_practice", { which: id }));
+  };
   // Start over (asked first): the old copy to the Trash, a fresh copy in a new folder. The fresh copy opens as the project,
   // so, like Start, never while something works.
   const restartPractice = (id: string) => {
@@ -491,12 +500,14 @@ function Card() {
     loadRecent();
   }));
   // A recorded copy opened again (Continue, or the recent folders): its practice comes back and Find runs again to see where
-  // it is, instead of trusting the record. At launch it comes back too, and waits for Find to be pressed.
+  // it is, instead of trusting the record. At launch it comes back too, and waits for Find to be pressed. Once per visit to
+  // the folder (practice.ts resumeOnOpen): the record is read again after every action, so a closed practice stays closed.
+  const resumeSeen = useRef("");   // the folder whose practice this visit already brought back (or found open)
+  useEffect(() => { resumeSeen.current = ""; resumedKey.current = ""; }, [project]);
   useEffect(() => {
-    const id = copyOf(practiceRec, project);
-    if (!id || nowModel.current.practice?.project === project) return;
-    resumedKey.current = "";
-    dispatch({ type: "ui.practiceStarted", project, kind: id, resumed: true });
+    const r = resumeOnOpen(project, practiceRec, nowModel.current.practice, resumeSeen.current);
+    resumeSeen.current = r.seen;
+    if (r.resume) dispatch({ type: "ui.practiceStarted", project, kind: r.resume, resumed: true });
   }, [project, practiceRec]);
   // Find for the practice: the key's own check, or for the open table the check before going live (the files only).
   const practiceFind = () => {
@@ -1004,7 +1015,7 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
-      {show("settings") && <SettingsPage working={isBusy(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} />}
+      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} />}
       {show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
         const pr = m.practice!, entry = practiceOf(pr.kind)!;
         return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}

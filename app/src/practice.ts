@@ -6,6 +6,7 @@ import catalogJson from "../sample/practices.json";
 import type { DoctorItem, Practice, Problem } from "./model.ts";
 import { S } from "./strings.ts";
 import { isBusy } from "./updates.ts";
+import { noTableOpen } from "../../runner/src/ship/opentables.ts";
 
 export type PracticeEntry = {
   id: string; folder: string; order: number; copyName: string;
@@ -33,13 +34,17 @@ export function isExpected(e: PracticeEntry, p: Problem | null | undefined): boo
 
 export type GateLike = { id: string; label?: string; status: string; detail?: string; findings?: string[]; places?: { table: string; file: string; line: number; lineText: string }[] };
 /** What the check before going live says about this practice's gate: blocked on exactly the findings the catalog expects
- *  (found, with the line that makes the table), clear (not blocked), blocked on something else, or not there at all. */
+ *  (found, with the line that makes the table), clear, open some other way (other), or not there at all.
+ *  Clear means the check shows no open table (noTableOpen, the same rule real-verify measures), and nothing less (rule
+ *  14): the practice's check reads the files only, so a fixed copy answers could_not_check with no findings. A table still
+ *  open by a rule that says "true" is could_not_check with that table in its findings, which is not fixed; nor is a copy
+ *  that no longer uses Supabase at all (not_applicable), or any answer this does not know. */
 export function gateFinding(e: PracticeEntry, gates: unknown): { state: "found" | "clear" | "other" | "missing"; label?: string; detail?: string; problem?: Problem } {
   const g = (Array.isArray(gates) ? gates : []).find((x: GateLike) => !!x && x.id === e.expect.gate) as GateLike | undefined;
   if (!g) return { state: "missing" };
-  if (g.status !== "blocked") return { state: "clear", label: g.label, detail: g.detail };
+  if (noTableOpen(g)) return { state: "clear", label: g.label, detail: g.detail };
   const findings = Array.isArray(g.findings) ? [...g.findings].sort() : [];
-  if (JSON.stringify(findings) !== JSON.stringify([...(e.expect.findings ?? [])].sort())) return { state: "other", label: g.label, detail: g.detail };
+  if (g.status !== "blocked" || JSON.stringify(findings) !== JSON.stringify([...(e.expect.findings ?? [])].sort())) return { state: "other", label: g.label, detail: g.detail };
   const at = (g.places ?? []).find((p) => p && typeof p.file === "string" && Number.isInteger(p.line));
   const message = String(g.detail ?? "");
   return { state: "found", label: g.label, detail: message, problem: { kind: "line", file: at?.file ?? e.expect.file, line: at?.line ?? e.expect.line, lineText: at?.lineText ?? "", message, from: "ship" } };
@@ -85,6 +90,20 @@ export function nextPractice(rec: PracticeRecord, justDone: string): PracticeEnt
 }
 /** The practice whose recorded copy is this folder, if any. */
 export const copyOf = (rec: PracticeRecord, project: string): string | null => (project ? rec.rows.find((r) => r.path === project)?.id ?? null : null);
+/** Start, Next and the first run: a practice whose recorded copy is still there opens that copy (Continue); only one with
+ *  no copy left gets a new one. The record keeps one copy per practice, so a second copy would be lost to it (the shell
+ *  refuses one too, practice.rs create). */
+export const startOrOpen = (rec: PracticeRecord, id: string): "start" | "open" => (rec.rows.some((r) => r.id === id && r.path && r.there) ? "open" : "start");
+/** A recorded copy opened as the project brings its practice back once per visit to that folder. `seen` is the folder this
+ *  visit already handled (the card forgets it only when the folder changes), so the record being read again (after every
+ *  practice action and mark, and each time Learn opens) never brings back a practice the person closed, and never runs its
+ *  Find again unasked. A record not read yet leaves the visit unhandled, so the copy still comes back once it is read. */
+export function resumeOnOpen(project: string, rec: PracticeRecord, open: Practice | null, seen: string): { resume: string | null; seen: string } {
+  if (!project || seen === project) return { resume: null, seen };
+  const id = copyOf(rec, project);
+  if (!id) return { resume: null, seen };
+  return { resume: open?.project === project ? null : id, seen: project };
+}
 /** Back to my project: the folder used before the practice, else the newest recent folder that is not a practice copy. */
 export function backTo(previous: string | undefined, recent: string[], rec: PracticeRecord): string | null {
   const own = (f: string) => !copyOf(rec, f) && !looksLikeCopy(f);
