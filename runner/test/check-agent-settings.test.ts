@@ -47,7 +47,9 @@ function rig(o: { proof?: (ctx: ProofContext) => Promise<LadderResult>; rounds?:
     proof: async (ctx) => { seen.push(ctx); return o.proof ? o.proof(ctx) : passed; },
     ...(o.approvalTimeoutMs ? { approvalTimeoutMs: o.approvalTimeoutMs } : {}),
     ...(o.deployLogs ? { deployLogs: o.deployLogs } : {}),
-    ...(o.commands ? { commands: o.commands as never } : {}),
+    // Commands always have a stand in: one that throws unless a test gives its own, so no test here can ever start a real
+    // install or a real copy from the internet, even if a command stops being sent through the stand in a test gives.
+    commands: (o.commands ?? (async (c: string) => { throw new Error(`a real command was about to run: ${c}`); })) as never,
     ...(o.pictures ? { pictures: { workDir: tmp("w"), saveDir, before: async (b: any) => { befores.push(b); return { shot }; }, draw: async (_b: any, a: any) => ({ jpeg: a.jpeg, regions: [], how: "none" as const }) } } : {}),
   });
   const task = (id = "c1", project_ = project) => runner.handle({ v: 1, id, type: "agent.start", project: project_, agent: "a1", mode: "drive", prompt: "make it", model: "m", budgetUsd: 3 });
@@ -64,9 +66,9 @@ describe("what a task's check is given", () => {
   });
   test("this project's own choices, and longer limits for longer", async () => {
     const r = rig();
-    r.settings.apply(apply({}, r.project, { "check.skip": ["lint"], "check.mustSee": ["Welcome"], "check.press": "Add to cart", "check.time": "longer", "check.pageSize": "both", "check.install": "never", "check.start": "web" }));
+    r.settings.apply(apply({}, r.project, { "check.skip": ["lint"], "check.mustSee": ["Welcome"], "check.press": "Add to cart", "check.time": "longer", "check.pageSize": "both", "check.install": "never", "check.start": "start:web" }));
     await r.task();
-    expect(r.seen[0].check).toEqual({ ...USUAL_CHECK, skip: ["lint"], mustSee: ["Welcome"], press: "Add to cart", time: "longer", pageSize: "both", install: "never", start: "web" });
+    expect(r.seen[0].check).toEqual({ ...USUAL_CHECK, skip: ["lint"], mustSee: ["Welcome"], press: "Add to cart", time: "longer", pageSize: "both", install: "never", start: "start:web" });
     expect(r.seen[0].limits).toEqual(scaleLimits(2));
   });
   test("another project's choices never apply here", async () => {
@@ -134,6 +136,24 @@ describe("the install question (check.install ask, or the house rule)", () => {
     const t = asking(async (r) => { await r.runner.handle({ v: 1, id: "s", type: "agent.interrupt", agent: "a1" }); });
     expect(await t.run()).toBe(false);
   });
+  test("after Ship's check asked, nothing is left looking busy: the stand in for Ship goes back to idle", async () => {
+    for (const decision of ["allow", "deny"] as const) {
+      const r = rig({ proof: async (ctx) => { await ctx.askInstall!("npm install"); return passed; } });
+      const done = r.runner.handle({ v: 1, id: "g", type: "ship.check", project: r.project, runChecks: true });
+      await waitFor(() => of(r.events, "approval.request").length > 0);
+      await r.runner.handle({ v: 1, id: "y", type: "approval.resolve", approval: of(r.events, "approval.request")[0].approval, decision, scope: "once" });
+      await done;
+      const ship = of(r.events, "agent.state").filter((e) => e.agent === "ship").map((e) => e.state);
+      expect(ship, decision).toContain("needsYou");
+      expect(["checking", "needsYou"], decision).not.toContain(ship.at(-1));
+    }
+  });
+  test("a task's own state comes back to checking after the question", async () => {
+    const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "y", type: "approval.resolve", approval: req.approval, decision: "allow", scope: "once" }); });
+    await t.run();
+    const states = of(t.r.events, "agent.state").filter((e) => e.agent === "a1").map((e) => e.state);
+    expect(states.slice(states.indexOf("needsYou"), states.indexOf("needsYou") + 2)).toEqual(["needsYou", "checking"]);
+  });
   test("Stop everything is a no, even for Ship's check", async () => {
     let got = null as boolean | null;
     const r = rig({ proof: async (ctx) => { got = await ctx.askInstall!("npm install"); return passed; } });
@@ -184,9 +204,9 @@ describe("before and after pictures", () => {
   });
   test("the earlier version is pictured with this project's start and page size, and its time allowed", async () => {
     const r = rig({ pictures: true });
-    r.settings.apply(apply({}, r.project, { "check.start": "web", "check.pageSize": "phone", "check.time": "longest" }));
+    r.settings.apply(apply({}, r.project, { "check.start": "start:web", "check.pageSize": "phone", "check.time": "longest" }));
     await r.task(); await settle();
-    expect(r.befores[0]).toMatchObject({ start: "web", viewport: VIEWPORTS.phone, startMs: 4 * 60_000, browserMs: 4 * 20_000 });
+    expect(r.befores[0]).toMatchObject({ start: "start:web", viewport: VIEWPORTS.phone, startMs: 4 * 60_000, browserMs: 4 * 20_000 });
     const u = rig({ pictures: true });
     await u.task(); await settle();
     expect(u.befores[0].start).toBe("auto");
@@ -267,11 +287,15 @@ describe("my internet is slow (net.slow)", () => {
 describe("what the project report says for the Settings rows", () => {
   test("its own scripts, the checks it has, its .claude/proof.json and .claude/launch.json", async () => {
     const r = rig();
-    writeFileSync(join(r.project, "package.json"), JSON.stringify({ name: "x", scripts: { dev: "vite", lint: "eslint .", test: "vitest", "start:prod": "node .", "bad name; rm": "x" } }));
+    writeFileSync(join(r.project, "package.json"), JSON.stringify({ name: "x", scripts: {
+      dev: "vite", lint: "eslint .", test: "vitest", build: "vite build", preview: "vite preview", "start:prod": "node .", "bad name; rm": "x",
+      // Never offered: not a way to start the project, or it sounds like it deploys, publishes or deletes.
+      deploy: "vercel --prod", publish: "npm publish", postinstall: "node setup.js", "db:reset": "prisma migrate reset", "start:live": "vercel --prod", "serve:ship": "npm run deploy", "dev:clean": "vite",
+    } }));
     await r.runner.handle({ v: 1, id: "i", type: "project.inspect", project: r.project });
     const a = of(r.events, "project.report")[0];
-    expect(a.scripts).toEqual(["dev", "lint", "start:prod", "test"]);
-    expect(a.checks).toEqual(["lint", "test"]);
+    expect(a.scripts).toEqual(["dev", "preview", "start:prod"]);
+    expect(a.checks).toEqual(["lint", "build", "test"]);
     expect(a.proofFile).toBeNull();
     expect(a.launchFile).toBe(false);
     mkdirSync(join(r.project, ".claude"), { recursive: true });

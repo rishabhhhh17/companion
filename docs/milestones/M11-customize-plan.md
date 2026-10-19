@@ -191,17 +191,31 @@ check starts (`runner/src/proof/options.ts`). How it was built, where it differs
   pressed only when it is a plain button, link or tab whose words, and the real element's, do not sound risky; one that
   sends a form or downloads something is not pressed either. Not pressed is a gap; not found fails the check, as a missing
   word does. The press stays inside the page's own address and its writes are answered with "nothing to do".
-- The start choice is a choice whose other options are the project's own scripts (`optionsFrom`), from the project report.
+- The start choice is a choice whose other options are the project's own scripts (`optionsFrom`), from the project report:
+  only scripts that start the project (dev, develop, start, serve, preview and names built on them), and never one whose
+  name or text, or a script it runs, sounds like it deploys, publishes, deletes or changes data or git. The engine checks
+  again at use, and anything else means the usual way, as a gap. A chosen script that finishes without opening a page is a
+  gap, and the project is started the usual way, so the browser check still runs (F14).
 - Checks to leave out: the floor holds in three places (the registry's allowed items, the engine's own list, and the ladder,
   which has no way to leave out the start or the browser check). A check left out is a gap, so at best passed with gaps.
   The guards against weakened checks and tests still run when the tests are left out.
 - The house rule "ask before installing packages" (or a rules file that cannot be read) now makes the check's own install
-  ask first, which it did not before; with the rule present the row says so.
+  ask first, which it did not before; with the rule present the row says so. With the packages not installed (never, or no
+  yes), a check, the tests or the start that cannot run without them ("command not found", a missing package) is a gap,
+  never a failure, so a task's fix loop is not started over it; a missing file of the project's own still fails. After the
+  question the agent goes back to what it was doing, and Ship's stand in to idle.
+- House rules: Save says which project's list it is, and the shell refuses it for another one (the folder can change by
+  itself); a list not saved yet goes when the folder changes. No Undo changes the rules file (T16).
 - Page size phone: the before picture is taken at phone size too, and the receipt's rings are scaled to the page's own
   width (they were placed for 1280 wide before).
 - Pictures to keep: Settings counts the pictures kept (`data_inventory`) and asks first when a lower number means some go.
 - Not proven on a real Mac: the rows with a real project folder (Save writing rules.txt, the scripts and proof.json shown),
   the install question on the card during a real check, a real slow network, and VoiceOver and keyboard on the new rows.
+- The changelog line is left for the founder to add when merging, as for the core: "Settings has a Checking your project
+  section: house rules, words the page must show, a button to press, how to start the project, checks to leave out (said
+  as a gap), time allowed, installing packages (the check now asks first when your house rule says so), page size, slow
+  internet, and pictures. Phone size pictures are ringed in the right place, and Reset all leaves other projects' settings
+  alone."
 
 ### Area 3: Memory, Explain and teaching (engine builder, with small page changes)
 

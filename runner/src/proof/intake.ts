@@ -3,7 +3,7 @@
 // it needs that are not set. Reads ordinary files only; never runs anything; never shows a setting's value.
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { detectProject, replitRun, type PackageManager } from "./detect.ts";
+import { detectProject, replitRun, usableStartScript, type PackageManager } from "./detect.ts";
 import { pythonIntakeNote } from "./python.ts";
 import { label } from "../redact.ts";
 export { replitRun };
@@ -30,11 +30,12 @@ export type CheckFacts = {
   launchFile: boolean;
 };
 
-/** The facts for the Settings rows. Script names only (never what they run), and only plain names, which are the only ones
- *  a check can be started with. */
+/** The facts for the Settings rows. Script names only (never what they run), and only the scripts a check may start the
+ *  project with (detect.ts usableStartScript): never a build, a lint, the tests, an install step, or one that sounds like
+ *  it deploys, publishes or deletes. The engine checks again when the check starts. */
 export function checkFacts(dir: string, det: ReturnType<typeof detectProject>): CheckFacts {
   const pkg = readJson(join(dir, "package.json"));
-  const scripts = pkg && typeof pkg.scripts === "object" && pkg.scripts ? Object.keys(pkg.scripts).filter((k) => typeof pkg.scripts[k] === "string" && /^[A-Za-z0-9][A-Za-z0-9:._-]{0,59}$/.test(k)).sort().slice(0, 40) : [];
+  const scripts = pkg && typeof pkg.scripts === "object" && pkg.scripts ? Object.keys(pkg.scripts).filter((k) => usableStartScript(k, pkg.scripts)).sort().slice(0, 40) : [];
   const checks = [...det.checks.map((c) => c.name), ...(det.tests ? ["test" as const] : [])].filter((x, i, a) => a.indexOf(x) === i);
   let proofFile: CheckFacts["proofFile"] = null;
   const proofPath = join(dir, ".claude", "proof.json");

@@ -683,7 +683,7 @@ export const S = {
     "check.mustSee": { label: "Words that must be on the page", help: "The browser check fails if any of these words is missing from the page. Up to five.", also: ["text", "expect", "page", "words", "proof"] },
     "check.press": { label: "A button the check should press", help: "The browser check presses the button, link or tab with these words, to see the page still works when it is used.", also: ["click", "button", "press", "try", "link"] },
     "check.afterPress": { label: "Words that should appear after pressing it", help: "After the button is pressed, these words must appear on the page.", also: ["after", "click", "result", "words"] },
-    "check.start": { label: "How to start this project for the check", help: "Which of the project's own scripts starts it for the browser check.", also: ["start", "script", "dev", "server", "run", "preview"], options: { auto: "Let Companion find it" } },
+    "check.start": { label: "How to start this project for the check", help: "Which of the project's own scripts starts it for the browser check. Only scripts that start it are offered, never one that builds, deploys or deletes something.", also: ["start", "script", "dev", "server", "run", "preview"], options: { auto: "Let Companion find it" } },
     "check.skip": { label: "Checks to leave out", help: "A check left out is not run, and the result says so: at best passed with gaps, never passed.", also: ["skip", "lint", "type check", "build", "tests", "leave out"], options: { typecheck: "The type check", lint: "The lint check", build: "The build", test: "The tests" } },
     "check.time": { label: "Time allowed for checks", help: "For a slow project or a slow Mac. Covers installing, the checks, the tests, starting the project, the browser check, the Ship preview check and the before picture.", also: ["slow", "timeout", "time", "wait", "longer"], options: { normal: "Normal", longer: "Longer (twice as long)", longest: "Longest (four times as long)" } },
     "check.install": { label: "Install packages for a check", help: "When the project's packages are missing or changed, the check installs them first. With Ask me first, no answer counts as no and the project is checked as it is.", also: ["install", "packages", "npm", "node_modules", "dependencies"], options: { auto: "Automatically", ask: "Ask me first", never: "Never, check it as it is" } },
@@ -698,7 +698,7 @@ export const S = {
   floors: {
     rulesStricter: "House rules can only add care: Companion's own safety rules always apply, and no reset ever removes a rule.",
     pressNeverRisky: "A button whose words sound like it sends, pays, deletes or publishes is never pressed, whatever this says.",
-    browserAlways: "Starting the project and the browser check always run.",
+    browserAlways: "Starting the project and the browser check can never be left out.",
     noAnswerIsNo: "No answer always counts as no.",
   } as Record<string, string>,
   // The parts of Settings that are not settings, found by the search too.
@@ -771,6 +771,7 @@ export const S = {
     other: "That setting could not be changed. It is unchanged.",
     notRule: "Build the rule from the choices shown.",
     rulesUnreadable: "Your house rules file could not be opened here, so it was not changed. Change it in the file itself.",
+    projectChanged: "The project folder changed before this was saved, so nothing was saved. Check it again for this project.",
   },
   // Checking your project (settingsPage.tsx, checkRows.ts).
   setRulesUnreadable: "Your house rules file could not be opened here, so it cannot be changed in Settings. Change it in the file itself.",
@@ -780,7 +781,7 @@ export const S = {
   chkScriptGone: (name: string) => `${name} (not in package.json now)`,
   chkAskRule: "Your house rule \"ask before installing packages\" is on, so Companion asks first.",
   chkNoChecks: "Companion found none of these checks in this project.",
-  chkLeaveOut: (name: string) => `Leave out ${name}`,
+  chkLeaveOut: (name: string) => `Leave out ${name.replace(/^The /, "the ")}`,
   chkLeftOut: "Left out",
   chkRun: "Runs",
   chkNeedsPress: "Choose a button to press first.",

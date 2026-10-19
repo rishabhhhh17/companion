@@ -33,10 +33,12 @@ export function factsFrom(ev: unknown): CheckFacts | null {
   };
 }
 
-/** check.start: Let Companion find it, then the project's own scripts. A chosen script that is not there any more is still
- *  shown (said as gone), so the person can see it and pick another. Never a box to type a command in. */
+/** check.start: Let Companion find it, then the project's own scripts that start it (the engine sends only those; a name
+ *  the shell would refuse is never offered either). A chosen script that is not there any more is still shown (said as
+ *  gone), so the person can see it and pick another. Never a box to type a command in. */
 export function startOptions(value: unknown, facts: CheckFacts | null): { id: string; label: string }[] {
-  const out = [{ id: "auto", label: S.set["check.start"].options.auto }, ...(facts?.scripts ?? []).map((s) => ({ id: s, label: s }))];
+  const d = defOf("check.start")!;
+  const out = [{ id: "auto", label: S.set["check.start"].options.auto }, ...(facts?.scripts ?? []).filter((s) => s !== "auto" && validate(d, s).ok).map((s) => ({ id: s, label: s }))];
   if (typeof value === "string" && value !== "auto" && !out.some((o) => o.id === value)) out.push({ id: value, label: S.chkScriptGone(value) });
   return out;
 }

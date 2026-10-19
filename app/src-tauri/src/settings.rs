@@ -195,11 +195,19 @@ pub fn script_name(s: &str) -> bool {
     !b.is_empty() && b.len() <= 60 && b[0].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || b":._-".contains(c))
 }
 
+/// And only a script that starts the project: dev, develop, start, serve or preview, alone or with more after a : . _ or -
+/// (dev:web, start.local). Never a build, a lint, the tests, an install step or a deploy (the same as settings.ts
+/// isStartScript); the engine checks again at use that the script is there and does not sound like it deploys or deletes.
+pub fn start_script(s: &str) -> bool {
+    const WORDS: [&str; 5] = ["dev", "develop", "start", "serve", "preview"];
+    script_name(s) && WORDS.iter().any(|w| s == *w || (s.len() > w.len() + 1 && s.starts_with(w) && b":._-".contains(&s.as_bytes()[w.len()])))
+}
+
 /// Checks one value against its definition and gives it back tidied (trimmed, on its step). The error is a code.
 pub fn validate(d: &Def, v: &Value) -> Result<Value, &'static str> {
     match d.kind {
         Kind::Switch => v.as_bool().map(Value::Bool).ok_or("notSwitch"),
-        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s) || (d.options_from.as_deref() == Some("projectScripts") && script_name(s))).map(|s| json!(s)).ok_or("notChoice"),
+        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s) || (d.options_from.as_deref() == Some("projectScripts") && start_script(s))).map(|s| json!(s)).ok_or("notChoice"),
         Kind::Number => {
             let Some(n) = v.as_f64().filter(|_| v.is_number()) else { return Err("notNumber") };
             if !n.is_finite() { return Err("notNumber"); }
@@ -480,6 +488,19 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
 
 /// Only Home's own window may change settings (as with every other change in Settings).
 pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card" { Ok(()) } else { Err("not_card") } }
+
+/// The project a change is for. A page that says which project it was shown (house rules always do) has its change kept
+/// only while that is still the project in Home: the folder can change by itself in between (a copy from a link that
+/// finishes opens its folder), and one project's house rules must never be written over another's ("projectChanged").
+/// A change that names no project (Undo after a reset) is for the current one, as before.
+pub fn for_project<'a>(d: &Def, asked: Option<&'a str>, current: Option<&'a str>) -> Result<Option<&'a str>, &'static str> {
+    match asked {
+        Some(a) if Some(a) == current => Ok(Some(a)),
+        Some(_) => Err("projectChanged"),
+        None if d.store == "rules" => Err("projectChanged"),
+        None => Ok(current),
+    }
+}
 
 // ---------- the stores that stay where they were (wrapped) ----------
 
@@ -1002,11 +1023,37 @@ mod tests {
         assert!(!apply_line(registry(), &File::default(), Some("/p"), "x").contains("rules.house"));
     }
     #[test]
+    fn a_change_for_one_project_is_never_kept_for_another() {
+        let r = registry();
+        let (rules, skip, reactions) = (r.get("rules.house").unwrap(), r.get("check.skip").unwrap(), r.get("fun.reactions").unwrap());
+        // House rules always say which project's list they are; kept only while that is still the project in Home.
+        assert_eq!(for_project(rules, Some("/a"), Some("/a")), Ok(Some("/a")));
+        assert_eq!(for_project(rules, Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(rules, None, Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(rules, Some("/a"), None), Err("projectChanged"));
+        // Any other change that says its project is refused the same way; one that does not (Undo after a reset) is as before.
+        assert_eq!(for_project(skip, Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(skip, None, Some("/b")), Ok(Some("/b")));
+        assert_eq!(for_project(reactions, None, None), Ok(None));
+        // The shell asks it for every change, and writes the rules file of the project the list came from.
+        let main = include_str!("main.rs");
+        let set = &main[main.find("fn settings_set(").unwrap()..];
+        let set = &set[..set.find("\n}\n").unwrap()];
+        assert!(set.contains("project: Option<String>"), "settings_set takes the project the page was shown");
+        let change = &main[main.find("fn setting_change(").unwrap()..];
+        assert!(change.contains("settings::for_project(d, asked, project_opt().as_deref())?"));
+        let rules_arm = &change[change.find("\"rules\" => {").unwrap()..];
+        let rules_arm = &rules_arm[..rules_arm.find("\n        }\n").unwrap()];
+        assert!(!rules_arm.contains("project_opt()"), "the rules are written to the project they came from, never to whichever is current");
+    }
+    #[test]
     fn a_start_is_one_of_the_projects_own_scripts_and_never_a_command() {
         let d = registry().get("check.start").unwrap();
         assert_eq!(d.options_from.as_deref(), Some("projectScripts"));
-        for ok in ["auto", "dev", "start:prod", "a.b_c-d"] { assert_eq!(validate(d, &json!(ok)), Ok(json!(ok)), "{ok}"); }
-        for no in ["dev; rm -rf ~", "npm run dev", "", "-x", "dev server", "$(id)"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); }
+        for ok in ["auto", "dev", "start:prod", "serve.b_c-d"] { assert_eq!(validate(d, &json!(ok)), Ok(json!(ok)), "{ok}"); }
+        for no in ["dev; rm -rf ~", "npm run dev", "", "-x", "dev server", "$(id)", "a.b_c-d"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); }
+        // Only a script that starts the project: never a build, a lint, the tests, an install step or a deploy.
+        for no in ["build", "lint", "test", "deploy", "postinstall", "predev", "devserver", "dev:"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); assert!(!start_script(no), "{no}"); }
         // Only a choice may take its options from the project, and it still needs its fixed one.
         let broken = |key: &str, patch: Value| { let mut v: Value = serde_json::from_str(REGISTRY_TEXT).unwrap(); let d = v["settings"].as_array_mut().unwrap().iter_mut().find(|d| d["key"] == key).unwrap(); for (k, x) in patch.as_object().unwrap() { d[k] = x.clone(); } check_registry(&parse_registry(&v.to_string()).unwrap()) };
         assert!(!broken("check.start", json!({ "optionsFrom": null })).is_empty());

@@ -404,6 +404,9 @@ export class AgentRunner {
   private installAsker(s: Session | undefined, agent: string, checkpoint: string): (command: string) => Promise<boolean> {
     return async (command) => {
       if (!s || s.abort.signal.aborted) return false;
+      // After the answer the agent goes back to what it was doing (a task or Rescue: checking). Ship's check has a stand in
+      // agent that nothing else gives a state, so it goes back to idle and is never left looking busy.
+      const before = this.agentStates.get(agent);
       const approval = `ap_${randomBytes(4).toString("hex")}`;
       const timeout = this.o.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
       this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`, expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
@@ -417,7 +420,7 @@ export class AgentRunner {
         s.pending.set(approval, (ok) => { how = ok && !s.abort.signal.aborted ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; end(how === "allowed"); });
       });
       this.emit({ type: "approval.resolved", approval, agent, outcome: how } as never);
-      this.state(agent, "checking");
+      this.state(agent, before && before !== "needsYou" ? before : "idle");
       return yes;
     };
   }
@@ -435,7 +438,9 @@ export class AgentRunner {
   /** Pictures and cards still being made. The runner awaits this before it exits, so their servers and copies are cleaned up. */
   background(): Promise<unknown> { return Promise.allSettled([...this.backgroundJobs]); }
 
-  private state(agent: string, state: string) { this.emit({ type: "agent.state", agent, state } as never); }
+  // The last state told for each agent (only what was sent; the pages keep their own).
+  private agentStates = new Map<string, string>();
+  private state(agent: string, state: string) { this.agentStates.set(agent, state); this.emit({ type: "agent.state", agent, state } as never); }
   // Each rung of a check as it runs. A rung skipped only for want of the hidden browser says so, so the card can offer it.
   private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never); }
   private fail(reason: string, agent?: string) { this.emit({ type: "protocol.error", reason, ...(agent ? { agent } : {}) } as never); }

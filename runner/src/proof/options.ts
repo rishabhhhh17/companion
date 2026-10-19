@@ -4,6 +4,7 @@
 // the start check and the browser check always run (F14), a check left out is a gap (so at best "passed with gaps"), a
 // button whose words sound risky is never pressed, and an unanswered install question is a no.
 import type { Rule } from "../rules.ts";
+import { isStartScript } from "../../../protocol/settings.ts";
 
 export type SkipName = "typecheck" | "lint" | "build" | "test";
 export const SKIPPABLE: readonly SkipName[] = ["typecheck", "lint", "build", "test"];
@@ -12,7 +13,7 @@ export type InstallMode = "auto" | "ask" | "never";
 export type PageSize = "desktop" | "phone" | "both";
 export type CheckSettings = {
   mustSee: string[]; press: string; afterPress: string;   // used only when the project has no .claude/proof.json
-  start: string;            // "auto" (found as today) or the name of one of the project's own scripts
+  start: string;            // "auto" (found as today) or the name of one of the project's own start scripts (isStartScript)
   skip: SkipName[];         // never the start or the browser check
   time: CheckTime;
   install: InstallMode;
@@ -37,7 +38,7 @@ export function checkSettings(get: (key: string) => unknown): CheckSettings {
     mustSee: words(get("check.mustSee")).slice(0, 5),
     press: text(get("check.press")),
     afterPress: text(get("check.afterPress")),
-    start: /^[A-Za-z0-9][A-Za-z0-9:._-]{0,59}$/.test(start) ? start : "auto",
+    start: isStartScript(start) ? start : "auto",
     skip: words(get("check.skip")).filter((x): x is SkipName => (SKIPPABLE as readonly string[]).includes(x)),
     time: oneOf(get("check.time"), ["normal", "longer", "longest"] as const, "normal"),
     install: oneOf(get("check.install"), ["auto", "ask", "never"] as const, "auto"),

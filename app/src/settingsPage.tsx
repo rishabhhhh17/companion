@@ -220,7 +220,7 @@ function VoiceRows() {
 
 /** A number, typed or stepped with minus and plus. Kept only when Return is pressed or the box is left, and only when it
  *  passes the setting's rules (then put on its step); otherwise the plain reason shows and nothing is sent. */
-function NumberControl({ d, value, labelId, disabled, onChange, onProblem }: { d: Def; value: number; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void }) {
+function NumberControl({ d, value, labelId, disabled, onChange, onProblem, inputId }: { d: Def; value: number; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void; inputId?: string }) {
   const [text, setText] = useState(String(value));
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setText(String(value)); }, [value]);
@@ -238,7 +238,7 @@ function NumberControl({ d, value, labelId, disabled, onChange, onProblem }: { d
   return (
     <span className="row">
       <button className="btn" type="button" disabled={disabled || value <= (d.min ?? -Infinity)} aria-label={S.setLess(label)} onClick={() => step(-1)}>-</button>
-      <input type="text" inputMode="decimal" autoComplete="off" spellCheck={false} size={6} value={text} disabled={disabled} aria-labelledby={labelId}
+      <input id={inputId} type="text" inputMode="decimal" autoComplete="off" spellCheck={false} size={6} value={text} disabled={disabled} aria-labelledby={labelId}
         onChange={(e) => { editing.current = true; setText(e.target.value); }}
         onBlur={() => { if (editing.current) commit(numberFrom(text)); }}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); commit(numberFrom(text)); } }} />
@@ -339,27 +339,36 @@ function SkipControl({ d, value, facts, disabled, onChange }: { d: Def; value: s
 
 /** House rules (rules.house): the project's own .companion/rules.txt. Rules are built from the five kinds, taken off only
  *  after an inline confirm, and nothing is written until Save; the shell keeps every line of the file it does not
- *  understand exactly as it was. No reset ever touches them. */
-function HouseRules({ saved, disabled }: { saved: string[]; disabled: boolean }) {
+ *  understand exactly as it was. No reset ever touches them. Drawn once per project (keyed by it), so a list not saved yet
+ *  goes when the folder changes, and Save says which project's list it is: the shell refuses it for any other. */
+function HouseRules({ project, saved, disabled }: { project: string; saved: string[]; disabled: boolean }) {
   const [draft, setDraft] = useState<string[] | null>(null);
   const [kind, setKind] = useState<RuleKind>("never_edit");
   const [what, setWhat] = useState("");
   const [asking, setAsking] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
-  const baseId = useId(), whatId = useId();
+  const [focusTo, setFocusTo] = useState<string | null>(null);
+  const baseId = useId(), whatId = useId(), addId = useId();
   const list = draft ?? saved;
+  const removeId = (i: number) => `${baseId}-${i}`;
+  // A rule taken off, or the list saved or put back, takes its button away: the keyboard goes to the next rule's Remove (or
+  // the one before), else to the Add box, and only when it was lost (focus.ts).
+  useLayoutEffect(() => { if (!focusTo) return; const id = focusTo; setFocusTo(null); takeIfLost(() => document.getElementById(id)); }, [focusTo]);
   const add = () => { setNote(""); const r = addRule(list, kind, what); if (!r.ok) { setProblem(r.problem); return; } setProblem(""); setWhat(""); setDraft(r.list); };
-  const remove = (rule: string) => { setAsking(null); setNote(""); setDraft(removeRule(list, rule)); };
-  const save = () => { setProblem(""); void changeSetting("rules.house", list).then((x) => { if (x.ok) { setDraft(null); setNote(S.rulesSaved); } else setProblem(problemWords(x.code, defOf("rules.house"))); }); };
+  const remove = (rule: string) => { const at = list.indexOf(rule), rest = removeRule(list, rule); setFocusTo(rest.length ? removeId(Math.min(at, rest.length - 1)) : addId); setAsking(null); setNote(""); setDraft(rest); };
+  const save = () => { setProblem(""); void changeSetting("rules.house", list, project).then((x) => { if (x.ok) { setDraft(null); setNote(S.rulesSaved); setFocusTo(addId); } else setProblem(problemWords(x.code, defOf("rules.house"))); }); };
+  const putBack = () => { setDraft(null); setProblem(""); setFocusTo(addId); };
+  // One polite region, always there, whose words change: VoiceOver reads a region that changes, not always one that appears.
+  const said = draft ? S.rulesUnsaved : note;
   return (<div>
     {list.length === 0 && <div className="line muted">{S.rulesNone}</div>}
     {list.map((rule, i) => (
       <div className="row" key={rule}>
         <span className="line">{rule}</span>
-        {asking !== rule && <button id={`${baseId}-${i}`} className="btn" type="button" disabled={disabled} aria-label={S.setRemoveItem(rule)} onClick={() => setAsking(rule)}>{S.attachRemoveShort}</button>}
+        {asking !== rule && <button id={removeId(i)} className="btn" type="button" disabled={disabled} aria-label={S.setRemoveItem(rule)} onClick={() => setAsking(rule)}>{S.attachRemoveShort}</button>}
         {asking === rule && (
-          <ConfirmStep className="line" label={S.rulesRemoveSure(rule)} back={`${baseId}-${i}`} onCancel={() => setAsking(null)}>
+          <ConfirmStep className="line" label={S.rulesRemoveSure(rule)} back={removeId(i)} onCancel={() => setAsking(null)}>
             <div className="line">{S.rulesRemoveSure(rule)}</div>
             <div className="row"><button className="btn danger" type="button" onClick={() => remove(rule)}>{S.setRemoveYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
           </ConfirmStep>
@@ -367,13 +376,12 @@ function HouseRules({ saved, disabled }: { saved: string[]; disabled: boolean })
       </div>
     ))}
     <div className="row">
-      <select aria-label={S.rulesKindLabel} value={kind} disabled={disabled} onChange={(e) => setKind(e.target.value as RuleKind)}>{ruleKindOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
+      <select id={addId} aria-label={S.rulesKindLabel} value={kind} disabled={disabled} onChange={(e) => setKind(e.target.value as RuleKind)}>{ruleKindOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
       {kind !== "ask_install" && <input id={whatId} type="text" autoComplete="off" spellCheck={false} value={what} maxLength={200} disabled={disabled} aria-label={S.rulesWhat} placeholder={S.rulesWhat} onChange={(e) => setWhat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />}
       <button className="btn" type="button" disabled={disabled} onClick={add}>{S.rulesAdd}</button>
     </div>
-    {draft && <div className="line" role="status">{S.rulesUnsaved}</div>}
-    {draft && <div className="row"><button className="btn primary" type="button" disabled={disabled} onClick={save}>{S.rulesSave}</button><button className="btn" type="button" onClick={() => { setDraft(null); setProblem(""); }}>{S.rulesCancel}</button></div>}
-    {note && <div className="line" role="status">{note}</div>}
+    <div className={said ? "line" : "sr"} role="status">{said}</div>
+    {draft && <div className="row"><button className="btn primary" type="button" disabled={disabled} onClick={save}>{S.rulesSave}</button><button className="btn" type="button" onClick={putBack}>{S.rulesCancel}</button></div>}
     <div className="line muted">{S.rulesKept}</div>
     {problem && <div className="error" role="alert">{problem}</div>}
   </div>);
@@ -383,12 +391,13 @@ function HouseRules({ saved, disabled }: { saved: string[]; disabled: boolean })
 function PicturesKeep({ d, value, count, labelId, disabled, onChange, onProblem }: { d: Def; value: number; count: number | undefined; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void }) {
   const [pending, setPending] = useState<{ to: number; go: number } | null>(null);
   const [fresh, setFresh] = useState(0);   // shows the kept value again when the change is not confirmed
-  const backId = useId();
+  // The keyboard comes back to the number box when the question closes: it is the same box after it is drawn again.
+  const inputId = useId();
   const want = (to: number) => { const go = picturesGoing(count, value, to); if (go > 0) setPending({ to, go }); else onChange(to); };
   return (<span>
-    <span id={backId}><NumberControl key={fresh} d={d} value={value} labelId={labelId} disabled={disabled} onChange={want} onProblem={onProblem} /></span>
+    <NumberControl key={fresh} inputId={inputId} d={d} value={value} labelId={labelId} disabled={disabled} onChange={want} onProblem={onProblem} />
     {pending && (
-      <ConfirmStep className="line" label={S.chkPicturesGo(pending.go, pending.to)} back={backId} onCancel={() => { setPending(null); setFresh((n) => n + 1); }}>
+      <ConfirmStep className="line" label={S.chkPicturesGo(pending.go, pending.to)} back={inputId} onCancel={() => { setPending(null); setFresh((n) => n + 1); }}>
         <div className="line">{S.chkPicturesGo(pending.go, pending.to)}</div>
         <div className="row"><button className="btn danger" type="button" onClick={() => { const to = pending.to; setPending(null); onChange(to); }}>{S.chkPicturesGoYes}</button><button className="btn" type="button" data-cancel onClick={() => { setPending(null); setFresh((n) => n + 1); }}>{S.planCancel}</button></div>
       </ConfirmStep>
@@ -406,7 +415,9 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
   const labelId = useId(), helpId = useId();
   const [problem, setProblem] = useState("");
   const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); });
-  const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v)); };
+  // A project's setting says which project the page was shown it for; the shell refuses it for any other.
+  const shownFor = snapshotNow()?.project ?? project;
+  const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v, d.scope === "project" && shownFor ? shownFor : undefined)); };
   const reset = () => { setProblem(""); done(resetSetting(d.key)); };
   // Checking your project: the project's own .claude/proof.json or .claude/launch.json wins, and the row shows that, read
   // only; the words after pressing need a button to press; a house rule can make installing ask first.
@@ -434,7 +445,7 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
     }
   })();
   // The keys and the voice keep their own editors; the keys' editor has its own Reset to the usual keys.
-  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : d.key === "rules.house" ? <HouseRules saved={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled || rulesBlocked} />
+  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : d.key === "rules.house" ? <HouseRules key={shownFor} project={shownFor} saved={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled || rulesBlocked} />
     : d.key === "check.skip" ? <SkipControl d={d} value={Array.isArray(value) ? (value as string[]) : []} facts={facts_} disabled={off} onChange={change} /> : null;
   return (
     <div role="group" aria-labelledby={labelId} className="setting">

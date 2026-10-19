@@ -1,12 +1,17 @@
 // The Settings rows for checking a project (checkRows.ts, area 2 of the settings plan), as plain code: what the start
 // choice offers, which checks can be left out, when the project's own files win, the house rules editor, and what
 // lowering "Pictures to keep" says first. Every word comes from strings.ts.
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { defOf } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
 import { addRule, afterPressShown, askRuleOn, factsFrom, installNote, picturesGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
-import { valueWords } from "./settingsRows.ts";
+import { problemWords, valueWords } from "./settingsRows.ts";
+import { _invokeForTests, _resetForTests, changeSetting } from "./settingsStore.ts";
+
+afterEach(() => { _resetForTests(); _invokeForTests(null); });
+const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+const part = (start: string) => { const at = page.indexOf(start); return page.slice(at, page.indexOf("\n}\n", at)); };
 
 const facts = (o: Partial<CheckFacts> = {}): CheckFacts => ({ project: "/p", scripts: ["dev", "preview", "web"], checks: ["lint", "test"], proofFile: null, launchFile: false, ...o });
 
@@ -21,8 +26,11 @@ describe("the facts come from the engine's project report", () => {
 
 describe("how to start this project for the check", () => {
   test("Let Companion find it first, then the project's own scripts, never a box to type a command in", () => {
-    expect(startOptions("auto", facts())).toEqual([{ id: "auto", label: S.set["check.start"].options.auto }, { id: "dev", label: "dev" }, { id: "preview", label: "preview" }, { id: "web", label: "web" }]);
+    expect(startOptions("auto", facts({ scripts: ["dev", "preview", "start:web"] }))).toEqual([{ id: "auto", label: S.set["check.start"].options.auto }, { id: "dev", label: "dev" }, { id: "preview", label: "preview" }, { id: "start:web", label: "start:web" }]);
     expect(defOf("check.start")!.kind).toBe("choice");
+  });
+  test("only scripts that start the project are offered, whatever the report holds: never a build, the tests or a deploy", () => {
+    expect(startOptions("auto", facts({ scripts: ["build", "deploy", "dev", "test", "web"] })).map((o) => o.id)).toEqual(["auto", "dev"]);
   });
   test("a chosen script that is not there any more is still shown, said as gone", () => {
     expect(startOptions("old", facts()).at(-1)).toEqual({ id: "old", label: S.chkScriptGone("old") });
@@ -90,6 +98,54 @@ describe("the house rules editor", () => {
   });
   test("it is never reset: no Reset on its row, and it is left out of every reset", () => {
     expect(defOf("rules.house")!.protective).toBe(true);
+  });
+});
+
+describe("house rules are saved only for the project they came from", () => {
+  test("Save says which project's list it is; every other change is sent as before", async () => {
+    const calls: { cmd: string; args?: Record<string, unknown> }[] = [];
+    _invokeForTests(async (cmd, args) => { calls.push({ cmd, args }); return { values: {} }; });
+    await changeSetting("rules.house", ["never edit .env"], "/Users/me/a");
+    await changeSetting("fun.reactions", false);
+    expect(calls).toEqual([
+      { cmd: "settings_set", args: { key: "rules.house", value: ["never edit .env"], project: "/Users/me/a" } },
+      { cmd: "settings_set", args: { key: "fun.reactions", value: false } },
+    ]);
+    expect(Object.keys(calls[1].args!)).toEqual(["key", "value"]);
+  });
+  test("another project drops a list that was not saved, and a save the shell refuses says why", () => {
+    // Keyed by its project: when the folder changes (a copy from a link that finishes opens its own), the editor starts again.
+    expect(page).toMatch(/<HouseRules key=\{shownFor\} project=\{shownFor\} /);
+    expect(page).toContain("const shownFor = snapshotNow()?.project ?? project;");
+    expect(part("function HouseRules(")).toContain('changeSetting("rules.house", list, project)');
+    expect(problemWords("projectChanged")).toBe(S.setProblem.projectChanged);
+    expect(S.setProblem.projectChanged).not.toBe(S.setProblem.other);
+  });
+});
+
+describe("the keyboard and VoiceOver on these rows", () => {
+  test("after Pictures to keep asks first, Cancel gives the keyboard back to the number box, which can take it", () => {
+    const keep = part("function PicturesKeep(");
+    expect(keep).toContain("const inputId = useId();");
+    expect(keep).toContain("back={inputId}");
+    expect(keep).toContain("inputId={inputId}");
+    expect(part("function NumberControl(")).toMatch(/<input id=\{inputId\} type="text"/);
+  });
+  test("after a rule is removed, the keyboard goes to the next rule's Remove, or to the Add box", () => {
+    const rules = part("function HouseRules(");
+    expect(rules).toContain("takeIfLost(() => document.getElementById(id))");
+    expect(rules).toMatch(/const remove = \(rule: string\) => \{[^\n]*setFocusTo\(/);
+    expect(rules).toContain("<select id={addId}");
+  });
+  test("what the editor says is one polite region that is always there, so VoiceOver reads each change", () => {
+    const rules = part("function HouseRules(");
+    expect(rules.match(/role="status"/g)).toHaveLength(1);
+    expect(rules).not.toMatch(/\{(?:draft|note)[^}]*&& <div[^>]*role="status"/);
+    expect(rules).toContain('<div className={said ? "line" : "sr"} role="status">{said}</div>');
+  });
+  test("a switch to leave a check out reads as a sentence", () => {
+    expect(S.chkLeaveOut(S.set["check.skip"].options.typecheck)).toBe("Leave out the type check");
+    expect(S.chkLeaveOut(S.set["check.skip"].options.test)).toBe("Leave out the tests");
   });
 });
 

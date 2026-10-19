@@ -33,6 +33,12 @@ export const PAGE_STORAGE_MARK = "pageStorage.v1";
 /** A choice whose other options come from the project (check.start: the project's own scripts) takes a script's name, never a
  *  command: a letter or digit first, then letters, digits and : . _ -, up to 60 of them. The shell checks the same. */
 export const SCRIPT_NAME = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,59}$/;
+/** And only the name of a script that starts the project: dev, develop, start, serve or preview, alone or with more after a
+ *  : . _ or - (dev:web, start.local). A build, a lint, the tests, an install step or a deploy can never be chosen, so a
+ *  check never runs one as a way to start the project. The shell checks the same (settings.rs start_script); the engine
+ *  checks again at use that the script is in package.json and does not sound like it deploys or deletes (detect.ts). */
+export const START_WORDS: readonly string[] = ["dev", "develop", "start", "serve", "preview"];
+export const isStartScript = (v: string): boolean => SCRIPT_NAME.test(v) && START_WORDS.some((w) => v === w || (v.length > w.length + 1 && v.startsWith(w) && ":._-".includes(v[w.length])));
 const KEY = /^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*)+$/;
 
 const byKey = new Map(REGISTRY.settings.map((d) => [d.key, d]));
@@ -134,7 +140,7 @@ export function snap(v: number, min: number, step: number, max: number): number 
 export function validate(d: Def, v: unknown): Checked {
   switch (d.kind) {
     case "switch": return typeof v === "boolean" ? { ok: true, value: v } : { ok: false, reason: "notSwitch" };
-    case "choice": return typeof v === "string" && ((d.options ?? []).includes(v) || (d.optionsFrom === "projectScripts" && SCRIPT_NAME.test(v))) ? { ok: true, value: v } : { ok: false, reason: "notChoice" };
+    case "choice": return typeof v === "string" && ((d.options ?? []).includes(v) || (d.optionsFrom === "projectScripts" && isStartScript(v))) ? { ok: true, value: v } : { ok: false, reason: "notChoice" };
     case "number": {
       if (typeof v !== "number" || !Number.isFinite(v)) return { ok: false, reason: "notNumber" };
       const min = d.min ?? 0, max = d.max ?? 0, step = d.step ?? 1;

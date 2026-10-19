@@ -9,6 +9,7 @@ import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync,
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomBytes } from "node:crypto";
+import { RULES_FILE } from "./rules.ts";
 
 export type Skipped = { path: string; reason: string };
 export type Checkpoint = { id: string; commit: string; label: string; files: number; skipped: Skipped[]; createdAt: string; envFiles: string[] };
@@ -31,6 +32,10 @@ const DEFAULT_EXCLUDES = [
   "node_modules/", ".next/", "dist/", "build/", ".turbo/", ".cache/", "__pycache__/", ".venv/", "venv/", "target/", "coverage/", ".DS_Store",
   ".claude/.cc-writes",   // Claude Code's own write tracking, not the user's work
 ];
+// The person's own house rules (rules.ts RULES_FILE), changed only from Settings. They are not a task's work, so no Undo
+// ever changes them: putting a version back, or undoing one task, leaves the file exactly as it is now, there or not (T16).
+// They stay in every snapshot, so a copy of an earlier version (a before picture, which task broke it) still has them.
+const KEPT_ON_UNDO: readonly string[] = [RULES_FILE];
 const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage"]);
 
 const stores = new Map<string, CheckpointStore>();
@@ -399,7 +404,7 @@ export class CheckpointStore {
     // A file too big for a checkpoint is never destroyed by undo. Where the checkpoint only holds an older small copy of a file
     // that was already too big when it was taken, the live file is left exactly as it is. Where undo really does mean to put
     // the older version back over a big live file, that file is copied aside first (and left alone if there is no room).
-    const recovered: string[] = [], largeLeftAlone: string[] = [], keep: string[] = [];
+    const recovered: string[] = [], largeLeftAlone: string[] = [], keep: string[] = [...KEPT_ON_UNDO];
     const stale = new Set(targetMeta.skipped.filter((x) => !x.path.endsWith("/")).map((x) => x.path));
     let budget = this.recoveryBudget;
     for (const rel of (await this.git(["ls-tree", "-r", "--name-only", "-z", targetMeta.commit])).split("\0").filter(Boolean)) {
@@ -434,7 +439,7 @@ export class CheckpointStore {
     // Remove what exists now but did not exist then. Never through a link: it could lead out of the project.
     const leftAlone: string[] = [];
     const added = (await this.git(["diff-tree", "-r", "--name-only", "--no-renames", "--diff-filter=A", "-z", targetMeta.commit, safety.commit]))
-      .split("\0").filter(Boolean);
+      .split("\0").filter((rel) => rel && !KEPT_ON_UNDO.includes(rel));
     for (const rel of added) {
       const abs = this.inProject(rel);
       if (this.hasLinkOnTheWay(abs)) { leftAlone.push(rel); continue; }
@@ -483,7 +488,7 @@ export class CheckpointStore {
       if (!parts[i].startsWith(":")) continue;
       const [srcMode, dstMode, , , status] = parts[i].slice(1).split(" ");
       const file = parts[++i];
-      if (!file) continue;
+      if (!file || KEPT_ON_UNDO.includes(file)) continue;
       changed.push({ file, kind: status === "A" ? "added" : status === "D" ? "deleted" : "modified" });
       if ([srcMode, dstMode].some((m) => m === "120000" || m === "160000")) odd.add(file);
     }

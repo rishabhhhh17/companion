@@ -59,13 +59,38 @@
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "test", "x"], "ok": false, "reason": "tooMany"}
 {"key": "check.start", "value": "auto", "ok": true, "normalized": "auto"}
 {"key": "check.start", "value": "dev", "ok": true, "normalized": "dev"}
-{"key": "check.start", "value": "build:prod", "ok": true, "normalized": "build:prod"}
+{"key": "check.start", "value": "build:prod", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": "dev; rm -rf ~", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": "npm run dev", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": "", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": "-dev", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "ok": false, "reason": "notChoice"}
-{"key": "check.start", "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": true, "normalized": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+{"key": "check.start", "value": "dev:dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": true, "normalized": "dev:dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+{"key": "check.start", "value": "dev:ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "start", "ok": true, "normalized": "start"}
+{"key": "check.start", "value": "develop", "ok": true, "normalized": "develop"}
+{"key": "check.start", "value": "serve", "ok": true, "normalized": "serve"}
+{"key": "check.start", "value": "preview", "ok": true, "normalized": "preview"}
+{"key": "check.start", "value": "dev:web", "ok": true, "normalized": "dev:web"}
+{"key": "check.start", "value": "start.local", "ok": true, "normalized": "start.local"}
+{"key": "check.start", "value": "serve_local", "ok": true, "normalized": "serve_local"}
+{"key": "check.start", "value": "preview-ssl", "ok": true, "normalized": "preview-ssl"}
+{"key": "check.start", "value": "start:prod", "ok": true, "normalized": "start:prod"}
+{"key": "check.start", "value": "build", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "lint", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "test", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "typecheck", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "deploy", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "publish", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "postinstall", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "predev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "web", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "devserver", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "starter", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "Dev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dev:", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "a", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": "dév", "ok": false, "reason": "notChoice"}
 {"key": "check.start", "value": 3, "ok": false, "reason": "notChoice"}
 {"key": "check.time", "value": "longest", "ok": true, "normalized": "longest"}

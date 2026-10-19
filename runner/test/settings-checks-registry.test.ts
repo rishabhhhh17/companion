@@ -59,8 +59,10 @@ describe("the floors: what these settings can never do", () => {
     expect(validateKey("check.skip", ["lint", "test"])).toEqual({ ok: true, value: ["lint", "test"] });
   });
   test("a start is auto or the name of one of the project's own scripts, never a command", () => {
-    for (const ok of ["auto", "dev", "start", "preview", "dev:web", "start.prod", "serve_local", "a"]) expect(validateKey("check.start", ok), ok).toEqual({ ok: true, value: ok });
-    for (const no of ["", "dev; rm -rf ~", "npm run dev", "dev && curl x", "$(whoami)", "-x", ":dev", "dev server", "x".repeat(61), "dev\n", 7, null]) expect(validateKey("check.start", no), String(no)).toEqual({ ok: false, reason: "notChoice" });
+    for (const ok of ["auto", "dev", "start", "preview", "dev:web", "start.prod", "serve_local", "develop"]) expect(validateKey("check.start", ok), ok).toEqual({ ok: true, value: ok });
+    for (const no of ["", "dev; rm -rf ~", "npm run dev", "dev && curl x", "$(whoami)", "-x", ":dev", "dev server", "x".repeat(61), "dev\n", 7, null, "a"]) expect(validateKey("check.start", no), String(no)).toEqual({ ok: false, reason: "notChoice" });
+    // Only a script that starts the project: a build, a lint, the tests, an install step or a deploy is never offered.
+    for (const no of ["build", "lint", "test", "typecheck", "deploy", "publish", "postinstall", "predev", "web", "devserver", "dev:"]) expect(validateKey("check.start", no), no).toEqual({ ok: false, reason: "notChoice" });
     expect(SCRIPT_NAME.test("dev")).toBe(true);
     expect(SCRIPT_NAME.test("dev`id`")).toBe(false);
   });
