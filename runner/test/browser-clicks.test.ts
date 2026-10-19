@@ -87,3 +87,43 @@ describe("buttons it must never press", () => {
     expect(r.ok).toBe(true);
   }, 30000);
 });
+
+// The check's own guard answers a press's writes for the server, and stops it reaching other hosts. What the page then does
+// is because of the guard, not the project, so it is a gap, never a problem blamed on the code (audit A23).
+describe("what the page does after the guard answers for the server", () => {
+  const page = (body: string) => {
+    let wrote = 0;
+    const srv = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (req) => {
+      if (req.method !== "GET") { wrote++; return Response.json({ likes: 1 }); }
+      return new Response(body, { headers: { "content-type": "text/html" } });
+    } });
+    stops.push(() => srv.stop(true));
+    return { url: `http://127.0.0.1:${srv.port}/`, wrote: () => wrote };
+  };
+  test("a Like button that POSTs and reads the JSON answer passes, and nothing is written", async () => {
+    const p = page(`<button onclick="fetch('/api/like',{method:'POST'}).then(r=>r.json()).then(j=>{document.title='ok'})">Like</button>`);
+    const r = await browserCheck(p.url);
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+    expect(p.wrote()).toBe(0);
+  }, 30000);
+  test("a Refresh button that loads from another host and logs the failure is a gap, not a problem", async () => {
+    const p = page(`<button onclick="fetch('http://127.0.0.2:9/rest/v1/notes').catch(e=>console.error('Could not load notes', e.message))">Refresh</button>`);
+    const r = await browserCheck(p.url);
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+    expect(r.gaps?.join(" ")).toMatch(/Pressing "Refresh" talks to a server/);
+  }, 30000);
+  test("a page that crashes on the guard's empty answer is a gap too", async () => {
+    const p = page(`<button onclick="fetch('/api/items',{method:'POST'}).then(r=>r.json()).then(j=>{document.body.append(j.items.map(String).join())})">Load more</button>`);
+    const r = await browserCheck(p.url);
+    expect(r.problems).toEqual([]);
+    expect(r.gaps?.join(" ")).toMatch(/Pressing "Load more" talks to a server/);
+  }, 30000);
+  test("a button that is broken on its own still fails, with its error", async () => {
+    const p = page(`<button onclick="fetch('/api/like',{method:'POST'}).then(()=>{})">Like</button><button onclick="launchRocket()">Launch</button>`);
+    const r = await browserCheck(p.url);
+    expect(r.ok).toBe(false);
+    expect(r.problems.join(" ")).toMatch(/launchRocket is not defined/);
+  }, 30000);
+});

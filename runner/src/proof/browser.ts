@@ -143,12 +143,23 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     const page = await context.newPage();
     // Nothing a press does reaches beyond the page's own address, and writes are answered with "nothing to do".
     let guarded = false;
-    const guard = async () => { if (guarded) return; guarded = true; await guardRoutes(page, url, blockedByUs); };
+    // The press now going on, or the last one: its label, and whether the guard answered or stopped a request of its. What
+    // the page does after that (a logged error, a crash on the stand in answer) comes from the guard, not the project: it
+    // was not checked, so it is a gap, never a problem blamed on the code (and never a ring on a working button).
+    let pressLabel = "", guardedPress = "";
+    const pressStarts = (label: string) => { if (label !== pressLabel) guardedPress = ""; pressLabel = label; };
+    const guard = async () => { if (guarded) return; guarded = true; await guardRoutes(page, url, blockedByUs, () => { if (pressLabel) guardedPress = pressLabel; }); };
+    const fromGuard = (): boolean => {
+      if (!guardedPress || guardedPress !== pressLabel) return false;
+      const g = `Pressing "${guardedPress}" talks to a server, which a check never does, so what it does after that was not checked.`;
+      if (!(result.gaps ??= []).includes(g)) result.gaps.push(g);
+      return true;
+    };
     page.on("framenavigated", (f) => { if (f === page.mainFrame()) result.visited.push(f.url()); });
     let pressing = "";
     const after = () => (pressing ? ` (after pressing "${pressing}")` : "");
-    page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) result.consoleErrors.push(m.text() + after()); });
-    page.on("pageerror", (e) => result.problems.push(`The page crashed with: ${e.message}${after()}`));
+    page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text()) && !fromGuard()) result.consoleErrors.push(m.text() + after()); });
+    page.on("pageerror", (e) => { if (!fromGuard()) result.problems.push(`The page crashed with: ${e.message}${after()}`); });
     page.on("requestfailed", (r) => { const why = r.failure()?.errorText ?? "failed"; if (!ignorable(r.url()) && !blockedByUs.has(r.url()) && !/ERR_ABORTED/.test(why)) result.failedRequests.push(`${r.url()} (${why})`); });
     let mainStatus = 0;
     page.on("response", (r) => {
@@ -175,6 +186,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
       await page.waitForTimeout(300);
     }
     if (o.press) {
+      pressStarts(tidy(o.press).slice(0, 60));
       const p = await pressByLabel(page, o.press, guard, timeout);
       if (p.gap) (result.gaps ??= []).push(p.gap);
       if (p.problem) { result.problems.push(p.problem); return finish(result, t0); }
@@ -190,7 +202,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
         if (page.url() !== url) await page.goto(url, { waitUntil: "load", timeout }).catch(() => {});
       }
     }
-    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout, guard);
+    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; if (label) pressStarts(label); }, timeout, guard);
     return finish(result, t0);
   } finally { await browser.close().catch(() => {}); }
   }
@@ -198,15 +210,15 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
 
 // Press each plain button once (a handful at most), to see whether the page still works when used.
 // Never anything risky, never a form submit, and nothing may reach beyond the page's own address.
-async function guardRoutes(page: import("playwright-core").Page, url: string, blockedByUs: Set<string>) {
+async function guardRoutes(page: import("playwright-core").Page, url: string, blockedByUs: Set<string>, answered: () => void = () => {}) {
   const home = new URL(url).host;
   await page.context().route("**/*", (route) => {
     let ok = true;
     try { const u = new URL(route.request().url()); ok = u.host === home || u.protocol === "data:" || u.protocol === "blob:"; } catch { ok = false; }
-    if (!ok) blockedByUs.add(route.request().url());
-    if (!ok) return route.abort();
-    // Whatever the label says, a press never changes anything on a server: writes are answered with "nothing to do".
-    if (!["GET", "HEAD", "OPTIONS"].includes(route.request().method())) return route.fulfill({ status: 204, body: "" });
+    if (!ok) { blockedByUs.add(route.request().url()); answered(); return route.abort(); }
+    // Whatever the label says, a press never changes anything on a server: writes are answered with "nothing to do", as an
+    // empty JSON object, so the common read of a JSON answer does not fail on the stand in.
+    if (!["GET", "HEAD", "OPTIONS"].includes(route.request().method())) { answered(); return route.fulfill({ status: 200, contentType: "application/json", body: "{}" }); }
     return route.continue();
   });
 }
