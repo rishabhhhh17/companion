@@ -37,7 +37,7 @@ export function receiptCopy(m: Model, project: string): string {
 
 /** A research answer, its notes with where each came from, and where it was filed. */
 export function researchCopy(r: ResearchCard): string {
-  return lines([r.title, r.answer, r.notes.length > 0 && `${S.researchNotes}:`, ...r.notes.map((n) => `- ${n.text} (${n.source})`), `${S.researchFiled} ${r.file}`]);
+  return lines([r.title, r.answer, r.notes.length > 0 && `${S.researchNotes}:`, ...r.notes.map((n) => `- ${n.text} (${n.source})`), r.file ? `${S.researchFiled} ${r.file}` : S.researchNotFiled]);
 }
 
 /** What Rescue found, as shown. */

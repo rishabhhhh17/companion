@@ -51,6 +51,9 @@ function rig(o: Rig) {
   return { project, data, events, calls, engine, settings, runner, start, cmd, memory, projectFile, profileFile };
 }
 const plan = (titles: string[]) => say("Here is the plan:\n```json\n" + JSON.stringify(titles) + "\n```");
+// What Rescue and Research answer, so a test can run each of them.
+const diagnosis = say("```json\n" + JSON.stringify({ summary: "A shop made with Vite.", works: ["The pages are there"], broken: "The basket page cannot read the price.", steps: ["Fix the price on the basket page", "Check the basket"] }) + "\n```");
+const notes = say(JSON.stringify({ title: "Taking payments", answer: "Use a hosted checkout page.", notes: [{ text: "Checkout is a hosted payment page.", source: "https://docs.stripe.com/payments/checkout" }] }));
 async function runPlan(t: ReturnType<typeof rig>, goal: string, titles: string[]) {
   await Bun.sleep(400);   // the project's files are a moment old, like real ones, so the plan's watcher does not take them for the person's
   await t.cmd({ type: "drive.plan", agent: "b1", goal, model: "m", budgetUsd: 3 });
@@ -204,7 +207,7 @@ describe("learning about the project and the person (memory.learnFromFiles, memo
     expect(t.projectFile()).not.toContain("Never touch");
     expect(t.profileFile()).toBe("");
   });
-  test("planning, Rescue and Research follow them too", async () => {
+  test("planning follows them too", async () => {
     const t = rig({ rounds: [[plan(["Add a page"])]], values: { "memory.learnFromFiles": false, "memory.learnFromWords": false } });
     await t.cmd({ type: "drive.plan", agent: "b1", goal: "build it, keep answers shorter", model: "m", budgetUsd: 3 });
     expect(of(t.events, "plan.ready").length).toBe(1);
@@ -365,6 +368,114 @@ describe("Your turn after a fix (teach.yourTurn)", () => {
     const t = rig({ rounds: [bothPlaces], values: { "teach.yourTurn": true } });
     await t.start("fix the name", { offTheRecord: true });
     expect(of(t.events, "receipt")[0].repeat).toBeUndefined();
+  });
+});
+
+describe("Rescue and Research follow the memory settings too", () => {
+  // Both only look at the project. Each learns from the project's files and is told what Companion remembers, as a task is.
+  const rescue = (t: ReturnType<typeof rig>, extra: Record<string, unknown> = {}) => t.cmd({ type: "rescue.diagnose", agent: "r1", model: "m", budgetUsd: 3, ...extra });
+  const research = (t: ReturnType<typeof rig>, extra: Record<string, unknown> = {}) => t.cmd({ type: "research.ask", agent: "r1", question: "how do I take payments", model: "m", budgetUsd: 1, ...extra });
+  const flows = [["Rescue", diagnosis, rescue, "rescue.report"], ["Research", notes, research, "research.done"]] as const;
+  const fill = (m: MemoryStore) => { for (let i = 0; i < 300; i++) m.add("project", `Fact number ${i} ${"word ".repeat(12)}`, "a"); };
+  for (const [name, answer, ask, done] of flows) {
+    test(`${name}, usual: it learns from the project's files and Claude is told, as today`, async () => {
+      const t = rig({ rounds: [[answer]] });
+      await ask(t);
+      expect(of(t.events, done).length).toBe(1);
+      expect(t.projectFile()).toContain("Built with React, Vite");
+      expect(t.engine.calls[0].memory ?? "").toContain("Built with React, Vite");
+    });
+    test(`${name}, learning from the files off: nothing is learned from them`, async () => {
+      const t = rig({ rounds: [[answer]], values: { "memory.learnFromFiles": false } });
+      await ask(t);
+      expect(of(t.events, done).length).toBe(1);
+      expect(of(t.events, "memory.saved")).toEqual([]);
+      expect(t.projectFile()).toBe("");
+    });
+    test(`${name}, telling Claude off: lines are still learned, and Claude is told none of them`, async () => {
+      const t = rig({ rounds: [[answer]], values: { "memory.tellClaude": false } });
+      await ask(t);
+      expect(t.projectFile()).toContain("Built with React, Vite");
+      expect(t.engine.calls[0].memory ?? "").toBe("");
+    });
+    for (const [choice, cap] of [["short", 500], ["long", 3000]] as const) {
+      test(`${name}, ${choice}: Claude is told up to ${cap} words`, async () => {
+        const t = rig({ rounds: [[answer]], packageJson: false, values: { "memory.recallLength": choice } });
+        fill(t.memory());
+        await ask(t);
+        const n = recalledWords(t.engine.calls[0].memory ?? "");
+        expect(n).toBeLessThanOrEqual(cap);
+        expect(n).toBeGreaterThan(cap - 17);
+      });
+    }
+  }
+  test("the protocol carries off the record for both", () => {
+    for (const c of [{ type: "rescue.diagnose", project: "/p", agent: "r1", model: "m", budgetUsd: 3, offTheRecord: true }, { type: "research.ask", project: "/p", agent: "r1", question: "q", model: "m", budgetUsd: 1, offTheRecord: true }]) {
+      const r = parseCommand(JSON.stringify({ v: 1, id: "x", ...c }));
+      expect(r.ok, c.type).toBe(true);
+      if (r.ok) expect((r.msg as any).offTheRecord, c.type).toBe(true);
+    }
+  });
+
+  describe("off the record, they keep nothing either", () => {
+    test("Rescue: nothing learned or told, no saved conversation, and the steps of its plan run off the record", async () => {
+      const t = rig({ rounds: [[diagnosis], [edit("src/a.js", "user.name", "user?.name"), edit("src/b.js", "user.name", "user?.name"), say("one")], [say("two")]], values: { "memory.recallLength": "long", "teach.yourTurn": true } });
+      t.memory().add("project", "Uses Supabase", "your answer");
+      const before = t.projectFile();
+      await Bun.sleep(400);   // the project's files are a moment old, like real ones, so the plan's watcher does not take them for the person's
+      await rescue(t, { offTheRecord: true });
+      expect(of(t.events, "plan.ready").length).toBe(1);
+      expect(t.engine.calls[0]).toMatchObject({ offTheRecord: true, memory: "", planOnly: true });
+      await t.cmd({ type: "drive.approve", agent: "r1", steps: ["Fix the price on the basket page", "Check the basket"] });
+      await Bun.sleep(150);
+      expect(of(t.events, "drive.done")[0]).toMatchObject({ status: "done", completed: 2 });
+      for (const c of t.engine.calls.slice(1)) {
+        expect(c).toMatchObject({ offTheRecord: true, memory: "" });
+        expect(c.resumeSession).toBeUndefined();
+        // With no conversation to carry on, each step is told what Rescue found.
+        expect(c.prompt).toContain("The basket page cannot read the price.");
+      }
+      expect(of(t.events, "checkpoint.created").map((e) => e.label)).toEqual(["Before: Off the record task", "Before: Off the record task"]);
+      expect(t.calls.length).toBe(0);                                   // no Explain
+      expect(of(t.events, "receipt").every((r) => r.repeat === undefined)).toBe(true);   // no Your turn
+      expect(of(t.events, "memory.saved")).toEqual([]);
+      expect(t.projectFile()).toBe(before);
+      expect(t.profileFile()).toBe("");
+    });
+    test("Rescue on the record still carries on its own conversation in the steps, as today", async () => {
+      const t = rig({ rounds: [[diagnosis], [edit("src/a.js", "user.name", "user?.name"), say("one")], [edit("src/b.js", "user.name", "user?.name"), say("two")]], values: { "memory.learnFromFiles": false } });
+      await Bun.sleep(400);
+      await rescue(t);
+      await t.cmd({ type: "drive.approve", agent: "r1", steps: ["Fix the price on the basket page", "Check the basket"] });
+      await Bun.sleep(150);
+      expect(t.engine.calls[1].resumeSession).toBe("scripted-session");
+      expect(t.engine.calls[1].offTheRecord).toBeUndefined();
+      expect(t.engine.calls[1].prompt).not.toContain("The basket page cannot read the price.");
+      expect(t.calls.length).toBe(2);                                   // each step explained
+    });
+    test("Research: nothing learned or told, no saved conversation, and no notes filed", async () => {
+      const t = rig({ rounds: [[notes]] });
+      t.memory().add("project", "Uses Supabase", "your answer");
+      const before = t.projectFile();
+      await research(t, { offTheRecord: true });
+      expect(t.engine.calls[0]).toMatchObject({ offTheRecord: true, memory: "", planOnly: true });
+      expect(of(t.events, "memory.saved")).toEqual([]);
+      expect(t.projectFile()).toBe(before);
+      expect(t.profileFile()).toBe("");
+      expect(existsSync(join(t.project, ".companion", "research"))).toBe(false);
+      const d = of(t.events, "research.done")[0];
+      expect(d).toMatchObject({ title: "Taking payments", answer: "Use a hosted checkout page." });
+      expect(d.notes.length).toBe(1);
+      expect("file" in d).toBe(false);
+      expect(parseEvent(JSON.stringify({ v: 1, id: "e", ...d })).ok).toBe(true);
+    });
+    test("Research on the record still files its notes, as today", async () => {
+      const t = rig({ rounds: [[notes]] });
+      await research(t);
+      const d = of(t.events, "research.done")[0];
+      expect(d.file).toMatch(/^\.companion\/research\/.+\.md$/);
+      expect(existsSync(join(t.project, d.file))).toBe(true);
+    });
   });
 });
 

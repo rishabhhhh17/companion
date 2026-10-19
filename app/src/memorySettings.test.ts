@@ -5,9 +5,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { PAGE_STORAGE_MARK } from "../../protocol/settings.ts";
 import { _resetForTests, engineEvent, notHeard, setting, takeSnapshot } from "./settingsStore.ts";
-import { offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
+import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { settingsFor, DEFAULT_ANSWERS } from "./onboarding.ts";
 import { S } from "./strings.ts";
+import { DRAFT_KEY, draftToKeep, putBack } from "./askbox.ts";
+import { askResearch, diagnose } from "./commands.ts";
+import { initial, reduce } from "./model.ts";
+import { researchCopy } from "./copytext.ts";
+import { parseCommand, parseEvent, serialize } from "../../protocol/index.ts";
 
 afterEach(() => { _resetForTests(); });
 const snap = (values: Record<string, unknown>) => takeSnapshot({ values, usual: {}, project: "", migrated: [PAGE_STORAGE_MARK], problems: [], changed: [] });
@@ -26,10 +31,79 @@ describe("Start every task off the record (task.offRecordByDefault)", () => {
   });
   test("Home ticks the box from the setting, and ticks it again after each send", () => {
     expect(card).toContain('const offDefault = useSetting("task.offRecordByDefault") === true;');
-    expect(card).toContain("useEffect(() => { setOff(offDefault); }, [offDefault]);");
-    // After a task or a plan is sent, the box goes back to the setting, never simply unticked.
+    expect(card).toContain('useEffect(() => { setOff((ticked) => offBoxAfter(ticked, box.current?.value ?? "", offDefault)); }, [offDefault]);');
+    // After a task, a plan or a question is sent (each empties the box), the box goes back to the setting, never simply
+    // unticked. Rescue leaves the words in the box, so it goes back only the way the setting changing does.
     expect(card).not.toContain("setOff(false)");
-    expect(card.match(/setOff\(offRecordAtStart\(\)\)/g)?.length).toBe(2);
+    expect(card.match(/setOff\(offRecordAtStart\(\)\)/g)?.length).toBe(3);
+    expect(card.match(/setOff\(\(ticked\) => offBoxAfter\(ticked, box\.current\?\.value \?\? ""/g)?.length).toBe(2);
+  });
+  test("the setting going off never unticks a box with words in it, so words typed off the record are never kept", () => {
+    // The Settings tab is inside Home, so the ask box keeps its words while the person turns the setting off there. Reset
+    // all, Reset this section, Undo, and a settings file that could not be read (the usual values) do the same.
+    const kept = new Map<string, string>();
+    // What Home does with the draft (card.tsx keepDraft): only through draftToKeep, with the box as it is.
+    const keepDraft = (text: string, ticked: boolean) => { const d = draftToKeep(text, ticked); if (d === null) kept.delete(DRAFT_KEY); else kept.set(DRAFT_KEY, d); };
+    snap({ "task.offRecordByDefault": true });
+    let ticked = offBoxAfter(false, "");
+    expect(ticked).toBe(true);
+    const words = "plans for Sam's surprise party";
+    keepDraft(words, ticked);                       // typed while ticked: nothing kept
+    for (const usual of [{}, { "task.offRecordByDefault": false }]) {
+      snap(usual);                                  // turned off, or back to the usual value
+      const was = ticked;
+      ticked = offBoxAfter(ticked, words);
+      expect(ticked).toBe(true);
+      if (ticked !== was) keepDraft(words, ticked);  // Home keeps the draft again only when the box changes
+      expect(kept.has(DRAFT_KEY)).toBe(false);
+    }
+    // Only an empty box goes back to unticked, and the person can still untick it by hand.
+    expect(offBoxAfter(true, "")).toBe(false);
+    expect(offBoxAfter(true, "  \n ")).toBe(false);
+    // Turning the setting on ticks the box whatever is in it: the safe way.
+    snap({ "task.offRecordByDefault": true });
+    expect(offBoxAfter(false, words)).toBe(true);
+    snap({});
+    expect(offBoxAfter(false, words)).toBe(false);
+  });
+  test("words put back after a refusal come back with the box as they were sent", () => {
+    // With the setting on, a person who unticked the box for one request gets it back unticked, not quietly ticked.
+    const at = card.indexOf("const putBackSent = () => {");
+    const body = card.slice(at, card.indexOf("};", at));
+    expect(body).toContain("if (r.text !== undefined) { offNow.current = !!r.off; setOff(!!r.off); setBox(r.text); }");
+    expect(body.indexOf("setOff(!!r.off)")).toBeLessThan(body.indexOf("setBox(r.text)"));   // never kept before the box is set
+    expect(putBack({ prompt: "add a page", attached: [], off: false }, { text: "", attached: [] }).off).toBe(false);
+    expect(putBack({ prompt: "add a page", attached: [], off: true }, { text: "", attached: [] }).off).toBe(true);
+  });
+});
+
+describe("Rescue and Look up go off the record with the box too", () => {
+  // The box sits under Start, Plan, Rescue and Look up, so it covers all four (with the setting on it is the normal state).
+  test("the commands carry it only when the box is ticked", () => {
+    for (const c of [diagnose("/p", true), askResearch("/p", "How do I take payments?", true)!]) {
+      expect((c as any).offTheRecord, c.type).toBe(true);
+      expect(parseCommand(serialize(c)).ok, c.type).toBe(true);
+    }
+    for (const c of [diagnose("/p"), askResearch("/p", "How do I take payments?")!, diagnose("/p", false), askResearch("/p", "q", false)!]) expect("offTheRecord" in c, c.type).toBe(false);
+  });
+  test("Home sends the box with them", () => {
+    const rescue = card.slice(card.indexOf("const rescue = () => {"), card.indexOf("// When the improved text is ready"));
+    expect(rescue).toContain("void send(diagnose(project, off));");
+    expect(rescue).toContain('setOff((ticked) => offBoxAfter(ticked, box.current?.value ?? ""));');
+    const research = card.slice(card.indexOf("const research = () => {"), card.indexOf("const plan = () => {"));
+    expect(research).toContain('const c = askResearch(project, box.current?.value ?? "", off);');
+    expect(research).toContain("setOff(offRecordAtStart());");
+  });
+  test("off the record, Look up files no notes, and the card says so", () => {
+    const e = { v: 1, id: "e", type: "research.done", agent: "a", title: "Taking payments", answer: "Use a hosted checkout page.", notes: [{ text: "Checkout is hosted.", source: "https://docs.stripe.com/payments/checkout" }] };
+    expect(parseEvent(JSON.stringify(e)).ok).toBe(true);
+    expect(parseEvent(JSON.stringify({ ...e, file: 7 })).ok).toBe(false);
+    const r = reduce(initial(), e as never).research!;
+    expect(r.file).toBeUndefined();
+    expect(researchCopy(r)).toBe(["Taking payments", "Use a hosted checkout page.", `${S.researchNotes}:`, "- Checkout is hosted. (https://docs.stripe.com/payments/checkout)", S.researchNotFiled].join("\n"));
+    expect(S.researchNotFiled).toMatch(/off the record/i);
+    const panel = card.slice(card.indexOf('{show("research") && m.research && ('), card.indexOf("</section>", card.indexOf('{show("research") && m.research && (')));
+    expect(panel).toContain("{m.research.file ? `${S.researchFiled} ${m.research.file}` : S.researchNotFiled}");
   });
 });
 
@@ -131,5 +205,7 @@ describe("the words", () => {
     expect(S.set["memory.recallLength"].help).toMatch(/costs more/i);
     expect(S.set["explain.after"].help).toMatch(/costs less/i);
     for (const w of ["memory", "Explain", "pictures", "Your turn", "conversation"]) expect(S.set["task.offRecordByDefault"].help, w).toContain(w);
+    // It names every button the box covers.
+    for (const b of [S.start, S.planIt, S.rescueIt, S.researchIt]) expect(S.set["task.offRecordByDefault"].help, b).toContain(b);
   });
 });

@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event, Problem } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
-import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
+import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
@@ -976,16 +976,18 @@ export class AgentRunner {
     });
   }
 
-  // Research: look things up (web allowed, safe addresses only) and file cited notes. Writes no code.
+  // Research: look things up (web allowed, safe addresses only) and file cited notes. Writes no code. Off the record it
+  // learns and is told nothing from memory, saves no conversation and files no notes: the answer is on the card only.
   private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
     const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
-    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      if (cmd.offTheRecord) { this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes } as never); this.state(cmd.agent, "done"); return; }
       const dir = join(cmd.project, ".companion", "research");
       mkdirSync(dir, { recursive: true });
       const when = this.now();
@@ -1534,9 +1536,10 @@ export class AgentRunner {
     } finally { this.installing.delete(dest); }
   }
 
-  // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.
+  // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it. Off the
+  // record it learns and is told nothing from memory and saves no conversation, and so do the steps of its plan.
   private async rescueDiagnose(cmd: Extract<Command, { type: "rescue.diagnose" }>): Promise<void> {
-    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd }, async (ask, st) => {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord }, async (ask, st) => {
       const store = this.store(cmd.project);
       const snap = await store.snapshot("Rescue: the project as it was found");
       this.state(cmd.agent, "checking");
@@ -1558,7 +1561,10 @@ export class AgentRunner {
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!d) { this.fail("Claude did not give a usable diagnosis. Try again, or describe what is wrong.", cmd.agent); this.state(cmd.agent, "error"); return; }
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
+      // Off the record there is no conversation for the steps to carry on, so each step is told what Rescue found instead.
+      // That goal is never remembered (an off the record plan's goal never is).
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId,
+        ...(cmd.offTheRecord ? { offTheRecord: true, goal: rescueGoal(d) } : {}) });
       const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
       this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimateUsd(steps.length) } as never);
       this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimateUsd(steps.length) } as never);

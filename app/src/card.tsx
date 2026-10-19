@@ -24,7 +24,7 @@ import { S } from "./strings.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
-import { offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
+import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, draftToKeep, putBack, sentOutcome, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
@@ -324,8 +324,9 @@ function Card() {
     if (!s) return;
     const r = putBack(s, { text: box.current?.value ?? "", attached: attachedNow.current });
     if (r.attached) { attachedNow.current = r.attached; setAttached(r.attached); }
-    // Off the record comes back first, so the words put back are never kept on this Mac.
-    if (r.text !== undefined) { if (r.off) { offNow.current = true; setOff(true); } setBox(r.text); }
+    // The box comes back first, as the words were sent: ticked, so they are never kept on this Mac, or unticked, as the
+    // person chose for them (with the setting on, the send ticked it again).
+    if (r.text !== undefined) { offNow.current = !!r.off; setOff(!!r.off); setBox(r.text); }
   };
   const onSentEvent = useRef((_: unknown) => {});
   onSentEvent.current = (payload: unknown) => {
@@ -369,9 +370,10 @@ function Card() {
   const [draft, setDraft] = useState<string[]>([]);
   const [off, setOff] = useState(false);
   // Start every task off the record (task.offRecordByDefault): the box follows the setting as it arrives or changes, and
-  // goes back to it after each send. What off the record keeps (nothing) never changes.
+  // goes back to it after each send, but never unticks itself while words are in it (memorySettings.ts offBoxAfter), so
+  // words typed off the record are never kept because the setting changed. What off the record keeps (nothing) never changes.
   const offDefault = useSetting("task.offRecordByDefault") === true;
-  useEffect(() => { setOff(offDefault); }, [offDefault]);
+  useEffect(() => { setOff((ticked) => offBoxAfter(ticked, box.current?.value ?? "", offDefault)); }, [offDefault]);
   // Turning off the record on drops the kept draft at once; turning it off again keeps what is in the box. Not at start,
   // so the draft from last time is not dropped before it is put back.
   const offWas = useRef(false);
@@ -788,7 +790,8 @@ function Card() {
     pressed();
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
-    void send(diagnose(project));
+    // The box covers Rescue too. Rescue leaves the words in the box, so the box goes back only as it does when the setting changes.
+    void send(diagnose(project, off)); setOff((ticked) => offBoxAfter(ticked, box.current?.value ?? ""));
   };
   // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk). It answers which
   // use keys it took for this result, if any, so the line under it names them only when they work.
@@ -798,11 +801,11 @@ function Card() {
   }, [m.ph?.stage, m.ph?.text]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
-    const c = askResearch(project, box.current?.value ?? "");
+    const c = askResearch(project, box.current?.value ?? "", off);
     if (!c || !project) return;
     sentFromBox("research");
     dispatch({ type: "ui.researchRequested" });
-    void send(c);
+    void send(c); setOff(offRecordAtStart());
     clearBox();
   };
   const plan = () => {
@@ -1217,7 +1220,7 @@ function Card() {
           <div className="line">{m.research.answer}</div>
           <div className="line muted"><b>{S.researchNotes}:</b></div>
           {m.research.notes.map((n, i) => <ResearchNote key={i} text={n.text} source={n.source} />)}
-          <div className="line muted">{S.researchFiled} {m.research.file}</div>
+          <div className="line muted">{m.research.file ? `${S.researchFiled} ${m.research.file}` : S.researchNotFiled}</div>
           <div className="row"><CopyButton text={researchCopy(m.research)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.researchClosed" })}>{S.researchClose}</button></div>
         </section>
       )}

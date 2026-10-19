@@ -36,10 +36,11 @@ export const chooseLoop = (choice: "different" | "stop"): Command => ({ v: 1, id
 export const pauseDrive = (): Command => ({ v: 1, id: id(), type: "drive.pause", agent: AGENT, reason: "you" });
 export const resumeDrive = (): Command => ({ v: 1, id: id(), type: "drive.resume", agent: AGENT });
 export const DIAGNOSE_MODEL = MODELS.diagnose;
-export const diagnose = (project: string): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: DIAGNOSE_MODEL, budgetUsd: DRIVE_BUDGET_USD });
-export const askResearch = (project: string, question: string): Command | null => {
+// offTheRecord: the Off the record box was ticked (it covers Rescue and Look up too).
+export const diagnose = (project: string, offTheRecord = false): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: DIAGNOSE_MODEL, budgetUsd: DRIVE_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
+export const askResearch = (project: string, question: string, offTheRecord = false): Command | null => {
   const q = question.replace(/\s+/g, " ").trim();
-  return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: DEFAULT_MODEL, budgetUsd: 2 } : null;
+  return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: DEFAULT_MODEL, budgetUsd: 2, ...(offTheRecord ? { offTheRecord: true } : {}) } : null;
 };
 export const checkShip = (project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
   ({ v: 1, id: id(), type: "ship.check", project, ...(o.runChecks ? { runChecks: true } : {}), ...(o.confirm?.length ? { confirm: o.confirm } : {}) });

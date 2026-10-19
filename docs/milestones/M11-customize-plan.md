@@ -196,6 +196,14 @@ looking, as Companion's own write. Also found: Home asked for Where was I with t
 (none yet), so it was never asked for; it now reads the folder chosen when Home opens, so after a 30 minute break it shows
 as designed (to be seen on a real Mac). Every row below is built; nothing was left out.
 
+After review: the setting going off (on the Settings tab, Reset all, Reset this section, Undo, or an unreadable settings
+file) unticked a box with words in it, so words typed off the record were then kept as the draft; the box now never
+unticks itself while words are in it (`memorySettings.ts` `offBoxAfter`). Rescue and Look up sat under the box but ignored
+it; they now go off the record with it (`offTheRecord` on `rescue.diagnose` and `research.ask`): nothing learned or told,
+no saved conversation, a Rescue plan's steps off the record too, and Look up files no notes. Words put back after a refusal
+come back with the box as they were sent. The one usual value that changes what a person sees is `recap.after`: Where
+was I now appears after a 30 minute break, as designed, where before it never did. That default waits for the founder's yes.
+
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|
 | `explain.mode` Explain after a task | choice off / reasons / reasonsAndQuestion, reasonsAndQuestion | runner | memory/store.ts, explain.ts, card.tsx | | Replaces the core's explain.on, kept in memory-settings.json (old explain false becomes off, true becomes reasonsAndQuestion). Remove the copy on the Memory tab. |
@@ -205,7 +213,7 @@ as designed (to be seen on a real Mac). Every row below is built; nothing was le
 | `memory.rememberGoals` Remember the goals of plans I approve | switch, on | runner | agent.ts | | |
 | `memory.tellClaude` Tell Claude what Companion remembers | switch, on | runner | memory/store.ts forAgent, agent.ts, main.ts | | Covers tasks and Prompt help. The Pause row says plainly it only stops new lines. |
 | `memory.recallLength` How much Claude is told from memory | choice short / normal / long, normal | runner | store.ts, main.ts | 500 and 100, 1500 and 300, 3000 and 600 words | Longer costs more on every task; the help says so. |
-| `task.offRecordByDefault` Start every task off the record | switch, off | pages | card.tsx | | What off the record keeps can never be loosened. |
+| `task.offRecordByDefault` Start every task off the record | switch, off | pages | card.tsx | | What off the record keeps can never be loosened. The box covers Start, Plan it, Rescue and Look up, and never unticks itself while words are in it. |
 | `memory.toastSeconds` How long "Remembered" stays, with Undo | choice 5 / 10 / 20 / 60 / untilClosed, 10 | pages | card.tsx | | Timing a person can change (accessibility). |
 | `recap.after` Show Where was I after a break of | choice off / 30min / 2h / nextDay, 30min | pages | card.tsx AWAY_MS | | Also: teach.yourTurn (moved by the core) should make the engine skip working out Your turn when off. |
 

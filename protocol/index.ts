@@ -31,8 +31,10 @@ export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
 export type RunnerPing = Envelope & { type: "runner.ping" };
 export type ShipCheck = Envelope & { type: "ship.check"; project: string; runChecks?: boolean; confirm?: string[] };
-export type ResearchAsk = Envelope & { type: "research.ask"; project: string; agent: string; question: string; model: string; budgetUsd: number };
-export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number };
+// offTheRecord: the Off the record box was ticked. Nothing is learned or told from memory, no conversation is saved, Research
+// files no notes, and the steps of a Rescue plan run off the record too.
+export type ResearchAsk = Envelope & { type: "research.ask"; project: string; agent: string; question: string; model: string; budgetUsd: number; offTheRecord?: boolean };
+export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DriveApprove = Envelope & { type: "drive.approve"; agent: string; steps: string[] };
 export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice: "different" | "stop" };
@@ -176,7 +178,8 @@ export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: n
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
 export type RunnerPong = Envelope & { type: "runner.pong" };
 export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
-export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file: string };
+// file: where the notes were filed in the project; none off the record, where nothing is kept.
+export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
 export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reason: "files_changed" | "editor" | "terminal" | "you"; path?: string };
 // index: the Drive step (from 1); 0 for a single task, whose title is the task's label.
@@ -385,7 +388,7 @@ const EVENTS: Record<string, Check[]> = {
   "memory.refused": [str("project"), str("reason")],
   "memory.exported": [str("project"), str("text")],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
-  "research.done": [str("agent"), str("title"), str("answer"), list("notes"), str("file")],
+  "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],
   "drive.paused": [str("agent"), oneOf("reason", ["files_changed", "editor", "terminal", "you"])],
   "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options")],
