@@ -12,6 +12,9 @@ export type AgentStart = Envelope & {
   type: "agent.start"; project: string; agent: string; mode: "drive" | "rescue" | "research" | "ship";
   prompt: string; model: string; budgetUsd: number; offTheRecord?: boolean;
   files?: { name: string; text: string }[]; images?: { name: string; mediaType: "image/png" | "image/jpeg"; base64: string }[];
+  // practice: the practice project this task fixes (an id in app/sample/practices.json). The engine only echoes it on the
+  // task's checkpoint.created and receipt, so the page knows that receipt is the practice's own; it changes nothing else.
+  practice?: string;
 };
 // A follow up on the agent's last task (text: what is still wrong), or Try again (retry: the same request again, with
 // what failed). Either runs as a new checked task that carries on the last task's conversation. It names the project, so the
@@ -116,6 +119,7 @@ export type AuthStatus = Envelope & { type: "auth.status"; method: "api_key" | "
 export type CheckpointCreated = Envelope & {
   type: "checkpoint.created"; project: string; agent: string; checkpoint: string; label: string; files: number;
   skipped: { path: string; reason: string }[];
+  practice?: string;   // the practice id the task was started with, echoed back
 };
 export type AgentState = Envelope & { type: "agent.state"; agent: string; state: AgentStateName };
 export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: string; summary: string; toolUseId: string; undoable: boolean; outcome?: "ran" | "blocked" | "needs_approval" | "denied" };
@@ -136,6 +140,7 @@ export type Receipt = Envelope & {
   inPlan?: boolean;    // one step of an approved plan (Drive); the plan as a whole ends with drive.done
   changedAt?: ChangeAt;   // the first changed line, for "Show me what changed"
   repeat?: { first: ChangeAt; second: ChangeAt; was: string; now: string };   // the same small change made in two places (was -> now)
+  practice?: string;   // the practice id the task was started with, echoed back
 };
 // Explain: two short lines of why and one check question. step: which Drive step it explains.
 export type ExplainReady = Envelope & { type: "explain.ready"; agent: string; checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number }; step?: { index: number; title: string }; usdEstimate: number };
@@ -177,7 +182,7 @@ export type PlanReady = Envelope & { type: "plan.ready"; agent: string; steps: {
 export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: number; total: number; title: string; status: "started" | "done" | "not_done" | "stopped" | "over_budget" };
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
 export type RunnerPong = Envelope & { type: "runner.pong" };
-export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
+export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean; places?: { table: string; file: string; line: number; lineText: string }[] }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
 // file: where the notes were filed in the project; none off the record, where nothing is kept.
 export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
@@ -282,10 +287,12 @@ const screensOk: Check = (m) => {
 const named = (o: unknown, field: string): boolean => typeof o === "object" && o !== null && !Array.isArray(o) && typeof (o as any).name === "string" && (o as any).name.length > 0 && typeof (o as any)[field] === "string";
 const filesOk: Check = opt("files", (m) => (Array.isArray(m.files) && m.files.every((f) => named(f, "text")) ? null : '"files" must be a list of files, each with name and text'));
 const imagesOk: Check = opt("images", (m) => (Array.isArray(m.images) && m.images.every((p) => named(p, "base64") && ["image/png", "image/jpeg"].includes((p as any).mediaType)) ? null : '"images" must be a list of PNG or JPEG pictures, each with name, mediaType and base64'));
+// A practice id: a short plain name (app/sample/practices.json), never a path.
+const practiceOk: Check = opt("practice", (m) => (typeof m.practice === "string" && /^[a-z][a-z-]{0,39}$/.test(m.practice) ? null : '"practice" must be a practice id'));
 const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
 const COMMANDS: Record<string, Check[]> = {
-  "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk],
+  "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk, practiceOk],
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
@@ -401,12 +408,12 @@ const EVENTS: Record<string, Check[]> = {
   "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],
   "drive.done": [str("agent"), str("status"), num("completed"), num("total"), num("usdEstimate")],
   "auth.status": [oneOf("method", ["api_key", "plan", "cloud", "none", "unknown"])],
-  "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped")],
+  "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped"), practiceOk],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network"]), str("title"), str("expiresAt")],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk)],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],

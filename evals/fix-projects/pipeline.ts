@@ -4,7 +4,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Engine, Step } from "../../runner/src/engine.ts";
-import { evidence } from "../../runner/src/followup.ts";
 import { shq } from "../../runner/src/proof/exec.ts";
 import type { Problem } from "../../protocol/index.ts";
 import type { CaseMeter } from "../lib/budget.ts";
@@ -53,15 +52,11 @@ export function loadCases(): LoadedCase[] {
   });
 }
 
-/** What the fix task is told: what Point at the problem found, in the same words the card shows, and the request, modelled
- *  on the practice task's (app/src/commands.ts PRACTICE_PROMPT). The M11 prompt work changes it; this is the baseline. */
-export const FIX_ASK = "Find the cause and fix it with the smallest change. Do not change the tests.";
-export function fixPrompt(found: { label?: string; detail?: string; problem?: Problem }): string {
-  const e = evidence({ label: found.label ?? "A check", detail: found.detail ?? "" });
-  const p = found.problem;
-  const where = p?.kind === "line" ? `\nWhere it fails: ${p.file}, line ${p.line}: ${p.lineText}` : "";
-  return `Companion checked this project and one of its checks fails.\n\nFailed check: ${e.label}\nWhat happened: ${e.detail}${where}\n\n${FIX_ASK}`;
-}
+/** What the fix task is told: what Point at the problem found, in the same words the card shows, and the request. It is the
+ *  shipped builder (runner/src/fixfound.ts, used by the practice projects and Point at the problem's small fix), so the eval
+ *  measures the product's own request. The M11 prompt work changes it there. */
+import { FIX_ASK, fixFoundPrompt as fixPrompt } from "../../runner/src/fixfound.ts";
+export { FIX_ASK, fixPrompt };
 
 export type Flow = "task" | "rescue";
 /** The stand in: the known good fix (or, for an ask case, the question), as the agent's turns. Rescue gets a diagnosis first. */

@@ -152,7 +152,8 @@ type Stuck = { failure: { label: string; detail: string }; end: LoopEnd };
 // What a follow up needs from the agent's last task. Kept in memory only, never on disk, and replaced by each new task.
 // sessionId is never kept for an off the record task: nothing of it was saved, so nothing can be continued. ending: how it
 // ended, so Try again says it truly. undone: Undo put the project back, so the conversation no longer matches the files.
-type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean };
+// practice: the practice project the task fixes, so a follow up or Try again on it is still that practice's.
+type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean; practice?: string };
 type Step1 = NonNullable<RunOpts["step"]>;
 
 // "Your turn": a proven fix that made the same small change in two places can be offered to the person (teach.ts). offer: the
@@ -564,7 +565,7 @@ export class AgentRunner {
     const prompt = retry
       ? (fresh ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
       : (off ? freshFollowUpPrompt(last.first, text) : followUpPrompt(text));
-    const start: StartCmd = { v: PROTOCOL_VERSION, id: cmd.id, type: "agent.start", project: last.project, agent: cmd.agent, mode: last.mode, prompt, model: last.model, budgetUsd: last.budgetUsd, ...(off ? { offTheRecord: true } : {}) };
+    const start: StartCmd = { v: PROTOCOL_VERSION, id: cmd.id, type: "agent.start", project: last.project, agent: cmd.agent, mode: last.mode, prompt, model: last.model, budgetUsd: last.budgetUsd, ...(off ? { offTheRecord: true } : {}), ...(last.practice ? { practice: last.practice } : {}) };
     const goal = retry ? last.goal : text;
     // The reviewer reads what was asked, never the conversation: the first request, then what this turn is for.
     const asked = last.first === goal ? goal : `${last.first}\n\nThen: ${goal}`;
@@ -723,7 +724,10 @@ export class AgentRunner {
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
-    this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped } as never);
+    // A practice's task says which practice it is, on its checkpoint and its receipt, so the page finishes the practice only
+    // with its own task (the id changes nothing else here).
+    const practice = cmd.practice ? { practice: cmd.practice } : {};
+    this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped, ...practice } as never);
     const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString() });
     this.openTasks.set(cmd.agent, taskId);
     this.touched.add(cmd.agent);
@@ -880,14 +884,14 @@ export class AgentRunner {
     // Off the record work gets no saved picture (nothing about it is kept), and none when "Make before and after pictures"
     // is off (the check itself is the same either way).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord && pictures.make;
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
     if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
-    this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
+    this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}), ...(cmd.practice ? { practice: cmd.practice } : {}) });
     const stuck: Stuck | undefined = proof === "failed" && lastFailure && (sameRun(sigs) || (askAny && ranOut)) ? { failure: lastFailure, end: endOf() } : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }

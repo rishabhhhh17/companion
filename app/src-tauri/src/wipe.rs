@@ -37,6 +37,7 @@ pub fn items(home: &Path, data: &Path) -> Vec<Item> {
         Item { id: "pictures", label: "Receipt pictures and the it's live cards", paths: vec![] },
         Item { id: "numbers", label: "Your beta numbers (counts only, if you turned them on)", paths: vec![] },
         Item { id: "lessons", label: "Where you are in each guided lesson", paths: vec![] },
+        Item { id: "practice", label: "Which practice projects you tried, and where their copies are", paths: vec![] },
         Item { id: "memory", label: "What Companion knows about you and your projects", paths: vec![] },
         Item { id: "speech", label: "The speech model for hold to talk", paths: vec![data.join("models")] },
         Item { id: "browser", label: "The hidden browser Companion checks your pages with", paths: vec![home.join("Library/Application Support/Companion/browsers")] },
@@ -51,7 +52,10 @@ pub fn items(home: &Path, data: &Path) -> Vec<Item> {
             let n = e.file_name().to_string_lossy().to_string();
             // "runner" is grouped above, the speech model has its own group, and dev.json is the developer's own setup, not user data.
             if n == "runner" || n == "models" || n == "dev.json" { continue; }
-            add("settings", e.path());
+            // The practice record (practice.rs): its own line. The copies it names are folders in the home folder, the
+            // person's like any project, so they are never in a group; Delete everything moves them to the Trash only when
+            // the person ticks that line.
+            add(if n == "practice.json" || n.starts_with("practice.json.tmp") { "practice" } else { "settings" }, e.path());
         }
     }
     // What the page part of the app keeps (first run done, reactions, voice choices).
@@ -300,6 +304,22 @@ mod tests {
         assert!(failed.is_empty(), "{failed:?}");
         for f in [crate::settings::FILE, crate::settings::DAMAGED] { assert!(!m.data.join(f).exists(), "{f}"); }
         assert!(m.data.join("dev.json").exists(), "the developer's own file stays");
+    }
+    #[test]
+    fn the_practice_record_is_its_own_line_and_goes_with_everything_else_while_the_copies_stay_in_the_home_folder() {
+        // practice.rs keeps which practices were tried and where their copies are (practice.json in Companion's folder).
+        let m = mac("practice");
+        write(m.data.join("practice.json"), "{}").unwrap();
+        let copy = m.home.join("Companion practice signup page"); create_dir_all(&copy).unwrap(); write(copy.join("package.json"), "{}").unwrap();
+        let g = items(&m.home, &m.data);
+        let practice = g.iter().find(|i| i.id == "practice").unwrap();
+        assert_eq!(practice.paths, vec![m.data.join("practice.json")]);
+        assert!(!g.iter().find(|i| i.id == "settings").unwrap().paths.iter().any(|p| p.ends_with("practice.json")));
+        assert!(!g.iter().any(|i| i.paths.iter().any(|p| p.starts_with(&copy))), "a practice copy is the person's folder: never in a group");
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(!m.data.join("practice.json").exists());
+        assert!(copy.join("package.json").is_file(), "Delete everything moves copies to the Trash only when the person ticks that line");
     }
     #[test]
     fn everything_is_grouped_in_the_persons_words_and_dev_json_is_not_among_it() {

@@ -1,5 +1,6 @@
 // Builds the commands the pages send. Rust checks each one again before it reaches the runner.
-import type { Command } from "../../protocol/index.ts";
+import type { Command, Problem } from "../../protocol/index.ts";
+import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 // Model ids live in one place, with the runner's (T10).
 import { MODELS } from "../../runner/src/models.ts";
 // A follow up is cut to the same length the runner keeps.
@@ -79,12 +80,15 @@ export const findProblem = (project: string): Command => ({ v: 1, id: id(), type
 // About this project, and installing its packages when the person presses the button.
 export const inspectProject = (project: string): Command => ({ v: 1, id: id(), type: "project.inspect", project });
 export const installPackages = (project: string): Command => ({ v: 1, id: id(), type: "project.install", project });
-// The practice project's fix: a short fixed request on a small budget, so the first real use costs cents.
-export const PRACTICE_PROMPT = "The tests in this project fail. Find the cause and fix it with the smallest change. Do not change the tests.";
-/** The start of the practice task's label, so only its own receipt can finish the practice. */
-export const PRACTICE_LABEL = "The tests in this project fail";
-export const startPractice = (project: string): Command =>
-  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt: PRACTICE_PROMPT, model: DEFAULT_MODEL, budgetUsd: 0.6 });
+// Fix it after Companion's own check found the problem: the practice projects' Fix it with me, and Point at the problem's
+// Fix it when Settings says one small checked fix (point.fixWith). One shipped request (runner/src/fixfound.ts, which the
+// coding eval measures) on the record, so it gets the snapshot, the safety and house rules, the proof, Explain and a place
+// in What I did like any task. A practice's fix names its practice (echoed on its checkpoint and receipt, so only its own
+// receipt finishes it) and keeps to its own small cap on the usual model, whatever Settings say, so it costs cents.
+export const fixFound = (project: string, found: { label?: string; detail?: string; problem?: Problem }, o: { practice?: string } = {}): Command => {
+  const c = startTask(project, fixFoundPrompt(found)) as Extract<Command, { type: "agent.start" }>;
+  return o.practice ? { ...c, model: DEFAULT_MODEL, budgetUsd: PRACTICE_BUDGET_USD, practice: o.practice } : c;
+};
 // Draw it for me: why did this break, as a small diagram (from the project and the failing place, never the screen).
 export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
   ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
@@ -101,6 +105,8 @@ export const checkMyChange = (project: string, checkpoint: string): Command => (
 // Guided lessons: the runner keeps the place and checks each step; the app draws the ring and notices the click.
 /** The lesson the runner makes from the project's own missing settings (runner/src/lessongen.ts SETTINGS_LESSON). */
 export const SETTINGS_LESSON_ID = "from-project-settings";
+/** The lesson about the project's settings on Vercel (runner/src/lessongen.ts VERCEL_LESSON). */
+export const VERCEL_LESSON_ID = "from-project-vercel";
 export const walkList = (project: string): Command => ({ v: 1, id: id(), type: "walk.list", project });
 export const walkStart = (project: string, lesson: string, fresh = false): Command => ({ v: 1, id: id(), type: "walk.start", project, lesson, ...(fresh ? { fresh: true } : {}) });
 // clicked and done_for_you: the ring. pressed: the person's own "I did it" on the card, the only one that can count a step

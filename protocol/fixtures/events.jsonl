@@ -93,3 +93,5 @@
 {"v":1,"id":"e105","type":"teach.step","project":"p_9f2c","checkpoint":"cp_0042","rung":"tests","label":"Running the tests","status":"running","detail":"","ms":0}
 {"v":1,"id":"eg1","type":"walk.step","walk":"c43","project":"no-project","lesson":"cursor-install","title":"Install Cursor and open your project","index":0,"total":6,"variant":"main","say":"Go to cursor.com/download and press the download button for macOS.","find":"the macOS download button on cursor.com/download","ask":true,"link":"https://cursor.com/download"}
 {"v":1,"id":"es1","type":"settings.applied","accepted":["work.maxTurns"],"refused":[]}
+{"v":1,"id":"e900","type":"checkpoint.created","project":"p_9f2c","agent":"builder-1","checkpoint":"cp_0007","label":"Before: Companion checked this project","files":6,"skipped":[],"practice":"signup"}
+{"v":1,"id":"e901","type":"receipt","agent":"builder-1","checkpoint":"cp_0007","changed":[{"file":"public/signup.js","kind":"modified"}],"commands":1,"notUndoable":[],"proof":"passed","usdEstimate":0.12,"practice":"signup"}

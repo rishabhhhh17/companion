@@ -24,6 +24,26 @@ describe("does the project use Supabase?", () => {
   });
 });
 
+describe("where an open table is made", () => {
+  test("the file and line of its create table, counted the same after comments and text that span lines", () => {
+    const r = analyzeMigrations({
+      "001_a.sql": "/* a long\n note */\ncreate table public.notes (\n  body text default 'two\nlines'\n);\n-- later\ncreate table orders (id int);",
+      "002_b.sql": "\n\ncreate table if not exists public.items (id int);\nalter table items enable row level security;",
+    });
+    expect(r.withoutRls.sort()).toEqual(["notes", "orders"]);
+    expect(r.made.notes).toEqual({ file: "001_a.sql", line: 3, lineText: "create table public.notes (" });
+    expect(r.made.orders).toEqual({ file: "001_a.sql", line: 8, lineText: "create table orders (id int);" });
+    expect(r.made.items).toEqual({ file: "002_b.sql", line: 3, lineText: "create table if not exists public.items (id int);" });
+  });
+  test("the blocked check says where each open table is made, so it can be pointed at", async () => {
+    const p = tmp(); put(p, { "supabase/migrations/20261001090000_create_notes.sql": "-- notes\ncreate table public.notes (id int);\n" });
+    const g = await rlsGate({ project: p });
+    expect(g).toMatchObject({ status: "blocked", findings: ["notes"], places: [{ table: "notes", file: "supabase/migrations/20261001090000_create_notes.sql", line: 2, lineText: "create table public.notes (id int);" }] });
+    put(p, { "supabase/migrations/20261003090000_protect.sql": "alter table public.notes enable row level security;" });
+    expect((await rlsGate({ project: p })).places).toBeUndefined();
+  });
+});
+
 describe("reading migration files", () => {
   test("a table with row level security passes, one without is named", () => {
     const r = analyzeMigrations({
@@ -53,7 +73,7 @@ describe("reading migration files", () => {
     expect(r.tables).toEqual(["real"]);
     expect(r.withoutRls).toEqual(["real"]);
   });
-  test("no tables at all is nothing wrong", () => expect(analyzeMigrations({ "a.sql": "select 1;" })).toEqual({ tables: [], withoutRls: [], openPolicies: [], dynamic: false }));
+  test("no tables at all is nothing wrong", () => expect(analyzeMigrations({ "a.sql": "select 1;" })).toEqual({ tables: [], withoutRls: [], openPolicies: [], dynamic: false, made: {} }));
 });
 
 describe("asking the live database", () => {

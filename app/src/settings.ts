@@ -6,7 +6,8 @@ import type { Spending } from "./model.ts";
 import { setting } from "./settingsStore.ts";
 
 // receiptPictures: how many receipt pictures are kept now (wipe.rs), so lowering "Pictures to keep" can say first how many go.
-export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number };
+// practiceCopies: how many practice copies Companion made and recorded are still in the home folder (practice.rs).
+export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number; practiceCopies?: number };
 export type PermissionKind = "screen_recording" | "accessibility" | "microphone";
 /** What the app reports (permissions.rs, page_word). "off" is for Accessibility and Screen Recording, where macOS cannot
  * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */

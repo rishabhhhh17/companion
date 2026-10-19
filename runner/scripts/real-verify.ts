@@ -28,6 +28,7 @@ import { FastLane } from "../src/lanes.ts";
 import { MODELS } from "../src/models.ts";
 import { SdkEngine, SessionTotals } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
+import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../src/fixfound.ts";
 import { RunnerDriver, ledgerSpent, parseArgs, runCases, spawnRunner, type ApproveRule, type Case, type CaseCtx, type Proc } from "./realrun-harness.ts";
 
 type Ev = Record<string, any>;
@@ -54,6 +55,54 @@ export function checkedCommand(c: Ev): string {
   if (!p.ok) throw new Error(`this script built a command the runner refuses (${p.error})`);
   return line;
 }
+
+
+// The practice projects (app/sample/practices.json) the person fixes with Claude: the copy as the shell makes it (the
+// sample and its house rule), Find with no model, then the fix through the shipped request and cap (runner/src/fixfound.ts,
+// the same the page sends), then Find again. Each notes its seconds and dollars, so the times and costs on the Learn tab can
+// be replaced by measured ones, and checks that the protected file is untouched. A mismatch is noted and the case fails,
+// but every step is still sent, so a dry run checks every command.
+type PracticeEntry = { id: string; folder: string; find: "checks" | "gate"; expect: { file: string; line: number; gate?: string }; fix: string; protect: string[] };
+const PRACTICE_CATALOG = (JSON.parse(readFileSync(join(import.meta.dir, "../../app/sample/practices.json"), "utf8")) as { practices: PracticeEntry[] }).practices;
+function practiceCase(e: PracticeEntry): Scenario {
+  return {
+    name: e.id === "signup" ? "practice" : `practice-${e.id}`,
+    what: `the ${e.id} practice project: Find (no Claude), then Fix it with me on the shipped request and cap, then Find again, with its own check untouched`,
+    estimateUsd: 0.3, capUsd: 1.0, timeoutS: 480,
+    async run(kit, note) {
+      const dir = kit.scratch(`practice-${e.id}`);
+      cpSync(join(import.meta.dir, "../../app/sample", e.folder), dir, { recursive: true });
+      mkdirSync(join(dir, ".companion"), { recursive: true });
+      writeFileSync(join(dir, ".companion/rules.txt"), `# Companion added these rules to its practice copy, so the fix cannot pass by changing the check.\n${e.protect.map((f) => `never edit ${f}`).join("\n")}\n`);
+      const kept = e.protect.map((f) => readFileSync(join(dir, f), "utf8"));
+      const r = kit.runner(dir); if (!await r.ready()) return false;
+      const t0 = Date.now();
+      let ok = true;
+      const find = async () => {
+        const n = r.events.length;
+        if (e.find === "gate") { r.send({ v: 1, id: `g${n}`, type: "ship.check", project: dir }); const g = await r.until((x) => x.type === "ship.gates", 90_000, n); return g?.gates?.find((x: Ev) => x.id === e.expect.gate) ?? null; }
+        r.send({ v: 1, id: `f${n}`, type: "problem.find", project: dir, agent: "builder-1" });
+        return await r.until((x) => x.type === "problem.found", 90_000, n);
+      };
+      const found = await find();
+      const place = e.find === "gate" ? found?.places?.[0] : found?.problem;
+      note(`found: ${JSON.stringify({ status: found?.verdict ?? found?.status, file: place?.file, line: place?.line })}`);
+      if (place?.file !== e.expect.file) ok = false;
+      const evidence = e.find === "gate"
+        ? { label: found?.label, detail: found?.detail, problem: place ? { kind: "line" as const, file: place.file, line: place.line, lineText: place.lineText ?? "", message: found?.detail ?? "", from: "ship" } : undefined }
+        : { label: found?.label, detail: found?.detail, problem: found?.problem };
+      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "builder-1", mode: "drive", prompt: fixFoundPrompt(evidence), model: kit.agentModel, budgetUsd: PRACTICE_BUDGET_USD, practice: e.id });
+      const rec = await r.until((x) => x.type === "receipt", 360_000);
+      if (!rec) { note("no receipt"); return false; }
+      const after = await find();
+      const fixed = e.find === "gate" ? !!after && after.status !== "blocked" : !!after && after.verdict !== "failed";
+      const untouched = e.protect.every((f, i) => readFileSync(join(dir, f), "utf8") === kept[i]);
+      note(`receipt proof = ${rec.proof}; practice = ${rec.practice}; changed = ${JSON.stringify(rec.changed?.map((c: Ev) => c.file))}; Find again fixed = ${fixed}; protected files untouched = ${untouched}; ${Math.round((Date.now() - t0) / 1000)} s; cost ${rec.usdEstimate}`);
+      return ok && ["passed", "partial"].includes(rec.proof) && rec.practice === e.id && fixed && untouched;
+    },
+  };
+}
+const PRACTICE_CASES: Scenario[] = PRACTICE_CATALOG.filter((e) => e.fix === "task").map(practiceCase);
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -136,27 +185,7 @@ export const SCENARIOS: Scenario[] = [
       return rec.proof === "passed" && !!pic && pic.made === true && pic.circles >= 1 && /works now/.test(pic.caption) && !!pic.file && existsSync(pic.file);
     },
   },
-  {
-    name: "practice", what: "the first run's practice project: the failing check is found (no Claude), then fixed without touching the tests", estimateUsd: 0.3, capUsd: 1.0, timeoutS: 480,
-    async run(kit, note) {
-      const dir = kit.scratch("practice");
-      cpSync(join(import.meta.dir, "../../app/sample/stuck-signup"), dir, { recursive: true });
-      const testBefore = readFileSync(join(dir, "test/signup.test.js"), "utf8");
-      const r = kit.runner(dir); if (!await r.ready()) return false;
-      r.send({ v: 1, id: "f", type: "problem.find", project: dir, agent: "builder-1" });
-      const found = await r.until((e) => e.type === "problem.found", 90_000);
-      note(`found: ${found ? JSON.stringify({ verdict: found.verdict, label: found.label, file: found.problem?.file, line: found.problem?.line, message: found.problem?.message }) : "nothing"}`);
-      if (!found || found.verdict !== "failed" || found.problem?.file !== "test/signup.test.js") return false;
-      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "builder-1", mode: "drive", prompt: "The tests in this project fail. Find the cause and fix it with the smallest change. Do not change the tests.", model: kit.agentModel, budgetUsd: 0.8 });
-      const rec = await r.until((e) => e.type === "receipt", 360_000);
-      if (!rec) { note("no receipt"); return false; }
-      const code = readFileSync(join(dir, "public/signup.js"), "utf8"), testAfter = readFileSync(join(dir, "test/signup.test.js"), "utf8"), server = readFileSync(join(dir, "server.js"), "utf8");
-      // Either side of the mismatch is a fair fix: the page now asks for /api/register, or the server now answers /api/signup too.
-      const fixedPage = /\/api\/register/.test(code), fixedServer = /\/api\/signup/.test(server);
-      note(`receipt proof = ${rec.proof}; changed = ${JSON.stringify(rec.changed.map((c: Ev) => c.file))}; fixed the page = ${fixedPage}; the server answers the page's address = ${fixedServer}; test untouched = ${testBefore === testAfter}; cost ${rec.usdEstimate}`);
-      return rec.proof === "passed" && (fixedPage || fixedServer) && testBefore === testAfter;
-    },
-  },
+  ...PRACTICE_CASES,
   {
     name: "diagram", what: "Draw it for me on the fast lane: a small diagram of why the sign up breaks", estimateUsd: 0.01, capUsd: 0.1, timeoutS: 150,
     async run(kit, note) {

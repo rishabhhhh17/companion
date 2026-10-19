@@ -6,14 +6,21 @@ import { readFileSync } from "node:fs";
 describe("moving through the first run", () => {
   test("the steps go in order, and the first and last have nowhere to go", () => {
     expect(next("welcome")).toBe("connect"); expect(next("first")).toBeNull(); expect(back("connect")).toBe("welcome"); expect(back("welcome")).toBeNull();
-    expect(STEPS.length).toBe(6);
+    expect(STEPS.length).toBe(7);
+  });
+  test("the practice comes in minute one: right after Connect, before the folder, the questions and the permissions (F17)", () => {
+    expect(STEPS.slice(0, 4)).toEqual(["welcome", "connect", "practice", "folder"]);
+    expect(next("connect")).toBe("practice"); expect(next("practice")).toBe("folder"); expect(back("folder")).toBe("practice");
+    // It can always be skipped, and it never comes before Connect (the fix needs Claude).
+    expect(canContinue("practice", { connected: true, project: "" })).toBe(true);
+    expect(STEPS.indexOf("practice")).toBeGreaterThan(STEPS.indexOf("connect"));
   });
   test("you cannot move past connecting Claude or choosing a folder until it is done", () => {
     expect(canContinue("connect", { connected: false, project: "/p" })).toBe(false);
     expect(canContinue("connect", { connected: true, project: "" })).toBe(true);
     expect(canContinue("folder", { connected: true, project: "" })).toBe(false);
     expect(canContinue("folder", { connected: true, project: "/p" })).toBe(true);
-    for (const s of ["welcome", "questions", "permissions", "first"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+    for (const s of ["welcome", "practice", "questions", "permissions", "first"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
   });
 });
 

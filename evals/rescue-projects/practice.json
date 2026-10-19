@@ -1,7 +1,0 @@
-{
-  "stuck-signup": { "cmd": ["node", "--test"], "file": "test/signup.test.js", "line": 17, "about": "/api/signup" },
-  "stuck-setting": { "cmd": ["node", "--test"], "file": "settings.js", "line": 16, "about": "SHOP_NAME is not set" },
-  "stuck-route": { "cmd": ["node", "--test"], "file": "test/links.test.js", "line": 19, "about": "goes to /prices" },
-  "stuck-import": { "cmd": ["node", "--test"], "file": "server.js", "line": 3, "about": "Cannot find module" },
-  "stuck-open-table": { "gate": "database_access", "findings": ["notes"] }
-}

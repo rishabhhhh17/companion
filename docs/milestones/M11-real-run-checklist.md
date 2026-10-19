@@ -50,9 +50,41 @@ Retired on 17 Oct 2026: `real-run.ts`, `e2e-plan.ts` and `real-sandbox-net.ts` s
 | Draw it for me, Rescue on Opus 5.5, Research, the visual receipt, take the wheel, the practice project, memory, the daily limit, the ship gates | `runner/scripts/real-verify.ts` (last run on the test login with Haiku 4.5, before the key route) | B: the scenario of the same name | PASS |
 | The second model review on Opus 5.5 | M11 plan step 9 | B: `second-model-review`; the seeded risky diffs for the catch rate | The harmless change passes; the exposed live key is stopped |
 | The whole loop on broken sample projects | M10 plan | B: `practice` and `rescue`; then the fix eval (M11 plan step 4) | Fixed with proof, tests untouched |
+| The practice library's fixes on a real key: each task practice through the shipped request and its $0.60 cap (`runner/src/fixfound.ts`, the same the page sends), the house rule written into the copy, and the times and costs the Learn tab shows (estimates in `app/sample/practices.json` until measured) | `app/sample/practices.json`, F17 practice library (19 Oct 2026, built and tested with the stand in agent only) | B: `practice` (signup, on the API key route and the shipped model, again), `practice-route`, `practice-import`, `practice-open-table`; see "The practice library" below | Each PASS: Find again shows it fixed, the protected file untouched, the receipt names its practice; then put the measured seconds and dollars into the catalog |
 | Haiku 5.5 in place of Haiku 4.5 for the fast lane (Haiku 4.5 may retire after 15 Oct 2026) | `runner/src/models.ts`, M11 plan step 11 | A: `fast-haiku55`; C with `COMPANION_FAST_MODEL=claude-haiku-5-5` | It holds the Prompt help score at a lower cost |
 | The list prices behind every estimate (Haiku 5.5 has two rate cards: a prompt over 100K tokens is priced five times higher) | `runner/src/models.ts` | A and B: the estimate in each case against Claude Code's own cost figure in the summary | Close; a large gap means a price in the table is wrong |
 | The engine staged inside the installed app | `runner/scripts/real-verify.ts` | B again with `COMPANION_ENGINE_DIR` set to the staged engine | The same results |
+
+## The practice library (19 Oct 2026): what needs a real key, and what needs a person
+
+Built and tested with no model: the five practices in `app/sample/practices.json` run start to finish in
+`runner/test/practice-e2e.test.ts` with a stand in agent (snapshot, safety and house rules, proof ladder, receipt, Find
+again, Undo), and the pages follow the same events (`app/src/practice.test.ts`). Nothing below has been run.
+
+**Real Claude runs (item 22; only when the founder says go; each about $0.30, stop at $1):**
+1. `cd runner && bun run scripts/real-verify.ts practice` prints the plan. With the founder's go, add `--spend`. Signup, on
+   the API key route and the shipped model (the earlier 3 of 3 were on the test login with Haiku 4.5).
+2. The same for `practice-route`, `practice-import` and `practice-open-table`.
+3. For each, note the seconds and the dollars the scenario prints, and whether the protected file stayed untouched.
+4. Put the measured times (rounded up to whole minutes) and costs (rounded up to the cent) into `minutes` and `costUsd` in
+   `app/sample/practices.json`, and say in the change that they are measured.
+5. If a fix tried to edit its protected file, read the house rule's refusal in the run's notes: it should be refused and the
+   fix should then go elsewhere. The open table's fix should add a new migration, never change the old one.
+
+**A person tries each practice (item 23; the founder Mac session, one step per message):**
+1. A fresh first run: after Connect, the practice step. Try the recommended one; also check Pick another opens the list,
+   and Skip goes on to the folder.
+2. From the Learn tab's list, each of the five, to Done: Find (the key for four, Check it before it goes live for the open
+   table), Show me where, Why? Draw it, Fix it with me (or the lesson for the setting), the result with Undo, Explain.
+3. Undo the fix from the practice panel: the practice says the problem is back; Try again fixes it again.
+4. Start over: the old copy is in the Trash (put it back from Finder to check), the fresh copy opens.
+5. Remove my copy: it goes to the Trash and leaves the recent folders.
+6. Quit in the middle of a practice and open Companion again: the practice is there and waits for Find; open the copy from
+   the recent folders: Find runs by itself and nothing is pointed at on the screen until Show me where is pressed.
+7. Next and Back to my project after a Done.
+8. With Node moved out of the way (a test account), the list says Needs Node and Start waits.
+9. VoiceOver and the keyboard alone through the list and the panel, including each are you sure step.
+10. Record each answer in the readiness table in `docs/status/`.
 
 ## Known gaps: unproven, and no script covers them yet
 

@@ -509,6 +509,26 @@ describe("Home from the keyboard alone (part 2)", () => {
   // Every "are you sure" in Home: it takes the keyboard to its safe choice, keeps Tab inside, Esc takes it away, and
   // the keyboard goes back to the button that opened it.
   const SURE = ["S.deleteSure", "S.keyRemoveSure", "S.memoryEraseSure", "S.liveSure", "S.rollSure", "S.undoSure", "S.bisectUndoSure("];
+  test("every are you sure of the practice projects (Undo, Start over, Remove my copy, all copies to the Trash) is a ConfirmStep, each one", () => {
+    // The practice panel and the list (practicePanel.tsx) are part of Home; Settings has Move all my practice copies.
+    const pages = read("./practicePanel.tsx") + "\n" + read("./settingsPage.tsx");
+    let n = 0;
+    for (const s of ["S.undoSure", "S.practiceStartOverSure", "S.practiceRemoveSure", "S.practiceRemoveAllSure"]) {
+      for (let at = pages.indexOf(`label={${s}}`); at >= 0; at = pages.indexOf(`label={${s}}`, at + 1)) {
+        n++;
+        const open = pages.lastIndexOf("<ConfirmStep", at);
+        expect(open, `${s} is a ConfirmStep's label`).toBeGreaterThan(-1);
+        expect(pages.slice(open, at), `${s} is on the step itself`).not.toContain(">");
+        const block = pages.slice(open, pages.indexOf("</ConfirmStep>", at));
+        const back = /back=\{(\w+)\}/.exec(block)?.[1];
+        expect(back, `${s} has a way back`).toBeTruthy();
+        expect(pages, `${s}: the opener carries id={${back}}`).toContain(`id={${back}}`);
+        expect(block, `${s} has onCancel`).toMatch(/onCancel=\{/);
+        expect(block, `${s}: the safe choice is marked`).toContain("data-cancel");
+      }
+    }
+    expect(n).toBe(6);
+  });
   test("every confirm step is a ConfirmStep, with a way back and a safe choice", () => {
     for (const s of SURE) {
       const at = card.indexOf(s);

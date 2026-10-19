@@ -4,7 +4,10 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export type GateStatus = "passed" | "blocked" | "could_not_check" | "not_applicable";
-export type GateResult = { id: string; label: string; status: GateStatus; detail: string; findings?: string[]; overridable?: boolean };
+// places: where each open table is made (the migration file, from the project, and the create table line), so Point at the
+// problem and the practice can open that line. Only for tables found open in the files.
+export type GatePlace = { table: string; file: string; line: number; lineText: string };
+export type GateResult = { id: string; label: string; status: GateStatus; detail: string; findings?: string[]; overridable?: boolean; places?: GatePlace[] };
 
 export const LIVE_RLS_SQL = `select c.relname as "table", c.relrowsecurity as rls from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r', 'p') order by c.relname`;
 
@@ -29,19 +32,21 @@ function publicTable(raw: string): string | null {
 }
 // Takes comments out and empties quoted text, so a "--" inside a string or a table name inside an INSERT is never read as SQL.
 // Code that builds SQL while it runs (DO blocks, EXECUTE) cannot be read this way, so it is reported separately.
+// The line breaks inside what is taken out are kept, so a line counted in the clean text is the same line in the file.
+const breaksIn = (s: string) => "\n".repeat(s.split("\n").length - 1);
 export function cleanSql(sql: string): { text: string; dynamic: boolean } {
   let out = "", i = 0, dynamic = false;
   while (i < sql.length) {
     const c = sql[i], two = sql.slice(i, i + 2);
     if (two === "--") { while (i < sql.length && sql[i] !== "\n") i++; out += " "; continue; }
-    if (two === "/*") { const e = sql.indexOf("*/", i + 2); i = e < 0 ? sql.length : e + 2; out += " "; continue; }
-    if (c === "'") { i++; while (i < sql.length) { if (sql[i] === "'" && sql[i + 1] === "'") i += 2; else if (sql[i] === "'") { i++; break; } else i++; } out += "''"; continue; }
+    if (two === "/*") { const from = i, e = sql.indexOf("*/", i + 2); i = e < 0 ? sql.length : e + 2; out += " " + breaksIn(sql.slice(from, i)); continue; }
+    if (c === "'") { const from = i; i++; while (i < sql.length) { if (sql[i] === "'" && sql[i + 1] === "'") i += 2; else if (sql[i] === "'") { i++; break; } else i++; } out += "''" + breaksIn(sql.slice(from, i)); continue; }
     if (c === "$") {
       const m = /^\$[A-Za-z_]*\$/.exec(sql.slice(i));
       if (m) {
-        const e = sql.indexOf(m[0], i + m[0].length), body = sql.slice(i + m[0].length, e < 0 ? sql.length : e);
+        const from = i, e = sql.indexOf(m[0], i + m[0].length), body = sql.slice(i + m[0].length, e < 0 ? sql.length : e);
         if (/\bexecute\b|\bcreate\s+table\b|\balter\s+table\b/i.test(cleanSql(body).text)) dynamic = true;
-        i = e < 0 ? sql.length : e + m[0].length; out += " "; continue;
+        i = e < 0 ? sql.length : e + m[0].length; out += " " + breaksIn(sql.slice(from, i)); continue;
       }
     }
     out += c; i++;
@@ -53,8 +58,10 @@ const RENAME = new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:only\
 const SET_SCHEMA = new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${NAME}\s+set\s+schema\s+(\w+|"[^"]+")`, "gi");
 const POLICY = /create\s+policy\s+(?:"[^"]+"|\w+)\s+on\s+((?:"[^"]+"|\w+)(?:\s*\.\s*(?:"[^"]+"|\w+))?)([^;]*)/gi;
 
-export function analyzeMigrations(files: Record<string, string>): { tables: string[]; withoutRls: string[]; openPolicies: string[]; dynamic: boolean } {
+// made: where each table still there was last made (its file, the line of create table and that line's text).
+export function analyzeMigrations(files: Record<string, string>): { tables: string[]; withoutRls: string[]; openPolicies: string[]; dynamic: boolean; made: Record<string, { file: string; line: number; lineText: string }> } {
   const state = new Map<string, boolean>();
+  const made: Record<string, { file: string; line: number; lineText: string }> = {};
   const openPolicies = new Set<string>();
   let dynamic = false;
   for (const name of Object.keys(files).sort()) {
@@ -70,7 +77,11 @@ export function analyzeMigrations(files: Record<string, string>): { tables: stri
     const events: { at: number; kind: "create" | "enable" | "disable" | "drop" | "rename" | "leave"; table: string | null; to?: string }[] = [];
     for (const m of sql.matchAll(RENAME)) events.push({ at: m.index!, kind: "rename", table: publicTable(m[1]), to: m[2].replace(/^"|"$/g, "").toLowerCase() });
     for (const m of sql.matchAll(SET_SCHEMA)) if (m[2].replace(/^"|"$/g, "").toLowerCase() !== "public") events.push({ at: m.index!, kind: "leave", table: publicTable(m[1]) });
-    for (const m of sql.matchAll(CREATE)) events.push({ at: m.index!, kind: "create", table: publicTable(m[1]) });
+    for (const m of sql.matchAll(CREATE)) {
+      events.push({ at: m.index!, kind: "create", table: publicTable(m[1]) });
+      const t = publicTable(m[1]), line = sql.slice(0, m.index!).split("\n").length;
+      if (t && !state.has(t)) made[t] = { file: name, line, lineText: (files[name].split("\n")[line - 1] ?? "").trim().slice(0, 200) };
+    }
     for (const m of sql.matchAll(RLS)) events.push({ at: m.index!, kind: m[2].toLowerCase() as "enable" | "disable", table: publicTable(m[1]) });
     for (const m of sql.matchAll(DROP)) events.push({ at: m.index!, kind: "drop", table: publicTable(m[1]) });
     for (const e of events.sort((a, b) => a.at - b.at)) {
@@ -78,12 +89,13 @@ export function analyzeMigrations(files: Record<string, string>): { tables: stri
       if (e.kind === "create") state.set(e.table, state.get(e.table) ?? false);
       else if (e.kind === "enable") state.set(e.table, true);
       else if (e.kind === "disable") state.set(e.table, false);
-      else if (e.kind === "rename") { const was = state.get(e.table); state.delete(e.table); if (e.to) state.set(e.to, was ?? false); }
-      else state.delete(e.table);   // dropped, or moved out of the public schema
+      else if (e.kind === "rename") { const was = state.get(e.table); state.delete(e.table); if (e.to) { state.set(e.to, was ?? false); if (made[e.table]) made[e.to] = made[e.table]; } delete made[e.table]; }
+      else { state.delete(e.table); delete made[e.table]; }   // dropped, or moved out of the public schema
     }
   }
   const tables = [...state.keys()];
-  return { tables, withoutRls: tables.filter((t) => !state.get(t)), openPolicies: [...openPolicies].filter((t) => state.has(t)), dynamic };
+  for (const t of Object.keys(made)) if (!state.has(t)) delete made[t];
+  return { tables, withoutRls: tables.filter((t) => !state.get(t)), openPolicies: [...openPolicies].filter((t) => state.has(t)), dynamic, made };
 }
 
 export function liveRows(rows: { table: string; rls: boolean | null }[]): { tables: string[]; withoutRls: string[] } {
@@ -105,7 +117,10 @@ export async function rlsGate(o: { project: string; query?: () => Promise<{ tabl
   const stat = analyzeMigrations(files);
   const hasFiles = Object.keys(files).length > 0;
   const open = (names: string[]) => `${names.length === 1 ? "This table is" : "These tables are"} open to anyone with your site address: ${names.join(", ")}. Turn on row level security for ${names.length === 1 ? "it" : "them"} and add the rules that say who may see what.`;
-  if (stat.withoutRls.length) return { id: ID, label: LABEL, status: "blocked", detail: open(stat.withoutRls), findings: stat.withoutRls, overridable: false };
+  if (stat.withoutRls.length) {
+    const places = stat.withoutRls.flatMap((t) => (stat.made[t] ? [{ table: t, file: `supabase/migrations/${stat.made[t].file}`, line: stat.made[t].line, lineText: stat.made[t].lineText }] : []));
+    return { id: ID, label: LABEL, status: "blocked", detail: open(stat.withoutRls), findings: stat.withoutRls, overridable: false, ...(places.length ? { places } : {}) };
+  }
   const note = stat.dynamic ? " Some of your database code builds its tables while it runs, which I cannot read, so tables made that way are not covered." : "";
   if (!o.query && stat.openPolicies.length) {
     return { id: ID, label: LABEL, status: "could_not_check", overridable: true, findings: stat.openPolicies,

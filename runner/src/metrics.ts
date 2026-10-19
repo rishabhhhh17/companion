@@ -8,7 +8,9 @@ import type { Command, Event } from "../../protocol/index.ts";
 export const NOTES = [
   "session", "hero_press", "soft_ring_corrected", "anywhere_use", "builder_use",
   "walk_started", "walk_step", "walk_other_way", "walk_help", "walk_done", "walk_stopped",
-  "proof_passed", "proof_failed", "proof_gaps", "diagram_made", "diagram_none", "practice_done",
+  "proof_passed", "proof_failed", "proof_gaps", "diagram_made", "diagram_none",
+  // The practice projects (app/src/practice.ts practiceNotes): a practice started, its problem found, and finished.
+  "practice_started", "practice_found", "practice_done",
 ] as const;
 type Name = typeof NOTES[number];
 const KEEP_DAYS = 120;
