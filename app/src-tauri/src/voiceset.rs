@@ -608,10 +608,11 @@ mod tests {
         let w = body("fn voice_worker(");
         // On before the light and the microphone, with anything already being said cut off.
         in_order(w, &["listening(true);", "speech_off(&app);", "say_voice(&app, \"listening\", LISTENING", "voice_mac::Recorder::start("]);
-        // Off once the microphone is closed: let go, the minute running out, a cancel, or a microphone that would not start.
+        // Off once the microphone is closed: let go, the cap running out or Companion hidden, a cancel, or a microphone that
+        // would not start.
         let up = &w[w.find("let heard = r.finish();").unwrap()..]; assert!(up[..up.find("if !long_enough").unwrap()].contains("listening(false);"), "let go");
         assert!(w.matches("listening(false);").count() >= 5, "every way the microphone closes turns it off");
-        let tl = &w[w.find("if hold.too_long(").unwrap()..]; assert!(tl[..tl.find("\n        }").unwrap()].contains("listening(false);"));
+        let tl = &w[w.find("if let Some(why) = hold.must_close(").unwrap()..]; assert!(tl[..tl.find("\n        }").unwrap()].contains("listening(false);"));
         let c = &w[w.find("Ok(VoiceMsg::Cancel)").unwrap()..]; assert!(c[..c.find('\n').unwrap()].contains("listening(false);"));
         let st = &w[w.find("match voice_mac::Recorder::start(").unwrap()..]; let e = &st[st.find("Err(e) =>").unwrap()..]; assert!(e[..e.find('\n').unwrap()].contains("listening(false);"), "would not start");
     }

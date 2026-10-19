@@ -87,6 +87,16 @@
 {"key": "calls.apps", "value": ["com.example.app0", "com.example.app1", "com.example.app2", "com.example.app3", "com.example.app4", "com.example.app5", "com.example.app6", "com.example.app7", "com.example.app8", "com.example.app9", "com.example.app10", "com.example.app11", "com.example.app12", "com.example.app13", "com.example.app14", "com.example.app15", "com.example.app16", "com.example.app17", "com.example.app18", "com.example.app19", "com.example.app20", "com.example.app21", "com.example.app22", "com.example.app23", "com.example.app24", "com.example.app25", "com.example.app26", "com.example.app27"], "ok": false, "reason": "tooMany"}
 {"key": "calls.apps", "value": ["us.zoom.xos", "us.zoom.xos"], "ok": false, "reason": "duplicate"}
 {"key": "calls.apps", "value": ["two\nlines"], "ok": false, "reason": "notOneLine"}
+{"key": "calls.apps", "value": ["us.zoom.xos", "Zoom me when my boss calls"], "ok": false, "reason": "notAppId"}
+{"key": "calls.apps", "value": ["com.example..calls"], "ok": false, "reason": "notAppId"}
+{"key": "calls.apps", "value": [".com.example"], "ok": false, "reason": "notAppId"}
+{"key": "calls.apps", "value": ["com/example/calls"], "ok": false, "reason": "notAppId"}
+{"key": "calls.apps", "value": ["com.example.calls?"], "ok": false, "reason": "notAppId"}
+{"key": "calls.apps", "value": ["Cisco-Systems.Spark", "com.example_one.calls"], "ok": true, "normalized": ["Cisco-Systems.Spark", "com.example_one.calls"]}
+{"def": {"key": "test.apps", "section": "work", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 20, "shape": "appId"}, "scope": "app", "applies": ["shell"], "store": "settings", "live": true}, "value": [" com.a.b "], "ok": true, "normalized": ["com.a.b"]}
+{"def": {"key": "test.apps", "section": "work", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 20, "shape": "appId"}, "scope": "app", "applies": ["shell"], "store": "settings", "live": true}, "value": ["com.a.b.c.d.e.f.g.h.i.j"], "ok": false, "reason": "tooLong"}
+{"def": {"key": "test.apps", "section": "work", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 20, "shape": "appId"}, "scope": "app", "applies": ["shell"], "store": "settings", "live": true}, "value": ["two words"], "ok": false, "reason": "notAppId"}
+{"def": {"key": "test.notes", "section": "work", "kind": "list", "default": [], "maxItems": 3, "item": {"maxLength": 20}, "scope": "app", "applies": ["shell"], "store": "settings", "live": true}, "value": ["two words"], "ok": true, "normalized": ["two words"]}
 {"key": "ph.appAnswers", "value": {"op": "forgetAll"}, "ok": false, "reason": "custom"}
 {"migrate": "isOn", "raw": "on", "value": true}
 {"migrate": "isOn", "raw": "off", "value": false}

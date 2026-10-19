@@ -29,5 +29,9 @@ export function answerOp(app: string, next: Answer | "forget", confirmed: boolea
   return next === "forget" ? { op: "forget", app, confirmed } : { op: "answer", app, answer: next, confirmed };
 }
 
+/** Add the app in front to never read, for the app the page showed the person (front_app). The shell changes it only while
+ *  that app is still the one in front. */
+export const neverFrontOp = (app: string): Record<string, unknown> => ({ op: "neverFront", app });
+
 /** How many answers Forget all forgets: every one except the apps never to read. */
 export const forgetAllCount = (rows: AppRow[]): number => rows.filter((r) => r.answer !== "never").length;

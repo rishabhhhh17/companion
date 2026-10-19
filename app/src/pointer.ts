@@ -20,6 +20,7 @@ export type RingLook = { stroke: string; width: number; dash: string; halo: stri
 export const GUESS_LOOK: RingLook = { stroke: "#ffb020", width: 3, dash: "8 6", halo: null };
 const SOLID: Record<string, RingLook> = {
   orange: { stroke: "#ff9a2e", width: 4, dash: "", halo: null },
+  red: { stroke: "#ff3b30", width: 4, dash: "", halo: null },
   yellow: { stroke: "#ffd60a", width: 4, dash: "", halo: null },
   blue: { stroke: "#0a84ff", width: 4, dash: "", halo: null },
   highContrast: { stroke: "#ffffff", width: 4, dash: "", halo: "#000000" },
@@ -42,6 +43,18 @@ export function captionStyle(lettering: unknown, size: unknown): { font: string;
   const f = px / 15;
   const maxWidth = Math.round(300 * f);
   return { font: `600 ${px}px ${hand ? HAND_FONT : PLAIN_FONT}`, maxWidth, reserveW: maxWidth + 20, reserveH: Math.round(60 * f) };
+}
+/** Where the caption goes beside its ring, and how wide it may be, inside `box` (the window the ring is clipped to, or the
+ *  whole screen): the words stay inside the window too (rule 22). In a window narrower than the caption it gets narrower,
+ *  never under 120 points; in one wide enough, it is exactly where and as wide as it always was. `side`: 1 to the right of
+ *  the ring, -1 to its left. */
+export function captionPlace(cs: { maxWidth: number; reserveW: number; reserveH: number }, box: { x: number; y: number; w: number; h: number }, ring: { cx: number; cy: number; rx: number }, side: 1 | -1): { left: number; top: number; maxWidth: number } {
+  // 38: the margin of 8 points on each side and the caption's own padding (11 points each side).
+  const maxWidth = Math.max(120, Math.min(cs.maxWidth, box.w - 38));
+  const reserveW = cs.reserveW - cs.maxWidth + maxWidth;
+  const left = Math.max(box.x + 8, Math.min(box.x + box.w - reserveW, side > 0 ? ring.cx + ring.rx + 12 : ring.cx - ring.rx - 12 - maxWidth));
+  const top = Math.max(box.y + 8, Math.min(box.y + box.h - cs.reserveH, ring.cy - 18));
+  return { left, top, maxWidth };
 }
 // The arrow's easing (slow out, quick through the middle, slow in) and how far its path bends above the straight line:
 // a quarter of the way, at most 80 points. The character's trip to a window uses the same two (roam.rs ease and bend).

@@ -22,7 +22,7 @@
       "from": { "pageStorage": { "name": "companion.showmeAllScreens", "map": "isOne" } } },
     { "key": "point.ringSeconds", "section": "pointing", "kind": "number", "default": 10, "min": 5, "max": 30, "step": 1, "unit": "seconds", "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "floor": "point.ringSeconds" },
     { "key": "point.yourTurnSeconds", "section": "pointing", "kind": "number", "default": 90, "min": 30, "max": 300, "step": 15, "unit": "seconds", "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "point.yourTurnSeconds" },
-    { "key": "point.colour", "section": "pointing", "kind": "choice", "default": "orange", "options": ["orange", "yellow", "blue", "highContrast"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "point.colour" },
+    { "key": "point.colour", "section": "pointing", "kind": "choice", "default": "orange", "options": ["orange", "red", "yellow", "blue", "highContrast"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "point.colour" },
     { "key": "point.lettering", "section": "pointing", "kind": "choice", "default": "plain", "options": ["plain", "handwritten"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "point.guesses", "section": "pointing", "kind": "choice", "default": "softRing", "options": ["softRing", "wordsOnly"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "point.guesses" },
     { "key": "point.pace", "section": "pointing", "kind": "choice", "default": "normal", "options": ["slower", "normal", "faster"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
@@ -45,7 +45,7 @@
 
     { "key": "sharing.hide", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
-    { "key": "calls.apps", "section": "sharing", "kind": "list", "default": ["us.zoom.xos", "com.microsoft.teams2", "com.microsoft.teams", "com.apple.FaceTime", "Cisco-Systems.Spark", "com.webex.meetingmanager", "com.skype.skype"], "maxItems": 27, "item": { "maxLength": 200 }, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "calls.apps" },
+    { "key": "calls.apps", "section": "sharing", "kind": "list", "default": ["us.zoom.xos", "com.microsoft.teams2", "com.microsoft.teams", "com.apple.FaceTime", "Cisco-Systems.Spark", "com.webex.meetingmanager", "com.skype.skype"], "maxItems": 27, "item": { "maxLength": 200, "shape": "appId" }, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "calls.apps" },
 
     { "key": "display.textSize", "section": "display", "kind": "choice", "default": "standard", "options": ["standard", "large", "larger", "largest"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.textSize", "map": "textSize" } } },

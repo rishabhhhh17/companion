@@ -1,7 +1,7 @@
 // The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { at, bend, burst, captionStyle, confetti, CONFETTI_S, ease, flightMs, ringLook, ringMsOf } from "./pointer.ts";
+import { at, bend, burst, captionPlace, captionStyle, confetti, CONFETTI_S, ease, flightMs, ringLook, ringMsOf } from "./pointer.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
@@ -87,10 +87,11 @@ function show(p: Point) {
     cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
     // Ring lettering and the text size picked in Settings; plain at the usual size is the caption as it always was.
     const cs = captionStyle(setting("point.lettering"), setting("display.textSize"));
-    cap.style.font = cs.font; cap.style.maxWidth = `${cs.maxWidth}px`;
     const box = p.clip ?? { x: 0, y: 0, w: innerWidth, h: innerHeight };   // the words stay inside the window too
-    cap.style.left = `${Math.max(box.x + 8, Math.min(box.x + box.w - cs.reserveW, side > 0 ? cx + rx + 12 : cx - rx - 12 - cs.maxWidth))}px`;
-    cap.style.top = `${Math.max(box.y + 8, Math.min(box.y + box.h - cs.reserveH, cy - 18))}px`;
+    const spot = captionPlace(cs, box, { cx, cy, rx }, side);
+    cap.style.font = cs.font; cap.style.maxWidth = `${spot.maxWidth}px`;
+    cap.style.left = `${spot.left}px`;
+    cap.style.top = `${spot.top}px`;
     cap.classList.add("on");
   };
   if (reduced) { land(); return; }

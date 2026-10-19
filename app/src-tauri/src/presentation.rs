@@ -156,6 +156,17 @@ mod tests {
         assert!(is_call_app_in(&kept, "com.example.app19") && !is_call_app_in(&kept, "com.example.app20"));
         for odd in [json!(null), json!("us.zoom.xos"), json!([1, 2]), json!(["a\nb"])] { assert_eq!(call_apps_from(&odd), usual, "{odd}"); }
         assert!(call_apps_from(&json!([])).is_empty(), "every one turned off: nothing counts as a call");
+        // Only app ids are kept (rule 7): a sentence, a path or anything else that is not an id is refused by the setting's
+        // own rules, so it is never stored or compared, and the list in force is the built in seven.
+        for not_an_id in ["Zoom me when my boss calls", "com.example..calls", ".com.example", "com/example/calls", "com.example.calls?"] {
+            assert_eq!(call_apps_from(&json!(["us.zoom.xos", not_an_id])), usual, "{not_an_id}");
+        }
+        assert_eq!(call_apps_from(&json!(["Cisco-Systems.Spark", "com.example_one.calls"])), vec!["Cisco-Systems.Spark".to_string(), "com.example_one.calls".to_string()]);
+        assert!(crate::settings::registry().get("calls.apps").is_some_and(|d| d.item_shape == "appId"), "the setting keeps app ids only");
+        // A list's item shape must be one the rules know (the same check as settings.ts).
+        let reg = |shape: &str| crate::settings::check_registry(&crate::settings::parse_registry(&format!(r#"{{ "version": 1, "sections": ["sharing"], "settings": [{{ "key": "calls.test", "section": "sharing", "kind": "list", "default": [], "maxItems": 3, "item": {{ "maxLength": 20, "shape": "{shape}" }}, "scope": "app", "applies": ["shell"], "store": "settings", "live": true }}] }}"#)).unwrap());
+        assert_eq!(reg("appId"), Vec::<String>::new());
+        assert!(!reg("email").is_empty(), "an unknown shape is caught");
         // Only the id of the app in front is compared: quiet() in main.rs gives it the list from the setting.
         let main = include_str!("main.rs");
         let q = &main[main.find("fn quiet() -> bool").unwrap()..];

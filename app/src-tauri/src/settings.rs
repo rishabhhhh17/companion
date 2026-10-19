@@ -58,6 +58,9 @@ pub struct Def {
     pub key: String, pub section: String, pub kind: Kind, pub default: Value,
     pub options: Vec<String>, pub min: f64, pub max: f64, pub step: f64, pub unit: String,
     pub max_length: usize, pub max_items: usize, pub item_max_length: usize, pub allowed_items: Option<Vec<String>>,
+    /// A list's items must also have this shape: empty for any one line, or "appId" (an app's bundle id, as stored for
+    /// Apps that count as a call: ids only, never anything else, rule 7).
+    pub item_shape: String,
     pub project: bool, pub applies: Vec<String>, pub store: String, pub live: bool, pub protective: bool,
     pub floor: Option<String>, pub renamed_from: Vec<String>, pub from_page: Option<(String, String)>,
 }
@@ -102,6 +105,7 @@ pub fn parse_registry(text: &str) -> Result<Registry, String> {
             key: key.clone(), section: s("section"), kind, default: d.get("default").cloned().unwrap_or(Value::Null),
             options: strs(d.get("options")), min: n("min"), max: n("max"), step: n("step"), unit: s("unit"),
             max_length: u("maxLength"), max_items: u("maxItems"), item_max_length: d.get("item").and_then(|i| i.get("maxLength")).and_then(Value::as_u64).unwrap_or(0) as usize,
+            item_shape: d.get("item").and_then(|i| i.get("shape")).map(|x| x.as_str().unwrap_or("?").to_string()).unwrap_or_default(),
             allowed_items: d.get("allowedItems").map(|a| strs(Some(a))),
             project: scope == "project", applies: strs(d.get("applies")), store: s("store"), live: d.get("live").and_then(Value::as_bool).unwrap_or(false),
             protective: d.get("protective").and_then(Value::as_bool).unwrap_or(false), floor: d.get("floor").and_then(Value::as_str).map(str::to_string),
@@ -149,6 +153,7 @@ pub fn check_registry(r: &Registry) -> Vec<String> {
                 Some(a) => { let mut u = std::collections::BTreeSet::new(); if a.is_empty() || !a.iter().all(|x| u.insert(x.clone())) { bad("allowedItems must be different words"); } }
                 None => if d.item_max_length == 0 { bad("a list needs item.maxLength or allowedItems"); },
             }
+            if !ITEM_SHAPES.contains(&d.item_shape.as_str()) { bad("item.shape must be one the rules know (appId)"); }
         }
         if let Some((name, map)) = &d.from_page {
             if name.is_empty() || !MAPS.contains(&map.as_str()) { bad("its migration names a map that does not exist"); }
@@ -183,6 +188,13 @@ pub fn snap(v: f64, min: f64, step: f64, max: f64) -> Value {
     let n = (half((min + half((v - min) / step) * step) * 1e10) / 1e10).min(max);
     if n.fract() == 0.0 && n.abs() < 9.0e15 { json!(n as i64) } else { json!(n) }
 }
+/// The item shapes a list may ask for (none, or an app's bundle id).
+const ITEM_SHAPES: [&str; 2] = ["", "appId"];
+/// An app's bundle id as macOS gives them: letters, digits, dots, dashes and underscores, up to 200 characters, never
+/// starting with a dot or holding two dots in a row. The same rule as settings.ts `appIdOk`.
+pub fn app_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 200 && !id.starts_with('.') && !id.contains("..") && id.chars().all(|c| c.is_ascii_alphanumeric() || ".-_".contains(c))
+}
 fn one_line(v: &Value, max: usize) -> Result<String, &'static str> {
     let Some(s) = v.as_str() else { return Err("notText") };
     if s.chars().any(|c| { let n = c as u32; n <= 0x1f || (0x7f..=0x9f).contains(&n) || n == 0x2028 || n == 0x2029 }) { return Err("notOneLine"); }
@@ -212,7 +224,12 @@ pub fn validate(d: &Def, v: &Value) -> Result<Value, &'static str> {
             for item in items {
                 let one = match &d.allowed_items {
                     Some(allowed) => { let Some(s) = item.as_str() else { return Err("notText") }; if !allowed.iter().any(|a| a == s) { return Err("notAllowed"); } s.to_string() }
-                    None => { let s = one_line(item, d.item_max_length)?; if s.is_empty() { return Err("empty"); } s }
+                    None => {
+                        let s = one_line(item, d.item_max_length)?;
+                        if s.is_empty() { return Err("empty"); }
+                        if d.item_shape == "appId" && !app_id_ok(&s) { return Err("notAppId"); }
+                        s
+                    }
                 };
                 if out.contains(&one) { return Err("duplicate"); }
                 out.push(one);

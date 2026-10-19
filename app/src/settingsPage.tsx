@@ -19,7 +19,7 @@ import { invoke, listen } from "./tauri.ts";
 import { defOf, validate, type Def } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, numberFrom, problemWords, rowModel, searchSettings, wordsOf, type FixedGroup } from "./settingsRows.ts";
-import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, type Answer, type AppRow } from "./appanswers.ts";
+import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, neverFrontOp, type Answer, type AppRow } from "./appanswers.ts";
 import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -369,6 +369,7 @@ function AppAnswers() {
   const [names, setNames] = useState<Record<string, string>>({});
   const [asking, setAsking] = useState<{ row: AppRow; next: Answer | "forget" } | null>(null);
   const [askAll, setAskAll] = useState(false);
+  const [askFront, setAskFront] = useState<{ id: string; name: string } | null>(null);
   const [problem, setProblem] = useState("");
   const [note, setNote] = useState("");
   const baseId = useId(), allId = useId(), frontId = useId();
@@ -386,6 +387,13 @@ function AppAnswers() {
     done(changeSetting("ph.appAnswers", answerOp(r.id, next, false)));
   };
   const yes = () => { const a = asking; setAsking(null); if (a) done(changeSetting("ph.appAnswers", answerOp(a.row.id, a.next, true))); };
+  // Add the app in front to never read: name the app first (only its id and name are read), then change only that one.
+  const front = () => {
+    setProblem(""); setNote("");
+    void invoke("front_app").then((x) => { const f = x as { id: string; name: string }; setAskFront({ id: f.id, name: f.name || f.id }); })
+      .catch((e) => setProblem(problemWords(String(e))));
+  };
+  const frontYes = () => { const f = askFront; setAskFront(null); if (f) done(changeSetting("ph.appAnswers", neverFrontOp(f.id)), S.appAnswers.neverFrontDone(f.name)); };
   const options = (["always", "ask", "never"] as const).map((id) => ({ id, label: S.appAnswers.choices[id] }));
   const forgettable = forgetAllCount(rows);
   return (<div>
@@ -406,9 +414,15 @@ function AppAnswers() {
       </div>
     ))}
     <div className="row">
-      <button id={frontId} className="btn" type="button" onClick={() => done(changeSetting("ph.appAnswers", { op: "neverFront" }), S.appAnswers.neverFrontDone)}>{S.appAnswers.neverFront}</button>
+      {!askFront && <button id={frontId} className="btn" type="button" onClick={front}>{S.appAnswers.neverFront}</button>}
       {forgettable > 0 && !askAll && <button id={allId} className="btn" type="button" onClick={() => setAskAll(true)}>{S.appAnswers.forgetAll}</button>}
     </div>
+    {askFront && (
+      <ConfirmStep className="line" label={S.appAnswers.neverFrontSure(askFront.name)} back={frontId} onCancel={() => setAskFront(null)}>
+        <div className="line">{S.appAnswers.neverFrontSure(askFront.name)}</div>
+        <div className="row"><button className="btn" type="button" onClick={frontYes}>{S.appAnswers.neverFrontYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskFront(null)}>{S.planCancel}</button></div>
+      </ConfirmStep>
+    )}
     {askAll && (
       <ConfirmStep className="line" label={S.appAnswers.forgetAll} back={allId} onCancel={() => setAskAll(false)}>
         <div className="line">{S.appAnswers.forgetAllSure(forgettable)}</div>

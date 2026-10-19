@@ -40,9 +40,9 @@ export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), 
 
 // ---- Also say out loud (speak.alsoSay in Settings; nothing more unless chosen) ----
 /** The extra short lines Speak to me may say: when something needs the person (a question to answer, the loop card, a
- *  pause, a plan) and when a task ends, with what its proof really says (never passed for a check that was skipped).
- *  Fixed words only, never anything from the task or the question, so nothing secret looking is ever in them; the Mac
- *  side still refuses anything that looks secret and stays quiet during calls. Each has its own key, said once. */
+ *  pause, a plan) and when a task ends (taskEndLines). Fixed words only, never anything from the task or the question, so
+ *  nothing secret looking is ever in them; the Mac side still refuses anything that looks secret and stays quiet during
+ *  calls. Each has its own key, said once. */
 export function alsoSayLines(m: Model, project: string, items: readonly string[]): { key: string; text: string }[] {
   const out: { key: string; text: string }[] = [];
   const n = S.alsoSay.needsYou;
@@ -53,10 +53,30 @@ export function alsoSayLines(m: Model, project: string, items: readonly string[]
     else if (m.paused) out.push({ key: `needs:paused:${m.paused.reason}`, text: n.paused });
     else if (m.plan) out.push({ key: `needs:plan:${m.plan.agent}:${m.plan.steps.length}`, text: n.plan });
   }
-  if (items.includes("taskDone") && m.receipt?.checkpoint) {
-    const d = S.alsoSay.taskDone, p = m.receipt.proof;
-    out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: p === "passed" ? d.passed : p === "passed_with_gaps" ? d.gaps : p === "failed" ? d.failed : d.none });
+  if (items.includes("taskDone")) out.push(...taskEndLines(m, project));
+  return out;
+}
+
+/** When a task ends, said only once it has really ended: the agent's state that follows the receipt (agent.ts) says how.
+ *  Done: what the proof really says (passed, some checks skipped, or not checked; never passed for a skipped check).
+ *  Error: a failed check, or stopped before it was finished (the turns or the spending ran out); never "done" (rule 14).
+ *  Stopped by the person (Stop, Stop everything), or after Stop everything, which forgets every agent's state: nothing.
+ *  A Drive plan is one task to the person: its steps say nothing, and the plan says one line when it ends, unless it was
+ *  stopped. A task asked for after the plan is its own task again. */
+function taskEndLines(m: Model, project: string): { key: string; text: string }[] {
+  const d = S.alsoSay.taskDone;
+  const out: { key: string; text: string }[] = [];
+  const f = m.drive?.finished;
+  if (f && f.status !== "interrupted") {
+    out.push({ key: `plan:${project}:${m.planCheckpoints.at(-1) ?? "none"}:${f.status}:${f.completed}/${f.total}`, text: f.status === "done" ? d.planDone : d.planStopped });
   }
+  const r = m.receipt;
+  if (!r?.checkpoint || !m.task || m.planCheckpoints.includes(r.checkpoint)) return out;
+  const state = m.agents[m.task.agent];
+  const p = r.proof;
+  const text = state === "done" ? (p === "passed" ? d.passed : p === "partial" ? d.gaps : p === "failed" ? d.failed : d.none)
+    : state === "error" ? (p === "failed" ? d.failed : d.stopped) : null;
+  if (text) out.push({ key: `receipt:${project}:${r.checkpoint}`, text });
   return out;
 }
 

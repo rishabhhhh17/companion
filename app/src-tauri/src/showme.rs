@@ -272,6 +272,25 @@ mod tests {
             assert!(body(f).contains("setting_now(\"point.guesses\")"), "{f}");
         }
     }
+    #[test]
+    fn words_only_and_the_ring_come_from_one_look_at_the_window() {
+        // The window under the target is looked up once, and both the words only choice and the ring use that one reading,
+        // so a window that comes or goes in between can never bring a soft ring back under Words only.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        for f in ["fn showme_aim(", "fn point_problem("] {
+            let b = body(f);
+            assert_eq!(b.matches("anchor_for(").count(), 1, "{f}: the window under the target is looked up once");
+            assert!(b.contains("said_in_words(") && b.contains("under.is_some()"), "{f}: words only reads that one look");
+            assert!(b.contains("draw_pointer_with(") && b.contains(", under)"), "{f}: and the ring is drawn from it");
+        }
+        let draw = body("fn draw_pointer_with(");
+        assert!(!draw.contains("anchor_for("), "the ring never looks again");
+        assert!(draw.contains("anchor::watched_for(under, front_pid())"));
+        assert!(!main.contains("fn draw_pointer("), "one way to draw a ring");
+        // With no window confirmed under the target, Words only draws nothing, however sure the reading was.
+        for exact in [true, false] { assert!(said_in_words(exact, false, &serde_json::json!("wordsOnly"))); }
+    }
     use crate::snap::How;
     use std::cell::RefCell;
 

@@ -23,6 +23,11 @@ pub fn timing(v: &Value) -> Timing {
     match shown_ms(v) { Some(ms) => Timing { hide_after_ms: Some(ms + 1000), busy_ms: ms + 1500 }, None => Timing { hide_after_ms: None, busy_ms: u64::MAX } }
 }
 
+/// Whether what is on the overlay keeps the character beside a window (main.rs roam_tick): a ring or a timed picture does,
+/// for its own time (at most 31.5 seconds for a picture); a picture kept until closed has no time, so it does not, and the
+/// character goes home as it would with nothing up.
+pub fn holds_a_visit(overlay_busy: bool, kept_until_closed: bool) -> bool { overlay_busy && !kept_until_closed }
+
 pub fn validate(d: &Value) -> Result<(), String> {
     let o = d.as_object().ok_or("not a diagram")?;
     let nodes = o.get("nodes").and_then(Value::as_array).ok_or("no boxes")?;
@@ -68,6 +73,18 @@ mod tests {
         let overlay = include_str!("../../src/overlay.ts");
         let draw = &overlay[overlay.find("function drawDiagram(").unwrap()..overlay.find("void listen(\"overlay-diagram\"").unwrap()];
         assert!(!draw.contains("15_000") && draw.contains("if (ms !== null) timer = setTimeout("), "the page fades it after the time it is sent");
+    }
+    #[test]
+    fn a_picture_kept_until_closed_never_keeps_the_character_beside_a_window() {
+        // The character goes home once nothing about the window it visits is up (roam.rs). A ring and a timed picture keep
+        // it there for their own time, as today; a picture kept until closed has no time, so it does not keep it at all.
+        assert!(holds_a_visit(true, false), "a ring or a timed picture");
+        assert!(!holds_a_visit(true, true), "a picture kept until closed");
+        assert!(!holds_a_visit(false, false) && !holds_a_visit(false, true), "nothing on the overlay");
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn roam_tick(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("let up = diagram::holds_a_visit(overlay_busy(), DIAGRAM_KEPT.load(SeqCst)) ||"), "roam_tick asks the rule");
     }
     use serde_json::json;
     fn good() -> Value {

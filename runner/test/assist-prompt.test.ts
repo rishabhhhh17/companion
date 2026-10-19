@@ -1,10 +1,10 @@
 // The Prompt help service end to end, with a stand in for Claude: what is sent, what comes back, and what is checked.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AssistService, ImageStore, type FastLike } from "../src/lanes.ts";
-import { StreamRestorer } from "../src/prompthelp.ts";
+import { buildContext, StreamRestorer } from "../src/prompthelp.ts";
 import type { Event } from "../../protocol/index.ts";
 import { RunnerSettings } from "../src/settings.ts";
 
@@ -196,6 +196,28 @@ describe("Prompt help settings", () => {
     expect(copy.done().handback).toBe("copy");
     const term = withSettings({ "ph.handBack": "paste" }); await term.ask({ app: "com.apple.Terminal", target: "other" });
     expect(term.done().handback).toBe("copy");
+  });
+  test("the help line says exactly what project info may be sent, and nothing else from a file is", () => {
+    const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-ph-")));
+    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "studio-site", description: "a private description", scripts: { dev: "vite --open-the-door" }, dependencies: { react: "19.1.0" } }));
+    mkdirSync(join(d, "src"));
+    writeFileSync(join(d, "src", "app.ts"), "const insideTheCode = 1;");
+    mkdirSync(join(d, ".companion"));
+    writeFileSync(join(d, ".companion", "rules.txt"), "Use British spelling\n");
+    const ctx = buildContext(d)!;
+    for (const sent of ["studio-site", "dev", "react", "src", "Use British spelling"]) expect(ctx).toContain(sent);
+    for (const kept of ["vite --open-the-door", "a private description", "insideTheCode", "19.1.0"]) expect(ctx).not.toContain(kept);
+    // Every kind of line buildContext can send is named in the help line the person reads, and the help line makes no
+    // promise the code does not keep.
+    const named: Record<string, string> = { "Project name": "its name", Scripts: "script", "Built with": "package names", "Top level": "top level", "House rules": "house rules" };
+    const code = readFileSync(new URL("../src/prompthelp.ts", import.meta.url), "utf8");
+    const body = code.slice(code.indexOf("export function buildContext("), code.indexOf("// Shows streamed text"));
+    expect([...body.matchAll(/lines\.push\(`([A-Z][a-z ]+):/g)].map((x) => x[1]).sort()).toEqual(Object.keys(named).sort());
+    const strings = readFileSync(new URL("../../app/src/strings.ts", import.meta.url), "utf8");
+    const help = /"ph\.useProjectInfo": \{ label: "[^"]+", help: "([^"]+)"/.exec(strings)![1];
+    for (const line of ctx.split("\n")) { const label = line.slice(0, line.indexOf(":")); expect(named[label], label).toBeDefined(); expect(help).toContain(named[label]); }
+    expect(help).toContain("Nothing else from your files is sent.");
+    expect(help).not.toContain("never sends what is inside your files");
   });
   test("a value the rules refuse is the usual one", async () => {
     const odd = withSettings({ "ph.handBack": "clipboard", "ph.useProjectInfo": "no" });

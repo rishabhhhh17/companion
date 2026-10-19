@@ -650,7 +650,8 @@ fn roam_kick(app: &AppHandle) {
 /// starts (one held back by the pointer or a drag starts as soon as they are gone).
 fn roam_tick(app: &AppHandle, wins: &[fullscreen::Win], front_pid: i32) {
     use std::sync::atomic::Ordering::SeqCst;
-    let up = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || card_visible();
+    // A Draw it for me picture kept until it is closed is not a pointer at that window: it never keeps the character there.
+    let up = diagram::holds_a_visit(overlay_busy(), DIAGRAM_KEPT.load(SeqCst)) || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || card_visible();
     let hidden = HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst);
     let on = with_prefs(|p| p.come_to);
     let ended = roamer().tick(&roam::TickIn { now: now() as u64, on, hidden, up, wins, ours: std::process::id() as i32, front_pid });
@@ -1335,11 +1336,13 @@ fn anchor_for(target: coords::R) -> Option<anchor::Anchor> {
 struct Look { mark: Option<&'static str>, fly_ms: Option<u64>, fade_ms: Option<u64>, from: Option<coords::Pt> }
 
 /// Draws the arrow flying from the character to `rect` (global top-left points) on display `d`, then the ring and caption.
-/// The ring is clipped to the window under it. What it belongs to (that window, or with none the app in front) is handed
-/// back so the caller can watch it (`your_turn` for a ring that waits for a click, `watch_ring` for one that does not),
-/// with how long a ring that does not wait stays (How long a ring stays, point.ringSeconds).
-fn draw_pointer(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool) -> (anchor::Watched, u64) { draw_pointer_with(app, d, rect, caption, exact, hold, Look::default()) }
-fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look) -> (anchor::Watched, u64) {
+/// The ring is clipped to `under`, the window under the target, which the caller looked up once (`anchor_for`) and also
+/// used to decide whether a guess is said in words only (point.guesses), so the two can never disagree. What it belongs
+/// to (that window, or with none the app in front) is handed back so the caller can watch it (`your_turn` for a ring that
+/// waits for a click, `watch_ring` for one that does not), with how long a ring that does not wait stays (How long a ring
+/// stays, point.ringSeconds).
+#[allow(clippy::too_many_arguments)]
+fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look, under: Option<anchor::Anchor>) -> (anchor::Watched, u64) {
     // The overlay takes a ring that does not wait away this long after this order (the flight included; it is sent the
     // same number); the watch and this busy time last half a second longer, so confetti never plays over it and no part
     // of it goes unwatched.
@@ -1348,7 +1351,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);   // a ring is never replaced by a new picture
     let a = app.clone();
     let caption2 = caption.to_string();
-    let watched = anchor::watched_for(anchor_for(rect), front_pid());
+    let watched = anchor::watched_for(under, front_pid());
     // Rule 22: a solid ring only where the window it sits in is confirmed. Over a menu, a dialog or anything that is not
     // an ordinary window the ring is soft and says it is a guess.
     let exact = showme::solid(exact, watched.window().is_some());
@@ -1429,7 +1432,8 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     // When Companion is only guessing (point.guesses), words only: nothing is drawn, the page says where to look. What was
     // seen is kept for the steps after this one (as a step said in words below the confidence line), and an earlier step's
     // ring goes. A confirmed target is drawn either way, and a guess is never drawn solid.
-    if showme::said_in_words(s.exact, anchor_for(s.rect).is_some(), &setting_now("point.guesses")) {
+    let under = anchor_for(s.rect);   // looked up once: the words only choice and the ring both read this
+    if showme::said_in_words(s.exact, under.is_some(), &setting_now("point.guesses")) {
         log("showme_guess_in_words", json!({ "step": step, "of": of }));
         turn_cancel(); hide_overlay(&app);
         return json!({ "ok": false, "why": "guess" });
@@ -1437,7 +1441,7 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     if !last { showme_pending().pointed(&req, s.rect.center()); }
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact, "step": step, "of": of, "screen": screen.unwrap_or(1) }));
     let look = Look { mark: showme::mark_name(mark.as_deref()), fly_ms, fade_ms, from: if step.unwrap_or(1) > 1 { from } else { None } };
-    let (watched, ring) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look);
+    let (watched, ring) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under);
     // The ring goes away the moment its window changes (or, with no window under it, another app comes to the front): the
     // last step's while it waits for the click, the others while they are up.
     if hold { your_turn(&app, display, s.rect, &target_text); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
@@ -2077,15 +2081,17 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         log("point_found", json!({ "kind": kind, "found": found.is_some(), "exact": found.map(|f| f.exact) }));
         let what = match kind { "line" => "the line", "button" => "that button", _ => "that error" };
         let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
+        // The window under what was found, looked up once: the words only choice and the ring both read this.
+        let under = found.and_then(|f| anchor_for(f.rect));
         match (found, display) {
             // Only guessing where it is, and the person asked for words then (point.guesses): no ring at all.
-            (Some(f), Some(_)) if showme::said_in_words(f.exact, anchor_for(f.rect).is_some(), &setting_now("point.guesses")) => {
+            (Some(f), Some(_)) if showme::said_in_words(f.exact, under.is_some(), &setting_now("point.guesses")) => {
                 log("point_guess_in_words", json!({ "kind": kind }));
                 say_showme(&app, "opened", &format!("{lead}I am only guessing where {what} is on your screen, so I did not draw a ring. {cap}"), json!({}));
             }
             (Some(f), Some(d)) => {
                 let button = kind == "button";
-                let (watched, ring) = draw_pointer(&app, d, f.rect, &cap, f.exact, button);
+                let (watched, ring) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under);
                 say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
                 if button { your_turn(&app, d, f.rect, &label); } else { watch_ring(&app, f.rect, watched, ring, None); }
             }
@@ -2321,10 +2327,12 @@ fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
 
 // ---------- Hold to talk ----------
 
-enum VoiceMsg { Down(u64), Up(u64), Cancel }
+/// Hidden: Companion was just hidden (a full screen app came forward, or Hide from the menu bar). It only wakes the worker,
+/// which then closes an open microphone at once instead of at its next one second check.
+enum VoiceMsg { Down(u64), Up(u64), Cancel, Hidden }
 const LISTENING: &str = "Listening. Let go of the keys when you are done.";
 /// Hold to talk is listening: from just before the light comes on until the microphone is closed (let go, Stop everything,
-/// the minute running out, or a microphone that would not start). Nothing is said meanwhile (`speak`).
+/// the cap running out, Companion being hidden, or a microphone that would not start). Nothing is said meanwhile (`speak`).
 static LISTENING_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 fn listening_now() -> bool { LISTENING_NOW.load(std::sync::atomic::Ordering::SeqCst) }
 fn listening(on: bool) { LISTENING_NOW.store(on, std::sync::atomic::Ordering::SeqCst); }
@@ -2346,6 +2354,14 @@ fn voice_send(app: &AppHandle, m: VoiceMsg) {
     }
     if let Some(tx) = g.as_ref() { let _ = tx.send(m); }
 }
+/// Companion is hidden: a full screen app is in front, or the person hid it from the menu bar. The light (the character)
+/// cannot be seen, so the microphone is never open (rule 5).
+fn companion_hidden() -> bool { HIDDEN_BY_US.load(Ordering::SeqCst) || USER_HID.load(Ordering::SeqCst) }
+/// Companion was just hidden: wake the hold to talk worker if it is running, so a microphone that is open closes at once.
+/// A worker that was never started has nothing open, so none is started here.
+fn voice_tell_hidden() {
+    if let Some(tx) = VOICE_TX.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { let _ = tx.send(VoiceMsg::Hidden); }
+}
 
 /// One thread handles the key going down and up in order, so the microphone can never be left open or opened late.
 fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
@@ -2365,13 +2381,16 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
         if speech.is_some() && hold.phase == voice::Phase::Idle && last_used.elapsed() > Duration::from_secs(300) { speech = None; }
-        // The microphone is closed by force at its cap (a minute unless changed, Longest hold to talk), whatever the key is doing.
-        if hold.too_long(now() as u64) {
+        // The microphone is closed by force, whatever the keys are doing, the moment Companion is hidden (the light can no
+        // longer be seen) and at its cap (a minute unless changed, Longest hold to talk). What was heard is dropped.
+        if let Some(why) = hold.must_close(now() as u64, companion_hidden()) {
             if let Some(r) = rec.take() { let _ = r.finish(); }
             listening(false);
             let cap = hold.cap();
             hold.cancel();
-            say_voice(&app, "error", &voice::stopped_words(cap), json!({}));
+            let words = match why { voice::Close::Hidden => voice::HIDDEN_WORDS.to_string(), voice::Close::Cap => voice::stopped_words(cap) };
+            log("voice_closed", json!({ "why": format!("{why:?}") }));
+            say_voice(&app, "error", &words, json!({}));
         }
         match msg {
             Ok(VoiceMsg::Down(t)) => {
@@ -2386,9 +2405,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                     voice_mac::Mic::Allowed => {}
                 }
                 // The light is the dock character (and the card). If the person cannot see it (a full screen app is in front, or they hid it) nothing is recorded (rule 5).
-                if HIDDEN_BY_US.load(std::sync::atomic::Ordering::SeqCst) || USER_HID.load(std::sync::atomic::Ordering::SeqCst) {
+                if companion_hidden() {
                     hold.cancel();
-                    say_voice(&app, "error", "Companion is hidden right now, so I cannot show you that I am listening, and I will not record without that. Show Companion from the menu bar icon, then hold the keys again.", json!({}));
+                    say_voice(&app, "error", voice::HIDDEN_WORDS, json!({}));
                     continue;
                 }
                 // From here nothing is said, and a line that began after the keys went down is cut off before the microphone opens.
@@ -2396,6 +2415,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 speech_off(&app);
                 say_voice(&app, "listening", LISTENING, json!({}));
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
+                // Hidden meanwhile: the light is gone again, so the microphone never opens.
+                if companion_hidden() { hold.cancel(); listening(false); say_voice(&app, "error", voice::HIDDEN_WORDS, json!({})); continue; }
                 // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
@@ -2463,7 +2484,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 }
             }
             Ok(VoiceMsg::Cancel) => { if let Some(r) = rec.take() { let _ = r.finish(); } listening(false); if hold.cancel() { say_voice(&app, "idle", "", json!({})); } }
-            Err(_) => {}
+            // Already closed by the check at the top of the loop.
+            Ok(VoiceMsg::Hidden) | Err(_) => {}
         }
     }
 }
@@ -2505,6 +2527,7 @@ fn tick(app: &AppHandle) {
         with_panels(|d, c| { d.orderOut(None); c.orderOut(None); });
         island_show(false);
         home_closed();
+        voice_tell_hidden();
         log("hidden_for_full_screen", json!({}));
     } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
         with_panels(|d, _| d.orderFrontRegardless());
@@ -2759,7 +2782,7 @@ fn main() {
                         USER_HID.store(hide, Ordering::SeqCst);
                         with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
                         island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
-                        if hide { home_closed(); }
+                        if hide { home_closed(); voice_tell_hidden(); }
                         log("menu_hide", json!({ "hidden": hide }));
                     }); }
                     "stop" => {

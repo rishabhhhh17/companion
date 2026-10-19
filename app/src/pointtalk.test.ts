@@ -4,14 +4,14 @@
 // pages, so it runs without a screen.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { captionStyle, flightMs, GUESS_LOOK, guessWords, notSureWords, paceFactor, RING_MS, ringLook, ringMsOf } from "./pointer.ts";
+import { captionPlace, captionStyle, flightMs, GUESS_LOOK, guessWords, notSureWords, paceFactor, RING_MS, ringLook, ringMsOf } from "./pointer.ts";
 import { afterMs, AFTER_MS, leadMs, LEAD_MS, lineMs, planSteps, play, startTimes, type Target } from "./sequence.ts";
 import { alsoSayLines, lineFor } from "./speech.ts";
-import { initial, type Model } from "./model.ts";
-import { appAnswersFrom, answerOp, forgetAllCount, needsConfirm } from "./appanswers.ts";
+import { initial, reduce, type Model } from "./model.ts";
+import { appAnswersFrom, answerOp, forgetAllCount, needsConfirm, neverFrontOp } from "./appanswers.ts";
 import { addCallApp, BUILT_IN_CALL_APPS, callAppRows, MAX_ADDED_CALL_APPS, toggleCallApp } from "./callapps.ts";
-import { defOf } from "../../protocol/settings.ts";
-import { rowModel, valueWords } from "./settingsRows.ts";
+import { checkRegistry, defOf, validateKey } from "../../protocol/settings.ts";
+import { problemWords, rowModel, valueWords } from "./settingsRows.ts";
 import { S } from "./strings.ts";
 
 const src = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
@@ -40,11 +40,14 @@ describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () =
   test("the usual colour is today's orange ring, and a guess keeps its dashed look in every colour", () => {
     expect(ringLook("orange", true)).toEqual({ stroke: "#ff9a2e", width: 4, dash: "", halo: null });
     expect(GUESS_LOOK).toEqual({ stroke: "#ffb020", width: 3, dash: "8 6", halo: null });
-    for (const c of ["orange", "yellow", "blue", "highContrast", "pink", undefined]) expect(ringLook(c, false), String(c)).toEqual(GUESS_LOOK);
+    for (const c of ["orange", "red", "yellow", "blue", "highContrast", "pink", undefined]) expect(ringLook(c, false), String(c)).toEqual(GUESS_LOOK);
+    // The area's colours, red among them; the usual one stays today's orange (the founder is asked about red as the usual).
+    expect(defOf("point.colour")!.options).toEqual(["orange", "red", "yellow", "blue", "highContrast"]);
+    expect(defOf("point.colour")!.default).toBe("orange");
   });
   test("every other colour is solid, different from the guess and from the green of a correct click", () => {
-    const solid = ["orange", "yellow", "blue", "highContrast"].map((c) => ringLook(c, true));
-    expect(new Set(solid.map((l) => l.stroke)).size).toBe(4);
+    const solid = ["orange", "red", "yellow", "blue", "highContrast"].map((c) => ringLook(c, true));
+    expect(new Set(solid.map((l) => l.stroke)).size).toBe(5);
     for (const l of solid) {
       expect(l.dash).toBe("");
       expect(l.stroke).not.toBe(GUESS_LOOK.stroke);
@@ -65,6 +68,36 @@ describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () =
       expect(sizes[i].reserveW).toBe(sizes[i].maxWidth + 20);   // the words still stay inside the window
       expect(sizes[i].reserveH).toBeGreaterThan(sizes[i - 1].reserveH);
     }
+  });
+  test("the caption stays inside the window it belongs to at every text size and lettering, and is today's in a wide one", () => {
+    // Today, in a window wide enough: the same place and width as before (300 points, kept 320 from the right edge).
+    const usual = captionStyle("plain", "standard");
+    const wide = { x: 100, y: 50, w: 1200, h: 800 };
+    expect(captionPlace(usual, wide, { cx: 400, cy: 300, rx: 40 }, 1)).toEqual({ left: 452, top: 282, maxWidth: 300 });
+    expect(captionPlace(usual, wide, { cx: 1250, cy: 300, rx: 40 }, -1)).toEqual({ left: 898, top: 282, maxWidth: 300 });
+    for (const lettering of ["plain", "handwritten"]) {
+      for (const size of ["standard", "large", "larger", "largest"]) {
+        const cs = captionStyle(lettering, size);
+        for (const w of [160, 200, 260, 320, 400, 480, 1200]) {
+          const box = { x: 500, y: 40, w, h: 600 };
+          for (const cx of [box.x + 10, box.x + w / 2, box.x + w - 10]) {
+            for (const side of [1, -1] as const) {
+              const at = captionPlace(cs, box, { cx, cy: 300, rx: 30 }, side);
+              const where = `${lettering} ${size} w=${w} cx=${cx} side=${side}`;
+              expect(at.maxWidth, where).toBeLessThanOrEqual(cs.maxWidth);
+              expect(at.left, where).toBeGreaterThanOrEqual(box.x + 8);
+              // The room it keeps (its width and 20 points, as today) ends inside the window. A window under 158 points
+              // wide still gets a caption 120 points wide.
+              expect(at.left + at.maxWidth + 20, where).toBeLessThanOrEqual(box.x + box.w);
+              expect(at.top, where).toBeGreaterThanOrEqual(box.y + 8);
+            }
+          }
+        }
+      }
+    }
+    const show = src("./overlay.ts");
+    expect(show).toContain("captionPlace(cs, box, { cx, cy, rx }, side)");
+    expect(show).toContain("cap.style.maxWidth = `${spot.maxWidth}px`");
   });
   test("the overlay draws the ring, the arrow and the marks with the chosen look, and the caption with the chosen lettering", () => {
     const overlay = src("./overlay.ts");
@@ -175,15 +208,69 @@ describe("Also say out loud (speak.alsoSay)", () => {
     // Never the content of what needs you: only fixed words, so nothing secret looking can be said.
     for (const w of Object.values(S.alsoSay.needsYou)) expect(w).not.toMatch(/sk-|token|rm /);
   });
-  test("when a task ends: what the proof really says, never passed for a check that was skipped", () => {
-    const items = ["taskDone"];
-    const r = (proof?: string) => m({ receipt: { checkpoint: "cp_0003", proof, changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } });
-    expect(alsoSayLines(r("passed"), "/p", items)).toEqual([{ key: "receipt:/p:cp_0003", text: S.alsoSay.taskDone.passed }]);
-    expect(alsoSayLines(r("passed_with_gaps"), "/p", items)[0].text).toBe(S.alsoSay.taskDone.gaps);
-    expect(alsoSayLines(r("failed"), "/p", items)[0].text).toBe(S.alsoSay.taskDone.failed);
-    expect(alsoSayLines(r(undefined), "/p", items)[0].text).toBe(S.alsoSay.taskDone.none);
+  // The page's own model, fed the events agent.ts sends at the end of a task: the receipt, then the agent's state.
+  const ev = (type: string, o: Record<string, unknown> = {}) => ({ v: 1, id: `e${Math.random()}`, type, ...o }) as never;
+  const started = (cp = "cp_0003", agent = "a1") => reduce(initial(), ev("checkpoint.created", { project: "/p", agent, checkpoint: cp, label: "Before: fix it", files: 1, skipped: [] }));
+  const receipt = (proof: string, cp = "cp_0003", agent = "a1", extra: Record<string, unknown> = {}) => ev("receipt", { agent, checkpoint: cp, changed: [], commands: 0, notUndoable: [], proof, usdEstimate: 0, ...extra });
+  const state = (s: string, agent = "a1") => ev("agent.state", { agent, state: s });
+  const say = (m: Model) => alsoSayLines(m, "/p", ["taskDone"]);
+  // Every proof a receipt can carry, read from the protocol itself, so a new one fails here until it has its words.
+  const proto = src("../../protocol/index.ts");
+  const proofs = [...(/"receipt":.*?oneOf\("proof", \[([^\]]*)\]\)/.exec(proto)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  test("when a task finished: what its proof really says, for every proof a receipt can carry, never passed for a skipped check", () => {
+    expect(proofs).toEqual(["passed", "partial", "failed", "skipped"]);
+    const words: Record<string, string> = { passed: S.alsoSay.taskDone.passed, partial: S.alsoSay.taskDone.gaps, failed: S.alsoSay.taskDone.failed, skipped: S.alsoSay.taskDone.none };
+    for (const p of proofs) {
+      expect(words[p], p).toBeDefined();
+      const m = reduce(reduce(started(), receipt(p)), state("done"));
+      expect(say(m), p).toEqual([{ key: "receipt:/p:cp_0003", text: words[p] }]);
+    }
     expect(S.alsoSay.taskDone.gaps).not.toMatch(/passed/i);
     expect(S.alsoSay.taskDone.none).not.toMatch(/passed|working/i);
+  });
+  test("nothing is said until the task has really ended, and nothing for a task that was stopped", () => {
+    const got = reduce(started(), receipt("passed"));
+    expect(say(got), "the receipt alone: the agent has not said how it ended").toEqual([]);
+    for (const p of proofs) expect(say(reduce(reduce(started(), receipt(p)), state("idle"))), `${p}: stopped`).toEqual([]);
+  });
+  test("after Stop everything nothing is said, not even for the stopped task's receipt", () => {
+    let m = reduce(started(), ev("app.stop_everything"));
+    expect(say(m)).toEqual([]);
+    m = reduce(m, receipt("skipped"));
+    expect(say(m)).toEqual([]);
+    m = reduce(m, state("idle"));
+    expect(say(m)).toEqual([]);
+    // A task that had already been said is not said again either: Stop everything clears what it was waiting on.
+    const done = reduce(reduce(started(), receipt("passed")), state("done"));
+    expect(say(reduce(done, ev("app.stop_everything")))).toEqual([]);
+  });
+  test("a task that stopped on an error is never called done", () => {
+    for (const p of ["skipped", "partial", "passed"]) {
+      const m = reduce(reduce(started(), receipt(p)), state("error"));
+      expect(say(m), p).toEqual([{ key: "receipt:/p:cp_0003", text: S.alsoSay.taskDone.stopped }]);
+    }
+    const failed = reduce(reduce(started(), receipt("failed")), state("error"));
+    expect(say(failed)).toEqual([{ key: "receipt:/p:cp_0003", text: S.alsoSay.taskDone.failed }]);
+    for (const w of [S.alsoSay.taskDone.stopped, S.alsoSay.taskDone.failed, S.alsoSay.taskDone.planStopped]) expect(w).not.toMatch(/\bdone\b|passed/i);
+  });
+  test("a plan is one task to the person: its steps say nothing, and the plan says one line when it ends", () => {
+    let m = reduce(initial(), ev("drive.step", { agent: "a1", index: 1, total: 2, title: "One", status: "started" }));
+    m = reduce(m, ev("checkpoint.created", { project: "/p", agent: "a1", checkpoint: "cp_0007", label: "Before: one", files: 1, skipped: [] }));
+    m = reduce(reduce(m, receipt("passed", "cp_0007", "a1", { inPlan: true })), state("done"));
+    expect(say(m), "a step").toEqual([]);
+    m = reduce(m, ev("drive.step", { agent: "a1", index: 1, total: 2, title: "One", status: "done" }));
+    expect(say(m)).toEqual([]);
+    const finished = reduce(m, ev("drive.done", { agent: "a1", status: "done", completed: 2, total: 2, usdEstimate: 0 }));
+    expect(say(finished).map((l) => l.text)).toEqual([S.alsoSay.taskDone.planDone]);
+    expect(S.alsoSay.taskDone.planDone).not.toMatch(/\bdone\b|passed|proven/i);
+    const short = reduce(m, ev("drive.done", { agent: "a1", status: "error_max_turns", completed: 1, total: 2, usdEstimate: 0 }));
+    expect(say(short).map((l) => l.text)).toEqual([S.alsoSay.taskDone.planStopped]);
+    expect(say(reduce(m, ev("drive.done", { agent: "a1", status: "interrupted", completed: 1, total: 2, usdEstimate: 0 })))).toEqual([]);
+    expect(say(reduce(finished, ev("app.stop_everything")))).toEqual([]);
+    // A task asked for after the plan is its own task again.
+    let next = reduce(finished, ev("checkpoint.created", { project: "/p", agent: "a1", checkpoint: "cp_0009", label: "Before: more", files: 1, skipped: [] }));
+    next = reduce(reduce(next, receipt("passed", "cp_0009")), state("done"));
+    expect(say(next).map((l) => l.text)).toContain(S.alsoSay.taskDone.passed);
   });
   test("only with Speak to me on, once per thing, never twice with Answer out loud, and the Mac side still refuses secrets and calls", () => {
     const card = src("./card.tsx");
@@ -227,7 +314,16 @@ describe("Apps Prompt help and the error explainer may read (ph.appAnswers)", ()
     const page = src("./settingsPage.tsx");
     const editor = page.slice(page.indexOf("function AppAnswers("), page.indexOf("// end AppAnswers"));
     expect(editor).toContain('changeSetting("ph.appAnswers", answerOp(');
-    expect(editor).toContain('changeSetting("ph.appAnswers", { op: "neverFront" })');
+    // Add the app in front to never read names the app first and changes only that one (the shell checks it is still in
+    // front), and the note names it.
+    expect(editor).toContain('invoke("front_app")');
+    expect(editor).toContain("S.appAnswers.neverFrontSure(");
+    expect(editor).toContain('changeSetting("ph.appAnswers", neverFrontOp(f.id)), S.appAnswers.neverFrontDone(f.name)');
+    expect(editor).not.toContain('{ op: "neverFront" }');
+    expect(neverFrontOp("com.notes.app")).toEqual({ op: "neverFront", app: "com.notes.app" });
+    expect(S.appAnswers.neverFrontDone("Notes")).toContain("Notes");
+    expect(S.appAnswers.neverFrontSure("Notes")).toContain("Notes");
+    expect(problemWords("frontChanged")).toBe(S.setProblem.frontChanged);
     expect(editor).toContain('changeSetting("ph.appAnswers", { op: "forgetAll" })');
     expect(editor).not.toContain("localStorage");
     expect(page).toContain('d.key === "ph.appAnswers" ? <AppAnswers />');
@@ -261,6 +357,17 @@ describe("Apps that count as a call (calls.apps)", () => {
     expect(rows.builtIn.every((r) => r.on)).toBe(true);
     expect(rows.added[0]).toEqual({ id: "com.example.app0", name: "First" });
     expect(rows.added).toHaveLength(MAX_ADDED_CALL_APPS);
+  });
+  test("only app ids are ever kept: anything else is refused by the setting's own rules, in plain words", () => {
+    expect(defOf("calls.apps")!.item).toEqual({ maxLength: 200, shape: "appId" });
+    expect(validateKey("calls.apps", ["us.zoom.xos", "Zoom me when my boss calls"])).toEqual({ ok: false, reason: "notAppId" });
+    expect(validateKey("calls.apps", ["Cisco-Systems.Spark", " com.example.calls "])).toEqual({ ok: true, value: ["Cisco-Systems.Spark", "com.example.calls"] });
+    expect(problemWords("notAppId")).toBe(S.setProblem.notAppId);
+    expect(S.setProblem.notAppId).toContain("Add the app in front");
+    // A list's item shape must be one the rules know (the same check as settings.rs).
+    const one = (shape: string) => checkRegistry({ version: 1, sections: ["sharing"], settings: [{ key: "calls.test", section: "sharing", kind: "list", default: [], maxItems: 3, item: { maxLength: 20, shape } as never, scope: "app", applies: ["shell"], store: "settings", live: true }] });
+    expect(one("appId")).toEqual([]);
+    expect(one("email").length).toBeGreaterThan(0);
   });
   test("its row says the usual value in words, and the page uses its own control and the shell's Add the app in front", () => {
     const d = defOf("calls.apps")!;

@@ -87,8 +87,9 @@ pub enum AppsOp {
     Forget { app: String, confirmed: bool },
     /// Forget every answer except the apps never to read (those are protections, each removed only on its own).
     ForgetAll,
-    /// Add the app in front to never read (the shell names it: only its bundle id is read, never its content).
-    NeverFront,
+    /// Add the app in front to never read. `app` is the id the page showed the person ("Never read Notes?"); the shell
+    /// changes it only while that app is still the one in front (only its bundle id is read, never its content).
+    NeverFront { app: String },
 }
 
 /// The page's value as an operation; anything else is refused with the same code as any other custom value.
@@ -102,15 +103,13 @@ pub fn apps_op(v: &Value) -> Result<AppsOp, &'static str> {
         }
         Some("forget") => Ok(AppsOp::Forget { app: app()?, confirmed }),
         Some("forgetAll") => Ok(AppsOp::ForgetAll),
-        Some("neverFront") => Ok(AppsOp::NeverFront),
+        Some("neverFront") => Ok(AppsOp::NeverFront { app: app()? }),
         _ => Err("custom"),
     }
 }
 
-/// An app's bundle id as macOS gives them: letters, digits, dots, dashes and underscores, up to 200 characters.
-fn app_id_ok(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 200 && !id.starts_with('.') && !id.contains("..") && id.chars().all(|c| c.is_ascii_alphanumeric() || ".-_".contains(c))
-}
+/// An app's bundle id as macOS gives them (the same rule as everywhere in Settings).
+fn app_id_ok(id: &str) -> bool { crate::settings::app_id_ok(id) }
 
 impl Consent {
     /// Applies one change from Settings. The built in never list can never be changed or forgotten; a never the person
@@ -137,8 +136,11 @@ impl Consent {
                 self.map.retain(|_, c| *c == Choice::Never);
                 Ok(before - self.map.len())
             }
-            AppsOp::NeverFront => {
+            AppsOp::NeverFront { app } => {
                 if front.is_empty() || front.starts_with("dev.companion") { return Err("ownApp"); }
+                // Another app came to the front after the page named one: nothing changes, so only the app the person was
+                // shown is ever added.
+                if !app.eq_ignore_ascii_case(front) { return Err("frontChanged"); }
                 if !app_id_ok(front) { return Err("notApp"); }
                 if built_in_never(front) { return Ok(0); }
                 self.record(front, Choice::Never);
@@ -457,13 +459,28 @@ mod tests {
         assert_eq!(c.to_json(), json!({ "apps": { "n.n": "never" } }));
     }
     #[test] fn the_app_in_front_can_be_added_to_never_read_but_never_companion_itself() {
+        let front = |app: &str| AppsOp::NeverFront { app: app.to_string() };
         let mut c = Consent::default();
         c.record("com.notes.app", Choice::Always);
-        c.change(&AppsOp::NeverFront, "com.notes.app").unwrap();
+        c.change(&front("com.notes.app"), "com.notes.app").unwrap();
         assert_eq!(c.decide("com.notes.app"), Decision::Refuse);
-        assert_eq!(c.change(&AppsOp::NeverFront, "dev.companion.app"), Err("ownApp"));
-        assert_eq!(c.change(&AppsOp::NeverFront, ""), Err("ownApp"));
-        assert_eq!(c.change(&AppsOp::NeverFront, "com.1password.1password"), Ok(0), "already never read");
+        assert_eq!(c.change(&front("dev.companion.app"), "dev.companion.app"), Err("ownApp"));
+        assert_eq!(c.change(&front(""), ""), Err("ownApp"));
+        assert_eq!(c.change(&front("com.1password.1password"), "com.1password.1password"), Ok(0), "already never read");
+    }
+    #[test] fn add_the_app_in_front_changes_only_the_app_the_person_was_shown() {
+        // The page names the app in front first ("Never read Notes?") and sends that id; another app in front by the time
+        // the person says yes changes nothing.
+        let mut c = Consent::default();
+        assert_eq!(c.change(&AppsOp::NeverFront { app: "com.notes.app".into() }, "com.mail.app"), Err("frontChanged"));
+        assert_eq!(c.to_json(), json!({ "apps": {} }), "nothing was recorded");
+        assert_eq!(c.change(&AppsOp::NeverFront { app: "COM.NOTES.APP".into() }, "com.notes.app"), Ok(1), "macOS ignores case in ids");
+        assert_eq!(c.decide("com.notes.app"), Decision::Refuse);
+        // The page must say which app: an operation that names none is refused like any other odd value.
+        assert_eq!(apps_op(&json!({ "op": "neverFront" })).err(), Some("custom"));
+        assert_eq!(apps_op(&json!({ "op": "neverFront", "app": "com.notes.app" })), Ok(AppsOp::NeverFront { app: "com.notes.app".into() }));
+        // The same shape of id as everywhere else in Settings (settings.rs app_id_ok), one rule for both.
+        assert!(include_str!("prompthelp.rs").contains("fn app_id_ok(id: &str) -> bool { crate::settings::app_id_ok(id) }"));
     }
     #[test] fn only_real_looking_app_ids_and_known_operations_are_taken() {
         let mut c = Consent::default();
