@@ -164,6 +164,42 @@ mod wiring {
     }
 
     #[test]
+    fn the_built_in_display_is_found_on_every_supported_macos() {
+        // NSScreen's CGDirectDisplayID property is new in macOS 26, and Companion runs from macOS 14 (tauri.conf.json):
+        // sending it on an older Mac raises an Objective-C exception and stops the app, at every launch once the choice
+        // is saved. The display id is read from the screen's device description instead, there since macOS 10.0.
+        let code: String = MAIN.lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
+        assert!(!code.contains(".CGDirectDisplayID()"), "no call to NSScreen's CGDirectDisplayID anywhere in main.rs");
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["bundle"]["macOS"]["minimumSystemVersion"], "14.0", "if this moves to 26 or later, the property may be used");
+        let b = body("fn builtin_display(");
+        assert!(b.contains("screen_number(&s)") && b.contains("objc2_core_graphics::CGDisplayIsBuiltin("), "{b}");
+        let n = body("fn screen_number(");
+        assert!(n.contains("s.deviceDescription()") && n.contains("NSString::from_str(\"NSScreenNumber\")") && n.contains("downcast::<NSNumber>()"), "{n}");
+    }
+
+    #[test]
+    fn the_pages_are_told_when_the_characters_place_changes_outside_settings() {
+        // The character's place (character.edge, character.position, character.sameEverywhere) is read from dock.json for
+        // the display it is on. A drag, a display change or the launch can change it without settings_set, so the pages
+        // are told then too: the rows, their Reset, Reset this section and its Undo always start from where it is.
+        assert!(MAIN.contains("const PLACE_KEYS: [&str; 3] = [\"character.edge\", \"character.position\", \"character.sameEverywhere\"];"));
+        assert!(MAIN.contains("fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLACE_KEYS.map(String::from)); }"));
+        assert!(body("fn place_shown_changed(").contains("PLACE_KEYS.map(|k| settings::dock_value(p, k))"));
+        let drop = body("fn drop_dock(");
+        let main_thread = drop.find("app.run_on_main_thread(move || {").expect("on the main thread, after the drag's last move");
+        assert!(drop.find("save_prefs();").unwrap() < main_thread && main_thread < drop.find("place_told(&a);").expect("a drop tells the pages"), "{drop}");
+        // apply_dock is how every display change and the launch move it: it tells the pages whenever what they show of the
+        // place is not what they were last told (while dragging, the drop tells them once).
+        let apply = body("fn apply_dock(");
+        assert!(apply.contains("if reason != \"drag\" && place_shown_changed() { if let Some(app) = APP.get() { place_told(app); } }"), "{apply}");
+        for reason in ["\"screens_changed\"", "\"launch\""] { assert!(MAIN.contains(&format!("apply_dock(mtm, {reason}, false);")), "{reason}"); }
+        // At launch the place is set before the app handle is kept: the pages are told once it is.
+        let at = MAIN.find("let _ = APP.set(app.handle().clone());").unwrap();
+        assert!(MAIN[at..at + 200].contains("place_told(app.handle());"));
+    }
+
+    #[test]
     fn with_the_island_off_every_capture_still_lights_the_character_or_opens_home_before_anything_is_read() {
         // Rule 5: the screen, other apps' text boxes and the microphone are touched only with a light the person can see
         // lit first. The island is never that light: turning it off (island.show) leaves every path below as it is.

@@ -65,7 +65,7 @@ use objc2_app_kit::{
 };
 use block2::RcBlock;
 use std::ptr::NonNull;
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSNumber, NSPoint, NSRect, NSSize, NSString};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -274,6 +274,9 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
         if p.last_screen != target.id { p.last_screen = target.id.clone(); }
         choice(p, &target.id)
     });
+    // Another display, or the launch, can change the place Settings shows: the pages are told (a drag tells them once, on
+    // the drop).
+    if reason != "drag" && place_shown_changed() { if let Some(app) = APP.get() { place_told(app); } }
     // On its edge, inside the work area, out of the clear zone at the top centre (the notch island).
     let f = docking::place(&target, DOCK, edge, pct, home_size());
     // This is home now. A drag or a display change also ends any visit beside a window, with no trip back, and stops a
@@ -308,13 +311,29 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
     });
 }
 
+/// The character's place as Settings shows it (dock.json, on the display it is on).
+const PLACE_KEYS: [&str; 3] = ["character.edge", "character.position", "character.sameEverywhere"];
+/// What the pages were last told of it.
+static PLACE_SHOWN: Mutex<Option<[Option<Value>; 3]>> = Mutex::new(None);
+/// Is the place Settings would show now not what the pages were last told? Keeps it as told.
+fn place_shown_changed() -> bool {
+    let shown = with_prefs(|p| PLACE_KEYS.map(|k| settings::dock_value(p, k)));
+    PLACE_SHOWN.lock().unwrap_or_else(|e| e.into_inner()).replace(shown.clone()) != Some(shown)
+}
+/// Tells every page the character's place, after it changed outside settings_set (a drag, another display, the launch),
+/// so its rows, their Reset, Reset this section and Undo start from where it is.
+fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLACE_KEYS.map(String::from)); }
+
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
     DRAG_AT.store(0, Ordering::SeqCst);
     save_prefs();
-    let _ = app.run_on_main_thread(|| {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
         let (x, y, wx, ww) = *LAST_DRAG.lock().unwrap();
         log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen), "last_pointer": [x, y], "work_x_and_width": [wx, ww] })));
+        // After the drag's last move (each is run on the main thread in turn), the pages are told where it is now.
+        place_told(&a);
     });
 }
 
@@ -370,7 +389,15 @@ fn displays_now(mtm: MainThreadMarker) -> Vec<island::Display> {
 fn builtin_display(mtm: MainThreadMarker) -> Option<String> {
     let list = NSScreen::screens(mtm);
     let primary_h = list.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-    list.iter().find(|s| objc2_core_graphics::CGDisplayIsBuiltin(s.CGDirectDisplayID())).map(|s| { let f = from_appkit(s.frame(), primary_h); format!("{}x{}@{},{}", f[2], f[3], f[0], f[1]) })
+    list.iter().find(|s| screen_number(&s).is_some_and(|id| objc2_core_graphics::CGDisplayIsBuiltin(id))).map(|s| { let f = from_appkit(s.frame(), primary_h); format!("{}x{}@{},{}", f[2], f[3], f[0], f[1]) })
+}
+
+/// A screen's display id, from its device description (NSScreenNumber), which every macOS Companion runs on has. Never
+/// NSScreen's own display id property: it is new in macOS 26, and on macOS 14 or 15 asking for it raises an Objective-C
+/// exception that stops the app (homeset.rs wiring test). Main thread.
+fn screen_number(s: &NSScreen) -> Option<u32> {
+    let n = s.deviceDescription().objectForKey(&NSString::from_str("NSScreenNumber"))?.downcast::<NSNumber>().ok()?;
+    Some(n.unsignedIntValue())
 }
 
 /// Puts the island on its display at the size it should be now, and tells its page. `follow_mouse`: the person is opening
@@ -888,7 +915,8 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
             Ok(one)
         }
         "dock" => {
-            let v = settings::validate(d, value)?;
+            // A valid value, or for the position Undo's exact place after a reset (settings.rs dock_input).
+            let v = settings::dock_input(d, value)?;
             // Nothing to change it on yet (no display known): said as a setting that could not be changed.
             let next = with_prefs(|p| settings::dock_with(p, key, &v)).ok_or("other")?;
             if key == "character.comeTo" { come_to_set(app, next.come_to); } else { place_set(app, next); }
@@ -2717,6 +2745,8 @@ fn main() {
             island_show(true);
             log("dock_shown", json!({ "app_active": active(mtm) }));
             let _ = APP.set(app.handle().clone());
+            // The place was set above, before the handle was kept: the pages are told it now.
+            place_told(app.handle());
             let h = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_millis(500));

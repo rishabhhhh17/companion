@@ -2,12 +2,13 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
-import { characterWords, motionFor, visualState } from "./model.ts";
+import { characterWords, motionFor } from "./model.ts";
+import { characterShows } from "./home.ts";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
-import { startSettings } from "./settingsStore.ts";
+import { startSettings, useSetting } from "./settingsStore.ts";
 import "./style.css";
 
 function Dock() {
@@ -46,6 +47,9 @@ function Dock() {
     const off = listen("roam", (e) => setRoam(roamFrom(e.payload)));
     return () => { off.then((f) => f()); };
   }, []);
+  // Its state, as the model says. With When something needs me set to only mark the tab and no island in the notch, it
+  // also carries the island's mark (home.ts characterShows); its own lights for the screen and the microphone stay.
+  const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);
   const label = characterWords(m);
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
@@ -66,7 +70,7 @@ function Dock() {
   };
   return (
     <main className="dock">
-      <button className="character" type="button" data-state={visualState(m)} data-motion={motionFor(visualState(m), reduced)} data-react={react?.r}
+      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}

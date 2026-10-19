@@ -114,6 +114,10 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 /* Less motion, Companion's own Motion setting (character.motion; motion.ts marks the page): inside Companion only, nothing
    moves, as with the Mac's own Reduce motion. */
 :root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition: none !important; }
+/* Looking at the screen (Show me, Point at the problem) is a light that must show first (rule 5). Its usual sign is the
+   scan, which stops with reduced motion, by the Mac or by Less motion, so then a still ring shows it, as listening's does. */
+@media (prefers-reduced-motion: reduce) { .character[data-state="checking"] { box-shadow: 0 0 0 6px color-mix(in srgb, var(--fg) 35%, transparent); } }
+:root[data-less-motion] .character[data-state="checking"] { box-shadow: 0 0 0 6px color-mix(in srgb, var(--fg) 35%, transparent); }
 
 /* Home (F18): the card's tabs. */
 .tabs { display: flex; gap: 2px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }

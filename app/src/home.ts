@@ -1,7 +1,7 @@
 // Home in the notch (F18.1): the card, moved under the island and laid out in tabs. Which part of the old card lives on
 // which tab, which tab opens by itself when something needs the person, when a click elsewhere may close Home, and the
 // island's own words. Plain code, tested in home.test.ts; card.tsx and island.tsx only draw what this decides.
-import { characterWords, stateLabel, visualState, type Model } from "./model.ts";
+import { characterWords, stateLabel, visualState, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
 export type Tab = "now" | "did" | "learn" | "memory" | "settings";
@@ -51,8 +51,11 @@ export function shownOn(p: Panel, tab: Tab, m: Model): boolean {
 // ---- which tab opens by itself ----
 
 /** Something on Home is waiting for the person: its tab, a key that changes when it is a new thing to look at, and why.
- *  `question`: it waits for the person's answer (a question, the loop card, a paused or new plan), so it is never hidden. */
-export type Need = { key: string; tab: Tab; why: string; question?: boolean };
+ *  `question`: it waits for the person's answer (a question, the loop card, a paused or new plan), so it is never hidden.
+ *  `mustShow`: Prompt help or the error explainer, started by the person's own hotkey. Its panel is the light for reading
+ *  another app's text (rule 5), holds the question asked before the first read, and shows the change before the keys that
+ *  put it back work in every app, so it is always shown: never only marked, by the setting or while typing. */
+export type Need = { key: string; tab: Tab; why: string; question?: boolean; mustShow?: boolean };
 
 const WALK_NEEDS = ["step", "already", "asking", "help"];
 const PRACTICE_NEEDS = ["start", "found", "failed", "blocked", "done"];
@@ -74,8 +77,8 @@ export function need(m: Model): Need | null {
   if (m.walk && m.showme && SHOWME_PROBLEMS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "learn", why: S.showMe };
   if (m.walk && WALK_NEEDS.includes(m.walk.stage)) return { key: `walk:${m.walk.id}:${m.walk.index}:${m.walk.stage}`, tab: "learn", why: S.lessonsTitle };
   if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: "learn", why: S.practiceTitle };
-  if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle };
-  if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle };
+  if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle, mustShow: true };
+  if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle, mustShow: true };
   if (m.point?.stage === "found") return { key: `point:${m.point.label ?? ""}`, tab: "now", why: S.pointTitle };
   // A pointer during a lesson belongs to the lesson, which is on Learn (its problems are above).
   if (!m.walk && m.showme && SHOWME_NEEDS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "now", why: S.showMe };
@@ -90,12 +93,13 @@ export function need(m: Model): Need | null {
 export type HomeState = { tab: Tab; needKey: string };
 export const homeStart = (): HomeState => ({ tab: "now", needKey: "" });
 // typing: the person is typing in Home right now, so a need on another tab marks that tab and is said, but does not move them.
-// markOnly: When something needs me is set to only mark the tab and say it (home.goToNeeds), so the same, except for a
-// question waiting for an answer, which still opens its tab: it is never hidden.
+// markOnly: When something needs me is set to only mark the tab (home.goToNeeds), so the same, except for a question
+// waiting for an answer, which still opens its tab: it is never hidden. Neither ever holds back a need that must show.
 export type HomeAction = { type: "pick"; tab: Tab } | { type: "need"; need: Need | null; typing?: boolean; markOnly?: boolean } | { type: "opened"; keyboard: boolean };
 type NeedAction = Extract<HomeAction, { type: "need" }>;
-/** A need on another tab that stays there: the person is typing, or the setting asks to only mark it (not a question). */
-const onlyMarked = (s: HomeState, a: NeedAction): boolean => !!a.need && a.need.key !== s.needKey && a.need.tab !== s.tab && (!!a.typing || (!!a.markOnly && !a.need.question));
+/** A need on another tab that stays there: the person is typing, or the setting asks to only mark it (not a question).
+ *  Never Prompt help or the error explainer (`mustShow`). */
+const onlyMarked = (s: HomeState, a: NeedAction): boolean => !!a.need && !a.need.mustShow && a.need.key !== s.needKey && a.need.tab !== s.tab && (!!a.typing || (!!a.markOnly && !a.need.question));
 
 /** Is the person typing in Home: a text box, a list or editable text has the keyboard, in a window that has it? */
 export function typing(active: { tag: string; editable: boolean } | null, windowHasFocus: boolean): boolean {
@@ -123,6 +127,12 @@ export function homeReduce(s: HomeState, a: HomeAction): HomeState {
  *  VoiceOver hears on Home's live line (a11y.ts). Nothing when the setting is Go to it, as today. */
 export function markedLine(s: HomeState, a: NeedAction): string | null {
   return a.markOnly && a.need && onlyMarked(s, a) ? S.homeWaiting(tabName(a.need.tab), a.need.why) : null;
+}
+
+/** May the Prompt help result's keys be armed (ph_ready)? They work in every app for a while, so only once its panel,
+ *  with the change it would put back, is on the tab that is open: one press never puts back a rewrite that was not shown. */
+export function phArmable(m: Model, tab: Tab): boolean {
+  return m.ph?.stage === "ready" && !!m.ph.text && shownOn("promptHelp", tab, m);
 }
 
 /** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. */
@@ -166,6 +176,15 @@ export function islandAlert(m: Model, marked = false): boolean {
   if (marked && need(m)) return true;
   const v = visualState(m);
   return v === "needsYou" || v === "listening" || v === "done";
+}
+
+/** The character's state as it is drawn. With When something needs me set to only mark the tab (`markTab`) and no island
+ *  (island.show off), the character carries the island's mark: anything that needs the person shows as Needs you. Its own
+ *  lights (listening, looking at the screen) and an error are never covered by it. Otherwise exactly `visualState`. */
+export function characterShows(m: Model, markTab: boolean, islandShown: boolean): CharacterState {
+  const v = visualState(m);
+  if (!markTab || islandShown || !m.runnerUp || !need(m)) return v;
+  return v === "listening" || v === "checking" || v === "error" ? v : "needsYou";
 }
 
 /** The pill's one word, short enough for it. */

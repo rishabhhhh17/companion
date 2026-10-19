@@ -205,10 +205,17 @@ What differs from the rows below, and why: the character's edge and position are
 on now (not the display the pointer is on), so a keyboard or VoiceOver user changes the place they can see the character in,
 whatever the pointer is doing; Same place on every display keeps a copy that follows the place set in Settings or by a drag.
 When something needs me set to only mark the tab still opens Now for a question waiting for an answer (the floor "a waiting
-question is never hidden"). The light for Prompt help and the error explainer was, and stays, Home opening with "Reading"
-(beside the character when the island is off); the character itself lights for Show me, Point at the problem and hold to
-talk. Owed on a real Mac: each row tried by a person, the built in display with the lid open and closed, the large Home with
-larger text, Less motion, and the island off with every capture.
+question is never hidden"), and for every step of Prompt help and the error explainer, from any tab and while typing: their
+panel is their light. The light for Prompt help and the error explainer was, and stays, Home opening with "Reading" on Now
+(beside the character when the island is off), and the Prompt help result's keys work only once its change is on screen;
+the character itself lights for Show me, Point at the problem and hold to talk, with a still ring for looking once motion is
+reduced. With the island off, the mark that only marking the tab puts on the island is on the character instead, and it is
+said out loud only with Speak to me on (the option is "Only mark the tab"). The position along the edge is shown on its 5
+percent step; a place dragged off it is kept exactly, and Undo after a reset puts it back exactly. The pages are told the
+place after a drag, a display change and the launch. The built in display is found from each screen's device description,
+so it works on macOS 14 and 15. Owed on a real Mac: each row tried by a person, the built in display with the lid open and
+closed (on macOS 14 or 15 as well as 26 or later), the large Home with larger text, Less motion, and the island off with
+every capture.
 
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|

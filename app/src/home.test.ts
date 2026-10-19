@@ -2,8 +2,8 @@
 // and the island's one line of status. All plain code, tested without a screen.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { initial, reduce, type Model } from "./model.ts";
-import { PANEL_TAB, PLACES, TABS, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { initial, reduce, visualState, type Model } from "./model.ts";
+import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 
@@ -339,14 +339,74 @@ describe("When something needs me (home.goToNeeds)", () => {
       expect(go(at, { type: "need", need: n, markOnly: true }).tab, n.key).toBe("now");
       expect(markedLine(at, { type: "need", need: n, markOnly: true }), n.key).toBeNull();
     }
-    // Everything else is not a question.
-    for (const m of [run(walkStep()), run([ev({ type: "app.prompt_help", stage: "consent", app: "Notes" })]), run([ev({ type: "app.showme", stage: "pointing", message: "Here", req: "sm_1" })])]) expect(need(m)!.question, need(m)!.key).toBeFalsy();
+    // Everything else is not a question. Prompt help's question before the first read is not one of these either, but it
+    // must always show (below): its panel is the light for reading another app.
+    for (const m of [run(walkStep()), run([ev({ type: "app.showme", stage: "pointing", message: "Here", req: "sm_1" })])]) {
+      expect(need(m)!.question, need(m)!.key).toBeFalsy();
+      expect(need(m)!.mustShow, need(m)!.key).toBeFalsy();
+    }
+    expect(need(run([ev({ type: "app.prompt_help", stage: "consent", app: "Notes" })]))!.mustShow).toBe(true);
     // While typing, a question marks its tab as it always has, and with Only mark the tab that is said out loud too.
     const n = need(run([...task(), approval()]))!;
     const at = go(homeStart(), { type: "pick", tab: "settings" });
     expect(go(at, { type: "need", need: n, typing: true, markOnly: true }).tab).toBe("settings");
     expect(markedLine(at, { type: "need", need: n, typing: true, markOnly: true })).toBe(S.homeWaiting(tabName("now"), S.needsYouTitle));
     expect(markedLine(at, { type: "need", need: n, typing: true })).toBeNull();
+  });
+  // Prompt help and the error explainer start from the person's own hotkey, and their panel on Now is the light for reading
+  // another app's text (rule 5), holds the question asked before the first read, and shows the rewrite before its keys
+  // work in every app. So they are never only marked: from every tab, typing or not, each of their steps shows Now.
+  const PH_STAGES = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
+  const EH_STAGES = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
+  const phAt = (stage: string) => run(stage === "ready"
+    ? [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]
+    : [ev({ type: "app.prompt_help", stage, app: "Notes" })]);
+  const ehAt = (stage: string) => run([ev({ type: "app.explain_error", stage, app: "Terminal", req: "r1" })]);
+  test("Prompt help and the error explainer always show Now, from every tab, with Only mark the tab and while typing", () => {
+    const cases: [string, Model, Panel][] = [...PH_STAGES.map((s) => [`ph ${s}`, phAt(s), "promptHelp"] as [string, Model, Panel]), ...EH_STAGES.map((s) => [`eh ${s}`, ehAt(s), "errorHelp"] as [string, Model, Panel])];
+    for (const [name, m, panel] of cases) {
+      const n = need(m)!;
+      expect(n, name).toBeTruthy();
+      expect(n.mustShow, name).toBe(true);
+      for (const t of TABS) {
+        const at = go(homeStart(), { type: "pick", tab: t });
+        for (const extra of [{ markOnly: true }, { typing: true }, { markOnly: true, typing: true }, {}]) {
+          const a = { type: "need" as const, need: n, ...extra };
+          const s = go(at, a);
+          expect(s.tab, `${name} from ${t} ${JSON.stringify(extra)}`).toBe("now");
+          expect(shownOn(panel, s.tab, m), `${name} from ${t}`).toBe(true);
+          expect(markedLine(at, a), `${name} from ${t}: shown, so nothing is said for it`).toBeNull();
+        }
+      }
+    }
+  });
+  test("a whole Prompt help press from Settings with Only mark the tab: each step that needs the person is on screen", () => {
+    let s = go(homeStart(), { type: "pick", tab: "settings" });
+    let m = initial();
+    for (const e of [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "consent", app: "Notes" }), ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "thinking", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]) {
+      m = reduce(m, e as never);
+      s = homeReduce(s, { type: "need", need: need(m), markOnly: true });
+      if (need(m)) expect(shownOn("promptHelp", s.tab, m), String(m.ph?.stage)).toBe(true);
+    }
+    expect(m.ph?.stage).toBe("ready");
+    expect(phArmable(m, s.tab)).toBe(true);
+  });
+  test("the result's keys, which work in every app, are armed only while its panel with the change shows", () => {
+    const m = phAt("ready");
+    for (const t of TABS) expect(phArmable(m, t), t).toBe(shownOn("promptHelp", t, m));
+    expect(phArmable(m, "settings")).toBe(false);
+    expect(phArmable(m, "now")).toBe(true);
+    // Not before there is a result, and never with no text to put back.
+    expect(phArmable(phAt("reading"), "now")).toBe(false);
+    expect(phArmable(run([ev({ type: "app.prompt_help", stage: "ready", app: "Notes" })]), "now")).toBe(false);
+    expect(phArmable(initial(), "now")).toBe(false);
+    // The card arms them in one place only, behind this check, once for each result.
+    expect(card.match(/invoke\("ph_ready"/g)?.length).toBe(1);
+    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab);"), card.indexOf("const shipIt = "));
+    expect(fx).toContain('if (m.ph?.stage !== "ready") { phArmedFor.current = null; return; }');
+    expect(fx).toContain("if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;");
+    expect(fx.indexOf("if (!phShown")).toBeLessThan(fx.indexOf('invoke("ph_ready"'));
+    expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown]);");
   });
   test("with Only mark the tab, anything that needs the person shows the island's mark", () => {
     const m = run(walkStep());
@@ -356,6 +416,31 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(islandAlert(run([ev({ type: "app.runner_down" })]), true)).toBe(false);
     const island = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
     expect(island).toContain('const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");');
+  });
+  test("with Only mark the tab and no island, the character shows that mark instead, and keeps its own lights", () => {
+    const lesson = run(walkStep());
+    // The usual settings, or the island shown: the character is drawn exactly as before.
+    for (const [markTab, island] of [[false, true], [false, false], [true, true]]) {
+      for (const m of [lesson, initial(), run(task())]) expect(characterShows(m, markTab, island)).toBe(visualState(m));
+    }
+    // Only mark the tab with the island off: anything that needs the person lights the character (the island's mark).
+    expect(characterShows(lesson, true, false)).toBe("needsYou");
+    expect(characterShows(run([ev({ type: "app.showme", stage: "error", message: "x", req: "sm_1" })]), true, false)).toBe("needsYou");
+    expect(characterShows(run([ev({ type: "app.voice", stage: "needs_mic", message: "x" })]), true, false)).toBe("needsYou");
+    // Nothing waiting: no mark. The engine down: as before.
+    expect(characterShows(initial(), true, false)).toBe("idle");
+    expect(characterShows(run([ev({ type: "app.runner_down" })]), true, false)).toBe(visualState(run([ev({ type: "app.runner_down" })])));
+    // Its own lights (listening, looking at the screen) and an error are never covered by the mark.
+    const looking = run([...walkStep(), ev({ type: "app.showme", stage: "looking", message: "Looking at your screen", req: "sm_1" })]);
+    expect(characterShows(looking, true, false)).toBe("checking");
+    const listening = run([...walkStep(), ev({ type: "app.voice", stage: "listening", message: "Listening" })]);
+    expect(characterShows(listening, true, false)).toBe("listening");
+    // needsYou has a ring that shows with no motion at all, so it is a visible light with reduced motion too.
+    expect(read("./style.css")).toMatch(/\.character\[data-state="needsYou"\] \{ box-shadow:/);
+    // The character's page draws it from the two settings.
+    const dock = read("./dock.tsx");
+    expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');
+    expect(dock).toContain("data-state={state} data-motion={motionFor(state, reduced)}");
   });
   test("the card reads the setting for each new need, and says what was only marked when Speak to me is on", () => {
     const eff = card.slice(card.indexOf("const needNow = need(m);"), card.indexOf("// A tab shown by itself took away"));

@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 import { characterWords, initial, motionFor, reduce, visualState, type Model } from "./model.ts";
-import { need } from "./home.ts";
+import { TABS, characterShows, homeReduce, homeStart, need, shownOn } from "./home.ts";
 import { S } from "./strings.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -141,21 +141,34 @@ describe("with the island turned off", () => {
       expect(characterWords(m)).toBe(words);
       expect(visualState(m)).not.toBe(visualState(initial()));
     }
-    // Looking moves the character (it scans); listening has its own ring that shows with no motion at all. Either way the
-    // words under the character say it, with reduced motion too.
+    // Looking moves the character (it scans); listening has its own ring that shows with no motion at all, and so has
+    // looking once motion is reduced (motion.test.ts). Either way the words under the character say it.
     expect(motionFor("checking", false)).toBe("scan");
     expect(read("./style.css")).toMatch(/\.character\[data-state="listening"\] \{ box-shadow:/);
-    // The character's page draws that state and those words, and reads no island or Home setting: nothing about the
-    // island changes it.
+    // The character's page draws that state and those words. The only island or Home settings it reads are the two that
+    // may add a mark to it (home.ts characterShows), and they never change these lights.
     const dock = read("./dock.tsx");
-    expect(dock).toContain("data-state={visualState(m)}");
+    expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');
+    expect(dock).toContain("data-state={state}");
     expect(dock).toContain("const label = characterWords(m);");
     expect(dock).toContain('<div className="muted" role="status" aria-live="polite">{label}</div>');
-    expect(dock).not.toMatch(/"island\.|"home\./);
+    expect([...dock.matchAll(/"(island|home)\.\w+"/g)].map((x) => x[0]).sort()).toEqual(['"home.goToNeeds"', '"island.show"']);
+    for (const e of [ev({ type: "app.showme", stage: "looking", message: "Looking at your screen" }), ev({ type: "app.voice", stage: "listening", message: "Listening" }), ev({ type: "agent.state", agent: "a", state: "checking" })]) {
+      const m = run([e]);
+      for (const markTab of [false, true]) for (const island of [false, true]) expect(characterShows(m, markTab, island), `${markTab} ${island}`).toBe(visualState(m));
+    }
   });
-  test("Prompt help and the error explainer open Home on Now, saying Reading, before anything is read", () => {
-    expect(need(run([ev({ type: "app.prompt_help", stage: "reading", app: "Notes" })]))?.tab).toBe("now");
-    expect(need(run([ev({ type: "app.explain_error", stage: "reading", app: "Terminal", req: "r1" })]))?.tab).toBe("now");
+  test("Prompt help and the error explainer open Home on Now, saying Reading, before anything is read, from every tab", () => {
+    for (const [m, panel] of [[run([ev({ type: "app.prompt_help", stage: "reading", app: "Notes" })]), "promptHelp"], [run([ev({ type: "app.explain_error", stage: "reading", app: "Terminal", req: "r1" })]), "errorHelp"]] as const) {
+      const n = need(m)!;
+      expect(n.tab).toBe("now");
+      // Whatever tab Home was left on, and with When something needs me set to only mark the tab: Now, on screen.
+      for (const t of TABS) {
+        const s = homeReduce(homeReduce(homeStart(), { type: "pick", tab: t }), { type: "need", need: n, markOnly: true });
+        expect(s.tab, t).toBe("now");
+        expect(shownOn(panel, s.tab, m), t).toBe(true);
+      }
+    }
   });
   test("Home still drops down from the island only when there is one, and its keys still open it", () => {
     expect(fnBody("card_spot")).toContain(".filter(|_| hs.island_show)");

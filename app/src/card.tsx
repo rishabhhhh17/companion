@@ -20,7 +20,7 @@ import { useModel } from "./useModel.ts";
 import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
-import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
+import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
@@ -270,8 +270,9 @@ function Card() {
   const needNow = need(m);
   useEffect(() => {
     const a = document.activeElement as HTMLElement | null;
-    // When something needs me (home.goToNeeds): go to its tab, as F18 asks, or only mark it and say it. A question waiting
-    // for an answer opens Now either way (home.ts). What was only marked is said out loud when Speak to me is on.
+    // When something needs me (home.goToNeeds): go to its tab, as F18 asks, or only mark it. A question waiting for an
+    // answer, and Prompt help or the error explainer, open Now either way (home.ts). What was only marked is said out loud
+    // when Speak to me is on.
     const act = { type: "need" as const, need: needNow, typing: typing(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus()), markOnly: setting("home.goToNeeds") === "markTab" };
     const said = markedLine(home, act);
     homeDispatch(act);
@@ -787,11 +788,17 @@ function Card() {
     void send(diagnose(project));
   };
   // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk). It answers which
-  // use keys it took for this result, if any, so the line under it names them only when they work.
+  // use keys it took for this result, if any, so the line under it names them only when they work. Those keys work in
+  // every app, so only once the result, with its change, is on screen (home.ts phArmable), and once for each result.
   const [phArmed, setPhArmed] = useState(true);
+  const phShown = phArmable(m, home.tab);
+  const phArmedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (m.ph?.stage === "ready" && m.ph.text) void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
-  }, [m.ph?.stage, m.ph?.text]);
+    if (m.ph?.stage !== "ready") { phArmedFor.current = null; return; }
+    if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;
+    phArmedFor.current = m.ph.text;
+    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
+  }, [m.ph?.stage, m.ph?.text, phShown]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "");
