@@ -86,7 +86,13 @@ fn remove_path(p: &Path) -> Result<(), String> {
 pub fn inventory(home: &Path, data: &Path, key_saved: bool, projects: &[PathBuf]) -> Value {
     let rows: Vec<Value> = items(home, data).iter().map(|i| json!({ "id": i.id, "label": i.label, "bytes": i.paths.iter().filter(|p| safe_to_remove(p, home, data)).map(|p| size_of(p)).sum::<u64>() })).filter(|r| r["bytes"].as_u64().unwrap_or(0) > 0).collect();
     let with_notes = projects.iter().filter(|p| project_has_ours(p)).count();
-    json!({ "items": rows, "keySaved": key_saved, "projectsWithNotes": with_notes })
+    json!({ "items": rows, "keySaved": key_saved, "projectsWithNotes": with_notes, "receiptPictures": receipt_pictures(data) })
+}
+
+/// How many receipt pictures are kept (plain .jpg files in the runner's receipts folder, never through a link), so that
+/// lowering "Pictures to keep" in Settings can say first how many will go.
+pub fn receipt_pictures(data: &Path) -> usize {
+    fs::read_dir(data.join("runner/receipts")).map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".jpg") && fs::symlink_metadata(e.path()).is_ok_and(|m| m.file_type().is_file())).count()).unwrap_or(0)
 }
 
 /// Removes every group (the developer settings file stays). Returns the groups removed and any that could not be.
@@ -314,6 +320,20 @@ mod tests {
         assert!(rows.iter().any(|r| r["id"] == "speech" && r["bytes"] == 1000));
         assert!(rows.iter().all(|r| r["bytes"].as_u64().unwrap() > 0));
         assert_eq!(v["keySaved"], true);
+    }
+    #[test]
+    fn the_inventory_counts_the_receipt_pictures_so_lowering_pictures_to_keep_can_say_how_many_go() {
+        let m = mac("pics");
+        for n in ["b.jpg", "c.jpg", "note.txt"] { write(m.data.join("runner/receipts").join(n), "x").unwrap(); }
+        create_dir_all(m.data.join("runner/receipts/sub.jpg")).unwrap();
+        assert_eq!(inventory(&m.home, &m.data, false, &[])["receiptPictures"], 3);
+        #[cfg(unix)] {
+            // A link is never followed, and never counted.
+            std::os::unix::fs::symlink(m.data.join("runner/receipts/a.jpg"), m.data.join("runner/receipts/link.jpg")).unwrap();
+            assert_eq!(inventory(&m.home, &m.data, false, &[])["receiptPictures"], 3);
+        }
+        fs::remove_dir_all(m.data.join("runner/receipts")).unwrap();
+        assert_eq!(inventory(&m.home, &m.data, false, &[])["receiptPictures"], 0);
     }
     #[test]
     fn erasing_removes_every_group_but_keeps_dev_json_and_never_leaves_companions_own_places() {

@@ -11,7 +11,7 @@ import { askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, replie
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -1106,7 +1106,7 @@ function Card() {
         <section className="panel amber" aria-label={S.stuckTitle}>
           <h2>{S.stuckTitle}</h2>
           <div className="line">{stuckWords(m)}</div>
-          <div className="line muted">{S.stuckHelp}</div>
+          <div className="line muted">{stuckHelpWords(m)}</div>
           <div className="line">{m.stuck.failure}</div>
           <div className="row">
             {m.stuck.options.map((o, i) => (
@@ -1136,7 +1136,7 @@ function Card() {
               <button className="btn" type="button" aria-label={`${S.removeStep} ${S.stepOf.toLowerCase()} ${i + 1}`} onClick={() => { setDraft(draft.filter((_, j) => j !== i)); setTimeout(() => urgent.current?.querySelector<HTMLElement>("input")?.focus(), 0); }}>{S.removeStep}</button>
             </div>
           ))}
-          {m.plan.truncated && <div className="line">{S.planTooLong}</div>}
+          {planCutWords(m) && <div className="line">{planCutWords(m)}</div>}
           <div className="line muted">{m.plan.estimateUsd > 0 ? `${S.planCost}: ${formatUsd(m.plan.estimateUsd)}` : S.planCostNone}</div>
           <div className="row">
             <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>

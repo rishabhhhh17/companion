@@ -4,17 +4,31 @@ import type { Command } from "../../protocol/index.ts";
 import { MODELS } from "../../runner/src/models.ts";
 // A follow up is cut to the same length the runner keeps.
 import { MAX_FOLLOW_UP_CHARS } from "../../runner/src/followup.ts";
+import { defaultOf, validateKey } from "../../protocol/settings.ts";
+import { setting } from "./settingsStore.ts";
+import { modelFor } from "./modelChoice.ts";
 
 let n = 0;
 const id = () => `ui${Date.now().toString(36)}${++n}`;
 export const DEFAULT_MODEL = MODELS.agent;
-export const DEFAULT_BUDGET_USD = 3;
-export const DRIVE_BUDGET_USD = 5;
+// The usual budgets, from the settings registry: $3 a task, $5 a Drive plan (and a Rescue, which had the same before).
+export const DEFAULT_BUDGET_USD = Number(defaultOf("budget.task"));
+export const DRIVE_BUDGET_USD = Number(defaultOf("budget.plan"));
 export const AGENT = "builder-1";
+// Spending (area 1 of the settings plan): what each kind of work may spend, read from Settings as the work starts. A value
+// the rules would refuse is never sent: the usual one is. Whatever is sent, the engine never lets it go above what is left
+// of the day's limit.
+export function budgetFor(key: "budget.task" | "budget.plan" | "budget.rescue" | "budget.research"): number {
+  const c = validateKey(key, setting(key));
+  return c.ok ? (c.value as number) : Number(defaultOf(key));
+}
+// The models (model.work, model.rescue), by option, read as the work starts (modelChoice.ts).
+const workModel = (): string => modelFor("model.work", setting("model.work"));
+const rescueModel = (): string => modelFor("model.rescue", setting("model.rescue"));
 
 // added: files and pictures from the ask box (attachfiles.ts), only when there are some. The engine checks them again.
 export const startTask = (project: string, prompt: string, offTheRecord = false, added?: { files: { name: string; text: string }[]; images: { name: string; mediaType: "image/png" | "image/jpeg"; base64: string }[] }): Command =>
-  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: DEFAULT_MODEL, budgetUsd: DEFAULT_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}),
+  ({ v: 1, id: id(), type: "agent.start", project, agent: AGENT, mode: "drive", prompt, model: workModel(), budgetUsd: budgetFor("budget.task"), ...(offTheRecord ? { offTheRecord: true } : {}),
     ...(added?.files.length ? { files: added.files } : {}), ...(added?.images.length ? { images: added.images } : {}) });
 // Fixes it with you: a follow up on the last task (what is still wrong), or Try again (the same request, with what failed).
 // Each one is a new checked task in the same project; the runner refuses it for any other.
@@ -30,17 +44,18 @@ export const undo = (project: string, checkpoint: string): Command =>
 export const stopAgent = (): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent: AGENT });
 export const listTasks = (project: string): Command => ({ v: 1, id: id(), type: "tasks.list", project });
 export const planDrive = (project: string, goal: string, offTheRecord = false): Command =>
-  ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: DEFAULT_MODEL, budgetUsd: DRIVE_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
+  ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: workModel(), budgetUsd: budgetFor("budget.plan"), ...(offTheRecord ? { offTheRecord: true } : {}) });
 export const approvePlan = (steps: string[]): Command => ({ v: 1, id: id(), type: "drive.approve", agent: AGENT, steps });
 export const chooseLoop = (choice: "different" | "stop"): Command => ({ v: 1, id: id(), type: "loop.choose", agent: AGENT, choice });
 export const pauseDrive = (): Command => ({ v: 1, id: id(), type: "drive.pause", agent: AGENT, reason: "you" });
 export const resumeDrive = (): Command => ({ v: 1, id: id(), type: "drive.resume", agent: AGENT });
 export const DIAGNOSE_MODEL = MODELS.diagnose;
+// Rescue's budget covers looking at the project and the plan that fixes it (the plan's steps share what is left of it).
 // offTheRecord: the Off the record box was ticked (it covers Rescue and Look up too).
-export const diagnose = (project: string, offTheRecord = false): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: DIAGNOSE_MODEL, budgetUsd: DRIVE_BUDGET_USD, ...(offTheRecord ? { offTheRecord: true } : {}) });
+export const diagnose = (project: string, offTheRecord = false): Command => ({ v: 1, id: id(), type: "rescue.diagnose", project, agent: AGENT, model: rescueModel(), budgetUsd: budgetFor("budget.rescue"), ...(offTheRecord ? { offTheRecord: true } : {}) });
 export const askResearch = (project: string, question: string, offTheRecord = false): Command | null => {
   const q = question.replace(/\s+/g, " ").trim();
-  return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: DEFAULT_MODEL, budgetUsd: 2, ...(offTheRecord ? { offTheRecord: true } : {}) } : null;
+  return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: workModel(), budgetUsd: budgetFor("budget.research"), ...(offTheRecord ? { offTheRecord: true } : {}) } : null;
 };
 export const checkShip = (project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
   ({ v: 1, id: id(), type: "ship.check", project, ...(o.runChecks ? { runChecks: true } : {}), ...(o.confirm?.length ? { confirm: o.confirm } : {}) });

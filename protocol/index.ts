@@ -183,13 +183,18 @@ export type ResearchDone = Envelope & { type: "research.done"; agent: string; ti
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
 export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reason: "files_changed" | "editor" | "terminal" | "you"; path?: string };
 // index: the Drive step (from 1); 0 for a single task, whose title is the task's label.
-export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[] };
+// tries and same: how the tries ran out, sent only when it was not the usual three identical failures (the settings
+// work.tries and work.askOnAnyFailure): how many checks failed in a row, and whether all of them the same way.
+export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[]; tries?: number; same?: boolean };
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; caption: string; circles: number; file?: string };
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
-export type ProjectReportEvent = Envelope & { type: "project.report"; project: string; origin: "lovable" | "bolt" | "replit" | "unknown"; about: string; stack: string; needsInstall: boolean; installCommand: string | null; start: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
+// scripts, checks, proofFile and launchFile: what the Settings rows for checking this project need (its own script names,
+// the checks it has, and its own .claude/proof.json and .claude/launch.json, which win over Settings).
+export type ProjectReportEvent = Envelope & { type: "project.report"; project: string; origin: "lovable" | "bolt" | "replit" | "unknown"; about: string; stack: string; needsInstall: boolean; installCommand: string | null; start: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[];
+  scripts?: string[]; checks?: ("typecheck" | "lint" | "build" | "test")[]; proofFile?: { expectText: string[]; click: string | null; expectAfterClick: string | null } | null; launchFile?: boolean };
 export type ProjectInstallEvent = Envelope & { type: "project.install"; project: string; stage: "installing" | "done" | "failed" | "cancelled"; detail: string };
 export type ProjectCloned = Envelope & { type: "project.cloned"; url: string; ok: boolean; path?: string; detail: string };
 // The diagram is data: the page lays it out and the overlay draws it. made: false means none could be made.
@@ -391,7 +396,7 @@ const EVENTS: Record<string, Check[]> = {
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],
   "drive.paused": [str("agent"), oneOf("reason", ["files_changed", "editor", "terminal", "you"])],
-  "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options")],
+  "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options"), opt("tries", (m) => (Number.isInteger(m.tries) && (m.tries as number) >= 1 ? null : '"tries" must be a whole number from 1')), opt("same", bool("same"))],
   "plan.ready": [str("agent"), list("steps"), bool("truncated"), num("estimateUsd")],
   "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],
   "drive.done": [str("agent"), str("status"), num("completed"), num("total"), num("usdEstimate")],

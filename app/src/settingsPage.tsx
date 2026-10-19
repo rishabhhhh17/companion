@@ -9,16 +9,18 @@ import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
-import { listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
+import { inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
+import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { PracticeKind, Spending } from "./model.ts";
 import { canPick, choicesFrom, chordLabel, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
-import { defOf, validate, type Def } from "../../protocol/settings.ts";
+import { defOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, numberFrom, problemWords, rowModel, searchSettings, wordsOf, type FixedGroup } from "./settingsRows.ts";
+import { offeredOptions, shownSettings } from "./modelChoice.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
@@ -219,7 +221,7 @@ function VoiceRows() {
 
 /** A number, typed or stepped with minus and plus. Kept only when Return is pressed or the box is left, and only when it
  *  passes the setting's rules (then put on its step); otherwise the plain reason shows and nothing is sent. */
-function NumberControl({ d, value, labelId, disabled, onChange, onProblem }: { d: Def; value: number; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void }) {
+function NumberControl({ d, value, labelId, disabled, onChange, onProblem, inputId }: { d: Def; value: number; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void; inputId?: string }) {
   const [text, setText] = useState(String(value));
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setText(String(value)); }, [value]);
@@ -237,7 +239,7 @@ function NumberControl({ d, value, labelId, disabled, onChange, onProblem }: { d
   return (
     <span className="row">
       <button className="btn" type="button" disabled={disabled || value <= (d.min ?? -Infinity)} aria-label={S.setLess(label)} onClick={() => step(-1)}>-</button>
-      <input type="text" inputMode="decimal" autoComplete="off" spellCheck={false} size={6} value={text} disabled={disabled} aria-labelledby={labelId}
+      <input id={inputId} type="text" inputMode="decimal" autoComplete="off" spellCheck={false} size={6} value={text} disabled={disabled} aria-labelledby={labelId}
         onChange={(e) => { editing.current = true; setText(e.target.value); }}
         onBlur={() => { if (editing.current) commit(numberFrom(text)); }}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); commit(numberFrom(text)); } }} />
@@ -317,35 +319,144 @@ function ChoiceControl({ value, options, labelId, disabled, onChange }: { value:
   );
 }
 
+/** Checks to leave out (check.skip): one switch for each check this project has. The start and browser checks are never in
+ *  the list: they always run (the row's fixed part says so). */
+function SkipControl({ d, value, facts, disabled, onChange }: { d: Def; value: string[]; facts: CheckFacts | null; disabled: boolean; onChange: (v: string[]) => void }) {
+  const items = skipItems(facts, value);
+  const words = wordsOf(d.key).options ?? {};
+  if (!items.length) return <div className="line muted">{S.chkNoChecks}</div>;
+  return (<div>
+    {items.map((item) => {
+      const out = value.includes(item);
+      return (
+        <div className="row" key={item}>
+          <span className="line">{words[item] ?? item}</span>
+          <button className="btn" type="button" role="switch" aria-checked={out} aria-label={S.chkLeaveOut(words[item] ?? item)} disabled={disabled} onClick={() => onChange(out ? value.filter((x) => x !== item) : [...value, item])}>{out ? S.chkLeftOut : S.chkRun}</button>
+        </div>
+      );
+    })}
+  </div>);
+}
+
+/** House rules (rules.house): the project's own .companion/rules.txt. Rules are built from the five kinds, taken off only
+ *  after an inline confirm, and nothing is written until Save; the shell keeps every line of the file it does not
+ *  understand exactly as it was. No reset ever touches them. Drawn once per project (keyed by it), so a list not saved yet
+ *  goes when the folder changes, and Save says which project's list it is: the shell refuses it for any other. */
+function HouseRules({ project, saved, disabled }: { project: string; saved: string[]; disabled: boolean }) {
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [kind, setKind] = useState<RuleKind>("never_edit");
+  const [what, setWhat] = useState("");
+  const [asking, setAsking] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const [focusTo, setFocusTo] = useState<string | null>(null);
+  const baseId = useId(), whatId = useId(), addId = useId();
+  const list = draft ?? saved;
+  const removeId = (i: number) => `${baseId}-${i}`;
+  // A rule taken off, or the list saved or put back, takes its button away: the keyboard goes to the next rule's Remove (or
+  // the one before), else to the Add box, and only when it was lost (focus.ts).
+  useLayoutEffect(() => { if (!focusTo) return; const id = focusTo; setFocusTo(null); takeIfLost(() => document.getElementById(id)); }, [focusTo]);
+  const add = () => { setNote(""); const r = addRule(list, kind, what); if (!r.ok) { setProblem(r.problem); return; } setProblem(""); setWhat(""); setDraft(r.list); };
+  const remove = (rule: string) => { const at = list.indexOf(rule), rest = removeRule(list, rule); setFocusTo(rest.length ? removeId(Math.min(at, rest.length - 1)) : addId); setAsking(null); setNote(""); setDraft(rest); };
+  const save = () => { setProblem(""); void changeSetting("rules.house", list, project).then((x) => { if (x.ok) { setDraft(null); setNote(S.rulesSaved); setFocusTo(addId); } else setProblem(problemWords(x.code, defOf("rules.house"))); }); };
+  const putBack = () => { setDraft(null); setProblem(""); setFocusTo(addId); };
+  // One polite region, always there, whose words change: VoiceOver reads a region that changes, not always one that appears.
+  const said = draft ? S.rulesUnsaved : note;
+  return (<div>
+    {list.length === 0 && <div className="line muted">{S.rulesNone}</div>}
+    {list.map((rule, i) => (
+      <div className="row" key={rule}>
+        <span className="line">{rule}</span>
+        {asking !== rule && <button id={removeId(i)} className="btn" type="button" disabled={disabled} aria-label={S.setRemoveItem(rule)} onClick={() => setAsking(rule)}>{S.attachRemoveShort}</button>}
+        {asking === rule && (
+          <ConfirmStep className="line" label={S.rulesRemoveSure(rule)} back={removeId(i)} onCancel={() => setAsking(null)}>
+            <div className="line">{S.rulesRemoveSure(rule)}</div>
+            <div className="row"><button className="btn danger" type="button" onClick={() => remove(rule)}>{S.setRemoveYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
+          </ConfirmStep>
+        )}
+      </div>
+    ))}
+    <div className="row">
+      <select id={addId} aria-label={S.rulesKindLabel} value={kind} disabled={disabled} onChange={(e) => setKind(e.target.value as RuleKind)}>{ruleKindOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
+      {kind !== "ask_install" && <input id={whatId} type="text" autoComplete="off" spellCheck={false} value={what} maxLength={200} disabled={disabled} aria-label={S.rulesWhat} placeholder={S.rulesWhat} onChange={(e) => setWhat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />}
+      <button className="btn" type="button" disabled={disabled} onClick={add}>{S.rulesAdd}</button>
+    </div>
+    <div className={said ? "line" : "sr"} role="status">{said}</div>
+    {draft && <div className="row"><button className="btn primary" type="button" disabled={disabled} onClick={save}>{S.rulesSave}</button><button className="btn" type="button" onClick={putBack}>{S.rulesCancel}</button></div>}
+    <div className="line muted">{S.rulesKept}</div>
+    {problem && <div className="error" role="alert">{problem}</div>}
+  </div>);
+}
+
+/** Pictures to keep (pictures.keep): lowering it below the pictures kept now says first how many will go. */
+function PicturesKeep({ d, value, count, labelId, disabled, onChange, onProblem }: { d: Def; value: number; count: number | undefined; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void }) {
+  const [pending, setPending] = useState<{ to: number; go: number } | null>(null);
+  const [fresh, setFresh] = useState(0);   // shows the kept value again when the change is not confirmed
+  // The keyboard comes back to the number box when the question closes: it is the same box after it is drawn again.
+  const inputId = useId();
+  const want = (to: number) => { const go = picturesGoing(count, value, to); if (go > 0) setPending({ to, go }); else onChange(to); };
+  return (<span>
+    <NumberControl key={fresh} inputId={inputId} d={d} value={value} labelId={labelId} disabled={disabled} onChange={want} onProblem={onProblem} />
+    {pending && (
+      <ConfirmStep className="line" label={S.chkPicturesGo(pending.go, pending.to)} back={inputId} onCancel={() => { setPending(null); setFresh((n) => n + 1); }}>
+        <div className="line">{S.chkPicturesGo(pending.go, pending.to)}</div>
+        <div className="row"><button className="btn danger" type="button" onClick={() => { const to = pending.to; setPending(null); onChange(to); }}>{S.chkPicturesGoYes}</button><button className="btn" type="button" data-cancel onClick={() => { setPending(null); setFresh((n) => n + 1); }}>{S.planCancel}</button></div>
+      </ConfirmStep>
+    )}
+  </span>);
+}
+
 /** One setting: its name, its control, one or two lines of help, the usual value, Reset when it differs, when it takes
  *  effect, the fixed part, and for a project setting which project. */
-function SettingRow({ d, project, keys }: { d: Def; project: string; keys: Keys }) {
+function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: string; keys: Keys; facts: CheckFacts | null; pictures: number | undefined }) {
   useSetting(d.key);
   const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
+  // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always.
+  const offered = offeredOptions(d.key);
+  const options = (r.options ?? []).filter((o) => !offered || offered.includes(o.id));
   const labelId = useId(), helpId = useId();
   const [problem, setProblem] = useState("");
   const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); });
-  const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v)); };
+  // A project's setting says which project the page was shown it for; the shell refuses it for any other.
+  const shownFor = snapshotNow()?.project ?? project;
+  const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v, d.scope === "project" && shownFor ? shownFor : undefined)); };
   const reset = () => { setProblem(""); done(resetSetting(d.key)); };
+  // Checking your project: the project's own .claude/proof.json or .claude/launch.json wins, and the row shows that, read
+  // only; the words after pressing need a button to press; a house rule can make installing ask first.
+  const facts_ = facts && facts.project === project ? facts : null;
+  const fromFile = proofLines(d.key, facts_);
+  const launchWins = d.key === "check.start" && !!facts_?.launchFile;
+  const pressNow = useSetting("check.press");
+  const rulesNow = useSetting("rules.house");
+  const rulesBlocked = (snapshotNow()?.problems ?? []).some((p) => p.key === "rules.house");
+  if (d.key === "check.afterPress" && !afterPressShown(pressNow, facts_)) return null;
+  const off = r.disabled || fromFile.length > 0 || launchWins;
+  const notes = [...fromFile, ...(launchWins ? [S.chkLaunchFile] : []), ...(d.key === "check.install" ? [installNote(value, rulesNow)].filter((x): x is string => !!x) : [])];
   const control = (() => {
+    if (d.key === "rules.house") return null;
+    if (d.key === "check.skip") return null;
+    if (d.key === "check.start") return <ChoiceControl value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
+    if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={pictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
     switch (d.kind) {
-      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={r.disabled} onClick={() => change(value !== true)}>{r.shown}</button>;
-      case "choice": return <ChoiceControl value={String(value)} options={r.options ?? []} labelId={labelId} disabled={r.disabled} onChange={change} />;
-      case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={r.disabled} onChange={change} onProblem={setProblem} />;
-      case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={r.disabled} onChange={change} onProblem={setProblem} />;
-      case "list": return <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled} onChange={change} onProblem={setProblem} />;
+      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={off} onClick={() => change(value !== true)}>{r.shown}</button>;
+      case "choice": return <ChoiceControl value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
+      case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
+      case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
+      case "list": return <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} />;
       default: return null;
     }
   })();
   // The keys and the voice keep their own editors; the keys' editor has its own Reset to the usual keys.
-  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : null;
+  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : d.key === "rules.house" ? <HouseRules key={shownFor} project={shownFor} saved={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled || rulesBlocked} />
+    : d.key === "check.skip" ? <SkipControl d={d} value={Array.isArray(value) ? (value as string[]) : []} facts={facts_} disabled={off} onChange={change} /> : null;
   return (
     <div role="group" aria-labelledby={labelId} className="setting">
       <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
       <div className="line muted" id={helpId}>{r.help}</div>
       {editor}
+      {notes.map((n) => <div className="line muted" key={n}>{n}</div>)}
       {r.projectLine && <div className="line muted">{r.projectLine}</div>}
       <div className="row">
         <span className="line muted">{r.usualLine}</span>
@@ -373,7 +484,7 @@ function useUndoToast() {
 
 /** A section: its title, its rows (or the ones a search found), what else belongs there, and Reset this section, which
  *  asks first and names what will change, then offers Undo. Protective settings are never in it. */
-function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode }) {
+function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pictures }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode; facts: CheckFacts | null; pictures: number | undefined }) {
   useSetting(keys[0] ?? "");
   const headId = useId(), resetId = useId();
   const [asking, setAsking] = useState(false);
@@ -384,7 +495,7 @@ function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: str
   return (
     <section aria-labelledby={headId} className="settings-section">
       <h3 id={headId}>{title}</h3>
-      {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} /> : null; })}
+      {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} facts={facts} pictures={pictures} /> : null; })}
       {extra}
       {changed.length > 0 && !asking && <div className="row"><button id={resetId} className="btn" type="button" onClick={() => setAsking(true)}>{S.setResetSection}</button></div>}
       {asking && (
@@ -402,7 +513,8 @@ function SettingsSection({ id, title, keys, project, allKeys, extra }: { id: str
 export function SettingsPage({ working, project, spending, onClose, onPractice, onLesson }: { working: boolean; project: string; spending: Spending | null; onClose: () => void; onPractice: (kind?: PracticeKind) => void; onLesson: (lesson: string) => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
-  const results = searchSettings(q);
+  // Every setting, except a model row that could offer only one option so far (modelChoice.ts).
+  const results = searchSettings(q, shownSettings());
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
@@ -418,6 +530,15 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   // The engine's own settings (the daily limit, Explain, pausing, beta numbers) for every project: asked for the project in
   // use, or the stand in when no folder is chosen. Their answers come back as the engine's events (settingsStore.ts).
   useEffect(() => { const p = project || NO_PROJECT; void send(showSpending(p)); void send(listMemory(p)); void send(metricsShow()); }, [project]);
+  // What the rows for checking this project need to know (its scripts, its checks, its own .claude files): the engine's
+  // project report, asked for again each time Settings opens, so an edited package.json shows.
+  const [facts, setFacts] = useState<CheckFacts | null>(null);
+  useEffect(() => {
+    setFacts(null);
+    if (project) void send(inspectProject(project));
+    const off = listen("runner-event", (e) => { const f = factsFrom(e.payload); if (f && f.project === project) setFacts(f); });
+    return () => { off.then((f) => f()); };
+  }, [project]);
   const [up, setUp] = useState<UpdateState>(found.update ?? { stage: "idle" });
   const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
   useEffect(() => { void invoke("update_status").then((v) => setUpInfo(v as { configured: boolean; version: string })).catch(() => {}); }, []);
@@ -456,7 +577,7 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
   const changedAll = changedNow();
   const unheardAll = notHeard();
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
-  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
+  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const fixedShown = (g: FixedGroup) => results.fixed.includes(g);
   const extras: Record<string, ReactNode> = {
     home: <div className="line muted">{S.dragHint}</div>,
@@ -497,7 +618,7 @@ export function SettingsPage({ working, project, spending, onClose, onPractice, 
       </div>
       <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
       {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {results.sections.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} />)}
+      {results.sections.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} facts={facts} pictures={inv?.receiptPictures} />)}
       {fixedShown("permissions") && <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
       {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {

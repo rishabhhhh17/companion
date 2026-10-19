@@ -117,7 +117,9 @@ export const notHeard = (section?: string): string[] =>
 
 export type Done = { ok: true; notReset?: string[] } | { ok: false; code: string };
 const asDone = (p: Promise<unknown>): Promise<Done> => p.then((v) => { takeSnapshot(v); const n = isObj(v) && Array.isArray(v.notReset) ? (v.notReset as string[]) : []; return { ok: true as const, ...(n.length ? { notReset: n } : {}) }; }, (e) => ({ ok: false as const, code: String(e) }));
-export const changeSetting = (key: string, value: unknown): Promise<Done> => asDone(call("settings_set", { key, value }));
+/** project: the project the page was shown this value for (house rules always say it). The shell keeps the change only
+ *  while that is still the project in Home, so one project's list is never written over another's ("projectChanged"). */
+export const changeSetting = (key: string, value: unknown, project?: string): Promise<Done> => asDone(call("settings_set", project === undefined ? { key, value } : { key, value, project }));
 // Each reset names the engine's own settings the page has heard away from usual; the shell resets only those of the engine's.
 export const resetSetting = (key: string): Promise<Done> => asDone(call("settings_reset", { key, engine: changedNow().filter((k) => k === key && isEngines(k)) }));
 export const resetSection = (section: string): Promise<Done> => asDone(call("settings_reset", { section, engine: changedNow(section).filter(isEngines) }));

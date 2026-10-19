@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { runCommand, shq } from "./exec.ts";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
-import { detectProject } from "./detect.ts";
+import { detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
@@ -15,6 +15,9 @@ export type Before = { shot: PageShot } | { none: "no_page" | "crashed" | "not_p
 export async function captureBefore(o: {
   store: CheckpointStore; beforeId: string; project: string; workDir: string; signal?: AbortSignal;
   startMs?: number; browserMs?: number; browser?: (url: string, b: BrowserOptions) => Promise<BrowserResult>;
+  // How this project is checked (Settings): its start script ("auto" is the one found) and the page size of the picture.
+  start?: string; viewport?: { width: number; height: number };
+  server?: typeof startServer;   // how the copy is started (tests give a stand in); startServer by default
 }): Promise<Before> {
   mkdirSync(o.workDir, { recursive: true, mode: 0o700 });
   const dir = mkdtempSync(join(o.workDir, "before-"));
@@ -23,11 +26,20 @@ export async function captureBefore(o: {
     borrowPackages(join(o.project, "node_modules"), join(dir, "node_modules"));
     borrowVenv(o.project, dir);
     if (o.signal?.aborted) return { none: "cancelled" };
-    const det = detectProject(dir);
+    const found = detectProject(dir);
+    const started = withStartScript(found, dir, o.start);
+    const det = started.det;
     if (!det.start) return { none: "no_page" };
-    let scriptText = "";
-    try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(det.start.kind === "server" ? det.start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
-    const srv = await startServer(det.start, { cwd: dir, timeoutMs: o.startMs ?? 60_000, scriptText, signal: o.signal });
+    const serve = (start: NonNullable<typeof det.start>) => {
+      let scriptText = "";
+      try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
+      return (o.server ?? startServer)(start, { cwd: dir, timeoutMs: o.startMs ?? 60_000, scriptText, signal: o.signal });
+    };
+    let srv = await serve(det.start);
+    // As the check does: a start script chosen in Settings that finishes on its own gives way to the usual start, so a page
+    // that was there before is never said to have had nothing to open.
+    const usual = found.start;
+    if (!srv.ok && srv.notAServer && started.chosen && usual && !o.signal?.aborted && !(usual.kind === "server" && det.start.kind === "server" && usual.command === det.start.command)) srv = await serve(usual);
     // A package that is not installed says nothing about whether the earlier version worked.
     const missing = /No module named|Couldn't import Django/.test(srv.ok ? "" : srv.output ?? srv.reason);
     if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
@@ -36,7 +48,7 @@ export async function captureBefore(o: {
     o.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (o.signal?.aborted) return { none: "cancelled" };
-      const b = await (o.browser ?? browserCheck)(srv.url, { shot: true, clickButtons: false, timeoutMs: o.browserMs ?? 20_000, signal: o.signal });
+      const b = await (o.browser ?? browserCheck)(srv.url, { shot: true, clickButtons: false, timeoutMs: o.browserMs ?? 20_000, signal: o.signal, ...(o.viewport ? { viewport: o.viewport } : {}) });
       if (o.signal?.aborted) return { none: "cancelled" };
       return b.shot ? { shot: b.shot } : { none: "not_pictured" };
     } finally { o.signal?.removeEventListener("abort", onAbort); await srv.stop(); }

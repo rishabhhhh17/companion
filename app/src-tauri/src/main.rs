@@ -51,6 +51,7 @@ mod visibility;
 mod wheel;
 mod presentation;
 mod settings;
+mod houserules;
 
 mod runner;
 mod instance;
@@ -757,7 +758,8 @@ fn with_settings<R>(f: impl FnOnce(&mut SettingsNow) -> R) -> R {
 fn project_opt() -> Option<String> { let p = current_project(); (!p.is_empty()).then_some(p) }
 fn settings_snapshot(changed: &[String]) -> Value {
     let project = project_opt();
-    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now() };
+    let rules = project.as_deref().filter(|p| *p != runner::NO_PROJECT).map(|p| houserules::read(std::path::Path::new(p))).unwrap_or(Ok(None));
+    let w = settings::Wrapped { dock: with_prefs(|p| p.clone()), presentation: presentation_now(), keys: keys_picked(), voice: voice_now(), rules };
     with_settings(|s| settings::snapshot(settings::registry(), &s.file, project.as_deref(), &w, &s.problems, changed))
 }
 /// Tells every window (card, dock, overlay, island) what is in force now.
@@ -783,22 +785,24 @@ fn settings_get() -> Value { settings_snapshot(&[]) }
 
 /// Changes one setting. Only from the card. The error is a code the page puts in words; nothing changed then.
 #[tauri::command]
-fn settings_set(app: AppHandle, window: tauri::WebviewWindow, key: String, value: Value) -> Result<Value, String> {
+fn settings_set(app: AppHandle, window: tauri::WebviewWindow, key: String, value: Value, project: Option<String>) -> Result<Value, String> {
     settings::only_card(window.label())?;
-    let changed = setting_change(&app, &key, &value).map_err(|c| { log("setting_not_changed", json!({ "key": key, "why": c })); c.to_string() })?;
+    let changed = setting_change(&app, &key, &value, project.as_deref()).map_err(|c| { log("setting_not_changed", json!({ "key": key, "why": c })); c.to_string() })?;
     log("setting_changed", json!({ "key": key }));
     settings_told(&app, &changed);
     Ok(settings_snapshot(&changed))
 }
 
-fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<String>, &'static str> {
+fn setting_change(app: &AppHandle, key: &str, value: &Value, asked: Option<&str>) -> Result<Vec<String>, &'static str> {
     let r = settings::registry();
     let d = r.get(key).ok_or("unknown")?;
+    // A change for a project that is no longer the one in Home is refused (house rules always say theirs).
+    let for_project = settings::for_project(d, asked, project_opt().as_deref())?.map(str::to_string);
     let one = vec![key.to_string()];
     match d.store.as_str() {
         "settings" => {
             settings_writable(app)?;
-            let project = project_opt();
+            let project = for_project.clone();
             let changed = with_settings(|s| -> Result<bool, &'static str> {
                 let mut next = s.file.clone();
                 let changed = settings::set(r, &mut next, key, value, project.as_deref())?;
@@ -827,6 +831,17 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value) -> Result<Vec<Strin
             let cmd = settings::runner_command(key, &v, &current_project(), &format!("set-{}", now())).ok_or("unknown")?;
             app.state::<runner::Runner>().send(&cmd).map_err(|_| "engine")?;
             Ok(one)
+        }
+        // House rules: the project's own .companion/rules.txt, written only on the row's Save, every line it does not
+        // understand kept exactly (houserules.rs). The engine reads the file itself before each action.
+        "rules" => {
+            let project = for_project.filter(|p| p != runner::NO_PROJECT).ok_or("noProject")?;
+            let dir = std::path::Path::new(&project);
+            let old = houserules::read(dir).map_err(|_| houserules::UNREADABLE)?;
+            match houserules::change(d, old.as_deref(), value)? {
+                None => Ok(vec![]),
+                Some(text) => { houserules::write(dir, &text)?; Ok(one) }
+            }
         }
         // Undo after a reset: the voice and the keys come back whole, exactly as the page was shown them (settings.rs).
         "voice" => {
@@ -881,9 +896,9 @@ fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<Stri
     if changed.iter().any(|k| r.get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }
     for d in plan.iter().filter_map(|k| r.get(k)).filter(|d| d.store != "settings") {
         let done = match d.store.as_str() {
-            "dock" | "presentation" => setting_change(&app, &d.key, &d.default).map(|_| ()),
+            "dock" | "presentation" => setting_change(&app, &d.key, &d.default, None).map(|_| ()),
             // The engine's own: its command with the usual value (the engine answers with its new state).
-            "spending" | "memory" | "metrics" => setting_change(&app, &d.key, &d.default).map(|_| ()),
+            "spending" | "memory" | "metrics" => setting_change(&app, &d.key, &d.default, None).map(|_| ()),
             "keys" => keys_to_usual(&app).map(|_| ()),
             "voice" => voice_save(&voice_now(), &voiceset::Saved::default()),
             _ => Ok(()),

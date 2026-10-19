@@ -4,7 +4,7 @@
 // engine by force, the installer ends with it (see endWithUs in exec.ts).
 import { browserInstalled, installBrowser, type InstallOutcome, type InstallProgress } from "./browser.ts";
 
-export type InstallFn = (o: { signal: AbortSignal; onProgress: (p: InstallProgress) => void }) => Promise<InstallOutcome>;
+export type InstallFn = (o: { signal: AbortSignal; onProgress: (p: InstallProgress) => void; timeoutMs?: number }) => Promise<InstallOutcome>;
 type Emit = (e: Record<string, unknown>) => void;
 
 // What went wrong, in words a person can act on. The installer's own output is never shown.
@@ -27,7 +27,8 @@ export class BrowserSetup {
   private download: InstallFn;
   private installed: () => boolean;
   // installer: the runner's own process tests only, a stand in for Playwright's installer program (see engines.ts).
-  constructor(private o: { emit: Emit; install?: InstallFn; installed?: () => boolean; installer?: string }) {
+  // timeoutMs: how long the download may take, read at each press ("my internet is slow" doubles it).
+  constructor(private o: { emit: Emit; install?: InstallFn; installed?: () => boolean; installer?: string; timeoutMs?: () => number }) {
     this.download = o.install ?? ((x) => installBrowser({ ...x, ...(o.installer ? { installer: o.installer } : {}) }));
     this.installed = o.installed ?? browserInstalled;
   }
@@ -48,8 +49,10 @@ export class BrowserSetup {
         say("downloading", "Starting the download. This happens once.");
         let r: InstallOutcome | null = null;
         try {
+          const t = this.o.timeoutMs?.();
           r = await this.download({
             signal: ac.signal,
+            ...(t ? { timeoutMs: t } : {}),
             onProgress: (p) => {
               if (ac.signal.aborted || p.percent === last) return;
               last = p.percent;

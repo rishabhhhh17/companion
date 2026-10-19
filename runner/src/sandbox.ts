@@ -28,6 +28,11 @@ export const sensitivePaths = (home: string): string[] => SENSITIVE.map((p) => `
 export function sandboxSettings(home: string, platform: string = process.platform) {
   return {
     enabled: platform === "darwin",
+    // Claude Code would otherwise run a shell command inside the sandbox without asking (its default). Companion's safety
+    // hook says yes or no to every command itself, and that yes is what lets a command run. So a command the hook gave no
+    // answer for (if Claude Code ever gave up waiting on it) goes on to canUseTool, which always says no. [verify] on a real
+    // run that a command the hook allows still runs with this off (real-verify.ts and real-sandbox.ts show it).
+    autoAllowBashIfSandboxed: false,
     allowUnsandboxedCommands: false,
     network: { allowedDomains: REGISTRY_DOMAINS, strictAllowlist: true, allowLocalBinding: true },
     filesystem: { denyRead: sensitivePaths(home), allowWrite: cachePaths(home) },

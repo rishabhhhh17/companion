@@ -5,7 +5,8 @@ import { canPick, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keysNow, type Choices
 import type { Spending } from "./model.ts";
 import { setting } from "./settingsStore.ts";
 
-export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number };
+// receiptPictures: how many receipt pictures are kept now (wipe.rs), so lowering "Pictures to keep" can say first how many go.
+export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number };
 export type PermissionKind = "screen_recording" | "accessibility" | "microphone";
 /** What the app reports (permissions.rs, page_word). "off" is for Accessibility and Screen Recording, where macOS cannot
  * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */
