@@ -1455,6 +1455,9 @@ fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_se
 /// `settle`: a walkthrough step after a click, so the look first waits (bounded, under the light, Stop ends it) for the page
 /// to stop changing (showme::wait_to_settle). The page asks for it only when its settings say so (anywhere.ts waitsForPage).
 fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>) {
+    // Nothing of Companion can be seen (hidden, with Home closed): the light could not be seen either, so nothing is looked
+    // at, not even a lesson's next step (rule 5: a walkthrough looks again only while it is visibly on).
+    if light_unseen() { log("showme_hidden", json!({})); say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); return; }
     // A new question replaces whatever ring was up (and any pointing still on its way); what an older answer saw is forgotten.
     point_cancel(); hide_overlay(&app); showme_pending().end();
     let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1480,8 +1483,9 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
-        // Stop everything or a newer press after the light came on: no picture is taken (and a wait for the page ends).
-        let plat = plat.while_wanted(Box::new(move || current())).settling(settle.unwrap_or(false));
+        // Stop everything or a newer press after the light came on, or Companion hidden meanwhile: no picture is taken (and a
+        // wait for the page ends).
+        let plat = plat.while_wanted(Box::new(move || current() && !light_unseen())).settling(settle.unwrap_or(false));
         if !plat.screen_recording_granted() {
             // Asked here, the first time the feature is used, with a plain sentence first.
             macos_see::request_screen_recording();
@@ -1501,8 +1505,9 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             Err(showme::Refusal::SecureInput) => say_showme(&app, "error", "A password box is active, so I did not look at your screen. Click away from it and try again.", json!({})),
             Err(showme::Refusal::CaptureFailed(e)) => say_showme(&app, "error", &format!("I could not look at your screen ({e})."), json!({})),
             Err(showme::Refusal::PictureFailed(e)) => say_showme(&app, "error", &format!("I could not prepare the picture ({e})."), json!({})),
-            // Stop everything or a newer question already said what happens next: nothing more is said.
-            Err(showme::Refusal::Stopped) => {}
+            // Stop everything or a newer question already said what happens next: nothing more is said. Still current, it
+            // was ended because Companion was hidden meanwhile, and the person is told why.
+            Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); } }
         }
     });
 }
@@ -2392,9 +2397,17 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         }
         if !alive() { return; }
         let said = opened.as_ref().map(|o| o.0.clone()).unwrap_or_default();
+        // Nothing of Companion can be seen (hidden, with Home closed): the file is open, but the screen is not looked at.
+        if light_unseen() {
+            log("point_hidden", json!({}));
+            say_showme(&app, "error", format!("{said} {}", showme::HIDDEN_WORDS).trim(), json!({}));
+            return;
+        }
         let a3 = app.clone();
         let plat = macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}),
-            Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); }));
+            Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); }))
+            // Stop, a newer run, or Companion hidden after the light came on: no picture.
+            .while_wanted(Box::new(move || alive() && !light_unseen()));
         {
             use showme::Platform;
             if !plat.screen_recording_granted() {
@@ -2425,7 +2438,8 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
                 Err(showme::Refusal::SecureInput) => { say_showme(&app, "error", format!("{said} A password box is active, so I did not look at your screen.").trim(), json!({})); return; }
                 Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { say_showme(&app, "error", format!("{said} I could not look at your screen ({e}).").trim(), json!({})); return; }
                 Err(showme::Refusal::NeedsScreenRecording) => break,
-                Err(showme::Refusal::Stopped) => return,
+                // Hidden meanwhile (not Stop or a newer run, which said what happens next): the person is told why.
+                Err(showme::Refusal::Stopped) => { if alive() { say_showme(&app, "error", format!("{said} {}", showme::HIDDEN_WORDS).trim(), json!({})); } return; }
             }
         }
         if !alive() { return; }
@@ -2708,6 +2722,26 @@ fn voice_send(app: &AppHandle, m: VoiceMsg) {
 /// Companion is hidden: a full screen app is in front, or the person hid it from the menu bar. The light (the character)
 /// cannot be seen, so the microphone is never open (rule 5).
 fn companion_hidden() -> bool { HIDDEN_BY_US.load(Ordering::SeqCst) || USER_HID.load(Ordering::SeqCst) }
+/// Nothing of Companion can be seen: it is hidden and Home is closed too (a hotkey can open Home while it is hidden, and
+/// then Home's own line is the light). Show me and Point at the problem never look then (rule 5). Any thread.
+fn light_unseen() -> bool { companion_hidden() && !HOME_OPEN.load(Ordering::SeqCst) }
+/// Companion was just hidden (a full screen app came forward, or Hide in the menu bar): every pointer goes, so no ring stays
+/// drawn over what the person chose not to share, and no your turn watch keeps reading the mouse to start the next step's
+/// look with nothing of Companion showing. The page is told only when something was up.
+fn pointers_gone_hidden(app: &AppHandle) {
+    let up = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+    let seen = showme_pending().end();
+    point_cancel(); hide_overlay(app);
+    if up || seen { log("pointers_gone_hidden", json!({})); say_showme(app, "done", "", json!({})); }
+}
+/// Hide or show Companion (the menu bar icon): the character, the island and Home. Main thread.
+fn set_user_hidden(app: &AppHandle, hide: bool) {
+    USER_HID.store(hide, Ordering::SeqCst);
+    with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
+    island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
+    if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }
+    log("menu_hide", json!({ "hidden": hide }));
+}
 /// Companion was just hidden: wake the hold to talk worker if it is running, so a microphone that is open closes at once.
 /// A worker that was never started has nothing open, so none is started here.
 fn voice_tell_hidden() {
@@ -2888,6 +2922,7 @@ fn tick(app: &AppHandle) {
         island_show(false);
         home_closed();
         voice_tell_hidden();
+        pointers_gone_hidden(app);
         log("hidden_for_full_screen", json!({}));
     } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
         with_panels(|d, _| d.orderFrontRegardless());
@@ -3139,14 +3174,7 @@ fn main() {
                 .tooltip("Companion")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
-                    "hide" => { let _ = app.run_on_main_thread(|| {
-                        let hide = !USER_HID.load(Ordering::SeqCst);
-                        USER_HID.store(hide, Ordering::SeqCst);
-                        with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
-                        island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
-                        if hide { home_closed(); voice_tell_hidden(); }
-                        log("menu_hide", json!({ "hidden": hide }));
-                    }); }
+                    "hide" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }
                     "stop" => {
                         let r = app.state::<runner::Runner>().stop_everything("menu");
                         log("menu_stop_everything", json!({ "sent": r.is_ok() }));

@@ -18,6 +18,10 @@ const MAX_DISPLAYS: usize = 4;
 pub struct Captured { pub frame: Frame, /// The display in global top-left points.
     pub display: R }
 
+/// What is said when Show me or Point at the problem would look while nothing of Companion can be seen (hidden from the
+/// menu bar, or for a full screen app, with Home closed): the light could not be seen, so nothing is looked at (rule 5).
+pub const HIDDEN_WORDS: &str = "Companion is hidden right now, so I did not look at your screen. Leave full screen or show Companion from the menu bar icon, then try again.";
+
 #[derive(Debug, PartialEq, Eq)]
 /// Stopped: Stop everything or a newer question came after the light went on, so no picture was taken at all.
 pub enum Refusal { NeedsScreenRecording, SecureInput, CaptureFailed(String), PictureFailed(String), Stopped }
@@ -208,6 +212,8 @@ pub fn look_for<T>(p: &dyn Platform, find: impl Fn(&[OcrBox]) -> Option<T>) -> R
     if p.secure_input_on() { return Err(Refusal::SecureInput); }
     p.indicator(true);
     let result = (|| {
+        // Stop, a newer run or Companion hidden since the light came on: no picture.
+        if !p.still_wanted() { return Err(Refusal::Stopped); }
         // The display the mouse is on first; if the place is not there, the other displays, one after another, all under
         // the same light. Each picture is dropped as soon as its text has been read.
         let mut cap = p.capture().map_err(Refusal::CaptureFailed)?;
@@ -859,6 +865,45 @@ mod tests {
         }
     }
     #[test]
+    fn point_at_the_problem_takes_no_picture_once_it_is_no_longer_wanted() {
+        // Companion hidden after the light came on (Hide in the menu bar, a full screen app), or Stop meanwhile: the light
+        // goes off again and nothing is captured.
+        let mut f = Fake::new(); f.unwanted = true;
+        assert_eq!(look_for(&f, |b| b.first().map(|x| x.rect)).err(), Some(Refusal::Stopped));
+        let s = f.said();
+        assert!(!s.iter().any(|x| x.starts_with("capture")), "{s:?}");
+        assert_eq!(s.last().map(String::as_str), Some("light off"));
+    }
+    #[test]
+    fn nothing_is_looked_at_while_companion_cannot_be_seen_and_hiding_it_ends_every_pointer() {
+        // Rule 5: the light is the character, the island and Home. Hidden (from the menu bar, or for a full screen app) with
+        // Home closed, none of it can be seen, so no look starts, and a look already under the light takes no picture.
+        assert!(HIDDEN_WORDS.starts_with("Companion is hidden right now, so I did not look at your screen.") && !HIDDEN_WORDS.contains('\u{2014}'));
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let unseen = body("fn light_unseen(");
+        assert!(unseen.contains("companion_hidden()") && unseen.contains("!HOME_OPEN.load("), "{unseen}");
+        let start = body("fn showme_start(");
+        let check = start.find("if light_unseen() {").expect("showme_start checks before anything");
+        for later in ["point_cancel();", "std::thread::spawn(", "showme::start_on("] { assert!(check < start.find(later).unwrap(), "{later}"); }
+        assert!(start[check..].contains("showme::HIDDEN_WORDS"));
+        assert!(start.contains(".while_wanted(Box::new(move || current() && !light_unseen()))"), "hidden during the light or the wait: no picture");
+        let point = body("fn point_problem(");
+        let look = point.find("showme::look_for(").unwrap();
+        assert!(point[..look].contains("if light_unseen() {") && point[..look].contains("showme::HIDDEN_WORDS"), "{point}");
+        assert!(point.contains(".while_wanted(Box::new(move || alive() && !light_unseen()))"), "{point}");
+        // Both ways of hiding take every pointer away, so no ring stays drawn and no your turn watch keeps reading the mouse
+        // (its next step would look at the screen with nothing of Companion showing).
+        let gone = body("fn pointers_gone_hidden(");
+        for p in ["point_cancel();", "hide_overlay(app);", "showme_pending().end()"] { assert!(gone.contains(p), "{p}: {gone}"); }
+        let tick = body("fn tick(");
+        let hide = &tick[tick.find("HIDDEN_BY_US.swap(true").unwrap()..tick.find("} else if show && HIDDEN_BY_US.swap(false").unwrap()];
+        assert!(hide.contains("pointers_gone_hidden(app);"), "the full screen hide: {hide}");
+        let user = body("fn set_user_hidden(");
+        assert!(user.contains("if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide in the menu bar: {user}");
+        assert!(main.contains("\"hide\" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }"));
+    }
+    #[test]
     fn a_password_box_that_takes_focus_during_the_wait_stops_the_look() {
         let mut f = Fake::new(); f.settles = true; f.secure_after = true;
         assert_eq!(start(&f, "where?").err(), Some(Refusal::SecureInput));
@@ -876,8 +921,8 @@ mod tests {
     fn a_stopped_look_says_nothing_and_point_at_the_problem_never_waits() {
         let main = include_str!("main.rs");
         let b = &main[main.find("fn showme_start(").unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
-        assert!(b.contains("Err(showme::Refusal::Stopped) => {}"), "a look ended by Stop or a newer question says nothing: {b}");
-        assert!(b.contains(".while_wanted(Box::new(move || current()))"), "{b}");
+        assert!(b.contains("Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, \"error\", showme::HIDDEN_WORDS, json!({})); } }"), "a look ended by Stop or a newer question says nothing; only one ended by hiding says why: {b}");
+        assert!(b.contains(".while_wanted(Box::new(move || current() && !light_unseen()))"), "{b}");
         let see = include_str!("macos_see.rs");
         assert!(see.contains("fn still_wanted(&self) -> bool { self.wanted.as_ref().map_or(true, |w| w()) }"));
     }
