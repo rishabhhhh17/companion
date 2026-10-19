@@ -132,6 +132,17 @@ describe("the install question (check.install ask, or the house rule)", () => {
     await t.r.runner.handle({ v: 1, id: "late", type: "approval.resolve", approval: req.approval, decision: "allow", scope: "once" });
     expect(of(t.r.events, "protocol.error").some((e) => /unknown approval/.test(e.reason))).toBe(true);
   });
+  test("it waits as long as any other question (approval.waitMinutes): 30 minutes as usual, 15 when set", async () => {
+    const minutes = async (values: Record<string, unknown>) => {
+      const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "n", type: "approval.resolve", approval: req.approval, decision: "deny", scope: "once" }); });
+      t.r.settings.apply(apply(values));
+      expect(await t.run()).toBe(false);
+      const req = of(t.r.events, "approval.request")[0];
+      return Math.round((Date.parse(req.expiresAt) - Date.parse(req.ts)) / 60_000);
+    };
+    expect(await minutes({})).toBe(30);
+    expect(await minutes({ "approval.waitMinutes": 15 })).toBe(15);
+  });
   test("Stop is a no", async () => {
     const t = asking(async (r) => { await r.runner.handle({ v: 1, id: "s", type: "agent.interrupt", agent: "a1" }); });
     expect(await t.run()).toBe(false);

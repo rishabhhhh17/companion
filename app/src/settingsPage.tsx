@@ -20,6 +20,7 @@ import { invoke, listen } from "./tauri.ts";
 import { defOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, numberFrom, problemWords, rowModel, searchSettings, wordsOf, type FixedGroup } from "./settingsRows.ts";
+import { offeredOptions, shownSettings } from "./modelChoice.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
@@ -412,6 +413,9 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
   const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
+  // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always.
+  const offered = offeredOptions(d.key);
+  const options = (r.options ?? []).filter((o) => !offered || offered.includes(o.id));
   const labelId = useId(), helpId = useId();
   const [problem, setProblem] = useState("");
   const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); });
@@ -437,7 +441,7 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
     if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={pictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
     switch (d.kind) {
       case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={off} onClick={() => change(value !== true)}>{r.shown}</button>;
-      case "choice": return <ChoiceControl value={String(value)} options={r.options ?? []} labelId={labelId} disabled={off} onChange={change} />;
+      case "choice": return <ChoiceControl value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
       case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
       case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
       case "list": return <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} />;
@@ -509,7 +513,8 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
 export function SettingsPage({ working, project, spending, onClose, onPractice, onLesson }: { working: boolean; project: string; spending: Spending | null; onClose: () => void; onPractice: (kind?: PracticeKind) => void; onLesson: (lesson: string) => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
-  const results = searchSettings(q);
+  // Every setting, except a model row that could offer only one option so far (modelChoice.ts).
+  const results = searchSettings(q, shownSettings());
   const [inv, setInv] = useState<Inventory | null>(null);
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
   const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");

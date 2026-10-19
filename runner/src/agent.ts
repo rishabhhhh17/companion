@@ -11,11 +11,11 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
-import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
+import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
 import { differentTaskPrompt, endingOf, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore } from "./checkpoints.ts";
-import { APPROVAL_TIMEOUT_MS, EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
-import { MODELS } from "./models.ts";
+import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
+import { MODELS, usualModel } from "./models.ts";
 import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
@@ -145,6 +145,9 @@ type StartCmd = Extract<Command, { type: "agent.start" }>;
 // step: which step of a Drive plan this run is, so its explanation can say so.
 // priorUsd: already spent on this task before it started (looking at pictures added to the request), booked to the day.
 type RunOpts = { resumeSession?: string; taskAllowed?: Set<string>; label?: string; said?: string; asked?: string; goal?: string; first?: string; followBudgetUsd?: number; step?: { index: number; title: string }; priorUsd?: number };
+// How a task's tries ran out, when it stops to ask (or, in a Drive plan, hands the asking to the plan): the failure shown,
+// and how many checks failed in a row and whether all the same way.
+type Stuck = { failure: { label: string; detail: string }; end: LoopEnd };
 // What a follow up needs from the agent's last task. Kept in memory only, never on disk, and replaced by each new task.
 // sessionId is never kept for an off the record task: nothing of it was saved, so nothing can be continued. ending: how it
 // ended, so Try again says it truly. undone: Undo put the project back, so the conversation no longer matches the files.
@@ -163,6 +166,9 @@ const placeOf = (h: Hunk, side: "before" | "after"): ChangeAt => {
   return { file: h.file, line: h.afterAt + i, lineText: makeLabel(rows[i] ?? "", 200) };
 };
 const shown = (rows: string[]) => makeLabel(rows.map((r) => r.trim()).join(" "), 160);
+// What the loop card is told about how the tries ran out. The usual three identical failures add nothing, so the card is
+// exactly what it always was.
+const loopHow = (end: LoopEnd) => (end.tries === 3 && end.same ? {} : { tries: end.tries, same: end.same });
 
 // What "the same action" means for a yes that covers the rest of a task: the same tool, the same thing it acts on (the exact
 // command, address, file, or for other tools the exact input), and the same reason Companion asked. Anything else asks again.
@@ -209,7 +215,8 @@ const summary = (c: ToolUse): string => {
   return c.name;
 };
 
-type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string; offTheRecord?: boolean; goal?: string };
+// maxSteps: the most steps this plan may run, as it was when the plan was made (drive.maxSteps; Rescue keeps MAX_STEPS).
+type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string; offTheRecord?: boolean; goal?: string; maxSteps: number };
 
 export class AgentRunner {
   private sessions = new Map<string, Session>();
@@ -408,7 +415,8 @@ export class AgentRunner {
       // agent that nothing else gives a state, so it goes back to idle and is never left looking busy.
       const before = this.agentStates.get(agent);
       const approval = `ap_${randomBytes(4).toString("hex")}`;
-      const timeout = this.o.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+      // It waits as long as any other question (approval.waitMinutes, usual 30), read as it is asked.
+      const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes") * 60_000;
       this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`, expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
       this.state(agent, "needsYou");
       let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
@@ -541,14 +549,18 @@ export class AgentRunner {
     if (last.undone) { this.fail("That task was undone, so there is nothing to follow up on. Start a new task instead.", cmd.agent); return; }
     if (this.projectInUse(last.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return; }
     const off = last.offTheRecord;
+    // Try again (work.tryAgain): carry on the conversation (usual), or start a fresh one that is still told the request, how
+    // the last attempt ended and which check failed. Off the record always starts fresh, as before. A follow up always
+    // carries on.
+    const fresh = off || (retry && this.setting<string>("work.tryAgain", last.project) === "fresh");
     const prompt = retry
-      ? (off ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
+      ? (fresh ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
       : (off ? freshFollowUpPrompt(last.first, text) : followUpPrompt(text));
     const start: StartCmd = { v: PROTOCOL_VERSION, id: cmd.id, type: "agent.start", project: last.project, agent: cmd.agent, mode: last.mode, prompt, model: last.model, budgetUsd: last.budgetUsd, ...(off ? { offTheRecord: true } : {}) };
     const goal = retry ? last.goal : text;
     // The reviewer reads what was asked, never the conversation: the first request, then what this turn is for.
     const asked = last.first === goal ? goal : `${last.first}\n\nThen: ${goal}`;
-    await this.run(start, { resumeSession: off ? undefined : last.sessionId, label: retry ? `Try again: ${last.goal}` : `Follow up: ${text}`, said: retry ? "" : text, asked, goal, first: last.first, followBudgetUsd: last.budgetUsd });
+    await this.run(start, { resumeSession: fresh ? undefined : last.sessionId, label: retry ? `Try again: ${last.goal}` : `Follow up: ${text}`, said: retry ? "" : text, asked, goal, first: last.first, followBudgetUsd: last.budgetUsd });
   }
 
   // Answer the loop card that is waiting, and forget it, so a card that was answered never makes the agent look busy.
@@ -562,8 +574,8 @@ export class AgentRunner {
 
   // The fix loop breaker for a single task: the same card a Drive plan shows (index 0: no step number). The task stays open
   // until the person answers; Stop and Stop everything answer it too.
-  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal): Promise<string> {
-    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options: STUCK_OPTIONS } as never);
+  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal, end: LoopEnd): Promise<string> {
+    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options: STUCK_OPTIONS, ...loopHow(end) } as never);
     this.state(agent, "needsYou");
     return new Promise<string>((res) => {
       if (signal.aborted) { res("interrupt"); return; }
@@ -607,7 +619,7 @@ export class AgentRunner {
   private touched = new Set<string>();               // agents whose task has started changing the project
 
   // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
-  private async run(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+  private async run(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const key = resolve(cmd.project);
     // What the request carries (files into the ask box) is checked again here, whatever the page checked: anything off
     // refuses the whole request before anything is snapshotted or started.
@@ -676,10 +688,14 @@ export class AgentRunner {
     };
   }
 
-  private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+  private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const prior = opts.priorUsd ?? 0;
-    // Read once, as the task starts: a change in Settings reaches the next task, never this one.
+    // Read once, as the task starts: a change in Settings reaches the next task, never this one. Checks before Companion
+    // asks you what to do (work.tries, usual 3), and whether it asks when the tries run out even if each failure was
+    // different (work.askOnAnyFailure, usual off).
     const maxTurns = this.setting<number>("work.maxTurns", cmd.project);
+    const MAX_TRIES = this.setting<number>("work.tries", cmd.project);
+    const askAny = this.setting<boolean>("work.askOnAnyFailure", cmd.project) === true;
     const checking = this.checkFor(cmd.project);
     const pictures = { make: this.setting<boolean>("pictures.make") !== false, keep: this.setting<number>("pictures.keep") };
     const room = this.room(cmd.project) + prior;
@@ -760,13 +776,15 @@ export class AgentRunner {
     };
 
     // Receipt: compare the state before with the state now. Proof: "done" has to be earned, so a task
-    // that changed files is checked, and a failed check goes back to Claude (twice at most).
-    const MAX_TRIES = 3;
+    // that changed files is checked, and a failed check goes back to Claude (up to MAX_TRIES checks an approach).
     let proof: "passed" | "partial" | "failed" | "skipped" = "skipped";
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
     let stuckOffered = false;
-    const sameThree = (s: string[]) => s.length >= 3 && new Set(s.slice(-3)).size === 1;
+    // The same failure on every check of this approach (three in a row, as usual).
+    const sameRun = (s: string[]) => s.length >= MAX_TRIES && new Set(s.slice(-MAX_TRIES)).size === 1;
+    let ranOut = false;   // this approach's checks ran out on a failure
+    const endOf = (): LoopEnd => ({ tries: MAX_TRIES, same: sameRun(sigs) });
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
@@ -806,15 +824,19 @@ export class AgentRunner {
       if (usd >= budget) { status = "error_max_budget_usd"; break; }
       let next: string;
       if (tries >= MAX_TRIES) {
-        // The fix loop breaker for a single task: the same failure three times in a row stops and asks, once per task. A
-        // Drive plan asks for itself, once per step, after the step's task has ended (drive.approve).
-        if (stuckOffered || this.driving.has(cmd.agent) || !lastFailure || !sameThree(sigs)) break;
+        // The fix loop breaker for a single task: the same failure on every check (three in a row, as usual), or with
+        // work.askOnAnyFailure any failures, stops and asks, once per task. A Drive plan asks for itself, once per step,
+        // after the step's task has ended (drive.approve).
+        ranOut = true;
+        if (stuckOffered || this.driving.has(cmd.agent) || !lastFailure || !(sameRun(sigs) || askAny)) break;
         stuckOffered = true;
-        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal);
+        const end = endOf();
+        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal, end);
         if (choice !== "different") { if (choice === "interrupt" || abort.signal.aborted) status = "interrupted"; break; }
-        // A clearly different approach, in this same task (one undo point, one receipt), with up to three more tries.
+        // A clearly different approach, in this same task (one undo point, one receipt), with up to MAX_TRIES more tries.
         tries = 0;   // checks keeps counting
-        next = offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure) : differentTaskPrompt(lastFailure);
+        ranOut = false;
+        next = offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure, end) : differentTaskPrompt(lastFailure, end);
       } else {
         // Send the evidence back into the same conversation and try again.
         const f = res.failedAt ?? res.steps.at(-1);
@@ -854,7 +876,7 @@ export class AgentRunner {
     if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
     this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
-    const stuck = proof === "failed" && sameThree(sigs) ? lastFailure : undefined;
+    const stuck: Stuck | undefined = proof === "failed" && lastFailure && (sameRun(sigs) || (askAny && ranOut)) ? { failure: lastFailure, end: endOf() } : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
 
@@ -1005,18 +1027,20 @@ export class AgentRunner {
   }
 
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
+    // Most steps in a plan (drive.maxSteps, usual 12): read as the plan is made, and kept with it until it is approved.
+    const max = this.setting<number>("drive.maxSteps", cmd.project);
     await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
-      let steps = parsePlan(await ask(planPrompt(cmd.goal)));
-      if (steps.length > MAX_STEPS && !st.abort.signal.aborted) {
-        const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length)) : ask(shortenPrompt(steps.length), st.sessionId)));
+      let steps = parsePlan(await ask(planPrompt(cmd.goal, max)));
+      if (steps.length > max && !st.abort.signal.aborted) {
+        const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length, max)) : ask(shortenPrompt(steps.length, max), st.sessionId)));
         if (again.length) steps = again;
       }
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (steps.length === 0) { this.fail("Claude did not give a usable plan. Try describing the goal in a little more detail.", cmd.agent); this.state(cmd.agent, "error"); return; }
-      const truncated = steps.length > MAX_STEPS;
-      const kept = steps.slice(0, MAX_STEPS);
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal });
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
+      const truncated = steps.length > max;
+      const kept = steps.slice(0, max);
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal, maxSteps: max });
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model, usualModel("work")) } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
@@ -1608,10 +1632,13 @@ export class AgentRunner {
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!d) { this.fail("Claude did not give a usable diagnosis. Try again, or describe what is wrong.", cmd.agent); this.state(cmd.agent, "error"); return; }
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
+      // A Rescue plan keeps its own 3 to 7 steps (rescue.ts), whatever Most steps in a plan says.
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, maxSteps: MAX_STEPS });
       const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
-      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimateUsd(steps.length) } as never);
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimateUsd(steps.length) } as never);
+      // The rough cost follows the model the plan's steps run on (Claude for Rescue), against Rescue's usual one.
+      const estimate = estimateUsd(steps.length, cmd.model, usualModel("rescue"));
+      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimate } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimate } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
@@ -1619,7 +1646,7 @@ export class AgentRunner {
   private async driveApprove(cmd: Extract<Command, { type: "drive.approve" }>): Promise<void> {
     const plan = this.plans.get(cmd.agent);
     if (!plan) { this.fail("There is no plan waiting for approval.", cmd.agent); return; }
-    const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, MAX_STEPS);
+    const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, plan.maxSteps);
     if (steps.length === 0) { this.fail("A plan needs at least one step.", cmd.agent); return; }
     this.plans.delete(cmd.agent);
     if (!plan.offTheRecord && plan.goal) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
@@ -1671,13 +1698,14 @@ export class AgentRunner {
           }
           break;
         }
-        // The same failure three times: stop and ask, once per step.
+        // The same failure on every check (three, as usual), or with work.askOnAnyFailure any failures: stop and ask, once
+        // per step.
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
-          this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck, options: STUCK_OPTIONS } as never);
+          this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck.failure, options: STUCK_OPTIONS, ...loopHow(r.stuck.end) } as never);
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));   // answerChoice forgets it once answered
           if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck.failure, r.stuck.end)), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }
@@ -1736,7 +1764,9 @@ export class AgentRunner {
     else if (verdict.decision === "ask") {
       tell("needs_approval");
       const approval = `ap_${randomBytes(4).toString("hex")}`;
-      const timeout = this.o.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+      // How long a question waits for your answer (approval.waitMinutes, usual 30), read as each question is asked. Only the
+      // wait changes: no answer in that time is always a no, and an expired card can never become a yes.
+      const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes", cmd.project) * 60_000;
       this.emit({
         type: "approval.request", approval, agent: cmd.agent, checkpoint, toolUseId, risk: verdict.risk ?? "irreversible",
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),

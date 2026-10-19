@@ -1,6 +1,7 @@
 // "Fixes it with you": what a follow up, a Try again and a different approach say to Claude. Plain, testable text.
 // Each one runs as a task of its own (see AgentRunner.followUp); this file only holds the words.
 import { clip, redact } from "./redact.ts";
+import { triedLine, type LoopEnd } from "./drive.ts";
 
 /** A follow up is one line from the card. Anything longer is cut, so a pasted log cannot fill the conversation. */
 export const MAX_FOLLOW_UP_CHARS = 2000;
@@ -45,8 +46,8 @@ export const retryPrompt = (goal: string, how: Ending, failure?: Failure) =>
 export const freshRetryPrompt = (first: string, goal: string, how: Ending, failure?: Failure) =>
   `${freshStart(first)}${goal.trim() !== first.trim() ? `\n\nThen the person asked:\n${said(goal)}` : ""}\n\n${ended(how, failure)}`;
 
-const DIFFERENT = "The same check has failed three times in a row with the same problem, so the current approach is not working.";
-export const differentTaskPrompt = (failure: Failure) =>
-  `${DIFFERENT}${failedLines(failure)}\n\nTake a clearly different approach. Keep the change small.`;
-export const freshDifferentTaskPrompt = (goal: string, failure: Failure) =>
-  `${freshStart(goal)}\n\n${DIFFERENT}${failedLines(failure)}\n\nTake a clearly different approach. Keep the change small.`;
+// How the tries ran out (drive.ts triedLine): the usual three identical failures say exactly what they always said.
+export const differentTaskPrompt = (failure: Failure, end?: LoopEnd) =>
+  `${triedLine(end)}${failedLines(failure)}\n\nTake a clearly different approach. Keep the change small.`;
+export const freshDifferentTaskPrompt = (goal: string, failure: Failure, end?: LoopEnd) =>
+  `${freshStart(goal)}\n\n${triedLine(end)}${failedLines(failure)}\n\nTake a clearly different approach. Keep the change small.`;

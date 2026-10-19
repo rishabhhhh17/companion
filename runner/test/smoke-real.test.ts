@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 import { SMOKE_CASES, boxPicture, conversations, pictures } from "../scripts/smoke-real.ts";
+import { canonicalModel, MODEL_CHOICES } from "../src/models.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -20,7 +21,7 @@ const run = (args: string[], env: Record<string, string> = {}) => {
 describe("the plan", () => {
   test("about ten small cases covering every lane and model the brief names, estimated under a dollar", () => {
     expect(SMOKE_CASES.length).toBeGreaterThanOrEqual(9);
-    expect(SMOKE_CASES.length).toBeLessThanOrEqual(12);
+    expect(SMOKE_CASES.length).toBeLessThanOrEqual(13);
     expect(new Set(SMOKE_CASES.map((c) => c.name)).size).toBe(SMOKE_CASES.length);
     expect(SMOKE_CASES.reduce((a, c) => a + c.estimateUsd, 0)).toBeLessThan(1);
     const by = (n: string) => SMOKE_CASES.find((c) => c.name === n)!;
@@ -30,6 +31,14 @@ describe("the plan", () => {
     expect(by("fast-haiku55").models).toEqual(["claude-haiku-5-5"]);
     expect(by("vision-sonnet55").models).toEqual(["claude-sonnet-5-5"]);
     for (const n of ["resumed-companion-folder", "follow-up", "off-the-record"]) expect(by(n)).toBeDefined();
+    // The model choices in Settings (models.ts MODEL_CHOICES): each option names the case that must pass before it is offered.
+    expect(by("main-engine-opus55").models).toEqual(["claude-opus-5-5"]);
+    expect(by("rescue-sonnet55").models).toEqual(["claude-sonnet-5-5"]);
+    expect(by("fast-sonnet55").models).toEqual(["claude-sonnet-5-5"]);
+    for (const [job, options] of Object.entries(MODEL_CHOICES)) for (const [id, c] of Object.entries(options)) {
+      expect(by(c.smoke), `${job}.${id}`).toBeDefined();
+      expect(by(c.smoke).models.map(canonicalModel), `${job}.${id}`).toEqual([canonicalModel(c.model)]);
+    }
   });
   test("every case has its own stop at or under the per case stop, and its estimate fits under it", () => {
     for (const c of SMOKE_CASES) { expect(c.capUsd!, c.name).toBeLessThanOrEqual(0.3); expect(c.estimateUsd, c.name).toBeLessThanOrEqual(c.capUsd!); expect(c.timeoutS!, c.name).toBeGreaterThan(0); }
