@@ -1026,7 +1026,7 @@ function Card() {
     if (!phShown) { if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }
     if (!m.ph?.text || phArmedFor.current === m.ph.text) return;
     phArmedFor.current = m.ph.text;
-    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
+    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
   }, [m.ph?.stage, m.ph?.text, phShown]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {

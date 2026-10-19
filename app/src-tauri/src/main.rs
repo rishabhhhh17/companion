@@ -1171,9 +1171,11 @@ fn arm_now(app: &AppHandle, on: bool) {
 /// Answers which keys use a suggestion has for this result (keymap::arm may take other keys than the page knew, or none
 /// when another app holds them all), so the result names them only when they work. A sync command: on the main thread,
 /// arming runs before the answer. Only while Home shows: the keys work in every app, so never for a result nobody sees.
-#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> Option<String> {
-    if !card_visible() { return None; }
-    phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id)
+/// `req`: the request the result answers; one that is not the request waiting now (cancelled since, or an older box's)
+/// is not kept and arms nothing.
+#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String, req: String) -> Option<String> {
+    if !card_visible() || !phelp::ready(text, handback == "copy", &req) { return None; }
+    arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id)
 }
 /// The result stopped showing (another tab was picked, or Home closed): the keys go back; ph_ready takes them again when it
 /// shows again. Nothing else changes, so the result can still be used with its button.

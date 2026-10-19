@@ -16,6 +16,8 @@ use tauri::{AppHandle, Emitter, Manager};
 const INDICATOR_DRAW: Duration = Duration::from_millis(150);
 
 struct Pending {
+    /// The request the text was sent as (assist.prompt's req): only its result is kept, and moving on cancels it.
+    req: String,
     pid: i32, bundle: String, name: String,
     element: Arc<ax::Cf>, element_id: u64,
     original: String, had_selection: bool,
@@ -82,13 +84,18 @@ pub fn target_kind(bundle: &str) -> &'static str {
     if TERMINALS.contains(&bundle) { "claude_code" } else if CHAT_APPS.contains(&bundle) { "chat" } else { "other" }
 }
 
-fn send_prompt(app: &AppHandle, bundle: &str, text: &str, answer: Option<&str>) {
+fn send_prompt(app: &AppHandle, bundle: &str, text: &str, answer: Option<&str>, req: &str) {
     // Prompt help rewrites (ph.style in Settings): a full rewrite unless the person chose a light touch.
-    let mut cmd = json!({ "v": 1, "id": format!("ph{}", now_ms()), "type": "assist.prompt", "req": format!("ph_{}", now_ms()), "app": bundle, "target": target_kind(bundle), "text": text, "style": rules::style_of(&crate::setting_now("ph.style")) });
+    let mut cmd = json!({ "v": 1, "id": format!("ph{}", now_ms()), "type": "assist.prompt", "req": req, "app": bundle, "target": target_kind(bundle), "text": text, "style": rules::style_of(&crate::setting_now("ph.style")) });
     // The folder the person chose gives Prompt help what the project is (its stack and purpose) and what Companion remembers.
     { let project = crate::current_project(); if !project.is_empty() { cmd["project"] = json!(project); } }
     if let (Some(a), Some(o)) = (answer, cmd.as_object_mut()) { o.insert("answer".into(), json!(a)); o.insert("noQuestion".into(), json!(true)); }
     if let Err(e) = app.state::<crate::runner::Runner>().send(&cmd) { say(app, "error", json!({ "message": format!("Prompt help could not reach the engine ({e}).") })); }
+}
+/// A request the person moved on from (Cancel, Stop everything, a newer press) is stopped in the engine too, so no result
+/// for it comes back to be shown again.
+fn cancel_request(app: &AppHandle, req: &str) {
+    let _ = app.state::<crate::runner::Runner>().send(&json!({ "v": 1, "id": format!("phc{}", now_ms()), "type": "assist.cancel", "req": req }));
 }
 
 /// The hotkey. Runs on its own thread because reading can take a few seconds in apps that wake their text late.
@@ -100,7 +107,9 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         let Some(front) = ax::front_app() else { crate::log("prompt_help_step", json!({ "step": "no_front_app" })); return };
         crate::log("prompt_help_step", json!({ "step": "front", "app": front.bundle_id }));
         if front.bundle_id.is_empty() || front.bundle_id.starts_with("dev.companion") { say(&app, "error", json!({ "message": "Click into the text box you want help with first, then press the hotkey." })); return; }
-        {   let mut s = st(); s.pending = None; s.awaiting = None; }
+        // A request still on its way for an earlier press is cancelled: its answer is not for this box.
+        let old = { let mut s = st(); s.awaiting = None; s.pending.take() };
+        if let Some(p) = old { cancel_request(&app, &p.req); }
         ax::let_apps_sleep();   // whatever an earlier read switched on in another app
         let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
         // The light comes first, and gets a moment to draw, before anything is read (rule 5).
@@ -151,11 +160,13 @@ fn finish_read(app: &AppHandle, mut session: rules::ReadSession, gen: u64, pid: 
             note("read", &bundle, t0.elapsed().as_millis() as u64, chars, r.rung);
             let element_id = el.id();
             let text = r.text.clone();
-            st().pending = Some(Pending { pid, bundle: bundle.clone(), name: name.clone(), element: Arc::new(el), element_id, original: r.text, had_selection: r.had_selection, sel_start: r.sel_start, improved: None, handback_copy: false });
-            say(app, "thinking", json!({ "app": name, "selection": r.had_selection }));
+            let req = format!("ph_{}", now_ms());
+            st().pending = Some(Pending { req: req.clone(), pid, bundle: bundle.clone(), name: name.clone(), element: Arc::new(el), element_id, original: r.text, had_selection: r.had_selection, sel_start: r.sel_start, improved: None, handback_copy: false });
+            // The page is told the request, and takes only its own result.
+            say(app, "thinking", json!({ "app": name, "selection": r.had_selection, "req": req }));
             // The character comes beside the window the prompt was read from while the card shows the result (F18 item 2).
             crate::roam_beside_window_of(app, pid);
-            send_prompt(app, &bundle, &text, None);
+            send_prompt(app, &bundle, &text, None, &req);
         }
     }
     session.finish();
@@ -209,18 +220,32 @@ pub fn shared_answer(bundle: &str, choice: &str) -> bool {
     choice != rules::Choice::Never && c.decide(bundle) == rules::Decision::Allow
 }
 
-/// The page has shown the improved text; remember it so accept can paste it. Nothing is stored on disk.
-pub fn ready(improved: String, handback_copy: bool) {
-    if let Some(p) = st().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
+/// The page has shown the improved text; remember it so accept can paste it. Nothing is stored on disk. Kept only when it is
+/// the result of the request still waiting (`req`): true then.
+pub fn ready(improved: String, handback_copy: bool, req: &str) -> bool {
+    let mut s = st();
+    let p = &mut s.pending;
+    if !rules::same_request(p.as_ref().map(|p| p.req.as_str()), req) { return false; }
+    if let Some(p) = p.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
+    true
 }
 
-pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); { let mut s = st(); s.pending = None; s.awaiting = None; } ax::let_apps_sleep_soon(); say(app, "dismissed", json!({})); }
+/// Cancel, Close or Stop everything: a read under way is dropped, a request on its way is cancelled, a question about an
+/// app is forgotten.
+pub fn dismiss(app: &AppHandle) {
+    GEN.fetch_add(1, Ordering::SeqCst);
+    let was = { let mut s = st(); s.awaiting = None; s.pending.take() };
+    if let Some(p) = was { cancel_request(app, &p.req); }
+    ax::let_apps_sleep_soon();
+    say(app, "dismissed", json!({}));
+}
 
-/// Answer the one question and ask again, without asking another.
+/// Answer the one question and ask again, without asking another: a new request, for the same text.
 pub fn answer(app: &AppHandle, answer: String) {
-    let (bundle, original) = match st().pending.as_ref() { Some(p) => (p.bundle.clone(), p.original.clone()), None => return };
-    say(app, "thinking", json!({}));
-    send_prompt(app, &bundle, &original, Some(&answer));
+    let req = format!("ph_{}", now_ms());
+    let (bundle, original) = match st().pending.as_mut() { Some(p) => { p.req = req.clone(); p.improved = None; (p.bundle.clone(), p.original.clone()) } None => return };
+    say(app, "thinking", json!({ "req": req }));
+    send_prompt(app, &bundle, &original, Some(&answer), &req);
 }
 
 fn current_focus(pid: i32) -> Option<(i32, u64)> {
@@ -351,7 +376,33 @@ mod tests {
         let ladder = read.find("ax::read_ladder(pid)").unwrap();
         assert!(read[..ladder].contains(stopped) && read[ladder..].contains(stopped), "right before reading and after: {read}");
         // Cancel or Stop also forgets a question about an app that is still waiting for its answer.
-        let dismiss = &SRC[SRC.find("pub fn dismiss(").unwrap()..]; let dismiss = &dismiss[..dismiss.find('\n').unwrap()];
+        let dismiss = body("pub fn dismiss(");
         assert!(dismiss.contains("s.awaiting = None;"), "{dismiss}");
+    }
+    #[test]
+    fn each_read_is_its_own_request_and_a_result_is_kept_only_for_the_one_waiting() {
+        // A result that comes back after Cancel, or an older box's after a newer press, is never kept for Use it: the
+        // request is kept with what was read, said with "thinking", cancelled when the person moves on, and checked when
+        // the page hands the result back (prompthelp.rs same_request).
+        assert!(SRC.contains("    req: String,"), "Pending keeps its request");
+        let send = body("fn send_prompt(");
+        assert!(send.contains("req: &str") && send.contains("\"req\": req,") && !send.contains("format!(\"ph_{}\""), "{send}");
+        let read = body("fn finish_read(");
+        let made = read.find("let req = format!(\"ph_{}\", now_ms());").expect("a new request per read");
+        assert!(made < read.find("say(app, \"thinking\", json!({ \"app\": name, \"selection\": r.had_selection, \"req\": req }));").unwrap(), "{read}");
+        assert!(read.contains("send_prompt(app, &bundle, &text, None, &req);"), "{read}");
+        let answer = body("pub fn answer(");
+        assert!(answer.contains("p.req = req.clone();") && answer.contains("say(app, \"thinking\", json!({ \"req\": req }));"), "{answer}");
+        // Moving on cancels what is still on its way: Cancel or Stop, and a newer press.
+        let dismiss = body("pub fn dismiss(");
+        assert!(dismiss.contains("s.pending.take()") && dismiss.contains("cancel_request(app, &p.req)"), "{dismiss}");
+        let hot = body("pub fn on_hotkey(");
+        assert!(hot.contains("s.pending.take()") && hot.contains("cancel_request(&app, &p.req)"), "{hot}");
+        assert!(body("fn cancel_request(").contains("\"type\": \"assist.cancel\", \"req\": req"));
+        let ready = body("pub fn ready(");
+        assert!(ready.contains("-> bool") && ready.contains("rules::same_request(p.as_ref().map(|p| p.req.as_str()), req)"), "{ready}");
+        let main = include_str!("main.rs");
+        let r = &main[main.find("#[tauri::command] fn ph_ready(").unwrap()..]; let r = &r[..r.find("\n}\n").unwrap()];
+        assert!(r.contains("req: String") && r.contains("if !card_visible() || !phelp::ready(text, handback == \"copy\", &req) { return None; }"), "{r}");
     }
 }

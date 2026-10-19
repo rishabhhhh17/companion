@@ -393,7 +393,7 @@ describe("When something needs me (home.goToNeeds)", () => {
   const PH_STAGES = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
   const EH_STAGES = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
   const phAt = (stage: string) => run(stage === "ready"
-    ? [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]
+    ? [ev({ type: "app.prompt_help", stage: "thinking", app: "Notes", req: "ph_1" }), ev({ type: "assist.prompt.done", req: "ph_1", text: "Better words", diff: [] })]
     : [ev({ type: "app.prompt_help", stage, app: "Notes" })]);
   const ehAt = (stage: string) => run([ev({ type: "app.explain_error", stage, app: "Terminal", req: "r1" })]);
   test("Prompt help and the error explainer always show Now, from every tab, with Only mark the tab and while typing", () => {
@@ -417,7 +417,7 @@ describe("When something needs me (home.goToNeeds)", () => {
   test("a whole Prompt help press from Settings with Only mark the tab: each step that needs the person is on screen", () => {
     let s = go(homeStart(), { type: "pick", tab: "settings" });
     let m = initial();
-    for (const e of [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "consent", app: "Notes" }), ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "thinking", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]) {
+    for (const e of [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "consent", app: "Notes" }), ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "thinking", app: "Notes", req: "ph_1" }), ev({ type: "assist.prompt.done", req: "ph_1", text: "Better words", diff: [] })]) {
       m = reduce(m, e as never);
       s = homeReduce(s, { type: "need", need: need(m), markOnly: true });
       if (need(m)) expect(shownOn("promptHelp", s.tab, m), String(m.ph?.stage)).toBe(true);
@@ -446,6 +446,8 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(fx).toContain('if (!phShown) { if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }');
     expect(fx).toContain("if (!m.ph?.text || phArmedFor.current === m.ph.text) return;");
     expect(fx.indexOf("if (!phShown")).toBeLessThan(fx.indexOf('invoke("ph_ready"'));
+    // The result is handed back with its own request, so the shell keeps it only for the read still waiting.
+    expect(fx).toContain('void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" })');
     expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown]);");
   });
   test("with Only mark the tab, anything that needs the person shows the island's mark", () => {

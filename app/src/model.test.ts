@@ -436,19 +436,38 @@ describe("Prompt help on the card", () => {
     expect(run([stage("reading", { app: "Claude" })]).ph).toMatchObject({ stage: "reading", app: "Claude" });
   });
   test("the improved text streams in while it thinks", () => {
-    const m = run([stage("thinking", { app: "Claude" }), ev({ type: "assist.prompt.delta", req: "ph_1", text: "Build a " }), ev({ type: "assist.prompt.delta", req: "ph_1", text: "photo gallery" })]);
+    const m = run([stage("thinking", { app: "Claude", req: "ph_1" }), ev({ type: "assist.prompt.delta", req: "ph_1", text: "Build a " }), ev({ type: "assist.prompt.delta", req: "ph_1", text: "photo gallery" })]);
     expect(m.ph).toMatchObject({ stage: "thinking", streaming: "Build a photo gallery" });
   });
   test("when it is done the card is ready with the diff, the question and quick answers", () => {
-    const m = run([stage("thinking", { app: "Claude" }), done]);
-    expect(m.ph).toMatchObject({ stage: "ready", text: "Build a photo gallery page.", handback: "paste", question: "Open full size on click?", options: ["Yes", "No"] });
+    const m = run([stage("thinking", { app: "Claude", req: "ph_1" }), done]);
+    expect(m.ph).toMatchObject({ stage: "ready", text: "Build a photo gallery page.", handback: "paste", question: "Open full size on click?", options: ["Yes", "No"], req: "ph_1" });
     expect(m.ph?.diff[1]).toEqual(["+", "Build"]);
   });
   test("an error is shown in plain words and ends the stage", () => {
-    expect(run([stage("thinking"), ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]).ph).toMatchObject({ stage: "error", message: "The improved version came out much longer than yours, so I left yours alone." });
+    expect(run([stage("thinking", { req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]).ph).toMatchObject({ stage: "error", message: "The improved version came out much longer than yours, so I left yours alone." });
   });
   test("a cancelled request leaves nothing on the card", () => {
-    expect(run([stage("thinking"), ev({ type: "assist.error", req: "x", reason: "cancelled" })]).ph).toBeNull();
+    expect(run([stage("thinking", { req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: "cancelled" })]).ph).toBeNull();
+  });
+  test("a result belongs to its own request: one cancelled, or an older box's, never comes back", () => {
+    const thinking = (req: string, app = "Claude") => stage("thinking", { app, req });
+    const doneFor = (req: string) => ev({ type: "assist.prompt.done", req, text: "Better.", diff: [], handback: "paste" });
+    // Cancelled while it thought: the result that still comes back is not shown again.
+    expect(run([thinking("ph_1"), stage("dismissed"), doneFor("ph_1")]).ph).toBeNull();
+    expect(run([thinking("ph_1"), stage("dismissed"), ev({ type: "assist.prompt.delta", req: "ph_1", text: "x" })]).ph).toBeNull();
+    // A newer press in another box: the older box's answer is never taken as the newer box's.
+    const m = run([thinking("ph_1"), stage("reading", { app: "Slack" }), thinking("ph_2", "Slack"), doneFor("ph_1"), ev({ type: "assist.prompt.delta", req: "ph_1", text: "old" })]);
+    expect(m.ph).toMatchObject({ stage: "thinking", app: "Slack", req: "ph_2" });
+    expect(m.ph?.text).toBeUndefined(); expect(m.ph?.streaming).toBeUndefined();
+    // Still reading the newer box (no request yet): the older answer is not taken either.
+    expect(run([thinking("ph_1"), stage("reading", { app: "Slack" }), doneFor("ph_1")]).ph).toMatchObject({ stage: "reading", app: "Slack" });
+    // The older request's cancel or error never ends the newer one.
+    expect(run([thinking("ph_2"), ev({ type: "assist.error", req: "ph_1", reason: "cancelled" })]).ph).toMatchObject({ stage: "thinking", req: "ph_2" });
+    expect(run([thinking("ph_2"), ev({ type: "assist.error", req: "ph_1", reason: "Could not improve the prompt (x)" })]).ph?.stage).toBe("thinking");
+    // Its own result is kept with its request, so Use it hands back the right one; an answer to its question is a new one.
+    expect(run([thinking("ph_2"), doneFor("ph_2")]).ph).toMatchObject({ stage: "ready", text: "Better.", req: "ph_2" });
+    expect(run([thinking("ph_2"), doneFor("ph_2"), stage("thinking", { req: "ph_3" }), doneFor("ph_3")]).ph).toMatchObject({ stage: "ready", app: "Claude", req: "ph_3" });
   });
   test("every ending has a message: pasted, copied, restored, refused", () => {
     for (const s of ["pasted", "copied", "restored", "refused", "error"]) expect(run([stage(s, { message: "Done." })]).ph?.message, s).toBe("Done.");
@@ -460,12 +479,13 @@ describe("Prompt help on the card", () => {
   });
   test("dismissing clears it", () => expect(run([stage("reading"), stage("dismissed")]).ph).toBeNull());
   test("a new press starts over, with the old text gone", () => {
-    const m = run([stage("thinking"), done, stage("reading", { app: "Cursor" })]);
+    const m = run([stage("thinking", { req: "ph_1" }), done, stage("reading", { app: "Cursor" })]);
     expect(m.ph).toMatchObject({ stage: "reading", app: "Cursor" });
     expect(m.ph?.text).toBeUndefined();
   });
   test("a Prompt help event is not mistaken for the agent's task", () => {
-    const m = run([stage("reading"), done]);
+    const m = run([stage("thinking", { req: "ph_1" }), done]);
+    expect(m.ph?.stage).toBe("ready");
     expect(m.task).toBeNull();
     expect(m.character).toBe("idle");
   });

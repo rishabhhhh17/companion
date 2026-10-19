@@ -718,7 +718,7 @@ mod tests {
         // Stop everything and Cancel run on the main thread, and switching another app's Accessibility off again writes into
         // it: that is done on a helper thread, with what was woken taken at once (so a newer read keeps what it wakes).
         let ph = include_str!("phelp.rs");
-        let dismiss = &ph[ph.find("pub fn dismiss(").unwrap()..]; let dismiss = &dismiss[..dismiss.find('\n').unwrap()];
+        let dismiss = &ph[ph.find("pub fn dismiss(").unwrap()..]; let dismiss = &dismiss[..dismiss.find("\n}\n").unwrap()];
         assert!(dismiss.contains("ax::let_apps_sleep_soon();") && !dismiss.contains("ax::let_apps_sleep();"), "{dismiss}");
         let soon = &ax[ax.find("pub fn let_apps_sleep_soon(").unwrap()..]; let soon = &soon[..soon.find("\n}\n").unwrap()];
         assert!(soon.find("std::mem::take(").unwrap() < soon.find("std::thread::spawn(").unwrap(), "{soon}");

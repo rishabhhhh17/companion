@@ -31,10 +31,14 @@ export type Paused = { reason: string; path?: string };
 export type RescueCard = { summary: string; works: string[]; broken: string; evidence: { label: string; status: string; detail: string }[] };
 // file: where the notes were filed; none when it was asked off the record.
 export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
+/** `req`: the request the read was sent as (said with "thinking"). Only that request's stream, result or error is taken,
+ *  so a result cancelled since, or an older box's, never comes back over a newer one. */
 export type PromptHelp = {
   stage: string; app?: string; message?: string; streaming?: string;
-  text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
+  text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string; req?: string;
 };
+/** Is this engine event for the Prompt help request on the card now? */
+const phOwn = (m: Model, req: unknown): boolean => !!m.ph?.req && req === m.ph.req;
 export type ShipGate = { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean };
 export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[] };
 export type MemoryLine = { id: string; text: string; source: string; date: string };
@@ -434,7 +438,7 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}), ...seq } };
     }
     // Claude out of reach, or a failed request, is said in plain words (claudeStopWords), never as "not found".
-    case "assist.error": { const said = claudeStopWords(String(e.reason)); return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: said ?? (String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason)) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: said ?? String(e.reason), diff: [] } }); }
+    case "assist.error": { const said = claudeStopWords(String(e.reason)); return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: said ?? (String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason)) } } : !phOwn(m, e.req) ? m : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: said ?? String(e.reason), diff: [] } }); }
     case "app.voice": {
       // Which microphone listened, in one line above the tabs (voiceset.rs): the picked one is not connected so the
       // default listens, the one in use went away (even after another took over), or another one took over while talking.
@@ -565,9 +569,9 @@ export function reduce(m: Model, e: Ev): Model {
     case "rescue.report": return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
     case "app.prompt_help":
       // Each stage starts fresh, so the old text never lingers into a new press.
-      return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [] } };
-    case "assist.prompt.delta": return m.ph ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
-    case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
+      return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [], ...(typeof e.req === "string" && e.req ? { req: e.req } : {}) } };
+    case "assist.prompt.delta": return m.ph && phOwn(m, e.req) ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
+    case "assist.prompt.done": return phOwn(m, e.req) ? { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback, req: m.ph?.req } } : m;
     case "ship.gates": m = practiceGates(m, e); return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
     case "ship.status": if (e.needs === "browser") m = { ...m, browser: { ...m.browser, needed: true } };
       return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };

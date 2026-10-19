@@ -191,6 +191,12 @@ pub fn read_verdict(role: &str, subrole: &str, secure_input_on: bool, bundle_id:
     match consent.decide(bundle_id) { Decision::Allow => ReadVerdict::Ok, Decision::Ask => ReadVerdict::NeedConsent, Decision::Refuse => ReadVerdict::RefusedByYou }
 }
 
+// ---------- one request per read ----------
+
+/// Each read is sent as its own request. A result is kept for Use it only when it answers the request still waiting: never
+/// one cancelled since (Cancel, Stop everything, a newer press), and never an older box's rewrite over a newer box.
+pub fn same_request(waiting: Option<&str>, answered: &str) -> bool { !answered.is_empty() && waiting == Some(answered) }
+
 // ---------- the indicator comes first ----------
 
 #[derive(Default)]
@@ -366,6 +372,15 @@ pub fn log_line(kind: &str, bundle_id: &str, ms: u64, chars: usize, outcome: &st
 mod tests {
     use super::*;
     const APP: &str = "com.openai.codex";
+
+    #[test] fn a_result_belongs_only_to_the_request_still_waiting() {
+        // Each read is sent as its own request. A result is kept for Use it only when it answers the request waiting now:
+        // never one cancelled since, and never an older box's rewrite over a newer box.
+        assert!(same_request(Some("ph_2"), "ph_2"));
+        assert!(!same_request(Some("ph_2"), "ph_1"), "an older press's answer");
+        assert!(!same_request(None, "ph_1"), "nothing waits (cancelled, dismissed, stopped)");
+        assert!(!same_request(Some(""), ""), "a request always has a name");
+    }
 
     #[test] fn password_managers_and_system_settings_are_never_read() {
         let d = Denylist::default();
