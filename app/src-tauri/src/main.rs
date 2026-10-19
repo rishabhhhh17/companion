@@ -2317,17 +2317,18 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
 // ---------- Celebration ----------
 
 /// Confetti from the character for the big moments (proof passed, it went live). Never over a ring that is waiting
-/// for the person, and it leaves the moment anything else needs the pointer.
+/// for the person, and it leaves the moment anything else needs the pointer. Never while Companion is hidden (a full
+/// screen app is in front, or the person hid it): it would land on a video, a show or what they chose not to share.
 #[tauri::command]
 fn celebrate(app: AppHandle) {
     use std::sync::atomic::Ordering::SeqCst;
     let free = || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none() && !overlay_busy();
-    if !free() || quiet() { return; }
+    if !free() || quiet() || companion_hidden() { return; }
     let (gen, party) = (POINT_GEN.load(SeqCst), PARTY_GEN.fetch_add(1, SeqCst) + 1);
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
-        // Checked again here: a pointer may have been drawn since the command came in.
-        if !free() || POINT_GEN.load(SeqCst) != gen { return; }
+        // Checked again here: a pointer may have been drawn, or Companion hidden, since the command came in.
+        if !free() || companion_hidden() || POINT_GEN.load(SeqCst) != gen { return; }
         let mtm = MainThreadMarker::new().unwrap();
         let screens = NSScreen::screens(mtm);
         let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);

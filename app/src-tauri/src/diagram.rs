@@ -75,6 +75,18 @@ mod tests {
         assert!(!draw.contains("15_000") && draw.contains("if (ms !== null) timer = setTimeout("), "the page fades it after the time it is sent");
     }
     #[test]
+    fn confetti_never_plays_while_companion_is_hidden() {
+        // The same rule as a picture: nothing is drawn over what the person chose not to share (a full screen video or show,
+        // or Companion hidden from the menu bar). The dock page still hears a task pass while it is hidden, so the shell
+        // refuses, as the command comes in and again on the main thread just before drawing.
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn celebrate(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("if !free() || quiet() || companion_hidden() { return; }"), "{f}");
+        let on_main = &f[f.find("run_on_main_thread(").unwrap()..];
+        assert!(on_main.contains("if !free() || companion_hidden() || POINT_GEN.load(SeqCst) != gen { return; }"), "{on_main}");
+    }
+    #[test]
     fn a_picture_kept_until_closed_never_keeps_the_character_beside_a_window() {
         // The character goes home once nothing about the window it visits is up (roam.rs). A ring and a timed picture keep
         // it there for their own time, as today; a picture kept until closed has no time, so it does not keep it at all.
