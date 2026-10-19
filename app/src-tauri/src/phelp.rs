@@ -28,7 +28,8 @@ struct Pending {
 struct State { consent: Option<rules::Consent>, deny: rules::Denylist, awaiting: Option<(i32, String, String)>, pending: Option<Pending> }
 /// The state lock. If some thread ever panicked while holding it, later users still get it: one mistake must not break Prompt help for good.
 fn st() -> std::sync::MutexGuard<'static, State> { STATE.lock().unwrap_or_else(|e| e.into_inner()) }
-/// Counts hotkey presses and dismissals, so a paste that is already under way can tell the person has moved on.
+/// Counts hotkey presses, answers about an app, and dismissals (Cancel, Stop everything). Each press and each answer takes
+/// its own number, so a read or a paste under way can tell the person has moved on, and then reads, sends or pastes nothing.
 static GEN: AtomicU64 = AtomicU64::new(0);
 static PASTING: AtomicBool = AtomicBool::new(false);
 
@@ -101,12 +102,14 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
         if front.bundle_id.is_empty() || front.bundle_id.starts_with("dev.companion") { say(&app, "error", json!({ "message": "Click into the text box you want help with first, then press the hotkey." })); return; }
         {   let mut s = st(); s.pending = None; s.awaiting = None; }
         ax::let_apps_sleep();   // whatever an earlier read switched on in another app
-        GEN.fetch_add(1, Ordering::SeqCst);
+        let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
         // The light comes first, and gets a moment to draw, before anything is read (rule 5).
         let mut session = rules::ReadSession::default();
         say(&app, "reading", json!({ "app": front.name }));
         open_card(&app, "prompt_help", false);
         std::thread::sleep(INDICATOR_DRAW);
+        // Cancel, Stop everything or a newer press during the light: the card has already said so, nothing is read.
+        if GEN.load(Ordering::SeqCst) != gen { return; }
         session.indicator_on();
         crate::log("prompt_help_step", json!({ "step": "indicator_lit", "trusted": ax::trusted(false) }));
         if !ax::trusted(false) {
@@ -114,6 +117,8 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
             if !ok { say(&app, "needs_accessibility", json!({})); note("read", &front.bundle_id, 0, 0, "needs_accessibility"); return; }
         }
         let Some(f) = ax::focused(front.pid) else { say(&app, "nothing_to_read", json!({ "app": front.name })); note("read", &front.bundle_id, t0.elapsed().as_millis() as u64, 0, "no_field"); return; };
+        // An app slow to say which box is focused can take a while: stopped meanwhile, nothing more happens.
+        if GEN.load(Ordering::SeqCst) != gen { return; }
         let verdict = {
             let mut st = st();
             if st.consent.is_none() { st.consent = Some(load_consent()); }
@@ -121,7 +126,7 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
             rules::read_verdict(&f.role, &f.subrole, ax::secure_input_enabled(), &front.bundle_id, deny, consent.as_mut().unwrap())
         };
         match verdict {
-            rules::ReadVerdict::Ok => finish_read(&app, session, front.pid, front.bundle_id, front.name, t0),
+            rules::ReadVerdict::Ok => finish_read(&app, session, gen, front.pid, front.bundle_id, front.name, t0),
             rules::ReadVerdict::NeedConsent => {
                 st().awaiting = Some((front.pid, front.bundle_id.clone(), front.name.clone()));
                 say(&app, "consent", json!({ "app": front.name }));
@@ -131,9 +136,11 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
     });
 }
 
-fn finish_read(app: &AppHandle, mut session: rules::ReadSession, pid: i32, bundle: String, name: String, t0: Instant) {
+/// `gen`: the number the press (or the answer about this app) took as it started.
+fn finish_read(app: &AppHandle, mut session: rules::ReadSession, gen: u64, pid: i32, bundle: String, name: String, t0: Instant) {
     if session.begin_read().is_err() { return; }
-    let gen = GEN.load(Ordering::SeqCst);
+    // Stopped since the press: nothing is read.
+    if GEN.load(Ordering::SeqCst) != gen { session.finish(); return; }
     let read = ax::read_ladder(pid);
     // Stop everything (or a newer press) came while the text was being read: it is dropped here, never sent to the model.
     if GEN.load(Ordering::SeqCst) != gen { session.finish(); return; }
@@ -160,6 +167,8 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
     let choice = match choice { "once" => rules::Choice::Once, "always" => rules::Choice::Always, _ => rules::Choice::Never };
     std::thread::spawn(move || {
         let Some((pid, bundle, name)) = st().awaiting.take() else { return };
+        // The answer starts its own read: Cancel, Stop everything or a newer press from here on stops it.
+        let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
         {
             let mut st = st();
             if st.consent.is_none() { st.consent = Some(load_consent()); }
@@ -176,7 +185,8 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
         session.indicator_on();
         say(&app, "reading", json!({ "app": name }));
         std::thread::sleep(INDICATOR_DRAW);
-        finish_read(&app, session, pid, bundle, name, Instant::now());
+        if GEN.load(Ordering::SeqCst) != gen { return; }
+        finish_read(&app, session, gen, pid, bundle, name, Instant::now());
     });
 }
 
@@ -204,7 +214,7 @@ pub fn ready(improved: String, handback_copy: bool) {
     if let Some(p) = st().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
 }
 
-pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); st().pending = None; ax::let_apps_sleep_soon(); say(app, "dismissed", json!({})); }
+pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); { let mut s = st(); s.pending = None; s.awaiting = None; } ax::let_apps_sleep_soon(); say(app, "dismissed", json!({})); }
 
 /// Answer the one question and ask again, without asking another.
 pub fn answer(app: &AppHandle, answer: String) {
@@ -312,5 +322,36 @@ fn put_back_now(app: &AppHandle, restore: bool) {
             say(app, if restore { "restored" } else { "pasted" }, json!({ "message": rules::paste_words(restore, landed, &plan), "confirmed": landed }));
             note("paste", &name, 0, text.chars().count(), if landed { "landed" } else { "unconfirmed" });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    const SRC: &str = include_str!("phelp.rs");
+    fn body(name: &str) -> String { let s = &SRC[SRC.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() }
+
+    #[test]
+    fn a_stop_or_cancel_during_the_light_means_nothing_is_read_or_sent() {
+        // Rules 5 and 11. Each press takes its own number as it starts, and so does each "once" or "always" answer. Stop
+        // everything, Cancel or a newer press changes it, and the read checks it after the light, after asking which box
+        // is focused, right before reading and after: a read the person stopped is never made, never sent.
+        let hot = body("pub fn on_hotkey(");
+        assert!(hot.contains("let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;"), "{hot}");
+        let stopped = "if GEN.load(Ordering::SeqCst) != gen {";
+        let (light, focused) = (hot.find("std::thread::sleep(INDICATOR_DRAW);").unwrap(), hot.find("ax::focused(front.pid)").unwrap());
+        assert!(hot[light..focused].contains(stopped), "after the light: {hot}");
+        assert!(hot[focused..hot.find("rules::read_verdict(").unwrap()].contains(stopped), "after asking which box: {hot}");
+        assert!(hot.contains("finish_read(&app, session, gen,"), "{hot}");
+        let answer = body("pub fn consent_answer(");
+        let took = answer.find("st().awaiting.take()").unwrap();
+        assert!(answer[took..].contains("let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;") && answer.contains("finish_read(&app, session, gen,"), "{answer}");
+        assert!(answer[answer.find("std::thread::sleep(INDICATOR_DRAW);").unwrap()..].find(stopped).is_some(), "after its light: {answer}");
+        let read = body("fn finish_read(");
+        assert!(read.contains("gen: u64") && !read.contains("let gen = GEN.load("), "the number is the press's own: {read}");
+        let ladder = read.find("ax::read_ladder(pid)").unwrap();
+        assert!(read[..ladder].contains(stopped) && read[ladder..].contains(stopped), "right before reading and after: {read}");
+        // Cancel or Stop also forgets a question about an app that is still waiting for its answer.
+        let dismiss = &SRC[SRC.find("pub fn dismiss(").unwrap()..]; let dismiss = &dismiss[..dismiss.find('\n').unwrap()];
+        assert!(dismiss.contains("s.awaiting = None;"), "{dismiss}");
     }
 }
