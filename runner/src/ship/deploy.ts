@@ -9,7 +9,9 @@ import { minimalEnv } from "../env.ts";
 import { clip, redact } from "../redact.ts";
 
 export type Ok<T = object> = { ok: true } & T;
-export type Fail = { ok: false; reason: string };
+// unclear: the command was sent and then stopped, ran out of time or ended in a way that does not say what happened, so
+// what it asked Vercel to do may have happened anyway.
+export type Fail = { ok: false; reason: string; unclear?: true };
 export interface Deployer {
   // Whether a login exists. Never starts a login, never reads it.
   signedIn(): boolean;
@@ -85,14 +87,14 @@ export class VercelCli implements Deployer, DeployLogReader {
   // Only whether the file exists: its contents are never opened.
   signedIn() { return existsSync(this.authFile); }
 
-  private async vercel(args: string, project: string, timeoutMs: number, signal?: AbortSignal) {
+  private async vercel(args: string, project: string, timeoutMs: number, signal?: AbortSignal): Promise<{ r: RunResult; fail: string | null; unclear?: true }> {
     const r = await this.run(`vercel ${args}`, { cwd: project, timeoutMs, signal, stopWhen: LOGIN_FLOW });
     if (r.matched) return { r, fail: NOT_SIGNED_IN };
-    if (r.aborted) return { r, fail: "Stopped." };
-    if (r.timedOut) return { r, fail: "Vercel took too long, so I stopped it. Nothing went live." };
+    if (r.aborted) return { r, fail: "Stopped.", unclear: true };
+    if (r.timedOut) return { r, fail: "Vercel took too long, so I stopped it.", unclear: true };
     if (r.code === 127) return { r, fail: "The Vercel tool is not installed. Install it with: npm install -g vercel" };
     if (r.code !== 0) return { r, fail: `Vercel said no: ${plain(r) || "no details"}` };
-    return { r, fail: null as string | null };
+    return { r, fail: null };
   }
   private lastUrl(r: RunResult): string | null {
     const all = `${r.stdout}\n${r.stderr}`.match(URL_RE);
@@ -100,20 +102,21 @@ export class VercelCli implements Deployer, DeployLogReader {
   }
 
   async preview(project: string, signal?: AbortSignal) {
-    const { r, fail } = await this.vercel("deploy --yes", project, 10 * 60_000 * this.scale(), signal);
-    if (fail) return { ok: false as const, reason: fail };
+    const { r, fail, unclear } = await this.vercel("deploy --yes", project, 10 * 60_000 * this.scale(), signal);
+    // A preview is never live, so for it a stop or a time limit does mean nothing went live.
+    if (fail) return { ok: false as const, reason: unclear && r.timedOut ? `${fail} Nothing went live.` : fail };
     const url = this.lastUrl(r);
     return url ? { ok: true as const, url } : { ok: false as const, reason: "Vercel finished but did not give a preview link." };
   }
   async promote(url: string, project: string, signal?: AbortSignal) {
     if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) return { ok: false as const, reason: "That is not a Vercel preview link." };
-    const { r, fail } = await this.vercel(`promote ${url} --yes`, project, 5 * 60_000 * this.scale(), signal);
-    if (fail) return { ok: false as const, reason: fail };
+    const { r, fail, unclear } = await this.vercel(`promote ${url} --yes`, project, 5 * 60_000 * this.scale(), signal);
+    if (fail) return { ok: false as const, reason: fail, ...(unclear ? { unclear } : {}) };
     return { ok: true as const, productionUrl: this.lastUrl(r) ?? undefined };
   }
   async rollback(project: string, signal?: AbortSignal) {
-    const { fail } = await this.vercel("rollback --yes", project, 5 * 60_000 * this.scale(), signal);
-    return fail ? { ok: false as const, reason: fail } : { ok: true as const };
+    const { fail, unclear } = await this.vercel("rollback --yes", project, 5 * 60_000 * this.scale(), signal);
+    return fail ? { ok: false as const, reason: fail, ...(unclear ? { unclear } : {}) } : { ok: true as const };
   }
 
   // Read only: `vercel list`, then `vercel inspect <url> --logs` for the newest finished deploy if it failed.
@@ -158,7 +161,8 @@ export class VercelCli implements Deployer, DeployLogReader {
 
 // ---------- the record of what went live ----------
 
-export type ShipReceipt = { at: string; action: "preview" | "live" | "rollback"; snapshot: string; url?: string; productionUrl?: string; gates: { id: string; status: string }[]; proof: string };
+// unconfirmed: a live step that was sent but cut short, so whether it went live is not known (Roll back stays possible).
+export type ShipReceipt = { at: string; action: "preview" | "live" | "rollback"; snapshot: string; url?: string; productionUrl?: string; gates: { id: string; status: string }[]; proof: string; unconfirmed?: true };
 const FILE = ".companion/ships.json";
 
 export function readShips(project: string): ShipReceipt[] {

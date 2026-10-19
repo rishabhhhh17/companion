@@ -151,6 +151,18 @@ function proofHints(dir: string): BrowserOptions {
   catch { return {}; }
 }
 
+// A start command that finishes on its own is a tool, not a website, unless the project looks like one: it is started from
+// .claude/launch.json, a dev script or a Python server, it has a page of its own (index.html), or it lists a web framework
+// or server. Then it finishing means the page was not checked.
+const FINISHED_SITE = "The start command finished without opening a page, so the page was not checked.";
+const WEB_PACKAGE = /^(?:next|vite|react-scripts|react-dom|vue|nuxt|svelte|@sveltejs\/kit|astro|gatsby|@remix-run\/.+|@angular\/core|preact|solid-js|express|koa|fastify|hono|@hono\/.+|@nestjs\/core|elysia|polka|restify|@hapi\/hapi|webpack-dev-server|parcel|serve|http-server|live-server)$/;
+function looksLikeSite(start: NonNullable<Detected["start"]>, dir: string): boolean {
+  if (start.kind !== "server") return false;
+  if (start.python || start.from === "launch" || start.from === "dev") return true;
+  if (["index.html", "public/index.html", "src/index.html"].some((f) => existsSync(join(dir, f)))) return true;
+  try { const p = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")); return Object.keys({ ...(p.dependencies ?? {}), ...(p.devDependencies ?? {}) }).some((d) => WEB_PACKAGE.test(d)); } catch { return false; }
+}
+
 export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   const r = await runRungs(o);
   if (!o.review || (r.verdict !== "passed" && r.verdict !== "passed_with_gaps")) return r;
@@ -160,6 +172,8 @@ export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   o.onStep?.({ rung: "review", label: LABELS.review, status: "running", detail: "", ms: 0 });
   let review: Review | null = null;
   try { review = await o.review(); } catch { review = null; }
+  // Stop during the review: a stop, never a pass with a gap.
+  if (o.signal?.aborted) return { ...r, verdict: "cancelled" };
   const done = (status: Step["status"], detail: string): Step => { const s: Step = { rung: "review", label: LABELS.review, status, detail: redact(detail), ms: Date.now() - t0 }; o.onStep?.(s); return s; };
   if (!review) return { ...r, verdict: "passed_with_gaps", steps: [...r.steps, done("skipped", "The second review could not be completed, so this change was not double checked.")] };
   if (review.verdict === "approve") return { ...r, steps: [...r.steps, done("passed", "The second model found no problems.")] };
@@ -263,6 +277,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (!yes) { const why = mode === "never" ? NOT_INSTALLED_NEVER : NOT_INSTALLED_NO; left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
     else {
       const r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
+      // Stop (or Stop everything) ended the command: that says nothing about the project, so it is never a failure.
+      if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) return noRoom("install", t0);
       if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install")));
       finish("install", "passed", "Installed.", t0);
@@ -280,6 +296,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     for (const c of det.checks) {
       if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
+      if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
         const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : `the ${c.name} check`);
@@ -303,10 +320,17 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (det.tests && skip.has("test")) { const w = leftOut("test"); left.push(w); finish("tests", "skipped", w, t0); }
   else if (det.tests) {
     const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
+    if (r.aborted || cancelled()) return result("cancelled");
     if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
-    // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed.
-    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) { cannotTell(false, "tests"); finish("tests", "skipped", "pytest found no tests to run.", t0); }
+    // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed. When the test files do
+    // have tests, something stops pytest finding them (a conftest.py, the project's pytest settings), so the tests were not
+    // checked: a gap, never a pass. Not a failure either: the same may have been true before the task.
+    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) {
+      cannotTell(false, "tests");
+      if (guard.after > 0) { const w = `pytest found no tests to run, though the test files have ${guard.after} test${guard.after === 1 ? "" : "s"}, so the tests were not checked.`; if (!left.includes(w)) left.push(w); finish("tests", "skipped", w, t0); }
+      else finish("tests", "skipped", "pytest found no tests to run.", t0);
+    }
     else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
     else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
@@ -340,6 +364,15 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   }
   try {
     if (!srv.ok && srv.aborted) return result("cancelled");
+    if (!srv.ok && srv.notAServer && (looksLikeSite(det.start, o.project) || (!!found.start && looksLikeSite(found.start, o.project)))) {
+      // A website whose start command finished instead of staying on (a task can break its server that way): the page
+      // was never opened, so it is a gap, never a pass (F14). A chosen start script that did this already says so.
+      if (!startNote) left.push(FINISHED_SITE);
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", startNote ?? FINISHED_SITE, t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
     if (!srv.ok && srv.notAServer) {
       finish("start", "skipped", "This project's start command is a tool, not a website, so there is no page to open.", t0);
       finish("browser", "skipped", "There is no page to open.", Date.now());
@@ -365,7 +398,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     let shot: import("./browser.ts").PageShot | undefined;
     const notDone: string[] = [];   // what the browser check was asked for in Settings and did not do (a button it would not press)
     for (const [i, size] of sizes.entries()) {
-      const b = await browser(srv.url, { ...hints, timeoutMs: limits.browserMs, shot: i === 0, ...(size === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}) });
+      // The stop signal goes with it, so Stop everything closes the hidden browser at once.
+      const b = await browser(srv.url, { ...hints, timeoutMs: limits.browserMs, shot: i === 0, ...(size === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}), ...(o.signal ? { signal: o.signal } : {}) });
+      if (cancelled()) return result("cancelled", undefined, srv.url);
       if (b.skipped) { cannotTell(false, "browser"); finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
       for (const g of b.gaps ?? []) if (!left.includes(g)) { left.push(g); notDone.push(g); }
       const at = two ? `At ${size} size: ` : size === "phone" ? "At phone size: " : "";

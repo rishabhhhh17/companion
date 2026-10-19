@@ -880,9 +880,12 @@ export class AgentRunner {
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
+      // A check that Stop ended says nothing about the project: it is told as cancelled, and never kept as this version's
+      // result (Put it online would refuse a version whose stopped check read as failed, and never check it again).
+      if (abort.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: checks } as never);
-      this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
-      if (res.verdict === "cancelled" || abort.signal.aborted) { status = "interrupted"; break; }
+      if (res.verdict !== "cancelled") this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
+      if (res.verdict === "cancelled") { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
       proof = "failed"; status = "not_done";
@@ -1167,7 +1170,8 @@ export class AgentRunner {
       const sk = this.openShipSession(ac);
       const onStep = this.stepTeller("ship");
       try {
-        const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id) });
+        let res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id) });
+        if (ac.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };   // a stopped check is no result
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
         if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
@@ -1212,7 +1216,8 @@ export class AgentRunner {
       this.shipSay(cmd.project, "checking_gates", "Checking the project first.");
       const { report, snapshot, proof } = await this.gateReport(cmd.project, true);
       this.emit({ type: "ship.gates", project: cmd.project, ...report } as never);
-      if (ac.signal.aborted) return;
+      // Every way out says where it ended, so the Online box never stays on a busy line with nothing running.
+      if (ac.signal.aborted) { this.shipSay(cmd.project, "failed", "Stopped. Nothing went live."); return; }
       if (!report.canShip) { this.shipSay(cmd.project, "refused", "Not ready to go on the internet. The checks above say why."); return; }
       if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
       this.shipSay(cmd.project, "deploying", "Putting up a private preview. This can take a minute or two.");
@@ -1223,8 +1228,9 @@ export class AgentRunner {
       this.shipSay(cmd.project, "checking_preview", "Opening the preview in a hidden browser to make sure it works.", { previewUrl: r.url });
       // Time allowed for checks covers this one too (today's 15 seconds, times the factor).
       const f = TIME_FACTOR[this.checkFor(cmd.project).check.time];
-      const b = await (this.o.browser ?? browserCheck)(r.url, f === 1 ? {} : { timeoutMs: 15_000 * f });
-      if (ac.signal.aborted) return;
+      // The stop signal goes with it, so Stop everything closes the hidden browser at once.
+      const b = await (this.o.browser ?? browserCheck)(r.url, { ...(f === 1 ? {} : { timeoutMs: 15_000 * f }), signal: ac.signal });
+      if (ac.signal.aborted) { this.shipSay(cmd.project, "failed", "Stopped. Nothing went live.", { previewUrl: r.url, canGoLive: false }); return; }
       if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false, ...(b.notInstalled ? { needs: "browser" } : {}) }); return; }
       if (!b.ok) {
         const blocked = b.problems.some((p) => /\((401|403)\)/.test(p));
@@ -1258,6 +1264,15 @@ export class AgentRunner {
       if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
       this.shipSay(cmd.project, "deploying", "Making it live.");
       const r = await d.promote(p.url, cmd.project, ac.signal);
+      // Once the promote has been sent, a stop, a time limit or an answer that cannot be read does not mean nothing went
+      // live: Vercel may finish it anyway. It is said as not known, and kept as a live record that is not confirmed, so Roll
+      // back is still accepted. [verify] how the Vercel tool behaves when it is stopped part way (T08).
+      if (!r.ok && r.unclear) {
+        try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "live", unconfirmed: true, snapshot: p.snapshot, url: p.url, gates: p.gates, proof: p.proof }); } catch { /* the record is not worth stopping for */ }
+        this.previews.delete(key);
+        this.shipSay(cmd.project, "failed", `${r.reason} Companion could not confirm whether it went live. Check your project on vercel.com.`, { previewUrl: p.url });
+        return;
+      }
       if (!r.ok) { this.shipSay(cmd.project, "failed", `${r.reason} Nothing went live.`); return; }
       this.previews.delete(key);
       try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "live", snapshot: p.snapshot, url: p.url, productionUrl: r.productionUrl, gates: p.gates, proof: p.proof }); } catch { /* the record is not worth stopping for */ }
@@ -1280,7 +1295,8 @@ export class AgentRunner {
       if (!lastLive || (lastBack && lastBack.at > lastLive.at)) { this.shipSay(cmd.project, "refused", "Nothing has gone live from Companion that could be rolled back."); return; }
       if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
       const r = await d.rollback(cmd.project, ac.signal);
-      if (!r.ok) { this.shipSay(cmd.project, "failed", `${r.reason} The live site was not changed.`); return; }
+      // As with going live: a rollback cut short may still finish on Vercel's side, so it is never said to have changed nothing.
+      if (!r.ok) { this.shipSay(cmd.project, "failed", r.unclear ? `${r.reason} Companion could not confirm whether the live site was rolled back. Check your project on vercel.com.` : `${r.reason} The live site was not changed.`); return; }
       try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "rollback", snapshot: lastLive.snapshot, gates: [], proof: lastLive.proof }); } catch { /* the record is not worth stopping for */ }
       this.shipSay(cmd.project, "rolled_back", "The live site is back to the version before.");
     } catch (e) {

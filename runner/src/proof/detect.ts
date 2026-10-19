@@ -9,7 +9,9 @@ export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 // tool: for a Python check, the module it runs (so "No module named ruff" reads as not installed, not as a failure).
 export type Check = { name: "typecheck" | "lint" | "build"; command: string; tool?: string };
 // python: a Python dev server, told its host and port on the command line. env: fixed settings it needs (never the person's).
-export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean; python?: PythonServer; env?: Record<string, string> } | { kind: "static"; dir: string };
+// from: where the command came from (the project's .claude/launch.json, its dev or start script, its .replit file), so a
+// start that finishes on its own can be told apart from a tool (ladder.ts looksLikeSite).
+export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean; python?: PythonServer; env?: Record<string, string>; from?: "launch" | "dev" | "start" | "replit" | "settings" } | { kind: "static"; dir: string };
 export type Detected = {
   kind: "node" | "python" | "static" | "unknown";
   packageManager: PackageManager | null;
@@ -58,11 +60,11 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
   const launch = readJson(join(dir, ".claude", "launch.json"));
   const cfg = Array.isArray(launch?.configurations) ? launch!.configurations[0] : null;
   if (cfg?.runtimeExecutable) {
-    start = { kind: "server", command: [cfg.runtimeExecutable, ...(Array.isArray(cfg.runtimeArgs) ? cfg.runtimeArgs : [])].join(" "), ...(typeof cfg.port === "number" ? { port: cfg.port } : {}), ...(typeof cfg.autoPort === "boolean" ? { autoPort: cfg.autoPort } : {}) };
-  } else if (pm && scripts.dev) start = { kind: "server", command: run("dev") };
-  else if (pm && scripts.start) start = { kind: "server", command: run("start") };
+    start = { kind: "server", command: [cfg.runtimeExecutable, ...(Array.isArray(cfg.runtimeArgs) ? cfg.runtimeArgs : [])].join(" "), ...(typeof cfg.port === "number" ? { port: cfg.port } : {}), ...(typeof cfg.autoPort === "boolean" ? { autoPort: cfg.autoPort } : {}), from: "launch" };
+  } else if (pm && scripts.dev) start = { kind: "server", command: run("dev"), from: "dev" };
+  else if (pm && scripts.start) start = { kind: "server", command: run("start"), from: "start" };
   else if (py?.start) start = py.start;
-  else if (existsSync(join(dir, ".replit")) && replitRun(readFileSync(join(dir, ".replit"), "utf8"))) start = { kind: "server", command: replitRun(readFileSync(join(dir, ".replit"), "utf8"))! };
+  else if (existsSync(join(dir, ".replit")) && replitRun(readFileSync(join(dir, ".replit"), "utf8"))) start = { kind: "server", command: replitRun(readFileSync(join(dir, ".replit"), "utf8"))!, from: "replit" };
   else if (existsSync(join(dir, "dist", "index.html"))) start = { kind: "static", dir: join(dir, "dist") };
   else if (existsSync(join(dir, "index.html"))) start = { kind: "static", dir };
 
@@ -86,7 +88,7 @@ export function withStartScript(det: Detected, dir: string, script: string | und
   // The engine is the boundary: whatever reached it, a script that is not a way to start the project, or that sounds like it
   // puts something online or deletes something, is never run (it would run after every task with no question asked).
   if (!usableStartScript(script, scripts)) return { det, gap: `The start script chosen in Settings (${name}) does not look like it only starts the project, so it was not run and the project was started the usual way.` };
-  return { det: { ...det, start: { kind: "server", command: `${det.packageManager} run ${script}` } }, chosen: script };
+  return { det: { ...det, start: { kind: "server", command: `${det.packageManager} run ${script}`, from: "settings" } }, chosen: script };
 }
 // Words in a script that mean it does more than start the project: it puts something online, publishes or releases it,
 // deletes files, changes a database or git, or reaches another machine. Long words match inside others (predeploy, a
