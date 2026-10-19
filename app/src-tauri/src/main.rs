@@ -2925,7 +2925,7 @@ fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
     // Stay out of full screen apps unless the setting says otherwise.
     let front_pid = NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier()).unwrap_or(0);
-    let displays: Vec<Rect> = screens_now(mtm).iter().map(|s| s.frame).collect();
+    let displays: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();
     let wins = fullscreen::sys::on_screen_windows();
     let raw = fullscreen::front_app_is_full_screen(&wins, front_pid, &displays);
     // The raw reading flickered in the field, so it must agree three times in a row before it counts.

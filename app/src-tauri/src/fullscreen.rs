@@ -1,7 +1,11 @@
 //! Is the front app in full screen? macOS has no simple flag for it that works without a permission, so
 //! we look at the front app's ordinary windows: a full screen window fills the whole display, menu bar
-//! area included (y 0, full height), while a maximized one stops below the menu bar. Window sizes and
-//! positions need no permission (names and contents would). Pure logic is tested with real numbers.
+//! area included (y 0, full height), while a maximized one stops below the menu bar. On a display that
+//! keeps nothing free (no menu bar there and no Dock: a second display with Displays have separate Spaces
+//! off, or a menu bar that hides itself with the Dock elsewhere), a maximized window fills it exactly too,
+//! so there it counts only when the desktop picture is gone as well, as on a full screen Space. Window
+//! sizes, layers and positions need no permission (names and contents would). Pure logic is tested with
+//! real numbers.
 
 pub type Rect = [f64; 4];
 /// One on screen window: owner process id, layer, bounds.
@@ -10,10 +14,20 @@ pub struct Win { pub pid: i32, pub layer: i64, pub bounds: Rect }
 
 fn same(a: Rect, b: Rect) -> bool { a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() <= 1.0) }
 
-/// True when the front app has an ordinary (layer 0) window that exactly covers a whole display.
-/// Overlay windows (layer above 0, like a click catcher) never count.
-pub fn front_app_is_full_screen(wins: &[Win], front_pid: i32, displays: &[Rect]) -> bool {
-    wins.iter().any(|w| w.pid == front_pid && w.layer == 0 && displays.iter().any(|d| same(w.bounds, *d)))
+/// The desktop picture's windows sit at the desktop level (kCGDesktopWindowLevel, kCGMinimumWindowLevel + 20): Dock's
+/// before macOS 14, WindowManager's at one level either side of it on macOS 27 (measured 20 Oct 2026). Window Server keeps
+/// one of its own three below it, which is not the picture.
+const DESKTOP_LEVEL: i64 = -2147483623;
+fn desktop_shows(wins: &[Win], display: Rect) -> bool { wins.iter().any(|w| (w.layer - DESKTOP_LEVEL).abs() <= 2 && same(w.bounds, display)) }
+
+/// True when the front app has an ordinary (layer 0) window that exactly covers a whole display. `displays` are each
+/// display's frame and work area. Where the work area is the whole display, a maximized window covers it too, so it counts
+/// only when that display's desktop picture is not on screen either. Overlay windows (layer above 0, like a click
+/// catcher) never count.
+pub fn front_app_is_full_screen(wins: &[Win], front_pid: i32, displays: &[(Rect, Rect)]) -> bool {
+    displays.iter().any(|&(frame, work)| {
+        wins.iter().any(|w| w.pid == front_pid && w.layer == 0 && same(w.bounds, frame)) && (!same(work, frame) || !desktop_shows(wins, frame))
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -57,48 +71,88 @@ pub mod sys {
 mod tests {
     use super::*;
     const DISPLAY: Rect = [0.0, 0.0, 1512.0, 982.0];
+    /// Its work area: below the 33 point menu bar, with the Dock hidden (measured).
+    const WORK: Rect = [0.0, 33.0, 1512.0, 949.0];
+    const MAC: (Rect, Rect) = (DISPLAY, WORK);
     const SAFARI: i32 = 100;
     const CLAUDE: i32 = 200;
+    const WINDOW_MANAGER: i32 = 300;
+    const WINDOW_SERVER: i32 = 400;
     fn w(pid: i32, layer: i64, b: Rect) -> Win { Win { pid, layer, bounds: b } }
+    /// The desktop picture's windows on an ordinary Space, as measured on this Mac (macOS 27, 20 Oct 2026): WindowManager at
+    /// one level either side of the desktop level, and Window Server's own one three below it.
+    fn desktop(d: Rect) -> Vec<Win> { vec![w(WINDOW_MANAGER, -2147483622, d), w(WINDOW_MANAGER, -2147483624, d), w(WINDOW_SERVER, -2147483626, d)] }
 
     #[test]
     fn a_window_filling_the_whole_display_is_full_screen() {
         // measured: Safari in full screen sat at x 0, y 0, 1512 by 982
-        assert!(front_app_is_full_screen(&[w(SAFARI, 0, [0.0, 0.0, 1512.0, 982.0])], SAFARI, &[DISPLAY]));
+        assert!(front_app_is_full_screen(&[w(SAFARI, 0, [0.0, 0.0, 1512.0, 982.0])], SAFARI, &[MAC]));
     }
     #[test]
     fn a_maximized_window_below_the_menu_bar_is_not() {
         // measured: Safari maximized sat at x 0, y 33, 1512 by 949
-        assert!(!front_app_is_full_screen(&[w(SAFARI, 0, [0.0, 33.0, 1512.0, 949.0])], SAFARI, &[DISPLAY]));
-        assert!(!front_app_is_full_screen(&[w(SAFARI, 0, [188.0, 33.0, 1324.0, 949.0])], SAFARI, &[DISPLAY]));
+        assert!(!front_app_is_full_screen(&[w(SAFARI, 0, [0.0, 33.0, 1512.0, 949.0])], SAFARI, &[MAC]));
+        assert!(!front_app_is_full_screen(&[w(SAFARI, 0, [188.0, 33.0, 1324.0, 949.0])], SAFARI, &[MAC]));
+    }
+    #[test]
+    fn on_a_display_that_keeps_nothing_free_a_maximized_window_is_not_full_screen() {
+        // A second display with no menu bar (Displays have separate Spaces off) and no Dock, or a menu bar that hides itself
+        // with the Dock elsewhere: the work area is the whole display, so a maximized window fills it exactly. Size alone
+        // cannot tell, so it counts only once the desktop picture is gone too, as it is on a full screen Space.
+        let ext: Rect = [1512.0, 0.0, 1920.0, 1080.0];
+        let edge = (ext, ext);
+        let mut wins = desktop(ext);
+        wins.extend(desktop(DISPLAY));
+        wins.push(w(SAFARI, 0, ext));
+        assert!(!front_app_is_full_screen(&wins, SAFARI, &[MAC, edge]), "maximized on the display with nothing kept free");
+        // A full screen Space on that display: the desktop picture is not on screen there.
+        let mut fs = desktop(DISPLAY);
+        fs.push(w(SAFARI, 0, ext));
+        assert!(front_app_is_full_screen(&fs, SAFARI, &[MAC, edge]));
+        // Window Server's own window below the desktop level is not the desktop picture, and only a window over the same
+        // display counts.
+        let mut ws = vec![w(WINDOW_SERVER, -2147483626, ext), w(WINDOW_MANAGER, -2147483622, DISPLAY), w(SAFARI, 0, ext)];
+        assert!(front_app_is_full_screen(&ws, SAFARI, &[MAC, edge]));
+        ws.push(w(WINDOW_MANAGER, -2147483623, ext));   // the desktop level itself (Dock's, before macOS 14)
+        assert!(!front_app_is_full_screen(&ws, SAFARI, &[MAC, edge]));
+        // Where the menu bar or the Dock keeps room, size alone decides, as measured: the desktop picture changes nothing.
+        let mut on_mac = desktop(DISPLAY);
+        on_mac.push(w(SAFARI, 0, DISPLAY));
+        assert!(front_app_is_full_screen(&on_mac, SAFARI, &[MAC]));
     }
     #[test]
     fn an_invisible_overlay_the_size_of_the_screen_does_not_count() {
         // measured: Claude had a layer 1000 window of 1512 by 982
-        assert!(!front_app_is_full_screen(&[w(CLAUDE, 1000, [0.0, 0.0, 1512.0, 982.0]), w(CLAUDE, 0, [0.0, 33.0, 1512.0, 949.0])], CLAUDE, &[DISPLAY]));
+        assert!(!front_app_is_full_screen(&[w(CLAUDE, 1000, [0.0, 0.0, 1512.0, 982.0]), w(CLAUDE, 0, [0.0, 33.0, 1512.0, 949.0])], CLAUDE, &[MAC]));
     }
     #[test]
     fn only_the_front_apps_windows_count() {
         let wins = [w(SAFARI, 0, [0.0, 0.0, 1512.0, 982.0]), w(CLAUDE, 0, [0.0, 33.0, 1512.0, 949.0])];
-        assert!(!front_app_is_full_screen(&wins, CLAUDE, &[DISPLAY]));
-        assert!(front_app_is_full_screen(&wins, SAFARI, &[DISPLAY]));
+        assert!(!front_app_is_full_screen(&wins, CLAUDE, &[MAC]));
+        assert!(front_app_is_full_screen(&wins, SAFARI, &[MAC]));
     }
     #[test]
     fn works_on_the_second_display_too() {
         let ext: Rect = [1512.0, 0.0, 1920.0, 1080.0];
-        assert!(front_app_is_full_screen(&[w(SAFARI, 0, ext)], SAFARI, &[DISPLAY, ext]));
+        assert!(front_app_is_full_screen(&[w(SAFARI, 0, ext)], SAFARI, &[MAC, (ext, [1512.0, 25.0, 1920.0, 1055.0])]));
     }
     #[test]
     fn no_windows_or_no_displays_is_not_full_screen() {
-        assert!(!front_app_is_full_screen(&[], SAFARI, &[DISPLAY]));
+        assert!(!front_app_is_full_screen(&[], SAFARI, &[MAC]));
         assert!(!front_app_is_full_screen(&[w(SAFARI, 0, DISPLAY)], SAFARI, &[]));
     }
     #[test]
     fn a_rounding_difference_of_one_point_is_tolerated() {
-        assert!(front_app_is_full_screen(&[w(SAFARI, 0, [0.0, 0.0, 1511.6, 982.4])], SAFARI, &[DISPLAY]));
+        assert!(front_app_is_full_screen(&[w(SAFARI, 0, [0.0, 0.0, 1511.6, 982.4])], SAFARI, &[MAC]));
     }
     #[test]
     fn looking_at_the_real_windows_works_and_never_prompts() {
         let _ = sys::on_screen_windows();   // would block on a permission prompt if it needed one
+    }
+    #[test]
+    fn the_shell_gives_each_display_with_its_work_area() {
+        let main = include_str!("main.rs");
+        let tick = &main[main.find("fn tick(").unwrap()..]; let tick = &tick[..tick.find("\n}\n").unwrap()];
+        assert!(tick.contains("let displays: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();"), "{tick}");
     }
 }
