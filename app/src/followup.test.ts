@@ -145,18 +145,30 @@ describe("following up by voice", () => {
     const box = card.slice(card.indexOf("function FollowUpBox("), card.indexOf("function ExplainBox("));
     expect(box).toMatch(/e\.key === "Escape" && !composing\(e\) && text\) \{ e\.preventDefault\(\); e\.stopPropagation\(\); setText\(""\); \}/);
   });
-  test("the words go where heardGoesTo says, with the setting read as the keys are let go", () => {
-    expect(heard).toContain('heardGoesTo({ showme: askModeRef.current === "showme", followUpShown: followShown.current, overReceipt: overReceipt.current, byPointing: setting("talk.followUpByPointing") === true })');
+  test("the words go where heardGoesTo says, from what was true as the keys went down", () => {
+    expect(heard).toContain('heardGoesTo({ showme: askModeRef.current === "showme", atKeysDown: keysDown.current, followUpShownNow: followShown.current })');
+    // Taken when listening begins (the one line that follows for a microphone that is away keeps it), cleared when the
+    // hold ends any other way, and used once.
+    expect(card).toContain('if (ev.type === "app.voice" && ev.stage === "listening" && !ev.micMissing) keysDown.current = { followUpShown: followShown.current, overReceipt: overReceipt.current, byPointing: setting("talk.followUpByPointing") === true, homeShown: homeShown.current };');
+    expect(card).toContain('else if (ev.type === "app.voice" && ev.stage !== "listening" && ev.stage !== "transcribing" && ev.stage !== "heard") keysDown.current = null;');
+    expect(heard).toContain("keysDown.current = null;");
     const into = heard.slice(heard.indexOf('if (to === "followUp")'), heard.indexOf("} else {", heard.indexOf('if (to === "followUp")')));
     expect(into).toContain("setFollowText(ev.text)");
     // Sent by itself only with auto send on, and then only a clear request for work.
     expect(into).toContain("if (autoSend && sendsItself(ev.text, lang)) setTimeout(() => sendFollowNow.current(), 0);");
     expect(into).not.toContain("setBox(");
   });
-  test("the pointer is noticed only on the receipt, inside Home's own window, and forgotten when Home opens again", () => {
+  test("the pointer is noticed only on the receipt, inside Home's own window, and forgotten when Home opens or closes", () => {
     expect(card).toContain('<section className="panel" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>');
     const opened = card.slice(card.indexOf('listen("opened"'), card.indexOf("warmSoon();", card.indexOf('listen("opened"')));
     expect(opened).toContain("overReceipt.current = false;");
+    expect(opened).toContain("homeShown.current = true;");
+    // Every way Home goes away (Esc, Close, a click elsewhere, the island or the character, a full screen app, Hide) goes
+    // through the shell's home_closed, which tells the page: no pointerleave fires for a window that was just hidden.
+    expect(card).toContain('listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null; })');
+    const main = require("node:fs").readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8") as string;
+    const closed = main.slice(main.indexOf("fn home_closed()"), main.indexOf("\n}\n", main.indexOf("fn home_closed()")));
+    expect(closed).toContain('if let Some(a) = APP.get() { let _ = a.emit_to("card", "closed", json!({})); }');
     expect(card).toContain('followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project);');
   });
   test("a follow up sent by itself goes through the same checks as the Send button", () => {

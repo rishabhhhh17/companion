@@ -215,11 +215,13 @@ describe("the shell reads the Mac's setting once, and the island never animates"
       const outside = f === "main.rs" ? s.replace(helper, "") : s;
       expect(outside, f).not.toMatch(/\.animator\(\)|NSAnimationContext::run/);
     }
-    // No motion asked: the frame is set at once, as before.
-    expect(helper).toContain("let Some(secs) = secs else { p.setFrame_display(f, true);");
-    // Every motion passed to it comes from island.rs with the one reader of reduced motion.
+    // No motion asked: a motion of no length (it replaces one still running), and the frame set at once as well.
+    expect(helper).toContain("setDuration(secs.unwrap_or(0.0))");
+    expect(helper).toContain("if secs.is_none() { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } }");
+    // Every motion passed to it comes from island.rs with the one reader of reduced motion; Home's resize is at once.
     const calls = [...main.matchAll(/set_frame_moving\(([^;]*)\)/g)].map((m) => m[1]).filter((c) => !c.startsWith("p: &NSPanel"));
-    expect(calls.length).toBe(2);
+    expect(calls.length).toBe(3);
+    expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
     expect(main).toContain("island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion())");
     expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
   });

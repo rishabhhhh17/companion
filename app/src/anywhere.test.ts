@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answered, asksWorked, atLimit, clicked, failed, MAX_ANYWHERE_STEPS, nextQuestion, unchecked, waitsForPage } from "./anywhere.ts";
+import { answered, asksWorked, atLimit, clicked, failed, judged, MAX_ANYWHERE_STEPS, nextQuestion, unchecked, waitsForPage } from "./anywhere.ts";
 import { readFileSync } from "node:fs";
 
 describe("anywhere mode", () => {
@@ -82,5 +82,37 @@ describe("waiting for the page", () => {
     expect(card).toContain('waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked"))');
     // The question asked by itself after a clean click: the setting decides, and a soft ring, a miss or Do it for me ask.
     expect(card).toContain('asksWorked({ setting: setting("showme.askWorked"), how: stage, soft: ringLook.current.soft, missed: ringLook.current.missed })');
+  });
+});
+
+// Found in review (19 Oct 2026): the next look was asked whether a step moved on from without asking had worked, but its
+// answer was never read back, so a step that had not worked stayed "clicked, not checked yet" and could be suggested
+// again. The answer now carries the verdict (assist.point lastStepWorked), and it is written down here.
+describe("the next look's verdict on the step before", () => {
+  const w0 = () => clicked({ goal: "Export the file", steps: ["Open the File menu"] });
+  test("no: written down as did not work, and never suggested again", () => {
+    const w = judged(w0(), "no");
+    expect(failed(w.steps[0])).toBe(true);
+    expect(nextQuestion(w)).toContain("These did NOT work, so do not suggest them again: Open the File menu.");
+  });
+  test("yes: written down as a guess from the screen, never as checked by the person", () => {
+    const w = judged(w0(), "yes");
+    expect(unchecked(w.steps[0]) || failed(w.steps[0])).toBe(false);
+    expect(w.steps[0]).toBe("Open the File menu (looked like it worked)");
+    expect(nextQuestion(w)).not.toMatch(/first look whether it worked/i);
+  });
+  test("unsure or no verdict: still clicked, not checked yet", () => {
+    for (const v of ["unsure", undefined, "maybe"]) expect(judged(w0(), v).steps).toEqual(w0().steps);
+  });
+  test("only a step that was not checked is judged: the person's own answer is never changed", () => {
+    const told = answered({ goal: "g", steps: ["a"] }, true);
+    expect(judged(told, "no")).toEqual(told);
+    const bad = answered({ goal: "g", steps: ["a"] }, false);
+    expect(judged(bad, "yes")).toEqual(bad);
+    expect(judged({ goal: "g", steps: [] }, "no")).toEqual({ goal: "g", steps: [] });
+  });
+  test("the card writes the verdict down before the new step is added", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("setWalk((w) => (w ? { ...w, steps: [...judged(w, verdict).steps, stepsLine(steps)] } : w));");
   });
 });

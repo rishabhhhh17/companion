@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { askKey, draftToKeep, heardGoesTo, heardKind, MAX_DRAFT, putBack, sendsItself, sentOutcome, type Sent } from "./askbox.ts";
+import { askKey, draftToKeep, heardGoesTo, heardKind, MAX_DRAFT, putBack, sendsItself, sentOutcome, type FollowAim, type Sent } from "./askbox.ts";
 import { AGENT } from "./commands.ts";
 
 const k = (key: string, o: { shift?: boolean; composing?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean } = {}) =>
@@ -188,14 +188,33 @@ describe("spoken words that send themselves", () => {
 // follow up box shows under a finished task's receipt and the pointer is over that receipt (a hover inside Home's own
 // window), the words go into that box, never sent unless auto send is on. Off unless turned on (talk.followUpByPointing).
 describe("where spoken words go", () => {
+  // What was true as the keys went down (taken when listening began): the follow up box showed, Home showed, the pointer
+  // was on that receipt, and the setting was on.
+  const down = (o: Partial<FollowAim> = {}): FollowAim => ({ followUpShown: true, overReceipt: true, byPointing: true, homeShown: true, ...o });
+  const to = (atKeysDown: FollowAim | null, followUpShownNow = true, showme = false) => heardGoesTo({ showme, atKeysDown, followUpShownNow });
   test("into the follow up box only when it shows, the pointer is on that receipt and the setting is on", () => {
-    expect(heardGoesTo({ showme: false, followUpShown: true, overReceipt: true, byPointing: true })).toBe("followUp");
-    expect(heardGoesTo({ showme: false, followUpShown: true, overReceipt: false, byPointing: true })).toBe("box");
-    expect(heardGoesTo({ showme: false, followUpShown: false, overReceipt: true, byPointing: true })).toBe("box");
-    expect(heardGoesTo({ showme: false, followUpShown: true, overReceipt: true, byPointing: false })).toBe("box");   // off unless turned on: today's way
+    expect(to(down())).toBe("followUp");
+    expect(to(down({ overReceipt: false }))).toBe("box");
+    expect(to(down({ followUpShown: false }))).toBe("box");
+    expect(to(down({ byPointing: false }))).toBe("box");   // off unless turned on: today's way
   });
   test("the Show me key pressed first still wins: the words are a question about the screen", () => {
-    expect(heardGoesTo({ showme: true, followUpShown: true, overReceipt: true, byPointing: true })).toBe("showme");
-    expect(heardGoesTo({ showme: true, followUpShown: false, overReceipt: false, byPointing: false })).toBe("showme");
+    expect(to(down(), true, true)).toBe("showme");
+    expect(to(null, false, true)).toBe("showme");
+  });
+  // Found in review (19 Oct 2026): where the words went was decided when they came back from the speech model, from a
+  // hover flag that could be stale. The pointer leaving the receipt while the words were turned into text sent them to the
+  // ask box (with auto send on, a new paid task); and after Home closed with the pointer resting on the receipt, a later
+  // hold to talk from another app filled the hidden follow up box.
+  test("decided as the keys went down: the pointer moving off the receipt afterwards changes nothing", () => {
+    expect(to(down())).toBe("followUp");
+    expect(to(down({ overReceipt: false }))).toBe("box");   // and moving onto it only after the keys went down does not count
+  });
+  test("never into a follow up box Home was not showing as the keys went down", () => {
+    expect(to(down({ homeShown: false }))).toBe("box");
+  });
+  test("never into a follow up box that has gone by the time the words come back, and never without a start", () => {
+    expect(to(down(), false)).toBe("box");
+    expect(to(null)).toBe("box");
   });
 });

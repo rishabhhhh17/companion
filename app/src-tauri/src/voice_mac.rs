@@ -137,7 +137,8 @@ mod ca {
     const fn code(s: &[u8; 4]) -> u32 { u32::from_be_bytes(*s) }
     fn addr(selector: &[u8; 4], scope: &[u8; 4]) -> Address { Address { selector: code(selector), scope: code(scope), element: 0 } }
     fn size(object: u32, a: &Address) -> u32 { let mut n = 0u32; if unsafe { AudioObjectGetPropertyDataSize(object, a, 0, std::ptr::null(), &mut n) } == 0 { n } else { 0 } }
-    /// Core Audio's ids of the Mac's own microphones (transport type built in, with input streams).
+    /// Core Audio's ids of the Mac's own microphones: transport type built in, with input streams, and not the headphone
+    /// jack (voiceset::own_mic, from the input data source in use when the device reports one).
     pub fn builtin_input_uids() -> Vec<String> {
         let all = addr(b"dev#", b"glob");
         let n = size(1, &all) as usize / std::mem::size_of::<u32>();
@@ -156,12 +157,22 @@ mod ca {
             if unsafe { AudioObjectGetPropertyData(d, &addr(b"uid ", b"glob"), 0, std::ptr::null(), &mut sz, (&mut uid as *mut *const std::ffi::c_void).cast()) } != 0 { continue; }
             // A CFString under the create rule: taken, read, released.
             let Some(p) = std::ptr::NonNull::new(uid as *mut objc2_core_foundation::CFString) else { continue };
-            out.push(unsafe { objc2_core_foundation::CFRetained::from_raw(p) }.to_string());
+            let id = unsafe { objc2_core_foundation::CFRetained::from_raw(p) }.to_string();
+            // The input data source in use, when the device has one: the internal microphone, or a headset in the jack.
+            let mut src = 0u32; let mut sz = std::mem::size_of::<u32>() as u32;
+            let source = (unsafe { AudioObjectGetPropertyData(d, &addr(b"ssrc", b"inpt"), 0, std::ptr::null(), &mut sz, (&mut src as *mut u32).cast()) } == 0).then_some(src);
+            if crate::voiceset::own_mic(&id, source) { out.push(id); }
         }
         out
     }
 }
 
+/// The microphones listed now, the Mac's default, and those that cannot hear now (for Settings, off the main thread).
+pub fn mics() -> (Vec<Input>, Option<String>, Vec<String>) {
+    let (inputs, default) = inputs();
+    let quiet = quiet_now(&inputs);
+    (inputs, default, quiet)
+}
 /// The microphones listed now, and those that cannot hear now (voiceset::unheard: the Mac's own with the lid closed).
 pub fn hearing() -> (Vec<Input>, Vec<String>) {
     let (inputs, _) = inputs();

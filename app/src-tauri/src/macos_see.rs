@@ -30,17 +30,21 @@ pub struct MacPlatform {
     pub ask: AskFn,
     pub light: Box<dyn Fn(bool) + Send + Sync>,
     last_display: Mutex<Option<R>>,
-    /// Set for a walkthrough step after a click (showme::Platform::settle): whether the look is still wanted.
-    settle_while: Option<Box<dyn Fn() -> bool + Send + Sync>>,
+    /// Whether the look is still wanted (false once Stop everything or a newer question came): asked right before the
+    /// picture and throughout the wait for the page to settle.
+    wanted: Option<Box<dyn Fn() -> bool + Send + Sync>>,
+    /// A walkthrough step after a click (showme::Platform::settle): wait for the page to settle first.
+    settles: bool,
 }
 
 impl MacPlatform {
     pub fn new(send_image: SendImage, ask: AskFn, light: Box<dyn Fn(bool) + Send + Sync>) -> MacPlatform {
-        MacPlatform { send_image, ask, light, last_display: Mutex::new(None), settle_while: None }
+        MacPlatform { send_image, ask, light, last_display: Mutex::new(None), wanted: None, settles: false }
     }
-    /// Waits for the page to settle before the picture (a walkthrough step after a click). `wanted`: false once Stop
-    /// everything or a newer question came, which ends the wait at once.
-    pub fn settling(mut self, wanted: Box<dyn Fn() -> bool + Send + Sync>) -> MacPlatform { self.settle_while = Some(wanted); self }
+    /// `wanted`: false once Stop everything or a newer question came. Then no picture is taken, and a wait ends at once.
+    pub fn while_wanted(mut self, wanted: Box<dyn Fn() -> bool + Send + Sync>) -> MacPlatform { self.wanted = Some(wanted); self }
+    /// Waits for the page to settle before the picture (a walkthrough step after a click), when `on`.
+    pub fn settling(mut self, on: bool) -> MacPlatform { self.settles = on; self }
 }
 
 /// A small look of the display under the pointer (showme::GLANCE_W pixels wide), with Companion's own windows and any
@@ -176,12 +180,14 @@ impl Platform for MacPlatform {
     fn element_at(&self, p: Pt) -> Option<R> { crate::ax::clickable_at(p.x, p.y).map(|(x, y, w, h)| R { x, y, w, h }) }
     fn send_image(&self, screen: usize, jpeg: &[u8], w: u32, h: u32) { (self.send_image)(screen, jpeg, w, h) }
     fn ask(&self, question: &str, pics: &[Pic], c: &[Cand]) { (self.ask)(question, pics, c) }
+    fn still_wanted(&self) -> bool { self.wanted.as_ref().map_or(true, |w| w()) }
     /// Waits for the page to stop changing (showme::wait_to_settle), only when the page asked for it (`settling`).
-    fn settle(&self) {
-        let Some(wanted) = self.settle_while.as_ref() else { return };
+    fn settle(&self) -> crate::showme::Settle {
+        if !self.settles { return crate::showme::Settle::NotAsked; }
         let t0 = std::time::Instant::now();
-        let how = crate::showme::wait_to_settle(|| glance().ok(), |ms| std::thread::sleep(Duration::from_millis(ms)), || wanted(), crate::showme::SETTLE_GAP_MS, crate::showme::SETTLE_MAX_MS);
+        let how = crate::showme::wait_to_settle(|| glance().ok(), |ms| std::thread::sleep(Duration::from_millis(ms)), || self.still_wanted(), crate::showme::SETTLE_GAP_MS, crate::showme::SETTLE_MAX_MS);
         crate::log("showme_settled", serde_json::json!({ "how": format!("{how:?}"), "ms": t0.elapsed().as_millis() as u64 }));
+        how
     }
 }
 

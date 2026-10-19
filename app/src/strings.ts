@@ -327,6 +327,7 @@ export const S = {
   micHelp: "Hold to talk listens with this one. If it is not connected, your Mac's default listens instead. With the default picked, Companion follows it when you change it.",
   micMissingLine: (missing: string, using: string | null) => `${missing} is not connected, so your Mac's default microphone${using ? ` (${using})` : ""} listens until it is back.`,
   micNone: "No microphone is connected. Connect one to use hold to talk.",
+  micLidLine: (off: string, using: string) => `Your Mac's lid is closed, so ${off} is off. ${using} listens instead.`,
   micUsingDefault: (missing: string, using: string) => `${missing} is not connected, so I am listening with ${using}.`,
   micSwitched: (name: string) => `The microphone you were using went away, so I listened with ${name} instead.`,
   micLost: "The microphone went away while you were talking. Check that it is connected, then hold the keys and try again.",

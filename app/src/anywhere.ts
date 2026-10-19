@@ -1,5 +1,7 @@
 // Anywhere mode: Companion improvises the next step from the screen, the person clicks, and then it asks "did that
-// work?" before going on (with showme.askWorked "whenUnsure", only when unsure: see asksWorked). A step that did not work is written down as such and never suggested again. At most 15 steps.
+// work?" before going on (with showme.askWorked "whenUnsure", only when unsure: see asksWorked, and the next look says
+// whether the step before worked: see judged). A step that did not work is written down as such and never suggested
+// again. At most 15 steps.
 export const MAX_ANYWHERE_STEPS = 15;
 export type Walk = { goal: string; steps: string[] };
 
@@ -24,6 +26,22 @@ export function clicked(w: Walk): Walk {
   if (w.steps.length === 0) return w;
   const steps = w.steps.slice(), last = steps[steps.length - 1];
   if (!failed(last) && !unchecked(last)) steps[steps.length - 1] = last + UNCHECKED;
+  return { goal: w.goal, steps };
+}
+
+// The next look's own verdict on a step that was not checked (assist.point lastStepWorked): a guess from the screen, so
+// it is written down as one, never as worked.
+const LOOKED = " (looked like it worked)";
+/** The walk after the next look said whether the last step worked (yes, no or unsure), only for a step moved on from
+ *  without asking: no is written down as did not work (never suggested again), yes as a guess from the screen, and
+ *  unsure or no verdict leaves it clicked, not checked. The person's own answer is never changed. */
+export function judged(w: Walk, verdict: unknown): Walk {
+  const last = w.steps[w.steps.length - 1];
+  if (!last || !unchecked(last)) return w;
+  if (verdict === "no") return answered(w, false);
+  if (verdict !== "yes") return w;
+  const steps = w.steps.slice();
+  steps[steps.length - 1] = bare(last) + LOOKED;
   return { goal: w.goal, steps };
 }
 

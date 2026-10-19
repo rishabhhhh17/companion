@@ -230,28 +230,43 @@ fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> 
 fn place_card(d: &NSPanel, c: &NSPanel) {
     let mtm = MainThreadMarker::new().unwrap();
     let Some((cf, ph)) = card_spot(mtm, d, CARD_H.load(Ordering::SeqCst) as f64) else { return };
-    c.setFrame_display(to_appkit(cf, ph), true);
+    // At once, never a motion, through the one helper, so it replaces Home's drop if that is still running.
+    set_frame_moving(c, to_appkit(cf, ph), None, None, &CARD_MOVES);
     // The card opened or grew. If at its tallest it could reach the character beside a window, the visit is planned
     // again clear of it (or ends).
     if let Some((room, _)) = card_spot(mtm, d, home_size().max_h) { roam_card_moved(mtm, room); }
 }
 
+/// The frames asked of the island and of Home (island::Moves): a motion still running when a frame is set at once must
+/// not leave the panel on its own, older target.
+static ISLAND_MOVES: Mutex<island::Moves> = Mutex::new(island::Moves::new());
+static CARD_MOVES: Mutex<island::Moves> = Mutex::new(island::Moves::new());
+
 /// Moves a panel to `f` (AppKit points), as a short motion of `secs` when given (island.rs decides; never with Reduce
-/// motion or Less motion), with its see through value going to `alpha`. When the motion ends, `alpha` is set again
-/// without motion, so a panel is never left faded. Main thread. Takes no focus.
-fn set_frame_moving(p: &NSPanel, f: NSRect, secs: Option<f64>, alpha: Option<f64>) {
+/// motion or Less motion), with its see through value going to `alpha`. Every frame of the island and of Home goes through
+/// here: AppKit lets a running motion finish on its old target when the frame is then set directly, so "at once" is a
+/// motion of no length (which replaces one still running) and is also set at once, and when a motion ends, a frame set at
+/// once after it is set again (`moves`). When the motion ends, `alpha` is set again without motion, so a panel is never
+/// left faded. Main thread. Takes no focus.
+fn set_frame_moving(p: &NSPanel, f: NSRect, secs: Option<f64>, alpha: Option<f64>, moves: &'static Mutex<island::Moves>) {
     use objc2::Message;
     use objc2_app_kit::{NSAnimatablePropertyContainer, NSAnimationContext};
-    let Some(secs) = secs else { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } return };
+    let want = [f.origin.x, f.origin.y, f.size.width, f.size.height];
+    let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());
     let (w, w2) = (p.retain(), p.retain());
     let changes = RcBlock::new(move |ctx: NonNull<NSAnimationContext>| {
-        unsafe { ctx.as_ref() }.setDuration(secs);
+        unsafe { ctx.as_ref() }.setDuration(secs.unwrap_or(0.0));
         let a = w.animator();
         a.setFrame_display(f, true);
         if let Some(x) = alpha { a.setAlphaValue(x); }
     });
-    let done = RcBlock::new(move || { if let Some(x) = alpha { w2.setAlphaValue(x); } });
+    let done = RcBlock::new(move || {
+        if let Some(x) = alpha { w2.setAlphaValue(x); }
+        if let Some(r) = moves.lock().unwrap_or_else(|e| e.into_inner()).ended(mine) { w2.setFrame_display(NSRect::new(NSPoint::new(r[0], r[1]), NSSize::new(r[2], r[3])), true); }
+    });
     NSAnimationContext::runAnimationGroup_completionHandler(&changes, Some(&done));
+    // At once: in place now as well, so whatever reads the frame next sees it.
+    if secs.is_none() { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } }
 }
 
 /// Where our card can reach at its tallest while it is up, for the character to keep clear of. Nothing while it is
@@ -446,7 +461,7 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let f = island::island_frame(&d, mode);
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
     // Growing downward is a short motion (island.rs), unless Reduce motion or Less motion is on; anything else is at once.
-    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { let secs = if p.isVisible() { island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion()) } else { None }; set_frame_moving(p, to_appkit(f, ph), secs, None); } });
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { let secs = if p.isVisible() { island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion()) } else { None }; set_frame_moving(p, to_appkit(f, ph), secs, None, &ISLAND_MOVES); } });
     let kind = island::kind(&d);
     tell_island(mode, kind);
     if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
@@ -505,6 +520,8 @@ fn home_closed() {
     HOME_GEN.fetch_add(1, Ordering::SeqCst);
     reset_hover();
     if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "home_closed"); }
+    // The page is told, so it forgets the pointer was on a part of it (a hidden window sends no pointerleave).
+    if let Some(a) = APP.get() { let _ = a.emit_to("card", "closed", json!({})); }
 }
 
 /// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
@@ -1177,7 +1194,7 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
             // unless Reduce motion or Less motion is on. A resize while it is open is never animated.
             let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
             match island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion()) {
-                Some(start) => { let end = c.frame(); c.setAlphaValue(0.0); c.setFrame_display(to_appkit(start, ph), false); c.orderFrontRegardless(); set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0)); }
+                Some(start) => { let end = c.frame(); c.setAlphaValue(0.0); c.setFrame_display(to_appkit(start, ph), false); c.orderFrontRegardless(); set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0), &CARD_MOVES); }
                 None => { c.setAlphaValue(1.0); c.orderFrontRegardless(); }
             }
             if keyboard { c.makeKeyWindow(); }
@@ -1452,7 +1469,8 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
-        let plat = if settle.unwrap_or(false) { plat.settling(Box::new(move || current())) } else { plat };
+        // Stop everything or a newer press after the light came on: no picture is taken (and a wait for the page ends).
+        let plat = plat.while_wanted(Box::new(move || current())).settling(settle.unwrap_or(false));
         if !plat.screen_recording_granted() {
             // Asked here, the first time the feature is used, with a plain sentence first.
             macos_see::request_screen_recording();
@@ -1472,6 +1490,8 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             Err(showme::Refusal::SecureInput) => say_showme(&app, "error", "A password box is active, so I did not look at your screen. Click away from it and try again.", json!({})),
             Err(showme::Refusal::CaptureFailed(e)) => say_showme(&app, "error", &format!("I could not look at your screen ({e})."), json!({})),
             Err(showme::Refusal::PictureFailed(e)) => say_showme(&app, "error", &format!("I could not prepare the picture ({e})."), json!({})),
+            // Stop everything or a newer question already said what happens next: nothing more is said.
+            Err(showme::Refusal::Stopped) => {}
         }
     });
 }
@@ -1757,6 +1777,9 @@ async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Va
 #[tauri::command]
 async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
     if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
+    // the backstop, before the update is taken, so it can still be installed once the task is done.
+    if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
     let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or("Check for updates first.")?;
     u.download_and_install(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
     log("update_installed", json!({}));
@@ -1853,14 +1876,17 @@ static MIC_NOTE: Mutex<voiceset::MicNote> = Mutex::new(voiceset::MicNote::new())
 /// the last answer instead of a beachball. The sound counts as on when nothing is known (it is never claimed off without a
 /// reading); no microphone is listed when nothing is known yet.
 const CORE_AUDIO_WAIT: Duration = Duration::from_millis(300);
-static MIC_LIST: voiceset::Recent<(Vec<voiceset::Input>, Option<String>)> = voiceset::Recent::new();
+/// The microphones, the Mac's default and those that cannot hear now (the Mac's own with the lid closed), read together.
+static MIC_LIST: voiceset::Recent<(Vec<voiceset::Input>, Option<String>, Vec<String>)> = voiceset::Recent::new();
 static SOUND_NOW: voiceset::Recent<voiceset::Sound> = voiceset::Recent::new();
-fn inputs_now() -> (Vec<voiceset::Input>, Option<String>) { MIC_LIST.read(CORE_AUDIO_WAIT, || (Vec::new(), None), voice_mac::inputs) }
+fn mics_now() -> (Vec<voiceset::Input>, Option<String>, Vec<String>) { MIC_LIST.read(CORE_AUDIO_WAIT, || (Vec::new(), None, Vec::new()), voice_mac::mics) }
+fn inputs_now() -> (Vec<voiceset::Input>, Option<String>) { let (inputs, default_id, _) = mics_now(); (inputs, default_id) }
 fn sound_reading() -> voiceset::Sound { SOUND_NOW.read(CORE_AUDIO_WAIT, || voiceset::Sound::On, speak::mac::sound_now) }
 
 fn voice_state(set: &voiceset::Saved, voices: &[voiceset::VoiceInfo]) -> Value {
-    let (inputs, default_id) = inputs_now();
-    voiceset::state_json(set, voices, &speak::mac::mac_language(), &inputs, default_id.as_deref(), sound_reading())
+    // With the lid closed, Settings names the microphone that will really listen (voiceset::state_json).
+    let (inputs, default_id, quiet) = mics_now();
+    voiceset::state_json(set, voices, &speak::mac::mac_language(), &inputs, default_id.as_deref(), sound_reading(), &quiet)
 }
 
 /// Settings: the Mac's voices and microphones, what is picked, what is away, and whether the sound is on. Only from the
@@ -2251,6 +2277,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
                 Err(showme::Refusal::SecureInput) => { say_showme(&app, "error", format!("{said} A password box is active, so I did not look at your screen.").trim(), json!({})); return; }
                 Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { say_showme(&app, "error", format!("{said} I could not look at your screen ({e}).").trim(), json!({})); return; }
                 Err(showme::Refusal::NeedsScreenRecording) => break,
+                Err(showme::Refusal::Stopped) => return,
             }
         }
         if !alive() { return; }

@@ -19,7 +19,8 @@ pub struct Captured { pub frame: Frame, /// The display in global top-left point
     pub display: R }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Refusal { NeedsScreenRecording, SecureInput, CaptureFailed(String), PictureFailed(String) }
+/// Stopped: Stop everything or a newer question came after the light went on, so no picture was taken at all.
+pub enum Refusal { NeedsScreenRecording, SecureInput, CaptureFailed(String), PictureFailed(String), Stopped }
 
 /// One picture as it is sent: its screen number (1 is the pointer's), its size in pixels, and its label (only when there
 /// is more than one screen).
@@ -50,8 +51,12 @@ pub trait Platform {
     fn send_image(&self, screen: usize, jpeg: &[u8], w: u32, h: u32);
     fn ask(&self, question: &str, pics: &[Pic], candidates: &[Cand]);
     /// Before the picture of a walkthrough step that follows a click: wait, under the light, until the page stops changing
-    /// (wait_to_settle). Nothing by default; the Mac's platform waits only when the page asked for it.
-    fn settle(&self) {}
+    /// (wait_to_settle), and say how the wait ended. Not asked by default; the Mac's platform waits only when the page
+    /// asked for it. Stopped means no picture is taken.
+    fn settle(&self) -> Settle { Settle::NotAsked }
+    /// Is this look still wanted (no Stop everything, no newer question since it began)? Asked under the light, right
+    /// before the one picture, so a look stopped meanwhile takes none.
+    fn still_wanted(&self) -> bool { true }
 }
 
 // ---- waiting for the page to settle (HeyClicky v1.0.53 parity) ----
@@ -74,10 +79,10 @@ pub fn looks_same(a: &Frame, b: &Frame) -> bool {
     changed * 1000 <= n * 3
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Settle { Still, TimedOut, Stopped, NoLook }
+pub enum Settle { Still, TimedOut, Stopped, NoLook, NotAsked }
 /// Looks, waits `gap_ms`, looks again, until two looks match (Still), `max_ms` of waiting has passed (TimedOut), the look
 /// is no longer wanted (Stopped: Stop everything, a newer question) or a look fails (NoLook). The real look goes ahead in
-/// every case except Stopped, where the caller's own check stops it.
+/// every case except Stopped, where start_on takes no picture (Refusal::Stopped).
 pub fn wait_to_settle(mut look: impl FnMut() -> Option<Frame>, mut pause: impl FnMut(u64), wanted: impl Fn() -> bool, gap_ms: u64, max_ms: u64) -> Settle {
     if !wanted() { return Settle::Stopped; }
     let Some(mut prev) = look() else { return Settle::NoLook };
@@ -144,8 +149,11 @@ pub fn start_on(p: &dyn Platform, question: &str, all_screens: bool) -> Result<P
     if p.secure_input_on() { return Err(Refusal::SecureInput); }
     p.indicator(true);
     let result = (|| {
-        // A walkthrough step after a click: the page may still be loading (settle; nothing unless the page asked).
-        p.settle();
+        // A walkthrough step after a click: the page may still be loading (settle; nothing unless the page asked). Stop
+        // everything or a newer question during the wait, or since the light came on, means no picture at all. A password
+        // box that took focus meanwhile (a sign in page loading) is checked again right before the picture.
+        if p.settle() == Settle::Stopped || !p.still_wanted() { return Err(Refusal::Stopped); }
+        if p.secure_input_on() { return Err(Refusal::SecureInput); }
         let mut caps = vec![p.capture().map_err(Refusal::CaptureFailed)?];
         while all_screens && caps.len() < MAX_DISPLAYS {
             let tried: Vec<R> = caps.iter().map(|c| c.display).collect();
@@ -343,15 +351,23 @@ mod tests {
     /// with the text on it; their pictures are 1920 + 8 times their place in the list pixels wide, so each can be told apart.
     /// `fast_misses`: text the quick reader misreads (it leaves those boxes out), as Vision's fast level can with small or
     /// unusual text; the careful reader finds them.
-    struct Fake { granted: bool, secure: bool, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, others: Vec<(R, Vec<OcrBox>)>, fail_other: bool, tried: RefCell<Vec<R>>, wins: (Vec<Win>, i32), fast_misses: Vec<&'static str>, settles: bool }
-    impl Fake { fn new() -> Fake { Fake { granted: true, secure: false, log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, others: vec![], fail_other: false, tried: RefCell::new(vec![]), wins: (vec![], 0), fast_misses: vec![], settles: false } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
+    /// `settles`: the page asked to wait for the page to settle; `settled`: how that wait ends. `secure_after`: a password box
+    /// takes focus during the wait. `unwanted`: Stop everything or a newer question came after the light went on.
+    struct Fake { granted: bool, secure: std::cell::Cell<bool>, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, others: Vec<(R, Vec<OcrBox>)>, fail_other: bool, tried: RefCell<Vec<R>>, wins: (Vec<Win>, i32), fast_misses: Vec<&'static str>, settles: bool, settled: Settle, secure_after: bool, unwanted: bool }
+    impl Fake { fn new() -> Fake { Fake { granted: true, secure: std::cell::Cell::new(false), log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, others: vec![], fail_other: false, tried: RefCell::new(vec![]), wins: (vec![], 0), fast_misses: vec![], settles: false, settled: Settle::Still, secure_after: false, unwanted: false } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
     impl Platform for Fake {
-        fn settle(&self) { if self.settles { self.log.borrow_mut().push("settle".into()); } }
+        fn settle(&self) -> Settle {
+            if !self.settles { return Settle::NotAsked; }
+            self.log.borrow_mut().push("settle".into());
+            if self.secure_after { self.secure.set(true); }
+            self.settled
+        }
+        fn still_wanted(&self) -> bool { !self.unwanted }
         fn read_text_fast(&self, f: &Frame) -> Vec<OcrBox> {
             self.read_text(f).into_iter().filter(|b| !self.fast_misses.iter().any(|m| b.text.contains(m))).collect()
         }
         fn screen_recording_granted(&self) -> bool { self.log.borrow_mut().push("permission".into()); self.granted }
-        fn secure_input_on(&self) -> bool { self.secure }
+        fn secure_input_on(&self) -> bool { self.secure.get() }
         fn indicator(&self, on: bool) { self.log.borrow_mut().push(format!("light {}", if on { "on" } else { "off" })); }
         fn capture(&self) -> Result<Captured, String> {
             self.log.borrow_mut().push("capture".into());
@@ -432,7 +448,7 @@ mod tests {
     fn looking_for_the_problem_respects_the_permission_and_password_boxes() {
         let mut f = Fake::new(); f.granted = false;
         assert_eq!(look_for(&f, |_| Some(())).err(), Some(Refusal::NeedsScreenRecording));
-        let mut f = Fake::new(); f.secure = true;
+        let f = Fake::new(); f.secure.set(true);
         assert_eq!(look_for(&f, |_| Some(())).err(), Some(Refusal::SecureInput));
         assert!(!f.said().iter().any(|x| x.starts_with("capture") || x.starts_with("light")));
     }
@@ -450,7 +466,7 @@ mod tests {
     }
     #[test]
     fn with_a_password_box_active_nothing_is_captured() {
-        let mut f = Fake::new(); f.secure = true;
+        let f = Fake::new(); f.secure.set(true);
         assert_eq!(start(&f, "q").err(), Some(Refusal::SecureInput));
         assert!(!f.said().iter().any(|x| x.starts_with("capture")));
     }
@@ -821,12 +837,56 @@ mod tests {
         look_for(&g, |b| b.first().map(|x| x.rect)).unwrap();
         assert!(!g.said().iter().any(|x| x == "settle"));
     }
+    // Found in review (19 Oct 2026): a wait ended by Stop everything or a newer question still took the full picture right
+    // after, read it and made it ready to send, with the light already said to be off. And a password box that took focus
+    // during the wait (a sign in page loading) was not seen: it was checked once, before the light.
+    #[test]
+    fn stop_during_the_wait_takes_no_picture_at_all_and_the_light_goes_off() {
+        let mut f = Fake::new(); f.settles = true; f.settled = Settle::Stopped;
+        assert_eq!(start(&f, "where?").err(), Some(Refusal::Stopped));
+        let s = f.said();
+        assert!(!s.iter().any(|x| x == "capture" || x.starts_with("send") || x.starts_with("ask") || x == "windows"), "{s:?}");
+        assert_eq!(s.last().map(String::as_str), Some("light off"));
+    }
+    #[test]
+    fn a_look_no_longer_wanted_after_the_light_takes_no_picture_waiting_or_not() {
+        for settles in [false, true] {
+            let mut f = Fake::new(); f.settles = settles; f.unwanted = true;
+            assert_eq!(start(&f, "where?").err(), Some(Refusal::Stopped), "settles {settles}");
+            let s = f.said();
+            assert!(!s.iter().any(|x| x == "capture" || x.starts_with("send") || x.starts_with("ask")), "{s:?}");
+            assert_eq!(s.last().map(String::as_str), Some("light off"));
+        }
+    }
+    #[test]
+    fn a_password_box_that_takes_focus_during_the_wait_stops_the_look() {
+        let mut f = Fake::new(); f.settles = true; f.secure_after = true;
+        assert_eq!(start(&f, "where?").err(), Some(Refusal::SecureInput));
+        let s = f.said();
+        assert!(!s.iter().any(|x| x == "capture" || x.starts_with("send") || x.starts_with("ask")), "{s:?}");
+        assert_eq!(s.last().map(String::as_str), Some("light off"));
+        // Every other way the wait ends, the one picture goes ahead as before.
+        for how in [Settle::Still, Settle::TimedOut, Settle::NoLook] {
+            let mut g = Fake::new(); g.settles = true; g.settled = how;
+            assert!(start(&g, "where?").is_ok(), "{how:?}");
+            assert_eq!(g.said().iter().filter(|x| x.starts_with("send")).count(), 1, "{how:?}");
+        }
+    }
+    #[test]
+    fn a_stopped_look_says_nothing_and_point_at_the_problem_never_waits() {
+        let main = include_str!("main.rs");
+        let b = &main[main.find("fn showme_start(").unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
+        assert!(b.contains("Err(showme::Refusal::Stopped) => {}"), "a look ended by Stop or a newer question says nothing: {b}");
+        assert!(b.contains(".while_wanted(Box::new(move || current()))"), "{b}");
+        let see = include_str!("macos_see.rs");
+        assert!(see.contains("fn still_wanted(&self) -> bool { self.wanted.as_ref().map_or(true, |w| w()) }"));
+    }
     #[test]
     fn the_shell_waits_only_when_the_page_asks_and_stop_ends_the_wait() {
         let main = include_str!("main.rs");
         let b = &main[main.find("fn showme_start(").unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
         assert!(b.contains("settle: Option<bool>"), "{b}");
-        assert!(b.contains("if settle.unwrap_or(false) { plat.settling(Box::new(move || current())) } else { plat }"), "{b}");
+        assert!(b.contains(".settling(settle.unwrap_or(false))"), "{b}");
         let see = include_str!("macos_see.rs");
         let st = &see[see.find("fn settle(&self)").unwrap()..]; let st = &st[..st.find("\n    }\n").unwrap()];
         assert!(st.contains("crate::showme::wait_to_settle("), "{st}");

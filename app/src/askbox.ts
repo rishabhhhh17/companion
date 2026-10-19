@@ -80,11 +80,15 @@ export function heardKind(text: string, language = "auto"): HeardKind {
 /** May words from hold to talk send themselves (with talk.autoSend on)? Only a clear request for work. */
 export const sendsItself = (text: string, language = "auto") => heardKind(text, language) === "work";
 
+/** What decides whether spoken words go into a finished task's follow up box, taken as the keys go down (when listening
+ *  begins), never when the words come back: the box shows, Home shows, the pointer is over that task's receipt (a hover
+ *  inside Home's own window; nothing else is read), and Follow up by pointing is on (talk.followUpByPointing). */
+export type FollowAim = { followUpShown: boolean; overReceipt: boolean; byPointing: boolean; homeShown: boolean };
 /** Where words from hold to talk go. showme: the Show me key was pressed first, so they are a question about the screen.
- *  followUp: Follow up by pointing is on (talk.followUpByPointing), the follow up box shows under a finished task's
- *  receipt and the pointer is over that receipt (a hover inside Home's own window; nothing else is read). box: the ask box,
- *  as always. */
-export function heardGoesTo(o: { showme: boolean; followUpShown: boolean; overReceipt: boolean; byPointing: boolean }): "showme" | "followUp" | "box" {
+ *  followUp: everything in `atKeysDown` was true as the keys went down, and the follow up box still shows now. box: the
+ *  ask box, as always (also with no start known). */
+export function heardGoesTo(o: { showme: boolean; atKeysDown: FollowAim | null; followUpShownNow: boolean }): "showme" | "followUp" | "box" {
   if (o.showme) return "showme";
-  return o.byPointing && o.followUpShown && o.overReceipt ? "followUp" : "box";
+  const d = o.atKeysDown;
+  return d && d.byPointing && d.homeShown && d.followUpShown && d.overReceipt && o.followUpShownNow ? "followUp" : "box";
 }

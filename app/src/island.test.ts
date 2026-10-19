@@ -220,9 +220,15 @@ describe("the island says what is next", () => {
   test("Home's notice offers Install, only when nothing is running, and only on a press", () => {
     const card = read("./card.tsx");
     expect(card).toContain('listen("update-ready"');
-    expect(card).toMatch(/<button className="btn primary" type="button" disabled=\{!canInstall\(!isBusy\(m\)\)\}[^>]*onClick=\{installUpdate\}>\{S\.updatesInstall\}<\/button>/);
+    // The guard is updates.ts installAllowed, tested on the model there; Home asks it and nothing else, for the button, the
+    // busy line and the press (an inverted guard here once offered Install only while a task ran).
+    expect(card).not.toMatch(/canInstall\(/);
+    expect(card).toMatch(/<button className="btn primary" type="button" disabled=\{!installAllowed\(m\)\}[^>]*onClick=\{installUpdate\}>\{S\.updatesInstall\}<\/button>/);
+    expect(card).toContain("{!installAllowed(m) && <div className=\"line muted\">{S.updatesBusy}</div>}");
     const install = card.slice(card.indexOf("const installUpdate = () =>"), card.indexOf("\n", card.indexOf("const installUpdate = () =>")));
-    expect(install).toContain("if (!canInstall(!isBusy(nowModel.current))) return;");
+    expect(install).toContain("if (!installAllowed(nowModel.current)) return;");
+    // And the shell refuses too while the engine says something runs (updates.rs Running), so a restart never cuts it off.
+    expect(fnBody("install_update")).toContain("if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }");
     expect(install).toContain('invoke("install_update")');
     // The daily check only looks: it never installs.
     const daily = card.slice(card.indexOf("// The daily update check"), card.indexOf("// Draw it for me"));
@@ -236,19 +242,20 @@ describe("the island and Home open with a short motion", () => {
   test("the island's frame moves through the one helper, as a motion only when island.rs says so", () => {
     const place = fnBody("place_island");
     expect(place).toContain("island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion())");
-    expect(place).toContain("set_frame_moving(p, to_appkit(f, ph), secs, None)");
+    expect(place).toContain("set_frame_moving(p, to_appkit(f, ph), secs, None, &ISLAND_MOVES)");
   });
   test("Home drops open only when it opens, never on a resize, and is never left see through", () => {
     const open = fnBody("open_card");
     expect(open).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
     expect(open).toContain("c.setAlphaValue(0.0);");
-    expect(open).toContain("set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0))");
+    expect(open).toContain("set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0), &CARD_MOVES)");
+    // A resize goes through the same helper, at once (never a motion), so it replaces a drop still running.
     expect(fnBody("resize_card")).not.toContain("set_frame_moving");
-    expect(fnBody("place_card")).not.toContain("set_frame_moving");
+    expect(fnBody("place_card")).toContain("set_frame_moving(c, to_appkit(cf, ph), None, None, &CARD_MOVES)");
     const helper = fnBody("set_frame_moving");
     expect(helper).toContain("runAnimationGroup_completionHandler");
-    // Whatever happens to the motion, Home ends fully drawn.
-    expect(helper).toMatch(/let done = RcBlock::new\(move \|\| \{ if let Some\(x\) = alpha \{ w2\.setAlphaValue\(x\); \} \}\);/);
+    // Whatever happens to the motion, Home ends fully drawn, and on the frame asked last.
+    expect(helper).toMatch(/let done = RcBlock::new\(move \|\| \{\s*if let Some\(x\) = alpha \{ w2\.setAlphaValue\(x\); \}/);
   });
   test("Less motion in Settings makes them appear at once too, as Reduce motion does", () => {
     expect(main).toContain("fn reduce_motion() -> bool { home_set().less_motion || NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion() }");

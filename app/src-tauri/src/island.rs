@@ -146,6 +146,18 @@ pub fn grows_down(from: Rect, to: Rect) -> bool {
 /// The island's change of frame shown as a short motion: only when it grows downward, never when it shrinks back (that is
 /// at once), moves to another display, or `reduced` motion is asked for.
 pub fn island_motion(from: Rect, to: Rect, reduced: bool) -> Option<f64> { (!reduced && grows_down(from, to)).then_some(OPEN_SECS) }
+/// The frames asked of one moving panel (the island, Home). AppKit lets a motion that is still running finish on its old
+/// target when the frame is then set at once, so each change is noted here, and a motion that ends sets the frame asked
+/// last again when that was set at once after it (`ended`). A newer motion ends on its own target.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Moves { n: u64, last: Option<(Rect, bool)> }
+impl Moves {
+    pub const fn new() -> Self { Moves { n: 0, last: None } }
+    /// A frame is asked, as a motion (`moving`) or at once. Gives the number to hand back when that motion ends.
+    pub fn ask(&mut self, f: Rect, moving: bool) -> u64 { self.n += 1; self.last = Some((f, moving)); self.n }
+    /// The motion asked as `mine` ended: the frame to set again now, if a newer one was set at once meanwhile.
+    pub fn ended(&self, mine: u64) -> Option<Rect> { match self.last { Some((f, false)) if self.n != mine => Some(f), _ => None } }
+}
 /// Where Home starts its drop when it opens (`opening`; a resize while it is open is never animated): the same place
 /// across and the same size, DROP higher, then down to `to` while it fades in. None with `reduced` motion.
 pub fn home_drop(to: Rect, opening: bool, reduced: bool) -> Option<Rect> { (opening && !reduced).then_some([to[0], to[1] - DROP, to[2], to[3]]) }
@@ -849,4 +861,51 @@ mod tests {
             assert_eq!(home_drop(to, false, false), None);
         }
     }
+    // Found in review (19 Oct 2026): AppKit lets a running motion finish on its old target when the frame is then set at
+    // once. The island grew for the peek, the pointer left within 0.18 s, the rest frame was set at once, and the grow
+    // finished anyway: the island stayed peek sized while its page was in rest mode. Home's drop overwrote a resize the
+    // same way. Each moving panel now keeps the frame asked last, and a motion that ends sets it again when it was newer.
+    #[test]
+    fn a_frame_set_at_once_during_a_motion_wins_when_the_motion_ends() {
+        let (peek, rest) = ([10.0, 0.0, 200.0, 80.0], [10.0, 0.0, 200.0, 37.0]);
+        let mut m = Moves::new();
+        let grow = m.ask(peek, true);
+        m.ask(rest, false);
+        assert_eq!(m.ended(grow), Some(rest), "the grow ends on the peek frame: the rest frame is set again");
+        // A motion that ends with nothing newer asked leaves its frame alone.
+        let mut m = Moves::new();
+        let drop = m.ask(peek, true);
+        assert_eq!(m.ended(drop), None);
+        // A frame set at once is never set again for itself.
+        let mut m = Moves::new();
+        let now = m.ask(rest, false);
+        assert_eq!(m.ended(now), None);
+        // A newer motion ends on its own target: the older one leaves it alone, and the newer one sets nothing either.
+        let mut m = Moves::new();
+        let first = m.ask(peek, true);
+        let second = m.ask(rest, true);
+        assert_eq!((m.ended(first), m.ended(second)), (None, None));
+        // Several at once while one motion runs: the last one wins.
+        let mut m = Moves::new();
+        let grow = m.ask(peek, true);
+        m.ask([1.0, 2.0, 3.0, 4.0], false);
+        m.ask(rest, false);
+        assert_eq!(m.ended(grow), Some(rest));
+    }
+    #[test]
+    fn every_frame_of_the_island_and_home_goes_through_the_one_helper() {
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let pc = body("fn place_card(");
+        assert!(pc.contains("set_frame_moving(c, to_appkit(cf, ph), None, None, &CARD_MOVES)"), "a resize is at once, never a motion: {pc}");
+        assert!(!pc.contains("setFrame_display"), "{pc}");
+        let helper = body("fn set_frame_moving(");
+        assert!(helper.contains("let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());"), "{helper}");
+        assert!(helper.contains(".ended(mine)"), "{helper}");
+        // At once is a motion of no length, which replaces one still running, and then set at once as well.
+        assert!(helper.contains("setDuration(secs.unwrap_or(0.0))"), "{helper}");
+        assert!(body("fn place_island(").contains("&ISLAND_MOVES)"));
+        assert!(body("fn open_card(").contains("&CARD_MOVES)"));
+    }
+
 }

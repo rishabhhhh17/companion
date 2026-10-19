@@ -113,6 +113,15 @@ pub fn unheard(inputs: &[Input], builtin: &[String], lid_closed: bool) -> Vec<St
     if !lid_closed { return Vec::new(); }
     inputs.iter().filter(|x| x.id.split_once(':').is_some_and(|(_, uid)| builtin.iter().any(|b| b == uid))).map(|x| x.id.clone()).collect()
 }
+/// Is this built in input (Core Audio's transport type built in) the Mac's own microphone, cut off with the lid closed?
+/// Not the headphone jack's, which is built in too: on an Intel Mac it is a data source of the one built in microphone,
+/// chosen when a headset is plugged in; on Apple silicon it is its own device, named for the headphone jack in Core
+/// Audio's id. `source`: the input data source in use ('imic' internal, 'emic' external), when the device reports one.
+pub fn own_mic(uid: &str, source: Option<u32>) -> bool {
+    if let Some(s) = source { return s == u32::from_be_bytes(*b"imic"); }
+    let u = uid.to_ascii_lowercase();
+    !(u.contains("headphone") || u.contains("headset"))
+}
 /// Every microphone listed cannot hear right now (the lid is closed and only the Mac's own is there): nothing to listen with.
 pub fn only_unheard(inputs: &[Input], unheard: &[String]) -> bool { !inputs.is_empty() && inputs.iter().all(|x| unheard.contains(&x.id)) }
 
@@ -286,10 +295,13 @@ pub fn apply(saved: &Saved, ask: &Ask, voices: &[VoiceInfo], inputs: &[Input]) -
 }
 
 /// What Settings is told.
-pub fn state_json(s: &Saved, voices: &[VoiceInfo], mac_lang: &str, inputs: &[Input], default_id: Option<&str>, sound: Sound) -> Value {
+/// `unheard`: the microphones that cannot hear now (the Mac's own with the lid closed), so Settings names the one that
+/// really listens. micQuiet: the one that would listen with the lid open, when it cannot hear now; lidOnly: none can.
+pub fn state_json(s: &Saved, voices: &[VoiceInfo], mac_lang: &str, inputs: &[Input], default_id: Option<&str>, sound: Sound, unheard: &[String]) -> Value {
     let vu = pick_voice(s.voice.as_ref(), voices);
     let using = if vu.missing.is_some() { vu.id.as_ref().and_then(|id| voices.iter().find(|v| &v.id == id)).map(|v| v.name.clone()) } else { None };
-    let mu = pick_mic(None, inputs, default_id, &[]);
+    let mu = pick_mic(None, inputs, default_id, unheard);
+    let quiet = pick_mic(s.mic.as_ref(), inputs, default_id, &[]).index.map(|i| &inputs[i]).filter(|x| unheard.contains(&x.id)).map(|x| x.name.clone());
     let mic_missing = s.mic.as_ref().filter(|m| !inputs.iter().any(|x| x.id == m.id)).map(|m| m.name.clone());
     json!({
         "voices": listable(voices, mac_lang).iter().map(|v| json!({ "id": v.id, "name": v.name, "lang": v.lang, "quality": v.quality })).collect::<Vec<_>>(),
@@ -299,6 +311,7 @@ pub fn state_json(s: &Saved, voices: &[VoiceInfo], mac_lang: &str, inputs: &[Inp
         "inputs": inputs.iter().map(|i| json!({ "id": i.id, "name": i.name })).collect::<Vec<_>>(),
         "defaultInput": mu.index.map(|i| inputs[i].name.clone()),
         "mic": s.mic.as_ref().map(|m| m.id.clone()), "micMissing": mic_missing,
+        "micQuiet": quiet, "lidOnly": only_unheard(inputs, unheard),
         "language": s.language, "languages": LANGUAGES,
         "sound": sound_word(sound),
     })
@@ -601,7 +614,7 @@ mod tests {
     fn settings_are_told_the_lists_the_picks_and_what_is_away() {
         let s = Saved { voice: Some(named("gone.voice", "Zoe", "en-US")), speed: 1.25, mic: Some(named("coreaudio:airpods", "AirPods Pro", "")), language: "hi".into() };
         let inputs = [inp("coreaudio:built-in", "MacBook Pro Microphone")];
-        let j = state_json(&s, &mac_voices(), "en-US", &inputs, Some("coreaudio:built-in"), Sound::Muted);
+        let j = state_json(&s, &mac_voices(), "en-US", &inputs, Some("coreaudio:built-in"), Sound::Muted, &[]);
         assert_eq!(j["voice"], "gone.voice"); assert_eq!(j["voiceMissing"], "Zoe"); assert_eq!(j["voiceUsing"], "Ava");
         assert_eq!(j["speed"], 1.25); assert_eq!(j["speeds"].as_array().unwrap().len(), SPEEDS.len());
         assert_eq!(j["mic"], "coreaudio:airpods"); assert_eq!(j["micMissing"], "AirPods Pro"); assert_eq!(j["defaultInput"], "MacBook Pro Microphone");
@@ -610,7 +623,7 @@ mod tests {
         assert_eq!(j["sound"], "muted"); assert_eq!(j["macLang"], "en-US");
         assert_eq!(j["voices"][0]["name"], "Ava", "best in the Mac's language first");
         assert!(j["voices"].as_array().unwrap().iter().all(|x| x["name"] != "Bells"));
-        let plain = state_json(&Saved::default(), &mac_voices(), "en-US", &inputs, None, Sound::On);
+        let plain = state_json(&Saved::default(), &mac_voices(), "en-US", &inputs, None, Sound::On, &[]);
         assert!(plain["voice"].is_null() && plain["voiceMissing"].is_null() && plain["voiceUsing"].is_null() && plain["mic"].is_null() && plain["micMissing"].is_null());
         assert_eq!(plain["defaultInput"], "MacBook Pro Microphone", "the first one when the Mac names no default");
     }
@@ -627,6 +640,64 @@ mod tests {
         assert!(unheard(&lid_list(), &[], true).is_empty(), "no microphone of its own (a Mac mini): nothing changes");
         // Matched by Core Audio's own id after the host's name, never by the microphone's name.
         assert!(unheard(&[inp("coreaudio:other", "MacBook Pro Microphone")], &builtin, true).is_empty());
+    }
+    // Found in review (19 Oct 2026): every built in input counted as the Mac's own microphone, but the headphone jack is
+    // built in too (its own device on Apple silicon, a data source of the one built in microphone on an Intel Mac). With
+    // the lid closed and a wired headset plugged in, the working microphone was passed over, or the person was told to plug
+    // one in while one was.
+    #[test]
+    fn the_headphone_jack_is_never_taken_for_the_macs_own_microphone() {
+        let (imic, emic) = (u32::from_be_bytes(*b"imic"), u32::from_be_bytes(*b"emic"));
+        // The data source in use says which it is, when the device reports one (an Intel Mac switches it for a headset).
+        assert!(own_mic("AppleHDAEngineInput:1B,0,1,0:1", Some(imic)));
+        assert!(!own_mic("AppleHDAEngineInput:1B,0,1,0:1", Some(emic)), "a headset in the jack of an Intel Mac");
+        assert!(!own_mic("BuiltInMicrophoneDevice", Some(emic)));
+        // With no data source, by Core Audio's id: Apple silicon's jack is its own device, named for the headphone jack.
+        assert!(own_mic("BuiltInMicrophoneDevice", None));
+        assert!(!own_mic("BuiltInHeadphoneInputDevice", None), "the jack's own device on Apple silicon");
+        assert!(!own_mic("BuiltInHeadsetInputDevice", None));
+        // The jack listens with the lid closed; only the Mac's own is passed over.
+        let list = [inp("coreaudio:BuiltInMicrophoneDevice", "MacBook Pro Microphone"), inp("coreaudio:BuiltInHeadphoneInputDevice", "External Microphone")];
+        let builtin = ["BuiltInMicrophoneDevice".to_string()];
+        let off = unheard(&list, &builtin, true);
+        assert_eq!(off, vec!["coreaudio:BuiltInMicrophoneDevice".to_string()]);
+        assert!(!only_unheard(&list, &off), "the headset can listen: nothing says to plug one in");
+        assert_eq!(pick_mic(None, &list, Some("coreaudio:BuiltInMicrophoneDevice"), &off).index, Some(1));
+    }
+    #[test]
+    fn the_core_audio_read_asks_the_data_source_of_each_built_in_input() {
+        let c = include_str!("voice_mac.rs");
+        let b = &c[c.find("pub fn builtin_input_uids()").unwrap()..]; let b = &b[..b.find("\n    }\n").unwrap()];
+        assert!(b.contains("addr(b\"ssrc\", b\"inpt\")"), "the input data source: {b}");
+        assert!(b.contains("crate::voiceset::own_mic(&id, source)"), "{b}");
+    }
+    // Found in review (19 Oct 2026): Settings named the Mac's own microphone as the one in use with the lid closed, while
+    // hold to talk listened with another.
+    #[test]
+    fn settings_name_the_microphone_that_really_listens_with_the_lid_closed() {
+        let list = lid_list();
+        let off = ["coreaudio:BuiltInMicrophoneDevice".to_string()];
+        let j = state_json(&Saved::default(), &mac_voices(), "en-US", &list, Some("coreaudio:BuiltInMicrophoneDevice"), Sound::On, &off);
+        assert_eq!(j["defaultInput"], "Blue Yeti");
+        assert_eq!(j["micQuiet"], "MacBook Pro Microphone", "the one that would have listened, and cannot now");
+        assert_eq!(j["lidOnly"], false);
+        // Picked, and connected: not called missing; the lid line names it, and what listens instead.
+        let own = Saved { mic: Some(named("coreaudio:BuiltInMicrophoneDevice", "MacBook Pro Microphone", "")), ..Saved::default() };
+        let j = state_json(&own, &mac_voices(), "en-US", &list, Some("coreaudio:pods"), Sound::On, &off);
+        assert!(j["micMissing"].is_null());
+        assert_eq!((j["micQuiet"].as_str(), j["defaultInput"].as_str()), (Some("MacBook Pro Microphone"), Some("AirPods Pro")));
+        // Only the Mac's own: nothing can listen.
+        let j = state_json(&Saved::default(), &mac_voices(), "en-US", &list[..1], Some("coreaudio:BuiltInMicrophoneDevice"), Sound::On, &off);
+        assert_eq!(j["lidOnly"], true);
+        // Lid open: exactly as before.
+        let j = state_json(&Saved::default(), &mac_voices(), "en-US", &list, Some("coreaudio:BuiltInMicrophoneDevice"), Sound::On, &[]);
+        assert_eq!(j["defaultInput"], "MacBook Pro Microphone");
+        assert!(j["micQuiet"].is_null());
+        assert_eq!(j["lidOnly"], false);
+        // The shell reads which microphones cannot hear with the list, off the main thread.
+        let main = include_str!("main.rs");
+        assert!(main.contains("static MIC_LIST: voiceset::Recent<(Vec<voiceset::Input>, Option<String>, Vec<String>)> = voiceset::Recent::new();"));
+        assert!(main.contains("voiceset::state_json(set, voices, &speak::mac::mac_language(), &inputs, default_id.as_deref(), sound_reading(), &quiet)"));
     }
     #[test]
     fn the_macs_own_microphone_picked_or_the_default_gives_way_to_another_one_with_the_lid_closed() {
@@ -739,10 +810,11 @@ mod tests {
             let b = body(f);
             assert!(!b.contains("voice_mac::inputs()") && !b.contains("speak::mac::sound_now()"), "{f} reads Core Audio itself");
         }
-        assert!(body("fn voice_state(").contains("inputs_now()") && body("fn voice_state(").contains("sound_reading()"));
+        assert!(body("fn voice_state(").contains("mics_now()") && body("fn voice_state(").contains("sound_reading()"));
         assert!(body("fn set_voice_settings(").contains("inputs_now()"));
         assert!(body("fn speak(").contains("let sound = sound_reading();"));
-        assert!(MAIN.contains("fn inputs_now() -> (Vec<voiceset::Input>, Option<String>) { MIC_LIST.read(CORE_AUDIO_WAIT, || (Vec::new(), None), voice_mac::inputs) }"));
+        assert!(MAIN.contains("fn mics_now() -> (Vec<voiceset::Input>, Option<String>, Vec<String>) { MIC_LIST.read(CORE_AUDIO_WAIT, || (Vec::new(), None, Vec::new()), voice_mac::mics) }"));
+        assert!(MAIN.contains("fn inputs_now() -> (Vec<voiceset::Input>, Option<String>) { let (inputs, default_id, _) = mics_now(); (inputs, default_id) }"));
         assert!(MAIN.contains("fn sound_reading() -> voiceset::Sound { SOUND_NOW.read(CORE_AUDIO_WAIT, || voiceset::Sound::On, speak::mac::sound_now) }"), "never claimed off without a reading");
         assert!(MAIN.contains("const CORE_AUDIO_WAIT: Duration = Duration::from_millis(300);"));
         // The Mac's voices are still read where they must be (AVSpeechSynthesisVoice, on the main thread).

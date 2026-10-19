@@ -809,7 +809,7 @@ mod tests {
     fn the_card_opening_or_growing_plans_the_visit_again_and_trips_keep_clear_of_its_tallest() {
         let pc = body(MAIN, "fn place_card(");
         assert!(pc.contains("roam_card_moved(") && pc.contains("home_size().max_h"), "every time the card opens or grows, checked against its tallest");
-        assert!(pc.find("setFrame_display").unwrap() < pc.find("roam_card_moved(").unwrap(), "after the card is placed");
+        assert!(pc.find("set_frame_moving(").unwrap() < pc.find("roam_card_moved(").unwrap(), "after the card is placed");
         let moved = body(MAIN, "fn roam_card_moved(");
         assert!(moved.contains(".card_moved(") && moved.contains("roam_kick("), "planned again by the rule, and the trip starts");
         assert!(body(MAIN, "fn roam_to(").contains("card_room("), "planned clear of where the card can grow to");

@@ -25,6 +25,38 @@ pub fn failure_words(raw: &str) -> &'static str {
     else { "I could not check for updates just now. Try again later." }
 }
 
+// ---------- never while something runs ----------
+
+/// What the engine says is under way, as its events go by (runner.rs publish): agents thinking, working, checking or
+/// waiting for the person, and approvals not answered yet. The page's own check comes first (updates.ts installAllowed,
+/// which knows more: a deploy, an install, a practice); this is the backstop in install_update, so a press that reaches
+/// the shell anyway never restarts Companion under a running task. Ids only, never what a task says or does.
+pub struct Running { agents: std::collections::BTreeSet<String>, approvals: std::collections::BTreeSet<String> }
+impl Running {
+    pub const fn new() -> Self { Running { agents: std::collections::BTreeSet::new(), approvals: std::collections::BTreeSet::new() } }
+    pub fn note(&mut self, v: &serde_json::Value) {
+        let s = |k: &str| v.get(k).and_then(serde_json::Value::as_str);
+        match s("type") {
+            Some("agent.state") => {
+                let (Some(agent), Some(state)) = (s("agent"), s("state")) else { return };
+                if matches!(state, "thinking" | "working" | "checking" | "needsYou") { self.agents.insert(agent.to_string()); } else { self.agents.remove(agent); }
+            }
+            Some("approval.request") => { if let Some(a) = s("approval") { self.approvals.insert(a.to_string()); } }
+            Some("approval.resolved") => { if let Some(a) = s("approval") { self.approvals.remove(a); } }
+            // An engine that has just started, or has stopped, runs nothing.
+            Some("runner.hello") | Some("app.runner_down") => { self.agents.clear(); self.approvals.clear(); }
+            _ => {}
+        }
+    }
+    pub fn busy(&self) -> bool { !self.agents.is_empty() || !self.approvals.is_empty() }
+}
+static RUNNING: std::sync::Mutex<Running> = std::sync::Mutex::new(Running::new());
+/// Every engine event, as it is published to the pages.
+pub fn note_running(v: &serde_json::Value) { RUNNING.lock().unwrap_or_else(|e| e.into_inner()).note(v); }
+pub fn running_now() -> bool { RUNNING.lock().unwrap_or_else(|e| e.into_inner()).busy() }
+/// What install_update says when something runs: the page's own words (S.updatesBusy).
+pub const BUSY_WORDS: &str = "Wait until the current task is finished, then install.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,6 +101,62 @@ mod tests {
         let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         assert!(conf["plugins"]["updater"].is_object());
         assert_eq!(conf["plugins"]["updater"]["requireSignedVersion"], serde_json::Value::Bool(true));
+    }
+    // Found in review (19 Oct 2026): Home's Install was offered only while a task ran (an inverted guard on the page), and
+    // the shell installed and restarted without asking whether anything ran. The shell now keeps its own count of what the
+    // engine says is under way, as a backstop to the page's own check (updates.ts installAllowed).
+    fn ev(v: serde_json::Value) -> serde_json::Value { v }
+    #[test]
+    fn a_task_working_or_an_approval_waiting_means_no_restart() {
+        let mut r = Running::new();
+        assert!(!r.busy(), "nothing has run yet");
+        for state in ["thinking", "working", "checking", "needsYou"] {
+            r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "builder-1", "state": state })));
+            assert!(r.busy(), "{state}");
+        }
+        for state in ["done", "error", "idle"] {
+            r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "builder-1", "state": "working" })));
+            r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "builder-1", "state": state })));
+            assert!(!r.busy(), "{state}: at rest");
+        }
+        // Two agents: busy until both are at rest.
+        r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" })));
+        r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "b", "state": "checking" })));
+        r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "a", "state": "done" })));
+        assert!(r.busy());
+        r.note(&ev(serde_json::json!({ "type": "agent.state", "agent": "b", "state": "done" })));
+        assert!(!r.busy());
+        // An approval waits until it is answered, whatever the agent says.
+        r.note(&ev(serde_json::json!({ "type": "approval.request", "approval": "ap_1", "agent": "a" })));
+        assert!(r.busy());
+        r.note(&ev(serde_json::json!({ "type": "approval.resolved", "approval": "ap_1", "agent": "a", "outcome": "allowed" })));
+        assert!(!r.busy());
+    }
+    #[test]
+    fn an_engine_that_started_again_or_stopped_runs_nothing() {
+        for reset in ["runner.hello", "app.runner_down"] {
+            let mut r = Running::new();
+            r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" }));
+            r.note(&serde_json::json!({ "type": "approval.request", "approval": "ap_1", "agent": "a" }));
+            r.note(&serde_json::json!({ "type": reset }));
+            assert!(!r.busy(), "{reset}");
+        }
+        // Anything else, or a broken event, changes nothing.
+        let mut r = Running::new();
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" }));
+        for junk in [serde_json::json!({ "type": "cost.update" }), serde_json::json!({ "type": "agent.state", "state": "done" }), serde_json::json!({ "type": "agent.state", "agent": 3, "state": "done" }), serde_json::json!(null)] { r.note(&junk); }
+        assert!(r.busy());
+    }
+    #[test]
+    fn the_shell_notes_every_engine_event_and_install_asks_before_taking_the_update() {
+        let runner = include_str!("runner.rs");
+        let publish = &runner[runner.find("pub fn publish(").unwrap()..]; let publish = &publish[..publish.find("\n    }\n").unwrap()];
+        assert!(publish.contains("crate::updates::note_running(&v);"), "{publish}");
+        let main = include_str!("main.rs");
+        let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
+        let busy = install.find("if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }").expect("a busy check");
+        assert!(busy < install.find("PENDING_UPDATE").unwrap(), "asked before the update is taken, so it can be installed later");
+        assert_eq!(BUSY_WORDS, "Wait until the current task is finished, then install.", "the same words as the page (S.updatesBusy)");
     }
     #[test]
     fn the_shipped_file_parses_or_is_cleanly_empty() {

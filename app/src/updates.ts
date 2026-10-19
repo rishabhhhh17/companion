@@ -42,6 +42,8 @@ export function isBusy(m: Busy): boolean {
   if (m.diagram?.stage === "asking" || m.point?.stage === "checking") return true;
   return false;
 }
+/** May Install be pressed now? The one guard every Install button and its busy line ask: only when nothing runs. */
+export const installAllowed = (m: Busy): boolean => canInstall(isBusy(m));
 
 /** The version in the shell's "update-ready" (a check found one), or null when there is none any more. Only a plain
  *  version is taken: digits, letters, dots, dashes and plus, at most 40 characters. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { autoCheckDue, canInstall, DAY_MS, isBusy, readyVersion, updateLine } from "./updates.ts";
+import { autoCheckDue, canInstall, DAY_MS, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 
 describe("daily update check", () => {
   const now = 1_800_000_000_000;
@@ -41,6 +41,16 @@ describe("busy means do not restart", () => {
     expect(isBusy({ character: "idle" })).toBe(false);
     expect(isBusy({ shipFlow: { stage: "live" } })).toBe(false);
     expect(isBusy({})).toBe(false);
+  });
+  // Found in review (19 Oct 2026): Home's notice asked canInstall(!isBusy(m)), which is isBusy(m) itself, so Install was
+  // offered only while a task ran and the restart cut it off. The one guard every Install button asks is this one.
+  test("Install is offered only when nothing runs, from the model itself", () => {
+    expect(installAllowed({})).toBe(true);
+    expect(installAllowed({ character: "idle" })).toBe(true);
+    expect(installAllowed({ shipFlow: { stage: "live" } })).toBe(true);
+    for (const busy of [{ character: "working" }, { character: "thinking" }, { character: "needsYou" }, { approvals: [{}] }, { shipFlow: { stage: "deploying" } }, { drive: { step: 1 } }, { practice: { stage: "fixing" } }]) {
+      expect(installAllowed(busy)).toBe(false);
+    }
   });
 });
 
