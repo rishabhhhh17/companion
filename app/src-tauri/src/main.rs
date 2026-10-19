@@ -1536,6 +1536,8 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     // The overlay takes a ring that does not wait away this long after this order (the flight included; it is sent the
     // same number); the watch and this busy time last half a second longer, so confetti never plays over it and no part
     // of it goes unwatched.
+    // Stop everything or a newer pointer after this was asked for (a caller off the main thread): nothing is drawn.
+    let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
     let ring = anchor::ring_ms(&setting_now("point.ringSeconds"));
     OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + anchor::watch_ms(ring) }, std::sync::atomic::Ordering::SeqCst);
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);   // a ring is never replaced by a new picture
@@ -1551,6 +1553,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     // the ring's colour, lettering and pace).
     let settings = settings_snapshot(&[]);
     let _ = app.run_on_main_thread(move || {
+        if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
         // The flight starts at the last target of the same answer on this display, or else where the character is now,
@@ -1599,11 +1602,17 @@ fn watch_ring(app: &AppHandle, target: coords::R, an: anchor::Watched, ring: u64
 /// sends one step at a time (the page plays them in order, sequence.ts): every step but the last keeps what was seen for
 /// the next one and does not wait for a click; the last one takes it and waits. Nothing is drawn over a window that changed
 /// since the picture was taken (rule 22): then the answer is over and the page is told why.
-#[tauri::command]
+/// Async: snapping asks the app under the point through Accessibility, which a busy app can hold for seconds, so this runs
+/// on the thread pool, never on the main thread (the hotkeys, Stop everything, the island and Home live there).
+#[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String>, target_text: String, caption: String, mark: Option<String>, screen: Option<u32>, step: Option<u32>, of: Option<u32>, hold: Option<bool>, fly_ms: Option<u64>, fade_ms: Option<u64>) -> Value {
+    use std::sync::atomic::Ordering::SeqCst;
     let last = showme::is_last(step, of);
     let hold = hold.unwrap_or(true) && last;
+    // Stop everything, a newer question or Point at the problem can come in while this aims (off the main thread): noted
+    // now, so the ring is drawn only if none did.
+    let asked = POINT_GEN.load(SeqCst);
     // Gone: the answer was ended (Stop, the card closed, hold to talk, Point at the problem, a newer question) or is over.
     let Some((prep, from)) = showme_pending().step(&req, last) else { return json!({ "ok": false, "why": "gone" }) };
     let plat = macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}), Box::new(|_| {}));
@@ -1618,7 +1627,13 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
         point_cancel(); hide_overlay(&app);
         return json!({ "ok": false, "why": "window_changed" });
     }
-    POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);   // a point_problem still on its way must not draw over this
+    // Claimed in one step: a point_problem still on its way must not draw over this, and a Stop, a newer question or a
+    // point_problem since the aim began means this one is gone and nothing is drawn.
+    if POINT_GEN.compare_exchange(asked, asked + 1, SeqCst, SeqCst).is_err() {
+        log("showme_aim_gone", json!({}));
+        showme_pending().end_if(&req);
+        return json!({ "ok": false, "why": "gone" });
+    }
     // When Companion is only guessing (point.guesses), words only: nothing is drawn, the page says where to look. What was
     // seen is kept for the steps after this one (as a step said in words below the confidence line), and an earlier step's
     // ring goes. A confirmed target is drawn either way, and a guess is never drawn solid.
@@ -1634,7 +1649,7 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     let (watched, ring) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under);
     // The ring goes away the moment its window changes (or, with no window under it, another app comes to the front): the
     // last step's while it waits for the click, the others while they are up.
-    if hold { your_turn(&app, display, s.rect, &target_text); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
+    if hold { your_turn(&app, display, s.rect, &target_text, asked + 1); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
     say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, showme::pointing_extra(&req, step.unwrap_or(1), of.unwrap_or(1), hold));
     json!({ "ok": true })
 }
@@ -1651,11 +1666,15 @@ fn showme_clear(app: AppHandle) { point_cancel(); hide_overlay(&app); showme_pen
 // ---------- Your turn ----------
 
 /// The ring stays up and waits for the person's own click. Only the mouse position and whether a button is down are
-/// read, only while the ring is up (no permission needed, never keys, never screen content).
-fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str) {
+/// read, only while the ring is up (no permission needed, never keys, never screen content). `point`: the pointer number
+/// the ring was drawn for; Stop everything or a newer pointer since then (a caller off the main thread) means no wait.
+fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str, point: u64) {
     turn_cancel();
     *TURN.lock().unwrap_or_else(|e| e.into_inner()) = Some((target, label.to_string()));
     let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    // Stop bumps the pointer number before the ring's: one that came before this point is seen here, one after it ends
+    // the wait below.
+    if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { turn_cancel(); return; }
     let alive = move || TURN_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
     let app = app.clone();
     std::thread::spawn(move || {
@@ -2459,7 +2478,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
                 let button = kind == "button";
                 let (watched, ring) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under);
                 say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
-                if button { your_turn(&app, d, f.rect, &label); } else { watch_ring(&app, f.rect, watched, ring, None); }
+                if button { your_turn(&app, d, f.rect, &label, gen); } else { watch_ring(&app, f.rect, watched, ring, None); }
             }
             _ => {
                 say_showme(&app, "opened", &format!("{lead}I could not spot {what} on your screen. {cap}"), json!({}));

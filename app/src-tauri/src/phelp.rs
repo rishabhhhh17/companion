@@ -204,7 +204,7 @@ pub fn ready(improved: String, handback_copy: bool) {
     if let Some(p) = st().pending.as_mut() { p.improved = Some(improved); p.handback_copy = handback_copy; }
 }
 
-pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); st().pending = None; ax::let_apps_sleep(); say(app, "dismissed", json!({})); }
+pub fn dismiss(app: &AppHandle) { GEN.fetch_add(1, Ordering::SeqCst); st().pending = None; ax::let_apps_sleep_soon(); say(app, "dismissed", json!({})); }
 
 /// Answer the one question and ask again, without asking another.
 pub fn answer(app: &AppHandle, answer: String) {

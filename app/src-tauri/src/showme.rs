@@ -686,6 +686,43 @@ mod tests {
         let aim = &aim[..aim.find("\n}\n").unwrap()];
         assert!(aim.contains("showme::pointing_extra(&req"), "showme_aim must say which request it points for");
     }
+    #[test]
+    fn aiming_runs_off_the_main_thread_and_never_draws_after_stop() {
+        // Finding what is clickable under the point asks the app under it, through Accessibility, which a busy app can hold
+        // for seconds. That must never freeze the main thread (the hotkeys, Stop everything, the island, Home), so the
+        // command runs on the thread pool, and the questions to that app are short.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        assert!(main.contains("#[tauri::command(async)]\n#[allow(clippy::too_many_arguments)]\nfn showme_aim("), "showme_aim runs off the main thread");
+        // Off the main thread, Stop everything or a newer question can come in while it aims: then nothing is drawn. The
+        // ring is claimed in one step after the aim, and checked again on the main thread just before it is drawn.
+        let aim = body("fn showme_aim(");
+        let (asked, claim) = (aim.find("let asked = POINT_GEN.load(SeqCst);").expect("noted before the aim"), aim.find("POINT_GEN.compare_exchange(asked, asked + 1, SeqCst, SeqCst).is_err()").expect("claimed after"));
+        assert!(asked < aim.find("showme::aim(").unwrap() && aim.find("showme::aim(").unwrap() < claim && claim < aim.find("draw_pointer_with(").unwrap(), "{aim}");
+        assert!(!aim.contains("POINT_GEN.fetch_add("), "{aim}");
+        assert!(aim.contains("your_turn(&app, display, s.rect, &target_text, asked + 1)"), "{aim}");
+        let draw = body("fn draw_pointer_with(");
+        let on_main = &draw[draw.find("run_on_main_thread(").unwrap()..];
+        assert!(draw.contains("let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);") && on_main.contains("if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }"), "{draw}");
+        let turn = body("fn your_turn(");
+        let (set, check) = (turn.find("*TURN.lock()").unwrap(), turn.find("if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { turn_cancel(); return; }").expect("a ring stopped before it waits never waits"));
+        assert!(set < check && check < turn.find("std::thread::spawn(").unwrap(), "{turn}");
+        assert!(body("fn point_problem(").contains("your_turn(&app, d, f.rect, &label, gen)"));
+        // Each question to the app under the point may take half a second at most; the system wide element (which would
+        // change every Accessibility call Companion makes) is never given a timeout.
+        let ax = include_str!("ax.rs");
+        let click = &ax[ax.find("pub fn clickable_at(").unwrap()..]; let click = &click[..click.find("\n}\n").unwrap()];
+        assert_eq!(click.matches("quick(&cur);").count(), 2, "the element under the point and each parent asked: {click}");
+        assert!(!click.contains("quick(&sys)"));
+        assert!(ax.contains("fn quick(el: &Cf) { unsafe { AXUIElementSetMessagingTimeout(el.0, QUICK_S); } }"));
+        // Stop everything and Cancel run on the main thread, and switching another app's Accessibility off again writes into
+        // it: that is done on a helper thread, with what was woken taken at once (so a newer read keeps what it wakes).
+        let ph = include_str!("phelp.rs");
+        let dismiss = &ph[ph.find("pub fn dismiss(").unwrap()..]; let dismiss = &dismiss[..dismiss.find('\n').unwrap()];
+        assert!(dismiss.contains("ax::let_apps_sleep_soon();") && !dismiss.contains("ax::let_apps_sleep();"), "{dismiss}");
+        let soon = &ax[ax.find("pub fn let_apps_sleep_soon(").unwrap()..]; let soon = &soon[..soon.find("\n}\n").unwrap()];
+        assert!(soon.find("std::mem::take(").unwrap() < soon.find("std::thread::spawn(").unwrap(), "{soon}");
+    }
     // ---- one answer at a time, and what ends it (found in review, 16 Oct 2026) ----
     // Before this, closing the card or holding to talk only silenced the current line: the rest of a multi step answer went
     // on pointing and talking with the card closed. And Point at the problem did not end an answer still playing, so its
