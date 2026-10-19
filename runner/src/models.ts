@@ -1,7 +1,11 @@
 // Every model id Companion uses by default, in one place (T10: "keep model ids in config, not code"). The runner reads them
 // here and the app's pages send the agent ones with each command. For testing, settings can switch them: COMPANION_MODEL for
 // agent sessions, COMPANION_FAST_MODEL and COMPANION_VISION_MODEL for the two small lanes, COMPANION_AIM_MODEL for the
-// experimental pointing lane (see engines.ts). Haiku 4.5 retires "not sooner than October 15, 2026": check before then.
+// experimental pointing lane (see engines.ts). Haiku 4.5 retires "not sooner than October 15, 2026". Checked on 19 Oct 2026
+// against Anthropic's model list as bundled with the Claude API notes (cached 6 Oct 2026, not the live list): Haiku 4.5 is
+// still listed as active. Check the live list again before shipping; changing the fast default is the founder's call.
+import { defaultOf } from "../../protocol/settings.ts";
+
 export const MODELS = {
   // Agent sessions (Drive, Research, the practice fix). T10 names Opus 5.5 for planning; planning still uses this one today.
   agent: "claude-sonnet-5-5",
@@ -16,6 +20,42 @@ export const MODELS = {
   // The experimental pointing lane through the Computer Use tool (COMPANION_AIM=computer_use).
   aim: "claude-sonnet-5-5",
 } as const;
+
+// ---------- the choices a person can make in Settings ----------
+// "Claude for tasks, plans and research" (model.work), "Claude for Rescue" (model.rescue) and "Claude for quick answers"
+// (model.quick). A setting holds an option id, never a model id, so a model upgrade here never breaks a saved choice. Each
+// option names the real smoke test case (runner/scripts/smoke-real.ts) that runs it in that job. An option other than the
+// usual one is offered only once its case has passed in a real run; until then a saved choice of it still gets the usual
+// model, and the Settings row is hidden while it would offer only one option.
+export type ChoiceJob = "work" | "rescue" | "quick";
+type Choice = { model: string; smoke: string };
+export const MODEL_CHOICES: { work: Record<"recommended" | "careful", Choice>; rescue: Record<"careful" | "recommended", Choice>; quick: Record<"fast" | "recommended", Choice> } = {
+  work: { recommended: { model: MODELS.agent, smoke: "main-engine-sonnet55" }, careful: { model: "claude-opus-5-5", smoke: "main-engine-opus55" } },
+  rescue: { careful: { model: MODELS.diagnose, smoke: "rescue-opus55" }, recommended: { model: "claude-sonnet-5-5", smoke: "rescue-sonnet55" } },
+  quick: { fast: { model: MODELS.fast, smoke: "fast-haiku45" }, recommended: { model: "claude-sonnet-5-5", smoke: "fast-sonnet55" } },
+};
+const SETTING_OF: Record<ChoiceJob, string> = { work: "model.work", rescue: "model.rescue", quick: "model.quick" };
+/** The usual option, from the settings registry (today's model). */
+const usualChoice = (job: ChoiceJob): string => String(defaultOf(SETTING_OF[job]));
+/** The smoke cases that have passed in a real run (bun run scripts/smoke-real.ts --spend), added here by hand by whoever ran
+ *  it, with the date in docs/decisions/T10-model-routing-three-lanes.md. Empty: nobody has spent a key on it yet. */
+export const SMOKE_PASSED: readonly string[] = [];
+const choicesOf = (job: ChoiceJob): Record<string, Choice> => MODEL_CHOICES[job] as Record<string, Choice>;
+/** The options Settings may offer for a job, in the registry's order: the usual one always, any other once its case passed. */
+export function offeredChoices(job: ChoiceJob, passed: readonly string[] = SMOKE_PASSED): string[] {
+  return Object.entries(choicesOf(job)).filter(([id, c]) => id === usualChoice(job) || passed.includes(c.smoke)).map(([id]) => id);
+}
+/** The model for a saved option: its own when it is offered, otherwise (not offered yet, or not an option at all) the
+ *  usual option's, which is today's model. Never a guess from the value itself. */
+export function modelForChoice(job: ChoiceJob, option: unknown, passed: readonly string[] = SMOKE_PASSED): string {
+  const all = choicesOf(job);
+  const id = typeof option === "string" && Object.hasOwn(all, option) && offeredChoices(job, passed).includes(option) ? option : usualChoice(job);
+  return all[id].model;
+}
+/** The usual option's model for a job (today's model): what a cost figure written for that job was set against. */
+export function usualModel(job: ChoiceJob): string {
+  return choicesOf(job)[usualChoice(job)].model;
+}
 
 // ---------- what each model accepts ----------
 // From the Claude API notes of 17 Oct 2026 (the model migration guide's sections on Sonnet 5.5, Opus 5.5 and Haiku 5.5, and
@@ -76,6 +116,19 @@ const RULES: Record<string, Rule> = {
 export const KNOWN_MODELS = Object.keys(RULES);
 // An unknown model is priced as the dearest one known, so a spending stop never trusts a guess that is too low.
 const UNKNOWN_PRICE: Price = { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 };
+
+/** A model's list price in dollars per million tokens (in and out), or null for a model the table does not know. */
+export function listPrice(model: string): { in: number; out: number } | null {
+  const r = ruleOf(model);
+  return r ? { in: r.price.in, out: r.price.out } : null;
+}
+
+/** How many times dearer `model` is than `base` at list price: the larger of the input and output ratios, so a figure scaled
+ *  by it to say "at most" never comes out low. A model the table does not know is priced as the dearest one known. */
+export function priceRatio(model: string, base: string): number {
+  const p = ruleOf(model)?.price ?? UNKNOWN_PRICE, b = ruleOf(base)?.price ?? UNKNOWN_PRICE;
+  return Math.max(p.in / b.in, p.out / b.out);
+}
 
 /** "claude-haiku-4-5-20251001" -> "claude-haiku-4-5"; "claude-sonnet-5-5[1m]" -> "claude-sonnet-5-5". */
 export function canonicalModel(id: string): string {

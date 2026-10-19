@@ -8,14 +8,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { dirname, join, resolve } from "node:path";
 import type { Command, Event, Problem } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
-import { parseDiagnosis, rescuePrompt } from "./rescue.ts";
+import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
-import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt } from "./drive.ts";
+import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
 import { differentTaskPrompt, endingOf, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore } from "./checkpoints.ts";
-import { APPROVAL_TIMEOUT_MS, EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
-import { MODELS } from "./models.ts";
+import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
+import { MODELS, usualModel } from "./models.ts";
 import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
@@ -23,6 +23,7 @@ import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
+import { recallWords } from "./memory/recall.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainRequest, parseExplain } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
@@ -32,7 +33,8 @@ import { readDeployFailure } from "./ship/buildlog.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, taskScopeCovers, type Verdict } from "./safety.ts";
-import { runLadder, type LadderResult, type Step, type StepUpdate } from "./proof/ladder.ts";
+import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
+import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
@@ -66,7 +68,9 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
 // noInstall: check the project as it is, without installing its packages first (Point at the problem, your turn).
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean };
+// check and limits: what the person chose in Settings for checking this project, read when the task or check started.
+// askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean> };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -107,7 +111,12 @@ export type RunnerOptions = {
   bisect?: { workDir: string; run?: (command: string, o: RunOptions) => Promise<RunResult>; detect?: (dir: string) => Detected };
   // What the shell applied from the settings registry (settings.apply, T16). Without it, every setting is its usual value.
   settings?: RunnerSettings;
+  // How an install the person pressed and a copy from a link are run (runCommand; tests pass a stand in).
+  commands?: (command: string, o: RunOptions) => Promise<RunResult>;
 };
+
+/** How long one snapshot may take (checkpoints.ts), doubled by "my internet is slow". */
+const SNAPSHOT_LIMIT_MS = 5 * 60_000;
 
 /** A private copy made for checking an earlier version starts with this; anything left by a run that was cut off is swept. */
 const BISECT_PREFIX = "bisect-";
@@ -115,8 +124,8 @@ export function sweepBisect(workDir: string) {
   try { for (const n of readdirSync(workDir)) if (n.startsWith(BISECT_PREFIX)) rmSync(join(workDir, n), { recursive: true, force: true }); } catch { /* nothing there */ }
 }
 
-// Receipt pictures are kept for the timeline, newest first, so they never fill the disk.
-const KEEP_PICTURES = 200;
+// Receipt pictures are kept for the timeline, newest first, so they never fill the disk: as many as "Pictures to keep" says
+// (pictures.keep, usually 200), removed when the next picture is made.
 function pruneOldest(dir: string, keep: number) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".jpg")).map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
   for (const x of files.slice(keep)) rmSync(join(dir, x.f), { force: true });
@@ -137,6 +146,9 @@ type StartCmd = Extract<Command, { type: "agent.start" }>;
 // step: which step of a Drive plan this run is, so its explanation can say so.
 // priorUsd: already spent on this task before it started (looking at pictures added to the request), booked to the day.
 type RunOpts = { resumeSession?: string; taskAllowed?: Set<string>; label?: string; said?: string; asked?: string; goal?: string; first?: string; followBudgetUsd?: number; step?: { index: number; title: string }; priorUsd?: number };
+// How a task's tries ran out, when it stops to ask (or, in a Drive plan, hands the asking to the plan): the failure shown,
+// and how many checks failed in a row and whether all the same way.
+type Stuck = { failure: { label: string; detail: string }; end: LoopEnd };
 // What a follow up needs from the agent's last task. Kept in memory only, never on disk, and replaced by each new task.
 // sessionId is never kept for an off the record task: nothing of it was saved, so nothing can be continued. ending: how it
 // ended, so Try again says it truly. undone: Undo put the project back, so the conversation no longer matches the files.
@@ -155,6 +167,9 @@ const placeOf = (h: Hunk, side: "before" | "after"): ChangeAt => {
   return { file: h.file, line: h.afterAt + i, lineText: makeLabel(rows[i] ?? "", 200) };
 };
 const shown = (rows: string[]) => makeLabel(rows.map((r) => r.trim()).join(" "), 160);
+// What the loop card is told about how the tries ran out. The usual three identical failures add nothing, so the card is
+// exactly what it always was.
+const loopHow = (end: LoopEnd) => (end.tries === 3 && end.same ? {} : { tries: end.tries, same: end.same });
 
 // What "the same action" means for a yes that covers the rest of a task: the same tool, the same thing it acts on (the exact
 // command, address, file, or for other tools the exact input), and the same reason Companion asked. Anything else asks again.
@@ -201,7 +216,8 @@ const summary = (c: ToolUse): string => {
   return c.name;
 };
 
-type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string; offTheRecord?: boolean; goal?: string };
+// maxSteps: the most steps this plan may run, as it was when the plan was made (drive.maxSteps; Rescue keeps MAX_STEPS).
+type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string; offTheRecord?: boolean; goal?: string; maxSteps: number };
 
 export class AgentRunner {
   private sessions = new Map<string, Session>();
@@ -295,12 +311,17 @@ export class AgentRunner {
       if (r.status === "failed" && r.reason) this.fail(r.reason);
     } catch { /* sharing is never worth stopping a task for */ }
   }
-  // What an agent is told. Nothing at all for an off the record task.
+  // What an agent is told. Nothing at all for an off the record task. Read as a task (or its planning) starts: what is
+  // learned from the project's files and from the person's words (memory.learnFromFiles, memory.learnFromWords; Pause still
+  // stops both, and what memory may never hold is fixed in filter.ts), and how much Claude is told (memory.tellClaude,
+  // memory.recallLength: none, or up to 500, 1500 or 3000 words).
   private learnAndRecall(project: string, said: string, offTheRecord: boolean | undefined, share = true): string {
     if (offTheRecord) return "";
     try {
-      this.remember(project, [...projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })), ...askSignals(said)], share);
-      return this.memoryFor(project)?.forAgent() ?? "";
+      const files = this.setting<boolean>("memory.learnFromFiles", project), words = this.setting<boolean>("memory.learnFromWords", project);
+      this.remember(project, [...(files ? projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })) : []), ...(words ? askSignals(said) : [])], share);
+      const n = recallWords((k) => this.setting(k, project), "task");
+      return n > 0 ? this.memoryFor(project)?.forAgent(n) ?? "" : "";
     } catch { return ""; }
   }
   // Where was I: three plain lines from the task history, only when something happened while the person was away.
@@ -316,18 +337,20 @@ export class AgentRunner {
   private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1) {
     if (!this.o.explainer || input.changed.length === 0) return;
     try {
-      const m = this.memoryFor(cmd.project);
-      if (m && !m.explainEnabled()) return;
+      // Explain after a task (explain.mode): off asks nothing, short reasons asks for no question and shows none.
+      const mode = this.memoryFor(cmd.project)?.explainMode() ?? "reasonsAndQuestion";
+      if (mode === "off") return;
+      const question = mode === "reasonsAndQuestion";
       if (this.room(cmd.project) <= 0) return;
       const ac = new AbortController();
       const stop = () => ac.abort();
       signal.addEventListener("abort", stop, { once: true });
       const timer = setTimeout(stop, 45_000);
       try {
-        const r = await this.o.explainer(explainRequest(input), ac.signal);
+        const r = await this.o.explainer(explainRequest(input, { question }), ac.signal);
         if (Number.isFinite(r.costUsd) && r.costUsd > 0) this.ledger.add(cmd.project, r.costUsd);
         const e = parseExplain(r.text);
-        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
+        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(question && e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
@@ -335,7 +358,7 @@ export class AgentRunner {
     const m = this.memoryFor(project);
     if (!m) return;
     const p = m.list("project"), u = m.list("profile");
-    this.emit({ type: "explain.state", project, enabled: m.explainEnabled() } as never);
+    this.emit({ type: "explain.state", project, enabled: m.explainEnabled(), mode: m.explainMode() } as never);
     this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems] } as never);
   }
   private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
@@ -382,6 +405,41 @@ export class AgentRunner {
   private now() { return (this.o.now ?? (() => new Date()))(); }
   /** A setting's value in force (settings.apply), read when a task starts. */
   private setting<T>(key: string, project?: string): T { return (this.o.settings?.get(key, project) ?? defaultOf(key)) as T; }
+  /** What the person chose for checking this project (Checking your project, in Settings), read once as a task or a check
+   *  starts, with the limits for the time allowed. Every usual value is today's behaviour. */
+  private checkFor(project: string): { check: CheckSettings; limits: Limits } {
+    const check = checkSettings((k) => this.setting(k, project));
+    return { check, limits: scaleLimits(TIME_FACTOR[check.time]) };
+  }
+  /** "My internet is slow": 2, else 1. */
+  private slow(): number { return slowFactor((k) => this.setting(k)); }
+  /** The install question for a check (check.install "ask", or the house rule "ask before installing packages"), on the
+   *  usual approval card. Only a yes is a yes: no answer before it runs out, a no, Stop or Stop everything is a no, and an
+   *  answer after it ran out changes nothing. */
+  private installAsker(s: Session | undefined, agent: string, checkpoint: string): (command: string) => Promise<boolean> {
+    return async (command) => {
+      if (!s || s.abort.signal.aborted) return false;
+      // After the answer the agent goes back to what it was doing (a task or Rescue: checking). Ship's check has a stand in
+      // agent that nothing else gives a state, so it goes back to idle and is never left looking busy.
+      const before = this.agentStates.get(agent);
+      const approval = `ap_${randomBytes(4).toString("hex")}`;
+      // It waits as long as any other question (approval.waitMinutes, usual 30), read as it is asked.
+      const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes") * 60_000;
+      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`, expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
+      this.state(agent, "needsYou");
+      let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
+      const yes = await new Promise<boolean>((res) => {
+        const end = (ok: boolean) => { clearTimeout(t); s.abort.signal.removeEventListener("abort", stop); s.pending.delete(approval); res(ok); };
+        const stop = () => { how = "cancelled"; end(false); };
+        const t = setTimeout(() => { how = "expired"; end(false); }, timeout);
+        s.abort.signal.addEventListener("abort", stop, { once: true });
+        s.pending.set(approval, (ok) => { how = ok && !s.abort.signal.aborted ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; end(how === "allowed"); });
+      });
+      this.emit({ type: "approval.resolved", approval, agent, outcome: how } as never);
+      this.state(agent, before && before !== "needsYou" ? before : "idle");
+      return yes;
+    };
+  }
   private emit<T extends Omit<Event, "v" | "id">>(e: T) {
     this.o.emit({ v: PROTOCOL_VERSION, id: `e${++this.counter}`, ts: this.now().toISOString(), ...e } as unknown as Event);
   }
@@ -396,7 +454,9 @@ export class AgentRunner {
   /** Pictures and cards still being made. The runner awaits this before it exits, so their servers and copies are cleaned up. */
   background(): Promise<unknown> { return Promise.allSettled([...this.backgroundJobs]); }
 
-  private state(agent: string, state: string) { this.emit({ type: "agent.state", agent, state } as never); }
+  // The last state told for each agent (only what was sent; the pages keep their own).
+  private agentStates = new Map<string, string>();
+  private state(agent: string, state: string) { this.agentStates.set(agent, state); this.emit({ type: "agent.state", agent, state } as never); }
   // Each rung of a check as it runs. A rung skipped only for want of the hidden browser says so, so the card can offer it.
   private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never); }
   private fail(reason: string, agent?: string) { this.emit({ type: "protocol.error", reason, ...(agent ? { agent } : {}) } as never); }
@@ -408,7 +468,7 @@ export class AgentRunner {
       case "ship.preview": return this.shipPreview(cmd);
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
-      case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplain(cmd.enabled); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled() } as never); return; }
+      case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplainMode(cmd.mode); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled(), mode: m.explainMode() } as never); return; }
       case "memory.add": {
         // A line the person chose themselves (for example an answer at setup). It still goes through the same filter.
         const m = this.memoryFor(cmd.project);
@@ -497,14 +557,18 @@ export class AgentRunner {
     if (last.undone) { this.fail("That task was undone, so there is nothing to follow up on. Start a new task instead.", cmd.agent); return; }
     if (this.projectInUse(last.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return; }
     const off = last.offTheRecord;
+    // Try again (work.tryAgain): carry on the conversation (usual), or start a fresh one that is still told the request, how
+    // the last attempt ended and which check failed. Off the record always starts fresh, as before. A follow up always
+    // carries on.
+    const fresh = off || (retry && this.setting<string>("work.tryAgain", last.project) === "fresh");
     const prompt = retry
-      ? (off ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
+      ? (fresh ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
       : (off ? freshFollowUpPrompt(last.first, text) : followUpPrompt(text));
     const start: StartCmd = { v: PROTOCOL_VERSION, id: cmd.id, type: "agent.start", project: last.project, agent: cmd.agent, mode: last.mode, prompt, model: last.model, budgetUsd: last.budgetUsd, ...(off ? { offTheRecord: true } : {}) };
     const goal = retry ? last.goal : text;
     // The reviewer reads what was asked, never the conversation: the first request, then what this turn is for.
     const asked = last.first === goal ? goal : `${last.first}\n\nThen: ${goal}`;
-    await this.run(start, { resumeSession: off ? undefined : last.sessionId, label: retry ? `Try again: ${last.goal}` : `Follow up: ${text}`, said: retry ? "" : text, asked, goal, first: last.first, followBudgetUsd: last.budgetUsd });
+    await this.run(start, { resumeSession: fresh ? undefined : last.sessionId, label: retry ? `Try again: ${last.goal}` : `Follow up: ${text}`, said: retry ? "" : text, asked, goal, first: last.first, followBudgetUsd: last.budgetUsd });
   }
 
   // Answer the loop card that is waiting, and forget it, so a card that was answered never makes the agent look busy.
@@ -518,8 +582,8 @@ export class AgentRunner {
 
   // The fix loop breaker for a single task: the same card a Drive plan shows (index 0: no step number). The task stays open
   // until the person answers; Stop and Stop everything answer it too.
-  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal): Promise<string> {
-    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options: STUCK_OPTIONS } as never);
+  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal, end: LoopEnd): Promise<string> {
+    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options: STUCK_OPTIONS, ...loopHow(end) } as never);
     this.state(agent, "needsYou");
     return new Promise<string>((res) => {
       if (signal.aborted) { res("interrupt"); return; }
@@ -544,7 +608,9 @@ export class AgentRunner {
 
   private store(project: string): CheckpointStore {
     const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
-    return CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
+    const s = CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
+    s.gitTimeoutMs = SNAPSHOT_LIMIT_MS * this.slow();   // "my internet is slow" doubles it
+    return s;
   }
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
@@ -561,7 +627,7 @@ export class AgentRunner {
   private touched = new Set<string>();               // agents whose task has started changing the project
 
   // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
-  private async run(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+  private async run(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const key = resolve(cmd.project);
     // What the request carries (files into the ask box) is checked again here, whatever the page checked: anything off
     // refuses the whole request before anything is snapshotted or started.
@@ -630,10 +696,19 @@ export class AgentRunner {
     };
   }
 
-  private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: { label: string; detail: string } }> {
+  private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const prior = opts.priorUsd ?? 0;
-    // Read once, as the task starts: a change in Settings reaches the next task, never this one.
+    // Read once, as the task starts: a change in Settings reaches the next task, never this one. Checks before Companion
+    // asks you what to do (work.tries, usual 3), and whether it asks when the tries run out even if each failure was
+    // different (work.askOnAnyFailure, usual off).
     const maxTurns = this.setting<number>("work.maxTurns", cmd.project);
+    const MAX_TRIES = this.setting<number>("work.tries", cmd.project);
+    const askAny = this.setting<boolean>("work.askOnAnyFailure", cmd.project) === true;
+    const checking = this.checkFor(cmd.project);
+    const pictures = { make: this.setting<boolean>("pictures.make") !== false, keep: this.setting<number>("pictures.keep") };
+    // Explain after every task, or only after the steps of a plan (explain.after); Your turn worked out only when it is on.
+    const explainHere = this.setting<string>("explain.after", cmd.project) !== "plansOnly" || !!opts.step;
+    const yourTurn = this.setting<boolean>("teach.yourTurn", cmd.project) === true;
     const room = this.room(cmd.project) + prior;
     if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
@@ -712,13 +787,15 @@ export class AgentRunner {
     };
 
     // Receipt: compare the state before with the state now. Proof: "done" has to be earned, so a task
-    // that changed files is checked, and a failed check goes back to Claude (twice at most).
-    const MAX_TRIES = 3;
+    // that changed files is checked, and a failed check goes back to Claude (up to MAX_TRIES checks an approach).
     let proof: "passed" | "partial" | "failed" | "skipped" = "skipped";
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
     let stuckOffered = false;
-    const sameThree = (s: string[]) => s.length >= 3 && new Set(s.slice(-3)).size === 1;
+    // The same failure on every check of this approach (three in a row, as usual).
+    const sameRun = (s: string[]) => s.length >= MAX_TRIES && new Set(s.slice(-MAX_TRIES)).size === 1;
+    let ranOut = false;   // this approach's checks ran out on a failure
+    const endOf = (): LoopEnd => ({ tries: MAX_TRIES, same: sameRun(sigs) });
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
@@ -744,7 +821,7 @@ export class AgentRunner {
         return parseReview(text);
       } : undefined;
       try {
-        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review }));
+        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id) }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -758,15 +835,19 @@ export class AgentRunner {
       if (usd >= budget) { status = "error_max_budget_usd"; break; }
       let next: string;
       if (tries >= MAX_TRIES) {
-        // The fix loop breaker for a single task: the same failure three times in a row stops and asks, once per task. A
-        // Drive plan asks for itself, once per step, after the step's task has ended (drive.approve).
-        if (stuckOffered || this.driving.has(cmd.agent) || !lastFailure || !sameThree(sigs)) break;
+        // The fix loop breaker for a single task: the same failure on every check (three in a row, as usual), or with
+        // work.askOnAnyFailure any failures, stops and asks, once per task. A Drive plan asks for itself, once per step,
+        // after the step's task has ended (drive.approve).
+        ranOut = true;
+        if (stuckOffered || this.driving.has(cmd.agent) || !lastFailure || !(sameRun(sigs) || askAny)) break;
         stuckOffered = true;
-        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal);
+        const end = endOf();
+        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal, end);
         if (choice !== "different") { if (choice === "interrupt" || abort.signal.aborted) status = "interrupted"; break; }
-        // A clearly different approach, in this same task (one undo point, one receipt), with up to three more tries.
+        // A clearly different approach, in this same task (one undo point, one receipt), with up to MAX_TRIES more tries.
         tries = 0;   // checks keeps counting
-        next = offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure) : differentTaskPrompt(lastFailure);
+        ranOut = false;
+        next = offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure, end) : differentTaskPrompt(lastFailure, end);
       } else {
         // Send the evidence back into the same conversation and try again.
         const f = res.failedAt ?? res.steps.at(-1);
@@ -789,23 +870,25 @@ export class AgentRunner {
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.openTasks.delete(cmd.agent);
     // The change itself, place by place: the first changed line for "Show me what changed", the diff for Explain, and the
-    // same small change made twice for "your turn" (only after a proven fix, outside a plan, and never off the record).
+    // same small change made twice for "your turn" (only when it is on, after a proven fix, outside a plan, and never off
+    // the record).
     const hunks = changed.length ? await this.taskHunksOf(store, before.id, lastAfter, changed) : [];
     const changedAt = changeTarget(hunks);
     const projectKey = resolve(cmd.project);
-    const repeat = status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
+    const repeat = yourTurn && status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
     if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat }); else if (changed.length) this.teachOffers.delete(projectKey);
-    // Off the record work gets no saved picture (nothing about it is kept).
-    const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord;
+    // Off the record work gets no saved picture (nothing about it is kept), and none when "Make before and after pictures"
+    // is off (the check itself is the same either way).
+    const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord && pictures.make;
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}) } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
-    if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!));
+    if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
-    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
     this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}) });
-    const stuck = proof === "failed" && sameThree(sigs) ? lastFailure : undefined;
+    const stuck: Stuck | undefined = proof === "failed" && lastFailure && (sameRun(sigs) || (askAny && ranOut)) ? { failure: lastFailure, end: endOf() } : undefined;
     return { status, usd, sessionId, ...(stuck ? { stuck } : {}) };
   }
 
@@ -827,7 +910,7 @@ export class AgentRunner {
 
   // The visual receipt: run the earlier version in a private copy, compare the two pages, circle what changed.
   // It runs after the task has ended, so it never holds the person up; Stop everything ends it.
-  private async visualReceipt(cmd: StartCmd, store: CheckpointStore, beforeId: string, after: PageShot): Promise<void> {
+  private async visualReceipt(cmd: StartCmd, store: CheckpointStore, beforeId: string, after: PageShot, checking: { check: CheckSettings; limits: Limits }, keep: number): Promise<void> {
     const pics = this.o.pictures!;
     const ac = new AbortController();
     this.picturing.add(ac);
@@ -836,7 +919,10 @@ export class AgentRunner {
     try {
       const out = await this.inTurn(cmd.project, async () => {
         if (ac.signal.aborted) return null;
-        const b = await (pics.before ?? captureBefore)({ store, beforeId, project: cmd.project, workDir: pics.workDir, signal: ac.signal });
+        // The earlier version starts and is pictured the way this project is checked: its start script, its page size (the
+        // picture is the first size the check opened), its time allowed.
+        const f = TIME_FACTOR[checking.check.time];
+        const b = await (pics.before ?? captureBefore)({ store, beforeId, project: cmd.project, workDir: pics.workDir, signal: ac.signal, start: checking.check.start, startMs: 60_000 * f, browserMs: 20_000 * f, ...(checking.check.pageSize === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}) });
         if (ac.signal.aborted || ("none" in b && b.none === "cancelled")) return null;
         // Only a page that really had nothing, or really crashed, is drawn as "everything is new". Otherwise no circles are guessed.
         const unknown = "none" in b && b.none === "not_pictured";
@@ -850,7 +936,12 @@ export class AgentRunner {
         : pic.how === "all_new" ? "This works now. Everything on this page is new."
         : pic.regions.length ? "This works now. What changed is circled." : "This works now. The page looks the same as before.";
       let saved = "";
-      try { mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 }); saved = join(pics.saveDir, receiptPictureName(cmd.project, beforeId)); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); pruneOldest(pics.saveDir, KEEP_PICTURES); } catch { saved = ""; }
+      // Pictures to keep: 0 shows this one on the card and keeps none; lowered, the oldest go now, when a picture is made.
+      try {
+        mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 });
+        if (keep > 0) { saved = join(pics.saveDir, receiptPictureName(cmd.project, beforeId)); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); }
+        pruneOldest(pics.saveDir, Math.max(0, keep));
+      } catch { saved = ""; }
       this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: true, image: pic.jpeg, caption, circles: pic.regions.length, ...(saved ? { file: saved } : {}) } as never);
     } catch { none(); }   // a missing picture never spoils a finished task
     finally { this.picturing.delete(ac); }
@@ -948,32 +1039,36 @@ export class AgentRunner {
   }
 
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
+    // Most steps in a plan (drive.maxSteps, usual 12): read as the plan is made, and kept with it until it is approved.
+    const max = this.setting<number>("drive.maxSteps", cmd.project);
     await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
-      let steps = parsePlan(await ask(planPrompt(cmd.goal)));
-      if (steps.length > MAX_STEPS && !st.abort.signal.aborted) {
-        const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length)) : ask(shortenPrompt(steps.length), st.sessionId)));
+      let steps = parsePlan(await ask(planPrompt(cmd.goal, max)));
+      if (steps.length > max && !st.abort.signal.aborted) {
+        const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length, max)) : ask(shortenPrompt(steps.length, max), st.sessionId)));
         if (again.length) steps = again;
       }
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (steps.length === 0) { this.fail("Claude did not give a usable plan. Try describing the goal in a little more detail.", cmd.agent); this.state(cmd.agent, "error"); return; }
-      const truncated = steps.length > MAX_STEPS;
-      const kept = steps.slice(0, MAX_STEPS);
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal });
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
+      const truncated = steps.length > max;
+      const kept = steps.slice(0, max);
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal, maxSteps: max });
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model, usualModel("work")) } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
 
-  // Research: look things up (web allowed, safe addresses only) and file cited notes. Writes no code.
+  // Research: look things up (web allowed, safe addresses only) and file cited notes. Writes no code. Off the record it
+  // learns and is told nothing from memory, saves no conversation and files no notes: the answer is on the card only.
   private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
     const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
-    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
+      if (cmd.offTheRecord) { this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes } as never); this.state(cmd.agent, "done"); return; }
       const dir = join(cmd.project, ".companion", "research");
       mkdirSync(dir, { recursive: true });
       const when = this.now();
@@ -1002,7 +1097,7 @@ export class AgentRunner {
       const sk = this.openShipSession(ac);
       const onStep = this.stepTeller("ship");
       try {
-        const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal });
+        const res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id) });
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
         if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
@@ -1056,7 +1151,9 @@ export class AgentRunner {
       if (!r.ok) { this.shipSay(cmd.project, r.reason === NOT_SIGNED_IN ? "not_signed_in" : "failed", r.reason); return; }
       if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(r.url) || !isSafeUrl(r.url)) { this.shipSay(cmd.project, "failed", "The preview link looked wrong, so I did not open it."); return; }
       this.shipSay(cmd.project, "checking_preview", "Opening the preview in a hidden browser to make sure it works.", { previewUrl: r.url });
-      const b = await (this.o.browser ?? browserCheck)(r.url, {});
+      // Time allowed for checks covers this one too (today's 15 seconds, times the factor).
+      const f = TIME_FACTOR[this.checkFor(cmd.project).check.time];
+      const b = await (this.o.browser ?? browserCheck)(r.url, f === 1 ? {} : { timeoutMs: 15_000 * f });
       if (ac.signal.aborted) return;
       if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false, ...(b.notInstalled ? { needs: "browser" } : {}) }); return; }
       if (!b.ok) {
@@ -1197,7 +1294,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never);
       let res: LadderResult = { verdict: "cancelled", steps: [] };
-      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
+      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
@@ -1224,7 +1321,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
@@ -1233,7 +1330,8 @@ export class AgentRunner {
       // A Python check that could not run because a package is not installed: the first thing to install, with the
       // command (Point at the problem never installs anything).
       const notes: string[] = res.verdict === "passed_with_gaps" && res.gaps?.length ? [res.gaps[0]] : [];
-      if (this.o.deployLogs && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
+      // Off in Settings (rescue.readDeployLog), it looks only at the project.
+      if (this.o.deployLogs && this.setting<boolean>("rescue.readDeployLog") !== false && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
         const d = await readDeployFailure(cmd.project, this.o.deployLogs, abort.signal);
         if (abort.signal.aborted || d?.state === "cancelled") { found("cancelled"); this.state(cmd.agent, "idle"); return; }
         if (d?.state === "failed") { found("failed", { label: DEPLOY_FAILED, detail: d.summary, problem: d.problem }, needs); this.state(cmd.agent, "needsYou"); return; }
@@ -1261,7 +1359,7 @@ export class AgentRunner {
    *  A Python project's virtual environment (.venv or venv) is borrowed by one link instead, as the visual receipt's earlier
    *  version does: the Python checks never write into it (no bytecode, no caches: python.ts and the ladder's flags), and
    *  deleting the copy removes only the link. Null when the version could not be copied or checked. */
-  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal): Promise<LadderResult | null> {
+  private async checkCopy(project: string, store: CheckpointStore, checkpoint: string, folders: string[], signal: AbortSignal, checking: { check: CheckSettings; limits: Limits }): Promise<LadderResult | null> {
     const work = this.o.bisect!.workDir;
     if (signal.aborted) return { verdict: "cancelled", steps: [] };
     mkdirSync(work, { recursive: true, mode: 0o700 });
@@ -1276,7 +1374,7 @@ export class AgentRunner {
         if (packages === "failed") return null;
       }
       // A Stop while the copy was made (or while waiting for the project's turn) ends it before any check starts.
-      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true })));
+      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true, ...checking })));
     } catch { return signal.aborted ? { verdict: "cancelled", steps: [] } : null; }
     finally { rmSync(dir, { recursive: true, force: true }); }
   }
@@ -1303,6 +1401,8 @@ export class AgentRunner {
     let found = false, shown = false;
     try {
       const store = this.store(cmd.project);
+      // This project's check settings, read once: every version is checked the same way.
+      const checking = this.checkFor(cmd.project);
       const points = taskPoints(this.o.log.list(cmd.project, 200), await store.list()).slice(-WINDOW);
       if (points.length < 2) { result("too_few"); return; }
       this.state(cmd.agent, "checking");
@@ -1334,7 +1434,7 @@ export class AgentRunner {
       const folders = packageFolders(cmd.project);
       const tell = (what: "now" | "after" | "before", label?: string) => this.emit({ type: "bisect.progress", project: cmd.project, agent: cmd.agent, run: runs, maxRuns: MAX_RUNS, what, ...(label ? { label } : {}) } as never);
       runs++; tell("now");
-      const first = await this.checkCopy(cmd.project, store, now.id, folders, abort.signal);
+      const first = await this.checkCopy(cmd.project, store, now.id, folders, abort.signal, checking);
       if (abort.signal.aborted || first?.verdict === "cancelled") { result("cancelled"); return; }
       if (!first) { result("failed", { detail: "Your project could not be copied to check it. Nothing was changed." }); return; }
       if (first.verdict !== "failed") { result("not_failing"); return; }
@@ -1356,7 +1456,7 @@ export class AgentRunner {
         usable: async (cp) => { const same = (await this.packagesOf(store, cp)) === wanted; if (!same) otherPackages = true; return same; },
         probe: async (cp, at) => {
           runs++; tell(at.side, at.label);
-          const res = await this.checkCopy(cmd.project, store, cp, folders, abort.signal);
+          const res = await this.checkCopy(cmd.project, store, cp, folders, abort.signal, checking);
           const v = classify(res, failed.rung, check);
           // Said with an unclear answer: why some versions could not be counted for or against any task. Only the reason of
           // the step (and check) that fails now: a package missing for another check says nothing about this one.
@@ -1473,7 +1573,7 @@ export class AgentRunner {
   private async projectInspect(project: string): Promise<void> {
     if (!existsSync(project)) { this.fail("That project folder is not there any more."); return; }
     const r = inspectProject(project);
-    this.emit({ type: "project.report", project, origin: r.origin, about: aboutLine(r), stack: r.stack, needsInstall: r.needsInstall, installCommand: r.installCommand, start: r.start, missing: r.env.missing.slice(0, 12), missingCount: r.env.missing.length, example: r.env.example, notes: r.notes } as never);
+    this.emit({ type: "project.report", project, origin: r.origin, about: aboutLine(r), stack: r.stack, needsInstall: r.needsInstall, installCommand: r.installCommand, start: r.start, missing: r.env.missing.slice(0, 12), missingCount: r.env.missing.length, example: r.env.example, notes: r.notes, ...r.check } as never);
   }
 
   // Install the project's packages, only when the person pressed the button. The project's own install scripts run, as
@@ -1491,7 +1591,7 @@ export class AgentRunner {
     try {
       say("installing", `Installing what the project needs with ${det.packageManager}. This can take a few minutes the first time.`);
       // Not in CI mode: pnpm then refuses a lock file that an export left out of date, and a person installing wants it to work.
-      const r = await this.inTurn(project, () => runCommand(`${det.packageManager} install${det.packageManager === "pnpm" ? " --no-frozen-lockfile" : ""}`, { cwd: project, timeoutMs: 10 * 60_000, signal: ac.signal }));
+      const r = await this.inTurn(project, () => (this.o.commands ?? runCommand)(`${det.packageManager} install${det.packageManager === "pnpm" ? " --no-frozen-lockfile" : ""}`, { cwd: project, timeoutMs: 10 * 60_000 * this.slow(), signal: ac.signal }));
       if (r.aborted) { say("cancelled", "Stopped. Some packages may be half installed; press Install again to finish."); return; }
       if (r.code !== 0 || r.timedOut) { say("failed", `The install did not finish. ${redact((r.stderr || r.stdout).trim().split("\n").slice(-6).join(" ").slice(-400))}`); return; }
       say("done", "Installed.");
@@ -1511,7 +1611,7 @@ export class AgentRunner {
     this.installing.set(dest, ac);
     try {
       // Single quoted: a folder name with $, backticks or quotes in it is only ever a name.
-      const r = await runCommand(`git clone --quiet ${shq(t.url)} ${shq(dest)}`, { cwd: cmd.parent, timeoutMs: 5 * 60_000, signal: ac.signal, env: { GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/usr/bin/false" } });
+      const r = await (this.o.commands ?? runCommand)(`git clone --quiet ${shq(t.url)} ${shq(dest)}`, { cwd: cmd.parent, timeoutMs: 5 * 60_000 * this.slow(), signal: ac.signal, env: { GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/usr/bin/false" } });
       if (r.aborted) { rmSync(dest, { recursive: true, force: true }); done(false, "Stopped."); return; }
       if (r.code !== 0 || r.timedOut) {
         rmSync(dest, { recursive: true, force: true });
@@ -1522,21 +1622,22 @@ export class AgentRunner {
     } finally { this.installing.delete(dest); }
   }
 
-  // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it.
+  // Rescue: check the project exactly as it is, then ask Claude (read only) what is wrong and how to finish it. Off the
+  // record it learns and is told nothing from memory and saves no conversation, and so do the steps of its plan.
   private async rescueDiagnose(cmd: Extract<Command, { type: "rescue.diagnose" }>): Promise<void> {
-    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd }, async (ask, st) => {
+    await this.readOnly({ agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord }, async (ask, st) => {
       const store = this.store(cmd.project);
       const snap = await store.snapshot("Rescue: the project as it was found");
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal, ...this.checkFor(cmd.project), askInstall: this.installAsker(this.sessions.get(cmd.agent), cmd.agent, snap.id) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
       if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
       const evidence = res.steps.map((x) => ({ label: x.label, status: x.status, detail: x.detail }));
       // A project linked to Vercel: why its last deploy failed is evidence too (read only, the person's own Vercel tool).
-      if (this.o.deployLogs) {
+      if (this.o.deployLogs && this.setting<boolean>("rescue.readDeployLog") !== false) {
         const d = await readDeployFailure(cmd.project, this.o.deployLogs, st.abort.signal);
         if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
         if (d?.state === "failed") evidence.push({ label: DEPLOY_EVIDENCE, status: "failed", detail: d.evidence });
@@ -1546,10 +1647,16 @@ export class AgentRunner {
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!d) { this.fail("Claude did not give a usable diagnosis. Try again, or describe what is wrong.", cmd.agent); this.state(cmd.agent, "error"); return; }
-      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId });
+      // Off the record there is no conversation for the steps to carry on, so each step is told what Rescue found instead.
+      // That goal is never remembered (an off the record plan's goal never is). A Rescue plan keeps its own 3 to 7 steps
+      // (rescue.ts), whatever Most steps in a plan says.
+      this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, maxSteps: MAX_STEPS,
+        ...(cmd.offTheRecord ? { offTheRecord: true, goal: rescueGoal(d) } : {}) });
       const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
-      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimateUsd(steps.length) } as never);
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimateUsd(steps.length) } as never);
+      // The rough cost follows the model the plan's steps run on (Claude for Rescue), against Rescue's usual one.
+      const estimate = estimateUsd(steps.length, cmd.model, usualModel("rescue"));
+      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimate } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimate } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
@@ -1557,10 +1664,9 @@ export class AgentRunner {
   private async driveApprove(cmd: Extract<Command, { type: "drive.approve" }>): Promise<void> {
     const plan = this.plans.get(cmd.agent);
     if (!plan) { this.fail("There is no plan waiting for approval.", cmd.agent); return; }
-    const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, MAX_STEPS);
+    const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, plan.maxSteps);
     if (steps.length === 0) { this.fail("A plan needs at least one step.", cmd.agent); return; }
     this.plans.delete(cmd.agent);
-    if (!plan.offTheRecord && plan.goal) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
     this.driving.add(cmd.agent);
     this.driveStop.delete(cmd.agent);
     // The whole plan is one task to the person: a yes "for the rest of this task" holds for every step, and ends with the plan.
@@ -1572,6 +1678,10 @@ export class AgentRunner {
     const watcher = new ProjectWatcher(plan.project, (path) => this.requestPause(cmd.agent, "files_changed", path));
     this.watchers.set(cmd.agent, watcher);
     watcher.start();
+    // The plan's goal, as a line about the project (memory.rememberGoals, read as the plan starts). Written once the watcher
+    // is looking, as Companion's own write (remember), so the memory file and AGENTS.md it may write are never taken for
+    // the person changing the project.
+    if (!plan.offTheRecord && plan.goal && this.setting<boolean>("memory.rememberGoals", plan.project)) this.remember(plan.project, [{ scope: "project", text: `Goal: ${plan.goal.replace(/\s+/g, " ").trim().slice(0, 200)}`, source: "your approved plan" }]);
     // Wait here until the person resumes (true) or stops (false).
     const pauseHere = async (): Promise<boolean> => {
       if (!this.pauseReq.has(cmd.agent)) return true;
@@ -1609,13 +1719,14 @@ export class AgentRunner {
           }
           break;
         }
-        // The same failure three times: stop and ask, once per step.
+        // The same failure on every check (three, as usual), or with work.askOnAnyFailure any failures: stop and ask, once
+        // per step.
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
-          this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck, options: STUCK_OPTIONS } as never);
+          this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck.failure, options: STUCK_OPTIONS, ...loopHow(r.stuck.end) } as never);
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));   // answerChoice forgets it once answered
           if (choice === "different" && remaining > 0) {
-            r = await this.run(stepCmd(differentPrompt(title, r.stuck)), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
+            r = await this.run(stepCmd(differentPrompt(title, r.stuck.failure, r.stuck.end)), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
           } else if (choice === "interrupt") r = { ...r, status: "interrupted" };
         }
@@ -1674,7 +1785,9 @@ export class AgentRunner {
     else if (verdict.decision === "ask") {
       tell("needs_approval");
       const approval = `ap_${randomBytes(4).toString("hex")}`;
-      const timeout = this.o.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+      // How long a question waits for your answer (approval.waitMinutes, usual 30), read as each question is asked. Only the
+      // wait changes: no answer in that time is always a no, and an expired card can never become a yes.
+      const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes", cmd.project) * 60_000;
       this.emit({
         type: "approval.request", approval, agent: cmd.agent, checkpoint, toolUseId, risk: verdict.risk ?? "irreversible",
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),

@@ -153,9 +153,11 @@ describe("with no folder chosen (the stand in project)", () => {
     const cwd = tmp("cwd"); const before = process.cwd();
     try {
       process.chdir(cwd);
-      await r.runner.handle({ v: 1, id: "x", type: "explain.set", project: NO_PROJECT, enabled: false });
+      await r.runner.handle({ v: 1, id: "x", type: "explain.set", project: NO_PROJECT, mode: "off" });
       const st = r.events.filter((e) => e.type === ("explain.state" as never)) as any[];
-      expect(st.at(-1)).toMatchObject({ project: NO_PROJECT, enabled: false });
+      expect(st.at(-1)).toMatchObject({ project: NO_PROJECT, enabled: false, mode: "off" });
+      await r.runner.handle({ v: 1, id: "y", type: "explain.set", project: NO_PROJECT, mode: "reasons" });
+      expect((r.events.filter((e) => e.type === ("explain.state" as never)) as any[]).at(-1)).toMatchObject({ project: NO_PROJECT, enabled: true, mode: "reasons" });
       expect(readdirSync(cwd)).toEqual([]);
       expect(existsSync(join(r.data, "memory-settings.json"))).toBe(true);
     } finally { process.chdir(before); }

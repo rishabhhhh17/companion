@@ -6,7 +6,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult } from "./browser.ts";
-import { detectProject, type Detected } from "./detect.ts";
+import { detectProject, withStartScript, type Detected } from "./detect.ts";
+import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
+import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
@@ -36,12 +38,16 @@ export type CheckOutcome = { name: string; status: "passed" | "failed" | "missin
 export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Unclear[]; checks?: CheckOutcome[]; noRoom?: true };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
 export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_000, testMs: 5 * 60_000, startMs: 60_000, browserMs: 30_000 };
+/** Time allowed for checks (check.time): today's limits times a factor (1, 2 or 4), for every rung. */
+export const scaleLimits = (factor: number): Limits => ({ installMs: DEFAULT_LIMITS.installMs * factor, checkMs: DEFAULT_LIMITS.checkMs * factor, testMs: DEFAULT_LIMITS.testMs * factor, startMs: DEFAULT_LIMITS.startMs * factor, browserMs: DEFAULT_LIMITS.browserMs * factor });
 
 export type LadderOptions = {
   project: string; store: CheckpointStore; beforeId: string; afterId: string;
   onStep?: (u: StepUpdate) => void; signal?: AbortSignal; limits?: Partial<Limits>;
   run?: (command: string, o: { cwd: string; timeoutMs: number }) => Promise<RunResult>;
   browser?: (url: string, o: BrowserOptions) => Promise<BrowserResult>;
+  // How the project is started for the browser check (tests give a stand in); startServer by default.
+  server?: typeof startServer;
   // Rung 7: a second model reads the change. Returns null when the review could not be done.
   review?: () => Promise<Review | null>;
   // Point at the problem must not change anything: when packages are missing it says so instead of installing them.
@@ -50,6 +56,12 @@ export type LadderOptions = {
   detect?: (dir: string) => Detected;
   // How long to wait before each new try of a command this Mac had no room to start (NO_ROOM_WAITS_MS by default).
   noRoomWaitsMs?: number[];
+  // What the person chose in Settings for checking this project (options.ts). Missing ones are their usual values, which
+  // are exactly how the ladder ran before.
+  check?: Partial<CheckSettings>;
+  // The install question (check.install "ask", or the house rule): true only for a yes. No answer, a Stop or no way to
+  // ask is a no, and the check then runs on the project as it is, with a gap.
+  askInstall?: (command: string) => Promise<boolean>;
 };
 
 const LABELS: Record<Rung, string> = {
@@ -101,6 +113,39 @@ const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((done) => 
 const gist = (r: RunResult, limitMs: number) =>
   r.timedOut ? `It took too long (over ${Math.round(limitMs / 1000)} seconds) and was stopped.` : withoutRuntimeFrames(r.stderr + "\n" + r.stdout).trim().split("\n").slice(-14).join("\n").slice(-900) || `It stopped with exit code ${r.code}.`;
 
+const SKIP_WORDS: Record<SkipName, string> = { typecheck: "The type check", lint: "The lint check", build: "The build", test: "The tests" };
+const leftOut = (n: SkipName) => `${SKIP_WORDS[n]} ${n === "test" ? "were" : "was"} left out (turned off in Settings), so ${n === "test" ? "they were" : "it was"} not run.`;
+const NOT_INSTALLED_NO = "The project's packages were not installed (you said no, or did not answer), so it was checked as it is.";
+const NOT_INSTALLED_NEVER = "The project's packages are not installed, and Settings says never to install them for a check, so it was checked as it is.";
+// A step that could not run because the project's packages were not installed for this check.
+const WITHOUT_PACKAGES = {
+  typecheck: "The type check could not run because the project's packages are not installed.",
+  lint: "The lint check could not run because the project's packages are not installed.",
+  build: "The build could not run because the project's packages are not installed.",
+  test: "The tests could not run because the project's packages are not installed.",
+  start: "The project could not start because its packages are not installed, so the page was not checked.",
+} as const;
+
+/** Output that says a command could not run because a tool or package it needs is not installed ("sh: vite: command not
+ *  found", "Cannot find module 'react'", "Failed to resolve import "zod""). A missing file of the project's own (a path
+ *  that starts with . or /, or an alias such as @/ or ~/) is the code's problem, so it is not one of these. */
+export function needsPackages(output: string): boolean {
+  if (/\bcommand not found\b|^(?:sh|bash|zsh|env)(?:: \d+)?: [^\n:]+: not found$|\bnot recognized as an internal or external command\b/m.test(output)) return true;
+  const specs = [...output.matchAll(/Cannot find (?:module|package|type definition file for) ['"]([^'"\n]+)['"]|(?:Failed to resolve import|Could not resolve|Can't resolve) ['"]([^'"\n]+)['"]/g)].map((m) => m[1] ?? m[2]);
+  return specs.some((x) => /[\\/]node_modules[\\/]/.test(x) || /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*(?:\/[^\s]*)?$/i.test(x) && !/^(?:node|bun):/.test(x));
+}
+
+/** What the browser check looks for: the project's own .claude/proof.json when there is one (exactly as before), else the
+ *  words and the button chosen in Settings. A button is pressed by its label, never by a selector, and the words after
+ *  pressing need a button to press. */
+function hintsFor(dir: string, c: Partial<CheckSettings> | undefined): BrowserOptions {
+  if (existsSync(join(dir, ".claude", "proof.json"))) return proofHints(dir);
+  const out: BrowserOptions = {};
+  if (c?.mustSee?.length) out.expectText = [...c.mustSee];
+  if (c?.press) { out.press = c.press; if (c.afterPress) out.expectAfterPress = c.afterPress; }
+  return out;
+}
+
 function proofHints(dir: string): BrowserOptions {
   try { const j = JSON.parse(readFileSync(join(dir, ".claude", "proof.json"), "utf8")); return { expectText: Array.isArray(j.expectText) ? j.expectText.map(String) : undefined, click: typeof j.click === "string" ? j.click : undefined, expectAfterClick: typeof j.expectAfterClick === "string" ? j.expectAfterClick : undefined }; }
   catch { return {}; }
@@ -137,7 +182,14 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   };
   const browser = o.browser ?? browserCheck;
   const steps: Step[] = [];
-  const det: Detected = (o.detect ?? detectProject)(o.project);
+  // Gaps from Settings: a check left out, packages not installed, a button not pressed, a start script that is gone. After
+  // the Python ones, so Point at the problem still says first what to install.
+  const left: string[] = [];
+  const skip = new Set((o.check?.skip ?? []).filter((x) => (SKIPPABLE as readonly string[]).includes(x)));
+  const found = (o.detect ?? detectProject)(o.project);
+  const started = withStartScript(found, o.project, o.check?.start);
+  const det: Detected = started.det;
+  if (started.gap) left.push(started.gap);
   const cancelled = () => o.signal?.aborted === true;
   // Python: commands never write bytecode or caches into the project. A gap is a check that exists but could not run
   // because a package is not installed: never a failure blamed on the code, never a pass either.
@@ -145,6 +197,16 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const pyEnv: Record<string, string> = py ? { PYTHONDONTWRITEBYTECODE: "1", PY_COLORS: "0", PYTHONUNBUFFERED: "1" } : {};
   const gaps: string[] = [];
   let packageGaps = 0;
+  // The project's packages were not installed for this check (Settings said never, or the install question got no yes): a
+  // step that fails only because a tool or package it needs is not there could not run at all. That is a gap, never a
+  // failure blamed on the code, so a task's fix loop is never started over it.
+  let heldBack = false;
+  const held = (output: string, step: keyof typeof WITHOUT_PACKAGES): string | null => {
+    if (!heldBack || py || !needsPackages(output)) return null;
+    const words = WITHOUT_PACKAGES[step];
+    if (!left.includes(words)) left.push(words);
+    return words;
+  };
   const gap = (output: string, tool: string | undefined, what: string): string | null => {
     const miss = py ? missingModule(output, tool, py.declared) : null;
     if (!miss || !py) return null;
@@ -162,7 +224,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const unclear: Unclear[] = [], tried: CheckOutcome[] = [];
   let outOfRoom = false;
   const cannotTell = (missing: boolean, ...rungs: Rung[]) => { for (const rung of rungs) if (!unclear.some((u) => u.rung === rung)) unclear.push({ rung, missing }); };
-  const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict: verdict === "passed" && gaps.length ? "passed_with_gaps" : verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}), ...(gaps.length ? { gaps: [...gaps] } : {}), ...(unclear.length ? { unclear: [...unclear] } : {}), ...(tried.length ? { checks: [...tried] } : {}), ...(outOfRoom ? { noRoom: true as const } : {}) });
+  const result = (verdict: Verdict, failedAt?: Step, serverUrl?: string): LadderResult => ({ verdict: verdict === "passed" && (gaps.length || left.length) ? "passed_with_gaps" : verdict, steps, ...(failedAt ? { failedAt } : {}), ...(serverUrl ? { serverUrl } : {}), ...(gaps.length || left.length ? { gaps: [...gaps, ...left] } : {}), ...(unclear.length ? { unclear: [...unclear] } : {}), ...(tried.length ? { checks: [...tried] } : {}), ...(outOfRoom ? { noRoom: true as const } : {}) });
   // A command this Mac had no room to start, even after trying again: Companion's own words, nothing on screen to point at.
   const noRoom = (rung: Rung, t0: number) => { outOfRoom = true; return result("failed", finish(rung, "failed", NO_ROOM, t0, { kind: "message", message: NO_ROOM, from: rung })); };
   // Point at the problem changes nothing, so it cannot install what is missing. When that is why nothing could be
@@ -191,10 +253,20 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       const why = `This project's packages are not installed, so it cannot be checked yet. Run ${det.packageManager} install in the project folder, or press Fix it with me.`;
       return result("failed", finish("install", "failed", why, t0, { kind: "message", message: why, from: "install" }));
     }
-    const r = await run(`${det.packageManager} install`, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
-    if (couldNotStart(r)) return noRoom("install", t0);
-    if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install")));
-    finish("install", "passed", "Installed.", t0);
+    const command = `${det.packageManager} install`;
+    // check.install, made at least "ask" by the house rule "ask before installing packages" (or a rules file that could
+    // not be read). Only a yes installs.
+    const rules = loadRules(o.project);
+    const mode = installMode(o.check?.install, rules.rules, rules.broken === true);
+    const yes = mode === "auto" || (mode === "ask" && !!o.askInstall && await o.askInstall(command).then((x) => x === true, () => false));
+    if (cancelled()) return result("cancelled");
+    if (!yes) { const why = mode === "never" ? NOT_INSTALLED_NEVER : NOT_INSTALLED_NO; left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
+    else {
+      const r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
+      if (couldNotStart(r)) return noRoom("install", t0);
+      if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install")));
+      finish("install", "passed", "Installed.", t0);
+    }
   } else finish("install", "skipped", "Nothing new to install.", t0);
 
   // --- 2. build and checks
@@ -204,12 +276,13 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const weakened = analyzeScripts(bf["package.json"], af["package.json"]);
   if (!weakened.ok) return result("failed", finish("checks", "failed", weakened.problems.join(". ") + ". Please fix the real problem instead of weakening the check.", t0));
   if (det.checks.length) {
-    const ran: string[] = [], missed: string[] = [];
+    const ran: string[] = [], missed: string[] = [], skipped: string[] = [];
     for (const c of det.checks) {
+      if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
       if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
-        const why = r.timedOut ? null : gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : `the ${c.name} check`);
+        const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : `the ${c.name} check`);
         if (why) { missed.push(why); tried.push({ name: c.name, status: "missing" }); continue; }
         tried.push({ name: c.name, status: "failed" });
         return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks")));
@@ -217,8 +290,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       tried.push({ name: c.name, status: "passed" });
       ran.push(c.name);
     }
-    if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}`, t0);
-    else finish("checks", "skipped", missed.join(" "), t0);
+    if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}${skipped.length ? ` ${skipped.join(" ")}` : ""}`, t0);
+    else finish("checks", "skipped", [...missed, ...skipped].join(" "), t0);
   } else finish("checks", "skipped", "This project has no build or lint steps to run.", t0);
 
   // --- 3. tests, and were they weakened?
@@ -227,10 +300,11 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const [bt, at] = [await o.store.readFiles(o.beforeId, isTestFile), await o.store.readFiles(o.afterId, isTestFile)];
   const guard = analyzeTests(bt, at);
   if (!guard.ok) return result("failed", finish("tests", "failed", guard.problems.join(". ") + ".", t0));
-  if (det.tests) {
+  if (det.tests && skip.has("test")) { const w = leftOut("test"); left.push(w); finish("tests", "skipped", w, t0); }
+  else if (det.tests) {
     const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
     if (couldNotStart(r)) return noRoom("tests", t0);
-    const why = r.code !== 0 && !r.timedOut ? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
+    const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
     // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed.
     if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) { cannotTell(false, "tests"); finish("tests", "skipped", "pytest found no tests to run.", t0); }
     else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
@@ -246,12 +320,24 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     return hasEvidence(steps) ? result("passed") : unchecked();
   }
   t0 = Date.now(); emit("start", "running");
-  let scriptText = "";
-  try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(det.start.kind === "server" ? det.start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(o.project, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
+  const textOf = (start: NonNullable<Detected["start"]>) => {
+    try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); return m ? JSON.parse(readFileSync(join(o.project, "package.json"), "utf8")).scripts?.[m[1]] ?? "" : ""; } catch { return ""; }
+  };
   // A Python dev server may make an empty SQLite file on its way up (Django's runserver does): it is taken away again
   // once the server has stopped, however the rung ends.
   const dbBefore = py ? databaseFiles(o.project) : null;
-  const srv = await startServer(det.start, { cwd: o.project, timeoutMs: limits.startMs, scriptText, signal: o.signal });
+  const serve = (start: NonNullable<Detected["start"]>) => (o.server ?? startServer)(start, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal });
+  let srv = await serve(det.start);
+  // The start script chosen in Settings finished on its own, so it does not open the page. The page is still checked
+  // (F14): the project is started the usual way when that is another way, and either way it is a gap, never a pass.
+  let startNote = started.gap, chosen = started.chosen;
+  if (!srv.ok && srv.notAServer && chosen && !cancelled()) {
+    const usual = found.start;
+    const other = !!usual && !(usual.kind === "server" && det.start.kind === "server" && usual.command === det.start.command);
+    startNote = `The start script chosen in Settings (${chosen}) finished without opening a page, so ${other ? "the project was started the usual way" : "the page was not checked"}.`;
+    left.push(startNote);
+    if (other) { srv = await serve(usual!); chosen = undefined; }
+  }
   try {
     if (!srv.ok && srv.aborted) return result("cancelled");
     if (!srv.ok && srv.notAServer) {
@@ -259,22 +345,37 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       finish("browser", "skipped", "There is no page to open.", Date.now());
       return hasEvidence(steps) ? result("passed") : unchecked();
     }
-    const startGap = !srv.ok && det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null;
+    const startGap = srv.ok ? null : held(srv.output ?? srv.reason, "start")
+      ?? (det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null);
     if (startGap) {
       cannotTell(true, "start", "browser");
       finish("start", "skipped", startGap, t0);
       finish("browser", "skipped", "There is no page to open.", Date.now());
       return hasEvidence(steps) ? result("passed") : unchecked();
     }
-    if (!srv.ok) return result("failed", finish("start", "failed", srv.reason, t0, srv.output ? locateProblem(srv.output, o.project, "start") : null));
-    finish("start", "passed", "It started.", t0);
+    if (!srv.ok) return result("failed", finish("start", "failed", chosen ? `It was started with the script chosen in Settings (${chosen}). ${srv.reason}` : startNote ? `${startNote} ${srv.reason}` : srv.reason, t0, srv.output ? locateProblem(srv.output, o.project, "start") : null));
+    finish("start", "passed", startNote ? `It started. ${startNote}` : "It started.", t0);
     if (cancelled()) return result("cancelled", undefined, srv.url);
     t0 = Date.now(); emit("browser", "running");
-    const b = await browser(srv.url, { ...proofHints(o.project), timeoutMs: limits.browserMs, shot: true });
-    if (b.skipped) { cannotTell(false, "browser"); finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
-    if (!b.ok) return result("failed", finish("browser", "failed", b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
-    finish("browser", "passed", "The page opened with no errors.", t0);
-    return { ...result("passed", undefined, srv.url), ...(b.shot ? { shot: b.shot } : {}) };
+    // check.pageSize: desktop (today's 1280 by 800), phone (390 by 844), or both, one after the other. The picture for the
+    // visual receipt comes from the first.
+    const hints = hintsFor(o.project, o.check);
+    const sizes = o.check?.pageSize === "both" ? ["desktop", "phone"] as const : o.check?.pageSize === "phone" ? ["phone"] as const : ["desktop"] as const;
+    const two = sizes.length > 1;
+    let shot: import("./browser.ts").PageShot | undefined;
+    const notDone: string[] = [];   // what the browser check was asked for in Settings and did not do (a button it would not press)
+    for (const [i, size] of sizes.entries()) {
+      const b = await browser(srv.url, { ...hints, timeoutMs: limits.browserMs, shot: i === 0, ...(size === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}) });
+      if (b.skipped) { cannotTell(false, "browser"); finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
+      for (const g of b.gaps ?? []) if (!left.includes(g)) { left.push(g); notDone.push(g); }
+      const at = two ? `At ${size} size: ` : size === "phone" ? "At phone size: " : "";
+      if (!b.ok) return result("failed", finish("browser", "failed", at + b.problems.slice(0, 3).join(". ") + ".", t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
+      if (i === 0 && b.shot) shot = b.shot;
+      if (i < sizes.length - 1 && cancelled()) return result("cancelled", undefined, srv.url);
+    }
+    const opened = two ? "The page opened with no errors, at desktop and at phone size." : sizes[0] === "phone" ? "The page opened with no errors at phone size." : "The page opened with no errors.";
+    finish("browser", "passed", notDone.length ? `${opened} ${notDone.join(" ")}` : opened, t0);
+    return { ...result("passed", undefined, srv.url), ...(shot ? { shot } : {}) };
   } finally {
     if (srv.ok) await srv.stop();
     if (dbBefore) removeNewEmptyDatabases(o.project, dbBefore);

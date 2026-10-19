@@ -22,7 +22,7 @@ export function valueWords(d: Def, v: unknown): string {
     case "choice": return w.options?.[String(v)] ?? String(v ?? "");
     case "number": return typeof v === "number" ? numberWords(v, d.unit) : "";
     case "text": return typeof v === "string" && v ? v : S.setNone;
-    case "list": return Array.isArray(v) && v.length ? v.join(", ") : S.setNone;
+    case "list": return Array.isArray(v) && v.length ? v.map((x) => w.options?.[String(x)] ?? String(x)).join(", ") : S.setNone;
     default: return w.usual ?? "";
   }
 }

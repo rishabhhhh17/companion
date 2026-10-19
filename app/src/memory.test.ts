@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { eraseMemory, forgetLine, editLine, exportMemory, listMemory, pauseMemory, answerAgents, shipLive, shipPreview, shipRollback, askRecap, setExplain, planDrive, startTask } from "./commands.ts";
+import { eraseMemory, forgetLine, editLine, exportMemory, listMemory, pauseMemory, answerAgents, shipLive, shipPreview, shipRollback, askRecap, planDrive, startTask } from "./commands.ts";
 import { initial, reduce, savedWords, type Model } from "./model.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()): Model => events.reduce<Model>((m, e) => reduce(m, e), from);
@@ -92,7 +93,9 @@ describe("Explain and Where was I in the pages", () => {
   });
   test("the commands are valid protocol", () => {
     expect(parseCommand(serialize(askRecap("/p", "2026-10-09T10:00:00.000Z"))).ok).toBe(true);
-    expect(parseCommand(serialize(setExplain("/p", false))).ok).toBe(true);
+    // Explain after a task is a setting the shell sends the engine itself (explain.set is off the page allow list), so the
+    // pages have no command for it.
+    expect(readFileSync(new URL("./commands.ts", import.meta.url), "utf8")).not.toContain('"explain.set"');
   });
 });
 

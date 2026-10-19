@@ -7,6 +7,12 @@ import { join } from "node:path";
 import { checkRegistry, defaultOf, defOf, fromPageStorage, MIGRATION_MAPS, REGISTRY, looksSecret, validate, validateKey, type Def, type Registry } from "../../protocol/settings.ts";
 
 const cases = readFileSync(new URL("../../protocol/fixtures/settings-cases.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+// Area 1 (spending and how work runs), each with exactly today's behaviour as its usual value.
+const AREA_1: Record<string, unknown> = {
+  "budget.task": 3, "budget.plan": 5, "budget.rescue": 5, "budget.research": 2,
+  "model.work": "recommended", "model.rescue": "careful", "model.quick": "fast",
+  "work.tries": 3, "work.askOnAnyFailure": false, "drive.maxSteps": 12, "work.tryAgain": "carry_on", "approval.waitMinutes": 30,
+};
 
 describe("the shipped list of settings", () => {
   test("it is valid: every default passes its own rules, ranges and steps fit, options are unique, sections and stores exist", () => {
@@ -21,7 +27,14 @@ describe("the shipped list of settings", () => {
     const want: Record<string, unknown> = {
       "talk.speak": false, "talk.speakReplies": false, "talk.autoSend": false, "character.comeTo": true, "sharing.hide": true, "calls.quiet": true,
       "showme.allScreens": false, "fun.reactions": true, "teach.yourTurn": false, "display.textSize": "standard", "updates.daily": true,
-      "spend.dailyLimit": 10, "explain.on": true, "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
+      "spend.dailyLimit": 10, "explain.mode": "reasonsAndQuestion", "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
+      ...AREA_1,
+      // Area 2, checking your project (settings-checks-registry.test.ts).
+      "rules.house": [], "check.mustSee": [], "check.press": "", "check.afterPress": "", "check.start": "auto", "check.skip": [], "check.time": "normal",
+      "check.install": "auto", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true, "pictures.keep": 200, "rescue.readDeployLog": true,
+      // Area 3: memory, Explain and teaching (settings-memory.test.ts)
+      "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
+      "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "recap.after": "30min",
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
@@ -58,8 +71,23 @@ describe("the shipped list of settings", () => {
     // None of them reaches the engine.
     for (const d of REGISTRY.settings.filter((x) => /^(island|home|character)\./.test(x.key))) expect(d.applies, d.key).not.toContain("runner");
   });
+  test("area 1: the budgets, models, tries, plan steps, Try again and how long a question waits, with their ranges", () => {
+    for (const k of ["budget.task", "budget.plan", "budget.rescue", "budget.research"]) expect(defOf(k), k).toMatchObject({ kind: "number", min: 0.5, max: 50, step: 0.5, unit: "dollars", scope: "app", applies: ["pages"], store: "settings", live: false, section: "spending", floor: "budgetDay" });
+    expect(defOf("model.work")).toMatchObject({ kind: "choice", options: ["recommended", "careful"], applies: ["pages"], live: false });
+    expect(defOf("model.rescue")).toMatchObject({ kind: "choice", options: ["careful", "recommended"], applies: ["pages"], live: false });
+    expect(defOf("model.quick")).toMatchObject({ kind: "choice", options: ["fast", "recommended"], applies: ["runner"], live: true });
+    expect(defOf("work.tries")).toMatchObject({ kind: "number", min: 1, max: 5, step: 1, unit: "count", applies: ["runner"], live: false });
+    expect(defOf("work.askOnAnyFailure")).toMatchObject({ kind: "switch", applies: ["runner"], live: false });
+    expect(defOf("drive.maxSteps")).toMatchObject({ kind: "number", min: 3, max: 20, step: 1, unit: "count", applies: ["runner"], live: false });
+    // Left out on purpose (see the plan, area 1): "Pause a plan when I change the project myself" stays fixed at on.
+    expect(defOf("drive.pauseOnMyEdits")).toBeUndefined();
+    expect(defOf("work.tryAgain")).toMatchObject({ kind: "choice", options: ["carry_on", "fresh"], applies: ["runner"], live: false });
+    // The top is 30 until a real run shows a hook still waiting past 32 minutes is honoured (T05): only shorter waits for now.
+    expect(defOf("approval.waitMinutes")).toMatchObject({ kind: "number", min: 5, max: 30, step: 5, unit: "minutes", applies: ["runner"], live: true, floor: "noAnswerIsNo" });
+    for (const k of Object.keys(AREA_1)) expect(defOf(k)!.scope, k).toBe("app");
+  });
   test("the three settings the engine keeps itself are reached only through the engine", () => {
-    for (const k of ["spend.dailyLimit", "explain.on", "memory.paused", "numbers.on"]) expect(defOf(k)!.applies, k).toEqual(["runner"]);
+    for (const k of ["spend.dailyLimit", "explain.mode", "memory.paused", "numbers.on"]) expect(defOf(k)!.applies, k).toEqual(["runner"]);
   });
 });
 
@@ -157,7 +185,7 @@ describe("a broken list of settings is caught", () => {
   });
   test("the engine's own stores only for settings the engine applies, for every project", () => {
     expect(one({ applies: ["pages"] }, "spend.dailyLimit").length).toBeGreaterThan(0);
-    expect(one({ scope: "project" }, "explain.on").length).toBeGreaterThan(0);
+    expect(one({ scope: "project" }, "explain.mode").length).toBeGreaterThan(0);
   });
 });
 

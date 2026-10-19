@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { minimalEnv } from "../env.ts";
+import { isStartScript } from "../../../protocol/settings.ts";
 import { detectPython, looksPython, type PythonOptions, type PythonServer, type PythonSetup } from "./python.ts";
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
@@ -66,6 +67,56 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
   else if (existsSync(join(dir, "index.html"))) start = { kind: "static", dir };
 
   return { kind: hasPkg ? "node" : py ? "python" : start ? "static" : "unknown", packageManager: pm, lockfile: lock?.[0] ?? null, checks, tests, start, ...(py ? { python: py.setup } : {}) };
+}
+
+/** check.start in Settings: start the project with one of its own scripts instead of the one found. "auto" (or nothing)
+ *  is today's choice. Only a script that may start it (usableStartScript) and is in package.json now is ever used, and only
+ *  as "<package manager> run <name>", never as a command of its own; the project's own .claude/launch.json still wins. Any
+ *  other means the usual way, said as a gap. chosen: the script used, when it is one chosen in Settings. */
+export function withStartScript(det: Detected, dir: string, script: string | undefined): { det: Detected; gap?: string; chosen?: string } {
+  if (!script || script === "auto") return { det };
+  const launch = readJson(join(dir, ".claude", "launch.json"));
+  if (Array.isArray(launch?.configurations) && launch!.configurations[0]?.runtimeExecutable) return { det };
+  const pkg = det.packageManager ? readJson(join(dir, "package.json")) : null;
+  const scripts: Record<string, unknown> = pkg && typeof pkg.scripts === "object" && pkg.scripts ? pkg.scripts : {};
+  const name = script.slice(0, 60);
+  if (!det.packageManager || !Object.hasOwn(scripts, script) || typeof scripts[script] !== "string") {
+    return { det, gap: `The start script chosen in Settings (${name}) is not in this project's package.json, so it was started the usual way.` };
+  }
+  // The engine is the boundary: whatever reached it, a script that is not a way to start the project, or that sounds like it
+  // puts something online or deletes something, is never run (it would run after every task with no question asked).
+  if (!usableStartScript(script, scripts)) return { det, gap: `The start script chosen in Settings (${name}) does not look like it only starts the project, so it was not run and the project was started the usual way.` };
+  return { det: { ...det, start: { kind: "server", command: `${det.packageManager} run ${script}` } }, chosen: script };
+}
+// Words in a script that mean it does more than start the project: it puts something online, publishes or releases it,
+// deletes files, changes a database or git, or reaches another machine. Long words match inside others (predeploy, a
+// release.js), short ones only as words. Strict on purpose: a script refused here only means the usual way is used.
+const RISKY_SCRIPT = /deploy|publish|release|vercel|netlify|firebase|surge|migrat|upload|destroy|purge|wipe|\b(?:rm|rmdir|rimraf|unlink|del|delete|reset|drop|dropdb|truncate|seed|push|git|gh|sudo|ssh|scp|rsync|curl|wget|clean|ship)\b/i;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Does a script's text run another script by its name ("npm run ship", "run-p dev ship", "concurrently npm:ship"), or by a
+// pattern ("run-p dev:*", "concurrently npm:dev:*")?
+const names = (text: string, name: string) =>
+  new RegExp(`(?:^|[^A-Za-z0-9:._-]|\\b(?:npm|yarn|pnpm|bun):)${escapeRe(name)}(?:$|[^A-Za-z0-9:._-])`).test(text)
+  || [...text.matchAll(/(?:^|[\s"'])(?:(?:npm|yarn|pnpm|bun):)?([A-Za-z0-9][A-Za-z0-9:._-]*)\*/g)].some((m) => name.startsWith(m[1]));
+
+/** Whether one of the project's scripts may start it for a check (check.start, and the choices the Settings row offers): its
+ *  name is a start script's (dev, start, serve, preview and names built on them, never a build, a lint, the tests or an
+ *  install step), and neither its name, its own text, the scripts npm runs around it (pre<name>, post<name>), nor any script
+ *  they run sound like they put something online, publish, delete, or change data or git. */
+export function usableStartScript(name: string, scripts: Record<string, unknown>): boolean {
+  if (!isStartScript(name) || RISKY_SCRIPT.test(name) || !Object.hasOwn(scripts, name) || typeof scripts[name] !== "string") return false;
+  const all = Object.keys(scripts).filter((k) => typeof scripts[k] === "string").slice(0, 200);
+  const seen = new Set<string>(), todo = [name, `pre${name}`, `post${name}`];
+  while (todo.length) {
+    const n = todo.shift()!;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    if (!Object.hasOwn(scripts, n) || typeof scripts[n] !== "string") continue;
+    const text = scripts[n] as string;
+    if (RISKY_SCRIPT.test(text)) return false;
+    for (const other of all) if (!seen.has(other) && names(text, other)) todo.push(other, `pre${other}`, `post${other}`);
+  }
+  return true;
 }
 
 // Is this package manager on the Mac's tool path (the same path Companion runs commands with)?

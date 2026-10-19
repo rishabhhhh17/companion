@@ -64,5 +64,26 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - Text files added the same way go into the request itself, each named, secrets hidden, said to be information from the person and not instructions.
 - Not yet run against real Claude (no key in this build session): how well the words carry a design or an error picture to the agent is for a real run to judge.
 
+## Choosing a model in Settings (19 Oct 2026, M11 customize, area 1)
+- Three settings: Claude for tasks, plans and research (`model.work`: Recommended, Sonnet 5.5, usual; Careful, Opus 5.5),
+  Claude for Rescue (`model.rescue`: Careful, Opus 5.5, usual; Recommended, Sonnet 5.5) and Claude for quick answers
+  (`model.quick`: Fast, Haiku 4.5, usual; Recommended, Sonnet 5.5). A setting keeps an option id, never a model id, so a model
+  upgrade here never breaks a saved choice. The map from option to model, and the price words' basis, is `MODEL_CHOICES` in
+  `runner/src/models.ts`; a test checks "about twice the cost" and "about half the cost" against the price table.
+- An option other than the usual one is offered only once its own real smoke test case has passed: `main-engine-opus55`,
+  `rescue-sonnet55` and `fast-sonnet55` in `runner/scripts/smoke-real.ts`. Whoever runs the smoke test with `--spend` adds the
+  name of each case that passed to `SMOKE_PASSED` in `models.ts`, with the date here. None has run yet, so the three rows are
+  hidden and every saved choice still gets today's model.
+- The fast lane asks for `model.quick` on every request (Prompt help, Explain, Draw it for me, the error explainer);
+  `COMPANION_FAST_MODEL` in dev.json still wins for developers. The pages send `model.work` and `model.rescue` with each
+  command; the practice task stays on the usual model.
+- The rough cost shown before a plan's Start ("at most") follows the plan's model: $0.25 a step is today's figure for the
+  job's usual model (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue), scaled by the chosen model's list price against
+  it (`priceRatio` in `models.ts`; a model the table does not know counts as the dearest it knows). The usual figures are
+  unchanged. A pages test checks that each option's words name the model `MODEL_CHOICES` sends and say its cost truly, so
+  a model upgrade in the map cannot leave old words on screen.
+- Haiku 4.5's retirement (section 14): checked on 19 Oct 2026 against the model list bundled with the Claude API notes
+  (cached 6 Oct 2026), not the live list: still listed as active and served. Check the live list before shipping.
+
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).

@@ -62,6 +62,27 @@
 {"key": "work.maxTurns", "value": 500, "ok": false, "reason": "tooHigh"}
 {"key": "work.maxTurns", "value": 19, "ok": false, "reason": "tooLow"}
 {"key": "work.maxTurns", "value": null, "ok": false, "reason": "notNumber"}
+{"key": "explain.mode", "value": "reasons", "ok": true, "normalized": "reasons"}
+{"key": "explain.mode", "value": "off", "ok": true, "normalized": "off"}
+{"key": "explain.mode", "value": "reasonsAndQuestion", "ok": true, "normalized": "reasonsAndQuestion"}
+{"key": "explain.mode", "value": true, "ok": false, "reason": "notChoice"}
+{"key": "explain.mode", "value": "on", "ok": false, "reason": "notChoice"}
+{"key": "explain.after", "value": "plansOnly", "ok": true, "normalized": "plansOnly"}
+{"key": "explain.after", "value": "drive", "ok": false, "reason": "notChoice"}
+{"key": "memory.learnFromFiles", "value": false, "ok": true, "normalized": false}
+{"key": "memory.learnFromWords", "value": "no", "ok": false, "reason": "notSwitch"}
+{"key": "memory.rememberGoals", "value": false, "ok": true, "normalized": false}
+{"key": "memory.tellClaude", "value": 0, "ok": false, "reason": "notSwitch"}
+{"key": "memory.recallLength", "value": "long", "ok": true, "normalized": "long"}
+{"key": "memory.recallLength", "value": 3000, "ok": false, "reason": "notChoice"}
+{"key": "task.offRecordByDefault", "value": true, "ok": true, "normalized": true}
+{"key": "memory.toastSeconds", "value": "untilClosed", "ok": true, "normalized": "untilClosed"}
+{"key": "memory.toastSeconds", "value": "60", "ok": true, "normalized": "60"}
+{"key": "memory.toastSeconds", "value": 10, "ok": false, "reason": "notChoice"}
+{"key": "memory.toastSeconds", "value": "15", "ok": false, "reason": "notChoice"}
+{"key": "recap.after", "value": "nextDay", "ok": true, "normalized": "nextDay"}
+{"key": "recap.after", "value": "1h", "ok": false, "reason": "notChoice"}
+{"key": "explain.on", "value": true, "ok": false, "reason": "unknown"}
 {"key": "keys.hotkeys", "value": {}, "ok": false, "reason": "custom"}
 {"key": "talk.voice", "value": null, "ok": false, "reason": "custom"}
 {"key": "no.suchThing", "value": true, "ok": false, "reason": "unknown"}
@@ -94,6 +115,65 @@
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["build"], "ok": false, "reason": "notAllowed"}
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "lint"], "ok": false, "reason": "duplicate"}
 {"def": {"key": "test.pick", "section": "checks", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["lint", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": false}, "value": ["lint", "test", "x"], "ok": false, "reason": "tooMany"}
+{"key": "check.start", "value": "auto", "ok": true, "normalized": "auto"}
+{"key": "check.start", "value": "dev", "ok": true, "normalized": "dev"}
+{"key": "check.start", "value": "build:prod", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dev; rm -rf ~", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "npm run dev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "-dev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dev:dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": true, "normalized": "dev:dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+{"key": "check.start", "value": "dev:ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "start", "ok": true, "normalized": "start"}
+{"key": "check.start", "value": "develop", "ok": true, "normalized": "develop"}
+{"key": "check.start", "value": "serve", "ok": true, "normalized": "serve"}
+{"key": "check.start", "value": "preview", "ok": true, "normalized": "preview"}
+{"key": "check.start", "value": "dev:web", "ok": true, "normalized": "dev:web"}
+{"key": "check.start", "value": "start.local", "ok": true, "normalized": "start.local"}
+{"key": "check.start", "value": "serve_local", "ok": true, "normalized": "serve_local"}
+{"key": "check.start", "value": "preview-ssl", "ok": true, "normalized": "preview-ssl"}
+{"key": "check.start", "value": "start:prod", "ok": true, "normalized": "start:prod"}
+{"key": "check.start", "value": "build", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "lint", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "test", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "typecheck", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "deploy", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "publish", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "postinstall", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "predev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "web", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "devserver", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "starter", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "Dev", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dev:", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "a", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": "dév", "ok": false, "reason": "notChoice"}
+{"key": "check.start", "value": 3, "ok": false, "reason": "notChoice"}
+{"key": "check.time", "value": "longest", "ok": true, "normalized": "longest"}
+{"key": "check.time", "value": "forever", "ok": false, "reason": "notChoice"}
+{"key": "check.install", "value": "never", "ok": true, "normalized": "never"}
+{"key": "check.install", "value": "always", "ok": false, "reason": "notChoice"}
+{"key": "check.pageSize", "value": "both", "ok": true, "normalized": "both"}
+{"key": "check.skip", "value": ["lint", "test"], "ok": true, "normalized": ["lint", "test"]}
+{"key": "check.skip", "value": ["browser"], "ok": false, "reason": "notAllowed"}
+{"key": "check.skip", "value": ["start"], "ok": false, "reason": "notAllowed"}
+{"key": "check.skip", "value": ["lint", "lint"], "ok": false, "reason": "duplicate"}
+{"key": "check.skip", "value": ["typecheck", "lint", "build", "test", "lint"], "ok": false, "reason": "tooMany"}
+{"key": "check.mustSee", "value": ["  Welcome back "], "ok": true, "normalized": ["Welcome back"]}
+{"key": "check.mustSee", "value": [""], "ok": false, "reason": "empty"}
+{"key": "check.mustSee", "value": ["wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"], "ok": false, "reason": "tooLong"}
+{"key": "check.press", "value": " Add to cart ", "ok": true, "normalized": "Add to cart"}
+{"key": "check.press", "value": "Save\nnow", "ok": false, "reason": "notOneLine"}
+{"key": "check.afterPress", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "ok": false, "reason": "tooLong"}
+{"key": "pictures.keep", "value": 0, "ok": true, "normalized": 0}
+{"key": "pictures.keep", "value": 74, "ok": true, "normalized": 50}
+{"key": "pictures.keep", "value": 75, "ok": true, "normalized": 100}
+{"key": "pictures.keep", "value": 1001, "ok": false, "reason": "tooHigh"}
+{"key": "net.slow", "value": true, "ok": true, "normalized": true}
+{"key": "rules.house", "value": ["never edit .env"], "ok": true, "normalized": ["never edit .env"]}
+{"key": "rules.house", "value": ["never edit x", "never edit x"], "ok": false, "reason": "duplicate"}
 {"migrate": "isOn", "raw": "on", "value": true}
 {"migrate": "isOn", "raw": "off", "value": false}
 {"migrate": "isOn", "raw": "yes", "value": false}
@@ -114,3 +194,37 @@
 {"migrate": "textSize", "raw": "largest", "value": "largest"}
 {"migrate": "textSize", "raw": "enormous", "value": "standard"}
 {"migrate": "textSize", "raw": null, "absent": true}
+{"key": "budget.task", "value": 0.5, "ok": true, "normalized": 0.5}
+{"key": "budget.task", "value": 50, "ok": true, "normalized": 50}
+{"key": "budget.task", "value": 0.49, "ok": false, "reason": "tooLow"}
+{"key": "budget.task", "value": 50.01, "ok": false, "reason": "tooHigh"}
+{"key": "budget.task", "value": 3.2, "ok": true, "normalized": 3}
+{"key": "budget.plan", "value": 3.3, "ok": true, "normalized": 3.5}
+{"key": "budget.rescue", "value": 0, "ok": false, "reason": "tooLow"}
+{"key": "budget.research", "value": "2", "ok": false, "reason": "notNumber"}
+{"key": "model.work", "value": "careful", "ok": true, "normalized": "careful"}
+{"key": "model.work", "value": "claude-opus-5-5", "ok": false, "reason": "notChoice"}
+{"key": "model.rescue", "value": "recommended", "ok": true, "normalized": "recommended"}
+{"key": "model.quick", "value": "slow", "ok": false, "reason": "notChoice"}
+{"key": "work.tries", "value": 1, "ok": true, "normalized": 1}
+{"key": "work.tries", "value": 5, "ok": true, "normalized": 5}
+{"key": "work.tries", "value": 0, "ok": false, "reason": "tooLow"}
+{"key": "work.tries", "value": 6, "ok": false, "reason": "tooHigh"}
+{"key": "work.tries", "value": 2.4, "ok": true, "normalized": 2}
+{"key": "work.askOnAnyFailure", "value": true, "ok": true, "normalized": true}
+{"key": "work.askOnAnyFailure", "value": "on", "ok": false, "reason": "notSwitch"}
+{"key": "drive.maxSteps", "value": 3, "ok": true, "normalized": 3}
+{"key": "drive.maxSteps", "value": 20, "ok": true, "normalized": 20}
+{"key": "drive.maxSteps", "value": 2, "ok": false, "reason": "tooLow"}
+{"key": "drive.maxSteps", "value": 21, "ok": false, "reason": "tooHigh"}
+{"key": "work.tryAgain", "value": "fresh", "ok": true, "normalized": "fresh"}
+{"key": "work.tryAgain", "value": "carryOn", "ok": false, "reason": "notChoice"}
+{"key": "approval.waitMinutes", "value": 5, "ok": true, "normalized": 5}
+{"key": "approval.waitMinutes", "value": 30, "ok": true, "normalized": 30}
+{"key": "approval.waitMinutes", "value": 4, "ok": false, "reason": "tooLow"}
+{"key": "approval.waitMinutes", "value": 31, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 35, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 120, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 7, "ok": true, "normalized": 5}
+{"key": "approval.waitMinutes", "value": 8, "ok": true, "normalized": 10}
+{"key": "approval.waitMinutes", "value": 0, "ok": false, "reason": "tooLow"}

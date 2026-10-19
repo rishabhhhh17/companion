@@ -1,7 +1,7 @@
 // MANUAL, REAL CLAUDE, THE FOUNDER'S API KEY: about ten tiny calls that prove every lane accepts its request on its default
 // model, and that each one writes to disk only what it should. Dry by default: it prints the plan and spends nothing.
 //   bun run scripts/smoke-real.ts              the plan, free
-//   bun run scripts/smoke-real.ts --spend      runs it (estimated about $0.55 in all; stops at $1)
+//   bun run scripts/smoke-real.ts --spend      runs it (estimated about $0.75 in all; stops at $1)
 //   bun run scripts/smoke-real.ts --spend fast-haiku45 vision-sonnet55     only those cases
 // Every rule for real runs (bundled binary, key from the Keychain in code, throwaway Claude Code folder, the init check, the
 // spending stops) is in realrun-harness.ts. NOT YET RUN: nobody has spent a key on it.
@@ -102,32 +102,41 @@ function runnerOn(ctx: CaseCtx, model: string, onInit?: (m: Record<string, any>)
 
 const SONNET = "claude-sonnet-5-5", OPUS = "claude-opus-5-5", HAIKU45 = "claude-haiku-4-5-20251001", HAIKU55 = "claude-haiku-5-5";
 
+// The agent engine on a model: a tiny task that writes hello.txt and one saved conversation in the throwaway folder,
+// nothing in ~/.claude. Sonnet 5.5 is the usual model for tasks; Opus 5.5 is "Careful" in Settings (models.ts MODEL_CHOICES).
+const mainEngine = (name: string, model: string, estimate: number, cap: number): Case => ({
+  name, models: [model], estimateUsd: estimate, capUsd: cap, timeoutS: 180,
+  what: "a tiny task on the agent engine; writes hello.txt and one saved conversation in the throwaway folder, nothing in ~/.claude",
+  async run(ctx) {
+    const project = ctx.scratch("project"); const before = conversations(ctx.configDir);
+    const r = await turns(engineOn(ctx, model).start({ prompt: "Create a file named hello.txt in this folder containing the single word hi. Do nothing else, then stop.", project, model, signal: ctx.signal, budgetUsd: cap, authorize: insideOnly(project, true) }));
+    const saved = added(before, conversations(ctx.configDir));
+    ctx.note(`hello.txt = ${JSON.stringify(read(join(project, "hello.txt")).trim())}; saved conversations: ${saved.length}; in ~/.claude: ${inHomeClaude(project)}; cost ${r.usd}`);
+    return read(join(project, "hello.txt")).trim() === "hi" && saved.length >= 1 && !inHomeClaude(project);
+  },
+});
+// A read only diagnosis, as Rescue asks it: Opus 5.5 is the usual model for Rescue; Sonnet 5.5 is "Recommended" in Settings.
+const rescueOn = (name: string, model: string, estimate: number): Case => ({
+  name, models: [model], estimateUsd: estimate, capUsd: 0.3, timeoutS: 240,
+  what: `a read only diagnosis on ${model === OPUS ? "Opus 5.5 (thinking cannot be turned off there)" : "Sonnet 5.5"}; the project is not changed`,
+  async run(ctx) {
+    const project = ctx.scratch("project");
+    const page = `<!doctype html><html><body><button onclick="showGallery()">Show gallery</button><script>function show() { document.title = "ok"; }</script></body></html>`;
+    writeFileSync(join(project, "index.html"), page);
+    const r = await turns(engineOn(ctx, model).start({ prompt: "Read index.html. In one sentence, say why the Show gallery button does nothing. Change nothing.", project, model, signal: ctx.signal, budgetUsd: 0.3, planOnly: true, authorize: insideOnly(project, false) }));
+    ctx.note(`answer: ${r.text.trim().slice(0, 200)}`);
+    return /showGallery|not defined|named|show\(\)/i.test(r.text) && read(join(project, "index.html")) === page && !inHomeClaude(project);
+  },
+});
+
 export const SMOKE_CASES: Case[] = [
-  {
-    name: "main-engine-sonnet55", models: [SONNET], estimateUsd: 0.08, capUsd: 0.2, timeoutS: 180,
-    what: "a tiny task on the agent engine; writes hello.txt and one saved conversation in the throwaway folder, nothing in ~/.claude",
-    async run(ctx) {
-      const project = ctx.scratch("project"); const before = conversations(ctx.configDir);
-      const r = await turns(engineOn(ctx, SONNET).start({ prompt: "Create a file named hello.txt in this folder containing the single word hi. Do nothing else, then stop.", project, model: SONNET, signal: ctx.signal, budgetUsd: 0.2, authorize: insideOnly(project, true) }));
-      const saved = added(before, conversations(ctx.configDir));
-      ctx.note(`hello.txt = ${JSON.stringify(read(join(project, "hello.txt")).trim())}; saved conversations: ${saved.length}; in ~/.claude: ${inHomeClaude(project)}; cost ${r.usd}`);
-      return read(join(project, "hello.txt")).trim() === "hi" && saved.length >= 1 && !inHomeClaude(project);
-    },
-  },
-  {
-    name: "rescue-opus55", models: [OPUS], estimateUsd: 0.15, capUsd: 0.3, timeoutS: 240,
-    what: "a read only diagnosis on Opus 5.5 (thinking cannot be turned off there); the project is not changed",
-    async run(ctx) {
-      const project = ctx.scratch("project");
-      const page = `<!doctype html><html><body><button onclick="showGallery()">Show gallery</button><script>function show() { document.title = "ok"; }</script></body></html>`;
-      writeFileSync(join(project, "index.html"), page);
-      const r = await turns(engineOn(ctx, OPUS).start({ prompt: "Read index.html. In one sentence, say why the Show gallery button does nothing. Change nothing.", project, model: OPUS, signal: ctx.signal, budgetUsd: 0.3, planOnly: true, authorize: insideOnly(project, false) }));
-      ctx.note(`answer: ${r.text.trim().slice(0, 200)}`);
-      return /showGallery|not defined|named|show\(\)/i.test(r.text) && read(join(project, "index.html")) === page && !inHomeClaude(project);
-    },
-  },
-  ...[HAIKU45, HAIKU55].map((model): Case => ({
-    name: model === HAIKU45 ? "fast-haiku45" : "fast-haiku55", models: [model], estimateUsd: model === HAIKU45 ? 0.002 : 0.001, capUsd: 0.05, timeoutS: 90,
+  mainEngine("main-engine-sonnet55", SONNET, 0.08, 0.2),
+  mainEngine("main-engine-opus55", OPUS, 0.15, 0.3),
+  rescueOn("rescue-opus55", OPUS, 0.15),
+  rescueOn("rescue-sonnet55", SONNET, 0.06),
+  // The fast lane: Haiku 4.5 is the usual model for quick answers; Sonnet 5.5 is "Recommended" in Settings.
+  ...[HAIKU45, HAIKU55, SONNET].map((model): Case => ({
+    name: model === HAIKU45 ? "fast-haiku45" : model === HAIKU55 ? "fast-haiku55" : "fast-sonnet55", models: [model], estimateUsd: model === HAIKU45 ? 0.002 : model === HAIKU55 ? 0.001 : 0.004, capUsd: 0.05, timeoutS: 90,
     what: "a one turn answer on the fast lane, with no tools; saves no conversation",
     async run(ctx) {
       const before = conversations(ctx.configDir);

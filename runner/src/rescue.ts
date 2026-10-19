@@ -18,6 +18,9 @@ export function parseDiagnosis(text: string): Diagnosis | null {
   return { summary, works: strings(j?.works), broken, steps };
 }
 
+/** What each step of an off the record Rescue plan is told, since it has no conversation to carry on: what Rescue found. */
+export const rescueGoal = (d: Diagnosis): string => Array.from(`get this project working again. ${d.summary} What is wrong: ${d.broken}`).slice(0, 600).join("");
+
 export type Evidence = { label: string; status: string; detail: string };
 
 export const rescuePrompt = (evidence: Evidence[]) => {

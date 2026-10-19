@@ -19,22 +19,23 @@ export async function drawReceipt(before: PageShot | null, after: PageShot, sign
   try {
     const page = await browser.newPage({ viewport: { width: after.w, height: after.h } });
     if (!regions.length && before) {
-      const cells = await page.evaluate(diffCells, { a: after.jpeg, b: before.jpeg });
+      const cells = await page.evaluate(diffCells, { a: after.jpeg, b: before.jpeg, w: after.w });
       // Changed squares joined into a few circles. The sentinel keeps "everything is new" from applying.
       if (cells.length) { regions = changedRegions([{ key: "-", x: -9, y: -9, w: 1, h: 1 }], cells.map((c, i) => ({ key: `c${i}`, ...c })), view); how = "pixels"; }
     }
-    return { jpeg: regions.length ? await page.evaluate(ring, { a: after.jpeg, boxes: regions }) : after.jpeg, regions, how };
+    return { jpeg: regions.length ? await page.evaluate(ring, { a: after.jpeg, boxes: regions, w: after.w }) : after.jpeg, regions, how };
   } finally { signal?.removeEventListener("abort", stop); await browser.close().catch(() => {}); }
 }
 
 // Squares of 16 points whose colours differ clearly between the two pictures (JPEG noise stays under the bar).
-async function diffCells({ a, b }: { a: string; b: string }): Promise<Box[]> {
+// w: the page's own width (1280 at desktop size, 390 at phone size), so a picture is scaled to what it shows.
+async function diffCells({ a, b, w = 1280 }: { a: string; b: string; w?: number }): Promise<Box[]> {
   const load = async (src: string) => { const i = new Image(); i.src = `data:image/jpeg;base64,${src}`; await i.decode(); return i; };
   const [ai, bi] = [await load(a), await load(b)];
   if (ai.width !== bi.width || ai.height !== bi.height) return [];
   const px = (img: HTMLImageElement) => { const c = document.createElement("canvas"); c.width = img.width; c.height = img.height; const g = c.getContext("2d")!; g.drawImage(img, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
   const [A, B] = [px(ai), px(bi)];
-  const k = ai.width / 1280, cell = Math.round(16 * k), out: Box[] = [];
+  const k = ai.width / w, cell = Math.round(16 * k), out: Box[] = [];
   for (let y = 0; y < ai.height; y += cell) for (let x = 0; x < ai.width; x += cell) {
     let sum = 0, n = 0;
     for (let yy = y; yy < Math.min(y + cell, ai.height); yy += 2) for (let xx = x; xx < Math.min(x + cell, ai.width); xx += 2) {
@@ -46,11 +47,11 @@ async function diffCells({ a, b }: { a: string; b: string }): Promise<Box[]> {
 }
 
 // The page picture with an orange ring around each changed place.
-async function ring({ a, boxes }: { a: string; boxes: Box[] }): Promise<string> {
+async function ring({ a, boxes, w = 1280 }: { a: string; boxes: Box[]; w?: number }): Promise<string> {
   const i = new Image(); i.src = `data:image/jpeg;base64,${a}`; await i.decode();
   const c = document.createElement("canvas"); c.width = i.width; c.height = i.height;
   const g = c.getContext("2d")!; g.drawImage(i, 0, 0);
-  const k = i.width / 1280;
+  const k = i.width / w;
   g.lineWidth = 4 * k; g.strokeStyle = "#ff9a2e";
   // A rounded box a little bigger than the change, kept inside the picture so a full width change is still fully ringed.
   const pad = 7 * k, half = g.lineWidth / 2;

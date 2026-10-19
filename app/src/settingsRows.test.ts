@@ -142,7 +142,7 @@ describe("the rows for Home, the island and the character", () => {
     expect(shownNow("island.followDelay", with_("main"))).toBe(false);
     for (const def of REGISTRY.settings.filter((x) => x.key !== "island.followDelay")) expect(shownNow(def.key, with_("main")), def.key).toBe(true);
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(page).toContain("const results = searchSettings(q, REGISTRY.settings.filter((x) => shownNow(x.key, setting)));");
+    expect(page).toContain("const results = searchSettings(q, shownSettings().filter((x) => shownNow(x.key, setting)));");
   });
   test("Home size suggests Large when the text is larger than usual, and only then", () => {
     expect(homeSizeHint("larger", "standard")).toBe(S.setHomeLarger);

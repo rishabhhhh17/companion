@@ -195,8 +195,8 @@ describe("Explain", () => {
   });
   test("it can be turned off, and stays off", async () => {
     const t = setupE(explainer(good));
-    await t.runner.handle({ v: 1, id: "x", type: "explain.set", project: t.project, enabled: false } as never);
-    expect(of(t.events, "explain.state")[0].enabled).toBe(false);
+    await t.runner.handle({ v: 1, id: "x", type: "explain.set", project: t.project, mode: "off" } as never);
+    expect(of(t.events, "explain.state")[0]).toMatchObject({ enabled: false, mode: "off" });
     await t.start(); await Bun.sleep(100);
     expect(of(t.events, "explain.ready")).toEqual([]);
   });

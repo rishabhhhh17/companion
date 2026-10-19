@@ -110,7 +110,7 @@ choices from before the update back.
 - Everything: "Reset all settings to usual" at the bottom, with a confirm that names every setting that will change (so
   someone who paused learning reads "Pause learning" there). It resets `settings.json` (the app's and every project's
   values), the wrapped shell stores (come to, presentation, keys through Reset to the usual keys, voice to the Mac's own
-  choices) and the engine's (daily limit $10, Explain on, learning on, beta numbers off; their counts stay). It never
+  choices) and the engine's (daily limit $10, Explain back to reasons and a question, learning on, beta numbers off; their counts stay). It never
   touches the key, project folders, memory lines, history, undo points, pictures, per app answers or anything protective.
   A toast then offers Undo for 10 seconds, which puts the previous values back through `settings_set`.
 - What a reset changes is decided by the shell from exactly what the page was shown (`settings.rs` `reset_plan`), and the
@@ -118,9 +118,9 @@ choices from before the update back.
   keeps its own three settings, so the page names the ones it has heard away from usual and the shell resets only those.
   One the page has not heard yet is left as it is, and the confirm says "Left as they are, because Companion could not
   read them yet: ...". Undo puts the voice and the keys back only exactly as they were shown (`voice_from`, `keys_from`).
-- For area 2 (project settings): Reset all also clears every other project's values, but Undo puts back only the current
-  project's. Before the first project setting is registered, either make Reset all clear only this project's values or
-  make Undo restore the others, with a test.
+- For area 2 (project settings), decided and built with area 2: Reset this section and Reset all clear the app's values and
+  this project's only. Another project keeps its own, because the page was shown only this project's values and could
+  neither name the others first nor put them back with Undo (settings.rs test, and a shared reset case).
 
 ### Search
 A search box at the top of Settings (a search region; Esc in the box clears it). It matches section titles, labels, help
@@ -163,7 +163,52 @@ floor" means a fixed part that must be proven by a test before the setting ships
 | `drive.maxSteps` Most steps in a plan | number, 12 | runner | drive.ts | 3 to 20 | The estimate and the plan's budget still apply. Rescue plans stay 3 to 7. |
 | `drive.pauseOnMyEdits` Pause a plan when I change the project myself | switch, on | runner | agent.ts, watcher.ts | | Needs a floor: a test that undoing a step never puts back files the person changed during the plan. |
 | `work.tryAgain` Try again | choice carry_on / fresh, carry_on | runner | agent.ts, followup.ts | | Fresh still tells Claude how the last attempt ended. Off the record already starts fresh. |
-| `approval.waitMinutes` How long a question waits for your answer | number, 30 | runner | engine.ts, sdkEngine.ts HOOK_TIMEOUT_SECONDS | 5 to 120 minutes, step 5 | Needs a floor: no answer always counts as no. The SDK hook's limit is set from the ceiling (120 minutes plus a margin) at engine start. Read when each question is asked. |
+| `approval.waitMinutes` How long a question waits for your answer | number, 30 | runner | engine.ts, sdkEngine.ts HOOK_TIMEOUT_SECONDS | 5 to 30 minutes for now (5 to 120 once a real run proves the hook limit), step 5 | Needs a floor: no answer always counts as no. The SDK hook's limit is set from the ceiling (the top plus a margin) at engine start. Read when each question is asked. |
+
+Status of area 1 (19 Oct 2026, branch `m11/set-spend-work`): built and tested with fakes only (the scripted engine, fake
+checks, a fake SDK query on the plan route); the app was not built or opened and no real Claude run was made.
+- Built: the four budgets, `model.work`, `model.rescue`, `model.quick`, `work.tries`, `work.askOnAnyFailure`,
+  `drive.maxSteps`, `work.tryAgain` and `approval.waitMinutes`, each with today's behaviour as its usual value and tests at
+  the edges of its range. The budgets are read by the pages as the work starts and checked again there; the engine still
+  caps every budget at what is left of the day (tested at $50). The loop card and the different approach prompt say how
+  the tries really ran out (the usual three identical failures keep exactly today's words, and today's event). A plan keeps
+  the most steps it was made with; Rescue keeps 3 to 7. The safety hook's limit is set from the setting's top, plus 2
+  minutes.
+- How long a question waits goes from 5 to 30 minutes for now, not to 120 (review, 19 Oct 2026). A wait longer than 30
+  needs the SDK hook's limit above the 32 minutes relied on so far, and nobody has seen Claude Code honour a longer one
+  (T05 says what the SDK does when a hook times out has not been seen). If it gave up on the hook while a card was still
+  open, the tool would go on to Claude Code's own permission flow without Companion's answer. So the top stays at 30 and
+  the hook's limit stays 1,920 seconds, exactly as before the setting; the top goes to 120 in `protocol/settings.json` only
+  after a real run shows a hook still waiting past 32 minutes is honoured (the real run checklist, known gaps). Also from
+  the review: Claude Code's sandbox no longer runs a shell command on its own say so (`autoAllowBashIfSandboxed: false` in
+  `runner/src/sandbox.ts`), so a command the hook gave no answer for ends at `canUseTool`, which says no. An edit inside the
+  project that a house rule asks about would still go through `acceptEdits` in that case, which is why the top stays at 30.
+- The rough cost shown before Start follows the plan's model (review, 19 Oct 2026): $0.25 a step is today's figure for the
+  job's usual model (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue), and another model scales it by list price
+  (`drive.ts` `estimateUsd`, `models.ts` `priceRatio`; a model Companion does not know counts as the dearest it knows), so
+  a plan on Careful shows about twice as much, as its words say. The usual figures are unchanged. Found while looking, left for the founder: a Rescue's steps run on Opus 5.5 at the same
+  $0.25 a step as a Drive plan on Sonnet 5.5, so the usual Rescue figure may be about half too low for an "at most";
+  changing it changes what people see today. A pages test now checks that each model option's words name the model
+  `MODEL_CHOICES` sends and say its cost truly.
+- The model rows: each option names its own real smoke test case (`runner/src/models.ts` `MODEL_CHOICES`; three new cases
+  in `runner/scripts/smoke-real.ts`: `main-engine-opus55`, `rescue-sonnet55`, `fast-sonnet55`, making the plan about $0.75).
+  Nobody has run the smoke test yet (`SMOKE_PASSED` is empty), so only the usual option can be offered and all three rows are
+  hidden from Settings and search. A saved other choice still gets today's model. When the founder runs the smoke test with
+  `--spend` and a case passes, its name goes into `SMOKE_PASSED` (with the date in T10), and the row appears. Correction to
+  the note above: the engine does not refuse a model it does not know today (it sends the plain request and prices it as the
+  dearest model); the pages only ever send a model from `MODEL_CHOICES`, which a test checks are all known. Flag 3: Haiku 4.5
+  checked on 19 Oct 2026 against the model list bundled with the Claude API notes (cached 6 Oct 2026): still listed as active;
+  the live list is still to be checked before shipping.
+- Left out: `drive.pauseOnMyEdits`. Its floor asks for a test that undoing a step never puts back files the person changed
+  during the plan. Companion can tell the person's changes from Claude's only while none of Claude's own tools or the checks
+  is running (watcher.ts treats every change in those moments, and for half a second after, as Claude's), and with the plan
+  not pausing the person keeps editing exactly then. Undo would put those edits back with no way for a test to prove
+  otherwise, so the switch stays fixed at on. Building it needs a way to know which program changed a file, or a decision
+  to let Undo leave alone every file it cannot attribute. Found while looking: with pausing on, as today, undoing a step of a
+  paused and resumed plan also puts back the person's own edits (the Undo question says so: "Changes made since then,
+  including your own, are replaced").
+- Not proven: every row in the built app, by a person, with the keyboard and VoiceOver; a budget change reaching a real
+  task; a real Claude run of any switched model (the smoke test, only when the founder says go).
 
 ### Area 2: Checking your project (engine builder, proof; most settings are per project)
 
@@ -183,7 +228,61 @@ floor" means a fixed part that must be proven by a test before the setting ships
 | `pictures.keep` Pictures to keep | number, 200 | runner | agent.ts KEEP_PICTURES | 0 to 1000, step 50 | 0 shows the picture, then deletes it. Lowering says first how many go. |
 | `rescue.readDeployLog` Read my last Vercel deploy log when looking for a problem | switch, on | runner | agent.ts (Rescue and Point at the problem) | | Read only, through the person's own Vercel tool. |
 
+Status of area 2 (19 Oct 2026): built on `m11/set-checks` and tested with fakes and the real hidden browser on pages on
+this Mac (no real Claude run, the app not built or opened). Every setting above is wired end to end: the row, the shell,
+`settings.json` (house rules: the project's own rules.txt), `settings.apply`, and the engine reading it when a task or a
+check starts (`runner/src/proof/options.ts`). How it was built, where it differs from the table:
+- The button to press is found by its words (its label, value, accessible name or title), never as a selector, and is
+  pressed only when it is a plain button, link or tab whose words, and the real element's, do not sound risky; one that
+  sends a form or downloads something is not pressed either. Not pressed is a gap; not found fails the check, as a missing
+  word does. The press stays inside the page's own address and its writes are answered with "nothing to do".
+- The start choice is a choice whose other options are the project's own scripts (`optionsFrom`), from the project report:
+  only scripts that start the project (dev, develop, start, serve, preview and names built on them), and never one whose
+  name or text, or a script it runs, sounds like it deploys, publishes, deletes or changes data or git. The engine checks
+  again at use, and anything else means the usual way, as a gap. A chosen script that finishes without opening a page is a
+  gap, and the project is started the usual way, so the browser check still runs (F14).
+- Checks to leave out: the floor holds in three places (the registry's allowed items, the engine's own list, and the ladder,
+  which has no way to leave out the start or the browser check). A check left out is a gap, so at best passed with gaps.
+  The guards against weakened checks and tests still run when the tests are left out.
+- The house rule "ask before installing packages" (or a rules file that cannot be read) now makes the check's own install
+  ask first, which it did not before; with the rule present the row says so. With the packages not installed (never, or no
+  yes), a check, the tests or the start that cannot run without them ("command not found", a missing package) is a gap,
+  never a failure, so a task's fix loop is not started over it; a missing file of the project's own still fails. After the
+  question the agent goes back to what it was doing, and Ship's stand in to idle. The question waits as long as any other
+  (area 1's `approval.waitMinutes`, read as it is asked), and no answer is still a no.
+- House rules: Save says which project's list it is, and the shell refuses it for another one (the folder can change by
+  itself); a list not saved yet goes when the folder changes. No Undo changes the rules file (T16).
+- Page size phone: the before picture is taken at phone size too, and the receipt's rings are scaled to the page's own
+  width (they were placed for 1280 wide before).
+- Pictures to keep: Settings counts the pictures kept (`data_inventory`) and asks first when a lower number means some go.
+- Not proven on a real Mac: the rows with a real project folder (Save writing rules.txt, the scripts and proof.json shown),
+  the install question on the card during a real check, a real slow network, and VoiceOver and keyboard on the new rows.
+- The changelog line is left for the founder to add when merging, as for the core: "Settings has a Checking your project
+  section: house rules, words the page must show, a button to press, how to start the project, checks to leave out (said
+  as a gap), time allowed, installing packages (the check now asks first when your house rule says so), page size, slow
+  internet, and pictures. Phone size pictures are ringed in the right place, and Reset all leaves other projects' settings
+  alone."
+
 ### Area 3: Memory, Explain and teaching (engine builder, with small page changes)
+
+Status (19 Oct 2026): built on `m11/set-memory-teach` and tested with fakes (every suite); not tried in the built app by a
+person. `explain.on` is gone: `explain.mode` replaced it, in memory-settings.json, and `explain.set` and `explain.state`
+carry the choice (`mode`). The other engine settings are kept in settings.json and read when a task (or its planning)
+starts. `teach.yourTurn` is now read by the engine too (it is sent with `settings.apply`, again after the migration), and
+shows "From the next task", because an offer is worked out as a task ends. Found and fixed while building it: the goal of
+an approved plan was written just before the plan's watcher started, so the memory file and a new AGENTS.md could arrive
+as file events and pause the plan as if the person had changed the project; it is now written once the watcher is
+looking, as Companion's own write. Also found: Home asked for Where was I with the folder as it was when Home first drew
+(none yet), so it was never asked for; it now reads the folder chosen when Home opens, so after a 30 minute break it shows
+as designed (to be seen on a real Mac). Every row below is built; nothing was left out.
+
+After review: the setting going off (on the Settings tab, Reset all, Reset this section, Undo, or an unreadable settings
+file) unticked a box with words in it, so words typed off the record were then kept as the draft; the box now never
+unticks itself while words are in it (`memorySettings.ts` `offBoxAfter`). Rescue and Look up sat under the box but ignored
+it; they now go off the record with it (`offTheRecord` on `rescue.diagnose` and `research.ask`): nothing learned or told,
+no saved conversation, a Rescue plan's steps off the record too, and Look up files no notes. Words put back after a refusal
+come back with the box as they were sent. The one usual value that changes what a person sees is `recap.after`: Where
+was I now appears after a 30 minute break, as designed, where before it never did. That default waits for the founder's yes.
 
 | Setting | Control, usual | Applies | Where today | Range | Notes |
 |---|---|---|---|---|---|
@@ -194,7 +293,7 @@ floor" means a fixed part that must be proven by a test before the setting ships
 | `memory.rememberGoals` Remember the goals of plans I approve | switch, on | runner | agent.ts | | |
 | `memory.tellClaude` Tell Claude what Companion remembers | switch, on | runner | memory/store.ts forAgent, agent.ts, main.ts | | Covers tasks and Prompt help. The Pause row says plainly it only stops new lines. |
 | `memory.recallLength` How much Claude is told from memory | choice short / normal / long, normal | runner | store.ts, main.ts | 500 and 100, 1500 and 300, 3000 and 600 words | Longer costs more on every task; the help says so. |
-| `task.offRecordByDefault` Start every task off the record | switch, off | pages | card.tsx | | What off the record keeps can never be loosened. |
+| `task.offRecordByDefault` Start every task off the record | switch, off | pages | card.tsx | | What off the record keeps can never be loosened. The box covers Start, Plan it, Rescue and Look up, and never unticks itself while words are in it. |
 | `memory.toastSeconds` How long "Remembered" stays, with Undo | choice 5 / 10 / 20 / 60 / untilClosed, 10 | pages | card.tsx | | Timing a person can change (accessibility). |
 | `recap.after` Show Where was I after a break of | choice off / 30min / 2h / nextDay, 30min | pages | card.tsx AWAY_MS | | Also: teach.yourTurn (moved by the core) should make the engine skip working out Your turn when off. |
 
@@ -303,7 +402,7 @@ and `calls.quiet` (on, presentation.json, shell), `showme.allScreens` (off, migr
 migrated, pages), `teach.yourTurn` (off, migrated, pages), `display.textSize` (Standard, Large, Larger, Largest; migrated;
 pages), `updates.daily` (on, migrated, pages), `spend.dailyLimit` (1 to 500 dollars, step 0.01, usual 10; spending.json;
 the engine), `explain.on` (on; memory-settings.json; the engine), `memory.paused` (off; memory-settings.json; the engine),
-`numbers.on` (off; metrics.json; the engine), and `work.maxTurns`.
+`numbers.on` (off; metrics.json; the engine), and `work.maxTurns`. (Area 3 replaced `explain.on` with `explain.mode`.)
 
 ### The worked example
 `work.maxTurns`: number, section work, usual 80, 20 to 200, step 10, a count, for every project, applied by the engine,

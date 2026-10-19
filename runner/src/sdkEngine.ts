@@ -8,12 +8,17 @@ import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/clau
 import { homedir } from "node:os";
 import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
 import { thinkingFor } from "./models.ts";
-import { APPROVAL_TIMEOUT_MS, EngineStop, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
+import { APPROVAL_TIMEOUT_MS, EngineStop, MAX_APPROVAL_WAIT_MS, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
 
 // The safety hook waits while an approval card is open. Its own time limit (in seconds, the SDK's unit) is set longer than a
-// card lives, so the SDK never gives up on the hook first and lets the tool fall through to its normal permission flow
-// without our answer: an unanswered card ends as a no, and that no is what the SDK gets.
-export const HOOK_TIMEOUT_SECONDS = Math.ceil(APPROVAL_TIMEOUT_MS / 1000) + 120;
+// card can ever live (the longest wait the setting allows, not the one chosen now, so a wait changed while the engine runs
+// can never outlive it), so the SDK never gives up on the hook first and lets the tool fall through to its normal
+// permission flow without our answer: an unanswered card ends as a no, and that no is what the SDK gets. 32 minutes today
+// (the setting's top is 30). [verify] Nobody has seen what Claude Code does with a longer hook limit; if it ever gave up on
+// the hook first, a shell command still could not run on the sandbox's say so (autoAllowBashIfSandboxed is off,
+// sandbox.ts), but an edit inside the project that a house rule asks about would go through acceptEdits. So the top stays at
+// 30 until a real run proves a longer limit is honoured.
+export const HOOK_TIMEOUT_SECONDS = Math.ceil(Math.max(APPROVAL_TIMEOUT_MS, MAX_APPROVAL_WAIT_MS) / 1000) + 120;
 
 // From a finished shell command's result, only the one fact the safety rules use: the id of a command it left running in
 // the background (BashOutput.backgroundTaskId in the SDK's types). Anything odd is dropped. UNPROVEN until a real run shows
