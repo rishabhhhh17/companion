@@ -30,7 +30,7 @@ pub const PAGE_STORAGE_MARK: &str = "pageStorage.v1";
 /// metrics.set), which only the shell sends.
 pub const RUNNER_STORES: &[&str] = &["spending", "memory", "metrics"];
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
-const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "promptHelpApps", "spending", "memory", "metrics"];
+const STORES: &[&str] = &["settings", "dock", "presentation", "keys", "voice", "promptHelpApps", "spending", "memory", "metrics", "rules"];
 /// The stores with their own editor, shown by a custom row: the keys, the voice, and the per app answers (prompt_help.json).
 #[cfg_attr(not(test), allow(dead_code))]   // the registry is checked by the tests; the app reads the shipped one
 pub const EDITOR_STORES: &[&str] = &["keys", "voice", "promptHelpApps"];
@@ -56,7 +56,7 @@ impl Kind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     pub key: String, pub section: String, pub kind: Kind, pub default: Value,
-    pub options: Vec<String>, pub min: f64, pub max: f64, pub step: f64, pub unit: String,
+    pub options: Vec<String>, pub options_from: Option<String>, pub min: f64, pub max: f64, pub step: f64, pub unit: String,
     pub max_length: usize, pub max_items: usize, pub item_max_length: usize, pub allowed_items: Option<Vec<String>>,
     /// A list's items must also have this shape: empty for any one line, or "appId" (an app's bundle id, as stored for
     /// Apps that count as a call: ids only, never anything else, rule 7).
@@ -103,7 +103,7 @@ pub fn parse_registry(text: &str) -> Result<Registry, String> {
         if d.get("floor").is_some_and(|f| !f.as_str().is_some_and(|t| !t.is_empty())) { problems.push(format!("{key}: floor must name its words")); }
         defs.push(Def {
             key: key.clone(), section: s("section"), kind, default: d.get("default").cloned().unwrap_or(Value::Null),
-            options: strs(d.get("options")), min: n("min"), max: n("max"), step: n("step"), unit: s("unit"),
+            options: strs(d.get("options")), options_from: d.get("optionsFrom").and_then(Value::as_str).map(str::to_string), min: n("min"), max: n("max"), step: n("step"), unit: s("unit"),
             max_length: u("maxLength"), max_items: u("maxItems"), item_max_length: d.get("item").and_then(|i| i.get("maxLength")).and_then(Value::as_u64).unwrap_or(0) as usize,
             item_shape: d.get("item").and_then(|i| i.get("shape")).map(|x| x.as_str().unwrap_or("?").to_string()).unwrap_or_default(),
             allowed_items: d.get("allowedItems").map(|a| strs(Some(a))),
@@ -139,8 +139,10 @@ pub fn check_registry(r: &Registry) -> Vec<String> {
             continue;
         }
         if EDITOR_STORES.contains(&d.store.as_str()) { bad("that store has its own editor"); }
+        if d.store == "rules" && !(d.kind == Kind::List && d.protective && d.project) { bad("the house rules file holds only a protective list for a project"); }
+        if d.options_from.as_deref().is_some_and(|f| f != "projectScripts") || (d.options_from.is_some() && d.kind != Kind::Choice) { bad("only a choice can take its other options from the project's scripts"); }
         if d.runner_store() && (d.applies != ["runner"] || d.project) { bad("the engine's own stores are applied by the engine, for every project"); }
-        if d.kind == Kind::Choice { let mut u = std::collections::BTreeSet::new(); if d.options.len() < 2 || !d.options.iter().all(|o| !o.is_empty() && u.insert(o.clone())) { bad("a choice needs two or more different options"); } }
+        if d.kind == Kind::Choice { let mut u = std::collections::BTreeSet::new(); if d.options.len() < if d.options_from.is_some() { 1 } else { 2 } || !d.options.iter().all(|o| !o.is_empty() && u.insert(o.clone())) { bad("a choice needs two or more different options"); } }
         if d.kind == Kind::Number {
             if !(d.min.is_finite() && d.max.is_finite() && d.step.is_finite() && d.min < d.max && d.step > 0.0) { bad("a number needs min below max and a step above 0"); }
             else { let n = (d.max - d.min) / d.step; if (n - n.round()).abs() > 1e-9 { bad("the step must fit from min to max"); } }
@@ -204,11 +206,26 @@ fn one_line(v: &Value, max: usize) -> Result<String, &'static str> {
     Ok(t.to_string())
 }
 
+/// A choice whose other options come from the project (check.start) takes a script's name, never a command: a letter or
+/// digit first, then letters, digits and : . _ -, up to 60 of them (the same as settings.ts SCRIPT_NAME).
+pub fn script_name(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty() && b.len() <= 60 && b[0].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || b":._-".contains(c))
+}
+
+/// And only a script that starts the project: dev, develop, start, serve or preview, alone or with more after a : . _ or -
+/// (dev:web, start.local). Never a build, a lint, the tests, an install step or a deploy (the same as settings.ts
+/// isStartScript); the engine checks again at use that the script is there and does not sound like it deploys or deletes.
+pub fn start_script(s: &str) -> bool {
+    const WORDS: [&str; 5] = ["dev", "develop", "start", "serve", "preview"];
+    script_name(s) && WORDS.iter().any(|w| s == *w || (s.len() > w.len() + 1 && s.starts_with(w) && b":._-".contains(&s.as_bytes()[w.len()])))
+}
+
 /// Checks one value against its definition and gives it back tidied (trimmed, on its step). The error is a code.
 pub fn validate(d: &Def, v: &Value) -> Result<Value, &'static str> {
     match d.kind {
         Kind::Switch => v.as_bool().map(Value::Bool).ok_or("notSwitch"),
-        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s)).map(|s| json!(s)).ok_or("notChoice"),
+        Kind::Choice => v.as_str().filter(|s| d.options.iter().any(|o| o == s) || (d.options_from.as_deref() == Some("projectScripts") && start_script(s))).map(|s| json!(s)).ok_or("notChoice"),
         Kind::Number => {
             let Some(n) = v.as_f64().filter(|_| v.is_number()) else { return Err("notNumber") };
             if !n.is_finite() { return Err("notNumber"); }
@@ -426,17 +443,16 @@ pub fn reset_plan(r: &Registry, which: Which, values: &Map<String, Value>, usual
     }).map(|d| d.key.clone()).collect())
 }
 
-/// Puts the settings kept in settings.json back to their usual values (removing them). One setting or a section: the
-/// app's value and this project's. Everything: the app's and every project's. Names this version does not know stay.
+/// Puts the settings kept in settings.json back to their usual values (removing them): the app's value and this project's,
+/// for one setting, a section or everything. Another project's own values stay as they are: the page was shown only this
+/// project's, so it could neither name the others first nor put them back with Undo. Names this version does not know stay.
 /// Returns the settings whose value in force changed.
 pub fn reset(r: &Registry, f: &mut File, which: Which, project: Option<&str>) -> Result<Vec<String>, &'static str> {
     let targets: Vec<Def> = reset_targets(r, which)?.into_iter().filter(|d| d.store == "settings" && d.kind != Kind::Custom).cloned().collect();
     let before = effective(r, f, project);
     for d in &targets {
         f.values.remove(&d.key);
-        if which == Which::All {
-            for (_, m) in f.projects.iter_mut() { if let Some(m) = m.as_object_mut() { m.remove(&d.key); } }
-        } else if let Some(p) = project.filter(|p| !p.is_empty()) {
+        if let Some(p) = project.filter(|p| !p.is_empty()) {
             if let Some(m) = f.projects.get_mut(&project_key(p)).and_then(Value::as_object_mut) { m.remove(&d.key); }
         }
     }
@@ -486,7 +502,7 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
     let p = if project.is_empty() { crate::runner::NO_PROJECT } else { project };
     Some(match key {
         "spend.dailyLimit" => json!({ "v": 1, "id": id, "type": "spending.set", "project": p, "limitUsd": v.as_f64()? }),
-        "explain.on" => json!({ "v": 1, "id": id, "type": "explain.set", "project": p, "enabled": v.as_bool()? }),
+        "explain.mode" => json!({ "v": 1, "id": id, "type": "explain.set", "project": p, "mode": v.as_str()? }),
         "memory.paused" => json!({ "v": 1, "id": id, "type": "memory.pause", "project": p, "paused": v.as_bool()? }),
         "numbers.on" => json!({ "v": 1, "id": id, "type": "metrics.set", "enabled": v.as_bool()? }),
         _ => return None,
@@ -496,12 +512,74 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
 /// Only Home's own window may change settings (as with every other change in Settings).
 pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card" { Ok(()) } else { Err("not_card") } }
 
+/// The project a change is for. A page that says which project it was shown (house rules always do) has its change kept
+/// only while that is still the project in Home: the folder can change by itself in between (a copy from a link that
+/// finishes opens its folder), and one project's house rules must never be written over another's ("projectChanged").
+/// A change that names no project (Undo after a reset) is for the current one, as before.
+pub fn for_project<'a>(d: &Def, asked: Option<&'a str>, current: Option<&'a str>) -> Result<Option<&'a str>, &'static str> {
+    match asked {
+        Some(a) if Some(a) == current => Ok(Some(a)),
+        Some(_) => Err("projectChanged"),
+        None if d.store == "rules" => Err("projectChanged"),
+        None => Ok(current),
+    }
+}
+
 // ---------- the stores that stay where they were (wrapped) ----------
 
-/// dock.json: "Come to what it is about".
-pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> { (key == "character.comeTo").then(|| json!(p.come_to)) }
+/// dock.json: "Come to what it is about", and the character's place on the display it is on now (`last_screen`, the
+/// display apply_dock put it on): its edge, its position along it in percent on the row's step (0 the top or left end,
+/// 100 the bottom or right end; a place dragged by hand is shown on the nearest step, and kept exactly in dock.json), and
+/// "Same place on every display".
+pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> {
+    let (edge, pct) = crate::docking::choice(p, &p.last_screen);
+    Some(match key {
+        "character.comeTo" => json!(p.come_to),
+        "character.edge" => json!(edge.word()),
+        "character.position" => { let d = registry().get(key)?; snap(pct * 100.0, d.min, d.step, d.max) }
+        "character.sameEverywhere" => json!(p.same_everywhere.is_some()),
+        _ => return None,
+    })
+}
+/// A place dragged off the step is shown on the nearest one, so Undo after a reset needs more to put the character back
+/// exactly where it was: the position's Undo value, the fraction along the edge as dock.json keeps it. None when the
+/// place is on its step (Undo then sends the shown value, as for every other setting).
+pub fn dock_restore(p: &crate::docking::Prefs) -> Option<(&'static str, Value)> {
+    let (_, pct) = crate::docking::choice(p, &p.last_screen);
+    let shown = dock_value(p, "character.position")?.as_f64()?;
+    ((shown - pct * 100.0).abs() > 1e-9).then(|| ("character.position", json!({ "fraction": pct })))
+}
+/// Undo's exact place for the position: `{"fraction": 0 to 1}` and nothing else.
+pub fn place_from(v: &Value) -> Option<f64> {
+    let o = v.as_object().filter(|o| o.len() == 1)?;
+    o.get("fraction")?.as_f64().filter(|f| f.is_finite() && (0.0..=1.0).contains(f))
+}
+/// What a change to a dock.json setting may be: a value its definition allows (put on its step), or for the position
+/// Undo's exact place (`place_from`). The error is a code, as from `validate`.
+pub fn dock_input(d: &Def, v: &Value) -> Result<Value, &'static str> {
+    if d.key == "character.position" && place_from(v).is_some() { return Ok(v.clone()); }
+    validate(d, v)
+}
+/// The same, changed: a place is changed on the display the character is on now, and only there (each other display keeps
+/// its own), and with Same place on every display on the copy follows it. None when nothing can change (a value that is
+/// not one, or no display known yet).
 pub fn dock_with(p: &crate::docking::Prefs, key: &str, v: &Value) -> Option<crate::docking::Prefs> {
-    (key == "character.comeTo").then(|| v.as_bool()).flatten().map(|b| crate::docking::Prefs { come_to: b, ..p.clone() })
+    let mut next = p.clone();
+    let here = p.last_screen.clone();
+    let place = |next: &mut crate::docking::Prefs, at: (crate::docking::Edge, f64)| {
+        next.per_screen.insert(here.clone(), at);
+        if next.same_everywhere.is_some() { next.same_everywhere = Some(at); }
+    };
+    let (edge, pct) = crate::docking::choice(p, &here);
+    match key {
+        "character.comeTo" => next.come_to = v.as_bool()?,
+        _ if here.is_empty() => return None,
+        "character.edge" => place(&mut next, (crate::docking::Edge::of(v.as_str()?)?, pct)),
+        "character.position" => place(&mut next, (edge, match place_from(v) { Some(f) => f, None => (v.as_f64().filter(|n| n.is_finite())? / 100.0).clamp(0.0, 1.0) })),
+        "character.sameEverywhere" => next.same_everywhere = if v.as_bool()? { Some((edge, pct)) } else { None },
+        _ => return None,
+    }
+    Some(next)
 }
 /// presentation.json: hide from screen sharing and quiet during calls.
 pub fn presentation_value(s: &crate::presentation::Settings, key: &str) -> Option<Value> {
@@ -533,7 +611,8 @@ pub fn keys_from(v: &Value) -> Result<crate::keymap::Map, &'static str> {
 
 /// What the wrapped stores hold now, read by main.rs. `ph_apps`: the per app answers as prompt_help.json keeps them
 /// (prompthelp.rs `Consent::to_json`).
-pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved, pub ph_apps: Value }
+/// `rules`: the current project's own .companion/rules.txt (houserules.rs): Ok(None) when there is none or no project.
+pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::presentation::Settings, pub keys: crate::keymap::Map, pub voice: crate::voiceset::Saved, pub ph_apps: Value, pub rules: Result<Option<String>, &'static str> }
 
 /// What every page is told ("settings-changed", and settings_get's answer): each value in force the shell keeps (the
 /// engine's own three come from its events), each setting's usual value (for keys and voice, their own usual ones),
@@ -541,6 +620,8 @@ pub struct Wrapped { pub dock: crate::docking::Prefs, pub presentation: crate::p
 pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, problems: &[Problem], changed: &[String]) -> Value {
     let mut values = Map::new();
     let mut usual = Map::new();
+    let mut problems = problems.to_vec();
+    let has_project = project.is_some_and(|p| !p.is_empty() && p != crate::runner::NO_PROJECT);
     for d in &r.defs {
         if d.runner_store() { usual.insert(d.key.clone(), d.default.clone()); continue; }
         let v = match d.store.as_str() {
@@ -550,15 +631,22 @@ pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, prob
             "keys" => Some(keys_value(&w.keys)),
             "voice" => Some(voice_value(&w.voice)),
             "promptHelpApps" => Some(w.ph_apps.clone()),
+            // The project's own rules file: shown only for a project, and a file that cannot be read here is a problem.
+            "rules" if has_project => match &w.rules {
+                Ok(text) => Some(json!(crate::houserules::value(text.as_deref()))),
+                Err(code) => { problems.push(Problem { key: Some(d.key.clone()), code }); None }
+            },
             _ => None,
         };
         if let Some(v) = v { values.insert(d.key.clone(), v); }
         let u = match d.store.as_str() { "keys" => keys_value(&crate::keymap::Map::DEFAULT), "voice" => voice_value(&crate::voiceset::Saved::default()), "promptHelpApps" => crate::prompthelp::Consent::default().to_json(), _ => d.default.clone() };
         usual.insert(d.key.clone(), u);
     }
+    // A value shown rounded, and what Undo sends to put it back exactly (settingsStore.ts undoValues).
+    let restore: Map<String, Value> = dock_restore(&w.dock).into_iter().map(|(k, v)| (k.to_string(), v)).collect();
     json!({
         "values": values, "usual": usual, "project": project.unwrap_or(""), "migrated": f.migrated,
-        "problems": problems.iter().map(Problem::to_json).collect::<Vec<_>>(), "changed": changed,
+        "problems": problems.iter().map(Problem::to_json).collect::<Vec<_>>(), "changed": changed, "restore": restore,
     })
 }
 
@@ -780,11 +868,14 @@ mod tests {
         assert_eq!(reset(&r, &mut f, Which::Section("checks"), Some(site)).unwrap(), vec!["checks.mustSee".to_string()]);
         assert_eq!(value_of(&r, &f, "checks.rules", Some(site)), Some(json!(["never edit .env"])));
         assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!(["Hello"])), "another project is left alone by a section");
-        // Everything: the app's and every project's, still never the protective list; the migration mark stays.
+        // Everything: the app's and this project's, still never the protective list; the migration mark stays. Another
+        // project keeps its own: the page was shown only this project's values, so Undo could only put those back.
+        set(&r, &mut f, "checks.mustSee", &json!(["Welcome"]), Some(site)).unwrap();
         f.migrated.push(PAGE_STORAGE_MARK.into());
         reset(&r, &mut f, Which::All, Some(site)).unwrap();
         assert_eq!(value_of(&r, &f, "work.fun", None), Some(json!(true)));
-        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!([])));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(site)), Some(json!([])));
+        assert_eq!(value_of(&r, &f, "checks.mustSee", Some(other)), Some(json!(["Hello"])), "another project keeps its own");
         assert_eq!(value_of(&r, &f, "checks.rules", Some(site)), Some(json!(["never edit .env"])));
         assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
         // The engine's own store is in a reset's targets (main.rs sends its command), and the protective one is not.
@@ -838,7 +929,7 @@ mod tests {
         // Fake stores: come to off, quiet during calls off, other keys for Stop everything, another voice.
         let stop = keymap::choices(keymap::Action::Stop)[1];
         let voice = crate::voiceset::Saved { voice: Some(crate::voiceset::Named { id: "v".into(), name: "Ava".into(), lang: "en-US".into() }), speed: 1.25, ..Default::default() };
-        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice, ph_apps: json!({ "apps": { "com.example.chat": "always" } }) };
+        let w = Wrapped { dock: crate::docking::Prefs { come_to: false, ..Default::default() }, presentation: crate::presentation::Settings { quiet_on_calls: false, ..Default::default() }, keys: keymap::Map::DEFAULT.with(keymap::Action::Stop, stop), voice, ph_apps: json!({ "apps": { "com.example.chat": "always" } }), rules: Ok(None) };
         let mut f = File::default();
         set(registry(), &mut f, "fun.reactions", &json!(false), None).unwrap();
         let snap = snapshot(registry(), &f, None, &w, &[], &[]);
@@ -849,7 +940,7 @@ mod tests {
         assert_eq!(reset_plan(registry(), Which::Section("sharing"), values, usual, &[]).unwrap(), vec!["calls.quiet".to_string()]);
         assert!(reset_plan(registry(), Which::Key("sharing.hide"), values, usual, &[]).unwrap().is_empty(), "already usual");
         // Every store at its usual value: nothing to reset.
-        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default(), ph_apps: json!({ "apps": {} }) };
+        let plain = Wrapped { dock: Default::default(), presentation: Default::default(), keys: keymap::Map::DEFAULT, voice: Default::default(), ph_apps: json!({ "apps": {} }), rules: Ok(None) };
         let s2 = snapshot(registry(), &File::default(), None, &plain, &[], &[]);
         assert!(reset_plan(registry(), Which::All, s2["values"].as_object().unwrap(), s2["usual"].as_object().unwrap(), &[]).unwrap().is_empty());
     }
@@ -945,16 +1036,60 @@ mod tests {
         set(registry(), &mut g, "fun.reactions", &json!(false), None).unwrap();
         let l: Value = serde_json::from_str(&apply_line(registry(), &g, None, "s4")).unwrap();
         assert_eq!(l["values"], json!({ "work.maxTurns": 150 }));
+        // Memory, Explain and teaching (area 3): what the engine reads reaches it, Your turn included; the pages' own do not.
+        let mut h = File::default();
+        let area = [("explain.after", json!("plansOnly")), ("memory.learnFromFiles", json!(false)), ("memory.learnFromWords", json!(false)), ("memory.rememberGoals", json!(false)), ("memory.tellClaude", json!(false)), ("memory.recallLength", json!("long")), ("teach.yourTurn", json!(true)), ("task.offRecordByDefault", json!(true)), ("memory.toastSeconds", json!("60")), ("recap.after", json!("off"))];
+        for (k, v) in area.iter() { assert!(set(registry(), &mut h, k, v, None).unwrap(), "{k}"); }
+        let l: Value = serde_json::from_str(&apply_line(registry(), &h, None, "s5")).unwrap();
+        assert_eq!(l["values"], json!({ "explain.after": "plansOnly", "memory.learnFromFiles": false, "memory.learnFromWords": false, "memory.rememberGoals": false, "memory.tellClaude": false, "memory.recallLength": "long", "teach.yourTurn": true }));
+        // Explain after a task is the engine's own (memory-settings.json), so it is never kept here.
+        assert!(set(registry(), &mut h, "explain.mode", &json!("off"), None).is_err());
+    }
+    #[test]
+    fn a_migrated_setting_the_engine_reads_reaches_it_at_once() {
+        // Your turn came from page storage, and the engine reads it now (it works out an offer only when it is on), so the
+        // migration sends the engine its settings again, as any other change it applies does.
+        let d = registry().get("teach.yourTurn").unwrap();
+        assert!(d.from_page.is_some() && needs_apply(d));
+        let main = include_str!("main.rs");
+        let at = main.find("fn settings_migrate(").unwrap();
+        let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
+        assert!(body.contains("if written.iter().any(|k| settings::registry().get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }"), "{body}");
+    }
+    #[test]
+    fn area_1_the_engine_is_given_how_work_runs_and_never_the_budgets_or_models_the_pages_send() {
+        let mut f = File::default();
+        for (k, v) in [("work.tries", json!(5)), ("work.askOnAnyFailure", json!(true)), ("work.tryAgain", json!("fresh")), ("drive.maxSteps", json!(3)), ("approval.waitMinutes", json!(20)), ("model.quick", json!("recommended")),
+                       ("budget.task", json!(12.5)), ("budget.plan", json!(20)), ("budget.rescue", json!(1)), ("budget.research", json!(50)), ("model.work", json!("careful")), ("model.rescue", json!("recommended"))] {
+            assert_eq!(set(registry(), &mut f, k, &v, None), Ok(true), "{k}");
+            let d = registry().get(k).unwrap();
+            assert_eq!(needs_apply(d), d.applies_to("runner"), "{k}");
+        }
+        let l: Value = serde_json::from_str(&apply_line(registry(), &f, None, "a1")).unwrap();
+        assert_eq!(l["values"], json!({ "work.tries": 5, "work.askOnAnyFailure": true, "work.tryAgain": "fresh", "drive.maxSteps": 3, "approval.waitMinutes": 20, "model.quick": "recommended" }));
+        // The usual values are never stored, so putting one back reaches the engine as a missing name.
+        for k in ["work.tries", "approval.waitMinutes"] { let usual = registry().get(k).unwrap().default.clone(); set(registry(), &mut f, k, &usual, None).unwrap(); }
+        let l: Value = serde_json::from_str(&apply_line(registry(), &f, None, "a2")).unwrap();
+        assert!(l["values"].get("work.tries").is_none() && l["values"].get("approval.waitMinutes").is_none());
+        // Out of range is refused here too, before anything is kept or sent.
+        assert_eq!(set(registry(), &mut f, "budget.task", &json!(50.5), None), Err("tooHigh"));
+        assert_eq!(set(registry(), &mut f, "approval.waitMinutes", &json!(4), None), Err("tooLow"));
+        // The longest wait is 30 minutes until a real run shows a safety hook still waiting past 32 minutes is honoured (T05).
+        assert_eq!(set(registry(), &mut f, "approval.waitMinutes", &json!(35), None), Err("tooHigh"));
+        assert_eq!(set(registry(), &mut f, "approval.waitMinutes", &json!(120), None), Err("tooHigh"));
+        assert_eq!(set(registry(), &mut f, "model.work", &json!("claude-opus-5-5"), None), Err("notChoice"));
     }
     #[test]
     fn the_engines_own_settings_go_to_it_as_its_own_commands() {
         let c = runner_command("spend.dailyLimit", &json!(25), "", "i").unwrap();
         assert_eq!((c["type"].as_str(), c["project"].as_str(), c["limitUsd"].as_f64()), (Some("spending.set"), Some(crate::runner::NO_PROJECT), Some(25.0)));
-        assert_eq!(runner_command("explain.on", &json!(false), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "explain.set", "project": "/p", "enabled": false }));
+        assert_eq!(runner_command("explain.mode", &json!("reasons"), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "explain.set", "project": "/p", "mode": "reasons" }));
+        assert_eq!(runner_command("explain.mode", &json!("off"), "", "i").unwrap()["project"], crate::runner::NO_PROJECT);
         assert_eq!(runner_command("memory.paused", &json!(true), "/p", "i").unwrap()["type"], "memory.pause");
         assert_eq!(runner_command("numbers.on", &json!(true), "/p", "i").unwrap(), json!({ "v": 1, "id": "i", "type": "metrics.set", "enabled": true }));
         assert!(runner_command("fun.reactions", &json!(true), "/p", "i").is_none());
-        assert!(runner_command("explain.on", &json!("yes"), "/p", "i").is_none());
+        assert!(runner_command("explain.mode", &json!(true), "/p", "i").is_none());
+        assert!(runner_command("explain.on", &json!(false), "/p", "i").is_none());   // replaced by explain.mode
         // Every one of the engine's own settings in the registry has its command.
         for d in registry().defs.iter().filter(|d| d.runner_store()) { assert!(runner_command(&d.key, &d.default, "", "i").is_some(), "{}", d.key); }
     }
@@ -997,6 +1132,66 @@ mod tests {
         assert!(body("fn settings_writable(").contains("settings::ready_to_save("));
     }
     #[test]
+    fn house_rules_are_shown_from_the_projects_own_file_and_no_reset_ever_touches_them() {
+        let w = |rules: Result<Option<String>, &'static str>| Wrapped { dock: Default::default(), presentation: Default::default(), keys: crate::keymap::Map::DEFAULT, voice: Default::default(), ph_apps: json!({ "apps": {} }), rules };
+        let snap = snapshot(registry(), &File::default(), Some("/p"), &w(Ok(Some("# mine\nnever edit .env\nask before installing packages\n".into()))), &[], &[]);
+        assert_eq!(snap["values"]["rules.house"], json!(["never edit .env", "ask before installing packages"]));
+        assert_eq!(snap["usual"]["rules.house"], json!([]));
+        // A file that cannot be read here: no value, and one plain problem, so the row can say so and Save is refused.
+        let bad = snapshot(registry(), &File::default(), Some("/p"), &w(Err(crate::houserules::UNREADABLE)), &[], &[]);
+        assert!(bad["values"].get("rules.house").is_none());
+        assert_eq!(bad["problems"], json!([{ "key": "rules.house", "code": "rulesUnreadable" }]));
+        // No project chosen: no rules shown.
+        let none = snapshot(registry(), &File::default(), None, &w(Ok(None)), &[], &[]);
+        assert!(none["values"].get("rules.house").is_none());
+        // Protective: never in a reset, whatever the page was shown, and never reset on its own.
+        let (values, usual) = (snap["values"].as_object().unwrap(), snap["usual"].as_object().unwrap());
+        for which in [Which::All, Which::Section("checks")] { assert!(!reset_plan(registry(), which, values, usual, &[]).unwrap().contains(&"rules.house".to_string())); }
+        assert_eq!(reset_targets(registry(), Which::Key("rules.house")).err(), Some("protective"));
+        // And it is never in the engine's settings line: the engine reads the file itself.
+        assert!(!apply_line(registry(), &File::default(), Some("/p"), "x").contains("rules.house"));
+    }
+    #[test]
+    fn a_change_for_one_project_is_never_kept_for_another() {
+        let r = registry();
+        let (rules, skip, reactions) = (r.get("rules.house").unwrap(), r.get("check.skip").unwrap(), r.get("fun.reactions").unwrap());
+        // House rules always say which project's list they are; kept only while that is still the project in Home.
+        assert_eq!(for_project(rules, Some("/a"), Some("/a")), Ok(Some("/a")));
+        assert_eq!(for_project(rules, Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(rules, None, Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(rules, Some("/a"), None), Err("projectChanged"));
+        // Any other change that says its project is refused the same way; one that does not (Undo after a reset) is as before.
+        assert_eq!(for_project(skip, Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(for_project(skip, None, Some("/b")), Ok(Some("/b")));
+        assert_eq!(for_project(reactions, None, None), Ok(None));
+        // The shell asks it for every change, and writes the rules file of the project the list came from.
+        let main = include_str!("main.rs");
+        let set = &main[main.find("fn settings_set(").unwrap()..];
+        let set = &set[..set.find("\n}\n").unwrap()];
+        assert!(set.contains("project: Option<String>"), "settings_set takes the project the page was shown");
+        let change = &main[main.find("fn setting_change(").unwrap()..];
+        assert!(change.contains("settings::for_project(d, asked, project_opt().as_deref())?"));
+        let rules_arm = &change[change.find("\"rules\" => {").unwrap()..];
+        let rules_arm = &rules_arm[..rules_arm.find("\n        }\n").unwrap()];
+        assert!(!rules_arm.contains("project_opt()"), "the rules are written to the project they came from, never to whichever is current");
+    }
+    #[test]
+    fn a_start_is_one_of_the_projects_own_scripts_and_never_a_command() {
+        let d = registry().get("check.start").unwrap();
+        assert_eq!(d.options_from.as_deref(), Some("projectScripts"));
+        for ok in ["auto", "dev", "start:prod", "serve.b_c-d"] { assert_eq!(validate(d, &json!(ok)), Ok(json!(ok)), "{ok}"); }
+        for no in ["dev; rm -rf ~", "npm run dev", "", "-x", "dev server", "$(id)", "a.b_c-d"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); }
+        // Only a script that starts the project: never a build, a lint, the tests, an install step or a deploy.
+        for no in ["build", "lint", "test", "deploy", "postinstall", "predev", "devserver", "dev:"] { assert_eq!(validate(d, &json!(no)), Err("notChoice"), "{no}"); assert!(!start_script(no), "{no}"); }
+        // Only a choice may take its options from the project, and it still needs its fixed one.
+        let broken = |key: &str, patch: Value| { let mut v: Value = serde_json::from_str(REGISTRY_TEXT).unwrap(); let d = v["settings"].as_array_mut().unwrap().iter_mut().find(|d| d["key"] == key).unwrap(); for (k, x) in patch.as_object().unwrap() { d[k] = x.clone(); } check_registry(&parse_registry(&v.to_string()).unwrap()) };
+        assert!(!broken("check.start", json!({ "optionsFrom": null })).is_empty());
+        assert!(!broken("check.start", json!({ "optionsFrom": "files" })).is_empty());
+        assert!(!broken("check.press", json!({ "optionsFrom": "projectScripts" })).is_empty());
+        assert!(!broken("rules.house", json!({ "protective": false })).is_empty(), "the house rules store holds only a protective list");
+        assert!(broken("check.time", json!({ "optionsFrom": "projectScripts" })).is_empty());
+    }
+    #[test]
     fn the_wrapped_stores_read_and_change_through_their_own_files() {
         let p = crate::docking::Prefs::default();
         assert_eq!(dock_value(&p, "character.comeTo"), Some(json!(true)));
@@ -1010,7 +1205,7 @@ mod tests {
         assert!(q.hide_from_sharing && !q.quiet_on_calls);
         assert!(presentation_with(&s, "sharing.hide", &json!(1)).is_none());
         // What every page is told: values the shell keeps, usual values, never the engine's own three as values.
-        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default(), ph_apps: json!({ "apps": { "com.example.chat": "never" } }) };
+        let w = Wrapped { dock: off, presentation: q, keys: crate::keymap::Map::DEFAULT, voice: crate::voiceset::Saved::default(), ph_apps: json!({ "apps": { "com.example.chat": "never" } }), rules: Ok(None) };
         let snap = snapshot(registry(), &File::default(), Some("/p"), &w, &[], &["calls.quiet".to_string()]);
         assert_eq!(snap["values"]["character.comeTo"], json!(false));
         assert_eq!(snap["values"]["calls.quiet"], json!(false));
@@ -1077,5 +1272,87 @@ mod tests {
         for (k, v) in [("ph.useProjectInfo", json!(false)), ("ph.handBack", json!("copy")), ("ph.style", json!("light")), ("talk.maxHold", json!("30"))] { set(r, &mut f, k, &v, None).unwrap(); }
         let line: Value = serde_json::from_str(&apply_line(r, &f, None, "x")).unwrap();
         assert_eq!(line["values"], json!({ "ph.useProjectInfo": false, "ph.handBack": "copy" }));
+    }
+
+    #[test]
+    fn the_characters_place_is_read_and_changed_on_the_display_it_is_on_in_dock_json() {
+        use crate::docking::{Edge, Prefs};
+        // The usual place (nothing saved): the right edge, halfway, the same as today.
+        let none = Prefs { last_screen: "a".into(), ..Default::default() };
+        assert_eq!((dock_value(&none, "character.edge"), dock_value(&none, "character.position"), dock_value(&none, "character.sameEverywhere")), (Some(json!("right")), Some(json!(50)), Some(json!(false))));
+        // A place dragged by hand is shown on its step (5 percent), as the row's plus and minus move it.
+        let mut p = Prefs { last_screen: "a".into(), ..Default::default() };
+        p.per_screen.insert("a".into(), (Edge::Left, 0.3712));
+        p.per_screen.insert("b".into(), (Edge::Bottom, 0.9));
+        assert_eq!(dock_value(&p, "character.edge"), Some(json!("left")));
+        assert_eq!(dock_value(&p, "character.position"), Some(json!(35)));
+        for (at, shown) in [(0.0, 0), (0.024, 0), (0.026, 5), (0.4812, 50), (0.9, 90), (0.99, 100), (1.0, 100)] {
+            let q = Prefs { last_screen: "a".into(), per_screen: [("a".to_string(), (Edge::Right, at))].into_iter().collect(), ..Default::default() };
+            assert_eq!(dock_value(&q, "character.position"), Some(json!(shown)), "{at}");
+        }
+        // A change is made on the display the character is on, and only there; the other keeps its own place.
+        let top = dock_with(&p, "character.edge", &json!("top")).unwrap();
+        assert_eq!(top.per_screen["a"], (Edge::Top, 0.3712));
+        assert_eq!(top.per_screen["b"], (Edge::Bottom, 0.9));
+        let at = dock_with(&p, "character.position", &json!(80)).unwrap();
+        assert_eq!(at.per_screen["a"], (Edge::Left, 0.8));
+        for (v, want) in [(0, 0.0), (100, 1.0), (50, 0.5)] { assert_eq!(dock_with(&none, "character.position", &json!(v)).unwrap().per_screen["a"], (Edge::Right, want), "{v}"); }
+        // Same place on every display: on copies this display's place; a change here then moves the copy too; off drops it.
+        let same = dock_with(&p, "character.sameEverywhere", &json!(true)).unwrap();
+        assert_eq!(same.same_everywhere, Some((Edge::Left, 0.3712)));
+        assert_eq!(dock_value(&same, "character.sameEverywhere"), Some(json!(true)));
+        assert_eq!(dock_with(&same, "character.edge", &json!("bottom")).unwrap().same_everywhere, Some((Edge::Bottom, 0.3712)));
+        assert_eq!(dock_with(&same, "character.sameEverywhere", &json!(false)).unwrap().same_everywhere, None);
+        // Come to what it is about is untouched by these, and they leave it alone.
+        assert_eq!(dock_with(&p, "character.edge", &json!("top")).unwrap().come_to, p.come_to);
+        // Nothing to change it on (no display known yet), or a value that is not one: nothing changes.
+        assert!(dock_with(&Prefs::default(), "character.edge", &json!("top")).is_none());
+        assert!(dock_with(&p, "character.edge", &json!("middle")).is_none());
+        assert!(dock_with(&p, "character.position", &json!("half")).is_none());
+        assert!(dock_with(&p, "character.sameEverywhere", &json!(1)).is_none());
+        // What every page is told, and what a reset of the section puts back.
+        let w = Wrapped { dock: p.clone(), presentation: Default::default(), keys: crate::keymap::Map::DEFAULT, voice: Default::default(), ph_apps: json!({ "apps": {} }), rules: Ok(None) };
+        let snap = snapshot(registry(), &File::default(), None, &w, &[], &[]);
+        assert_eq!((snap["values"]["character.edge"].clone(), snap["values"]["character.position"].clone()), (json!("left"), json!(35)));
+        let mut plan = reset_plan(registry(), Which::Section("home"), snap["values"].as_object().unwrap(), snap["usual"].as_object().unwrap(), &[]).unwrap();
+        plan.sort();
+        assert_eq!(plan, vec!["character.edge".to_string(), "character.position".to_string()]);
+        // The exact place behind the shown one, for Undo only: a place on its step needs none.
+        assert_eq!(snap["restore"], json!({ "character.position": { "fraction": 0.3712 } }));
+        let on_step = Wrapped { dock: at.clone(), ..w };
+        assert_eq!(snapshot(registry(), &File::default(), None, &on_step, &[], &[])["restore"], json!({}));
+    }
+
+    #[test]
+    fn undo_after_a_reset_puts_a_dragged_place_back_exactly() {
+        use crate::docking::{Edge, Prefs};
+        let d = registry().get("character.position").unwrap();
+        let p = Prefs { last_screen: "a".into(), per_screen: [("a".to_string(), (Edge::Left, 0.5))].into_iter().collect(), ..Default::default() };
+        // Undo's value is the exact fraction along the edge, as dock.json keeps it: it is not snapped to the step.
+        let v = dock_input(d, &json!({ "fraction": 0.3712 })).unwrap();
+        assert_eq!(dock_with(&p, "character.position", &v).unwrap().per_screen["a"], (Edge::Left, 0.3712));
+        // A plain number is still checked and put on its step, as from the row.
+        let n = dock_input(d, &json!(37)).unwrap();
+        assert_eq!(n, json!(35));
+        assert_eq!(dock_with(&p, "character.position", &n).unwrap().per_screen["a"], (Edge::Left, 0.35));
+        assert_eq!(dock_input(d, &json!(120)), Err("tooHigh"));
+        // Anything else is refused: outside the edge, not a number, more than the one field, or for another setting.
+        for bad in [json!({ "fraction": 1.5 }), json!({ "fraction": -0.1 }), json!({ "fraction": "half" }), json!({ "fraction": 0.3, "edge": "top" }), json!({})] { assert!(dock_input(d, &bad).is_err(), "{bad}"); }
+        assert!(dock_input(registry().get("character.edge").unwrap(), &json!({ "fraction": 0.3 })).is_err());
+        assert!(place_from(&json!(0.3)).is_none());
+        // Every Undo value in the shared reset cases is one the shell takes and puts back exactly (settingsStore.test.ts
+        // checks the page keeps exactly these).
+        let mut seen = 0;
+        for c in reset_cases().iter().filter(|c| c.get("undo").is_some()) {
+            for pair in c["undo"].as_array().unwrap() {
+                let (k, v) = (pair[0].as_str().unwrap(), &pair[1]);
+                let def = registry().get(k).unwrap();
+                if def.store != "dock" { continue; }
+                let next = dock_with(&p, k, &dock_input(def, v).unwrap()).unwrap();
+                assert_eq!(dock_value(&next, k).unwrap(), c["values"][k], "{k}: shown as before the reset");
+                if let Some(f) = place_from(v) { assert_eq!(next.per_screen["a"].1, f, "{k}: exactly"); seen += 1; }
+            }
+        }
+        assert!(seen > 0, "a shared case covers a dragged place");
     }
 }

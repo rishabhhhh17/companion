@@ -59,7 +59,8 @@ describe("Come to what it is about", () => {
   });
   test("Settings has the switch, changed only through the shell, and the hint for dragging it anywhere", () => {
     const page = read("./settingsPage.tsx");
-    expect(page).toContain("home: <div className=\"line muted\">{S.dragHint}</div>,");
+    expect(page).toContain("<div className=\"line muted\">{S.dragHint}</div>");
+    expect(page.indexOf("{S.dragHint}")).toBeGreaterThan(page.indexOf("home: (<>"));
     expect(S.set["character.comeTo"].label).toBe(S.comeToSetting);
     const main = read("../src-tauri/src/main.rs");
     for (const c of ["settings_get", "settings_set"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);

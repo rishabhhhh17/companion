@@ -5,7 +5,7 @@ import { at, bend, burst, captionPlace, captionStyle, confetti, CONFETTI_S, ease
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
-import { playful, reducedMotion } from "./motion.ts";
+import { followLessMotion, playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
 
@@ -112,7 +112,10 @@ function show(p: Point) {
 // The settings in force (reactions), kept in step with every change (settingsStore.ts). The overlay only listens: the
 // shell sends the settings with every change and with each celebration.
 startSettings({ ask: false });
-void listen("overlay-point", (e) => { const p = e.payload as Point; takeSnapshot(p.settings); show(p); });
+followLessMotion();
+// The settings in force come with each pointer and each sketch (the shell sends them), so Less motion, the ring colour,
+// the lettering and the pace reach them too.
+void listen("overlay-point", (e) => { const p = e.payload as Point & { settings?: unknown }; takeSnapshot(p.settings); show(p); });
 void listen("overlay-clear", () => clear());
 
 // The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion
@@ -244,4 +247,4 @@ function drawDiagram(d: Laid, dockX: number, ms: number | null) {
   // It fades after its time; one kept until closed stays until Close in Home or Stop everything (the shell clears it).
   if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, ms);
 }
-void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number; ms?: number | null }; drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });
+void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number; ms?: number | null; settings?: unknown }; takeSnapshot(p.settings); drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });

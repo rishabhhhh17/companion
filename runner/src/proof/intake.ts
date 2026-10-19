@@ -3,8 +3,9 @@
 // it needs that are not set. Reads ordinary files only; never runs anything; never shows a setting's value.
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { detectProject, replitRun, type PackageManager } from "./detect.ts";
+import { detectProject, replitRun, usableStartScript, type PackageManager } from "./detect.ts";
 import { pythonIntakeNote } from "./python.ts";
+import { label } from "../redact.ts";
 export { replitRun };
 
 export type Origin = "lovable" | "bolt" | "replit" | "unknown";
@@ -18,7 +19,34 @@ export type ProjectReport = {
   start: string | null;
   env: { needed: string[]; missing: string[]; example: string | null };
   notes: string[];
+  check: CheckFacts;
 };
+/** What the Settings rows for checking this project need to know (scripts to start it with, the checks it has, and the
+ *  project's own .claude/proof.json and .claude/launch.json, which win over Settings). */
+export type CheckFacts = {
+  scripts: string[];
+  checks: ("typecheck" | "lint" | "build" | "test")[];
+  proofFile: { expectText: string[]; click: string | null; expectAfterClick: string | null } | null;
+  launchFile: boolean;
+};
+
+/** The facts for the Settings rows. Script names only (never what they run), and only the scripts a check may start the
+ *  project with (detect.ts usableStartScript): never a build, a lint, the tests, an install step, or one that sounds like
+ *  it deploys, publishes or deletes. The engine checks again when the check starts. */
+export function checkFacts(dir: string, det: ReturnType<typeof detectProject>): CheckFacts {
+  const pkg = readJson(join(dir, "package.json"));
+  const scripts = pkg && typeof pkg.scripts === "object" && pkg.scripts ? Object.keys(pkg.scripts).filter((k) => usableStartScript(k, pkg.scripts)).sort().slice(0, 40) : [];
+  const checks = [...det.checks.map((c) => c.name), ...(det.tests ? ["test" as const] : [])].filter((x, i, a) => a.indexOf(x) === i);
+  let proofFile: CheckFacts["proofFile"] = null;
+  const proofPath = join(dir, ".claude", "proof.json");
+  if (existsSync(proofPath)) {
+    const j = readJson(proofPath) ?? {};
+    const one = (v: unknown) => (typeof v === "string" ? label(v, 80) : null);
+    proofFile = { expectText: Array.isArray(j.expectText) ? j.expectText.slice(0, 10).map((x: unknown) => label(String(x), 80)) : [], click: one(j.click), expectAfterClick: one(j.expectAfterClick) };
+  }
+  const launch = readJson(join(dir, ".claude", "launch.json"));
+  return { scripts, checks, proofFile, launchFile: !!(Array.isArray(launch?.configurations) && launch!.configurations[0]?.runtimeExecutable) };
+}
 
 const readJson = (p: string): Record<string, any> | null => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
 const readText = (p: string, max = 200_000): string => { try { const s = statSync(p); return s.isFile() && s.size <= max ? readFileSync(p, "utf8") : ""; } catch { return ""; } };
@@ -136,7 +164,7 @@ export function inspectProject(dir: string): ProjectReport {
   return {
     origin, stack, extras, packageManager: pm, needsInstall,
     installCommand: needsInstall && pm ? `${pm} install` : null, start,
-    env: { needed: [...needed].sort(), missing, example: exampleName }, notes,
+    env: { needed: [...needed].sort(), missing, example: exampleName }, notes, check: checkFacts(dir, det),
   };
 }
 

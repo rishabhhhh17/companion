@@ -6,29 +6,21 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveLinks, type ToolCall, type Verdict } from "./safety.ts";
 import { commandsOf, redirectTargets } from "./shell.ts";
+import { ruleOf, type RuleKind } from "../../protocol/settings.ts";
 
 export const RULES_FILE = ".companion/rules.txt";
-export type RuleKind = "never_edit" | "never_run" | "ask_edit" | "ask_run" | "ask_install";
+export type { RuleKind };
 export type Rule = { kind: RuleKind; pattern: string; text: string };
 
-const LINES: [RegExp, RuleKind][] = [
-  [/^never\s+edit\s+(.+)$/i, "never_edit"],
-  [/^never\s+run\s+(.+)$/i, "never_run"],
-  [/^ask\s+before\s+editing\s+(.+)$/i, "ask_edit"],
-  [/^ask\s+before\s+running\s+(.+)$/i, "ask_run"],
-  [/^ask\s+before\s+installing\s+packages$/i, "ask_install"],
-];
-
+// Each line is read the one way the shell's Settings row reads it too (protocol/settings.ts ruleOf, houserules.rs), so the
+// rules the person sees in Settings are exactly the ones enforced here.
 export function parseRules(text: string): { rules: Rule[]; problems: string[] } {
   const rules: Rule[] = [], problems: string[] = [];
   text.split("\n").forEach((raw, i) => {
     const line = raw.replace(/\s+/g, " ").trim();
     if (!line || line.startsWith("#")) return;
-    for (const [re, kind] of LINES) {
-      const m = re.exec(line);
-      if (m) { rules.push({ kind, pattern: (m[1] ?? "").trim(), text: line }); return; }
-    }
-    problems.push(`Line ${i + 1} was not understood: "${line}"`);
+    const r = ruleOf(line);
+    if (r) rules.push(r); else problems.push(`Line ${i + 1} was not understood: "${line}"`);
   });
   return { rules, problems };
 }

@@ -5,7 +5,8 @@
 // decoration. The pages need a real Mac to run, so they are read here as text.
 import { afterEach, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { REDUCED, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
+import { REDUCED, followLessMotion, lessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
+import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 
 const here = new URL("./", import.meta.url).pathname;
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -111,7 +112,7 @@ describe("every page that moves something checks the setting", () => {
     expect(handler).toContain('invoke("quiet_now")');
     expect(dock).toContain("useState(reducedMotion)");
     expect(dock).toContain("watchReducedMotion(setReduced)");
-    expect(dock).toContain("data-motion={motionFor(visualState(m), reduced)}");
+    expect(dock).toContain("data-motion={motionFor(state, reduced)}");
   });
 });
 
@@ -168,6 +169,24 @@ describe("every animation and transition in the stylesheets stops with reduced m
       expect(c.filter((x) => !x.by), JSON.stringify(c)).toEqual([]);
     });
   }
+  test("every capture light (looking at the screen, listening) is still a mark with motion reduced, by the Mac or by Companion", () => {
+    // Rule 5: the light for the screen and the microphone must be on screen first. Looking's own light is its scan, which
+    // stops with reduced motion, so a still ring must show it then, as listening's ring always does.
+    const all = rules(read("./style.css"));
+    const still = (r: Rule) => !!r.decl["box-shadow"] && !/^none\b/.test(r.decl["box-shadow"]) && !r.decl.animation && !r.decl.transition;
+    for (const state of ["checking", "listening"]) {
+      const sel = `.character[data-state="${state}"]`;
+      const always = all.filter((r) => r.sel === sel && r.media === "" && still(r));
+      const mac = all.filter((r) => r.sel === sel && /prefers-reduced-motion:\s*reduce/.test(r.media) && still(r));
+      const less = all.filter((r) => r.sel === `:root[data-less-motion] ${sel}` && r.media === "" && still(r));
+      expect(always.length > 0 || (mac.length > 0 && less.length > 0), state).toBe(true);
+    }
+    // The usual look of looking is unchanged: its ring is only for reduced motion.
+    expect(all.filter((r) => r.sel === '.character[data-state="checking"]' && r.media === "")).toEqual([]);
+    // The rules that stop motion stop only motion, never a mark.
+    for (const r of all.filter((x) => x.sel.startsWith(":root[data-less-motion] *"))) expect(Object.keys(r.decl).sort(), r.sel).toEqual(["animation", "transition"]);
+    for (const r of all.filter((x) => /prefers-reduced-motion/.test(x.media) && x.sel.includes("[data-motion]"))) expect(Object.keys(r.decl).sort(), r.sel).toEqual(["animation", "transition"]);
+  });
   test("the character's states, reactions and named trips are among them", () => {
     const c = motionCover(read("./style.css")).map((x) => x.sel);
     for (const s of ['.character[data-motion="breathe"]', '.character[data-react="party"]', '.character[data-roam="travel"]', '.character[data-roam="surface"]']) expect(c, s).toContain(s);
@@ -184,7 +203,7 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     // A Rust test that names it in quotes (to check this very rule) does not count.
     const calls = all.flatMap(([f, s]) => [...s.matchAll(/(?<!")accessibilityDisplayShouldReduceMotion\(\)/g)].map(() => f));
     expect(calls).toEqual(["main.rs"]);
-    expect(main).toMatch(/fn reduce_motion\(\) -> bool \{ NSWorkspace::sharedWorkspace\(\)\.accessibilityDisplayShouldReduceMotion\(\) \}/);
+    expect(main).toMatch(/fn reduce_motion\(\) -> bool \{ home_set\(\)\.less_motion \|\| NSWorkspace::sharedWorkspace\(\)\.accessibilityDisplayShouldReduceMotion\(\) \}/);
     expect(main).toContain("roam_animate(app, mv, reduce_motion())");
   });
   test("nothing in the shell animates a window: the island opens and closes in place, Home drops down in place", () => {
@@ -193,3 +212,66 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(place).toContain("setFrame_display(");
   });
 });
+
+// ---- M11 area 4: Companion's own Motion setting (character.motion), inside Companion only ----
+describe("Motion: Follow my Mac, or Less motion", () => {
+  afterEach(() => { delete g.matchMedia; _resetForTests(); });
+  const snap = (motion?: string) => takeSnapshot({ values: motion ? { "character.motion": motion } : {}, usual: {}, project: "", migrated: ["pageStorage.v1"], problems: [], changed: [] }, null);
+  test("Follow my Mac is today's: only the Mac's own setting counts", () => {
+    snap();
+    expect(lessMotion()).toBe(false);
+    expect(reducedMotion()).toBe(false);
+    g.matchMedia = (q: string) => ({ matches: q === REDUCED });
+    expect(reducedMotion()).toBe(true);
+  });
+  test("Less motion means less motion everywhere in Companion, whatever the Mac says", () => {
+    snap("less");
+    expect(lessMotion()).toBe(true);
+    expect(reducedMotion()).toBe(true);
+    g.matchMedia = () => ({ matches: false });
+    expect(reducedMotion(), "the rest of the Mac is not changed, and Companion still moves less").toBe(true);
+    // So the character's state stops moving and decoration does not play.
+    expect(playful(true, reducedMotion())).toBe(false);
+  });
+  test("a page watching is told when the setting changes, once per change, until it stops listening", () => {
+    snap();
+    const seen: boolean[] = [];
+    const stop = watchReducedMotion((r) => seen.push(r));
+    snap("less"); snap("less"); snap("followMac");
+    expect(seen).toEqual([true, false]);
+    stop();
+    snap("less");
+    expect(seen).toEqual([true, false]);
+  });
+  test("each page marks its root, so the stylesheets stop their own animations and transitions too", () => {
+    const on = new Set<string>();
+    const root = { toggleAttribute: (n: string, force: boolean) => { if (force) on.add(n); else on.delete(n); return force; } };
+    snap();
+    const stop = followLessMotion(root);
+    expect(on.has("data-less-motion")).toBe(false);
+    snap("less");
+    expect(on.has("data-less-motion")).toBe(true);
+    snap("followMac");
+    expect(on.has("data-less-motion")).toBe(false);
+    stop();
+    snap("less");
+    expect(on.has("data-less-motion"), "stopped").toBe(false);
+    expect(() => followLessMotion(null)()).not.toThrow();
+  });
+  test("every page that moves follows it, and every stylesheet stops all motion under the mark", () => {
+    for (const f of ["dock.tsx", "island.tsx", "card.tsx", "overlay.ts"]) expect(read(`./${f}`), f).toContain("followLessMotion();");
+    const sheets = [read("./style.css"), read("../overlay.html")];
+    for (const css of sheets) {
+      // The rules that stop motion (the still marks under the same attribute, such as looking's ring, are tested above).
+      const calm = rules(css).filter((r) => r.sel.startsWith(":root[data-less-motion] *"));
+      expect(calm.map((r) => r.sel)).toEqual(expect.arrayContaining([":root[data-less-motion] *", ":root[data-less-motion] *::before", ":root[data-less-motion] *::after"]));
+      for (const r of calm) { expect(r.decl.animation).toMatch(/^none\b/); expect(r.decl.transition).toMatch(/^none\b/); }
+    }
+  });
+  test("the overlay takes the settings sent with each pointer and each sketch before it draws", () => {
+    const o = read("./overlay.ts");
+    expect(o).toMatch(/listen\("overlay-point", \(e\) => \{ const p = e\.payload as Point & \{ settings\?: unknown \}; takeSnapshot\(p\.settings\); show\(p\); \}\)/);
+    expect(o).toMatch(/listen\("overlay-diagram", \(e\) => \{[^\n]*takeSnapshot\(p\.settings\);/);
+  });
+});
+

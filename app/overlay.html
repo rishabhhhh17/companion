@@ -5,5 +5,6 @@
 .cap.on{opacity:1}
 @keyframes pulse{0%{transform:scale(1);opacity:.95}70%{transform:scale(1.18);opacity:.35}100%{transform:scale(1);opacity:.95}}
 .ring{transform-box:fill-box;transform-origin:center;animation:pulse 1.4s ease-out infinite}
-@media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none}}</style></head>
+@media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none}}
+:root[data-less-motion] *,:root[data-less-motion] *::before,:root[data-less-motion] *::after{animation:none!important;transition:none!important}</style></head>
 <body><svg id="s" aria-hidden="true"></svg><div id="cap" class="cap" role="status"></div><script type="module" src="/src/overlay.ts"></script></body></html>

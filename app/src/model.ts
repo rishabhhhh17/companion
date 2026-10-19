@@ -23,10 +23,12 @@ export type Task = { agent: string; project?: string; label: string; lines: Tool
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
-export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[] };
+// tries and same: how the tries ran out, when it was not the usual three identical failures (work.tries, work.askOnAnyFailure).
+export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[]; tries?: number; same?: boolean };
 export type Paused = { reason: string; path?: string };
 export type RescueCard = { summary: string; works: string[]; broken: string; evidence: { label: string; status: string; detail: string }[] };
-export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file: string };
+// file: where the notes were filed; none when it was asked off the record.
+export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
 export type PromptHelp = {
   stage: string; app?: string; message?: string; streaming?: string;
   text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
@@ -454,7 +456,8 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
     case "plan.ready": return { ...m, stepExplains: [], planCheckpoints: [], plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
-    case "loop.stuck": return { ...m, plan: null, paused: null, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: Array.isArray(e.options) && e.options.length ? e.options : [{ id: "different", label: "Try a different way" }, { id: "stop", label: "Stop here" }] } };
+    case "loop.stuck": return { ...m, plan: null, paused: null, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: Array.isArray(e.options) && e.options.length ? e.options : [{ id: "different", label: "Try a different way" }, { id: "stop", label: "Stop here" }],
+      ...(Number.isInteger(e.tries) && e.tries >= 1 ? { tries: e.tries } : {}), ...(typeof e.same === "boolean" ? { same: e.same } : {}) } };
     case "drive.paused": return { ...m, stuck: null, paused: { reason: e.reason, path: e.path } };
     case "ui.resumed": return { ...m, paused: null };
     case "ui.stuckAnswered": return { ...m, stuck: null };
@@ -471,7 +474,7 @@ export function reduce(m: Model, e: Ev): Model {
     // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.
     case "ship.card": return m.shipFlow?.stage === "live" && typeof e.image === "string" ? { ...m, shipFlow: { ...m.shipFlow, card: { image: e.image, url: String(e.url ?? ""), title: String(e.title ?? "") } } } : m;
     case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
-    case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], file: e.file }, task: null, receipt: null, error: null, notice: null };
+    case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], ...(typeof e.file === "string" && e.file ? { file: e.file } : {}) }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
     case "ui.planRequested": return { ...m, ship: null, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
     case "ui.planCancelled": return { ...m, plan: null, rescue: null };
@@ -568,6 +571,21 @@ export function stuckWords(m: Model): string | null {
   const s = m.stuck;
   if (!s) return null;
   return s.index > 0 ? `${S.stepOf} ${s.index}: ${s.title}` : s.title;
+}
+
+// The loop card's help line: exactly as before for the usual three identical failures; otherwise how many checks failed,
+// and whether they all failed the same way.
+export function stuckHelpWords(m: Model): string {
+  const s = m.stuck;
+  const tries = s?.tries ?? 3, same = s?.same ?? true;
+  if (tries === 3 && same) return S.stuckHelp;
+  if (tries <= 1) return S.stuckHelpOne;
+  const times = S.stuckTimes[tries] ?? `${tries} times`;
+  return same ? S.stuckHelpSame(times) : S.stuckHelpAny(times);
+}
+// A plan cut to Most steps in a plan (drive.maxSteps): the number it was cut to is the number of steps it kept.
+export function planCutWords(m: Model): string | null {
+  return m.plan?.truncated ? S.planCut(m.plan.steps.length) : null;
 }
 
 // The toast after Companion learns something new.

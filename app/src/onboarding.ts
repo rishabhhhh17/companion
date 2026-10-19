@@ -27,10 +27,10 @@ export const QUESTIONS: { key: keyof Answers; ask: string; yes: string; no: stri
   { key: "autoSend", ask: "When you talk to me, should I send it as soon as you let go?", yes: "Yes, send it", no: "No, let me check it first", yesEffect: "Spoken requests of three words or more are sent straight away.", noEffect: "Your words wait in the box until you press Start." },
 ];
 
-/// What the answers change in Settings (the registry, T16): Explain for every project, and auto send. Sent through the
-/// shell like any other change in Settings.
-export function settingsFor(a: Answers): [string, boolean][] {
-  return [["explain.on", a.explain], ["talk.autoSend", a.autoSend]];
+/// What the answers change in Settings (the registry, T16): Explain after a task for every project (yes is its usual,
+/// reasons and a quick check question; no is off), and auto send. Sent through the shell like any other change in Settings.
+export function settingsFor(a: Answers): [string, unknown][] {
+  return [["explain.mode", a.explain ? "reasonsAndQuestion" : "off"], ["talk.autoSend", a.autoSend]];
 }
 
 export function effectsOf(a: Answers): string[] {

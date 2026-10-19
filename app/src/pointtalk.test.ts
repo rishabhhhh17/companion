@@ -105,7 +105,7 @@ describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () =
     expect(show).toContain('ringLook(setting("point.colour"), p.exact)');
     expect(show).toContain('captionStyle(setting("point.lettering"), setting("display.textSize"))');
     expect(show).not.toContain('"#ff9a2e"');
-    expect(overlay).toContain('void listen("overlay-point", (e) => { const p = e.payload as Point; takeSnapshot(p.settings); show(p); });');
+    expect(overlay).toContain('void listen("overlay-point", (e) => { const p = e.payload as Point & { settings?: unknown }; takeSnapshot(p.settings); show(p); });');
   });
 });
 

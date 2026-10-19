@@ -77,7 +77,8 @@ export const downloadScratch = (root: string = browsersPath()) => join(root, ".d
 // on failure, and thrown away if fewer bytes arrive than the server announced. The short environment means no setting of the
 // person's can point it at another server. Stop everything ends it through the signal, and if the engine itself is ended by
 // force, the installer ends with it (endWithUs). installer: the runner's own process tests only, a stand in for Playwright's.
-export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run; installer?: string } = {}): Promise<InstallOutcome> {
+// timeoutMs: 15 minutes, doubled by "my internet is slow".
+export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run; installer?: string; timeoutMs?: number } = {}): Promise<InstallOutcome> {
   const cli = o.installer ?? join(dirname(Bun.resolveSync("playwright-core/package.json", import.meta.dir)), "cli.js");
   if (!existsSync(cli)) return { ok: false, detail: "The browser installer was not found" };
   const root = browsersPath(), scratch = downloadScratch(root);
@@ -86,7 +87,7 @@ export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p:
   try { mkdirSync(scratch, { recursive: true }); } catch { /* the installer says why if it cannot write here */ }
   try {
     const r = await (o.run ?? runCommand)(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install chromium-headless-shell`, {
-      cwd: homedir(), timeoutMs: 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: root, TMPDIR: scratch }, signal: o.signal, endWithUs: true,
+      cwd: homedir(), timeoutMs: o.timeoutMs ?? 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: root, TMPDIR: scratch }, signal: o.signal, endWithUs: true,
       onOutput: installProgressReader((p) => o.onProgress?.(p)),
     });
     // A failure after the browser is in place (FFmpeg not downloading, or a stop while it did) still leaves a browser that works.
@@ -97,12 +98,19 @@ export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p:
 // A picture of the page as it first appears (before any button is pressed), and what is on it, for the visual receipt.
 export type PageShot = { jpeg: string; w: number; h: number; items: import("./visualdiff.ts").PageItem[] };
 // notInstalled: skipped only because the hidden browser is not on this Mac yet (the page then offers the download).
-export type BrowserResult = { ok: boolean; skipped?: string; notInstalled?: true; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number; shot?: PageShot };
-export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal };
+// gaps: something the check was asked to do and did not (a button from Settings it would not press), so the result is at
+// best "passed with gaps".
+export type BrowserResult = { ok: boolean; skipped?: string; notInstalled?: true; problems: string[]; consoleErrors: string[]; failedRequests: string[]; visited: string[]; ms: number; shot?: PageShot; gaps?: string[] };
+// click and expectAfterClick: the project's own .claude/proof.json (a selector, as before). press and expectAfterPress: a
+// button chosen in Settings, found by its label and pressed only when it is a plain button, link or tab whose words do not
+// sound risky, checked again on the real element. viewport: the page size (today's 1280 by 800 when not given).
+export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; press?: string; expectAfterPress?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal; viewport?: { width: number; height: number } };
 
 // Buttons that sound like they send, pay, delete or publish are never pressed by a check.
 const RISKY = /delet|remov|\bpay|buy|purchas|send|submit|sign.?out|log.?out|publish|deploy|reset|checkout|order|eras|clear|cancel|unsubscribe|subscribe|\bpost\b|confirm|donat|upload|install|download|transfer|withdraw|\bgo live|eliminar|borrar|pagar|comprar|enviar|publicar|cerrar sesi|supprimer|payer|acheter|envoyer|publier|d[ée]connexion|l[öo]schen|bezahlen|kaufen|senden|absenden|abmelden|excluir|sair|remover|apagar|削除|送信|支払|购买|删除|发送|支付|삭제|결제|보내기/i;
 const MAX_BUTTONS = 8;
+/** Whether a button's words sound like it sends, pays, deletes or publishes: such a button is never pressed by a check. */
+export const riskyLabel = (label: string): boolean => RISKY.test(label);
 
 const ignorable = (url: string) => /\/favicon\.ico(\?|$)/.test(url);
 
@@ -130,8 +138,12 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
 
   async function run(): Promise<BrowserResult> {
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+    const view = o.viewport ?? { width: VIEW.w, height: VIEW.h };
+    const context = await browser.newContext({ viewport: { width: view.width, height: view.height }, serviceWorkers: "block" });
     const page = await context.newPage();
+    // Nothing a press does reaches beyond the page's own address, and writes are answered with "nothing to do".
+    let guarded = false;
+    const guard = async () => { if (guarded) return; guarded = true; await guardRoutes(page, url, blockedByUs); };
     page.on("framenavigated", (f) => { if (f === page.mainFrame()) result.visited.push(f.url()); });
     let pressing = "";
     const after = () => (pressing ? ` (after pressing "${pressing}")` : "");
@@ -148,7 +160,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     if (mainStatus >= 400) result.problems.push(`The page answered with an error (${mainStatus})`);
     await page.waitForTimeout(500);
 
-    if (o.shot) result.shot = await pageShot(page).catch(() => undefined);
+    if (o.shot) result.shot = await pageShot(page, view).catch(() => undefined);
     const text = async () => (await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")) ?? "";
     const body = await text();
     for (const want of o.expectText ?? []) if (!body.includes(want)) result.problems.push(`The words "${want}" are not on the page`);
@@ -162,7 +174,23 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
       }
       await page.waitForTimeout(300);
     }
-    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout, blockedByUs);
+    if (o.press) {
+      const p = await pressByLabel(page, o.press, guard, timeout);
+      if (p.gap) (result.gaps ??= []).push(p.gap);
+      if (p.problem) { result.problems.push(p.problem); return finish(result, t0); }
+      if (p.pressed) {
+        pressing = p.pressed;
+        await page.waitForLoadState("load", { timeout: Math.min(timeout, 3000) }).catch(() => {});
+        if (o.expectAfterPress) {
+          const ok = await page.waitForFunction((w) => (document.body?.innerText ?? "").includes(w), o.expectAfterPress, { timeout: 3000 }).then(() => true, () => false);
+          if (!ok) result.problems.push(`After pressing "${p.pressed}", the words "${o.expectAfterPress}" did not appear`);
+        }
+        await page.waitForTimeout(300);
+        pressing = "";
+        if (page.url() !== url) await page.goto(url, { waitUntil: "load", timeout }).catch(() => {});
+      }
+    }
+    if (o.clickButtons !== false) await tryButtons(page, url, (label) => { pressing = label; }, timeout, guard);
     return finish(result, t0);
   } finally { await browser.close().catch(() => {}); }
   }
@@ -170,7 +198,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
 
 // Press each plain button once (a handful at most), to see whether the page still works when used.
 // Never anything risky, never a form submit, and nothing may reach beyond the page's own address.
-async function tryButtons(page: import("playwright-core").Page, url: string, setPressing: (label: string) => void, timeout: number, blockedByUs: Set<string>) {
+async function guardRoutes(page: import("playwright-core").Page, url: string, blockedByUs: Set<string>) {
   const home = new URL(url).host;
   await page.context().route("**/*", (route) => {
     let ok = true;
@@ -181,6 +209,10 @@ async function tryButtons(page: import("playwright-core").Page, url: string, set
     if (!["GET", "HEAD", "OPTIONS"].includes(route.request().method())) return route.fulfill({ status: 204, body: "" });
     return route.continue();
   });
+}
+
+async function tryButtons(page: import("playwright-core").Page, url: string, setPressing: (label: string) => void, timeout: number, guard: () => Promise<void>) {
+  await guard();
   const pick = 'button[type="button"], button:not([type]):not(form button), [role="button"], input[type="button"]';
   const count = Math.min(await page.locator(pick).count().catch(() => 0), 40);
   let pressed = 0;
@@ -196,6 +228,43 @@ async function tryButtons(page: import("playwright-core").Page, url: string, set
     if (page.url() !== url) await page.goto(url, { waitUntil: "load", timeout }).catch(() => {});
   }
   setPressing("");
+}
+
+// What can be pressed by its label: buttons, links and tabs. Each is found by the words on it, its value, its accessible
+// name or its title, ignoring capital letters and extra spaces.
+const PRESSABLE = 'button, [role="button"], a[href], [role="link"], [role="tab"], input[type="button"], input[type="submit"]';
+const tidy = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+const NOT_PRESSED = (label: string, why: string) => `The check did not press "${label}", ${why}`;
+
+/** The button chosen in Settings (check.press). Never pressed when its words, or the words on the real element, sound like it
+ *  sends, pays, deletes or publishes, when it sends a form, or when it downloads something: that is a gap, never a pass.
+ *  Not found on the page is a problem, as a missing word is. */
+async function pressByLabel(page: import("playwright-core").Page, wanted: string, guard: () => Promise<void>, timeout: number): Promise<{ pressed?: string; gap?: string; problem?: string }> {
+  const want = tidy(wanted).slice(0, 60);
+  const risky = NOT_PRESSED(want, "because a check never presses a button whose words sound like it sends, pays, deletes or publishes.");
+  if (!want) return {};
+  if (RISKY.test(want)) return { gap: risky };
+  const all = page.locator(PRESSABLE);
+  const n = Math.min(await all.count().catch(() => 0), 200);
+  for (let i = 0; i < n; i++) {
+    const el = all.nth(i);
+    if (!(await el.isVisible().catch(() => false))) continue;
+    const words = [await el.innerText({ timeout: 1000 }).catch(() => ""), await el.getAttribute("value").catch(() => ""), await el.getAttribute("aria-label").catch(() => ""), await el.getAttribute("title").catch(() => "")].map(tidy);
+    if (!words.some((w) => w.toLowerCase() === want.toLowerCase())) continue;
+    // Checked again on the real element: every word it carries, whether it would send a form, whether it downloads.
+    if (words.some((w) => w && RISKY.test(w))) return { gap: risky };
+    const how = await el.evaluate((e) => {
+      const form = (e instanceof HTMLButtonElement && e.type === "submit" && !!e.form) || (e instanceof HTMLInputElement && e.type === "submit");
+      return form ? "form" : e.hasAttribute("download") ? "download" : "plain";
+    }).catch(() => "form");
+    if (how === "form") return { gap: NOT_PRESSED(want, "because it sends a form.") };
+    if (how === "download") return { gap: NOT_PRESSED(want, "because it downloads something.") };
+    if (!(await el.isEnabled().catch(() => false))) return { problem: `"${want}" is on the page but cannot be pressed` };
+    await guard();
+    try { await el.click({ timeout: Math.min(timeout, 5000) }); } catch { return { problem: `Could not press "${want}" on the page` }; }
+    return { pressed: want };
+  }
+  return { problem: `Could not find a button or link called "${want}" on the page` };
 }
 
 function finish(r: BrowserResult, t0: number): BrowserResult {
@@ -231,8 +300,8 @@ export function pageItems(): { key: string; x: number; y: number; w: number; h: 
   return out;
 }
 
-async function pageShot(page: import("playwright-core").Page): Promise<PageShot> {
+async function pageShot(page: import("playwright-core").Page, view: { width: number; height: number } = { width: VIEW.w, height: VIEW.h }): Promise<PageShot> {
   const items = await page.evaluate(pageItems);
   const jpeg = (await page.screenshot({ type: "jpeg", quality: 75, timeout: 5000 })).toString("base64");
-  return { jpeg, w: VIEW.w, h: VIEW.h, items };
+  return { jpeg, w: view.width, h: view.height, items };
 }

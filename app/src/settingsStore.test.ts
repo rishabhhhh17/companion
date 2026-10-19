@@ -18,7 +18,7 @@ const shell = (answer: (cmd: string, args?: Record<string, unknown>) => unknown 
 // What the engine says about its own settings, as the events the page hears.
 const heard = (k: string, v: unknown) => engineEvent(
   k === "spend.dailyLimit" ? { type: "spending.state", project: "/p", limitUsd: v, spentUsd: 0, minUsd: 1, maxUsd: 500 }
-    : k === "explain.on" ? { type: "explain.state", project: "/p", enabled: v }
+    : k === "explain.mode" ? { type: "explain.state", project: "/p", enabled: v !== "off", mode: v }
     : k === "memory.paused" ? { type: "memory.state", project: "/p", paused: v, projectLines: [], profileLines: [], problems: [] }
     : { type: "metrics.summary", enabled: v, days: {}, totals: {}, rates: {} });
 const throwing = { getItem: () => { throw new Error("blocked"); } };
@@ -56,10 +56,10 @@ describe("reading a setting", () => {
     takeSnapshot(snap({ "spend.dailyLimit": 99 }));
     expect(setting("spend.dailyLimit")).toBe(10);
     engineEvent({ type: "spending.state", project: "/p", limitUsd: 25, spentUsd: 1, minUsd: 1, maxUsd: 500 });
-    engineEvent({ type: "explain.state", project: "/p", enabled: false });
+    engineEvent({ type: "explain.state", project: "/p", enabled: false, mode: "off" });
     engineEvent({ type: "memory.state", project: "no-project", paused: true, projectLines: [], profileLines: [], problems: [] });
     engineEvent({ type: "metrics.summary", enabled: true, days: {}, totals: {}, rates: {} });
-    expect([setting("spend.dailyLimit"), setting("explain.on"), setting("memory.paused"), setting("numbers.on")]).toEqual([25, false, true, true]);
+    expect([setting("spend.dailyLimit"), setting("explain.mode"), setting("memory.paused"), setting("numbers.on")]).toEqual([25, "off", true, true]);
     expect(engineEvent({ type: "agent.state", agent: "a", state: "idle" })).toBe(false);
   });
   test("a snapshot that is not one is ignored", () => {
@@ -167,7 +167,7 @@ describe("what changed, and Undo after Reset all", () => {
   const usualVoice = { voice: null, speed: 1, mic: null, language: "auto" };
   test("Undo sends every value it kept back to the shell, one settings_set at a time, in the registry's order", async () => {
     takeSnapshot(snap({ "fun.reactions": false, "display.textSize": "large", "work.maxTurns": 150, "talk.voice": voice }, [PAGE_STORAGE_MARK], { "keys.hotkeys": {}, "talk.voice": usualVoice }));
-    heard("explain.on", false);
+    heard("explain.mode", "reasons");
     const back = undoValues();
     const calls = shell((cmd, args) => (cmd === "settings_set" ? snap({ [String(args!.key)]: args!.value }) : undefined));
     expect(await undoReset(back)).toEqual([]);
@@ -175,7 +175,7 @@ describe("what changed, and Undo after Reset all", () => {
       { cmd: "settings_set", args: { key: "talk.voice", value: voice } },
       { cmd: "settings_set", args: { key: "fun.reactions", value: false } },
       { cmd: "settings_set", args: { key: "work.maxTurns", value: 150 } },
-      { cmd: "settings_set", args: { key: "explain.on", value: false } },
+      { cmd: "settings_set", args: { key: "explain.mode", value: "reasons" } },
       { cmd: "settings_set", args: { key: "display.textSize", value: "large" } },
     ]);
   });
@@ -199,10 +199,10 @@ describe("what changed, and Undo after Reset all", () => {
   });
   test("the engine's own settings not heard from yet are named, and never sent to be reset", async () => {
     takeSnapshot(snap({ "fun.reactions": false }));
-    expect(notHeard()).toEqual(["spend.dailyLimit", "explain.on", "memory.paused", "numbers.on"]);
-    expect(notHeard("memory")).toEqual(["explain.on", "memory.paused"]);
+    expect(notHeard()).toEqual(["spend.dailyLimit", "explain.mode", "memory.paused", "numbers.on"]);
+    expect(notHeard("memory")).toEqual(["explain.mode", "memory.paused"]);
     heard("memory.paused", true);
-    expect(notHeard("memory")).toEqual(["explain.on"]);
+    expect(notHeard("memory")).toEqual(["explain.mode"]);
     const calls = shell(() => snap({}));
     await resetAll();
     expect(calls[0].args).toEqual({ all: true, engine: ["memory.paused"] });
@@ -241,9 +241,11 @@ describe("what the page names and keeps for Undo is exactly what the shell reset
   for (const c of cases) {
     test(c.name, async () => {
       _resetForTests();
-      takeSnapshot(snap(c.values, [PAGE_STORAGE_MARK], c.usual));
+      // A place dragged off its step: the snapshot also carries the exact place, which only Undo uses.
+      const shown = () => ({ ...snap(c.values, [PAGE_STORAGE_MARK], c.usual), ...(c.restore ? { restore: c.restore } : {}) });
+      takeSnapshot(shown());
       for (const [k, v] of Object.entries(c.engine)) heard(k, v);
-      const calls = shell(() => snap(c.values, [PAGE_STORAGE_MARK], c.usual));
+      const calls = shell(() => shown());
       const sent = (): Record<string, unknown> => ({ ...calls[0].args, engine: [...(calls[0].args!.engine as string[])].sort() });
       let named: string[];
       if (c.which.key) {
@@ -254,8 +256,9 @@ describe("what the page names and keeps for Undo is exactly what the shell reset
         const section: string | undefined = c.which.section;
         named = changedNow(section);
         expect(undoValues(section).map(([k]) => k)).toEqual(named);
-        // Every value kept for Undo is the one in force now.
-        for (const [k, v] of undoValues(section)) expect(v, k).toEqual(c.values[k] ?? c.engine[k]);
+        // Every value kept for Undo is the one in force now, or for a dragged place the exact place behind it.
+        for (const [k, v] of undoValues(section)) expect(v, k).toEqual(c.restore?.[k] ?? c.values[k] ?? c.engine[k]);
+        if (c.undo) expect(undoValues(section)).toEqual(c.undo);
         await (section ? resetSection(section) : resetAll());
         expect(sent()).toEqual(section ? { section, engine: c.sent } : { all: true, engine: c.sent });
       }

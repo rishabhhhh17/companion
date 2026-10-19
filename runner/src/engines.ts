@@ -9,7 +9,7 @@ import { ComputerUseVision, withFallback } from "./aim.ts";
 import { FastLane, StubFast, VisionLane, type DescribeReq, type FastLike, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
-import { MODELS } from "./models.ts";
+import { MODELS, modelForChoice } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 
 export type Settings = {
@@ -96,7 +96,12 @@ export function createEngine(s: Settings, deps: EngineDeps = {}): Engine {
 
 // The two small lanes, created per request so they always use the current sign in.
 export type Describe = (req: DescribeReq, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
-export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLike; vision: VisionLike; describe: Describe } {
+/** "Claude for quick answers" (model.quick) from the settings the shell applied: the chosen option's model once its smoke
+ *  case has passed, else today's fast model. */
+export const quickModelOf = (settings: { get(key: string): unknown }, passed?: readonly string[]): string => modelForChoice("quick", settings.get("model.quick"), passed);
+// quickModel: asked for every request on the fast lane (Prompt help, Explain, Draw it for me, the error explainer), so a
+// change in Settings reaches the next request. A developer's COMPANION_FAST_MODEL (dev.json) still wins over it.
+export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?: () => string } = {}): { fast: FastLike; vision: VisionLike; describe: Describe } {
   if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) }, describe: async () => { throw new Error("pictures cannot be looked at in this mode"); } };
   const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });
   const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
@@ -105,7 +110,7 @@ export function createLanes(s: Settings, deps: EngineDeps = {}): { fast: FastLik
     ? withFallback(new ComputerUseVision({ apiKey: async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; }, model: s.aimModel }), classic)
     : classic;
   return {
-    fast: { run: async (req, onDelta, signal) => new FastLane({ ...(await lane()), model: s.fastModel ?? MODELS.fast }).run(req, onDelta, signal) },
+    fast: { run: async (req, onDelta, signal) => new FastLane({ ...(await lane()), model: s.fastModel ?? o.quickModel?.() ?? MODELS.fast }).run(req, onDelta, signal) },
     vision,
     // Pictures added to a request (attach.ts): looked at on the vision lane's model, the way Show me looks at a screen picture.
     describe: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).describe(req, signal),

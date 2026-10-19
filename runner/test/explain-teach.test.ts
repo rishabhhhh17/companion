@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { AgentRunner, type ProofContext } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
+import { RunnerSettings } from "../src/settings.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import { parseEvent, serialize, type Event } from "../../protocol/index.ts";
 
@@ -32,7 +33,11 @@ function setup(o: Opts) {
   const proofCalls: ProofContext[] = [];
   const engine = new ScriptedEngine(o.rounds);
   const explainer = o.explain === null ? undefined : async (req: { text: string; system: string }) => { calls.push(req); return { text: o.explain ?? GOOD, costUsd: 0.002 }; };
-  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), ...(o.noMemory ? {} : { memoryDir: data }), explainer, proof: async (ctx) => { proofCalls.push(ctx); return o.proofs ? o.proofs(ctx) : passed(); } });
+  // Your turn is off unless the person turns it on (teach.yourTurn), and the engine works out an offer only when it is on;
+  // it is on here, where Your turn is what is tested (settings-memory.test.ts tests it off).
+  const settings = new RunnerSettings();
+  settings.apply({ v: 1, id: "s", type: "settings.apply", values: { "teach.yourTurn": true } });
+  const runner = new AgentRunner({ settings, shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), ...(o.noMemory ? {} : { memoryDir: data }), explainer, proof: async (ctx) => { proofCalls.push(ctx); return o.proofs ? o.proofs(ctx) : passed(); } });
   const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "s" + Math.random(), type: "agent.start", project, agent: "b1", mode: "drive", prompt: "fix the name", model: "m", budgetUsd: 1, ...extra } as never);
   const cmd = (c: Record<string, unknown>) => runner.handle({ v: 1, id: "c" + Math.random(), project, ...c } as never);
   const read = (f: string) => readFileSync(join(project, f), "utf8");
