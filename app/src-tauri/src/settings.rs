@@ -1176,6 +1176,19 @@ mod tests {
         assert!(!rules_arm.contains("project_opt()"), "the rules are written to the project they came from, never to whichever is current");
     }
     #[test]
+    fn the_engine_and_every_window_are_told_whenever_the_project_changes() {
+        // T16: settings.apply is sent again when the project folder changes, and every window is told what is in force.
+        // A folder chosen, and the open practice copy removed (Companion then has no folder): both go through one place.
+        let main = include_str!("main.rs");
+        let body = |c: &str| { let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
+        let now = body("fn project_now(");
+        for p in ["app.emit(\"project-changed\", folder)", "send_settings(app);", "settings_told(app, &[]);"] { assert!(now.contains(p), "{p}: {now}"); }
+        assert!(body("fn use_project_inner(").contains("project_now(&app, &folder);"));
+        let forget = body("fn forget_folder(");
+        assert!(forget.contains("project_now(app, \"\");"), "{forget}");
+        assert_eq!(main.matches("\"project-changed\"").count(), 1, "no other place says the project changed");
+    }
+    #[test]
     fn a_start_is_one_of_the_projects_own_scripts_and_never_a_command() {
         let d = registry().get("check.start").unwrap();
         assert_eq!(d.options_from.as_deref(), Some("projectScripts"));

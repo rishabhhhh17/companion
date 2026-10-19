@@ -1320,12 +1320,16 @@ fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
     p.use_folder(&folder);
     let _ = logfile::write_atomic(&projects_path(), serde_json::to_string(&p).unwrap_or_default().as_bytes());
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = Some(folder.clone());
-    log("project_changed", json!({}));
-    let _ = app.emit("project-changed", &folder);
-    // This project's own settings: to the engine (the line names the folder), and to the pages.
-    send_settings(&app);
-    settings_told(&app, &[]);
+    project_now(&app, &folder);
     Ok(folder)
+}
+/// The project folder changed (`folder`, or "" for none): every page is told, and this project's own settings go to the
+/// engine (the line names the folder) and to the pages (T16). The one place that says so.
+fn project_now(app: &AppHandle, folder: &str) {
+    log("project_changed", json!({ "none": folder.is_empty() }));
+    let _ = app.emit("project-changed", folder);
+    send_settings(app);
+    settings_told(app, &[]);
 }
 
 /// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
@@ -2117,7 +2121,8 @@ fn forget_folder(app: &AppHandle, folder: &std::path::Path) {
     p.forget(&f);
     let _ = logfile::write_atomic(&projects_path(), serde_json::to_string(&p).unwrap_or_default().as_bytes());
     let mut cur = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
-    if cur.as_deref() == Some(f.as_str()) { *cur = None; drop(cur); let _ = app.emit("project-changed", ""); }
+    // The removed project's own settings are no longer in force anywhere: the engine and the pages are told.
+    if cur.as_deref() == Some(f.as_str()) { *cur = None; drop(cur); project_now(app, ""); }
 }
 
 /// A practice project (the first one unless the page names another in the catalog): copied into a new folder in the home
