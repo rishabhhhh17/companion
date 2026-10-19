@@ -487,3 +487,13 @@ None of this has been seen on a real screen yet. Every setting starts at what Co
 - **Pointing, talking and other apps:** how long rings stay, their colour and lettering, guesses as a soft ring or words only, the pace of multi step answers, how long a sketch stays, the longest hold to talk, what else is said out loud, Prompt help's style and whether it pastes or copies, your answers per app, which editor opens, and which call apps count.
 - The microphone now closes the moment Companion is hidden while you hold to talk.
 - One test run reached the internet by mistake while these were built (a real package install and a clone attempt in a temporary folder; nothing of yours was touched). The test cannot run real commands any more.
+
+## Matching HeyClicky's newest release, and the practice library (20 Oct 2026)
+HeyClicky's newest release is still v1.0.53 (2 Oct 2026). These are the parts of it that fit Companion, plus the finished practice library. None of it has been seen on a real screen or run with real Claude yet.
+- **Claude only gets the tools Companion uses.** No more "unknown tool" questions for tools it should never use.
+- **When it truly needs you, it asks one clear question** and stops there, with the question on the card and the follow up box ready for your answer. A friendly "want me to do more?" never counts as a question.
+- **A dropped internet connection is named** ("Companion could not reach Claude") with Try again, never blamed on your project or your key.
+- **Follow up by voice:** point at a finished task and hold the talk keys to fill its follow up box (off by default). Saying "wait" or "stop" never starts a task.
+- **Lessons and walkthroughs:** a lesson can start where you already are (off by default), walkthroughs wait for a slow page before looking again, and anywhere mode stops asking "Did that work?" after a clean click on a solid ring.
+- **Steadier on the Mac:** no beachball after sleep or a headset change, hold to talk works with the lid closed, Home steps aside for the windows it opens, the island tells you when an update is ready, and Home opens with a short motion (none with Reduce motion).
+- **The practice library is finished:** five practice stuck moments on the Learn tab, each in its own new folder, with progress, Start over, Try again and Remove my copy (to the Trash, after you confirm). The first run offers one in minute one. The fix runs exactly like it would on your own project, with Undo and Explain.
