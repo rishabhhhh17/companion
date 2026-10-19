@@ -1447,7 +1447,13 @@ fn showme_stop(app: &AppHandle) {
     let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false));
     showme_stop_rest(app);
 }
-fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); showme_pending().end(); roam_end(app); }
+fn showme_stop_rest(app: &AppHandle) {
+    speech_off(app); point_cancel();
+    // Counted at once: the Cancel waits behind whatever hold to talk is doing (the light's wait, a slow microphone, the words
+    // being turned into text), and the worker looks at this count after each of those.
+    VOICE_STOPS.fetch_add(1, Ordering::SeqCst);
+    voice_send(app, VoiceMsg::Cancel); hide_overlay(app); showme_pending().end(); roam_end(app);
+}
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 /// `all_screens`: the person's setting to include every display, not only the one under the pointer (off unless turned on).
@@ -2722,6 +2728,9 @@ static LISTENING_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 fn listening_now() -> bool { LISTENING_NOW.load(std::sync::atomic::Ordering::SeqCst) }
 fn listening(on: bool) { LISTENING_NOW.store(on, std::sync::atomic::Ordering::SeqCst); }
 static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(None);
+/// How many times Stop everything was pressed. Bumped before its Cancel is queued, so the worker sees a Stop that came while
+/// it was busy: the microphone never opens after one, and words heard before one are dropped (rule 11).
+static VOICE_STOPS: AtomicU64 = AtomicU64::new(0);
 
 fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
     let mut v = json!({ "v": 1, "id": format!("vo{}", now()), "type": "app.voice", "stage": stage, "message": message });
@@ -2784,6 +2793,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let mut last_used = std::time::Instant::now();
     // The microphone that listened cannot hear now (the Mac's own with the lid closed): its silence is the lid, not the permission.
     let mut quiet_mic = false;
+    // Stop everything's count as the keys went down: any Stop since then ends this hold.
+    let mut stops_at = VOICE_STOPS.load(Ordering::SeqCst);
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
@@ -2804,6 +2815,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 // The cap is read as the keys go down and kept for this hold (there is always one, at most two minutes).
                 let cap = voice::max_hold_ms(&setting_now("talk.maxHold"));
                 if hold.down_for(t, cap) != voice::Step::Start { continue; }
+                stops_at = VOICE_STOPS.load(Ordering::SeqCst);
                 voice_mac::set_buffer_room(voice::buffer_samples(cap));
                 if !voice_mac::model_ready(&data) { hold.cancel(); say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); continue; }
                 match voice_mac::mic_status() {
@@ -2828,9 +2840,13 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
                 // Hidden meanwhile: the light is gone again, so the microphone never opens.
                 if companion_hidden() { hold.cancel(); listening(false); say_voice(&app, "error", voice::HIDDEN_WORDS, json!({})); continue; }
+                // Stop everything meanwhile: the microphone never opens.
+                if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.cancel(); listening(false); say_voice(&app, "idle", "", json!({})); continue; }
                 // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
+                        // Stop everything while it opened (a Bluetooth microphone can take seconds): closed again at once.
+                        if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { let _ = r.finish(); hold.cancel(); listening(false); log("voice_stopped_opening", json!({})); say_voice(&app, "idle", "", json!({})); continue; }
                         quiet_mic = opened.quiet;
                         rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some(), "quiet": opened.quiet }));
                         // The picked microphone is not connected, so the default listens: one plain line, once each time it goes away.
@@ -2871,6 +2887,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                             voice::Heard::Blocked => { hold.finished(); let why = voice::why_silent(crate::permissions::current().microphone == crate::permissions::Status::Granted, quiet_mic); mic["why"] = json!(why.word()); say_voice(&app, "blocked", why.fallback(), mic); }
                             voice::Heard::Silent => { hold.finished(); say_voice(&app, "silent", "I did not hear anything. Try again a little closer.", mic); }
                             voice::Heard::Sound => {
+                                // Stop everything since the keys went down: nothing is turned into text.
+                                if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.finished(); say_voice(&app, "idle", "", json!({})); continue; }
                                 say_voice(&app, "transcribing", "Understanding what you said", json!({}));
                                 let t0 = now();
                                 if speech.is_none() { speech = preload.lock().unwrap_or_else(|e| e.into_inner()).take(); }
@@ -2883,6 +2901,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                 // Timing and how many project words were given, never the words or what was said.
                                 log("voice_transcribed", json!({ "ms": (now() - t0) as u64, "words": words.split(", ").filter(|w| !w.is_empty()).count(), "language": language.is_some() }));
                                 hold.finished();
+                                // Stop everything while the words were turned into text: they are dropped, never sent on (to
+                                // Show me after its key, or as a task with auto send on).
+                                if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { log("voice_dropped_after_stop", json!({})); say_voice(&app, "idle", "", json!({})); continue; }
                                 match out {
                                     // Only the word list written back is not what the person said (voicewords::is_echo).
                                     Ok(text) if voicewords::is_echo(&text, &words) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),

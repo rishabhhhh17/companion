@@ -217,6 +217,29 @@ mod tests {
         assert!(HIDDEN_WORDS.starts_with("Companion is hidden right now") && !HIDDEN_WORDS.contains('\u{2014}'));
     }
     #[test]
+    fn stop_everything_reaches_hold_to_talk_even_while_it_waits_or_turns_words_into_text() {
+        // Rule 11. Stop reaches the worker as a Cancel queued behind whatever it is doing: the light's wait, a slow
+        // microphone opening (up to seconds for a Bluetooth one), or the words being turned into text. So Stop also counts
+        // itself at once, and the worker looks at that count after each of those: the microphone never opens after a Stop,
+        // and words heard before a Stop are dropped, never sent on to Show me or a task.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let rest = body("fn showme_stop_rest(");
+        assert!(rest.find("VOICE_STOPS.fetch_add(1, Ordering::SeqCst);").expect("Stop counts itself") < rest.find("voice_send(app, VoiceMsg::Cancel)").unwrap(), "{rest}");
+        let w = body("fn voice_worker(");
+        let down = &w[w.find("Ok(VoiceMsg::Down(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()];
+        let up = &w[w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Cancel) =>").unwrap()];
+        let stopped = "if VOICE_STOPS.load(Ordering::SeqCst) != stops_at {";
+        assert!(down.find("stops_at = VOICE_STOPS.load(Ordering::SeqCst);").unwrap() < down.find("voice_mac::model_ready(").unwrap(), "noted as the keys go down");
+        let (light, mic) = (down.find("std::thread::sleep(Duration::from_millis(150))").unwrap(), down.find("voice_mac::Recorder::start(").unwrap());
+        assert!(down[light..mic].contains(stopped), "a Stop during the light: the microphone never opens");
+        let opened = &down[mic..];
+        assert!(opened[..opened.find("rec = Some(r);").unwrap()].contains(stopped), "a Stop while the microphone opened: it is closed at once");
+        let (said, heard) = (up.find("say_voice(&app, \"transcribing\"").unwrap(), up.find("say_voice(&app, \"heard\"").unwrap());
+        assert!(up[said..heard].contains(stopped), "a Stop while the words were turned into text: they are dropped");
+        assert!(up[..said].contains(stopped), "and none are turned into text after a Stop");
+    }
+    #[test]
     fn both_ways_of_hiding_close_the_microphone_at_once() {
         let main = include_str!("main.rs");
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };

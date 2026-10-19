@@ -867,7 +867,9 @@ function Card() {
   const showMeRef = useRef<(q: string, g: string, s: string[]) => void>(() => {});
   useEffect(() => {
     const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
-    return () => { off.then((f) => f()); };
+    // Stop everything ends the Show me key's question too: words heard after it are never a question about the screen.
+    const offStop = listen("runner-event", (e) => { if ((e.payload as { type?: string } | null)?.type === "app.stop_everything") setAskMode("task"); });
+    return () => { off.then((f) => f()); offStop.then((f) => f()); };
   }, []);
   // settle: this look follows an action (a click, an answer), so the shell may wait for the page to stop changing first
   // (waitsForPage: bounded, the light on throughout, Stop ends it).
