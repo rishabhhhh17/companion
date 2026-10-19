@@ -163,7 +163,52 @@ floor" means a fixed part that must be proven by a test before the setting ships
 | `drive.maxSteps` Most steps in a plan | number, 12 | runner | drive.ts | 3 to 20 | The estimate and the plan's budget still apply. Rescue plans stay 3 to 7. |
 | `drive.pauseOnMyEdits` Pause a plan when I change the project myself | switch, on | runner | agent.ts, watcher.ts | | Needs a floor: a test that undoing a step never puts back files the person changed during the plan. |
 | `work.tryAgain` Try again | choice carry_on / fresh, carry_on | runner | agent.ts, followup.ts | | Fresh still tells Claude how the last attempt ended. Off the record already starts fresh. |
-| `approval.waitMinutes` How long a question waits for your answer | number, 30 | runner | engine.ts, sdkEngine.ts HOOK_TIMEOUT_SECONDS | 5 to 120 minutes, step 5 | Needs a floor: no answer always counts as no. The SDK hook's limit is set from the ceiling (120 minutes plus a margin) at engine start. Read when each question is asked. |
+| `approval.waitMinutes` How long a question waits for your answer | number, 30 | runner | engine.ts, sdkEngine.ts HOOK_TIMEOUT_SECONDS | 5 to 30 minutes for now (5 to 120 once a real run proves the hook limit), step 5 | Needs a floor: no answer always counts as no. The SDK hook's limit is set from the ceiling (the top plus a margin) at engine start. Read when each question is asked. |
+
+Status of area 1 (19 Oct 2026, branch `m11/set-spend-work`): built and tested with fakes only (the scripted engine, fake
+checks, a fake SDK query on the plan route); the app was not built or opened and no real Claude run was made.
+- Built: the four budgets, `model.work`, `model.rescue`, `model.quick`, `work.tries`, `work.askOnAnyFailure`,
+  `drive.maxSteps`, `work.tryAgain` and `approval.waitMinutes`, each with today's behaviour as its usual value and tests at
+  the edges of its range. The budgets are read by the pages as the work starts and checked again there; the engine still
+  caps every budget at what is left of the day (tested at $50). The loop card and the different approach prompt say how
+  the tries really ran out (the usual three identical failures keep exactly today's words, and today's event). A plan keeps
+  the most steps it was made with; Rescue keeps 3 to 7. The safety hook's limit is set from the setting's top, plus 2
+  minutes.
+- How long a question waits goes from 5 to 30 minutes for now, not to 120 (review, 19 Oct 2026). A wait longer than 30
+  needs the SDK hook's limit above the 32 minutes relied on so far, and nobody has seen Claude Code honour a longer one
+  (T05 says what the SDK does when a hook times out has not been seen). If it gave up on the hook while a card was still
+  open, the tool would go on to Claude Code's own permission flow without Companion's answer. So the top stays at 30 and
+  the hook's limit stays 1,920 seconds, exactly as before the setting; the top goes to 120 in `protocol/settings.json` only
+  after a real run shows a hook still waiting past 32 minutes is honoured (the real run checklist, known gaps). Also from
+  the review: Claude Code's sandbox no longer runs a shell command on its own say so (`autoAllowBashIfSandboxed: false` in
+  `runner/src/sandbox.ts`), so a command the hook gave no answer for ends at `canUseTool`, which says no. An edit inside the
+  project that a house rule asks about would still go through `acceptEdits` in that case, which is why the top stays at 30.
+- The rough cost shown before Start follows the plan's model (review, 19 Oct 2026): $0.25 a step is today's figure for the
+  job's usual model (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue), and another model scales it by list price
+  (`drive.ts` `estimateUsd`, `models.ts` `priceRatio`; a model Companion does not know counts as the dearest it knows), so
+  a plan on Careful shows about twice as much, as its words say. The usual figures are unchanged. Found while looking, left for the founder: a Rescue's steps run on Opus 5.5 at the same
+  $0.25 a step as a Drive plan on Sonnet 5.5, so the usual Rescue figure may be about half too low for an "at most";
+  changing it changes what people see today. A pages test now checks that each model option's words name the model
+  `MODEL_CHOICES` sends and say its cost truly.
+- The model rows: each option names its own real smoke test case (`runner/src/models.ts` `MODEL_CHOICES`; three new cases
+  in `runner/scripts/smoke-real.ts`: `main-engine-opus55`, `rescue-sonnet55`, `fast-sonnet55`, making the plan about $0.75).
+  Nobody has run the smoke test yet (`SMOKE_PASSED` is empty), so only the usual option can be offered and all three rows are
+  hidden from Settings and search. A saved other choice still gets today's model. When the founder runs the smoke test with
+  `--spend` and a case passes, its name goes into `SMOKE_PASSED` (with the date in T10), and the row appears. Correction to
+  the note above: the engine does not refuse a model it does not know today (it sends the plain request and prices it as the
+  dearest model); the pages only ever send a model from `MODEL_CHOICES`, which a test checks are all known. Flag 3: Haiku 4.5
+  checked on 19 Oct 2026 against the model list bundled with the Claude API notes (cached 6 Oct 2026): still listed as active;
+  the live list is still to be checked before shipping.
+- Left out: `drive.pauseOnMyEdits`. Its floor asks for a test that undoing a step never puts back files the person changed
+  during the plan. Companion can tell the person's changes from Claude's only while none of Claude's own tools or the checks
+  is running (watcher.ts treats every change in those moments, and for half a second after, as Claude's), and with the plan
+  not pausing the person keeps editing exactly then. Undo would put those edits back with no way for a test to prove
+  otherwise, so the switch stays fixed at on. Building it needs a way to know which program changed a file, or a decision
+  to let Undo leave alone every file it cannot attribute. Found while looking: with pausing on, as today, undoing a step of a
+  paused and resumed plan also puts back the person's own edits (the Undo question says so: "Changes made since then,
+  including your own, are replaced").
+- Not proven: every row in the built app, by a person, with the keyboard and VoiceOver; a budget change reaching a real
+  task; a real Claude run of any switched model (the smoke test, only when the founder says go).
 
 ### Area 2: Checking your project (engine builder, proof; most settings are per project)
 

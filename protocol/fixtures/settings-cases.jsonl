@@ -77,3 +77,37 @@
 {"migrate": "textSize", "raw": "largest", "value": "largest"}
 {"migrate": "textSize", "raw": "enormous", "value": "standard"}
 {"migrate": "textSize", "raw": null, "absent": true}
+{"key": "budget.task", "value": 0.5, "ok": true, "normalized": 0.5}
+{"key": "budget.task", "value": 50, "ok": true, "normalized": 50}
+{"key": "budget.task", "value": 0.49, "ok": false, "reason": "tooLow"}
+{"key": "budget.task", "value": 50.01, "ok": false, "reason": "tooHigh"}
+{"key": "budget.task", "value": 3.2, "ok": true, "normalized": 3}
+{"key": "budget.plan", "value": 3.3, "ok": true, "normalized": 3.5}
+{"key": "budget.rescue", "value": 0, "ok": false, "reason": "tooLow"}
+{"key": "budget.research", "value": "2", "ok": false, "reason": "notNumber"}
+{"key": "model.work", "value": "careful", "ok": true, "normalized": "careful"}
+{"key": "model.work", "value": "claude-opus-5-5", "ok": false, "reason": "notChoice"}
+{"key": "model.rescue", "value": "recommended", "ok": true, "normalized": "recommended"}
+{"key": "model.quick", "value": "slow", "ok": false, "reason": "notChoice"}
+{"key": "work.tries", "value": 1, "ok": true, "normalized": 1}
+{"key": "work.tries", "value": 5, "ok": true, "normalized": 5}
+{"key": "work.tries", "value": 0, "ok": false, "reason": "tooLow"}
+{"key": "work.tries", "value": 6, "ok": false, "reason": "tooHigh"}
+{"key": "work.tries", "value": 2.4, "ok": true, "normalized": 2}
+{"key": "work.askOnAnyFailure", "value": true, "ok": true, "normalized": true}
+{"key": "work.askOnAnyFailure", "value": "on", "ok": false, "reason": "notSwitch"}
+{"key": "drive.maxSteps", "value": 3, "ok": true, "normalized": 3}
+{"key": "drive.maxSteps", "value": 20, "ok": true, "normalized": 20}
+{"key": "drive.maxSteps", "value": 2, "ok": false, "reason": "tooLow"}
+{"key": "drive.maxSteps", "value": 21, "ok": false, "reason": "tooHigh"}
+{"key": "work.tryAgain", "value": "fresh", "ok": true, "normalized": "fresh"}
+{"key": "work.tryAgain", "value": "carryOn", "ok": false, "reason": "notChoice"}
+{"key": "approval.waitMinutes", "value": 5, "ok": true, "normalized": 5}
+{"key": "approval.waitMinutes", "value": 30, "ok": true, "normalized": 30}
+{"key": "approval.waitMinutes", "value": 4, "ok": false, "reason": "tooLow"}
+{"key": "approval.waitMinutes", "value": 31, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 35, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 120, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 7, "ok": true, "normalized": 5}
+{"key": "approval.waitMinutes", "value": 8, "ok": true, "normalized": 10}
+{"key": "approval.waitMinutes", "value": 0, "ok": false, "reason": "tooLow"}

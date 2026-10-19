@@ -5,7 +5,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { APPROVAL_TIMEOUT_MS, ScriptedEngine } from "../src/engine.ts";
+import { APPROVAL_TIMEOUT_MS, MAX_APPROVAL_WAIT_MS, ScriptedEngine } from "../src/engine.ts";
+import { defOf } from "../../protocol/settings.ts";
 import { buildSdkOptions, HOOK_TIMEOUT_SECONDS } from "../src/sdkEngine.ts";
 import { AgentRunner } from "../src/agent.ts";
 import { TaskLog } from "../src/tasklog.ts";
@@ -25,6 +26,21 @@ describe("the safety hook's time limit", () => {
   test("is longer than an approval card lives, with room to spare", () => {
     expect(HOOK_TIMEOUT_SECONDS * 1000).toBeGreaterThan(APPROVAL_TIMEOUT_MS);
     expect(HOOK_TIMEOUT_SECONDS * 1000 - APPROVAL_TIMEOUT_MS).toBeGreaterThanOrEqual(60_000);
+  });
+  test("is set from the longest wait the setting allows (How long a question waits), so a changed wait can never outlive it", () => {
+    const d = defOf("approval.waitMinutes")!;
+    expect(MAX_APPROVAL_WAIT_MS).toBe((d.max as number) * 60_000);
+    expect(HOOK_TIMEOUT_SECONDS * 1000 - MAX_APPROVAL_WAIT_MS).toBeGreaterThanOrEqual(60_000);
+    // Every value the setting accepts is inside the hook's limit.
+    for (let m = d.min as number; m <= (d.max as number); m += d.step as number) expect(m * 60_000, String(m)).toBeLessThan(HOOK_TIMEOUT_SECONDS * 1000);
+  });
+  // [verify] Nobody has seen Claude Code honour a hook time limit longer than the 32 minutes relied on since before the
+  // setting. Until a real run shows a hook still waiting past 32 minutes is honoured (T05, the real run checklist), the
+  // setting can only shorten the wait, and the hook's limit stays exactly what it was.
+  test("stays at 32 minutes: the longest wait is 30 minutes until a real run proves a longer hook limit is honoured", () => {
+    expect(defOf("approval.waitMinutes")!.max).toBe(30);
+    expect(MAX_APPROVAL_WAIT_MS).toBe(APPROVAL_TIMEOUT_MS);
+    expect(HOOK_TIMEOUT_SECONDS).toBe(32 * 60);
   });
   test("an approval card lives 30 minutes by default, and says so", async () => {
     expect(APPROVAL_TIMEOUT_MS).toBe(30 * 60_000);
