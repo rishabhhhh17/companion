@@ -22,11 +22,17 @@ export const followUpPrompt = (text: string) =>
   `The person has a follow up about the work you just did:\n${said(text)}\n\nKeep the change small, and keep what already works.`;
 export const freshFollowUpPrompt = (goal: string, text: string) =>
   `${freshStart(goal)}\n\nThe person now says:\n${said(text)}\n\nKeep the change small, and keep what already works.`;
-// The last task ended on a question to the person (asks.ts), so what they type next is their answer.
+// The last task ended on a question to the person (asks.ts), so what they type next is their answer. Claude is told never
+// to ask for a secret (sdkEngine.ts), but a person may paste one anyway: anything in the answer that looks like a key or a
+// password is hidden before Claude is sent it, since Claude's conversation is saved, and Claude is told what to do instead.
+const answered = (text: string) => {
+  const hidden = redact(text);
+  return hidden === text ? said(text) : `${said(hidden)}\n\n(Companion hid something in the answer that looked like a key or a password. Do not ask for it again: say which setting is needed and where to add it, so the person adds it themselves.)`;
+};
 export const answerPrompt = (text: string) =>
-  `The person answered your question:\n${said(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
+  `The person answered your question:\n${answered(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
 export const freshAnswerPrompt = (goal: string, text: string) =>
-  `${freshStart(goal)}\n\nYou asked the person a question, and they answered:\n${said(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
+  `${freshStart(goal)}\n\nYou asked the person a question, and they answered:\n${answered(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
 
 /** How the last attempt ended, so Try again never tells Claude something false about it. */
 export type Ending = "failed_check" | "spending_limit" | "error" | "no_connection" | "claude_busy" | "asked" | "stopped" | "unfinished" | "finished";

@@ -12,7 +12,7 @@ import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, startPractice as practiceFixCommand, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine } from "./commands.ts";
-import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, waitsForAnswer, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
+import { PRACTICES, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, PracticeKind, Problem } from "./model.ts";
 import { Onboarding } from "./onboarding.tsx";
@@ -793,7 +793,7 @@ function Card() {
     return () => { off.then((f) => f()); };
   }, []);
   // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
-  const working = ["thinking", "working", "checking", "needsYou"].includes(m.character) && !waitsForAnswer(m);
+  const working = cardWorking(m);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;

@@ -154,8 +154,13 @@ export type Expect = { tools: readonly string[] | "agent"; model?: string; claud
 /** The built in Claude Code tools an agent session may list: exactly the ones Companion gives in any flow (runner/src/tools.ts
  *  GIVEN_TOOLS). Anything else (a sub agent, Claude's own question box, a connector, a scheduler, a hosted feature) fails
  *  the check, so a first real run shows it to a person instead of letting it pass. If system/init lists a tool Claude Code
- *  adds by itself, read what it does before giving it a place here or in tools.ts. */
+ *  adds by itself, read what it does before giving it a place in tools.ts (or a plain refusal in safety.ts NOT_GIVEN). */
 export const AGENT_TOOLS: readonly string[] = GIVEN_TOOLS;
+/** Tools Claude Code lists in an agent session whatever its tools list says, so system/init may name them: the tools
+ *  reference says a list cannot remove EndConversation while any other tool remains (docs/milestones/M0-desk-research-details.md,
+ *  section g; technical_research.md question 26). Never named in options.tools, and still refused if Claude calls it
+ *  (safety.ts NOT_GIVEN). A lane that names no tools may list none of them. */
+export const ALWAYS_LISTED: readonly string[] = ["EndConversation"];
 
 /** Claude Code settings read from the environment that change what is sent (effort, thinking, output length, extra body
  *  fields, the model behind a lane) or what it costs (prompt caching). The app never sets them; a real run must not either. */
@@ -207,9 +212,9 @@ export function checkOptions(options: Record<string, any>, ex: { claudeBinary: s
 export function checkInit(m: Ev, ex: { tools: readonly string[] | "agent"; model?: string }): string[] {
   const p: string[] = [];
   const tools: string[] = Array.isArray(m.tools) ? m.tools.map(String) : [];
-  const allowed = ex.tools === "agent" ? AGENT_TOOLS : ex.tools;
+  const allowed = ex.tools === "agent" ? [...AGENT_TOOLS, ...ALWAYS_LISTED] : ex.tools;
   const extra = tools.filter((t) => t.startsWith("mcp__") || !allowed.includes(t));
-  if (extra.length) p.push(`tools this check does not expect: ${extra.join(", ")}${ex.tools === "agent" ? " (if one is a plain built in Claude Code tool, read what it does, then add it to AGENT_TOOLS in runner/scripts/realrun-harness.ts)" : ""}`);
+  if (extra.length) p.push(`tools this check does not expect: ${extra.join(", ")}${ex.tools === "agent" ? " (if one is a plain built in Claude Code tool, read what it does, then give it in runner/src/tools.ts, or refuse it in plain words in NOT_GIVEN in runner/src/safety.ts and add it to ALWAYS_LISTED here only if no tools list can leave it out)" : ""}`);
   if (Array.isArray(m.mcp_servers) && m.mcp_servers.length) p.push(`MCP servers were loaded: ${m.mcp_servers.map((s: Ev) => String(s?.name)).join(", ")}`);
   if (Array.isArray(m.plugins) && m.plugins.length) p.push(`plugins were loaded: ${m.plugins.map((s: Ev) => String(s?.name)).join(", ")}`);
   if (m.apiKeySource !== "ANTHROPIC_API_KEY") p.push(`the key came from "${String(m.apiKeySource)}", not ANTHROPIC_API_KEY (the API key route)`);

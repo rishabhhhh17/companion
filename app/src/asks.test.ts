@@ -5,8 +5,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { AGENT } from "./commands.ts";
-import { canFollowUp, canRetry, driveWords, historyWords, initial, plainError, receiptSaid, reduce, waitsForAnswer, type Model } from "./model.ts";
-import { need } from "./home.ts";
+import { canFollowUp, canRetry, cardWorking, driveWords, historyWords, initial, plainError, receiptSaid, reduce, waitsForAnswer, type Model } from "./model.ts";
+import { islandLine, need } from "./home.ts";
 import { statusGroup } from "./history.ts";
 import { alsoSayLines } from "./speech.ts";
 import { S } from "./strings.ts";
@@ -29,7 +29,7 @@ describe("the agent's last words on the receipt", () => {
     expect(w.help).toBe(S.receiptAnswerHelp);
   });
   test("a question after work that is done and checked is shown as one, without saying the task needs you", () => {
-    const w = receiptSaid(run([...begin, receipt({ said: "I fixed it. Do you also want a test for it?", asks: true, proof: "passed", changed: [{ file: "a.js", kind: "modified" }] }), state("done")]))!;
+    const w = receiptSaid(run([...begin, receipt({ said: "I fixed it. Which email address should the welcome email come from?", asks: true, proof: "passed", changed: [{ file: "a.js", kind: "modified" }] }), state("done")]))!;
     expect(w.lead).toBe(S.receiptAsksToo);
     expect(w.help).toBe(S.receiptAnswerHelp);
   });
@@ -75,9 +75,36 @@ describe("a task that asks needs you, and is answered in the follow up box", () 
     const undone = run([ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], asked);
     expect(waitsForAnswer(undone)).toBe(false);
   });
-  test("the card neither shows Stop nor hides the ask box for a task that has ended on a question", () => {
+  // The engine sends no new state after an undo, so the page puts the agent back to ready itself: otherwise the card would
+  // look busy (Stop, no Start row, no follow up box) and the island would say it needs you with nothing waiting.
+  test("after Undo nothing waits: the card is not working, the Start row shows and the island says Ready", () => {
+    const undone = run([ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], asked);
+    expect(cardWorking(undone)).toBe(false);
+    expect(undone.character).toBe("idle");
+    expect(undone.agents[AGENT]).toBe("idle");
+    expect(need(undone)).toBeNull();
+    expect(islandLine(undone)).toBe(S.islandReady);
+  });
+  test("after which task broke it took that task back, the same", () => {
+    const working: Model = { ...asked, bisect: { stage: "done", undo: "safe", task: { label: "make signup work", at: "2026-10-19T10:00:00Z", checkpoint: "cp_1" }, undoStage: "working" } };
+    const undone = run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_1", ok: true, reverted: ["a.js"] })], working);
+    expect(undone.receipt?.undone).toBe(true);
+    expect(cardWorking(undone)).toBe(false);
+    expect(islandLine(undone)).toBe(S.islandReady);
+  });
+  test("an undo leaves an agent that waits for something else as it is", () => {
+    const withCard = run([ev({ type: "approval.request", approval: "ap_1", agent: AGENT, checkpoint: "cp_1", toolUseId: "t", risk: "git", title: "git push sends your work to a remote", expiresAt: "2999-01-01T00:00:00Z" })], asked);
+    const undone = run([ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], withCard);
+    expect(undone.agents[AGENT]).toBe("needsYou");
+  });
+  test("while a task works, the card is working; once it waits for an answer, it is not", () => {
+    expect(cardWorking(run([...begin]))).toBe(true);
+    expect(cardWorking(asked)).toBe(false);
+    expect(cardWorking(reported)).toBe(false);
+  });
+  test("the card reads whether it is working from the model", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    expect(card).toMatch(/const working = .*!waitsForAnswer\(m\)/);
+    expect(card).toMatch(/const working = cardWorking\(m\)/);
   });
   test("with Speak to me saying when something needs me, it says a question waits, in fixed words only", () => {
     expect(alsoSayLines(asked, P, ["needsYou"])).toEqual([{ key: "needs:asks:cp_1", text: S.alsoSay.needsYou.asks }]);
@@ -106,6 +133,14 @@ describe("Claude out of reach", () => {
     expect(w).toMatch(/Try again/);
     expect(w).not.toMatch(/key|project/i);
   });
+  test("in a flow with no Try again (planning, Rescue, Research), it says ask again instead", () => {
+    const w = plainError("engine error: no_connection (ask again): Companion could not reach Claude (fetch failed)");
+    expect(w).toBe(S.noConnectionAsk);
+    expect(w).toMatch(/ask again/);
+    expect(w).not.toMatch(/Try again/);
+    expect(plainError("engine error: claude_busy (ask again): Claude is busy or having trouble right now (529)")).toBe(S.claudeBusyAsk);
+    expect(S.claudeBusyAsk).not.toMatch(/Try again/);
+  });
   test("the task can be tried again", () => {
     const m = run([...begin, ev({ type: "protocol.error", agent: AGENT, reason: "no_connection: Companion could not reach Claude (x)" }), receipt(), state("error")]);
     expect(m.error).toBe(S.noConnection);
@@ -118,5 +153,64 @@ describe("Claude out of reach", () => {
     expect(statusGroup("claude_busy")).toBe("stopped");
     const d = run([ev({ type: "drive.done", agent: AGENT, status: "no_connection", completed: 0, total: 2, usdEstimate: 0 })]);
     expect(driveWords(d)).toMatch(new RegExp(S.driveNoConnection));
+  });
+});
+
+// A failed request of another kind (reach.ts stoppedMessage): said plainly, never with Claude Code's own text (which names its
+// own /login), and Try again only where it can help.
+describe("a failed request is said in plain words", () => {
+  const reason = (kind: string, raw: string, ask = false) => `engine error: claude_stopped:${kind}${ask ? " (ask again)" : ""}: Claude stopped (${raw})`;
+  test("a refused key: check it in Settings; no /login, no Try again", () => {
+    const w = plainError(reason("authentication_failed", "Invalid API key · Please run /login"));
+    expect(w).toMatch(/Settings/);
+    expect(w).not.toMatch(/\/login|Try again|Something went wrong|Invalid API key/);
+  });
+  test("no credit: add some in the Anthropic Console; no Try again", () => {
+    const w = plainError(reason("billing_error", "Credit balance is too low"));
+    expect(w).toMatch(/console\.anthropic\.com/);
+    expect(w).not.toMatch(/Try again|Credit balance/);
+  });
+  test("too many requests: wait a minute, then Try again, or ask again where there is none", () => {
+    expect(plainError(reason("rate_limit", "API Error: Request rejected (429)"))).toMatch(/Wait a minute, then press Try again\./);
+    const ask = plainError(reason("rate_limit", "API Error: Request rejected (429)", true));
+    expect(ask).toMatch(/ask again/);
+    expect(ask).not.toMatch(/Try again/);
+  });
+  test("a reply cut at its output limit: ask for a smaller part", () => {
+    const w = plainError(reason("max_output_tokens", "API Error: Claude's response exceeded the 32000 output token maximum"));
+    expect(w).toMatch(/cut off/);
+    expect(w).not.toMatch(/CLAUDE_CODE|output token/);
+  });
+  test("every kind the pinned SDK names gets a plain line, and one it does not know gets a plain one too", () => {
+    for (const kind of ["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error", "rate_limit", "invalid_request", "model_not_found", "max_output_tokens", "cloud_credential_error", "unknown", "something_new"]) {
+      for (const ask of [false, true]) {
+        const w = plainError(reason(kind, "Raw words · Please run /doctor", ask));
+        expect(w, kind).toMatch(/^[A-Z][^\n]{10,320}[.]$/);
+        expect(w, kind).not.toMatch(/\/doctor|Raw words|Something went wrong|claude_stopped/);
+        if (ask) expect(w, kind).not.toMatch(/Try again/);
+      }
+    }
+  });
+});
+
+describe("Claude out of reach in the lanes and the explainers", () => {
+  test("Prompt help says it plainly, with nothing to paste back", () => {
+    const m = run([ev({ type: "assist.error", req: "ph_1", reason: "no_connection (ask again): Companion could not reach Claude (API Error: Connection error.)" })]);
+    expect(m.ph).toMatchObject({ stage: "error", message: S.noConnectionAsk });
+  });
+  test("Show me says it plainly, never that it could not find it", () => {
+    const m = run([ev({ type: "assist.error", req: "sm_1", reason: "claude_busy (ask again): Claude is busy or having trouble right now (529)" })], { ...initial(), showme: { stage: "thinking", req: "sm_1" } as never });
+    expect(m.showme).toMatchObject({ stage: "error", message: S.claudeBusyAsk });
+  });
+  test("the error explainer and Draw it for me say it plainly", () => {
+    const e = run([ev({ type: "app.explain_error", stage: "thinking", req: "eh_1" }), ev({ type: "error.explained", req: "eh_1", ok: false, sentences: [], excerpt: "x", evidence: "x", usdEstimate: 0, reason: "no_connection (ask again): Companion could not reach Claude (x)" })]);
+    expect(e.eh?.reason).toBe(S.noConnectionAsk);
+    const d = run([ev({ type: "ui.diagramAsked", ask: "d1", project: P }), ev({ type: "diagram.ready", project: P, ask: "d1", made: false, reason: "claude_stopped:authentication_failed (ask again): Claude stopped (Invalid API key)" })]);
+    expect(d.diagram?.reason).toBe(plainError("claude_stopped:authentication_failed (ask again): x"));
+    expect(d.diagram?.reason).not.toMatch(/Invalid API key/);
+  });
+  test("a reason that is not Claude's is shown as before", () => {
+    const m = run([ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]);
+    expect(m.ph?.message).toBe("The improved version came out much longer than yours, so I left yours alone.");
   });
 });

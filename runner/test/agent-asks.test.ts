@@ -6,11 +6,12 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
-import { asksPerson, MAX_SAID_CHARS, saidLine } from "../src/asks.ts";
+import { asksForWhatOnlyTheyHave, asksPerson, MAX_SAID_CHARS, questionOf, saidLine } from "../src/asks.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { answerPrompt, endingOf, freshAnswerPrompt } from "../src/followup.ts";
 import { buildSdkOptions } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
+import { RunnerSettings } from "../src/settings.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import { parseEvent, serialize, type Event } from "../../protocol/index.ts";
 
@@ -27,14 +28,16 @@ const states = (e: Event[]) => of(e, "agent.state").map((x) => x.state);
 
 // empty: no file in the project to begin with (a Drive plan watches the folder, and a file written just before it starts can
 // be reported late as the person's own change).
-function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { empty?: boolean } = {}) {
+function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { empty?: boolean; values?: Record<string, unknown> } = {}) {
   const project = tmp("p");
   if (!o.empty) writeFileSync(join(project, "a.txt"), "original");
   const events: Event[] = [];
   const engine = new ScriptedEngine(rounds);
   const log = new TaskLog(":memory:");
+  const settings = new RunnerSettings();
+  if (o.values) settings.apply({ v: 1, id: "s", type: "settings.apply", values: o.values } as never);
   let n = 0;
-  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)] });
+  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, settings, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)] });
   const start = () => runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "b1", mode: "drive", prompt: "Make signup work", model: "m", budgetUsd: 3 });
   const send = (text: string) => runner.handle({ v: 1, id: "c2", type: "agent.send", agent: "b1", project, text });
   return { project, events, engine, log, runner, start, send, ladderRuns: () => n };
@@ -47,7 +50,29 @@ describe("does the agent's final message ask the person something?", () => {
     expect(asksPerson(`${QUESTION} Put it in your settings as SUPABASE_URL.`)).toBe(true);
     expect(asksPerson("I added the signup form. Which email address should the welcome email come from?")).toBe(true);
     expect(asksPerson("Done.\n\n**Should the button be blue or green?**")).toBe(true);
-    expect(asksPerson("I need one thing from you: \"What is your Stripe key?\"")).toBe(true);
+    expect(asksPerson("I need one thing from you: \"What is your Supabase project address?\"")).toBe(true);
+    // A choice between two ways is the person's, even when it is worded as "should I".
+    expect(asksPerson("I can send the welcome email with Resend or Postmark. Should I use Resend or Postmark?")).toBe(true);
+    expect(asksPerson("This needs your own key. Can you add STRIPE_SECRET_KEY to your .env file? You can copy it from Stripe.")).toBe(true);
+  });
+  // Claude often ends on an offer or a check in. Neither asks for anything only the person has, so neither ends the task
+  // as needs you (it would skip the fix round and the loop breaker, and the card would wait for an answer to an offer).
+  test("an offer of more work, or a check in at the end, is not a question for the person", () => {
+    for (const t of [
+      "I updated the signup form. Want me to add a test for it too?",
+      "I fixed it. Do you also want a test for it?",
+      "The fix is in place. Anything else?",
+      "Done. Would you like me to add tests for this?",
+      "I fixed the button. Should I also update the README?",
+      "The page works now. Shall I go ahead and tidy the styles?",
+      "I made the change. Is there anything else you need?",
+      "I fixed the typo. Does that look right?",
+      "The price is 20 percent now. Did that fix it for you?",
+      "I renamed the function. What do you think?",
+      "That is done. Can I help with anything else?",
+      "I added the form. Let me know if you want changes. Want a test too?",
+      "I added the check. Do you want me to run the tests again?",
+    ]) expect(asksPerson(t), t).toBe(false);
   });
   test("a plain report does not", () => {
     expect(asksPerson("I fixed the null check in signup.js. The tests pass now.")).toBe(false);
@@ -59,6 +84,26 @@ describe("does the agent's final message ask the person something?", () => {
   test("a question mark inside code is not a question", () => {
     expect(asksPerson("I changed the check to:\n```js\nconst ok = user?.name ? true : false;\n```\nThe tests pass.")).toBe(false);
     expect(asksPerson("I changed `a ? b : c` to a plain if.")).toBe(false);
+  });
+});
+
+describe("does the question name something only the person has?", () => {
+  // When the checks failed, only such a question ends the task as needs you; anything else gets the fix round as before.
+  test("their own value, account or choice does", () => {
+    expect(asksForWhatOnlyTheyHave(QUESTION)).toBe(true);
+    expect(asksForWhatOnlyTheyHave("I made the form, but I need your Supabase address to finish. What is it?")).toBe(true);
+    expect(asksForWhatOnlyTheyHave("Should the button be blue or green?")).toBe(true);
+    expect(asksForWhatOnlyTheyHave("Which email address should the welcome email come from?")).toBe(true);
+    expect(asksForWhatOnlyTheyHave("The test expects a price I cannot find in the project. What should the price be?")).toBe(true);
+  });
+  test("a question Claude could answer by looking does not, and neither does an offer", () => {
+    expect(asksForWhatOnlyTheyHave("I changed the server. Is it meant to run on port 3000?")).toBe(false);
+    expect(asksForWhatOnlyTheyHave("I updated the signup form. Want me to add a test for it too?")).toBe(false);
+    expect(asksForWhatOnlyTheyHave("I fixed the null check. The tests pass now.")).toBe(false);
+  });
+  test("the question itself is picked out, for the task's name when the person answers", () => {
+    expect(questionOf(QUESTION)).toBe("I need your Supabase project address to fix this: what is it?");
+    expect(questionOf("I fixed it. Want me to add a test?")).toBeNull();
   });
 });
 
@@ -102,7 +147,7 @@ describe("a task that ends on a question needs you", () => {
     expect(of(r.events, "loop.stuck").length).toBe(0);
   });
   test("files changed and the checks pass: the work is done and proven, and the question is still on the receipt", async () => {
-    const r = setup([[write("a.txt", "done"), say("I fixed it. Do you also want a test for it?")]], [good()]);
+    const r = setup([[write("a.txt", "done"), say("I fixed it. Which email address should the welcome email come from?")]], [good()]);
     await r.start();
     const rec = of(r.events, "receipt")[0];
     expect(rec.proof).toBe("passed");
@@ -116,6 +161,47 @@ describe("a task that ends on a question needs you", () => {
     expect(r.engine.calls.length).toBe(2);
     expect(r.log.list()[0].status).toBe("needs_you");
     expect(of(r.events, "receipt")[0].said).toMatch(/What should the price be\?/);
+  });
+  test("an offer after work whose checks failed gets the fix round, as before, and never waits for an answer", async () => {
+    const r = setup([[write("a.txt", "half done"), say("I updated the signup form. Want me to add a test for it too?")], [write("a.txt", "fixed"), say("I fixed the failing check.")]], [bad("the form does not submit"), good()]);
+    await r.start();
+    expect(r.engine.calls.length).toBe(2);
+    expect(r.engine.calls[1].prompt).toMatch(/checks on your work failed/);
+    expect(r.ladderRuns()).toBe(2);
+    const rec = of(r.events, "receipt")[0];
+    expect(rec.proof).toBe("passed");
+    expect(rec.asks).toBeUndefined();
+    expect(r.log.list()[0].status).toBe("done");
+  });
+  test("an offer after work whose checks pass is done, without asks", async () => {
+    const r = setup([[write("a.txt", "done"), say("The fix is in place. Anything else?")]], [good()]);
+    await r.start();
+    const rec = of(r.events, "receipt")[0];
+    expect(rec.said).toBe("The fix is in place. Anything else?");
+    expect(rec.asks).toBeUndefined();
+    expect(r.log.list()[0].status).toBe("done");
+    expect(states(r.events).at(-1)).toBe("done");
+  });
+  test("a question Claude could answer itself, after checks that failed, gets the fix round", async () => {
+    const r = setup([[write("a.txt", "v1"), say("I changed the server. Is it meant to run on port 3000?")], [write("a.txt", "v2"), say("Fixed.")]], [bad("port in use"), good()]);
+    await r.start();
+    expect(r.engine.calls.length).toBe(2);
+    expect(r.log.list()[0].status).toBe("done");
+  });
+  test("with Stop and wait when Claude asks you something turned off, a question gets the fix round as before", async () => {
+    const r = setup([[write("a.txt", "half done"), say("I made the form, but I need your Supabase address to finish. What is it?")], [write("a.txt", "guess"), say("Done.")]], [bad("SUPABASE_URL is not set"), good()], { values: { "work.stopOnQuestion": false } });
+    await r.start();
+    expect(r.engine.calls.length).toBe(2);
+    expect(of(r.events, "receipt")[0].asks).toBeUndefined();
+    expect(r.log.list()[0].status).toBe("done");
+  });
+  test("with it turned off, a question with nothing changed ends as done, its words on the receipt without asks", async () => {
+    const r = setup([[read("a.txt"), say(QUESTION)]], [good()], { values: { "work.stopOnQuestion": false } });
+    await r.start();
+    const rec = of(r.events, "receipt")[0];
+    expect(rec.said).toContain("what is it?");
+    expect(rec.asks).toBeUndefined();
+    expect(r.log.list()[0].status).toBe("done");
   });
   test("a plain report is not a question: the receipt carries the words, without asks", async () => {
     const r = setup([[write("a.txt", "done"), say("I fixed the null check. The tests pass now.")]], [good()]);
@@ -159,6 +245,28 @@ describe("a task that ends on a question needs you", () => {
     expect(r.engine.calls[1].prompt).toContain("https://abc.supabase.co");
     expect(r.log.list()[0].status).toBe("done");
   });
+  // A person may paste a key as the answer, although Claude is told never to ask for one. The answer is never the task's
+  // name (tasks.db, What I did), and a key in it is hidden before it is sent to Claude, whose conversation is saved.
+  test("an answer is named by the question it answers, never by what the person typed", async () => {
+    const r = setup([[read("a.txt"), say("The welcome email needs a sending address. Which address should it come from?")], [read("a.txt"), say("Thanks.")]], [good()]);
+    await r.start();
+    await r.send("re_live_9f8e7d6c5b4a3f2e1d0c and STRIPE_SECRET_KEY=sk_live_abcdefghijklmnopqrstuvwx");
+    const rows = r.log.list();
+    expect(rows[0].label).toBe("Answer to: Which address should it come from?");
+    for (const row of rows) { expect(row.label).not.toContain("re_live_9f8e7d6c5b4a3f2e1d0c"); expect(row.label).not.toContain("sk_live_abcdefghijklmnopqrstuvwx"); }
+    expect(r.engine.calls[1].prompt).not.toContain("sk_live_abcdefghijklmnopqrstuvwx");
+    const created = of(r.events, "checkpoint.created").at(-1);
+    expect(String(created.label)).not.toContain("re_live_9f8e7d6c5b4a3f2e1d0c");
+  });
+  test("Try again after an answer tries the task, never names it by the answer", async () => {
+    const r = setup([[read("a.txt"), say(QUESTION)], [write("a.txt", "v1"), say("Done.")], [write("a.txt", "v2"), say("Done.")]], [good()]);
+    await r.start();
+    await r.send("re_live_9f8e7d6c5b4a3f2e1d0c");
+    await r.runner.handle({ v: 1, id: "c3", type: "agent.send", agent: "b1", project: r.project, retry: true });
+    const labels = r.log.list().map((x) => x.label);
+    expect(labels.some((l) => l.startsWith("Try again: Make signup work"))).toBe(true);
+    for (const l of labels) expect(l).not.toContain("re_live_9f8e7d6c5b4a3f2e1d0c");
+  });
   test("a step of a plan that ends on a question ends the plan there, as needs you", async () => {
     const r = setup([[{ text: JSON.stringify(["Add the form", "Add the email"]), costUsd: 0 }], [say("Which email address should send the welcome email?")], [write("b.txt", "never")]], [good()], { empty: true });
     await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "b1", goal: "signup", model: "m", budgetUsd: 3 });
@@ -170,11 +278,23 @@ describe("a task that ends on a question needs you", () => {
 });
 
 describe("the words Claude is given", () => {
+  const appended = (): string => (buildSdkOptions({ project: "/p", model: "m", budgetUsd: 1, claudeBinary: "/x", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal }) as any).systemPrompt.append;
   test("it is told to do what it can, then end on one short question, and never to make a value up", () => {
-    const a: string = (buildSdkOptions({ project: "/p", model: "m", budgetUsd: 1, claudeBinary: "/x", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal }) as any).systemPrompt.append;
+    const a = appended();
     expect(a).toMatch(/one short question/);
     expect(a).toMatch(/final message/);
     expect(a).toMatch(/never make up/i);
+  });
+  test("it is told to put the question on its own last line, and otherwise never to end on a question or an offer", () => {
+    const a = appended();
+    expect(a).toMatch(/last line/);
+    expect(a).toMatch(/never end your final message with a question or an offer/i);
+  });
+  test("it is never told to ask for a key; it says which setting to add and where, so the person adds it", () => {
+    const a = appended();
+    expect(a).not.toMatch(/a key[,)]/);
+    expect(a).toMatch(/Never ask for a password, a key or any other secret/);
+    expect(a).toMatch(/\.env/);
   });
   test("an answer is said as the answer, and off the record the request is said again", () => {
     expect(answerPrompt("blue")).toMatch(/answered your question/);

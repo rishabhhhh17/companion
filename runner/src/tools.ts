@@ -10,7 +10,8 @@
 
 /** A task that changes the project: read and search it, change files, run commands (each judged by safety.ts), stop a
  *  background command it started (a dev server), open a public web page, search the web (a paid search on the person's
- *  own key, kept as before until the fix eval decides), and keep a short to do list. ToolSearch is how Claude Code loads a
+ *  own key: on as before, Let tasks search the web in Settings turns it off, and the fix eval decides the usual value), and
+ *  keep a short to do list. ToolSearch is how Claude Code loads a
  *  tool it holds back until needed (research reached web search through it, T05); with it, those tools stay reachable.
  *  No sub agents, no notebook editor, no question box of Claude's own (it asks in its final message, see sdkEngine.ts). */
 export const TASK_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "TaskStop", "WebFetch", "WebSearch", "TodoWrite", "ToolSearch"] as const;
@@ -23,6 +24,11 @@ export const REVIEW_TOOLS = [] as const;
 
 /** Every built in tool Companion gives in any flow. */
 export const GIVEN_TOOLS: readonly string[] = [...new Set<string>([...TASK_TOOLS, ...LOOK_TOOLS, ...RESEARCH_TOOLS])];
+
+/** A task's list, as Settings has it: without web search when Let tasks search the web is off (work.webSearch). */
+export function taskTools(o: { webSearch?: boolean } = {}): string[] {
+  return TASK_TOOLS.filter((t) => o.webSearch !== false || t !== "WebSearch");
+}
 
 /** The list for one session: the one the flow names, else the looking tools for planning and the task tools for a task. */
 export function toolsFor(o: { planOnly?: boolean; tools?: readonly string[] }): string[] {
