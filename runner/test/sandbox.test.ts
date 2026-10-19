@@ -54,6 +54,13 @@ describe("the sandbox settings", () => {
   });
   test("reading the sensitive places is refused", () => expect(s.filesystem.denyRead).toEqual(sensitivePaths(HOME)));
   test("off on a system without this sandbox, never silently half on", () => expect((sandboxSettings(HOME, "linux") as any).enabled).toBe(false));
+  // Claude Code's own default lets a shell command run inside the sandbox without asking. Companion's safety hook says yes
+  // or no to every command itself, so this is turned off: a command the hook gave no answer for (if Claude Code ever gave
+  // up waiting on it) goes on to canUseTool, which always says no, and never runs on the sandbox's say so.
+  test("a shell command never runs on the sandbox's own say so, only on the safety hook's yes", () => {
+    expect(s.autoAllowBashIfSandboxed).toBe(false);
+    expect((sandboxSettings(HOME, "linux") as any).autoAllowBashIfSandboxed).toBe(false);
+  });
 });
 
 describe("Claude's own file reader obeys the same list", () => {
@@ -64,6 +71,14 @@ describe("Claude's own file reader obeys the same list", () => {
   test("the SDK is told to refuse them", () => {
     const o: any = buildSdkOptions({ project: "/p", model: "m", budgetUsd: 1, claudeBinary: "/x/claude", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal });
     for (const rule of r) expect(o.disallowedTools).toContain(rule);
+  });
+  test("the SDK is told a shell command runs only on the safety hook's yes, and anything that falls through is a no", async () => {
+    for (const planOnly of [false, true]) {
+      const o: any = buildSdkOptions({ project: "/p", model: "m", budgetUsd: 1, claudeBinary: "/x/claude", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal, planOnly });
+      expect(o.sandbox.autoAllowBashIfSandboxed).toBe(false);
+      expect(o.sandbox.allowUnsandboxedCommands).toBe(false);
+      expect(await o.canUseTool("Bash", { command: "npm test" }, {})).toMatchObject({ behavior: "deny" });
+    }
   });
 });
 

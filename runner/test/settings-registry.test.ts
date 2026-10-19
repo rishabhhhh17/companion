@@ -47,7 +47,8 @@ describe("the shipped list of settings", () => {
     // Left out on purpose (see the plan, area 1): "Pause a plan when I change the project myself" stays fixed at on.
     expect(defOf("drive.pauseOnMyEdits")).toBeUndefined();
     expect(defOf("work.tryAgain")).toMatchObject({ kind: "choice", options: ["carry_on", "fresh"], applies: ["runner"], live: false });
-    expect(defOf("approval.waitMinutes")).toMatchObject({ kind: "number", min: 5, max: 120, step: 5, unit: "minutes", applies: ["runner"], live: true, floor: "noAnswerIsNo" });
+    // The top is 30 until a real run shows a hook still waiting past 32 minutes is honoured (T05): only shorter waits for now.
+    expect(defOf("approval.waitMinutes")).toMatchObject({ kind: "number", min: 5, max: 30, step: 5, unit: "minutes", applies: ["runner"], live: true, floor: "noAnswerIsNo" });
     for (const k of Object.keys(AREA_1)) expect(defOf(k)!.scope, k).toBe("app");
   });
   test("the three settings the engine keeps itself are reached only through the engine", () => {

@@ -15,9 +15,11 @@ export type ToolResult = { ok: boolean; output: string; shell?: ShellFacts };
 export type Authorization = { allow: boolean; reason: string };
 // How long an approval card waits for the person, as usual. No answer in that time counts as no. The person may change
 // only the wait ("How long a question waits for your answer", approval.waitMinutes), read when each question is asked;
-// the longest it can be is the setting's own top, which the SDK hook's time limit is set from (sdkEngine.ts).
+// the longest it can be is the setting's own top, which the SDK hook's time limit is set from (sdkEngine.ts). That top is
+// 30 minutes, the same as the usual wait, until a real run shows Claude Code honours a hook still waiting past the 32
+// minutes relied on so far (T05, [verify]); only then may protocol/settings.json raise it.
 export const APPROVAL_TIMEOUT_MS = 30 * 60_000;
-export const MAX_APPROVAL_WAIT_MS = Number(defOf("approval.waitMinutes")?.max ?? 120) * 60_000;
+export const MAX_APPROVAL_WAIT_MS = Number(defOf("approval.waitMinutes")?.max ?? 30) * 60_000;
 // `authorize` is how an engine that runs tools itself (the real SDK) asks Companion before each one.
 export type EngineOptions = {
   prompt: string; project: string; model: string; signal: AbortSignal; budgetUsd: number;

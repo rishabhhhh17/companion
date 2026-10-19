@@ -15,7 +15,7 @@ import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, est
 import { differentTaskPrompt, endingOf, evidence, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
-import { MODELS } from "./models.ts";
+import { MODELS, usualModel } from "./models.ts";
 import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
@@ -982,7 +982,7 @@ export class AgentRunner {
       const truncated = steps.length > max;
       const kept = steps.slice(0, max);
       this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal, maxSteps: max });
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length) } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model, usualModel("work")) } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
@@ -1572,8 +1572,10 @@ export class AgentRunner {
       // A Rescue plan keeps its own 3 to 7 steps (rescue.ts), whatever Most steps in a plan says.
       this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, maxSteps: MAX_STEPS });
       const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
-      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimateUsd(steps.length) } as never);
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimateUsd(steps.length) } as never);
+      // The rough cost follows the model the plan's steps run on (Claude for Rescue), against Rescue's usual one.
+      const estimate = estimateUsd(steps.length, cmd.model, usualModel("rescue"));
+      this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimate } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimate } as never);
       this.state(cmd.agent, "needsYou");
     });
   }

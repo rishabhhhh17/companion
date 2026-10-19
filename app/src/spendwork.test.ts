@@ -4,8 +4,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { PAGE_STORAGE_MARK, REGISTRY } from "../../protocol/settings.ts";
-import { MODEL_CHOICES, MODELS } from "../../runner/src/models.ts";
+import { defOf, PAGE_STORAGE_MARK, REGISTRY } from "../../protocol/settings.ts";
+import { canonicalModel, MODEL_CHOICES, MODELS, priceRatio } from "../../runner/src/models.ts";
 import { askResearch, budgetFor, DEFAULT_BUDGET_USD, DEFAULT_MODEL, diagnose, DIAGNOSE_MODEL, DRIVE_BUDGET_USD, fixError, planDrive, startPractice, startTask } from "./commands.ts";
 import { modelFor, offeredOptions, shownSettings } from "./modelChoice.ts";
 import { initial, planCutWords, reduce, stuckHelpWords, type Model } from "./model.ts";
@@ -94,6 +94,27 @@ describe("the model rows in Settings", () => {
     expect(shownSettings(REGISTRY.settings, passed).map((d) => d.key)).toContain("model.work");
     expect(shownSettings(REGISTRY.settings, passed).map((d) => d.key)).not.toContain("model.rescue");
     expect(offeredOptions("model.work", passed)).toEqual(["recommended", "careful"]);
+  });
+  // The words are written by hand in strings.ts, apart from the map the pages send (MODEL_CHOICES). A model upgrade in the
+  // map (say the fast lane moving to a new Haiku) that leaves the old name or the old cost on screen fails here.
+  test("each option's words name the model it sends, and no other, and say its cost against the usual option truly", () => {
+    const name = (id: string) => {
+      const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/.exec(canonicalModel(id));
+      if (!m) throw new Error(`no display name for ${id}`);
+      return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+    };
+    expect(name("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    for (const [key, job] of [["model.work", "work"], ["model.rescue", "rescue"], ["model.quick", "quick"]] as const) {
+      const choices = MODEL_CHOICES[job] as Record<string, { model: string }>;
+      const usual = choices[String(defOf(key)!.default)].model;
+      for (const [id, c] of Object.entries(choices)) {
+        const words = (S.set[key].options as Record<string, string>)[id], own = name(c.model);
+        expect(words, `${key} ${id}`).toContain(own);
+        for (const family of ["Opus", "Sonnet", "Haiku", "Fable"]) if (!own.startsWith(family)) expect(words, `${key} ${id}`).not.toContain(family);
+        const said = /about twice the cost/.test(words) ? 2 : /about half the cost/.test(words) ? 0.5 : 1;
+        expect(priceRatio(c.model, usual), `${key} ${id}: "${words}"`).toBe(said);
+      }
+    }
   });
   test("the Settings page draws and searches only the rows shown, and only the options offered", () => {
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");

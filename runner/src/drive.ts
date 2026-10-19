@@ -1,4 +1,6 @@
 // Drive: a plan first, then one step at a time. This file holds the plain, testable parts.
+import { priceRatio } from "./models.ts";
+
 // The usual most steps in a plan. The person may change it ("Most steps in a plan", drive.maxSteps, 3 to 20), read when a
 // plan is made; Rescue's own plans keep this one, and their own 3 to 7 steps (rescue.ts).
 export const MAX_STEPS = 12;
@@ -43,8 +45,12 @@ export const freshStepPrompt = (goal: string, prompt: string) =>
 export const freshShortenPrompt = (goal: string, n: number, max = MAX_STEPS) =>
   `${planPrompt(goal, max)}\n\nA first try gave ${n} steps, which is too many. Reply with ONLY a JSON list of at most ${max} steps, combining small ones.`;
 // A rough, honest estimate to show before the person presses Start.
-// It is an upper limit ("up to"), because most steps cost far less.
-export const estimateUsd = (steps: number) => Math.round(steps * 0.25 * 100) / 100;
+// It is an upper limit ("up to"), because most steps cost far less. $0.25 a step is today's figure for the job's usual model
+// (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue); a plan made on another model (Claude for tasks, Claude for Rescue)
+// is scaled by that model's list price against the usual one, so "about twice the cost" shows as about twice the figure.
+export const STEP_USD = 0.25;
+export const estimateUsd = (steps: number, model?: string, usual?: string) =>
+  Math.round(steps * STEP_USD * (model && usual ? priceRatio(model, usual) : 1) * 100) / 100;
 
 // Tools that only look. Everything else is refused while planning, in code.
 export const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite"]);

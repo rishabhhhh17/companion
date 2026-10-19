@@ -52,6 +52,10 @@ export function modelForChoice(job: ChoiceJob, option: unknown, passed: readonly
   const id = typeof option === "string" && Object.hasOwn(all, option) && offeredChoices(job, passed).includes(option) ? option : usualChoice(job);
   return all[id].model;
 }
+/** The usual option's model for a job (today's model): what a cost figure written for that job was set against. */
+export function usualModel(job: ChoiceJob): string {
+  return choicesOf(job)[usualChoice(job)].model;
+}
 
 // ---------- what each model accepts ----------
 // From the Claude API notes of 17 Oct 2026 (the model migration guide's sections on Sonnet 5.5, Opus 5.5 and Haiku 5.5, and
@@ -117,6 +121,13 @@ const UNKNOWN_PRICE: Price = { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 
 export function listPrice(model: string): { in: number; out: number } | null {
   const r = ruleOf(model);
   return r ? { in: r.price.in, out: r.price.out } : null;
+}
+
+/** How many times dearer `model` is than `base` at list price: the larger of the input and output ratios, so a figure scaled
+ *  by it to say "at most" never comes out low. A model the table does not know is priced as the dearest one known. */
+export function priceRatio(model: string, base: string): number {
+  const p = ruleOf(model)?.price ?? UNKNOWN_PRICE, b = ruleOf(base)?.price ?? UNKNOWN_PRICE;
+  return Math.max(p.in / b.in, p.out / b.out);
 }
 
 /** "claude-haiku-4-5-20251001" -> "claude-haiku-4-5"; "claude-sonnet-5-5[1m]" -> "claude-sonnet-5-5". */

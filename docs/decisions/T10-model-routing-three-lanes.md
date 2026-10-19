@@ -77,6 +77,11 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - The fast lane asks for `model.quick` on every request (Prompt help, Explain, Draw it for me, the error explainer);
   `COMPANION_FAST_MODEL` in dev.json still wins for developers. The pages send `model.work` and `model.rescue` with each
   command; the practice task stays on the usual model.
+- The rough cost shown before a plan's Start ("at most") follows the plan's model: $0.25 a step is today's figure for the
+  job's usual model (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue), scaled by the chosen model's list price against
+  it (`priceRatio` in `models.ts`; a model the table does not know counts as the dearest it knows). The usual figures are
+  unchanged. A pages test checks that each option's words name the model `MODEL_CHOICES` sends and say its cost truly, so
+  a model upgrade in the map cannot leave old words on screen.
 - Haiku 4.5's retirement (section 14): checked on 19 Oct 2026 against the model list bundled with the Claude API notes
   (cached 6 Oct 2026), not the live list: still listed as active and served. Check the live list before shipping.
 

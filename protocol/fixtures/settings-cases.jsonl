@@ -103,9 +103,11 @@
 {"key": "work.tryAgain", "value": "fresh", "ok": true, "normalized": "fresh"}
 {"key": "work.tryAgain", "value": "carryOn", "ok": false, "reason": "notChoice"}
 {"key": "approval.waitMinutes", "value": 5, "ok": true, "normalized": 5}
-{"key": "approval.waitMinutes", "value": 120, "ok": true, "normalized": 120}
+{"key": "approval.waitMinutes", "value": 30, "ok": true, "normalized": 30}
 {"key": "approval.waitMinutes", "value": 4, "ok": false, "reason": "tooLow"}
-{"key": "approval.waitMinutes", "value": 121, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 31, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 35, "ok": false, "reason": "tooHigh"}
+{"key": "approval.waitMinutes", "value": 120, "ok": false, "reason": "tooHigh"}
 {"key": "approval.waitMinutes", "value": 7, "ok": true, "normalized": 5}
 {"key": "approval.waitMinutes", "value": 8, "ok": true, "normalized": 10}
 {"key": "approval.waitMinutes", "value": 0, "ok": false, "reason": "tooLow"}

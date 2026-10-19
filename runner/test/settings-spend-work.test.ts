@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step, type ToolResult } from "../src/engine.ts";
 import { createLanes, quickModelOf, readSettings } from "../src/engines.ts";
+import { estimateUsd as planEstimate } from "../src/drive.ts";
 import { Ledger } from "../src/ledger.ts";
 import { canonicalModel, KNOWN_MODELS, listPrice, MODEL_CHOICES, MODELS, modelForChoice, offeredChoices, SMOKE_PASSED } from "../src/models.ts";
 import { RunnerSettings } from "../src/settings.ts";
@@ -149,10 +150,21 @@ describe("a budget from Settings never goes above what is left of the daily limi
     await r.start({ budgetUsd: 50 });
     expect(r.engine.calls[0].budgetUsd).toBeLessThanOrEqual(10);
   });
-  test("so are a plan's, a Rescue's and a Research question's", async () => {
+  test("so are a plan's, a Rescue's and a Research question's, and each step of a Rescue's plan", async () => {
     const r = setup([[planText("One")]], [ok()], { ceiling: 4 });
     await r.plan({ budgetUsd: 50 });
     expect(r.engine.calls[0].budgetUsd).toBeLessThanOrEqual(4);
+    // A Rescue at $50 (Most a Rescue may spend, at its top) on a day with $4 left: the look is cut to $4, and the step it
+    // plans gets only what the day has left after the look ($4 less the $0.01 the look cost), never what is left of $50.
+    const diagnosis = { text: JSON.stringify({ summary: "A shop", works: ["the page"], broken: "The button calls a missing function.", steps: ["One", "Two", "Three"] }), costUsd: 0.01 };
+    const d = setup([[diagnosis], [write("a.txt", "fixed")]], [bad("x"), ok()], { ceiling: 4 });
+    await d.runner.handle({ v: 1, id: "r1", type: "rescue.diagnose", project: d.project, agent: "builder-1", model: "m", budgetUsd: 50 } as never);
+    expect(d.engine.calls[0].budgetUsd).toBeLessThanOrEqual(4);
+    expect(of(d.events, "plan.ready").length).toBe(1);
+    await d.approve(["One"]);
+    expect(d.engine.calls.length).toBe(2);
+    expect(d.engine.calls[1].budgetUsd).toBeGreaterThan(0);
+    expect(d.engine.calls[1].budgetUsd).toBeLessThanOrEqual(4 - 0.01 + 1e-9);
     const q = setup([[{ text: "nothing useful", costUsd: 0 }]], [ok()], { ceiling: 4 });
     await q.runner.handle({ v: 1, id: "r1", type: "research.ask", project: q.project, agent: "builder-1", question: "How do I take payments?", model: "m", budgetUsd: 50 } as never);
     expect(q.engine.calls[0].budgetUsd).toBeLessThanOrEqual(4);
@@ -304,7 +316,7 @@ const fifteen = Array.from({ length: 15 }, (_, i) => `Step ${i + 1}`);
 describe("most steps in a plan (drive.maxSteps)", () => {
   test("the usual 12: the plan is asked for at most 12, a longer one is asked again and cut to 12", async () => {
     const r = setup([[planText(...fifteen)], [planText(...fifteen)]]);
-    await r.plan();
+    await r.plan({ model: MODELS.agent });
     expect(r.engine.calls[0].prompt).toContain("Never more than 12.");
     expect(r.engine.calls[1].prompt).toContain("at most 12 steps");
     expect(of(r.events, "plan.ready")[0].steps.length).toBe(12);
@@ -342,6 +354,43 @@ describe("most steps in a plan (drive.maxSteps)", () => {
     expect(of(r.events, "plan.ready")[0].steps.length).toBe(5);
     await r.approve(["One", "Two", "Three", "Four", "Five"]);
     expect(of(r.events, "drive.step").filter((s) => s.status === "started").map((s) => s.total)).toEqual([5, 5, 5, 5, 5]);
+  });
+});
+
+// ---------- the rough cost shown before Start ----------
+
+describe("the rough cost shown before Start (at most) follows the model the plan runs on", () => {
+  const four = ["One", "Two", "Three", "Four"];
+  const diagnosis = { text: JSON.stringify({ summary: "A shop", works: ["the page"], broken: "The button calls a missing function.", steps: four }), costUsd: 0.01 };
+  const plan = async (model: string) => { const r = setup([[planText(...four)]]); await r.plan({ model }); return of(r.events, "plan.ready")[0].estimateUsd; };
+  const rescue = async (model: string) => {
+    const r = setup([[diagnosis]], [bad("x")]);
+    await r.runner.handle({ v: 1, id: "r1", type: "rescue.diagnose", project: r.project, agent: "builder-1", model, budgetUsd: 5 } as never);
+    const report = of(r.events, "rescue.report")[0].estimateUsd;
+    expect(of(r.events, "plan.ready")[0].estimateUsd).toBe(report);
+    return report;
+  };
+  test("on the usual models it is exactly today's: $0.25 a step, for a plan and for a Rescue", async () => {
+    expect(await plan(MODELS.agent)).toBe(1);
+    expect(await rescue(MODELS.diagnose)).toBe(1);
+  });
+  test("a plan made on Careful (Opus 5.5) shows about twice as much, as its words say", async () => {
+    expect(await plan(MODEL_CHOICES.work.careful.model)).toBe(2);
+  });
+  test("a Rescue on Recommended (Sonnet 5.5) shows about half, as its words say", async () => {
+    expect(await rescue(MODEL_CHOICES.rescue.recommended.model)).toBe(0.5);
+  });
+  test("a model Companion does not know counts as the dearest it knows, so the figure is never too low", async () => {
+    const unknown = await plan("claude-future-9");
+    for (const m of KNOWN_MODELS) expect(unknown, m).toBeGreaterThanOrEqual(planEstimate(4, m, MODELS.agent));
+  });
+  test("the step rate is today's for the job's usual model, scaled by the chosen model's list price against it", () => {
+    expect(planEstimate(12)).toBe(3);
+    expect(planEstimate(12, MODELS.agent, MODELS.agent)).toBe(3);
+    expect(planEstimate(12, "claude-opus-5-5", MODELS.agent)).toBe(6);
+    expect(planEstimate(4, MODELS.diagnose, MODELS.diagnose)).toBe(1);
+    expect(planEstimate(4, "claude-sonnet-5-5", MODELS.diagnose)).toBe(0.5);
+    expect(planEstimate(4, "claude-haiku-4-5-20251001", MODELS.agent)).toBe(0.5);
   });
 });
 
@@ -393,29 +442,32 @@ describe("how long a question waits for your answer (approval.waitMinutes)", () 
     await run;
     return { minutes: (Date.parse(req.expiresAt) - now.getTime()) / 60_000, ran };
   };
-  test("30 minutes as usual, 5 at the least and 120 at the most; a refused value leaves 30", async () => {
+  // The top is 30 until a real run shows Claude Code honours a safety hook still waiting past 32 minutes (T05), so for now
+  // the setting can only shorten the wait.
+  test("30 minutes as usual and at the most, 5 at the least; a refused value leaves 30", async () => {
     expect((await asked({})).minutes).toBe(30);
     expect((await asked({ "approval.waitMinutes": 5 })).minutes).toBe(5);
-    expect((await asked({ "approval.waitMinutes": 120 })).minutes).toBe(120);
-    expect((await asked({ "approval.waitMinutes": 121 })).minutes).toBe(30);
+    expect((await asked({ "approval.waitMinutes": 20 })).minutes).toBe(20);
+    expect((await asked({ "approval.waitMinutes": 35 })).minutes).toBe(30);
+    expect((await asked({ "approval.waitMinutes": 120 })).minutes).toBe(30);
     expect((await asked({ "approval.waitMinutes": 3 })).minutes).toBe(30);
   });
   test("it is read when each question is asked, so a change reaches the next question of a running task", async () => {
     const r = setup([[{ tool: { name: "Bash", input: { command: "git push" } }, costUsd: 0 }, { tool: { name: "Bash", input: { command: "git push origin main" } }, costUsd: 0 }]], [ok()], { now: () => now, executor: async () => ({ ok: true, output: "" }) });
     const run = r.start();
     await waitFor(() => of(r.events, "approval.request").length > 0);
-    r.settings.apply(apply({ "approval.waitMinutes": 45 }));
+    r.settings.apply(apply({ "approval.waitMinutes": 15 }));
     await r.runner.handle({ v: 1, id: "a", type: "approval.resolve", approval: of(r.events, "approval.request")[0].approval, decision: "deny", scope: "once" });
     await waitFor(() => of(r.events, "approval.request").length > 1);
     const [first, second] = of(r.events, "approval.request");
     expect((Date.parse(first.expiresAt) - now.getTime()) / 60_000).toBe(30);
-    expect((Date.parse(second.expiresAt) - now.getTime()) / 60_000).toBe(45);
+    expect((Date.parse(second.expiresAt) - now.getTime()) / 60_000).toBe(15);
     await r.runner.handle({ v: 1, id: "k", type: "agent.interruptAll", reason: "test over" });
     await run;
   });
   // The floor: no answer always counts as no, at any wait the setting allows, and an expired card can never become a yes.
   // The wait itself is shortened here (only the timer for exactly that wait), so the test does not take minutes.
-  for (const minutes of [35, 120]) {
+  for (const minutes of [5, 20]) {
     test(`at ${minutes} minutes, a question nobody answers is a no when its time is up, and a late yes does nothing`, async () => {
       const real = globalThis.setTimeout;
       const waits: number[] = [];
