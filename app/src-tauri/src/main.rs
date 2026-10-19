@@ -3196,11 +3196,20 @@ fn main() {
         .expect("build");
     let mut app = app;
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-    app.run(|app, ev| {
-        if let RunEvent::Exit = ev {
-            app.state::<runner::Runner>().shut_down();
-        }
+    app.run(|app, ev| match ev {
+        RunEvent::Exit => app.state::<runner::Runner>().shut_down(),
+        // Companion opened again while it runs (Finder, Spotlight, Launchpad): macOS asks this copy to reopen.
+        RunEvent::Reopen { .. } => reopened(app),
+        _ => {}
     });
+}
+
+/// Opening Companion again shows it if the person hid it from the menu bar (that icon can be out of reach: behind the notch,
+/// or turned off in macOS's menu bar settings), the same way the menu does; otherwise it opens Home. Never the keyboard.
+/// Main thread (the app's own event loop).
+fn reopened(app: &AppHandle) {
+    log("reopened", json!({ "hidden": USER_HID.load(Ordering::SeqCst) }));
+    if USER_HID.load(Ordering::SeqCst) { set_user_hidden(app, false); } else { open_card(app, "reopen", false); }
 }
 
 #[cfg(test)]
