@@ -177,3 +177,80 @@ describe("with the island turned off", () => {
   });
 });
 
+
+// HeyClicky v1.0.53 parity: the island says what is next. "Not connected yet" when no Claude key or plan is connected,
+// and "Version X is ready" once a check found an update, each only where it would say Ready, after anything that needs the
+// person, and never with the mark (F18 item 1: the mark is only for a question, listening or done). An update is installed
+// only on the person's press on Home's notice, never while something runs.
+describe("the island says what is next", () => {
+  const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
+  const run = (events: Record<string, unknown>[]) => events.reduce<Model>((x, e) => reduce(x, e as never), initial());
+  const up = [ev({ type: "runner.hello", runnerVersion: "0.0.1" })];
+  const none = [...up, ev({ type: "auth.status", method: "none" })];
+  test("not connected yet, in place of Ready", async () => {
+    const { islandLine, islandAlert } = await import("./home.ts");
+    expect(islandLine(run(none))).toBe(S.islandNotConnected);
+    expect(islandLine(run([...up, ev({ type: "auth.status", method: "api_key" })]))).toBe(S.islandReady);
+    expect(islandAlert(run(none))).toBe(false);
+  });
+  test("a new version ready, in place of Ready, after not connected", async () => {
+    const { islandLine, islandAlert } = await import("./home.ts");
+    expect(islandLine(run(up), { update: "0.2.0" })).toBe(S.islandUpdate("0.2.0"));
+    expect(islandLine(run(none), { update: "0.2.0" })).toBe(S.islandNotConnected);
+    expect(islandAlert(run(up))).toBe(false);
+  });
+  test("anything that needs the person, working, done or the engine stopped still comes first", async () => {
+    const { islandLine } = await import("./home.ts");
+    const working = [...none, ev({ type: "checkpoint.created", agent: "builder-1", project: "/p", checkpoint: "cp_1", label: "Before: x", files: 1, skipped: [] }), ev({ type: "agent.state", agent: "builder-1", state: "working" })];
+    expect(islandLine(run(working), { update: "0.2.0" })).toBe(S.islandWorkingOn("x"));
+    expect(islandLine(run([ev({ type: "app.runner_down" })]), { update: "0.2.0" })).toBe(S.islandOff);
+  });
+  test("the island page hears of an update from the shell, and asks for nothing new", () => {
+    const page = read("./island.tsx");
+    expect(page).toContain('listen("update-ready"');
+    expect(page).toContain("islandLine(m, { update })");
+    const calls = [...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]);
+    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state"]));
+    // The shell tells every window when a check finds (or no longer has) an update, and the island can ask on load.
+    const check = fnBody("check_update");
+    expect(check).toContain('app.emit("update-ready", json!({ "version": u.version }))');
+    expect(check).toContain('app.emit("update-ready", Value::Null)');
+    expect(fnBody("island_state")).toContain('"update"');
+  });
+  test("Home's notice offers Install, only when nothing is running, and only on a press", () => {
+    const card = read("./card.tsx");
+    expect(card).toContain('listen("update-ready"');
+    expect(card).toMatch(/<button className="btn primary" type="button" disabled=\{!canInstall\(!isBusy\(m\)\)\}[^>]*onClick=\{installUpdate\}>\{S\.updatesInstall\}<\/button>/);
+    const install = card.slice(card.indexOf("const installUpdate = () =>"), card.indexOf("\n", card.indexOf("const installUpdate = () =>")));
+    expect(install).toContain("if (!canInstall(!isBusy(nowModel.current))) return;");
+    expect(install).toContain('invoke("install_update")');
+    // The daily check only looks: it never installs.
+    const daily = card.slice(card.indexOf("// The daily update check"), card.indexOf("// Draw it for me"));
+    expect(daily).not.toContain("install_update");
+  });
+});
+
+// HeyClicky v1.0.53 parity: the island and Home open smoothly. The timing and the rules are in island.rs (tested there);
+// these read the glue, which needs a real Mac to see.
+describe("the island and Home open with a short motion", () => {
+  test("the island's frame moves through the one helper, as a motion only when island.rs says so", () => {
+    const place = fnBody("place_island");
+    expect(place).toContain("island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion())");
+    expect(place).toContain("set_frame_moving(p, to_appkit(f, ph), secs, None)");
+  });
+  test("Home drops open only when it opens, never on a resize, and is never left see through", () => {
+    const open = fnBody("open_card");
+    expect(open).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
+    expect(open).toContain("c.setAlphaValue(0.0);");
+    expect(open).toContain("set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0))");
+    expect(fnBody("resize_card")).not.toContain("set_frame_moving");
+    expect(fnBody("place_card")).not.toContain("set_frame_moving");
+    const helper = fnBody("set_frame_moving");
+    expect(helper).toContain("runAnimationGroup_completionHandler");
+    // Whatever happens to the motion, Home ends fully drawn.
+    expect(helper).toMatch(/let done = RcBlock::new\(move \|\| \{ if let Some\(x\) = alpha \{ w2\.setAlphaValue\(x\); \} \}\);/);
+  });
+  test("Less motion in Settings makes them appear at once too, as Reduce motion does", () => {
+    expect(main).toContain("fn reduce_motion() -> bool { home_set().less_motion || NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion() }");
+  });
+});

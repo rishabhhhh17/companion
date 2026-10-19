@@ -132,6 +132,24 @@ pub fn island_frame(d: &Display, mode: Mode) -> Rect {
     [r[0], r[1], r[2], r[3] + grow]
 }
 
+// ---- the motion (HeyClicky v1.0.53 parity: the notch peek and Home open smoothly) ----
+// Kept here so the timing can become a setting later. Never with Reduce motion or Less motion (main.rs reduce_motion).
+
+/// How long the island takes to grow downward, and Home to drop open, in seconds.
+pub const OPEN_SECS: f64 = 0.18;
+/// How far above its place Home starts its drop, in points: the gap under the island, so it never starts over the island.
+pub const DROP: f64 = GAP;
+/// Only taller, with the same left edge, top and width: the part inside the menu bar never moves (F18 item 1).
+pub fn grows_down(from: Rect, to: Rect) -> bool {
+    (from[0] - to[0]).abs() < 0.5 && (from[1] - to[1]).abs() < 0.5 && (from[2] - to[2]).abs() < 0.5 && to[3] > from[3] + 0.5
+}
+/// The island's change of frame shown as a short motion: only when it grows downward, never when it shrinks back (that is
+/// at once), moves to another display, or `reduced` motion is asked for.
+pub fn island_motion(from: Rect, to: Rect, reduced: bool) -> Option<f64> { (!reduced && grows_down(from, to)).then_some(OPEN_SECS) }
+/// Where Home starts its drop when it opens (`opening`; a resize while it is open is never animated): the same place
+/// across and the same size, DROP higher, then down to `to` while it fades in. None with `reduced` motion.
+pub fn home_drop(to: Rect, opening: bool, reduced: bool) -> Option<Rect> { (opening && !reduced).then_some([to[0], to[1] - DROP, to[2], to[3]]) }
+
 /// Where Home drops down to: centered under the island, just below the menu bar (or the thin line), kept inside the work
 /// area (a tall Home is made shorter, and scrolls, rather than running under the Dock).
 pub fn home_frame(d: &Display, size: (f64, f64)) -> Rect {
@@ -784,5 +802,51 @@ mod tests {
         assert_eq!(pick_where(&both, Where::Main, Some(&mac.id), &ext.id, on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((mac.id.clone(), "main")));
         assert!(pick_where(&[], Where::Main, None, "", on_ext, true).is_none());
         assert_eq!((Where::of("follow"), Where::of("builtIn"), Where::of("main"), Where::of("junk")), (Where::Follow, Where::BuiltIn, Where::Main, Where::Follow));
+    }
+
+    // ---- HeyClicky v1.0.53 parity: the island and Home open with a short motion, instead of jumping ----
+    #[test]
+    fn the_island_grows_downward_with_a_short_motion_and_the_part_in_the_menu_bar_never_moves() {
+        for d in [mbp14(), mbp16(), ext(), air()] {
+            let rest = island_frame(&d, Mode::Rest);
+            for m in [Mode::Alert, Mode::Peek] {
+                let to = island_frame(&d, m);
+                if to[3] > rest[3] {
+                    assert!(grows_down(rest, to), "{}: only taller, same left, top and width", d.id);
+                    assert_eq!(island_motion(rest, to, false), Some(OPEN_SECS), "{}", d.id);
+                }
+                // Shrinking back, or the same size, is at once: nothing is left hanging below the menu bar.
+                assert_eq!(island_motion(to, rest, false), None, "{}", d.id);
+            }
+        }
+        assert!((0.15..=0.2).contains(&OPEN_SECS), "short: it should feel like opening, not waiting");
+    }
+    #[test]
+    fn reduce_motion_or_less_motion_makes_it_appear_at_once() {
+        let d = mbp14();
+        assert_eq!(island_motion(island_frame(&d, Mode::Rest), island_frame(&d, Mode::Peek), true), None);
+        let to = home_frame(&d, (380.0, 400.0));
+        assert_eq!(home_drop(to, true, true), None);
+    }
+    #[test]
+    fn a_move_to_another_display_or_sideways_is_never_animated() {
+        let (a, b) = (mbp14(), ext());
+        assert_eq!(island_motion(island_frame(&a, Mode::Rest), island_frame(&b, Mode::Peek), false), None);
+        let r = island_frame(&a, Mode::Rest);
+        assert!(!grows_down(r, [r[0] + 10.0, r[1], r[2], r[3] + 40.0]));
+        assert!(!grows_down(r, [r[0], r[1], r[2] + 10.0, r[3] + 40.0]));
+    }
+    #[test]
+    fn home_drops_open_from_just_under_the_island_only_when_it_opens_never_on_a_resize() {
+        for d in [mbp14(), ext(), air()] {
+            let to = home_frame(&d, (380.0, 500.0));
+            let start = home_drop(to, true, false).expect("opening");
+            assert_eq!([start[0], start[2], start[3]], [to[0], to[2], to[3]], "same place across and the same size");
+            assert!(start[1] < to[1] && to[1] - start[1] <= DROP + 0.01, "{}: a little higher, then down", d.id);
+            let rest = island_frame(&d, Mode::Rest);
+            assert!(start[1] >= rest[1] + rest[3] - 0.01, "{}: never over the island", d.id);
+            // Home grows and shrinks as its page changes: that is never animated.
+            assert_eq!(home_drop(to, false, false), None);
+        }
     }
 }

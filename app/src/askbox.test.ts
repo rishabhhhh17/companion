@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { askKey, draftToKeep, MAX_DRAFT, putBack, sentOutcome, type Sent } from "./askbox.ts";
+import { askKey, draftToKeep, heardGoesTo, heardKind, MAX_DRAFT, putBack, sendsItself, sentOutcome, type Sent } from "./askbox.ts";
 import { AGENT } from "./commands.ts";
 
 const k = (key: string, o: { shift?: boolean; composing?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean } = {}) =>
@@ -121,5 +121,81 @@ describe("a request the engine says no to is put back", () => {
     // Never on disk: only the box's own draft rules decide what is kept, and a new folder forgets it.
     expect(card).not.toMatch(/localStorage\.setItem\([^)]*sent/i);
     expect(card).toMatch(/useEffect\(\(\) => \{ clearAttached\(\); sent\.current = null; \}, \[project\]\);/);
+  });
+});
+
+// HeyClicky v1.0.53 parity: voice starts work only on a clear request for work, and holds off when you say wait. With
+// "Send spoken words automatically" on (talk.autoSend), three words or more used to start a paid task, so "Wait, hold on
+// a sec" started one. Now the words wait in the box for Start whenever they mean wait or stop, or ask about the screen.
+describe("spoken words that send themselves", () => {
+  test("a clear request for work of three words or more sends itself, as before", () => {
+    for (const t of ["Make the signup button blue", "fix the login page please", "Add a contact form to the home page."]) {
+      expect(heardKind(t), t).toBe("work");
+      expect(sendsItself(t), t).toBe(true);
+    }
+  });
+  test("fewer than three words still wait in the box, as before", () => {
+    for (const t of ["", "  ", "Deploy", "fix it"]) { expect(sendsItself(t), t).toBe(false); }
+    expect(heardKind("fix it")).toBe("short");
+  });
+  test("words that are, start with or end with wait or stop never send themselves", () => {
+    for (const t of ["Wait, hold on a sec", "wait wait wait", "Hold on, one second", "one second please let me think", "Not yet, I am still looking",
+      "never mind, forget it", "Never mind that", "cancel that one please", "Stop. Do not do that.", "hang on a minute", "just a sec, let me check",
+      "give me a second here", "Make the button blue. No wait.", "make the button blue, actually never mind", "change the title, hold on", "add a footer, not yet"]) {
+      expect(heardKind(t), t).toBe("holdOff");
+      expect(sendsItself(t), t).toBe(false);
+    }
+  });
+  test("a word that only looks like one of them is not a hold off", () => {
+    for (const t of ["Add a waiting list page", "make the stopwatch start at zero", "cancellation emails go to the wrong person"]) expect(heardKind(t), t).toBe("work");
+  });
+  test("a plain question about the screen waits in the box, with Show me offered", () => {
+    for (const t of ["Where is the settings button?", "where do I click to publish this", "How do I turn on dark mode here", "what is this red box",
+      "What does this error mean on the screen", "which button saves it", "show me where the deploy button is", "Can you show me how to share this"]) {
+      expect(heardKind(t), t).toBe("screenQuestion");
+      expect(sendsItself(t), t).toBe(false);
+    }
+  });
+  test("English only at first: with another speech language picked, the words wait for Start", () => {
+    expect(sendsItself("Make the signup button blue", "en")).toBe(true);
+    expect(sendsItself("Make the signup button blue", "auto")).toBe(true);
+    expect(sendsItself("Haz el botón azul por favor", "es")).toBe(false);
+    expect(heardKind("Haz el botón azul por favor", "es")).toBe("otherLanguage");
+    expect(sendsItself("बटन को नीला कर दो", "hi")).toBe(false);
+  });
+  test("the first run, Settings and the box's own switch say the new rule, not only three words", async () => {
+    const { QUESTIONS } = await import("./onboarding.ts");
+    const { S } = await import("./strings.ts");
+    const q = QUESTIONS.find((x) => x.key === "autoSend")!;
+    for (const t of [q.yesEffect, S.set["talk.autoSend"].help, S.voiceAutoSend]) {
+      expect(t, t).toMatch(/wait|stop/i);
+      expect(/[–—]/.test(t), t).toBe(false);
+    }
+    for (const t of [S.voiceWaitsScreen, S.voiceWaitsHoldOff, S.voiceWaitsLanguage, S.followUpListening]) { expect(t.length, t).toBeGreaterThan(10); expect(/[–—]/.test(t), t).toBe(false); }
+  });
+  test("after the Show me key, words that mean wait or stop wait in the box too, instead of looking at the screen", () => {
+    const heard = card.slice(card.indexOf('ev.stage === "heard"'), card.indexOf('dispatch({ type: "ui.voiceClosed" })', card.indexOf('ev.stage === "heard"')));
+    expect(heard).toContain('if (to === "showme" && kind !== "holdOff")');
+  });
+  test("the card uses this rule, not the old count of three words", () => {
+    const heard = card.slice(card.indexOf('ev.stage === "heard"'), card.indexOf('dispatch({ type: "ui.voiceClosed" })'));
+    expect(heard).toContain("sendsItself(");
+    expect(heard).not.toMatch(/split\(\/\\s\+\/\)\.length >= 3/);
+  });
+});
+
+// HeyClicky v1.0.53 parity: point at a finished task's card and hold the talk keys to follow up on it. Ours: while the
+// follow up box shows under a finished task's receipt and the pointer is over that receipt (a hover inside Home's own
+// window), the words go into that box, never sent unless auto send is on. Off unless turned on (talk.followUpByPointing).
+describe("where spoken words go", () => {
+  test("into the follow up box only when it shows, the pointer is on that receipt and the setting is on", () => {
+    expect(heardGoesTo({ showme: false, followUpShown: true, overReceipt: true, byPointing: true })).toBe("followUp");
+    expect(heardGoesTo({ showme: false, followUpShown: true, overReceipt: false, byPointing: true })).toBe("box");
+    expect(heardGoesTo({ showme: false, followUpShown: false, overReceipt: true, byPointing: true })).toBe("box");
+    expect(heardGoesTo({ showme: false, followUpShown: true, overReceipt: true, byPointing: false })).toBe("box");   // off unless turned on: today's way
+  });
+  test("the Show me key pressed first still wins: the words are a question about the screen", () => {
+    expect(heardGoesTo({ showme: true, followUpShown: true, overReceipt: true, byPointing: true })).toBe("showme");
+    expect(heardGoesTo({ showme: true, followUpShown: false, overReceipt: false, byPointing: false })).toBe("showme");
   });
 });

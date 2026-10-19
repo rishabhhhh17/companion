@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { autoCheckDue, canInstall, DAY_MS, isBusy, updateLine } from "./updates.ts";
+import { autoCheckDue, canInstall, DAY_MS, isBusy, readyVersion, updateLine } from "./updates.ts";
 
 describe("daily update check", () => {
   const now = 1_800_000_000_000;
@@ -41,5 +41,13 @@ describe("busy means do not restart", () => {
     expect(isBusy({ character: "idle" })).toBe(false);
     expect(isBusy({ shipFlow: { stage: "live" } })).toBe(false);
     expect(isBusy({})).toBe(false);
+  });
+});
+
+describe("the shell saying an update is ready", () => {
+  test("only a plain version is taken; anything else means none", () => {
+    expect(readyVersion({ version: "0.2.0" })).toBe("0.2.0");
+    expect(readyVersion({ version: "1.0.0-beta.2+7" })).toBe("1.0.0-beta.2+7");
+    for (const v of [null, undefined, {}, { version: "" }, { version: 2 }, { version: "<b>9</b>" }, { version: "x".repeat(41) }, "0.2.0"]) expect(readyVersion(v)).toBeNull();
   });
 });

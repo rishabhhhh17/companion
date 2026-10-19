@@ -202,8 +202,9 @@ export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; 
 // fromProject: made from this project's own setting names (runner/src/lessongen.ts), not a lesson file.
 export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
 // already: after a pause, the person is first asked "Did you already do this?" and nothing is pointed at until they answer
-// (Yes and No come back as walk.answer). Absent on every other step.
-export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[]; link?: string };
+// (Yes and No come back as walk.answer). Absent on every other step. passed: on the first step of a lesson that started
+// where the person already is (teach.startWhereYouAre), how many steps were passed by as already done.
+export type WalkStepEvent = Envelope & { type: "walk.step"; walk: string; project: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; already?: boolean; log?: { say: string; how: "done" | "skipped" }[]; link?: string; passed?: number };
 export type WalkAsk = Envelope & { type: "walk.ask"; walk: string; index: number };
 export type WalkHelp = Envelope & { type: "walk.help"; walk: string; say: string };
 // The step stays as it is: the project does not show its result yet (say: what is not there, in plain words). Not a failure.

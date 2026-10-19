@@ -104,6 +104,29 @@ pub fn heard(samples: &[f32]) -> Heard {
     if peak < 0.01 { Heard::Silent } else { Heard::Sound }
 }
 
+/// Why a microphone gave only silence (every sample zero, Heard::Blocked), so the words never blame the wrong thing.
+/// Permission: Companion is not allowed the microphone. Lid: the Mac's own microphone listened with the lid closed (it is
+/// cut off in hardware). Device: the permission is granted, so it is the microphone itself (muted, unplugged, or its
+/// switch is off).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Silence { Permission, Lid, Device }
+impl Silence {
+    pub fn word(self) -> &'static str { match self { Silence::Permission => "permission", Silence::Lid => "lid", Silence::Device => "device" } }
+    /// The words if the page does not have its own (the page says it from strings.ts, by `word`).
+    pub fn fallback(self) -> &'static str {
+        match self {
+            Silence::Permission => "The microphone gave me only silence. It may be switched off for Companion in System Settings, Privacy and Security, Microphone.",
+            Silence::Lid => "Your Mac's lid is closed, so its own microphone is off. Plug in a microphone or headphones with one, or pick another microphone in Settings, then hold the keys again.",
+            Silence::Device => "The microphone gave me only silence. Check that it is plugged in and not muted, or pick another microphone in Settings.",
+        }
+    }
+}
+/// `allowed`: macOS says the microphone is allowed for Companion. `lid`: the microphone that listened cannot hear now
+/// because the lid is closed (voiceset::unheard).
+pub fn why_silent(allowed: bool, lid: bool) -> Silence {
+    if !allowed { Silence::Permission } else if lid { Silence::Lid } else { Silence::Device }
+}
+
 /// Speech engines sometimes write sound markers instead of words. Those are not words.
 pub fn clean_transcript(raw: &str) -> String {
     let mut out = String::new();
@@ -267,6 +290,16 @@ mod tests {
     fn all_zero_means_blocked_a_quiet_room_means_silent_and_speech_is_sound() {
         assert_eq!(heard(&[0.0; 1000]), Heard::Blocked); assert_eq!(heard(&[]), Heard::Blocked);
         assert_eq!(heard(&[0.001, -0.002, 0.003]), Heard::Silent); assert_eq!(heard(&[0.0, 0.2, -0.3]), Heard::Sound);
+    }
+    // The microphone gave only silence. With the permission granted it is never blamed on the permission: with the lid
+    // closed and the Mac's own microphone listening, it is the lid; otherwise the microphone itself (muted, unplugged).
+    #[test]
+    fn silence_is_blamed_on_the_permission_only_when_it_is_not_granted() {
+        assert_eq!(why_silent(false, false), Silence::Permission);
+        assert_eq!(why_silent(false, true), Silence::Permission, "no permission: that comes first");
+        assert_eq!(why_silent(true, true), Silence::Lid);
+        assert_eq!(why_silent(true, false), Silence::Device);
+        assert_eq!([Silence::Permission, Silence::Lid, Silence::Device].map(Silence::word), ["permission", "lid", "device"]);
     }
     #[test]
     fn sound_markers_are_dropped_and_spacing_is_tidied() {

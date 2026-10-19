@@ -111,6 +111,66 @@ fn input_list(host: &cpal::Host) -> Vec<(Input, cpal::Device)> {
 }
 fn default_id(host: &cpal::Host) -> Option<String> { host.default_input_device().and_then(|d| d.id().ok()).map(|i| i.to_string()) }
 
+// ---------- the lid (HeyClicky v1.0.53 parity: with the lid closed, another microphone listens) ----------
+// Read without any permission and without a new library: whether the Mac's own screen is among the online displays
+// (Core Graphics, already used), and which microphones are the Mac's own (Core Audio's transport type, as speak.rs reads
+// the sound). Nothing is opened and nothing listens.
+
+/// The lid is closed: no online display is the Mac's own screen. On a Mac with no screen of its own (a Mac mini) this is
+/// true too, but it has no microphone of its own either, so `unheard` changes nothing there.
+pub fn lid_closed() -> bool {
+    let mut ids = [0u32; 32];
+    let mut n = 0u32;
+    let err = unsafe { objc2_core_graphics::CGGetOnlineDisplayList(ids.len() as u32, ids.as_mut_ptr(), &mut n) };
+    if err != objc2_core_graphics::CGError::Success || n == 0 { return false; }
+    !ids[..(n as usize).min(ids.len())].iter().any(|d| objc2_core_graphics::CGDisplayIsBuiltin(*d))
+}
+
+mod ca {
+    #[repr(C)]
+    struct Address { selector: u32, scope: u32, element: u32 }
+    #[link(name = "CoreAudio", kind = "framework")]
+    extern "C" {
+        fn AudioObjectGetPropertyDataSize(object: u32, address: *const Address, qualifier_size: u32, qualifier: *const std::ffi::c_void, size: *mut u32) -> i32;
+        fn AudioObjectGetPropertyData(object: u32, address: *const Address, qualifier_size: u32, qualifier: *const std::ffi::c_void, size: *mut u32, data: *mut std::ffi::c_void) -> i32;
+    }
+    const fn code(s: &[u8; 4]) -> u32 { u32::from_be_bytes(*s) }
+    fn addr(selector: &[u8; 4], scope: &[u8; 4]) -> Address { Address { selector: code(selector), scope: code(scope), element: 0 } }
+    fn size(object: u32, a: &Address) -> u32 { let mut n = 0u32; if unsafe { AudioObjectGetPropertyDataSize(object, a, 0, std::ptr::null(), &mut n) } == 0 { n } else { 0 } }
+    /// Core Audio's ids of the Mac's own microphones (transport type built in, with input streams).
+    pub fn builtin_input_uids() -> Vec<String> {
+        let all = addr(b"dev#", b"glob");
+        let n = size(1, &all) as usize / std::mem::size_of::<u32>();
+        if n == 0 || n > 256 { return Vec::new(); }
+        let mut devs = vec![0u32; n];
+        let mut bytes = (n * std::mem::size_of::<u32>()) as u32;
+        if unsafe { AudioObjectGetPropertyData(1, &all, 0, std::ptr::null(), &mut bytes, devs.as_mut_ptr().cast()) } != 0 { return Vec::new(); }
+        devs.truncate(bytes as usize / std::mem::size_of::<u32>());
+        let mut out = Vec::new();
+        for d in devs {
+            let mut tran = 0u32; let mut sz = std::mem::size_of::<u32>() as u32;
+            if unsafe { AudioObjectGetPropertyData(d, &addr(b"tran", b"glob"), 0, std::ptr::null(), &mut sz, (&mut tran as *mut u32).cast()) } != 0 || tran != code(b"bltn") { continue; }
+            if size(d, &addr(b"stm#", b"inpt")) == 0 { continue; }   // no input: a speaker
+            let mut uid: *const std::ffi::c_void = std::ptr::null();
+            let mut sz = std::mem::size_of::<*const std::ffi::c_void>() as u32;
+            if unsafe { AudioObjectGetPropertyData(d, &addr(b"uid ", b"glob"), 0, std::ptr::null(), &mut sz, (&mut uid as *mut *const std::ffi::c_void).cast()) } != 0 { continue; }
+            // A CFString under the create rule: taken, read, released.
+            let Some(p) = std::ptr::NonNull::new(uid as *mut objc2_core_foundation::CFString) else { continue };
+            out.push(unsafe { objc2_core_foundation::CFRetained::from_raw(p) }.to_string());
+        }
+        out
+    }
+}
+
+/// The microphones listed now, and those that cannot hear now (voiceset::unheard: the Mac's own with the lid closed).
+pub fn hearing() -> (Vec<Input>, Vec<String>) {
+    let (inputs, _) = inputs();
+    let quiet = quiet_now(&inputs);
+    (inputs, quiet)
+}
+/// voiceset::unheard for these microphones now. With the lid open (the usual case) only one Core Graphics call is made.
+fn quiet_now(inputs: &[Input]) -> Vec<String> { if lid_closed() { voiceset::unheard(inputs, &ca::builtin_input_uids(), true) } else { Vec::new() } }
+
 /// One open microphone: what it heard, in its own format, and the problems it reported (an error kind's name), the most
 /// serious one waiting first (voiceset::Trouble).
 struct Open { stream: cpal::Stream, buf: Arc<Mutex<Vec<f32>>>, ch: usize, rate: u32, trouble: Arc<Trouble> }
@@ -152,7 +212,8 @@ fn open(dev: &cpal::Device) -> Result<Open, String> {
 }
 
 /// Which microphone was opened, and the picked one's name when it was not connected (then the Mac's default was used).
-pub struct Opened { pub name: String, pub missing: Option<String> }
+/// `quiet`: the one that listens cannot hear now (the Mac's own with the lid closed, when nothing else could listen).
+pub struct Opened { pub name: String, pub missing: Option<String>, pub quiet: bool }
 /// What was heard, at 16 kHz on one channel. `switched_to`: another microphone took over while the keys were held (the
 /// one in use went away, Bluetooth headphones switched off). `lost`: it went away and no other one could listen, so this
 /// is what was heard until then.
@@ -174,6 +235,8 @@ impl Recorder {
             let host = cpal::default_host();
             let list = input_list(&host);
             let infos: Vec<Input> = list.iter().map(|(i, _)| i.clone()).collect();
+            // With the lid closed, the Mac's own microphone cannot hear: another one listens (voiceset::unheard).
+            let quiet = quiet_now(&infos);
             let fail = |e: String| { let _ = ready_tx.send(Err(e.clone())); let _ = res_tx.send(Err(e)); };
             let (mut using, mut live, missing) = if infos.is_empty() {
                 // No microphone could be listed by name just now: the Mac's default, if it has one.
@@ -186,13 +249,13 @@ impl Recorder {
                 let did = default_id(&host);
                 let mut first_err: Option<String> = None;
                 let opener = |i: usize| match open(&list[i].1) { Ok(o) => Some(o), Err(e) => { first_err.get_or_insert(e); None } };
-                match voiceset::open_at_start(saved.as_ref(), &infos, did.as_deref(), opener, || voiceset::stop_waiting(&stop_rx)) {
+                match voiceset::open_at_start(saved.as_ref(), &infos, did.as_deref(), &quiet, opener, || voiceset::stop_waiting(&stop_rx)) {
                     (voiceset::Reopen::Opened(i, o), missing) => (infos[i].clone(), Some(o), missing),
                     (voiceset::Reopen::NoneOpened, _) => { fail(first_err.unwrap_or_else(|| "No microphone would start.".into())); return }
                     (voiceset::Reopen::Stopped, _) => { fail("The microphone did not start.".into()); return }
                 }
             };
-            let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing }));
+            let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing, quiet: quiet.contains(&using.id) }));
             let (mut heard, mut switched_to, mut lost, mut reopens) = (Vec::<f32>::new(), None, false, 0u32);
             loop {
                 // The key came up (or Stop everything, or the recorder was dropped): stop listening.
@@ -210,7 +273,7 @@ impl Recorder {
                 let did = default_id(&host);
                 // Changed: the same one again first. Gone, or the same one will not open: another (voiceset::after_loss).
                 let same = if what == OnError::OpenSameAgain { infos.iter().position(|x| x.id == using.id) } else { None };
-                let other = voiceset::after_loss(saved.as_ref(), &infos, did.as_deref(), &using.id);
+                let other = voiceset::after_loss(saved.as_ref(), &infos, did.as_deref(), &using.id, &quiet);
                 // A stop that comes while another microphone opens (a Bluetooth or USB one can take a moment) wins: nothing more
                 // is opened, and one that opened meanwhile is closed at once, with nothing it heard kept (rules 5 and 11).
                 match voiceset::reopen_first([same, other].into_iter().flatten(), |i| open(&list[i].1).ok(), || voiceset::stop_waiting(&stop_rx)) {
@@ -304,7 +367,11 @@ mod tests {
         assert!(start.contains("voiceset::open_at_start(saved.as_ref(), &infos, did.as_deref(),"), "{start}");
         assert!(start.contains("|| voiceset::stop_waiting(&stop_rx))"));
         assert!(!start.contains("voiceset::pick_mic("), "the start's choice is open_at_start's");
-        assert!(start.contains("let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing }));"));
+        assert!(start.contains("let _ = ready_tx.send(Ok(Opened { name: using.name.clone(), missing, quiet: quiet.contains(&using.id) }));"));
+        // With the lid closed the Mac's own microphone is passed over at the start and when another one goes away.
+        assert!(start.contains("let quiet = quiet_now(&infos);"));
+        assert!(c.contains("fn quiet_now(inputs: &[Input]) -> Vec<String> { if lid_closed() { voiceset::unheard(inputs, &ca::builtin_input_uids(), true) } else { Vec::new() } }"));
+        assert!(c.contains("voiceset::after_loss(saved.as_ref(), &infos, did.as_deref(), &using.id, &quiet)"));
     }
 
     /// Real speech in, real words out. Needs the model (downloaded once into the real app folder, about 140 MB).

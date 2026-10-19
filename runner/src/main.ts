@@ -52,7 +52,7 @@ const runner = new AgentRunner({ settings: runnerSettings, shadowRoot: join(sett
 // Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength), and reads
 // ph.useProjectInfo and ph.handBack on each request.
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data), settings: runnerSettings }) : null;
-const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject });
+const walks = new WalkService({ emit, lessonDirs: [join(settings.data, "lessons"), fileURLToPath(new URL("../../lessons", import.meta.url))], store: new FileWalkStore(join(settings.data, "walks")), checker: projectChecker, now: () => new Date().toISOString(), fromProject: lessonsFromProject, startWhereYouAre: () => runnerSettings.get("teach.startWhereYouAre") === true });
 const inflight = new Set<Promise<unknown>>();
 // The browser check's one time download: only on the person's press, ended by Stop everything, by the app closing, and by
 // this engine being ended by force (the installer ends with it).

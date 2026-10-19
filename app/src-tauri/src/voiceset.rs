@@ -105,17 +105,35 @@ pub struct Input { pub id: String, pub name: String }
 #[derive(Clone, Debug, PartialEq)]
 pub struct MicUse { pub index: Option<usize>, pub missing: Option<String> }
 
-pub fn pick_mic(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>) -> MicUse {
-    if let Some(want) = saved {
-        if let Some(i) = inputs.iter().position(|x| x.id == want.id) { return MicUse { index: Some(i), missing: None }; }
-    }
-    let default = default_id.and_then(|d| inputs.iter().position(|x| x.id == d)).or(if inputs.is_empty() { None } else { Some(0) });
-    MicUse { index: default, missing: saved.map(|s| s.name.clone()) }
+/// The microphones that cannot hear right now: the Mac's own while its lid is closed (it is cut off in hardware, yet it can
+/// stay listed and stay the Mac's default). `builtin`: Core Audio's ids of the Mac's own microphones, matched against each
+/// input's id after the host's name ("coreaudio:<id>"), never against a name. Empty with the lid open, or on a Mac with no
+/// microphone of its own.
+pub fn unheard(inputs: &[Input], builtin: &[String], lid_closed: bool) -> Vec<String> {
+    if !lid_closed { return Vec::new(); }
+    inputs.iter().filter(|x| x.id.split_once(':').is_some_and(|(_, uid)| builtin.iter().any(|b| b == uid))).map(|x| x.id.clone()).collect()
+}
+/// Every microphone listed cannot hear right now (the lid is closed and only the Mac's own is there): nothing to listen with.
+pub fn only_unheard(inputs: &[Input], unheard: &[String]) -> bool { !inputs.is_empty() && inputs.iter().all(|x| unheard.contains(&x.id)) }
+
+/// `unheard`: microphones that cannot hear now (`unheard()`), passed over while any other is listed. The picked one that
+/// cannot hear is not called missing: it is connected.
+pub fn pick_mic(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>, unheard: &[String]) -> MicUse {
+    let hears = |i: &usize| !unheard.contains(&inputs[*i].id);
+    let saved_at = saved.and_then(|want| inputs.iter().position(|x| x.id == want.id));
+    if let Some(i) = saved_at.filter(hears) { return MicUse { index: Some(i), missing: None }; }
+    let missing = if saved_at.is_some() { None } else { saved.map(|s| s.name.clone()) };
+    let default = default_id.and_then(|d| inputs.iter().position(|x| x.id == d));
+    if let Some(i) = default.filter(hears).or_else(|| (0..inputs.len()).find(|i| hears(i))) { return MicUse { index: Some(i), missing }; }
+    // Nothing else can hear: the choice as before (the worker says why before it listens).
+    let index = saved_at.or(default).or(if inputs.is_empty() { None } else { Some(0) });
+    MicUse { index, missing }
 }
 /// The microphone in use went away while the keys were held: the picked one if it is still there and is not the lost one,
-/// else the Mac's default, else any other. Never the lost one again (the list may still name it for a moment).
-pub fn after_loss(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>, lost_id: &str) -> Option<usize> {
-    let ok = |i: usize| inputs[i].id != lost_id;
+/// else the Mac's default, else any other. Never the lost one again (the list may still name it for a moment), and never one
+/// that cannot hear now (`unheard`).
+pub fn after_loss(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>, lost_id: &str, unheard: &[String]) -> Option<usize> {
+    let ok = |i: usize| inputs[i].id != lost_id && !unheard.contains(&inputs[i].id);
     if let Some(i) = saved.and_then(|s| inputs.iter().position(|x| x.id == s.id)).filter(|i| ok(*i)) { return Some(i); }
     if let Some(i) = default_id.and_then(|d| inputs.iter().position(|x| x.id == d)).filter(|i| ok(*i)) { return Some(i); }
     (0..inputs.len()).find(|i| ok(*i))
@@ -170,13 +188,37 @@ pub fn reopen_first<T>(candidates: impl IntoIterator<Item = usize>, mut open: im
 /// (headphones just switched off can stay in the list for a moment), the one after_loss gives in its place, looking for a
 /// stop the same way a reopen does. The second part names the picked microphone whenever another one listens instead,
 /// so the one plain line is said (MicNote).
-pub fn open_at_start<T>(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>, open: impl FnMut(usize) -> Option<T>, stopped: impl FnMut() -> bool) -> (Reopen<T>, Option<String>) {
-    let Some(first) = pick_mic(saved, inputs, default_id).index else { return (Reopen::NoneOpened, None) };
-    let instead = after_loss(saved, inputs, default_id, &inputs[first].id);
+pub fn open_at_start<T>(saved: Option<&Named>, inputs: &[Input], default_id: Option<&str>, unheard: &[String], open: impl FnMut(usize) -> Option<T>, stopped: impl FnMut() -> bool) -> (Reopen<T>, Option<String>) {
+    let Some(first) = pick_mic(saved, inputs, default_id, unheard).index else { return (Reopen::NoneOpened, None) };
+    let instead = after_loss(saved, inputs, default_id, &inputs[first].id, unheard);
     let r = reopen_first([Some(first), instead].into_iter().flatten(), open, stopped);
-    let missing = match &r { Reopen::Opened(i, _) => saved.filter(|s| s.id != inputs[*i].id).map(|s| s.name.clone()), _ => None };
+    // The picked one is named only when it is not connected or would not open, never when it is connected but cannot hear.
+    let missing = match &r { Reopen::Opened(i, _) => saved.filter(|s| s.id != inputs[*i].id && !unheard.contains(&s.id)).map(|s| s.name.clone()), _ => None };
     (r, missing)
 }
+/// A reading from Core Audio (the microphones, whether the sound is on) for a command on the main thread, which every panel
+/// shares: Core Audio can stall just after the Mac wakes or while Bluetooth headphones connect, and a wait there freezes the
+/// island, Home, the character and the rings (a beachball). `read` runs on a helper thread and is waited for at most
+/// `limit`; a slow one gives the last answer (or `fallback` when none is known yet), and its late answer is kept for next
+/// time. While one read is still stuck, no second one is started.
+pub struct Recent<T> { last: std::sync::Mutex<Option<T>>, busy: std::sync::atomic::AtomicBool }
+impl<T: Clone + Send + 'static> Recent<T> {
+    pub const fn new() -> Self { Recent { last: std::sync::Mutex::new(None), busy: std::sync::atomic::AtomicBool::new(false) } }
+    pub fn last(&self) -> Option<T> { self.last.lock().unwrap_or_else(|e| e.into_inner()).clone() }
+    pub fn read(&'static self, limit: std::time::Duration, fallback: impl FnOnce() -> T, read: impl FnOnce() -> T + Send + 'static) -> T {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.busy.swap(true, SeqCst) { return self.last().unwrap_or_else(fallback); }
+        let (tx, rx) = std::sync::mpsc::channel::<T>();
+        std::thread::spawn(move || {
+            let v = read();
+            *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some(v.clone());
+            self.busy.store(false, SeqCst);
+            let _ = tx.send(v);
+        });
+        rx.recv_timeout(limit).ok().or_else(|| self.last()).unwrap_or_else(fallback)
+    }
+}
+
 /// Whether the recorder was told to stop, or went away, without waiting.
 pub fn stop_waiting(rx: &std::sync::mpsc::Receiver<()>) -> bool { !matches!(rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)) }
 /// A device's name for Settings and the card: no control characters, at most MAX_NAME characters.
@@ -247,7 +289,7 @@ pub fn apply(saved: &Saved, ask: &Ask, voices: &[VoiceInfo], inputs: &[Input]) -
 pub fn state_json(s: &Saved, voices: &[VoiceInfo], mac_lang: &str, inputs: &[Input], default_id: Option<&str>, sound: Sound) -> Value {
     let vu = pick_voice(s.voice.as_ref(), voices);
     let using = if vu.missing.is_some() { vu.id.as_ref().and_then(|id| voices.iter().find(|v| &v.id == id)).map(|v| v.name.clone()) } else { None };
-    let mu = pick_mic(None, inputs, default_id);
+    let mu = pick_mic(None, inputs, default_id, &[]);
     let mic_missing = s.mic.as_ref().filter(|m| !inputs.iter().any(|x| x.id == m.id)).map(|m| m.name.clone());
     json!({
         "voices": listable(voices, mac_lang).iter().map(|v| json!({ "id": v.id, "name": v.name, "lang": v.lang, "quality": v.quality })).collect::<Vec<_>>(),
@@ -361,29 +403,29 @@ mod tests {
     #[test]
     fn no_pick_uses_the_macs_default_microphone_and_follows_it_when_it_changes() {
         let list = [inp("coreaudio:built-in", "MacBook Pro Microphone"), inp("coreaudio:airpods", "AirPods Pro")];
-        assert_eq!(pick_mic(None, &list, Some("coreaudio:built-in")), MicUse { index: Some(0), missing: None });
-        assert_eq!(pick_mic(None, &list, Some("coreaudio:airpods")), MicUse { index: Some(1), missing: None }, "the default changed: it follows");
-        assert_eq!(pick_mic(None, &list, None), MicUse { index: Some(0), missing: None }, "no default known: the first one");
-        assert_eq!(pick_mic(None, &[], None), MicUse { index: None, missing: None }, "no microphone at all");
+        assert_eq!(pick_mic(None, &list, Some("coreaudio:built-in"), &[]), MicUse { index: Some(0), missing: None });
+        assert_eq!(pick_mic(None, &list, Some("coreaudio:airpods"), &[]), MicUse { index: Some(1), missing: None }, "the default changed: it follows");
+        assert_eq!(pick_mic(None, &list, None, &[]), MicUse { index: Some(0), missing: None }, "no default known: the first one");
+        assert_eq!(pick_mic(None, &[], None, &[]), MicUse { index: None, missing: None }, "no microphone at all");
     }
     #[test]
     fn a_picked_microphone_is_used_and_when_it_is_gone_the_default_is_used_and_named() {
         let list = [inp("coreaudio:built-in", "MacBook Pro Microphone"), inp("coreaudio:usb", "Blue Yeti")];
         let yeti = named("coreaudio:usb", "Blue Yeti", "");
-        assert_eq!(pick_mic(Some(&yeti), &list, Some("coreaudio:built-in")), MicUse { index: Some(1), missing: None });
+        assert_eq!(pick_mic(Some(&yeti), &list, Some("coreaudio:built-in"), &[]), MicUse { index: Some(1), missing: None });
         let pods = named("coreaudio:airpods", "AirPods Pro", "");
-        assert_eq!(pick_mic(Some(&pods), &list, Some("coreaudio:built-in")), MicUse { index: Some(0), missing: Some("AirPods Pro".into()) });
-        assert_eq!(pick_mic(Some(&pods), &[], None), MicUse { index: None, missing: Some("AirPods Pro".into()) });
+        assert_eq!(pick_mic(Some(&pods), &list, Some("coreaudio:built-in"), &[]), MicUse { index: Some(0), missing: Some("AirPods Pro".into()) });
+        assert_eq!(pick_mic(Some(&pods), &[], None, &[]), MicUse { index: None, missing: Some("AirPods Pro".into()) });
     }
     #[test]
     fn a_microphone_lost_while_talking_is_replaced_by_another_never_by_itself() {
         // Bluetooth headphones switched off mid hold: the list may still name them for a moment.
         let list = [inp("coreaudio:airpods", "AirPods Pro"), inp("coreaudio:built-in", "MacBook Pro Microphone")];
         let pods = named("coreaudio:airpods", "AirPods Pro", "");
-        assert_eq!(after_loss(Some(&pods), &list, Some("coreaudio:airpods"), "coreaudio:airpods"), Some(1));
-        assert_eq!(after_loss(None, &list, Some("coreaudio:airpods"), "coreaudio:airpods"), Some(1), "the default itself went away");
-        assert_eq!(after_loss(None, &list, Some("coreaudio:built-in"), "coreaudio:airpods"), Some(1), "the new default");
-        assert_eq!(after_loss(None, &list[..1], Some("coreaudio:airpods"), "coreaudio:airpods"), None, "nothing else to listen with");
+        assert_eq!(after_loss(Some(&pods), &list, Some("coreaudio:airpods"), "coreaudio:airpods", &[]), Some(1));
+        assert_eq!(after_loss(None, &list, Some("coreaudio:airpods"), "coreaudio:airpods", &[]), Some(1), "the default itself went away");
+        assert_eq!(after_loss(None, &list, Some("coreaudio:built-in"), "coreaudio:airpods", &[]), Some(1), "the new default");
+        assert_eq!(after_loss(None, &list[..1], Some("coreaudio:airpods"), "coreaudio:airpods", &[]), None, "nothing else to listen with");
     }
     #[test]
     fn a_microphone_that_went_away_means_another_and_a_changed_one_means_open_it_again() {
@@ -460,31 +502,31 @@ mod tests {
         let list = [inp("coreaudio:airpods", "AirPods Pro"), inp("coreaudio:built-in", "MacBook Pro Microphone"), inp("coreaudio:usb", "Blue Yeti")];
         let pods = named("coreaudio:airpods", "AirPods Pro", "");
         let tried = std::cell::RefCell::new(Vec::new());
-        let (r, missing) = open_at_start(Some(&pods), &list, Some("coreaudio:built-in"), |i| { tried.borrow_mut().push(i); (i != 0).then_some(i) }, || false);
+        let (r, missing) = open_at_start(Some(&pods), &list, Some("coreaudio:built-in"), &[], |i| { tried.borrow_mut().push(i); (i != 0).then_some(i) }, || false);
         assert_eq!(r, Reopen::Opened(1, 1), "the Mac's default listens");
         assert_eq!(missing.as_deref(), Some("AirPods Pro"), "so the one plain line names the picked one");
         assert_eq!(*tried.borrow(), [0, 1]);
         // It opens: nothing else is tried and nothing is said.
         let tried = std::cell::RefCell::new(Vec::new());
-        assert_eq!(open_at_start(Some(&pods), &list, Some("coreaudio:built-in"), |i| { tried.borrow_mut().push(i); Some(i) }, || false), (Reopen::Opened(0, 0), None));
+        assert_eq!(open_at_start(Some(&pods), &list, Some("coreaudio:built-in"), &[], |i| { tried.borrow_mut().push(i); Some(i) }, || false), (Reopen::Opened(0, 0), None));
         assert_eq!(*tried.borrow(), [0]);
         // Not listed at all: the default, named as before (pick_mic).
         let gone = named("coreaudio:gone", "Old Headset", "");
-        assert_eq!(open_at_start(Some(&gone), &list, Some("coreaudio:built-in"), Some, || false), (Reopen::Opened(1, 1), Some("Old Headset".into())));
+        assert_eq!(open_at_start(Some(&gone), &list, Some("coreaudio:built-in"), &[], Some, || false), (Reopen::Opened(1, 1), Some("Old Headset".into())));
     }
     #[test]
     fn at_the_start_the_default_that_will_not_open_gives_way_to_another_and_a_stop_or_nothing_opening_is_said() {
         let list = [inp("coreaudio:built-in", "MacBook Pro Microphone"), inp("coreaudio:usb", "Blue Yeti")];
         // Nothing picked, the default will not open: another one listens, with nothing to name.
-        assert_eq!(open_at_start(None, &list, Some("coreaudio:built-in"), |i| (i == 1).then_some(i), || false), (Reopen::Opened(1, 1), None));
+        assert_eq!(open_at_start(None, &list, Some("coreaudio:built-in"), &[], |i| (i == 1).then_some(i), || false), (Reopen::Opened(1, 1), None));
         // Nothing opens.
-        assert_eq!(open_at_start(None, &list, Some("coreaudio:built-in"), |_| None::<usize>, || false).0, Reopen::NoneOpened);
+        assert_eq!(open_at_start(None, &list, Some("coreaudio:built-in"), &[], |_| None::<usize>, || false).0, Reopen::NoneOpened);
         // Let go, or Stop everything, first: nothing is opened.
         let opened = std::cell::Cell::new(0);
-        assert_eq!(open_at_start(Some(&named("coreaudio:usb", "Blue Yeti", "")), &list, None, |i| { opened.set(opened.get() + 1); Some(i) }, || true), (Reopen::Stopped, None));
+        assert_eq!(open_at_start(Some(&named("coreaudio:usb", "Blue Yeti", "")), &list, None, &[], |i| { opened.set(opened.get() + 1); Some(i) }, || true), (Reopen::Stopped, None));
         assert_eq!(opened.get(), 0);
         // No microphone listed: nothing to open here (the recorder then asks the Mac for its default itself).
-        assert_eq!(open_at_start(None, &[], None, |i| Some(i), || false).0, Reopen::NoneOpened);
+        assert_eq!(open_at_start(None, &[], None, &[], |i| Some(i), || false).0, Reopen::NoneOpened);
     }
     #[test]
     fn a_stop_is_seen_whether_it_was_sent_or_the_recorder_went_away_and_is_not_seen_otherwise() {
@@ -573,6 +615,79 @@ mod tests {
         assert_eq!(plain["defaultInput"], "MacBook Pro Microphone", "the first one when the Mac names no default");
     }
 
+    // ---- HeyClicky v1.0.53 parity: with the lid closed, hold to talk uses another microphone ----
+    // With the lid closed the Mac's own microphone is cut off in hardware, yet it can stay listed and stay the Mac's
+    // default, so a held talk recorded silence. It counts as one that cannot hear (unheard) and is passed over.
+    fn lid_list() -> [Input; 3] { [inp("coreaudio:BuiltInMicrophoneDevice", "MacBook Pro Microphone"), inp("coreaudio:usb-1", "Blue Yeti"), inp("coreaudio:pods", "AirPods Pro")] }
+    #[test]
+    fn with_the_lid_closed_the_macs_own_microphone_cannot_hear_and_with_it_open_it_can() {
+        let builtin = ["BuiltInMicrophoneDevice".to_string()];
+        assert_eq!(unheard(&lid_list(), &builtin, true), vec!["coreaudio:BuiltInMicrophoneDevice".to_string()]);
+        assert!(unheard(&lid_list(), &builtin, false).is_empty(), "lid open: every microphone can hear");
+        assert!(unheard(&lid_list(), &[], true).is_empty(), "no microphone of its own (a Mac mini): nothing changes");
+        // Matched by Core Audio's own id after the host's name, never by the microphone's name.
+        assert!(unheard(&[inp("coreaudio:other", "MacBook Pro Microphone")], &builtin, true).is_empty());
+    }
+    #[test]
+    fn the_macs_own_microphone_picked_or_the_default_gives_way_to_another_one_with_the_lid_closed() {
+        let list = lid_list();
+        let off = ["coreaudio:BuiltInMicrophoneDevice".to_string()];
+        // The default is the Mac's own: the first other one listens.
+        assert_eq!(pick_mic(None, &list, Some("coreaudio:BuiltInMicrophoneDevice"), &off), MicUse { index: Some(1), missing: None });
+        // Picked: the same, and it is not called "not connected" (it is connected; the lid is closed).
+        let own = named("coreaudio:BuiltInMicrophoneDevice", "MacBook Pro Microphone", "");
+        assert_eq!(pick_mic(Some(&own), &list, Some("coreaudio:pods"), &off), MicUse { index: Some(2), missing: None }, "the Mac's default next");
+        // Another one picked is used as before.
+        let yeti = named("coreaudio:usb-1", "Blue Yeti", "");
+        assert_eq!(pick_mic(Some(&yeti), &list, Some("coreaudio:BuiltInMicrophoneDevice"), &off), MicUse { index: Some(1), missing: None });
+        // Lid open: exactly as before.
+        assert_eq!(pick_mic(None, &list, Some("coreaudio:BuiltInMicrophoneDevice"), &[]), MicUse { index: Some(0), missing: None });
+        // Nothing else to listen with: the old choice stands (and the worker says the lid line before listening).
+        assert_eq!(pick_mic(None, &list[..1], Some("coreaudio:BuiltInMicrophoneDevice"), &off).index, Some(0));
+        assert!(only_unheard(&list[..1], &off));
+        assert!(!only_unheard(&list, &off) && !only_unheard(&[], &off) && !only_unheard(&list[..1], &[]));
+    }
+    #[test]
+    fn with_the_lid_closed_a_lost_microphone_is_never_replaced_by_the_macs_own() {
+        let list = lid_list();
+        let off = ["coreaudio:BuiltInMicrophoneDevice".to_string()];
+        // AirPods went away mid hold; the default is the Mac's own: the Yeti, not the silent one.
+        assert_eq!(after_loss(None, &list, Some("coreaudio:BuiltInMicrophoneDevice"), "coreaudio:pods", &off), Some(1));
+        assert_eq!(after_loss(None, &[list[0].clone(), list[2].clone()], Some("coreaudio:BuiltInMicrophoneDevice"), "coreaudio:pods", &off), None, "nothing that can hear is left");
+        // At the start: the Mac's own is never even tried while another can hear.
+        let tried = std::cell::RefCell::new(Vec::new());
+        let (r, missing) = open_at_start(None, &list, Some("coreaudio:BuiltInMicrophoneDevice"), &off, |i| { tried.borrow_mut().push(i); Some(i) }, || false);
+        assert_eq!((r, missing), (Reopen::Opened(1, 1), None));
+        assert_eq!(*tried.borrow(), [1]);
+    }
+
+    // ---- HeyClicky v1.0.53 parity: no beachball after sleep or a headset change ----
+    // Core Audio can stall just after the Mac wakes or while AirPods connect. Settings and speaking read the microphones and
+    // the sound on a helper thread and wait at most a moment; a slow read gives the last answer (or a safe one), and is
+    // kept for next time. While one read is still stuck, no second one is started.
+    #[test]
+    fn a_slow_core_audio_read_gives_the_last_answer_at_once_and_never_starts_a_second_read() {
+        static R: Recent<u32> = Recent::new();
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let slow = |c: std::sync::Arc<std::sync::atomic::AtomicU32>| move || { c.fetch_add(1, std::sync::atomic::Ordering::SeqCst); std::thread::sleep(std::time::Duration::from_millis(400)); 7u32 };
+        let t0 = std::time::Instant::now();
+        assert_eq!(R.read(std::time::Duration::from_millis(50), || 0, slow(calls.clone())), 0, "nothing known yet: the safe answer");
+        assert!(t0.elapsed() < std::time::Duration::from_millis(300), "it never waits for the slow read: {:?}", t0.elapsed());
+        assert_eq!(R.read(std::time::Duration::from_millis(50), || 0, slow(calls.clone())), 0);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1, "no second read while the first is stuck");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(R.last(), Some(7), "the late answer is kept");
+        // A quick read gives its own answer at once.
+        assert_eq!(R.read(std::time::Duration::from_millis(300), || 0, || 9u32), 9);
+        assert_eq!(R.last(), Some(9));
+    }
+    #[test]
+    fn when_a_read_is_slow_again_the_last_good_answer_is_used() {
+        static R: Recent<&'static str> = Recent::new();
+        assert_eq!(R.read(std::time::Duration::from_millis(300), || "none", || "AirPods"), "AirPods");
+        assert_eq!(R.read(std::time::Duration::from_millis(20), || "none", || { std::thread::sleep(std::time::Duration::from_millis(200)); "Yeti" }), "AirPods");
+    }
+
     // ---- the wiring in main.rs and runner.rs (they are compiled with the rest, so a test reads their source) ----
     const MAIN: &str = include_str!("main.rs");
     fn body(sig: &str) -> &'static str {
@@ -596,14 +711,15 @@ mod tests {
     }
     #[test]
     fn speaking_checks_calls_then_the_sound_then_repeats_and_uses_the_picked_voice_and_speed() {
-        in_order(body("fn speak("), &["speak::prepare_reply(&text", "if quiet()", "speak::mac::sound_now()", "if sound != voiceset::Sound::On", "should_say(&line", "speak::mac::say(&line, set.voice.as_ref(), set.speed)"]);
+        // The sound is read off the main thread now (sound_reading, a Core Audio stall never freezes the panels).
+        in_order(body("fn speak("), &["speak::prepare_reply(&text", "if quiet()", "sound_reading()", "if sound != voiceset::Sound::On", "should_say(&line", "speak::mac::say(&line, set.voice.as_ref(), set.speed)"]);
     }
     // Found in review, 18 Oct 2026: key down silenced speech once, but a line or a whole reply (up to 600 characters) that
     // arrived while the keys were held was still said, into the open microphone, and could be written into the box.
     #[test]
     fn nothing_is_said_while_hold_to_talk_listens() {
         let sp = body("fn speak(");
-        in_order(sp, &["speak::prepare_reply(&text", "if listening_now()", "\"why\": \"listening\"", "if quiet()", "speak::mac::sound_now()", "speak::mac::say(&line"]);
+        in_order(sp, &["speak::prepare_reply(&text", "if listening_now()", "\"why\": \"listening\"", "if quiet()", "sound_reading()", "speak::mac::say(&line"]);
         assert!(MAIN.contains("never over the person's own voice"), "the promise is kept in the doc comment");
         let w = body("fn voice_worker(");
         // On before the light and the microphone, with anything already being said cut off.
@@ -615,6 +731,34 @@ mod tests {
         let tl = &w[w.find("if let Some(why) = hold.must_close(").unwrap()..]; assert!(tl[..tl.find("\n        }").unwrap()].contains("listening(false);"));
         let c = &w[w.find("Ok(VoiceMsg::Cancel)").unwrap()..]; assert!(c[..c.find('\n').unwrap()].contains("listening(false);"));
         let st = &w[w.find("match voice_mac::Recorder::start(").unwrap()..]; let e = &st[st.find("Err(e) =>").unwrap()..]; assert!(e[..e.find('\n').unwrap()].contains("listening(false);"), "would not start");
+    }
+    #[test]
+    fn settings_and_speaking_never_wait_on_core_audio_on_the_main_thread() {
+        // voice_settings, set_voice_settings and speak are sync commands, so they run on the main thread every panel shares.
+        for f in ["fn voice_state(", "fn set_voice_settings(", "fn speak("] {
+            let b = body(f);
+            assert!(!b.contains("voice_mac::inputs()") && !b.contains("speak::mac::sound_now()"), "{f} reads Core Audio itself");
+        }
+        assert!(body("fn voice_state(").contains("inputs_now()") && body("fn voice_state(").contains("sound_reading()"));
+        assert!(body("fn set_voice_settings(").contains("inputs_now()"));
+        assert!(body("fn speak(").contains("let sound = sound_reading();"));
+        assert!(MAIN.contains("fn inputs_now() -> (Vec<voiceset::Input>, Option<String>) { MIC_LIST.read(CORE_AUDIO_WAIT, || (Vec::new(), None), voice_mac::inputs) }"));
+        assert!(MAIN.contains("fn sound_reading() -> voiceset::Sound { SOUND_NOW.read(CORE_AUDIO_WAIT, || voiceset::Sound::On, speak::mac::sound_now) }"), "never claimed off without a reading");
+        assert!(MAIN.contains("const CORE_AUDIO_WAIT: Duration = Duration::from_millis(300);"));
+        // The Mac's voices are still read where they must be (AVSpeechSynthesisVoice, on the main thread).
+        assert!(body("fn voice_settings(").contains("speak::mac::voices()"));
+    }
+    #[test]
+    fn with_the_lid_closed_and_no_other_microphone_it_says_so_before_the_light_and_never_listens() {
+        let w = body("fn voice_worker(");
+        let check = w.find("if voiceset::only_unheard(&mics, &quiet)").expect("the lid check");
+        assert!(check < w.find("listening(true);").unwrap(), "said before the light comes on or the microphone opens");
+        let line = &w[check..]; let line = &line[..line.find('\n').unwrap()];
+        assert!(line.contains("say_voice(&app, \"blocked\"") && line.contains("\"why\": \"lid\"") && line.contains("continue;"), "{line}");
+        // Silence is never blamed on the permission when the permission is granted.
+        let blocked = &w[w.find("voice::Heard::Blocked =>").unwrap()..]; let blocked = &blocked[..blocked.find('\n').unwrap()];
+        assert!(blocked.contains("voice::why_silent(crate::permissions::current().microphone == crate::permissions::Status::Granted, quiet_mic)"), "{blocked}");
+        assert!(blocked.contains("mic[\"why\"] = json!(why.word());"), "{blocked}");
     }
     #[test]
     fn the_card_reads_only_the_saved_speed_at_its_start() {

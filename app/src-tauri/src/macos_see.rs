@@ -30,13 +30,22 @@ pub struct MacPlatform {
     pub ask: AskFn,
     pub light: Box<dyn Fn(bool) + Send + Sync>,
     last_display: Mutex<Option<R>>,
+    /// Set for a walkthrough step after a click (showme::Platform::settle): whether the look is still wanted.
+    settle_while: Option<Box<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl MacPlatform {
     pub fn new(send_image: SendImage, ask: AskFn, light: Box<dyn Fn(bool) + Send + Sync>) -> MacPlatform {
-        MacPlatform { send_image, ask, light, last_display: Mutex::new(None) }
+        MacPlatform { send_image, ask, light, last_display: Mutex::new(None), settle_while: None }
     }
+    /// Waits for the page to settle before the picture (a walkthrough step after a click). `wanted`: false once Stop
+    /// everything or a newer question came, which ends the wait at once.
+    pub fn settling(mut self, wanted: Box<dyn Fn() -> bool + Send + Sync>) -> MacPlatform { self.settle_while = Some(wanted); self }
 }
+
+/// A small look of the display under the pointer (showme::GLANCE_W pixels wide), with Companion's own windows and any
+/// password manager left out, as every look. Only to see whether the page is still changing: kept in memory, never sent.
+fn glance() -> Result<Frame, String> { capture_display(&[], Some(crate::showme::GLANCE_W)).map(|(f, _)| f) }
 
 /// Asks macOS for permission. Called only the first time the feature is used.
 pub fn request_screen_recording() -> bool { CGRequestScreenCaptureAccess() }
@@ -88,51 +97,58 @@ fn same_display(r: &R, f: &CGRect) -> bool { (r.x - f.origin.x).abs() < 1.0 && (
 impl MacPlatform {
     /// The display under the mouse, or the first one left when some have been looked at already (`exclude`).
     fn capture_excluding(&self, exclude: &[R]) -> Result<Captured, String> {
-        let content = shareable()?;
-        let me = std::process::id() as i32;
-        let want = pointer();
-        let displays = unsafe { content.displays() };
-        let mut chosen: Option<(Retained<SCDisplay>, CGRect)> = None;
-        for d in displays.iter() {
-            let f = unsafe { d.frame() };
-            if exclude.iter().any(|t| same_display(t, &f)) { continue; }
-            if want.x >= f.origin.x && want.x < f.origin.x + f.size.width && want.y >= f.origin.y && want.y < f.origin.y + f.size.height { chosen = Some((d.clone(), f)); break; }
-            if chosen.is_none() { chosen = Some((d.clone(), f)); }
-        }
-        let (display, frame) = chosen.ok_or("no display found")?;
-        // Leave out Companion's own windows and any password manager, so their pixels never exist.
-        let mut skip: Vec<Retained<SCWindow>> = Vec::new();
-        for w in unsafe { content.windows() }.iter() {
-            let Some(app) = (unsafe { w.owningApplication() }) else { continue };
-            let bundle = unsafe { app.bundleIdentifier() }.to_string();
-            if unsafe { app.processID() } == me || NEVER_CAPTURE.contains(&bundle.as_str()) { skip.push(w.clone()); }
-        }
-        let skip_arr = NSArray::from_retained_slice(&skip);
-        let filter = unsafe { SCContentFilter::initWithDisplay_excludingWindows(SCContentFilter::alloc(), &display, &skip_arr) };
-        let config = unsafe { SCStreamConfiguration::new() };
-        let px_w = CGDisplayPixelsWide(unsafe { display.displayID() }).max(frame.size.width as usize);
-        let scale = px_w as f64 / frame.size.width;
-        unsafe { config.setWidth(px_w); config.setHeight((frame.size.height * scale).round() as usize); config.setShowsCursor(false); }
-
-        let (tx, rx) = mpsc::channel::<Result<usize, String>>();
-        let block = RcBlock::new(move |img: *mut CGImage, err: *mut NSError| {
-            if img.is_null() {
-                let msg = if err.is_null() { "no picture".to_string() } else { unsafe { (*err).localizedDescription().to_string() } };
-                let _ = tx.send(Err(msg));
-            } else {
-                // Keep the picture alive past the callback.
-                let kept: Option<CFRetained<CGImage>> = unsafe { CFRetained::retain(std::ptr::NonNull::new_unchecked(img)) }.into();
-                let _ = tx.send(Ok(kept.map_or(0, |k| CFRetained::into_raw(k).as_ptr() as usize)));
-            }
-        });
-        unsafe { SCScreenshotManager::captureImageWithFilter_configuration_completionHandler(&filter, &config, Some(&block)) };
-        let ptr = match rx.recv_timeout(Duration::from_secs(8)) { Ok(Ok(p)) if p != 0 => p, Ok(Ok(_)) => return Err("empty picture".into()), Ok(Err(m)) => return Err(m), Err(_) => return Err("timed out".into()) };
-        let img = unsafe { CFRetained::from_raw(std::ptr::NonNull::new_unchecked(ptr as *mut CGImage)) };
-        let fr = cg_to_frame(&img).ok_or("could not read the picture")?;
-        let rect = R { x: frame.origin.x, y: frame.origin.y, w: frame.size.width, h: frame.size.height };
+        let (fr, rect) = capture_display(exclude, None)?;
         *self.last_display.lock().unwrap_or_else(|e| e.into_inner()) = Some(rect);
         Ok(Captured { frame: fr, display: rect })
     }
+}
+
+/// One picture of the display under the mouse (or the first one not in `exclude`), at its full pixel size, or `small`
+/// pixels wide for a glance. Companion's own windows and password managers are never in it.
+fn capture_display(exclude: &[R], small: Option<usize>) -> Result<(Frame, R), String> {
+    let content = shareable()?;
+    let me = std::process::id() as i32;
+    let want = pointer();
+    let displays = unsafe { content.displays() };
+    let mut chosen: Option<(Retained<SCDisplay>, CGRect)> = None;
+    for d in displays.iter() {
+        let f = unsafe { d.frame() };
+        if exclude.iter().any(|t| same_display(t, &f)) { continue; }
+        if want.x >= f.origin.x && want.x < f.origin.x + f.size.width && want.y >= f.origin.y && want.y < f.origin.y + f.size.height { chosen = Some((d.clone(), f)); break; }
+        if chosen.is_none() { chosen = Some((d.clone(), f)); }
+    }
+    let (display, frame) = chosen.ok_or("no display found")?;
+    // Leave out Companion's own windows and any password manager, so their pixels never exist.
+    let mut skip: Vec<Retained<SCWindow>> = Vec::new();
+    for w in unsafe { content.windows() }.iter() {
+        let Some(app) = (unsafe { w.owningApplication() }) else { continue };
+        let bundle = unsafe { app.bundleIdentifier() }.to_string();
+        if unsafe { app.processID() } == me || NEVER_CAPTURE.contains(&bundle.as_str()) { skip.push(w.clone()); }
+    }
+    let skip_arr = NSArray::from_retained_slice(&skip);
+    let filter = unsafe { SCContentFilter::initWithDisplay_excludingWindows(SCContentFilter::alloc(), &display, &skip_arr) };
+    let config = unsafe { SCStreamConfiguration::new() };
+    let px_w = small.unwrap_or_else(|| CGDisplayPixelsWide(unsafe { display.displayID() }).max(frame.size.width as usize)).max(1);
+    let scale = px_w as f64 / frame.size.width;
+    unsafe { config.setWidth(px_w); config.setHeight((frame.size.height * scale).round() as usize); config.setShowsCursor(false); }
+
+    let (tx, rx) = mpsc::channel::<Result<usize, String>>();
+    let block = RcBlock::new(move |img: *mut CGImage, err: *mut NSError| {
+        if img.is_null() {
+            let msg = if err.is_null() { "no picture".to_string() } else { unsafe { (*err).localizedDescription().to_string() } };
+            let _ = tx.send(Err(msg));
+        } else {
+            // Keep the picture alive past the callback.
+            let kept: Option<CFRetained<CGImage>> = unsafe { CFRetained::retain(std::ptr::NonNull::new_unchecked(img)) }.into();
+            let _ = tx.send(Ok(kept.map_or(0, |k| CFRetained::into_raw(k).as_ptr() as usize)));
+        }
+    });
+    unsafe { SCScreenshotManager::captureImageWithFilter_configuration_completionHandler(&filter, &config, Some(&block)) };
+    let ptr = match rx.recv_timeout(Duration::from_secs(8)) { Ok(Ok(p)) if p != 0 => p, Ok(Ok(_)) => return Err("empty picture".into()), Ok(Err(m)) => return Err(m), Err(_) => return Err("timed out".into()) };
+    let img = unsafe { CFRetained::from_raw(std::ptr::NonNull::new_unchecked(ptr as *mut CGImage)) };
+    let fr = cg_to_frame(&img).ok_or("could not read the picture")?;
+    let rect = R { x: frame.origin.x, y: frame.origin.y, w: frame.size.width, h: frame.size.height };
+    Ok((fr, rect))
 }
 
 impl Platform for MacPlatform {
@@ -160,6 +176,13 @@ impl Platform for MacPlatform {
     fn element_at(&self, p: Pt) -> Option<R> { crate::ax::clickable_at(p.x, p.y).map(|(x, y, w, h)| R { x, y, w, h }) }
     fn send_image(&self, screen: usize, jpeg: &[u8], w: u32, h: u32) { (self.send_image)(screen, jpeg, w, h) }
     fn ask(&self, question: &str, pics: &[Pic], c: &[Cand]) { (self.ask)(question, pics, c) }
+    /// Waits for the page to stop changing (showme::wait_to_settle), only when the page asked for it (`settling`).
+    fn settle(&self) {
+        let Some(wanted) = self.settle_while.as_ref() else { return };
+        let t0 = std::time::Instant::now();
+        let how = crate::showme::wait_to_settle(|| glance().ok(), |ms| std::thread::sleep(Duration::from_millis(ms)), || wanted(), crate::showme::SETTLE_GAP_MS, crate::showme::SETTLE_MAX_MS);
+        crate::log("showme_settled", serde_json::json!({ "how": format!("{how:?}"), "ms": t0.elapsed().as_millis() as u64 }));
+    }
 }
 
 /// The Mac's own text reader, on a compressed copy that stays in memory. `accurate` is slower and reads small or

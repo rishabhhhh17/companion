@@ -236,6 +236,24 @@ fn place_card(d: &NSPanel, c: &NSPanel) {
     if let Some((room, _)) = card_spot(mtm, d, home_size().max_h) { roam_card_moved(mtm, room); }
 }
 
+/// Moves a panel to `f` (AppKit points), as a short motion of `secs` when given (island.rs decides; never with Reduce
+/// motion or Less motion), with its see through value going to `alpha`. When the motion ends, `alpha` is set again
+/// without motion, so a panel is never left faded. Main thread. Takes no focus.
+fn set_frame_moving(p: &NSPanel, f: NSRect, secs: Option<f64>, alpha: Option<f64>) {
+    use objc2::Message;
+    use objc2_app_kit::{NSAnimatablePropertyContainer, NSAnimationContext};
+    let Some(secs) = secs else { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } return };
+    let (w, w2) = (p.retain(), p.retain());
+    let changes = RcBlock::new(move |ctx: NonNull<NSAnimationContext>| {
+        unsafe { ctx.as_ref() }.setDuration(secs);
+        let a = w.animator();
+        a.setFrame_display(f, true);
+        if let Some(x) = alpha { a.setAlphaValue(x); }
+    });
+    let done = RcBlock::new(move || { if let Some(x) = alpha { w2.setAlphaValue(x); } });
+    NSAnimationContext::runAnimationGroup_completionHandler(&changes, Some(&done));
+}
+
 /// Where our card can reach at its tallest while it is up, for the character to keep clear of. Nothing while it is
 /// closed: if it opens later, place_card plans the visit again.
 fn card_room(mtm: MainThreadMarker) -> Vec<Rect> {
@@ -427,7 +445,8 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let mode = island::mode(state);
     let f = island::island_frame(&d, mode);
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
-    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setFrame_display(to_appkit(f, ph), true); } });
+    // Growing downward is a short motion (island.rs), unless Reduce motion or Less motion is on; anything else is at once.
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { let secs = if p.isVisible() { island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion()) } else { None }; set_frame_moving(p, to_appkit(f, ph), secs, None); } });
     let kind = island::kind(&d);
     tell_island(mode, kind);
     if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
@@ -498,11 +517,12 @@ fn island_alert(app: AppHandle, on: bool) {
     });
 }
 
-/// For the island page when it loads: its size now, and what it sits on.
+/// For the island page when it loads: its size now, what it sits on, and an update a check found (its version only).
 #[tauri::command]
 fn island_state() -> Value {
     let (mode, kind) = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "kind": if kind.is_empty() { "pill".to_string() } else { kind } })
+    let update = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|v| json!({ "version": v })).unwrap_or(Value::Null);
+    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "kind": if kind.is_empty() { "pill".to_string() } else { kind }, "update": update })
 }
 
 /// macOS tells us the pointer entered or left the island: a tracking area on that one window, active even while another
@@ -1153,7 +1173,13 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
         place_island(mtm, true, "home_opened");
         with_panels(|d, c| {
             place_card(d, c);
-            c.orderFrontRegardless();
+            // Opening (not already open): a short drop from just under the island while it fades in (island.rs home_drop),
+            // unless Reduce motion or Less motion is on. A resize while it is open is never animated.
+            let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+            match island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion()) {
+                Some(start) => { let end = c.frame(); c.setAlphaValue(0.0); c.setFrame_display(to_appkit(start, ph), false); c.orderFrontRegardless(); set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0)); }
+                None => { c.setAlphaValue(1.0); c.orderFrontRegardless(); }
+            }
             if keyboard { c.makeKeyWindow(); }
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
@@ -1398,7 +1424,9 @@ fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_se
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 /// `all_screens`: the person's setting to include every display, not only the one under the pointer (off unless turned on).
 #[tauri::command]
-fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>) {
+/// `settle`: a walkthrough step after a click, so the look first waits (bounded, under the light, Stop ends it) for the page
+/// to stop changing (showme::wait_to_settle). The page asks for it only when its settings say so (anywhere.ts waitsForPage).
+fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>) {
     // A new question replaces whatever ring was up (and any pointing still on its way); what an older answer saw is forgotten.
     point_cancel(); hide_overlay(&app); showme_pending().end();
     let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1424,6 +1452,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>) {
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
+        let plat = if settle.unwrap_or(false) { plat.settling(Box::new(move || current())) } else { plat };
         if !plat.screen_recording_granted() {
             // Asked here, the first time the feature is used, with a plain sentence first.
             macos_see::request_screen_recording();
@@ -1688,6 +1717,9 @@ fn do_it_for_me(app: AppHandle) {
 
 static PENDING_UPDATE: Mutex<Option<tauri_plugin_updater::Update>> = Mutex::new(None);
 
+/// The version the last check found ready to install, for the island's status (island_state). Only a version number.
+static UPDATE_READY: Mutex<Option<String>> = Mutex::new(None);
+
 /// Is the updater set up in this build, and which version is running.
 #[tauri::command]
 fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse_config(include_str!("../updater.json")).is_some(), "version": app.package_info().version.to_string() }) }
@@ -1704,11 +1736,19 @@ async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Va
     match upd.check().await {
         Ok(Some(u)) => {
             let out = json!({ "available": true, "version": u.version, "notes": u.body.clone().unwrap_or_default().chars().take(600).collect::<String>() });
+            // Every window is told (Home's notice with Install, the island's status), and the island can ask when it loads.
+            *UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()) = Some(u.version.clone());
+            let _ = app.emit("update-ready", json!({ "version": u.version }));
             *PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(u);
             log("update_found", json!({}));
             Ok(out)
         }
-        Ok(None) => { *PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()) = None; Ok(json!({ "available": false })) }
+        Ok(None) => {
+            *PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let _ = app.emit("update-ready", Value::Null);
+            Ok(json!({ "available": false }))
+        }
         Err(e) => { log("update_check_failed", json!({})); Err(updates::failure_words(&e.to_string()).to_string()) }
     }
 }
@@ -1783,7 +1823,7 @@ fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Opti
     if listening_now() { log("speak_listening", json!({})); return Ok(json!({ "said": false, "why": "listening" })); }
     // Quiet during calls (rule 7): nothing is said while a call app is in front (presentation.rs).
     if quiet() { log("speak_quiet", json!({})); return Ok(json!({ "said": false, "why": "quiet" })); }
-    let sound = speak::mac::sound_now();
+    let sound = sound_reading();
     let tell = SOUND_NOTE.lock().unwrap_or_else(|e| e.into_inner()).tell(sound);
     if sound != voiceset::Sound::On {
         log("speak_no_sound", json!({ "sound": voiceset::sound_word(sound) }));
@@ -1808,9 +1848,19 @@ fn voice_now() -> voiceset::Saved {
 /// The "your microphone is not connected" line is said once each time it goes away (voiceset::MicNote).
 static MIC_NOTE: Mutex<voiceset::MicNote> = Mutex::new(voiceset::MicNote::new());
 
+/// The microphones and the sound, read from Core Audio off the main thread (voiceset::Recent): Core Audio can stall just
+/// after the Mac wakes or while Bluetooth headphones connect, and every panel shares the main thread, so a slow read gives
+/// the last answer instead of a beachball. The sound counts as on when nothing is known (it is never claimed off without a
+/// reading); no microphone is listed when nothing is known yet.
+const CORE_AUDIO_WAIT: Duration = Duration::from_millis(300);
+static MIC_LIST: voiceset::Recent<(Vec<voiceset::Input>, Option<String>)> = voiceset::Recent::new();
+static SOUND_NOW: voiceset::Recent<voiceset::Sound> = voiceset::Recent::new();
+fn inputs_now() -> (Vec<voiceset::Input>, Option<String>) { MIC_LIST.read(CORE_AUDIO_WAIT, || (Vec::new(), None), voice_mac::inputs) }
+fn sound_reading() -> voiceset::Sound { SOUND_NOW.read(CORE_AUDIO_WAIT, || voiceset::Sound::On, speak::mac::sound_now) }
+
 fn voice_state(set: &voiceset::Saved, voices: &[voiceset::VoiceInfo]) -> Value {
-    let (inputs, default_id) = voice_mac::inputs();
-    voiceset::state_json(set, voices, &speak::mac::mac_language(), &inputs, default_id.as_deref(), speak::mac::sound_now())
+    let (inputs, default_id) = inputs_now();
+    voiceset::state_json(set, voices, &speak::mac::mac_language(), &inputs, default_id.as_deref(), sound_reading())
 }
 
 /// Settings: the Mac's voices and microphones, what is picked, what is away, and whether the sound is on. Only from the
@@ -1835,7 +1885,7 @@ fn voice_speed(window: tauri::WebviewWindow) -> Result<f64, String> {
 fn set_voice_settings(app: AppHandle, window: tauri::WebviewWindow, voice: Option<String>, speed: f64, mic: Option<String>, language: String) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }
     let voices = speak::mac::voices();
-    let (inputs, _) = voice_mac::inputs();
+    let (inputs, _) = inputs_now();
     let before = voice_now();
     let ask = voiceset::Ask { voice: voice.as_deref(), speed, mic: mic.as_deref(), language: &language };
     let next = voiceset::apply(&before, &ask, &voices, &inputs).map_err(|c| { log("voice_not_set", json!({ "why": c })); c.to_string() })?;
@@ -2503,6 +2553,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let words_slot: std::sync::Arc<Mutex<Option<(u64, String)>>> = std::sync::Arc::new(Mutex::new(None));
     let mut press = 0u64;
     let mut last_used = std::time::Instant::now();
+    // The microphone that listened cannot hear now (the Mac's own with the lid closed): its silence is the lid, not the permission.
+    let mut quiet_mic = false;
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
@@ -2536,6 +2588,10 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                     say_voice(&app, "error", voice::HIDDEN_WORDS, json!({}));
                     continue;
                 }
+                // With the lid closed and only the Mac's own microphone (cut off in hardware), nothing could be heard: one plain
+                // line, before the light, and nothing listens. With another microphone, that one listens (voiceset::unheard).
+                let (mics, quiet) = if voice_mac::lid_closed() { voice_mac::hearing() } else { (Vec::new(), Vec::new()) };
+                if voiceset::only_unheard(&mics, &quiet) { hold.cancel(); log("voice_lid_closed", json!({})); say_voice(&app, "blocked", voice::Silence::Lid.fallback(), json!({ "why": "lid" })); continue; }
                 // From here nothing is said, and a line that began after the keys went down is cut off before the microphone opens.
                 listening(true);
                 speech_off(&app);
@@ -2546,7 +2602,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
-                        rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some() }));
+                        quiet_mic = opened.quiet;
+                        rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some(), "quiet": opened.quiet }));
                         // The picked microphone is not connected, so the default listens: one plain line, once each time it goes away.
                         if MIC_NOTE.lock().unwrap_or_else(|e| e.into_inner()).tell(opened.missing.as_deref()) {
                             say_voice(&app, "listening", LISTENING, json!({ "micMissing": opened.missing, "micUsing": opened.name }));
@@ -2582,7 +2639,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                         if h.lost { mic["micLost"] = json!(true); }
                         if h.switched_to.is_some() || h.lost { log("voice_mic_changed", json!({ "switched": h.switched_to.is_some(), "lost": h.lost })); }
                         match voice::heard(&mono) {
-                            voice::Heard::Blocked => { hold.finished(); say_voice(&app, "blocked", "The microphone gave me only silence. It may be switched off for Companion in System Settings, Privacy and Security, Microphone.", mic); }
+                            voice::Heard::Blocked => { hold.finished(); let why = voice::why_silent(crate::permissions::current().microphone == crate::permissions::Status::Granted, quiet_mic); mic["why"] = json!(why.word()); say_voice(&app, "blocked", why.fallback(), mic); }
                             voice::Heard::Silent => { hold.finished(); say_voice(&app, "silent", "I did not hear anything. Try again a little closer.", mic); }
                             voice::Heard::Sound => {
                                 say_voice(&app, "transcribing", "Understanding what you said", json!({}));
@@ -2600,7 +2657,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                 match out {
                                     // Only the word list written back is not what the person said (voicewords::is_echo).
                                     Ok(text) if voicewords::is_echo(&text, &words) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
-                                    Ok(text) if !text.is_empty() => { mic["text"] = json!(text); say_voice(&app, "heard", "", mic) }
+                                    // The language picked in Settings goes with the words: the page sends by itself only in English for now.
+                                    Ok(text) if !text.is_empty() => { mic["text"] = json!(text); mic["language"] = json!(voice_now().language); say_voice(&app, "heard", "", mic) }
                                     Ok(_) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     Err(e) => say_voice(&app, "error", &e, mic),
                                 }
