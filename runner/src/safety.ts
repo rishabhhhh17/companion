@@ -5,7 +5,7 @@
 import { lstatSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { commandsOf, hasDynamic, inputTargets, redirectTargets, unwrap } from "./shell.ts";
+import { commandsOf, hasDynamic, inputTargets, parseShell, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
 import { isEnvFile } from "./diagram.ts";
 
@@ -275,6 +275,8 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
     }
     out = worst(out, evaluateCommand(words, ctx, cwd));
   }
+  const gitEnv = gitEnvVerdict(cmd, ctx);
+  if (gitEnv) out = worst(out, gitEnv);
   // Where input is read from with <: reading outside the project asks, whatever the command (the Read tool always did).
   for (const t of inputTargets(cmd)) {
     if (t.includes("$") || t.includes("`")) { out = worst(out, ask("outside_project", "this command reads from a place it works out while it runs")); continue; }
@@ -364,7 +366,7 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
 }
 
 // Programs that print or search what is in files. Their file arguments are judged like the Read tool's.
-const READERS = new Set(["cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "ag", "ls", "wc", "sort", "uniq", "cut", "diff", "cmp", "file", "stat", "du", "tree", "xxd", "hexdump", "od", "strings", "nl", "tac", "rev", "fold", "column", "bat", "jq", "yq", "sed", "awk", "gawk", "mawk", "base64", "shasum", "md5", "md5sum", "sha256sum", "cksum", "sqlite3", "realpath", "readlink", "zcat", "gzcat", "bzcat", "nm", "otool"]);
+const READERS = new Set(["cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "ag", "ls", "wc", "sort", "uniq", "cut", "diff", "cmp", "file", "stat", "du", "tree", "xxd", "hexdump", "od", "strings", "nl", "tac", "rev", "fold", "column", "bat", "jq", "yq", "sed", "awk", "gawk", "mawk", "base64", "shasum", "md5", "md5sum", "sha256sum", "cksum", "sqlite3", "realpath", "readlink", "zcat", "gzcat", "bzcat", "nm", "otool", "split", "iconv", "openssl"]);
 const PATTERN_FIRST = new Set(["grep", "egrep", "fgrep", "rg", "ag", "sed", "awk", "gawk", "mawk", "jq", "yq"]);   // their first argument is a pattern or a program, not a file
 const looksOutside = (a: string) => a.startsWith("/") || a.startsWith("~") || a.startsWith("$HOME") || a.startsWith("${HOME}") || a === ".." || a.startsWith("../") || a.includes("/../");
 function readerVerdict(name: string, args: string[], ctx: Context, cwd: string): Verdict | null {
@@ -390,10 +392,20 @@ const VALUE_FLAGS: Record<string, Set<string>> = { tar: new Set(["-C", "--direct
 function archiveReads(name: string, args: string[], ctx: Context, cwd: string): Verdict | null {
   const reads: string[] = [];
   if (name === "dd") for (const a of args) if (a.startsWith("if=")) reads.push(a.slice(3));
-  if (name === "tar" || name === "bsdtar" || name === "gtar" || name === "zip" || name === "unzip" || COMPRESSORS.has(name)) {
-    const takes = VALUE_FLAGS[name === "bsdtar" || name === "gtar" ? "tar" : name] ?? new Set<string>();
+  const isTar = name === "tar" || name === "bsdtar" || name === "gtar";
+  if (isTar || name === "zip" || name === "unzip" || COMPRESSORS.has(name)) {
+    const takes = VALUE_FLAGS[isTar ? "tar" : name] ?? new Set<string>();
+    // Files named in a list (tar -T or --files-from, zip -@ from its input) cannot be checked before they are read, as for
+    // cpio. When tar only unpacks, -T names what to take out of the archive, so only the list itself is read.
+    const creating = isTar && (args.some((a) => /^-?[A-Za-z]*[cru][A-Za-z]*$/.test(a) && !a.startsWith("--")) || args.some((a) => ["--create", "--append", "--update"].includes(a)));
+    if (isTar && creating && args.some((a) => a === "--files-from" || a.startsWith("--files-from=") || (/^-[A-Za-z]*T/.test(a) && !a.startsWith("--")))) return ask("outside_project", `${name} reads the files listed in another file, which I cannot check`);
+    if (name === "zip" && args.includes("-@")) return ask("outside_project", "zip reads whatever files it is handed, which I cannot check");
     for (let i = 0; i < args.length; i++) {
       const a = args[i];
+      if (isTar && (a === "-T" || a === "--files-from")) { if (args[i + 1] !== undefined) reads.push(args[i + 1]); i++; continue; }
+      if (isTar && a.startsWith("--files-from=")) { reads.push(a.slice(13)); continue; }
+      if (isTar && a.startsWith("@") && a.length > 1) { reads.push(a.slice(1)); continue; }   // another archive whose contents are copied in
+      if (name === "zip" && /^-[ix]@./.test(a)) { reads.push(a.slice(3)); continue; }          // the list of names to take or leave
       if (takes.has(a)) { i++; continue; }
       if (a.startsWith("--") && a.includes("=")) { const v = a.slice(a.indexOf("=") + 1); if (a.startsWith("--file=")) reads.push(v); continue; }
       if (a.startsWith("-") && a !== "-") continue;
@@ -433,17 +445,40 @@ function evaluateFind(args: string[], ctx: Context, cwd: string): Verdict {
   return ask("irreversible", "find can delete things or run commands on everything it finds");
 }
 
+// A folder given to git that is outside the project (or worked out while the command runs, or under ~).
+function gitElsewhere(v: string | undefined, ctx: Context, cwd: string): boolean {
+  if (v === undefined || v === "") return false;
+  if (v.includes("$") || v.includes("`") || v.startsWith("~")) return true;
+  const w = whereIs(ctx.project, v, cwd);
+  return !w.inside && w.abs !== resolveLinks(ctx.project);
+}
+const OTHER_FOLDER = ask("outside_project", "this points git at a folder outside the project, so it would read another project's history and files");
+
+// git's own environment variables do what its options do. Those naming a folder or a file of git's (GIT_DIR and the like)
+// are judged like -C and --git-dir; those that make git run a program or read other settings ask like -c. They are looked
+// for in every word of the line, inside sh -c text too, before VAR=value prefixes and env are peeled off.
+const GIT_PLACE_VARS = new Set(["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE"]);
+const GIT_PROGRAM_VARS = /^GIT_(?:EXTERNAL_DIFF|SSH|SSH_COMMAND|PAGER|EDITOR|SEQUENCE_EDITOR|ASKPASS|EXEC_PATH|PROXY_COMMAND|CONFIG|CONFIG_GLOBAL|CONFIG_SYSTEM|CONFIG_COUNT|CONFIG_PARAMETERS|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|TEMPLATE_DIR|ALLOW_PROTOCOL)$/;
+function gitEnvVerdict(cmd: string, ctx: Context, depth = 0): Verdict | null {
+  if (depth > 4) return null;
+  for (const words of parseShell(cmd)) {
+    for (const w of words) {
+      const m = /^(GIT_[A-Z0-9_]+)=([\s\S]*)$/.exec(w);
+      if (m && GIT_PLACE_VARS.has(m[1])) {
+        // Several folders may be listed, as GIT_ALTERNATE_OBJECT_DIRECTORIES does.
+        if (m[2].split(":").some((v) => gitElsewhere(v, ctx, ctx.project))) return OTHER_FOLDER;
+      } else if (m && GIT_PROGRAM_VARS.test(m[1])) return ask("git", "this changes how git behaves for one command, which can run a program", false);
+      else if (/\s/.test(w) && w !== cmd) { const v = gitEnvVerdict(w, ctx, depth + 1); if (v) return v; }
+    }
+  }
+  return null;
+}
+
 function evaluateGit(args: string[], ctx: Context, cwd: string = ctx.project): Verdict {
   let i = 0;
   // git pointed at another folder (-C, --git-dir, --work-tree) reads that folder's history and files, which is reading
   // outside the project: it asks, as any other way of reading does.
-  const elsewhere = (v: string | undefined): boolean => {
-    if (v === undefined || v === "") return false;
-    if (v.includes("$") || v.includes("`") || v.startsWith("~")) return true;
-    const w = whereIs(ctx.project, v, cwd);
-    return !w.inside && w.abs !== resolveLinks(ctx.project);
-  };
-  const OTHER_FOLDER = ask("outside_project", "this points git at a folder outside the project, so it would read another project's history and files");
+  const elsewhere = (v: string | undefined) => gitElsewhere(v, ctx, cwd);
   while (i < args.length) {
     const a = args[i];
     // Global options that make git run a program or behave differently for one command: -c core.fsmonitor=..., --exec-path=...
@@ -522,7 +557,15 @@ function evaluatePackageManager(name: string, args: string[]): Verdict {
   // A version bump makes a git commit and a tag in a git project (npm, pnpm, yarn version; bun pm version), unless it is
   // told not to.
   const bumps = sub === "version" || (name === "bun" && sub === "pm" && args.includes("version"));
-  if (bumps && !args.some((a) => a === "--no-git-tag-version" || a === "--git-tag-version=false")) return ask("git", `${name} version makes a git commit and a tag in your project`, false);
+  // The package manager reads its flags in order and the last one wins, so only a last word that turns git off counts.
+  let tags = true;
+  for (const a of args) {
+    if (a === "--git-tag-version") tags = true;
+    else if (a.startsWith("--git-tag-version=")) tags = a.slice(18) !== "false";
+    else if (a === "--no-git-tag-version") tags = false;
+    else if (a.startsWith("--no-git-tag-version=")) tags = a.slice(21) === "false";
+  }
+  if (bumps && tags) return ask("git", `${name} version makes a git commit and a tag in your project`, false);
   return allow();
 }
 

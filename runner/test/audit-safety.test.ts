@@ -36,7 +36,7 @@ describe("reading outside the project through archive, copy and redirection (A14
   const MUST_ASK = [
     "tar -czf out.tgz ~/Documents", "tar czf out.tgz /Users/someone/Desktop", "tar -xf ~/Downloads/backup.tar", "zip -r out.zip ~/Documents", "unzip ~/Downloads/stuff.zip -d ./x",
     "gzip -c ~/Documents/notes.txt > n.gz", "bzip2 -kc /etc/hosts > h.bz2", "xz -c ~/Desktop/a.txt > a.xz", "dd if=/Users/someone/Documents/x of=./x", "plutil -p ~/Library/Preferences/com.apple.finder.plist",
-    "defaults read com.apple.finder", "wc -l < ~/Documents/notes.txt", "node app.js < ~/Documents/notes.txt", "python3 x.py < /etc/hosts", "cpio -o < files.txt > out.cpio",
+    "defaults read com.apple.finder", "tr a-z A-Z < ~/Documents/notes.txt", "node app.js < ~/Documents/notes.txt", "python3 x.py < /etc/hosts", "cpio -o < files.txt > out.cpio",
   ];
   for (const c of MUST_ASK) test(c, () => { const p = dir("p"); expect(bash(p, c).decision, c).not.toBe("allow"); });
   test("ditto from outside the project is not allowed", () => { expect(bash(dir("p"), "ditto ~/Documents ./docs").decision).not.toBe("allow"); });

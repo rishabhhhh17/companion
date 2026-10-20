@@ -38,6 +38,7 @@ import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
+import { fileApprovals, type RunApprovals } from "./proof/approvedruns.ts";
 import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
@@ -77,7 +78,7 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // check and limits: what the person chose in Settings for checking this project, read when the task or check started.
 // askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
 // askScripts: the question for a task that changed the project's scripts or packages, on the same card and the same terms.
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: () => Promise<boolean> };
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean) => Promise<boolean>; approvals?: RunApprovals };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -441,9 +442,9 @@ export class AgentRunner {
   /** The question for a task that changed the project's scripts or packages: they run on this Mac outside the sandbox
    *  Claude's own commands get, so the check runs them only on a yes (ladder.ts askScripts). The same card and rules as
    *  the install question. */
-  private scriptsAsker(s: Session | undefined, agent: string, checkpoint: string): () => Promise<boolean> {
-    const ask = this.checkAsker(s, agent, checkpoint, () => "This task changed the project's scripts or packages. Run its install, build, tests and server to check the work? They run on this Mac outside the safety box Claude's own commands get. Without a yes, the work is not checked.");
-    return () => ask("");
+  private scriptsAsker(s: Session | undefined, agent: string, checkpoint: string): (byTask: boolean) => Promise<boolean> {
+    const ask = this.checkAsker(s, agent, checkpoint, (why) => `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac outside the safety box Claude's own commands get. Without a yes, the work is not checked.`);
+    return (byTask) => ask(byTask ? "task" : "since");
   }
   private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string): (command: string) => Promise<boolean> {
     return async (command) => {
@@ -639,6 +640,13 @@ export class AgentRunner {
   }
   private noteShell(s: Session, shell?: ShellFacts) {
     if (shell?.backgroundId && s.shells.size < 500) s.shells.add(shell.backgroundId);
+  }
+
+  /** What the person said yes to running in this project's checks (proof/approvedruns.ts), kept beside its snapshots,
+   *  outside the project. Every check is given it, so a no holds until the person says yes. */
+  private approvals(project: string): RunApprovals {
+    const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
+    return fileApprovals(join(this.o.shadowRoot, `${id}.approved-runs.json`));
   }
 
   private store(project: string): CheckpointStore {
@@ -900,7 +908,7 @@ export class AgentRunner {
         return parseReview(text);
       } : undefined;
       try {
-        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id) }));
+        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id), approvals: this.approvals(cmd.project) }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -1197,7 +1205,7 @@ export class AgentRunner {
       const sk = this.openShipSession(ac);
       const onStep = this.stepTeller("ship");
       try {
-        let res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id) });
+        let res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id), askScripts: this.scriptsAsker(this.sessions.get(sk), "ship", now.id), approvals: this.approvals(project) });
         if (ac.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };   // a stopped check is no result
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: res.steps, tries: 1 } as never);
         if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
@@ -1407,7 +1415,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never);
       let res: LadderResult = { verdict: "cancelled", steps: [] };
-      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project) }); }
+      try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project), approvals: this.approvals(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
@@ -1435,7 +1443,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project) }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project), approvals: this.approvals(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
@@ -1488,7 +1496,7 @@ export class AgentRunner {
         if (packages === "failed") return null;
       }
       // A Stop while the copy was made (or while waiting for the project's turn) ends it before any check starts.
-      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true, ...checking })));
+      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true, ...checking, approvals: this.approvals(project) })));
     } catch { return signal.aborted ? { verdict: "cancelled", steps: [] } : null; }
     finally { rmSync(dir, { recursive: true, force: true }); }
   }
@@ -1756,7 +1764,7 @@ export class AgentRunner {
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal, ...this.checkFor(cmd.project), askInstall: this.installAsker(this.sessions.get(cmd.agent), cmd.agent, snap.id) }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: st.abort.signal, ...this.checkFor(cmd.project), askInstall: this.installAsker(this.sessions.get(cmd.agent), cmd.agent, snap.id), askScripts: this.scriptsAsker(this.sessions.get(cmd.agent), cmd.agent, snap.id), approvals: this.approvals(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] }; }
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: res.steps, tries: 1 } as never);
       if (st.abort.signal.aborted || res.verdict === "cancelled") { this.state(cmd.agent, "idle"); return; }
