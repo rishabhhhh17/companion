@@ -197,6 +197,32 @@ describe("what changed, and Undo after Reset all", () => {
     await undoReset(back);
     expect(calls.slice(1)).toEqual([{ cmd: "settings_set", args: { key: "memory.paused", value: true } }, { cmd: "settings_set", args: { key: "teach.yourTurn", value: true } }]);
   });
+  // A reset or its Undo is for the project the page showed. If another folder is open by then, the shell refuses (projectChanged).
+  test("a reset names the project the page showed, and Undo writes a project's own settings only back to that project", async () => {
+    takeSnapshot({ ...snap({ "check.skip": ["lint"], "fun.reactions": false }), project: "/a" });
+    const calls = shell(() => ({ ...snap({}), project: "/a" }));
+    await resetSection("checks");
+    await resetSetting("check.skip");
+    await resetAll();
+    expect(calls.map((c) => c.args?.project)).toEqual(["/a", "/a", "/a"]);
+    // Another folder is open when Undo is pressed: the values still go to the project they came from.
+    takeSnapshot({ ...snap({}), project: "/b" });
+    calls.length = 0;
+    await undoReset([["check.skip", ["lint"]], ["fun.reactions", false]], "/a");
+    expect(calls).toEqual([
+      { cmd: "settings_set", args: { key: "check.skip", value: ["lint"], project: "/a" } },
+      { cmd: "settings_set", args: { key: "fun.reactions", value: false } },
+    ]);
+  });
+  test("Undo remembers the project of the reset it undoes", async () => {
+    takeSnapshot({ ...snap({ "check.skip": ["lint"] }), project: "/a" });
+    shell(() => ({ ...snap({}), project: "/a" }));
+    const { back } = await resetWithUndo("checks");
+    takeSnapshot({ ...snap({}), project: "/b" });
+    const calls = shell(() => snap({}));
+    await undoReset(back);
+    expect(calls.find((c) => c.args?.key === "check.skip")?.args?.project).toBe("/a");
+  });
   test("the engine's own settings not heard from yet are named, and never sent to be reset", async () => {
     takeSnapshot(snap({ "fun.reactions": false }));
     expect(notHeard()).toEqual(["spend.dailyLimit", "explain.mode", "memory.paused", "numbers.on"]);

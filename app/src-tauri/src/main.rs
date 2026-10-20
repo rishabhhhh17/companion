@@ -1041,8 +1041,10 @@ fn setting_applied(app: &AppHandle, key: &str) {
 /// each one first and keeps each one for Undo: `engine` is the engine's own settings the page has heard away from usual;
 /// one it has not heard is left as it is. Only from the card.
 #[tauri::command]
-fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>) -> Result<Value, String> {
+fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>, project: Option<String>) -> Result<Value, String> {
     settings::only_card(window.label())?;
+    // `project`: the folder the page showed this reset for; another folder in Home by now means nothing is reset.
+    settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;
     let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
         (Some(k), None, false) => settings::Which::Key(k),
         (None, Some(s), false) => settings::Which::Section(s),
