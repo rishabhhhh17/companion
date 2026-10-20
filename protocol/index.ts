@@ -30,10 +30,14 @@ export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project
 export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
 // screens: when Show me looked at more than one screen (2 to 4), one picture each, the screen the mouse pointer is on first
 // (its ref is the same as image.ref). label is "Screen N of M"; the engine sends only that exact shape to the model.
-export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[]; mode?: LocateMode };
+export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[]; mode?: LocateMode; before?: SheetCode };
 // mode: an everyday stuck moment (the hero key with no project, or with an app in front that is not a code tool). "everyday"
 // asks what is wrong and the first steps of the fix; "recheck" looks again to say whether it is gone (runner/src/everyday.ts).
+// before: with "recheck" only, the spreadsheet error code the first look read on the screen (the Mac's text reader), so the
+// look again can say fixed only when that code is no longer read. Only the codes of the runner's table.
 export type LocateMode = "everyday" | "recheck";
+export const SHEET_CODES = ["#REF!", "#VALUE!", "#DIV/0!", "#N/A", "#NAME?", "circular reference"] as const;
+export type SheetCode = (typeof SHEET_CODES)[number];
 export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaType: "image/jpeg" | "image/png"; base64: string; w: number; h: number };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
@@ -174,8 +178,10 @@ export type AssistError = Envelope & { type: "assist.error"; req: string; reason
 // An everyday look's answer, before its steps (which come as an ordinary assist.point with the same req, when steps > 0).
 // found: a problem is on screen (for a recheck: still there). problem: at most two plain sentences. code: a spreadsheet
 // error's code when the words on screen show one, and fromTable when its words come from the runner's own table. gone: the
-// recheck's verdict, "yes" only when the error is gone from the screen. fixes: the table's usual fixes for that error.
-export type AssistProblem = Envelope & { type: "assist.problem"; req: string; mode: LocateMode; found: boolean; problem?: string; kind?: string; code?: string; why?: string[]; question?: { text: string; options: string[]; correct: number }; fixes?: string[]; gone?: "yes" | "no" | "unsure"; steps: number; fromTable?: boolean; usdEstimate: number };
+// recheck's verdict: "yes" only when the code the first look read is no longer read on the screen and the look agrees,
+// "looks" when only the look says so (a guess from a picture: the person is asked), "unsure" when it cannot be told (with
+// code when that error is still read), "no" when it is still there. fixes: the table's usual fixes for that error.
+export type AssistProblem = Envelope & { type: "assist.problem"; req: string; mode: LocateMode; found: boolean; problem?: string; kind?: string; code?: string; why?: string[]; question?: { text: string; options: string[]; correct: number }; fixes?: string[]; gone?: "yes" | "looks" | "no" | "unsure"; steps: number; fromTable?: boolean; usdEstimate: number };
 
 // Where a check failed: a line in the project, a button in the app, or at least the error sentence.
 export type Problem =
@@ -366,7 +372,7 @@ const COMMANDS: Record<string, Check[]> = {
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
   "checkpoint.restore": [str("project"), str("checkpoint")],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
-  "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("mode", oneOf("mode", ["everyday", "recheck"]))],
+  "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("mode", oneOf("mode", ["everyday", "recheck"])), opt("before", oneOf("before", [...SHEET_CODES]))],
   "assist.cancel": [str("req")],
   "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
 };
@@ -438,7 +444,7 @@ const EVENTS: Record<string, Check[]> = {
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
   "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption"), pointExtrasOk],
   "assist.error": [str("req"), str("reason")],
-  "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
+  "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "looks", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
 };
 
 function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {

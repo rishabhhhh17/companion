@@ -1,11 +1,13 @@
 // Everyday stuck moments (the hero key with no project, or with an app in front that is not a code tool). The shell takes
 // one picture under the light, covers secrets and reads the words on screen, exactly as for Show me; this file says what
-// the vision lane is asked and how its answer is read. A spreadsheet formula error is named from the table below, from the
-// words on screen, before Claude is asked, so what it means and the usual fixes are right whatever the model says.
-// Pictures stay in memory only (lanes.ts).
+// the vision lane is asked and how its answer is read. A spreadsheet formula error read on the screen is explained from the
+// table below whenever Claude's own answer is about that error (or Claude has none), so what it means and the usual fixes
+// are right whatever words the model chose; a code seen somewhere on screen never replaces a different diagnosis.
+// Fixed is said only with the Mac's own evidence (goneVerdict). Pictures stay in memory only (lanes.ts).
 import { parseExplain } from "./explain.ts";
 import { clip, redact } from "./redact.ts";
 import { parseTargetsText, type Image, type Ocr, type Point } from "./lanes.ts";
+import { SHEET_CODES } from "../../protocol/index.ts";
 
 export type SheetId = "ref" | "value" | "div0" | "na" | "name" | "circular";
 export type CheckQuestion = { text: string; options: string[]; correct: number };
@@ -62,19 +64,28 @@ const PATTERNS: Record<Exclude<SheetId, "circular">, RegExp> = {
 };
 const CIRCULAR = /circular (reference|dependency|references)/i;
 
-/** The spreadsheet error shown in these words (the text read from the screen, or a problem said earlier), or null. A
- *  circular warning comes first (Google Sheets shows #REF! for one), then the code seen most often, then table order. */
+const timesIn = (e: SheetError, all: string) => (e.id === "circular" ? (CIRCULAR.test(all) ? 1 : 0) : all.match(PATTERNS[e.id])?.length ?? 0);
+
+/** The spreadsheet error shown in these words (the text read from the screen), or null. A circular warning comes first
+ *  (Google Sheets shows #REF! for one), then the code seen most often, then table order. */
 export function sheetErrorIn(texts: string[]): SheetError | null {
   const all = texts.join("\n");
   if (CIRCULAR.test(all)) return SHEET_ERRORS.find((e) => e.id === "circular")!;
   let best: SheetError | null = null, most = 0;
   for (const e of SHEET_ERRORS) {
     if (e.id === "circular") continue;
-    const n = all.match(PATTERNS[e.id])?.length ?? 0;
+    const n = timesIn(e, all);
     if (n > most) { best = e; most = n; }
   }
   return best;
 }
+/** Every spreadsheet error shown in these words, in table order: a look again compares like with like. */
+export function sheetErrorsIn(texts: string[]): SheetError[] {
+  const all = texts.join("\n");
+  return SHEET_ERRORS.filter((e) => timesIn(e, all) > 0);
+}
+/** The table's entry for a code a command carries (the first look read it), or null for anything else. */
+export const sheetByCode = (code: unknown): SheetError | null => (typeof code === "string" && (SHEET_CODES as readonly string[]).includes(code) ? SHEET_ERRORS.find((e) => e.code === code) ?? null : null);
 
 /** What the table alone says about a spreadsheet error: the problem in two sentences, why, and the check question. */
 export function sheetFromTable(e: SheetError): { problem: string; why: string[]; question: CheckQuestion } {
@@ -115,19 +126,24 @@ export const RECHECK_SYSTEM = [
 
 const wrap = (t: string) => `<notes>\n${t.replace(/<\/?notes>/gi, "")}\n</notes>`;
 const tableLines = (e: SheetError) => [
-  `The screen shows the spreadsheet error ${e.code}. What it means: ${e.means}`,
+  `The words read on the screen include the spreadsheet error ${e.code}. If that is the problem, this is what it means: ${e.means}`,
   `The usual fixes: ${e.fixes.join(" ")}`,
-  "Use this explanation. Find the cell or warning that shows it and point at the first step of the fix.",
+  "Then find the cell or warning that shows it and point at the first step of the fix. If the problem on the screen is something else, describe that instead.",
 ].join("\n");
 
-/** The request to the vision lane. sheet: the error on screen now. before: the error the person was fixing (read from the
- *  problem said earlier, which the recheck is given). The person's words are wrapped, so they are only ever data. */
-export function everydayRequest(o: { mode: "everyday" | "recheck"; question: string; ocr: Ocr[] }): { system: string; text: string; sheet: SheetError | null; before: SheetError | null } {
-  const sheet = sheetErrorIn(o.ocr.map((b) => b.text));
-  const before = o.mode === "recheck" ? sheetErrorIn([o.question]) : null;
+/** The request to the vision lane. sheet: the error read on screen now (the first look's). now: every error read on screen
+ *  now. before: the error the person was fixing, only from the code the first look read, which the page sends back with the
+ *  look again (the command's before), never from the words of the question. The person's words are wrapped, so they are
+ *  only ever data. */
+export function everydayRequest(o: { mode: "everyday" | "recheck"; question: string; ocr: Ocr[]; before?: unknown }): { system: string; text: string; sheet: SheetError | null; now: SheetError[]; before: SheetError | null } {
+  const texts = o.ocr.map((b) => b.text);
+  const sheet = sheetErrorIn(texts), now = sheetErrorsIn(texts);
+  const before = o.mode === "recheck" ? sheetByCode(o.before) : null;
   const intro = o.mode === "recheck" ? "The person was fixing a problem. Their notes:" : "The person pressed the stuck key. Their notes:";
-  const known = sheet ? `\n${tableLines(sheet)}` : before ? `\nThey were fixing the spreadsheet error ${before.code}.` : "";
-  return { system: o.mode === "recheck" ? RECHECK_SYSTEM : EVERYDAY_SYSTEM, text: `${intro}\n${wrap(clip(o.question, 2000))}${known}`, sheet, before };
+  const known = o.mode === "recheck"
+    ? (before ? `\nThey were fixing the spreadsheet error ${before.code}.${now.some((e) => e.id === before.id) ? ` The words read on the screen still include ${before.code}.` : ""}` : "")
+    : sheet ? `\n${tableLines(sheet)}` : "";
+  return { system: o.mode === "recheck" ? RECHECK_SYSTEM : EVERYDAY_SYSTEM, text: `${intro}\n${wrap(clip(o.question, 2000))}${known}`, sheet, now, before };
 }
 
 // ---------- reading the answer ----------
@@ -164,10 +180,27 @@ export function parseEveryday(text: string, pictures: Image[]): EverydayAnswer |
   return { found: true, kind, problem, why: ex?.bullets ?? [], ...(ex?.question ? { question: ex.question } : {}), targets };
 }
 
-/** Fixed only when the error is gone: while fixing a spreadsheet error, one still read on the screen (the same one, or a
- *  new one in its place) is never fixed, whatever the model said. With no clear verdict the person is asked. */
-export function goneVerdict(model: Gone | undefined, before: SheetError | null, now: SheetError | null): Gone {
-  if (before && now) return "no";
-  if (model === "yes" || model === "no") return model;
-  return "unsure";
+/** Is Claude's first look about this spreadsheet error? Its problem or a step names the code, a step points at a box the
+ *  Mac read the code in, or it calls it a spreadsheet problem without naming another code. Otherwise its own diagnosis
+ *  stands (an ordinary #N/A elsewhere on screen, or a help page on a second display, never replaces it). */
+export function tableAgrees(a: EverydayAnswer, e: SheetError, ocr: Ocr[]): boolean {
+  const said = sheetErrorsIn([a.problem, ...a.targets.flatMap((t) => [t.targetText, t.caption])]);
+  if (said.some((x) => x.id === e.id)) return true;
+  const boxes = new Set(ocr.filter((b) => sheetErrorsIn([b.text]).some((x) => x.id === e.id)).map((b) => b.id));
+  if (a.targets.some((t) => t.ocrId && boxes.has(t.ocrId))) return true;
+  return a.kind === "sheet" && said.length === 0;
+}
+
+/** The look again's verdict. "yes" (fixed) only with the Mac's own evidence: the code the first look read (before) is no
+ *  longer read anywhere on the screen, no other spreadsheet error is read, and the look agrees. The same code still read is
+ *  never fixed: "no", or, when the look says it is gone, "unsure" so the person is asked (never a "no" with no next step).
+ *  "looks": only the look says so, a guess from a picture (rule 14), so the person is asked. Like with like: another code
+ *  on screen does not keep it open, but is not proof either. */
+export type Verdict = "yes" | "looks" | "no" | "unsure";
+export function goneVerdict(model: Gone | undefined, before: SheetError | null, now: SheetError[]): Verdict {
+  if (before && now.some((e) => e.id === before.id)) return model === "yes" ? "unsure" : "no";
+  if (model === "no") return "no";
+  if (model !== "yes") return "unsure";
+  if (now.length > 0) return before ? "looks" : "unsure";
+  return before ? "yes" : "looks";
 }

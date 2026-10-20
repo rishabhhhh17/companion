@@ -14,7 +14,7 @@ import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
 import { LIMIT_REACHED } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
-import { everydayRequest, goneVerdict, parseEveryday, sheetFromTable, type EverydayAnswer } from "./everyday.ts";
+import { everydayRequest, goneVerdict, parseEveryday, sheetFromTable, tableAgrees, type EverydayAnswer } from "./everyday.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -533,18 +533,20 @@ export class AssistService {
 
   // An everyday stuck moment (everyday.ts): what is wrong and the first steps, or (recheck) whether it is gone. The answer
   // comes as assist.problem, then its steps as an ordinary assist.point, so the page plays them like a Show me answer. A
-  // spreadsheet error read on the screen is named from the table, so its words are right even when Claude cannot answer.
+  // spreadsheet error read on the screen is named from the table when Claude's answer is about it, or Claude has none, so
+  // its words are right even when Claude cannot answer; Claude's own different diagnosis is never replaced.
   private async everyday(cmd: Extract<Command, { type: "assist.locate" }>, image: Image, screens: Screen[], mode: "everyday" | "recheck", dropAll: () => void) {
     const ac = new AbortController();
     this.active.set(cmd.req, ac);
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
-    const r = everydayRequest({ mode, question: cmd.question, ocr: cmd.ocr ?? [] });
+    const ocr = cmd.ocr ?? [];
+    const r = everydayRequest({ mode, question: cmd.question, ocr, before: cmd.before });
     const pictures = screens.length > 1 ? screens.map((s) => s.image) : [image];
     let answer: EverydayAnswer | null = null, cost = 0, failure = "";
     try {
       if (!this.o.look) throw new Error("pictures cannot be looked at in this mode");
-      const got = await Promise.race([this.o.look({ image, question: r.text, ocr: cmd.ocr ?? [], system: r.system, ...(screens.length > 1 ? { screens } : {}) }, ac.signal),
+      const got = await Promise.race([this.o.look({ image, question: r.text, ocr, system: r.system, ...(screens.length > 1 ? { screens } : {}) }, ac.signal),
         new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
       cost = got.costUsd;
       answer = parseEveryday(got.text, pictures);
@@ -552,26 +554,32 @@ export class AssistService {
     } catch (e) { failure = String((e as Error).message ?? e); }
     finally { clearTimeout(timer); dropAll(); this.active.delete(cmd.req); }
     if (ac.signal.aborted && !timedOut) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
+    const failed = (what: string) => this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `${what} (${failure})` });
     const base = { req: cmd.req, mode, usdEstimate: round(cost) };
     const steps = (a: EverydayAnswer | null) => (a?.targets ?? []).slice(0, MAX_TARGETS);
     const point = (list: Point[]) => { if (list.length) this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}) }); };
     if (mode === "recheck") {
-      if (!answer && !r.before) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `Could not look again (${failure})` });
-      const gone = goneVerdict(answer?.gone, r.before, r.sheet);
-      const now = gone === "no" && r.sheet && r.before ? sheetFromTable(r.sheet) : null;
+      // The error the first look read, still read by the Mac now: the one thing known without Claude.
+      const still = r.before && r.now.some((e) => e.id === r.before!.id) ? r.before : null;
+      // The look failed: said so (the stage goes back and the reason shows), unless the Mac itself still reads the error.
+      if (!answer && !still) return failed("Could not look again");
+      const gone = goneVerdict(answer?.gone, r.before, r.now);
       const list = gone === "no" ? steps(answer) : [];
-      this.emit({ type: "assist.problem", ...base, found: gone === "no", gone, steps: list.length,
-        ...(gone === "no" ? { problem: now?.problem ?? answer?.problem ?? "", ...(r.sheet ? { code: r.sheet.code, kind: "sheet", fromTable: true } : {}) } : {}) });
+      const table = still ? sheetFromTable(still) : null;
+      const said = gone === "no"
+        ? { problem: table?.problem ?? answer?.problem ?? "", ...(still ? { code: still.code, kind: "sheet", fromTable: true, fixes: still.fixes } : {}) }
+        : gone === "unsure" && still ? { code: still.code } : {};
+      this.emit({ type: "assist.problem", ...base, found: gone === "no", gone, steps: list.length, ...said });
       return point(list);
     }
-    if (r.sheet) {
-      // The table's words, and Claude's steps when it gave some. Claude's own sentences are kept only when they name the code.
-      const t = sheetFromTable(r.sheet), list = answer?.found ? steps(answer) : [];
-      const own = answer?.found && answer.problem.toLowerCase().includes(r.sheet.code.toLowerCase()) ? answer.problem : t.problem;
-      this.emit({ type: "assist.problem", ...base, found: true, kind: "sheet", code: r.sheet.code, problem: own, why: t.why, question: t.question, fixes: r.sheet.fixes, steps: list.length, fromTable: true });
+    const sheet = r.sheet && (!answer || !answer.found || tableAgrees(answer, r.sheet, ocr)) ? r.sheet : null;
+    if (sheet) {
+      // The table's meaning, why and question (never Claude's sentences under the table's label), and Claude's steps.
+      const t = sheetFromTable(sheet), list = answer?.found ? steps(answer) : [];
+      this.emit({ type: "assist.problem", ...base, found: true, kind: "sheet", code: sheet.code, problem: t.problem, why: t.why, question: t.question, fixes: sheet.fixes, steps: list.length, fromTable: true });
       return point(list);
     }
-    if (!answer) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `Could not find it (${failure})` });
+    if (!answer) return failed("Could not find it");
     if (!answer.found) return this.emit({ type: "assist.problem", ...base, found: false, steps: 0 });
     const list = steps(answer);
     this.emit({ type: "assist.problem", ...base, found: true, kind: answer.kind, problem: answer.problem, why: answer.why, ...(answer.question ? { question: answer.question } : {}), steps: list.length });
