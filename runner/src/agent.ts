@@ -1118,11 +1118,11 @@ export class AgentRunner {
     // ExitPlanMode is how plan mode hands back its plan: it changes nothing, so it is let through, and the plan in its input is
     // what the flow reads as the answer (the model may give nothing else). Taken as text only; clipped, secrets hidden.
     let handed = "";
-    const authorize = async (tool: ToolUse) => {
+    const authorize = async (tool: ToolUse, toolUseId?: string) => {
       if (tool.name === "ExitPlanMode" && (spec.tools ?? LOOK_TOOLS).includes("ExitPlanMode")) {
         const plan = (tool.input as { plan?: unknown } | undefined)?.plan;
         if (typeof plan === "string") handed = clip(redact(plan), 20_000);
-        this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "ran" } as never);
+        this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: toolUseId ?? `toolu_${randomBytes(4).toString("hex")}`, undoable: false, outcome: "ran" } as never);
         return { allow: true, reason: "" };
       }
       // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.

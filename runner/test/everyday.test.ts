@@ -166,10 +166,10 @@ describe("reading the answer", () => {
 });
 
 describe("the look, end to end with a stand in vision lane", () => {
-  const rig = (reply: string | (() => Promise<string>)) => {
+  const rig = (reply: string | (() => Promise<string>), now?: () => number) => {
     const events: Event[] = [], images = new ImageStore(), asked: { system: string; question: string }[] = [];
     const look = async (req: { system: string; question: string }) => { asked.push(req); return { text: typeof reply === "string" ? reply : await reply(), costUsd: 0.004 }; };
-    const svc = new AssistService({ fast: { run: async () => ({ text: "", costUsd: 0 }) }, vision: { locate: async () => { throw new Error("locate is not used for an everyday look"); } }, look, images, emit: (e) => events.push(e) });
+    const svc = new AssistService({ fast: { run: async () => ({ text: "", costUsd: 0 }) }, vision: { locate: async () => { throw new Error("locate is not used for an everyday look"); } }, look, images, emit: (e) => events.push(e), ...(now ? { now } : {}) });
     return { events, images, asked, svc };
   };
   const locate = (mode: "everyday" | "recheck", question = "Find the problem on my screen.", ocr: Ocr[] = [], before?: SheetCode) => ({ v: 1 as const, id: "c", type: "assist.locate" as const, req: "sm_1", question, image: { ref: "sm_1", w: 1280, h: 800 }, ocr, mode, ...(before ? { before } : {}) });
@@ -314,6 +314,25 @@ describe("the look, end to end with a stand in vision lane", () => {
     await other.svc.handle(locate("recheck", q, sheet(), "#REF!"));
     expect(other.events[0]).toMatchObject({ gone: "looks" });
   });
+  test("the first look's words are forgotten once a look again answers, and after a few minutes", async () => {
+    const q = "Fix this problem on my screen: The cell C4 shows #REF! because a row was deleted.";
+    const rigAt = (clock: { t: number }) => rig('{"gone":"yes"}', () => clock.t);
+    const once = rigAt({ t: 0 });
+    await firstLook(once, sheet("#REF!"));
+    once.images.put("sm_1", img());
+    await once.svc.handle(locate("recheck", q, sheet(), "#REF!"));
+    expect(once.events[0]).toMatchObject({ gone: "yes" });
+    once.events.length = 0;
+    once.images.put("sm_1", img());
+    await once.svc.handle(locate("recheck", q, sheet(), "#REF!"));
+    expect(once.events[0]).toMatchObject({ gone: "looks" });
+    const clock = { t: 0 }, late = rigAt(clock);
+    await firstLook(late, sheet("#REF!"));
+    clock.t = 10 * 60_000;
+    late.images.put("sm_1", img());
+    await late.svc.handle(locate("recheck", q, sheet(), "#REF!"));
+    expect(late.events[0]).toMatchObject({ gone: "looks" });
+  });
   test("the look again is told to answer unsure when the earlier place is not in view", () => {
     expect(RECHECK_SYSTEM).toMatch(/same (sheet|place)/);
     expect(RECHECK_SYSTEM).toMatch(/not in view/);
@@ -326,6 +345,23 @@ describe("the look, end to end with a stand in vision lane", () => {
     // Fewer than three landmarks cannot vouch for a place.
     expect(sameView(["revenue", "costs"], [box("1", "Revenue"), box("2", "Costs")])).toBe(false);
     expect(sameView([], [])).toBe(false);
+  });
+  test("landmarks come from beside the error, not from the menu, and match whole words", () => {
+    const at = (id: string, text: string, x: number, y: number): Ocr => ({ id, text, box: [x, y, 80, 20] });
+    const menu = ["File", "Edit", "View", "Insert", "Format", "Data", "Tools", "Help"].map((t, i) => at(`m${i}`, t, 20 + i * 70, 4));
+    const err = at("e", "#REF!", 400, 300);
+    const first = [...menu, at("h1", "Revenue", 400, 100), at("h2", "Costs", 300, 300), at("h3", "Forecast sheet", 410, 60), at("far", "Unrelated", 900, 700), err];
+    const l = landmarksOf(first);
+    expect(l).toEqual(["revenue", "costs", "forecast sheet"]);
+    // The same menu over another sheet is not the same place.
+    const other = [...menu, at("o1", "Inventory", 400, 100), at("o2", "Orders", 300, 300), at("o3", "Suppliers", 410, 60), at("o4", "Database", 700, 700)];
+    expect(sameView(l, other)).toBe(false);
+    expect(goneVerdict("yes", sheetErrorIn(["#REF!"]), [], sameView(l, other))).toBe("looks");
+    // A word inside a longer word is not the word.
+    expect(sameView(["data", "costs", "revenue"], [box("1", "Database"), box("2", "Costs"), box("3", "Revenue")])).toBe(false);
+    expect(sameView(["data", "costs", "revenue"], [box("1", "Data"), box("2", "Costs"), box("3", "Revenue")])).toBe(true);
+    // Secrets are never kept.
+    expect(landmarksOf([at("e", "#REF!", 400, 300), at("k", "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789", 300, 300), at("c", "Costs", 300, 300)])).toEqual(["costs"]);
   });
   test("a recheck compares like with like: another code on screen does not keep it open, and is not proof", async () => {
     const r = rig('{"gone":"yes"}');

@@ -272,7 +272,9 @@ describe("planning accepts the plan handed back through ExitPlanMode", () => {
     await runner.handle({ v: 1, id: "p1", type: "drive.plan", project, agent: "d1", goal: "build a page", model: "m", budgetUsd: 5 } as never);
     const ready = of(events, "plan.ready")[0];
     expect(ready.steps.map((s: any) => s.title)).toEqual(["Make the page", "Add a form"]);
-    expect(of(events, "agent.tool").find((t) => t.tool === "ExitPlanMode").outcome).toBe("ran");
+    const exit = of(events, "agent.tool").find((t) => t.tool === "ExitPlanMode");
+    expect(exit.outcome).toBe("ran");
+    expect(exit.undoable).toBe(false);
     expect(readFileSync(join(project, "notes.txt"), "utf8")).toBe("start");
   });
   test("a write is still refused in planning", async () => {

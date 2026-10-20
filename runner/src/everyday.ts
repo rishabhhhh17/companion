@@ -196,24 +196,38 @@ export function tableAgrees(a: EverydayAnswer, e: SheetError, ocr: Ocr[]): boole
 
 const MAX_LANDMARKS = 12;
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
-/** A few plain words read on the screen next to the error (header cells, the sheet's title, tab names), kept in memory with
- *  the first look so a look again can tell the same sheet is in view. Never the error's own text, never numbers alone. */
+/** Words every app shows around its work (menu bar, toolbar, window controls). They stay on screen after a scroll or a switch
+ *  to another tab, so they say nothing about which sheet is in view. */
+const CHROME_WORDS = new Set(["file", "edit", "view", "insert", "format", "data", "tools", "help", "window", "go", "run", "terminal", "selection", "home", "layout", "formulas", "review", "draw", "share", "comments", "extensions", "add-ons", "developer", "table", "chart", "page layout", "sheet", "untitled", "undo", "redo", "print", "save", "search", "menu", "close", "open", "new", "copy", "paste", "cut", "bold", "italic", "font", "style"]);
+/** A few plain words read on the screen beside the error (its column's header, its row's label, the title above it), kept in
+ *  memory with the first look so a look again can tell the same sheet is in view. Only boxes in the error's own row or column
+ *  count, never the app's menu words, never the error's own text, never numbers alone, never anything that looks like a
+ *  secret. */
 export function landmarksOf(ocr: Ocr[]): string[] {
+  const errs = ocr.filter((b) => sheetErrorsIn([b.text]).length > 0 && b.box.length >= 4);
+  if (!errs.length) return [];
+  const centre = (b: Ocr) => ({ x: b.box[0] + b.box[2] / 2, y: b.box[1] + b.box[3] / 2 });
+  const beside = (b: Ocr) => b.box.length >= 4 && errs.some((e) => {
+    const c = centre(b), k = centre(e);
+    return Math.abs(c.y - k.y) <= Math.max(e.box[3], 12) || Math.abs(c.x - k.x) <= Math.max(e.box[2], 40);
+  });
   const out: string[] = [];
   for (const b of ocr) {
     const t = norm(b.text);
     if (t.length < 3 || t.length > 40 || !/\p{L}{2}/u.test(t) || sheetErrorsIn([b.text]).length > 0) continue;
+    if (CHROME_WORDS.has(t) || redact(t) !== t || !beside(b)) continue;
     if (!out.includes(t)) out.push(t);
     if (out.length >= MAX_LANDMARKS) break;
   }
   return out;
 }
-/** Are enough of those landmarks read again? At least three, and half of them: the same sheet, tab or window is in view. With
- *  fewer than three kept the place cannot be vouched for, so nothing counts as the same place. */
+const wordIn = (l: string, t: string) => new RegExp(`(?<![\\p{L}\\p{N}])${l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u").test(t);
+/** Are enough of those landmarks read again, as whole words? At least three, and half of them: the same sheet, tab or window
+ *  is in view. With fewer than three kept the place cannot be vouched for, so nothing counts as the same place. */
 export function sameView(landmarks: string[], ocr: Ocr[]): boolean {
   if (landmarks.length < 3) return false;
   const now = ocr.map((b) => norm(b.text));
-  const found = landmarks.filter((l) => now.some((t) => t === l || t.includes(l))).length;
+  const found = landmarks.filter((l) => now.some((t) => t === l || wordIn(l, t))).length;
   return found >= Math.max(3, Math.ceil(landmarks.length / 2));
 }
 

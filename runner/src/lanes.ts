@@ -426,19 +426,23 @@ export function clickPoint(r: Located): Point | null { return r.targets?.length 
 export interface FastLike { run(req: { text: string; system?: string; extra?: string; raw?: boolean }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
 export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promise<Located> }
 
+/** How long the first look's words are kept for a look again. */
+export const SEEN_MS = 5 * 60_000;
+
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
   // The spreadsheet error the last first look read, with a few plain words read beside it, in memory only: a look again says
   // Fixed only when the same place is read again (everyday.ts sameView). Forgotten on Stop everything.
-  private seen: { code: string; landmarks: string[] } | null = null;
+  private seen: { code: string; landmarks: string[]; at: number } | null = null;
   // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack, and
   // showme.everydayTutor for Show me how.
   // spend: Prompt help spends on the person's key, so with a project it waits at the project's daily limit and books what
   // it cost there (the runner's ledger). Show me how names no project, so it has nothing to book against.
   // look: the vision lane with its own instructions, for an everyday stuck moment; without it (the free stand in) only the
   // spreadsheet table can answer one.
-  constructor(private o: { fast: FastLike; vision: VisionLike; look?: Look; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings; spend?: { room: (project?: string) => number; book: (project: string | undefined, usd: number) => void } }) {}
+  constructor(private o: { fast: FastLike; vision: VisionLike; look?: Look; images: ImageStore; emit: (e: Event) => void; now?: () => number; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings; spend?: { room: (project?: string) => number; book: (project: string | undefined, usd: number) => void } }) {}
+  private now() { return (this.o.now ?? Date.now)(); }
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
@@ -579,7 +583,10 @@ export class AssistService {
       const still = r.before && r.now.some((e) => e.id === r.before!.id) ? r.before : null;
       // The look failed: said so (the stage goes back and the reason shows), unless the Mac itself still reads the error.
       if (!answer && !still) return failed("Could not look again");
-      const same = !!r.before && this.seen?.code === r.before.code && sameView(this.seen.landmarks, ocr);
+      const mine = this.seen && this.now() - this.seen.at <= SEEN_MS ? this.seen : null;
+      const same = !!r.before && mine?.code === r.before.code && sameView(mine.landmarks, ocr);
+      // The first look's words are used once: this look again answers, so they are forgotten.
+      this.seen = null;
       const gone = goneVerdict(answer?.gone, r.before, r.now, same);
       const list = gone === "no" ? steps(answer) : [];
       const table = still ? sheetFromTable(still) : null;
@@ -590,7 +597,7 @@ export class AssistService {
       return point(list);
     }
     // What a look again needs to know the same place is in view; nothing from a screen without a spreadsheet error.
-    this.seen = r.sheet ? { code: r.sheet.code, landmarks: landmarksOf(ocr) } : null;
+    this.seen = r.sheet ? { code: r.sheet.code, landmarks: landmarksOf(ocr), at: this.now() } : null;
     // The table names the problem when Claude has no answer, or its answer is about that error. Claude's own "nothing wrong"
     // or different diagnosis is never overridden by a code that is merely somewhere on the screen.
     const sheet = r.sheet && (!answer || tableAgrees(answer, r.sheet, ocr)) ? r.sheet : null;

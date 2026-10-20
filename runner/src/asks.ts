@@ -30,17 +30,25 @@ const CHECK_IN = /\banything else\b|\bwhat else\b|\b(?:any|other|more) questions
 // cannot be taken back, goes out, or is theirs. Only "I" asking is such a request; "Should we deploy it?" is a habitual
 // ending (rule 13: nothing goes live without a tap anyway).
 const ASKS_LEAVE = /^(?:so |then |and )?(?:shall|should|can|could|may) I\b/i;
+// "Do you want me to delete...?", "Would you like me to overwrite your config?", "Want me to wipe...?" ask the same thing.
+const ASKS_LEAVE_ME = /\b(?:want|like)s? me to\b/i;
+// "Do you want to delete your account data?": no "me", so only what cannot be taken back counts.
+const ASKS_LEAVE_YOU = /^(?:so |then |and )?(?:do you want|would you like|did you want) to\b/i;
+const DESTRUCTIVE = /\b(?:delete|deleting|remove|removing|overwrite|overwriting|replace|replacing|drop|dropping|wipe|wiping|erase|erasing|reset|truncate)\b/i;
 const RISKY_VERB = /\b(?:delete|deleting|remove|removing|overwrite|overwriting|replace|replacing|drop|dropping|wipe|wiping|erase|erasing|reset|truncate|push|pushing|deploy|deploying|publish|publishing|send|sending|pay|paying|charge|charging|email|emailing)\b/i;
 const THEIR_THING = /\byour\b/i;
-const HABITUAL = /\b(?:proceed|continue|go ahead|carry on|move on|keep going|get started|go on|add (?:a |some )?tests?|tidy|clean up|double.check|run the tests)\b/i;
-const asksLeave = (q: string) => ASKS_LEAVE.test(q) && (RISKY_VERB.test(q) || (THEIR_THING.test(q) && !HABITUAL.test(q)));
+const HABITUAL = /\b(?:see|show|explain|walk through|proceed|continue|go ahead|carry on|move on|keep going|get started|go on|add (?:a |some )?tests?|tidy|clean up|double.check|run the tests)\b/i;
+const asksLeave = (q: string) => ((ASKS_LEAVE.test(q) || ASKS_LEAVE_ME.test(q)) && (RISKY_VERB.test(q) || (THEIR_THING.test(q) && !HABITUAL.test(q)))) || (ASKS_LEAVE_YOU.test(q) && DESTRUCTIVE.test(q));
 const isOffer = (q: string) => !asksLeave(q) && (CHECK_IN.test(q) || (OFFER.test(q) && (!CHOICE.test(q) || ONLY_NOT_DOING_IT.test(q))));
 
-// A line after a question that only says where its answer lives or that Claude waits ("You can copy it from the Supabase
-// dashboard.", "Put it in your settings.", "Let me know.", "Once you tell me I will carry on."). Any other statement after
-// it ("Yes it passes.", "The port was taken.", "I changed it to 3001.") is Claude answering its own question.
+// A line after a question counts as Claude answering its own question only when it positively reads as an answer or a
+// result ("Yes it passes.", "The port was taken.", "I changed it to 3001.", "The tests pass."). Any other line ("Without it I
+// can't set up payments.", "Please paste it here.", "I'll need it before I continue.") leaves the question standing. A line
+// that points at where the answer lives ("You can copy it from the dashboard.") or waits is never an answer.
 const POINTER = /^(?:you(?:'ll| will| can| could| may| might| should)\b|it(?:'s| is)? (?:in|under|at|on|from|listed|shown|inside|found)\b|this (?:is|can be|will be) (?:in|under|found|listed)\b|(?:put|add|copy|paste|type|tell|reply|answer|send|give|share|open|go|look|check|find|set|enter|use|just|then|or|e\.g)\b|(?:in|under|on|from|at|inside) (?:the|your|a)\b|(?:once|when|after|as soon as|if|thanks?|thank you|let me know)\b|i(?:'ll| will| am|'m) (?:wait|waiting|pause|paused|stop|stopped|carry|continue)|i (?:need|can't|cannot|could not|couldn't|don't have|do not have)\b)/i;
-const isPointer = (s: string) => POINTER.test(bare(s)) || (QUESTION_END.test(s) && isOffer(bare(s)));
+const ANSWER = /^(?:(?:yes|yep|yeah|no|nope|not yet|not really)\b|it (?:is|was|does|did|has|had|works?|worked|passes|passed|fails?|failed|ran|runs)\b|it's (?!in\b|under\b|at\b|on\b|from\b)|the [^.!?]*\b(?:is|was|are|were|passes|passed|fails|failed|works|worked|ran|runs|has|have|had)\b(?! (?:needed|required|missing))|(?:all |the )?(?:tests?|checks?|builds?) (?:pass|passed|fail|failed|ran|run)\b|i (?:changed|used|set|added|fixed|updated|made|chose|picked|went|ran|found|removed|created|wrote|checked|looked|renamed|moved|installed|switched|kept|left)\b|that (?:is|was|means|worked)\b|there (?:is|are|was|were)\b|because\b|so (?:it|the|I)\b)/i;
+const isAnswer = (s: string) => { const t = bare(s); return !POINTER.test(t) && !(QUESTION_END.test(s) && isOffer(t)) && ANSWER.test(t); };
+const isPointer = (s: string) => !isAnswer(s);
 
 // The last of the message's last three sentences that is a question for the person (the question, then a line or two on
 // where to find the answer), with the sentence before it. A question followed by Claude's own answer is no question.

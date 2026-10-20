@@ -342,6 +342,26 @@ describe("second audit: what counts as a question for the person", () => {
     expect(asksPerson("Which email address should the form send to? Once you tell me, I will carry on.")).toBe(true);
     expect(asksPerson("Which address should it use? Want me to add a test too?")).toBe(true);
   });
+  test("a question followed by an ordinary line is still a question; only an answer cancels it", () => {
+    for (const t of [
+      "What is your Stripe key? Without it I can't set up payments.",
+      "What is your Stripe key? Please paste it here.",
+      "Which email should I use? I'll need it before I continue.",
+      "Which email address should I use? This is needed to send the form.",
+      "Which email address should I use? Note: the form stays off until then.",
+    ]) { expect(asksPerson(t), t).toBe(true); expect(questionOf(t), t).not.toBeNull(); }
+    expect(asksForWhatOnlyTheyHave("What is your Stripe key? Without it I can't set up payments.")).toBe(true);
+    for (const t of ["Is the build passing? The tests pass.", "Which port? I used 3001.", "Is it live? It is live."]) expect(asksPerson(t), t).toBe(false);
+  });
+  test("the other ways to ask before something destructive or theirs are questions too", () => {
+    for (const t of [
+      "Do you want me to delete the users table?",
+      "Would you like me to overwrite your config?",
+      "Do you want to delete your account data?",
+      "Want me to wipe the database?",
+    ]) { expect(asksPerson(t), t).toBe(true); expect(asksForWhatOnlyTheyHave(t), t).toBe(true); }
+    for (const t of ["I fixed it. Do you want me to add a test?", "I fixed it. Would you like to see it?", "Done. Do you want to continue?", "Done. Want me to tidy the styles?"]) expect(asksPerson(t), t).toBe(false);
+  });
   test("a yes or no before something destructive or that is theirs is a question, not an offer", () => {
     for (const t of [
       "Done. Should I delete the old users table?",
