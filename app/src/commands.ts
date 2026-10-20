@@ -1,5 +1,5 @@
 // Builds the commands the pages send. Rust checks each one again before it reaches the runner.
-import type { Command, Problem } from "../../protocol/index.ts";
+import type { Command, Problem, WatchKind } from "../../protocol/index.ts";
 import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 // Model ids live in one place, with the runner's (T10).
 import { MODELS } from "../../runner/src/models.ts";
@@ -8,6 +8,7 @@ import { MAX_FOLLOW_UP_CHARS } from "../../runner/src/followup.ts";
 import { defaultOf, validateKey } from "../../protocol/settings.ts";
 import { setting } from "./settingsStore.ts";
 import { modelFor } from "./modelChoice.ts";
+import { S } from "./strings.ts";
 
 let n = 0;
 const id = () => `ui${Date.now().toString(36)}${++n}`;
@@ -73,6 +74,16 @@ export const eraseMemory = (project: string, scope: "project" | "profile"): Comm
 export const exportMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.export", project });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
+// Watch routines and Where was I (F21). Each names the project, so the shell holds it to the folder the person chose.
+export const watchAdd = (project: string, kind: WatchKind, schedule: string, target?: string): Command =>
+  ({ v: 1, id: id(), type: "watch.add", project, kind, schedule, ...(kind === "site_up" ? { target: (target ?? "").trim() } : {}) });
+export const watchList = (project: string): Command => ({ v: 1, id: id(), type: "watch.list", project });
+export const watchRemove = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.remove", project, watch });
+export const watchPause = (project: string, watch: string, paused: boolean): Command => ({ v: 1, id: id(), type: "watch.pause", project, watch, paused });
+export const watchCheck = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.check", project, watch });
+// Fix it on a failed watch: asks for the evidence (read only); the page starts the task when it comes (fixWatch), never the engine.
+export const watchFix = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.fix", project, watch });
+export const whereWasI = (project: string, since?: string): Command => ({ v: 1, id: id(), type: "where.was.i", project, ...(since ? { since } : {}) });
 export const shipPreview = (project: string): Command => ({ v: 1, id: id(), type: "ship.preview", project });
 export const shipLive = (project: string, url: string): Command => ({ v: 1, id: id(), type: "ship.live", project, url, confirm: true });
 export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });
@@ -141,6 +152,10 @@ export const undoOneTask = (project: string, checkpoint: string): Command => ({ 
 export const ERROR_FIX_PROMPT = "Fix this error. Find the cause and make the smallest change that fixes it, then check that it works. Do not weaken or delete tests.";
 export const fixError = (project: string, evidence: string, where?: { kind: string; file?: string; line?: number }): Command =>
   startTask(project, `${ERROR_FIX_PROMPT}\n\nThe error, as I saw it:\n${evidence.slice(0, 3000)}${where?.kind === "line" && where.file && where.line ? `\n\nIt points at ${where.file}, line ${where.line}.` : ""}`, true);
+
+// The task Fix it starts from a failed watch: an ordinary one (snapshot, safety rules, proof, Undo). The evidence came from
+// the person's own site and tools, never their screen, so it is on the record like any task they start.
+export const fixWatch = (project: string, what: string, evidence: string): Command => startTask(project, S.watch.fixPrompt(what, evidence));
 
 /** The stand in project for lessons that need none (see runner/src/walk.ts). */
 export const NO_PROJECT = "no-project";

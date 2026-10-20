@@ -10,7 +10,7 @@ import { changesData, detectProject, withStartScript, type Detected } from "./de
 import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
-import { runCommand, type RunResult } from "./exec.ts";
+import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
 import type { Review } from "./review.ts";
@@ -43,9 +43,9 @@ export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_0
 export const scaleLimits = (factor: number): Limits => ({ installMs: DEFAULT_LIMITS.installMs * factor, checkMs: DEFAULT_LIMITS.checkMs * factor, testMs: DEFAULT_LIMITS.testMs * factor, startMs: DEFAULT_LIMITS.startMs * factor, browserMs: DEFAULT_LIMITS.browserMs * factor });
 
 export type LadderOptions = {
-  project: string; store: CheckpointStore; beforeId: string; afterId: string;
+  project: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string;
   onStep?: (u: StepUpdate) => void; signal?: AbortSignal; limits?: Partial<Limits>;
-  run?: (command: string, o: { cwd: string; timeoutMs: number }) => Promise<RunResult>;
+  run?: (command: string, o: RunOptions) => Promise<RunResult>;
   browser?: (url: string, o: BrowserOptions) => Promise<BrowserResult>;
   // How the project is started for the browser check (tests give a stand in); startServer by default.
   server?: typeof startServer;
@@ -53,6 +53,9 @@ export type LadderOptions = {
   review?: () => Promise<Review | null>;
   // Point at the problem must not change anything: when packages are missing it says so instead of installing them.
   noInstall?: boolean;
+  // A watch (F21) runs the build and the tests only. It never starts the project's server or opens a browser: nobody is
+  // there to watch it, and a server left behind by a crash would keep running.
+  noServer?: boolean;
   // How the project is read (tests give a fixed one); detectProject by default.
   detect?: (dir: string) => Detected;
   // How long to wait before each new try of a command this Mac had no room to start (NO_ROOM_WAITS_MS by default).
@@ -392,6 +395,12 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
 
   // --- 4 and 5. start it, open it
   if (cancelled()) return result("cancelled");
+  if (o.noServer) {
+    const why = "A watch runs the build and the tests only. It does not start the project or open a browser.";
+    finish("start", "skipped", why, Date.now());
+    finish("browser", "skipped", why, Date.now());
+    return hasEvidence(steps) ? result("passed") : unchecked();
+  }
   if (!det.start) {
     finish("start", "skipped", "There is nothing to open in a browser.", Date.now());
     finish("browser", "skipped", "There is nothing to open in a browser.", Date.now());

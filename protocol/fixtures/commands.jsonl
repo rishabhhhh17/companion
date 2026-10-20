@@ -73,3 +73,12 @@
 {"v":1,"id":"c83","type":"agent.start","project":"p_9f2c","agent":"builder-1","mode":"drive","prompt":"Companion checked this project and one of its checks fails.","model":"claude-sonnet-5-5","budgetUsd":0.6,"practice":"open-table"}
 {"v":1,"id":"c84","type":"assist.locate","req":"sm_42","question":"Find the problem on my screen.","image":{"ref":"sm_42","w":1280,"h":800},"ocr":[{"id":"t1","text":"#REF!","box":[300,220,40,14]}],"mode":"everyday"}
 {"v":1,"id":"c85","type":"assist.locate","req":"sm_43","question":"Fix this problem on my screen: A cell on your screen shows #REF!. What is the next step?","image":{"ref":"sm_43","w":1280,"h":800},"ocr":[{"id":"t1","text":"Total","box":[300,220,40,14]}],"mode":"recheck","before":"#REF!"}
+{"v":1,"id":"w1","type":"watch.add","project":"/Users/sam/shop","kind":"site_up","target":"https://shop.example.com","schedule":"15m"}
+{"v":1,"id":"w1b","type":"watch.add","project":"/Users/sam/shop","kind":"deploy_status","schedule":"daily@9"}
+{"v":1,"id":"w2","type":"watch.list","project":"/Users/sam/shop"}
+{"v":1,"id":"w3","type":"watch.pause","project":"/Users/sam/shop","watch":"w_1a2b3c4d5e","paused":true}
+{"v":1,"id":"w4","type":"watch.check","project":"/Users/sam/shop","watch":"w_1a2b3c4d5e"}
+{"v":1,"id":"w5","type":"watch.fix","project":"/Users/sam/shop","watch":"w_1a2b3c4d5e"}
+{"v":1,"id":"w6","type":"watch.remove","project":"/Users/sam/shop","watch":"w_1a2b3c4d5e"}
+{"v":1,"id":"w7","type":"where.was.i","project":"/Users/sam/shop","since":"2026-10-22T09:30:00.000Z"}
+{"v":1,"id":"w7b","type":"where.was.i","project":"/Users/sam/shop"}

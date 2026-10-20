@@ -34,3 +34,7 @@ Details are in technical_research.md section 16. Rules a coding agent must never
 
 ## Revisit if
 Users need saved tasks to run while Companion is quit (then weigh a launchd agent), or Pattern Catcher recall is poor with labels and tool signatures alone (then try a local embedding model) (section 16).
+
+## Note, 22 Oct 2026 (F21)
+Watch routines are not saved tasks and are not MCP connectors. They are read only checks, so the runner owns their small scheduler (`runner/src/watch.ts`, ticking only while the engine runs) instead of Rust, they never call Claude, and nothing needs `dontAsk`. They read through the person's own `vercel` and `gh` tools (no OAuth, no tokens held by Companion) and one web address the person typed. The "Rust owns timers" rule above still holds for saved tasks (v1.1).
+

@@ -65,6 +65,25 @@ export type MemoryErase = Envelope & { type: "memory.erase"; project: string; sc
 export type MemoryExport = Envelope & { type: "memory.export"; project: string };
 export type MemoryAgents = Envelope & { type: "memory.agents"; project: string; answer: "yes" | "no" | "remove" };
 export type RecapAsk = Envelope & { type: "recap.ask"; project: string; since: string };
+// Watch routines (F21): a watch is one project, one kind of read only check, a target and a schedule. They run only while
+// the engine runs and never call Claude. Every one names the project, so the app holds it to the folder the person chose.
+// schedule: "5m", "15m", "30m", "1h" or "daily@9" (an hour from 0 to 23); nothing shorter than 5 minutes exists. target: the
+// web address, for a site_up watch only.
+export const WATCH_KINDS = ["site_up", "deploy_status", "ci_status", "project_checks"] as const;
+export type WatchKind = (typeof WATCH_KINDS)[number];
+export const WATCH_STATES = ["ok", "failing", "unknown", "paused"] as const;
+export type WatchStateName = (typeof WATCH_STATES)[number];
+export type WatchAdd = Envelope & { type: "watch.add"; project: string; kind: WatchKind; schedule: string; target?: string };
+export type WatchList = Envelope & { type: "watch.list"; project: string };
+export type WatchRemove = Envelope & { type: "watch.remove"; project: string; watch: string };
+export type WatchPause = Envelope & { type: "watch.pause"; project: string; watch: string; paused: boolean };
+export type WatchCheck = Envelope & { type: "watch.check"; project: string; watch: string };
+// Fix it from a failed watch: asks for the evidence (read only, through the person's own tools). The page then starts a normal
+// task with it, on the person's press; the engine never starts one by itself.
+export type WatchFix = Envelope & { type: "watch.fix"; project: string; watch: string };
+// Where was I: what you were doing, what is unfinished, what changed since, and one next step. since: when the person was
+// last here (ISO), if the page knows.
+export type WhereWasI = Envelope & { type: "where.was.i"; project: string; since?: string };
 // Explain after a task (the setting explain.mode, T16): off, two short reasons, or the reasons and a quick check question.
 // Only the shell sends explain.set; the engine keeps the choice in memory-settings.json.
 export const EXPLAIN_MODES = ["off", "reasons", "reasonsAndQuestion"] as const;
@@ -122,7 +141,7 @@ export type EngineWarm = Envelope & { type: "engine.warm" };
 // engine applies that is not its usual value (a missing name is its usual value); projectValues: the named project's own.
 // Each one replaces the one before. The engine checks every value again and keeps them in memory only.
 export type SettingsApply = Envelope & { type: "settings.apply"; values: Record<string, unknown>; project?: string; projectValues?: Record<string, unknown> };
-export type Command = SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -270,7 +289,17 @@ export type BisectUndone = Envelope & { type: "bisect.undone"; project: string; 
 export type ErrorExplained = Envelope & { type: "error.explained"; req: string; project?: string; ok: boolean; sentences: string[]; where?: Problem; excerpt: string; evidence: string; reason?: string; usdEstimate: number };
 // What the engine took from settings.apply (names only) and what it refused (each then at its usual value), never values.
 export type SettingsApplied = Envelope & { type: "settings.applied"; accepted: string[]; refused: string[] };
-export type Event = SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// The state of one watch. since: when it came to this state. history: the states it has been in, newest last (at most 20).
+export type WatchView = { project: string; watch: string; kind: WatchKind; target?: string; schedule: string; state: WatchStateName; since: string; reason: string; lastCheckedAt?: string; nextAt?: string; checking: boolean; history: { at: string; state: WatchStateName }[] };
+export type WatchStateEvent = Envelope & { type: "watch.state" } & WatchView;
+export type WatchListEvent = Envelope & { type: "watch.list"; project: string; watches: WatchView[] };
+// One alert when a watch goes from fine to failing, and one when it is fine again. Never repeated while it stays the same.
+export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watch: string; what: "failing" | "recovered"; kind: WatchKind; target?: string; reason: string; since: string };
+// stopped: it was stopped or took too long, so text is only the watch's own reason; the page stops waiting and starts nothing.
+export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
+export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
+export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
+export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -282,6 +311,8 @@ const oneOf: (k: string, vals: string[]) => Check = (k, vals) => (m) => (vals.in
 const list: (k: string) => Check = (k) => (m) => (Array.isArray(m[k]) ? null : `"${k}" must be a list`);
 const obj: (k: string) => Check = (k) => (m) => (typeof m[k] === "object" && m[k] !== null && !Array.isArray(m[k]) ? null : `"${k}" must be an object`);
 // An optional field: absent is fine, present must be valid.
+const NEXT_ACTIONS = ["fixWatch", "findProblem", "open", "none"];
+const oneOfNext = (n: Record<string, unknown>): boolean => NEXT_ACTIONS.includes(n.action as string) && (n.action !== "fixWatch" || (typeof n.watch === "string" && n.watch.length > 0));
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
 const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
 // A line in the project: a file, a line number from 1, and the line's text.
@@ -357,6 +388,13 @@ const COMMANDS: Record<string, Check[]> = {
   "project.clone": [str("url"), str("parent")],
   "memory.add": [str("project"), oneOf("scope", ["project", "profile"]), str("text"), str("source")],
   "recap.ask": [str("project"), str("since")],
+  "watch.add": [str("project"), oneOf("kind", [...WATCH_KINDS]), str("schedule"), opt("target", (m) => (typeof m.target === "string" ? null : '"target" must be text'))],
+  "watch.list": [str("project")],
+  "watch.remove": [str("project"), str("watch")],
+  "watch.pause": [str("project"), str("watch"), bool("paused")],
+  "watch.check": [str("project"), str("watch")],
+  "watch.fix": [str("project"), str("watch")],
+  "where.was.i": [str("project"), opt("since", (m) => (typeof m.since === "string" && !Number.isNaN(Date.parse(m.since)) ? null : '"since" must be a time'))],
   "explain.set": [str("project"), oneOf("mode", [...EXPLAIN_MODES])],
   "memory.list": [str("project")],
   "memory.forget": [str("project"), oneOf("scope", ["project", "profile"]), str("line")],
@@ -422,6 +460,11 @@ const EVENTS: Record<string, Check[]> = {
   "teach.step": [str("project"), str("checkpoint"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "explain.state": [str("project"), bool("enabled"), oneOf("mode", [...EXPLAIN_MODES])],
   "recap.ready": [str("project"), list("lines")],
+  "watch.state": [str("project"), str("watch"), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("schedule"), oneOf("state", [...WATCH_STATES]), str("since"), str("reason"), bool("checking"), list("history")],
+  "watch.list": [str("project"), list("watches")],
+  "watch.alert": [str("project"), str("watch"), oneOf("what", ["failing", "recovered"]), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("reason"), str("since")],
+  "watch.evidence": [str("project"), str("watch"), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("text"), opt("stopped", bool("stopped"))],
+  "where.ready": [str("project"), list("lines"), (m) => (typeof m.next === "object" && m.next !== null && !Array.isArray(m.next) && oneOfNext((m.next as Record<string, unknown>)) ? null : '"next" must say what to do next')],
   "memory.agents_ask": [str("project"), list("files")],
   "memory.agents_written": [str("project"), list("files")],
   "memory.refused": [str("project"), str("reason")],
