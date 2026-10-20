@@ -101,7 +101,7 @@ export type LessonItem = { id: string; title: string; app: string; goal: string;
 // A guided lesson on the card. stage: a step to do, "did you already do this?" after a pause (nothing is pointed at
 // until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
 // link: the one web page the step is about, only when it is a plain web address (links.ts); Learn offers Open for it.
-export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[]; link?: string; passed?: number };
+export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[]; link?: string; passed?: number; wordsOnly?: boolean };
 // missing: the tool is not on this Mac at all (runner/src/doctor.ts), so a practice that needs it waits for it.
 export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string; missing?: true };
 // The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
@@ -238,7 +238,7 @@ export function foundHandsOver(m: Model, project: string): string | null {
 }
 /** The lesson open now is the setting practice's own fix: words only. That practice is free, with no Claude (F17 section
  *  13), so its steps never look at the screen: nothing is sent to Claude and Screen Recording is never asked for. */
-export const lessonWordsOnly = (m: Model): boolean => !!m.walk && m.practice?.stage === "lesson" && m.practice.walk === m.walk.id;
+export const lessonWordsOnly = (m: Model): boolean => !!m.walk && (m.walk.wordsOnly === true || (m.practice?.stage === "lesson" && m.practice.walk === m.walk.id));
 /** A task that keeps going in the folder Home showed before (the person picked another one while it worked): that
  *  folder's name, for one line on Now, or null. */
 export function awayFolder(m: Model): string | null {
@@ -491,7 +491,10 @@ function reduceRest(m: Model, e: Ev): Model {
     case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
-      return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
+      // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
+      // for the new engine says "none" for a moment before the shell hands over the key.
+      const notice = connected === "none" ? (m.notice && m.notice !== S.notConnectedNotice ? m.notice : S.notConnectedNotice) : (m.notice === S.notConnectedNotice ? null : m.notice);
+      return { ...m, connected, notice };
     }
     case "explain.ready": {
       // A Drive step's explanation joins the plan's list, whatever is on the card by the time it arrives.
@@ -650,7 +653,9 @@ function reduceRest(m: Model, e: Ev): Model {
     case "walk.lessons": return { ...m, lessons: Array.isArray(e.lessons) ? e.lessons : null };
     // A lesson names the usual keys. Its words are kept as sent: the card and the spoken line fill in the keys in use each
     // time they show or say them (keys.ts keysIn), so a change in Settings while a step is up shows at once.
-    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [], ...(webLink(e.link) ? { link: String(e.link) } : {}), ...(Number.isInteger(e.passed) && (e.passed as number) > 0 ? { passed: e.passed as number } : {}) } };
+    case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [], ...(webLink(e.link) ? { link: String(e.link) } : {}), ...(Number.isInteger(e.passed) && (e.passed as number) > 0 ? { passed: e.passed as number } : {}),
+      // The setting practice's lesson stays words only (free, no Claude) even if the practice is skipped meanwhile.
+      ...((m.walk?.id === e.walk && m.walk?.wordsOnly) || (m.practice?.stage === "lesson" && m.practice.walk === e.walk) ? { wordsOnly: true } : {}) } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
     // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.

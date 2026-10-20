@@ -38,7 +38,12 @@ static PASTING: AtomicBool = AtomicBool::new(false);
 static STATE: Mutex<State> = Mutex::new(State { consent: None, deny: rules::Denylist::empty(), awaiting: None, pending: None });
 
 fn data_file() -> PathBuf { PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.companion.app/prompt_help.json") }
-fn load_consent() -> rules::Consent { std::fs::read_to_string(data_file()).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|v| rules::Consent::from_json(&v)).unwrap_or_default() }
+fn load_consent() -> rules::Consent {
+    let (c, damaged) = rules::load_answers(&data_file());
+    // The file is kept aside (prompt_help.damaged.json), so a later answer does not write over the person's other answers.
+    if damaged { crate::log("prompt_help_answers_damaged", json!({})); }
+    c
+}
 fn save_consent(c: &rules::Consent) { let _ = try_save_consent(c); }
 fn try_save_consent(c: &rules::Consent) -> Result<(), &'static str> {
     if let Some(d) = data_file().parent() { let _ = std::fs::create_dir_all(d); }

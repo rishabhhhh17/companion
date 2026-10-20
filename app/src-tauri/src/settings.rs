@@ -559,6 +559,12 @@ pub fn for_project<'a>(d: &Def, asked: Option<&'a str>, current: Option<&'a str>
     }
 }
 
+/// A reset is for the project the page showed (the confirm named that project's values). If another folder is in Home by
+/// the time the press arrives, nothing is reset ("projectChanged"). A page that showed no project asks about none.
+pub fn reset_project_ok(asked: Option<&str>, current: Option<&str>) -> Result<(), &'static str> {
+    match asked.filter(|a| !a.is_empty()) { Some(a) if Some(a) != current => Err("projectChanged"), _ => Ok(()) }
+}
+
 // ---------- the stores that stay where they were (wrapped) ----------
 
 /// dock.json: "Come to what it is about", and the character's place on the display it is on now (`last_screen`, the
@@ -755,6 +761,18 @@ mod tests {
         assert_eq!(e["fun.reactions"], json!(true));
         assert_eq!(e["display.textSize"], json!("standard"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn a_reset_is_refused_when_another_folder_is_open_than_the_one_the_page_showed() {
+        assert_eq!(reset_project_ok(Some("/a"), Some("/a")), Ok(()));
+        assert_eq!(reset_project_ok(Some("/a"), Some("/b")), Err("projectChanged"));
+        assert_eq!(reset_project_ok(Some("/a"), None), Err("projectChanged"));
+        assert_eq!(reset_project_ok(None, Some("/b")), Ok(()), "a page that named none asks about none");
+        assert_eq!(reset_project_ok(Some(""), Some("/b")), Ok(()));
+        let main = include_str!("main.rs");
+        let f = &main[main.find("fn settings_reset(").unwrap()..]; let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;"));
+        assert!(f.find("reset_project_ok").unwrap() < f.find("settings_snapshot(&[])").unwrap(), "before anything is read or changed");
     }
     #[test]
     fn a_damaged_file_is_kept_aside_and_companion_starts_on_the_usual_values() {

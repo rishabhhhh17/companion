@@ -219,17 +219,36 @@ pub fn remove(r: &mut Record, id: &str, home: &Path, current: &str, busy: bool, 
     Ok(p)
 }
 
+#[derive(Debug)]
 pub struct Restarted { pub path: PathBuf, pub kept_old: Option<PathBuf> }
-/// Start over: the old copy goes to the Trash (the person tapped Start over and confirmed it), then a fresh copy is made in
-/// a new folder. If the Trash refuses, the old copy is left exactly as it is and the fresh copy gets the next free name.
+/// Start over: a fresh copy is made in a new folder first, and only when it is made does the old copy go to the Trash (the
+/// person tapped Start over and confirmed it). So a copy that cannot be made leaves the old one where it was. If the Trash
+/// refuses, the old copy is left exactly as it is.
 #[allow(clippy::too_many_arguments)]
 pub fn restart(r: &mut Record, e: &Entry, src: &Path, home: &Path, data: &Path, current: &str, busy: bool, day: &str, trash: impl Fn(&Path) -> Result<(), String>) -> Result<Restarted, String> {
     let recorded = r.practices.get(&e.id).and_then(|p| p.path.clone());
     if busy && recorded.as_deref() == Some(current) && !current.is_empty() { return Err("Something is still working on this practice. Wait for it to finish, or press Stop.".into()); }
-    let kept_old = match removable(r, &e.id, home, current, busy) { Ok(old) => if trash(&old).is_ok() { None } else { Some(old) }, Err(_) => recorded.map(PathBuf::from).filter(|p| exists_at(p)) };
+    let old = removable(r, &e.id, home, current, busy);
     let path = make(src, home, e, taken(data))?;
+    let kept_old = match old { Ok(old) => if trash(&old).is_ok() { None } else { Some(old) }, Err(_) => recorded.map(PathBuf::from).filter(|p| exists_at(p)) };
     r.started(&e.id, &path, day);
     Ok(Restarted { path, kept_old })
+}
+
+/// Records a copy that was just made. If the record cannot be saved (the data folder is full or not writable), the save is
+/// tried once more, and then the new copy is taken away (`discard`, it has none of the person's work in it): a copy that no
+/// list knows could never be removed or moved again.
+pub fn save_or_discard(save: impl Fn() -> Result<(), String>, discard: impl FnOnce()) -> Result<(), String> {
+    if save().is_ok() || save().is_ok() { return Ok(()); }
+    discard();
+    Err("Could not save your practice progress, so the new copy was not kept. Try again.".into())
+}
+
+/// A practice record that was read as damaged (a row it did not understand) is copied aside once as `practice.damaged.json`
+/// before anything is saved over it, so one bad row never silently deletes the other rows for good.
+pub fn keep_damaged(file: &Path, damaged: bool) {
+    if !damaged { return; }
+    if let Some(dir) = file.parent() { let aside = dir.join("practice.damaged.json"); if !aside.exists() { let _ = fs::copy(file, aside); } }
 }
 
 /// Every recorded copy still there, for "Move all my practice copies to the Trash" and Delete everything's opt in line.
@@ -532,8 +551,41 @@ mod tests {
         assert_eq!(out2.kept_old.as_deref(), Some(old2.as_path()));
         assert_eq!(fs::read_to_string(old2.join("server.js")).unwrap(), "mine");
         assert_ne!(out2.path, old2); assert!(out2.path.join("server.js").is_file());
+        // A fresh copy that cannot be made leaves the old one exactly where it was, in the home folder and in the record.
+        let (mut r3, old3) = copy_for(&home, "route");
+        fs::write(old3.join("server.js"), "mine too").unwrap();
+        let before = r3.clone();
+        let err = restart(&mut r3, pick(Some("route")).unwrap(), &root.join("no such source"), &home, &data, "", false, D, |x: &Path| fs::rename(x, trash.join("gone route")).map_err(|e| e.to_string())).unwrap_err();
+        assert!(err.contains("Could not make"), "{err}");
+        assert_eq!(fs::read_to_string(old3.join("server.js")).unwrap(), "mine too", "the old copy was not moved");
+        assert!(!trash.join("gone route").exists());
+        assert_eq!(r3, before, "the record still points at the old copy");
         // Never while something works on the copy that is open.
         assert!(restart(&mut r2, pick(Some("import")).unwrap(), &Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-import"), &home, &data, out2.path.to_str().unwrap(), true, D, |_: &Path| Ok(())).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_copy_that_cannot_be_recorded_is_taken_away_and_a_damaged_record_is_kept_aside() {
+        use std::cell::Cell;
+        let (tries, gone) = (Cell::new(0), Cell::new(false));
+        assert!(save_or_discard(|| { tries.set(tries.get() + 1); Ok(()) }, || gone.set(true)).is_ok());
+        assert_eq!((tries.get(), gone.get()), (1, false));
+        // One failure is retried.
+        let n = Cell::new(0);
+        assert!(save_or_discard(|| { n.set(n.get() + 1); if n.get() == 1 { Err("x".into()) } else { Ok(()) } }, || gone.set(true)).is_ok());
+        assert!(!gone.get());
+        // A save that keeps failing takes the new copy away and says so.
+        let err = save_or_discard(|| Err("disk full".into()), || gone.set(true)).unwrap_err();
+        assert!(gone.get() && err.contains("not kept"), "{err}");
+        let root = tmp("damaged-record"); let f = root.join("practice.json");
+        fs::write(&f, r#"{"practices":{"signup":{"path":"/etc/x"},"route":{}}}"#).unwrap();
+        keep_damaged(&f, false);
+        assert!(!root.join("practice.damaged.json").exists());
+        keep_damaged(&f, true);
+        assert!(fs::read_to_string(root.join("practice.damaged.json")).unwrap().contains("/etc/x"));
+        fs::write(&f, "{}").unwrap();
+        keep_damaged(&f, true);
+        assert!(fs::read_to_string(root.join("practice.damaged.json")).unwrap().contains("/etc/x"), "the first damaged copy is not replaced by a later one");
         let _ = fs::remove_dir_all(&root);
     }
     #[test]

@@ -219,9 +219,12 @@ impl<T: Clone + Send + 'static> Recent<T> {
         if self.busy.swap(true, SeqCst) { return self.last().unwrap_or_else(fallback); }
         let (tx, rx) = std::sync::mpsc::channel::<T>();
         std::thread::spawn(move || {
+            // Even if the read panics (a device going away mid read), the flag is cleared, so the next read is made.
+            struct Done(&'static std::sync::atomic::AtomicBool);
+            impl Drop for Done { fn drop(&mut self) { self.0.store(false, SeqCst); } }
+            let _done = Done(&self.busy);
             let v = read();
             *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some(v.clone());
-            self.busy.store(false, SeqCst);
             let _ = tx.send(v);
         });
         rx.recv_timeout(limit).ok().or_else(|| self.last()).unwrap_or_else(fallback)
@@ -751,6 +754,14 @@ mod tests {
         // A quick read gives its own answer at once.
         assert_eq!(R.read(std::time::Duration::from_millis(300), || 0, || 9u32), 9);
         assert_eq!(R.last(), Some(9));
+    }
+    #[test]
+    fn a_read_that_panics_does_not_freeze_the_list_for_good() {
+        static R: Recent<u32> = Recent::new();
+        assert_eq!(R.read(std::time::Duration::from_millis(300), || 1, || -> u32 { panic!("a device went away while it was read") }), 1, "the safe answer");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert_eq!(R.read(std::time::Duration::from_millis(300), || 1, || 5u32), 5, "the next read is made, not refused as still running");
+        assert_eq!(R.last(), Some(5));
     }
     #[test]
     fn when_a_read_is_slow_again_the_last_good_answer_is_used() {

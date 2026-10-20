@@ -56,6 +56,10 @@ export function asksWorked(o: { setting: unknown; how: "your_turn_done" | "done_
  *  the next step" on (showme.waitForPage), and always when the next look starts by itself after a click. */
 export const waitsForPage = (waitSetting: unknown, askSetting: unknown) => waitSetting === true || askSetting === "whenUnsure";
 
+/** Whether the look after a step waits for the page: a look again at the everyday problem ("recheck") always does, as Check
+ *  it is fixed does, so it never reads the old screen with the error still on it; any other look follows the settings. */
+export const settlesBeforeLook = (mode: string | undefined, waitSetting: unknown, askSetting: unknown) => mode === "recheck" || waitsForPage(waitSetting, askSetting);
+
 /** True when the walk has reached its limit and should hand back to the person in words. */
 export const atLimit = (w: Walk) => w.steps.length >= MAX_ANYWHERE_STEPS;
 

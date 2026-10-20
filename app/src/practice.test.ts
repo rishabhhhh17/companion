@@ -12,7 +12,7 @@ import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 import { canFollowUp, canRetry, initial, lessonWordsOnly, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
-import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
+import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, needsMacCheck, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -404,6 +404,15 @@ describe("the record and the list on Learn", () => {
     expect(listRows(NO, [{ id: "node", label: "Node", ok: false, detail: "Version 18 is too old", fix: "x" }]).some((r) => r.needsNode)).toBe(false);
     expect(nodeMissing(noNode)?.fix).toBe("Install it from nodejs.org.");
   });
+  test("the Mac is checked again while Node is flagged missing (after it was installed), never again once Node is there", () => {
+    const noNode = [{ id: "node", label: "Node", ok: false, detail: "x", missing: true as const }];
+    const fine = [{ id: "node", label: "Node", ok: true, detail: "Node 22" }];
+    expect(needsMacCheck(null)).toBe(true);
+    expect(needsMacCheck(noNode)).toBe(true);
+    expect(needsMacCheck(fine)).toBe(false);
+    // An old Node is not a missing Node: nothing to wait for.
+    expect(needsMacCheck([{ id: "node", label: "Node", ok: false, detail: "Version 18 is too old", fix: "x" }])).toBe(false);
+  });
   test("a practice starts only while nothing is working, and only with Node when it needs it", () => {
     const e = entry("signup"), noNode = [{ id: "node", label: "Node", ok: false, detail: "x", missing: true as const }];
     expect(canStart(false, e, null)).toBe(true);
@@ -675,6 +684,16 @@ describe("the setting practice's lesson uses no Claude and never looks at the sc
     expect(lessonWordsOnly(run([ev({ type: "ui.walkRequested", walk: "w2" }), { ...step, walk: "w2" }]))).toBe(false);
     expect(practiceOf("setting")?.costUsd).toBe(0);
   });
+  test("skipping the practice during its lesson does not turn the lesson into one that looks at the screen", () => {
+    const skipped = run([ev({ type: "ui.practiceClosed" })], inLesson);
+    expect(skipped.practice).toBeNull();
+    expect(skipped.walk?.id).toBe("w1");
+    expect(lessonWordsOnly(skipped)).toBe(true);
+    // The next step of the same lesson is still words only; another lesson started afterwards is not.
+    const next = run([{ ...step, index: 1 } as never], skipped);
+    expect(lessonWordsOnly(next)).toBe(true);
+    expect(lessonWordsOnly(run([ev({ type: "ui.walkRequested", walk: "w2" }), { ...step, walk: "w2" } as never], skipped))).toBe(false);
+  });
   test("Home neither looks at the screen for its steps nor offers to point, and says so", () => {
     const aim = card.slice(card.indexOf("const wkKey = wk ?"), card.indexOf("useEffect(() => { if (wk && m.showme?.stage === \"needs_permission\")"));
     expect(aim).toContain("if (noAim.current || lessonWordsOnly(m)) return;");
@@ -696,5 +715,16 @@ describe("the practice says what its fix is, and what Fix it does on your own pr
     expect(S.practiceFixHelp).toMatch(/looks deeper first/);
     expect(S.practiceFixHelp).not.toMatch(/the same request/);
     expect(defaultOf("point.fixWith")).toBe("rescue");
+  });
+});
+
+// Found in the second audit: Remove my copy on the copy that was open left Home with no folder, although the folder used
+// before it was known. It goes back there now, as Back to my project does.
+describe("removing the practice copy that is open", () => {
+  const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+  test("Home goes back to the folder from before, else the newest folder of the person's own", () => {
+    const f = card.slice(card.indexOf("const removePractice = "), card.indexOf("// A recorded copy opened again"));
+    expect(f).toContain("backTo(open.previous, recent, practiceRec)");
+    expect(f.indexOf("backTo(")).toBeLessThan(f.indexOf("useFolder(to)"));
   });
 });

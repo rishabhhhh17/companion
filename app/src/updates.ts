@@ -28,14 +28,25 @@ export function updateLine(s: UpdateState, current: string, configured: boolean)
   }
 }
 
+/** An install that failed (the Wi-Fi dropped, a task started): the shell kept the update, so the page puts it back as found,
+ *  Install shows again, and the reason sits beside it. With no update known, the failure is simply shown. */
+export function afterInstallFailed(prev: UpdateState | null, reason: string): { update: UpdateState | null; state: UpdateState; note: string } {
+  if (prev && prev.stage === "found") return { update: prev, state: prev, note: reason };
+  return { update: null, state: { stage: "failed", reason }, note: "" };
+}
+
 /** Installing restarts Companion, which would stop anything running, so it waits until nothing is running. */
 export const canInstall = (working: boolean) => !working;
 
-type Busy = { character?: string; drive?: unknown; stuck?: unknown; approvals?: unknown[]; install?: { stage?: string } | null; practice?: { stage?: string } | null; shipFlow?: { stage?: string } | null; diagram?: { stage?: string } | null; point?: { stage?: string } | null };
+import { waitsForAnswer, type Model } from "./model.ts";
+
+type Busy = { character?: string; task?: unknown; receipt?: unknown; agents?: unknown; plan?: unknown; paused?: unknown; agentsAsk?: unknown; drive?: unknown; stuck?: unknown; approvals?: unknown[]; install?: { stage?: string } | null; practice?: { stage?: string } | null; shipFlow?: { stage?: string } | null; diagram?: { stage?: string } | null; point?: { stage?: string } | null };
 
 /** Anything under way that a restart would cut off. When in doubt it says busy: the person can wait a minute. */
 export function isBusy(m: Busy): boolean {
-  if (["thinking", "working", "checking", "needsYou"].includes(m.character ?? "")) return true;
+  // A task that ended on a question has nothing running (it waits for an answer in the follow up box): a restart cuts nothing off.
+  const asked = m.character === "needsYou" && !!m.receipt && !!m.task && !!m.agents && Array.isArray(m.approvals) && waitsForAnswer(m as unknown as Model);
+  if (!asked && ["thinking", "working", "checking", "needsYou"].includes(m.character ?? "")) return true;
   // A Drive plan that has finished is not running (its panel stays until closed).
   if ((m.drive && !(m.drive as { finished?: unknown }).finished) || m.stuck || (m.approvals && m.approvals.length > 0)) return true;
   if (m.install?.stage === "installing" || m.practice?.stage === "fixing") return true;

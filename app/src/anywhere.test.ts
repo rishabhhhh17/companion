@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answered, asksWorked, atLimit, clicked, failed, judged, MAX_ANYWHERE_STEPS, nextQuestion, unchecked, waitsForPage } from "./anywhere.ts";
+import { answered, asksWorked, atLimit, clicked, failed, judged, MAX_ANYWHERE_STEPS, nextQuestion, settlesBeforeLook, unchecked, waitsForPage } from "./anywhere.ts";
 import { readFileSync } from "node:fs";
 
 describe("anywhere mode", () => {
@@ -76,10 +76,18 @@ describe("waiting for the page", () => {
     expect(waitsForPage(true, "everyStep")).toBe(true);
     expect(waitsForPage(false, "whenUnsure")).toBe(true);
   });
+  test("the look again after a step of the everyday fix always waits for the app to redraw", () => {
+    expect(settlesBeforeLook("recheck", false, "everyStep")).toBe(true);
+    expect(settlesBeforeLook("recheck", undefined, undefined)).toBe(true);
+    expect(settlesBeforeLook(undefined, false, "everyStep")).toBe(false);
+    expect(settlesBeforeLook(undefined, true, "everyStep")).toBe(true);
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain('settlesBeforeLook(mode, setting("showme.waitForPage"), setting("showme.askWorked"))');
+  });
   test("the card asks the shell to wait only for a look that follows an action, and reads both settings", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toMatch(/invoke\("showme_start", \{ question, allScreens: allScreensOn\(\), settle, mode, before \}\)/);   // mode and before: an everyday look (everyday.ts)
-    expect(card).toContain('waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked"))');
+    expect(card).toContain('setting("showme.waitForPage"), setting("showme.askWorked")');
     // The question asked by itself after a clean click: the setting decides, and a soft ring, a miss or Do it for me ask.
     expect(card).toContain('asksWorked({ setting: setting("showme.askWorked"), how: stage, soft: ringLook.current.soft, missed: ringLook.current.missed })');
   });

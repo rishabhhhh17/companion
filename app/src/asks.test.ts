@@ -118,7 +118,7 @@ describe("a task that asks needs you, and is answered in the follow up box", () 
   });
   test("What I did and a plan's end say it in plain words", () => {
     expect(historyWords({ status: "needs_you", proof: "skipped" })).toBe(S.historyNeedsYou);
-    expect(statusGroup("needs_you")).toBe("not_done");
+    expect(statusGroup("needs_you")).toBe("stopped");   // second audit: a task waiting for an answer was filed under Not done, which its own words do not say
     const d = run([ev({ type: "drive.done", agent: AGENT, status: "needs_you", completed: 1, total: 3, usdEstimate: 0.1 })]);
     expect(driveWords(d)).toMatch(new RegExp(S.driveNeedsYou));
   });

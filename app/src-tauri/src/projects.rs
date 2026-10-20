@@ -46,6 +46,12 @@ impl Projects {
         self.recent.retain(|r| r != folder);
         if self.current.as_deref() == Some(folder) { self.current = None; }
     }
+    /// The same, with every entry that is not an acceptable folder dropped (`validate`): a stale entry from an older build or a
+    /// hand edited file, such as ~/.ssh or Companion's own folder, is never the working folder.
+    pub fn checked(&self, home: &str, data_dir: &Path) -> Projects {
+        let ok = |p: &String| validate(p, home, data_dir).is_ok();
+        Projects { current: self.current.clone().filter(|c| ok(c)), recent: self.recent.iter().filter(|r| ok(r)).cloned().collect() }
+    }
     /// Recent folders that still exist, so a deleted project never lingers in the list.
     pub fn still_there(&self) -> Vec<String> { self.recent.iter().filter(|r| Path::new(r).is_dir()).cloned().collect() }
 }
@@ -92,6 +98,21 @@ mod tests {
     }
     fn tmp(name: &str) -> PathBuf { let d = std::env::temp_dir().join(format!("proj-{}-{}", name, std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d }
 
+    #[test]
+    fn a_stale_or_hand_edited_entry_that_validate_refuses_is_never_loaded_as_the_folder() {
+        let home = tmp("home-chk"); let data = home.join("Library/Application Support/dev.companion.app");
+        let (good, ssh) = (home.join("Developer/shop"), home.join(".ssh"));
+        for d in [&good, &ssh, &data] { std::fs::create_dir_all(d).unwrap(); }
+        let good_real = std::fs::canonicalize(&good).unwrap().to_string_lossy().to_string();
+        let p = Projects { current: Some(ssh.to_string_lossy().to_string()), recent: vec![data.to_string_lossy().to_string(), good_real.clone(), ssh.to_string_lossy().to_string()] };
+        let c = p.checked(home.to_str().unwrap(), &data);
+        assert_eq!(c, Projects { current: None, recent: vec![good_real.clone()] });
+        let ok = Projects { current: Some(good_real.clone()), recent: vec![good_real.clone()] };
+        assert_eq!(ok.checked(home.to_str().unwrap(), &data), ok);
+        let main = include_str!("main.rs");
+        let start = &main[main.find("let saved = projects::load(").unwrap()..]; let start = &start[..start.find('\n').unwrap()];
+        assert!(start.contains(".checked("), "{start}");
+    }
     #[test]
     fn a_folder_can_be_forgotten_from_the_list_and_as_the_current_one() {
         let mut p = Projects::default();

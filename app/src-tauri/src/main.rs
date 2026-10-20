@@ -1120,8 +1120,10 @@ fn tried_mark(app: AppHandle, window: tauri::WebviewWindow, tool: String) -> Res
 /// each one first and keeps each one for Undo: `engine` is the engine's own settings the page has heard away from usual;
 /// one it has not heard is left as it is. Only from the card.
 #[tauri::command]
-fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>) -> Result<Value, String> {
+fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>, project: Option<String>) -> Result<Value, String> {
     settings::only_card(window.label())?;
+    // `project`: the folder the page showed this reset for; another folder in Home by now means nothing is reset.
+    settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;
     let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
         (Some(k), None, false) => settings::Which::Key(k),
         (None, Some(s), false) => settings::Which::Section(s),
@@ -1394,7 +1396,7 @@ fn home_dir() -> String { std::env::var("HOME").unwrap_or_default() }
 
 /// The folders the person chose before (still on disk), newest first.
 #[tauri::command]
-fn list_projects() -> Vec<String> { projects::load(&projects_path()).still_there() }
+fn list_projects() -> Vec<String> { projects::load(&projects_path()).checked(&home_dir(), &data_dir()).still_there() }
 
 /// Switch to a folder from the list, or one just picked. Only folders that pass the checks are ever used.
 #[tauri::command]
@@ -1425,7 +1427,7 @@ fn project_now(app: &AppHandle, folder: &str) {
 /// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
 #[tauri::command]
 fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
-    keystore::save(&key)?;
+    keystore::save(&key, &data_dir())?;
     log("api_key_saved", json!({}));
     hand_key_over(&app, Some(&key));
     Ok(())
@@ -1448,7 +1450,7 @@ fn hand_key_over(app: &AppHandle, key: Option<&str>) {
 fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String) -> Result<(), String> {
     let svc = keystore::service();
     // The tested gate: an unconfirmed call never reaches the Keychain, and the key counts as gone only once it is not there.
-    keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || keystore::exists(&svc, keystore::ACCOUNT))?;
+    keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || !keystore::gone(&svc, keystore::ACCOUNT))?;
     log("api_key_removed", json!({}));
     // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
     let _ = app.state::<runner::Runner>().hand_key(None);
@@ -1939,8 +1941,14 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
-    let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or("Check for updates first.")?;
-    u.download_and_install(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
+    // One install at a time (the card and Settings both have an Install). The guard lets go on every way out, errors too.
+    let Some(_flight) = updates::INSTALLING.try_start() else { return Err(updates::INSTALLING_WORDS.into()) };
+    // Only a copy is used: if the download fails (the Wi-Fi drops), the found update stays, so Install can be pressed again.
+    let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or("Check for updates first.")?;
+    let bytes = u.download(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
+    // A task may have started during a long download: the restart would cut it off, so it waits for another press.
+    if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
+    u.install(bytes).map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
     log("update_installed", json!({}));
     // `restart` goes round the normal exit path: end the engine (and what it runs) properly first, so nothing is left running.
     app.state::<runner::Runner>().shut_down();
@@ -2210,7 +2218,9 @@ static PRACTICE: Mutex<()> = Mutex::new(());
 fn today() -> String { let d = cmd_out("/bin/date", &["+%Y-%m-%d"]); if d.len() == 10 { d } else { "1970-01-01".into() } }
 /// The record as it is on disk, checked (a damaged file reads as empty, and the page says so once).
 fn practice_record() -> (practice::Record, bool) {
-    practice::Record::parse(std::fs::read_to_string(practice_path()).ok().as_deref(), std::path::Path::new(&home_dir()))
+    let (r, damaged) = practice::Record::parse(std::fs::read_to_string(practice_path()).ok().as_deref(), std::path::Path::new(&home_dir()));
+    practice::keep_damaged(&practice_path(), damaged);   // a row it did not understand is kept aside before the next save drops it
+    (r, damaged)
 }
 fn save_practice(r: &practice::Record) -> Result<(), String> {
     let _ = std::fs::create_dir_all(data_dir());
@@ -2249,7 +2259,8 @@ fn create_practice(window: tauri::WebviewWindow, app: AppHandle, which: Option<S
     let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
     let (mut r, _) = practice_record();
     let dst = practice::create(&mut r, e, &src, std::path::Path::new(&home_dir()), &data_dir(), &today())?;
-    let _ = save_practice(&r);   // the copy is there either way; the list only loses its progress line
+    // A copy that cannot be recorded is taken away again (it could never be listed, removed or moved).
+    practice::save_or_discard(|| save_practice(&r), || { let _ = move_to_trash(&dst); })?;
     log("practice_created", json!({ "practice": e.id }));
     use_project_inner(app, dst.to_string_lossy().to_string())
 }
@@ -2300,7 +2311,8 @@ fn restart_practice(window: tauri::WebviewWindow, app: AppHandle, which: String,
         let (mut r, _) = practice_record();
         let home = PathBuf::from(home_dir());
         let out = practice::restart(&mut r, e, &src, &home, &data_dir(), &current_project(), busy, &today(), move_to_trash)?;
-        let _ = save_practice(&r);
+        let fresh = out.path.clone();
+        practice::save_or_discard(|| save_practice(&r), || { let _ = move_to_trash(&fresh); }).map_err(|_| match &out.kept_old { None => "Could not save your practice progress. Your old copy is in the Trash, and the new one was not kept. Press Start for a fresh one.".to_string(), Some(_) => "Could not save your practice progress, so the new copy was not kept. Your old copy is still in your home folder.".to_string() })?;
         out
     };
     log("practice_restarted", json!({ "practice": e.id, "keptOld": out.kept_old.is_some() }));
@@ -2401,7 +2413,7 @@ fn wipe_helper_mode() -> bool {
     let bundle = std::env::current_exe().ok().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")).map(|p| p.to_path_buf()));
     wipe::run_helper(&home, &data, &projects, with_projects, &wipe::Helper {
         parent_gone: &|| !std::process::Command::new("/bin/kill").args(["-0", &pid]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success()),
-        delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || !keystore::exists(&keystore::service(), keystore::ACCOUNT) },
+        delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || keystore::gone(&keystore::service(), keystore::ACCOUNT) },
         relaunch: &|| { if let Some(b) = &bundle { let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(b).status(); } },   // not from a built app (a development run): nothing to open
         wait: &|| std::thread::sleep(Duration::from_millis(150)),
     });
@@ -3170,7 +3182,7 @@ fn start_runner(app: &AppHandle) {
     let first = dev.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
         .and_then(|v| v.get("project").and_then(|p| p.as_str().map(String::from)));
     // The folder the person chose last wins; the development settings file only supplies the first one.
-    let saved = projects::load(&projects_path()).current.filter(|c| std::path::Path::new(c).is_dir());
+    let saved = projects::load(&projects_path()).checked(&home_dir(), &data_dir()).current.filter(|c| std::path::Path::new(c).is_dir());
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = saved.or(first);
     let bundle = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e));
     let result = runner::locations_with_bundle(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"), bundle)
@@ -3328,7 +3340,7 @@ fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: Stri
         let end = convert::end_news(id, &ended);
         // Files really made: the first use of Convert a file.
         if !ended.made.is_empty() { mark_tried(&app, "convert"); }
-        log("drop_job_ended", json!({ "action": action, "made": ended.made.len(), "skipped": ended.skipped, "ended": end["phase"], "why": end["why"] }));
+        log("drop_job_ended", json!({ "action": action, "made": ended.made.len(), "skipped": ended.skipped, "failed": ended.failed, "ended": end["phase"], "why": end["why"] }));
         if let Some(d) = drop_now_lock().as_mut().filter(|d| d.id == id) { d.running = None; d.made = ended.made; d.job = Some(end.clone()); }
         let _ = app.emit("drop-job", end);
     });

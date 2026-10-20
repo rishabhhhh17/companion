@@ -77,6 +77,27 @@ impl Consent {
     }
 }
 
+/// The name a file that could not be read or understood is moved to, beside the answers file.
+pub const DAMAGED_ANSWERS: &str = "prompt_help.damaged.json";
+
+/// Reads the answers file. No file is no answers, as it should be at first. A file that is there but cannot be read, or is not
+/// the answers (not JSON, not an object), is moved aside as prompt_help.damaged.json, never overwritten by the next answer, so
+/// the apps never to read are not lost for good by one bad read. True when that happened (the answers start empty).
+pub fn load_answers(file: &std::path::Path) -> (Consent, bool) {
+    let text = match std::fs::read(file) {
+        Ok(b) => String::from_utf8(b).ok(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Consent::default(), false),
+        Err(_) => None,
+    };
+    match text.and_then(|t| serde_json::from_str::<Value>(&t).ok()).filter(Value::is_object) {
+        Some(v) => (Consent::from_json(&v), false),
+        None => {
+            if let Some(d) = file.parent() { let _ = std::fs::rename(file, d.join(DAMAGED_ANSWERS)); }
+            (Consent::default(), true)
+        }
+    }
+}
+
 // ---------- the per app answers in Settings (ph.appAnswers, the registry T16) ----------
 
 /// What Settings may do to the answers. Each comes from the page as `{ "op": ... }` through settings_set.
@@ -461,6 +482,28 @@ mod tests {
             let mut c = Consent::from_json(&v);
             assert_eq!(c.decide("a"), Decision::Ask);
         }
+    }
+
+    #[test] fn a_damaged_answers_file_is_kept_aside_and_the_next_answer_does_not_erase_it() {
+        let d = std::env::temp_dir().join(format!("ph-answers-{}", std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("prompt_help.json");
+        // No file: no answers, nothing moved.
+        let (mut c, damaged) = load_answers(&f);
+        assert!(!damaged); assert_eq!(c.decide(APP), Decision::Ask);
+        // A good file is read.
+        std::fs::write(&f, r#"{"apps":{"a.a":"never"}}"#).unwrap();
+        let (mut c, damaged) = load_answers(&f);
+        assert!(!damaged); assert_eq!(c.decide("a.a"), Decision::Refuse);
+        // A cut off file is moved aside whole, and the answers start empty.
+        std::fs::write(&f, r#"{"apps":{"a.a":"nev"#).unwrap();
+        let (_, damaged) = load_answers(&f);
+        assert!(damaged);
+        assert!(!f.exists());
+        assert_eq!(std::fs::read_to_string(d.join(DAMAGED_ANSWERS)).unwrap(), r#"{"apps":{"a.a":"nev"#);
+        // Something that is JSON but not the answers is a damaged file too.
+        std::fs::write(&f, "[1,2]").unwrap();
+        assert!(load_answers(&f).1);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     // ---- the per app answers in Settings (ph.appAnswers, M11 area 5) ----

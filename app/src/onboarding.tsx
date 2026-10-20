@@ -10,7 +10,7 @@ import { invoke } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
 import { SWITCHED, type SwitchedId } from "./groups.ts";
-import { FIRST_PRACTICE, costWords, nodeMissing, practiceOf, timeWords } from "./practice.ts";
+import { FIRST_PRACTICE, costWords, needsMacCheck, nodeMissing, practiceOf, timeWords } from "./practice.ts";
 
 // startPractice: copy a practice and open it (the first run ends there); pickPractice: end the first run on the Learn
 // tab's list of practices.
@@ -43,7 +43,14 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
     void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
   };
   // The Mac check: at the practice (it waits only when Node is missing) and with the permissions.
-  useEffect(() => { if (step === "permissions" || (step === "practice" && !doctor)) void send(checkMac()); }, [step]);
+  useEffect(() => { if (step === "permissions" || (step === "practice" && needsMacCheck(doctor))) void send(checkMac()); }, [step]);
+  // Node was installed while Home stayed open: coming back to Companion checks again, only while Node is flagged missing.
+  useEffect(() => {
+    if (step !== "practice" || !nodeMissing(doctor)) return;
+    const again = () => void send(checkMac());
+    window.addEventListener("focus", again);
+    return () => window.removeEventListener("focus", again);
+  }, [step, doctor]);
   const first = practiceOf(FIRST_PRACTICE)!, noNode = nodeMissing(doctor);
   // After Continue, Back or Skip (the person's own press; nothing else changes the step) the keyboard goes to the new step's
   // heading, so VoiceOver reads where they are. By the rule a question follows: Home has the keyboard, nobody is typing.
