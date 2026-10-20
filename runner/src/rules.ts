@@ -2,11 +2,12 @@
 // A rule can only make things stricter than Companion's own safety rules, never looser.
 // The agent can never change the rules file.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveLinks, type ToolCall, type Verdict } from "./safety.ts";
 import { commandsOf, redirectTargets } from "./shell.ts";
 import { ruleOf, type RuleKind } from "../../protocol/settings.ts";
+import { readCompanionFile } from "./companionfile.ts";
 
 export const RULES_FILE = ".companion/rules.txt";
 export type { RuleKind };
@@ -27,10 +28,13 @@ export function parseRules(text: string): { rules: Rule[]; problems: string[] } 
 
 export type LoadedRules = { rules: Rule[]; problems: string[]; broken?: boolean };
 // A rules file that exists but cannot be read is never treated as "no rules": the person wanted some, so risky things ask instead.
+// It is read the one way the shell reads it (companionfile.ts, houserules.rs): never through a link, a plain file of at most
+// 64 KB, text only. Anything else (a link, a pipe, a huge file) counts as a file that could not be read.
 export function loadRules(project: string): LoadedRules {
-  const f = join(project, RULES_FILE);
-  if (!existsSync(f)) return { rules: [], problems: [] };
-  try { return parseRules(readFileSync(f, "utf8")); } catch { return { rules: [], problems: ["Your house rules file could not be read, so I will ask before anything that changes your project."], broken: true }; }
+  const r = readCompanionFile(project, "rules.txt");
+  if (r.state === "none") return { rules: [], problems: [] };
+  if (r.state === "ok") return parseRules(r.text);
+  return { rules: [], problems: ["Your house rules file could not be read, so I will ask before anything that changes your project."], broken: true };
 }
 
 // ---- matching ----

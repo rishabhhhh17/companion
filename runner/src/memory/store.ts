@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { screenLine } from "./filter.ts";
+import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
 import { EXPLAIN_MODES, type ExplainMode } from "../../../protocol/index.ts";
 
 export type Scope = "project" | "profile";
@@ -35,9 +36,18 @@ export class MemoryStore {
   private read(scope: Scope): { raw: Raw[]; problem?: string } {
     if (scope === "project" && !this.o.project) return { raw: [] };   // no project given: only the profile exists
     const f = this.file(scope);
-    if (!existsSync(f)) return { raw: [] };
     let text: string;
-    try { text = readFileSync(f, "utf8"); } catch (e) { return { raw: [], problem: `The memory file could not be read (${(e as NodeJS.ErrnoException).code ?? "error"}), so it was left alone.` }; }
+    if (scope === "project") {
+      // The project's file is in the project, which may have come from a link on the internet: read safely
+      // (companionfile.ts), never through a link, at most 1 MB. One refused is never read, never sent and never written over.
+      const r = readCompanionFile(this.o.project, "project.md", 1024 * 1024);
+      if (r.state === "none") return { raw: [] };
+      if (r.state === "unreadable") return { raw: [], problem: "The project's memory file could not be read here (it is a link, not a plain file, or too large), so it was left alone." };
+      text = r.text;
+    } else {
+      if (!existsSync(f)) return { raw: [] };
+      try { text = readFileSync(f, "utf8"); } catch (e) { return { raw: [], problem: `The memory file could not be read (${(e as NodeJS.ErrnoException).code ?? "error"}), so it was left alone.` }; }
+    }
     const raw: Raw[] = text.split("\n").map((line): Raw => {
       const m = LINE.exec(line);
       if (m) return { kind: "entry", entry: { id: m[4] ?? idFor(m[1]), text: m[1], source: m[2], date: m[3] }, hand: false };
@@ -51,6 +61,7 @@ export class MemoryStore {
 
   private write(scope: Scope, raw: Raw[]) {
     const f = this.file(scope);
+    if (scope === "project" && !companionDirUsable(this.o.project)) throw new Error("The project's .companion folder is a link, so nothing was written there.");
     const body = raw.map((r) => (r.kind === "other" ? r.text : r.hand ? `- ${r.entry.text}` : `- ${r.entry.text} — ${r.entry.source}, ${r.entry.date} {${r.entry.id}}`)).join("\n");
     const hasHead = raw.some((r) => r.kind === "other" && r.text.startsWith("# "));
     const out = (hasHead ? body : HEAD[scope] + "\n" + body).replace(/\n*$/, "\n");
@@ -135,6 +146,7 @@ export class MemoryStore {
   }
 
   eraseAll(scope: Scope): Plain {
+    if (scope === "project" && this.o.project && !companionDirUsable(this.o.project)) return { ok: false, reason: "The project's .companion folder is a link, so nothing was erased there." };
     try {
       rmSync(this.file(scope), { force: true });
       const p = this.prefs(), k = this.key(scope);

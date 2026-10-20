@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { runCommand, shq, type RunResult } from "../proof/exec.ts";
 import { minimalEnv } from "../env.ts";
+import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
 import { clip, redact } from "../redact.ts";
 
 export type Ok<T = object> = { ok: true } & T;
@@ -165,10 +166,14 @@ export class VercelCli implements Deployer, DeployLogReader {
 export type ShipReceipt = { at: string; action: "preview" | "live" | "rollback"; snapshot: string; url?: string; productionUrl?: string; gates: { id: string; status: string }[]; proof: string; unconfirmed?: true };
 const FILE = ".companion/ships.json";
 
+// Read and written safely (companionfile.ts): never through a link.
 export function readShips(project: string): ShipReceipt[] {
-  try { const j = JSON.parse(readFileSync(join(project, FILE), "utf8")); return Array.isArray(j) ? j : []; } catch { return []; }
+  const r = readCompanionFile(project, "ships.json", 1024 * 1024);
+  if (r.state !== "ok") return [];
+  try { const j = JSON.parse(r.text); return Array.isArray(j) ? j : []; } catch { return []; }
 }
 export function addShipReceipt(project: string, r: ShipReceipt) {
+  if (!companionDirUsable(project)) throw new Error("The project's .companion folder is a link, so the record was not written.");
   const f = join(project, FILE);
   mkdirSync(dirname(f), { recursive: true });
   const tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;

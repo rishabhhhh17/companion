@@ -34,6 +34,7 @@ import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLog
 import { readDeployFailure } from "./ship/buildlog.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
+import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
@@ -1153,6 +1154,8 @@ export class AgentRunner {
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
       if (cmd.offTheRecord) { this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes } as never); this.state(cmd.agent, "done"); return; }
+      // Never written through a link: a .companion folder that is one gets the answer on the card only.
+      if (!companionDirUsable(cmd.project)) { this.emit({ type: "research.done", agent: cmd.agent, title: r.title, answer: r.answer, notes: r.notes } as never); this.fail("The project's .companion folder is a link, so the notes were not filed. The answer is on the card.", cmd.agent); this.state(cmd.agent, "done"); return; }
       const dir = join(cmd.project, ".companion", "research");
       mkdirSync(dir, { recursive: true });
       const when = this.now();
