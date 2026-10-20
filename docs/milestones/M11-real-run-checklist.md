@@ -93,6 +93,27 @@ again, Undo), and the pages follow the same events (`app/src/practice.test.ts`).
 10. VoiceOver and the keyboard alone through the list and the panel, including each are you sure step.
 11. Record each answer in the readiness table in `docs/status/`.
 
+## Everyday apps (20 Oct 2026): what needs a real key, and what needs a person
+
+Built and tested with stand ins only: the tutor for everyday apps (`showme.everydayTutor`), short spoken steps (`talk.shortSteps`), the aim eval's everyday set and five everyday lessons kept as test cases. Nothing here has been asked of real Claude or tried in the built app.
+
+**With the key (costs about $0.69 on Sonnet 5.5, see `evals/README.md`):** `cd runner && bun run scripts/eval-aim.ts --set everyday --spend`. Note the snapped hit rate beside the hard set's. Run it a second time with `--tutor off` (the same asks without the tutor's words) to see whether they help or hurt pointing; if they hurt, say so before the setting's usual value is ever changed.
+
+**In the hands on session (no cost beyond each Show me press):** turn on Teach everyday apps in their own words and Speak to me, then Say steps short, one at a time. In each app below, press Show me how with the question given, then ask an anywhere mode goal of a few steps. For each, write down: did the ring land on the right control (solid or soft), was the caption a plain step in the app's own words, did any answer mention projects, code or deploying (it must not), was each spoken step short and said when its ring landed, and did Did that work? come at the right time. Then turn the tutor off and ask the first question again, to compare.
+
+| App | Show me how | Anywhere mode goal |
+|---|---|---|
+| Mail | "How do I make a rule for emails from one sender?" | Make a rule that moves a newsletter into its own mailbox |
+| Finder | "How do I see my files as a list?" | Rename three files at once with a number |
+| System Settings | "How do I make everything dark?" | Change how long before the screen turns off |
+| Numbers or Excel | "How do I make a chart from these numbers?" | Make a column chart and give it a title |
+| Google Docs (in a browser) | "How do I share this with someone?" | Share the document so a friend can comment (also checks the browser rule: an everyday web page gets the tutor) |
+| Keynote | "How do I add a new slide?" | Make the title fly in on the first slide |
+| Figma | "How do I draw a box?" | Export one frame as a picture |
+| Photoshop | "How do I cut off the edges of this photo?" | Make the photo brighter with an adjustment layer |
+
+Also check, once: in Cursor or Terminal the answer is the usual one (no tutor); with Hide from screen sharing on nothing changes; and the light is on before each look.
+
 ## Known gaps: unproven, and no script covers them yet
 
 | What | Where it is marked | Next step |
