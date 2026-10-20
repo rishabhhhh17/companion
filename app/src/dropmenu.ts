@@ -154,3 +154,6 @@ export const refusedLine = (code: string): string => (S.drop.refused as Record<s
 
 /** What the menu is about: the file's name, or how many files. */
 export const namesLine = (m: Menu): string => (m.names.length === 1 ? m.names[0] : S.drop.files(m.names.length));
+
+/** A true word of warning for a kind of file, said before an action is chosen: what the Mac's own tools leave out. */
+export const kindNote = (kind: Kind | null): string | null => (kind === "document" ? S.drop.noPictures : kind === "image" ? S.drop.imageNote : null);

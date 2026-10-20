@@ -4,7 +4,7 @@
 // sends the menu's number and the chosen action, and the shell does the rest (convert.rs).
 import { useEffect, useReducer, useRef, useState } from "react";
 import { invoke, listen } from "./tauri.ts";
-import { EMPTY, actionWords, clearsSaid, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, actionWords, clearsSaid, dropReduce, jobFrom, jobLine, keyMove, kindNote, madeOf, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 type Dispatch = (a: Parameters<typeof dropReduce>[1]) => void;
@@ -135,6 +135,7 @@ export function DropList({ drop }: { drop: Drop }) {
     <section className="panel drop-list" aria-label={S.drop.menuLabel(namesLine(m))}>
       <div className="row between"><b>{S.drop.title}</b><span className="muted">{namesLine(m)}</span></div>
       <div className="muted">{S.drop.local}</div>
+      {kindNote(m.kind) && !m.refused && <div className="muted">{kindNote(m.kind)}</div>}
       {m.refused && <><div className="line" role="status">{refusedLine(m.refused)}</div><div className="row"><button className="btn" type="button" onClick={() => close(s, d)}>{S.drop.close}</button></div></>}
       {!m.refused && !s.job && !s.trim && (
         <div className="row" role="menu" aria-label={S.drop.menuLabel(namesLine(m))} aria-describedby="drop-keys" onKeyDown={(e) => onKey(e, drop)}>

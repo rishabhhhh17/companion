@@ -59,13 +59,18 @@ export function putBack<A>(sent: Sent<A>, now: { text: string; attached: A[] }):
  *  list" or "stopwatch" are still work. */
 export type HeardKind = "work" | "short" | "holdOff" | "screenQuestion" | "otherLanguage";
 const HOLD_OFF = ["wait", "hold on", "hang on", "one second", "one sec", "a second", "a sec", "just a second", "just a sec", "one moment", "just a moment", "a moment",
-  "a minute", "give me a second", "give me a sec", "give me a minute", "give me a moment", "not yet", "never mind", "nevermind", "cancel", "cancel that", "stop", "stop that", "forget it", "no wait"];
+  "a minute", "give me a second", "give me a sec", "give me a minute", "give me a moment", "not yet", "never mind", "nevermind", "cancel", "cancel that", "stop", "stop that", "forget it", "no wait",
+  // Taking it back: said first, or as a short clause of its own anywhere in the words.
+  "hold up", "hold it", "pause", "don't", "do not", "no don't", "i changed my mind", "changed my mind", "scratch that", "ignore that", "forget that",
+  "not now", "let me think", "let's not", "lets not", "let us not"];
+/** Sounds and little words that start a clause without changing it ("Hmm, wait", "Oh wait", "No, don't"). */
+const FILLERS = new Set(["oh", "hmm", "hm", "um", "uh", "er", "ah", "so", "okay", "ok", "well", "actually", "no", "yeah", "sorry"]);
 const SCREEN_QUESTION = /^(where (is|are|do|does|can|should)|how (do|can|would) i|what (is|are|does) (this|that|these|those|the)\b|what's (this|that)|which (button|menu|tab|link|one)|show me|can you show me|could you show me)\b/;
-const words = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, " ").split(/\s+/).filter(Boolean);
+const words = (t: string) => t.toLowerCase().replace(/[\u2019\u2018]/g, "'").replace(/[^\p{L}\p{N}' ]+/gu, " ").split(/\s+/).filter(Boolean);
 const startsWith = (w: string[], p: string[]) => p.length <= w.length && p.every((x, i) => w[i] === x);
 const endsWith = (w: string[], p: string[]) => p.length <= w.length && p.every((x, i) => w[w.length - p.length + i] === x);
 /** Each sentence or clause on its own, so "Make the button blue. No wait." ends with a hold off. */
-const clauses = (t: string) => t.split(/[.,;:!?]+/).map(words).filter((c) => c.length > 0);
+const clauses = (t: string) => t.split(/[.,;:!?]+/).map(words).map((c) => { let i = 0; while (i < c.length - 0 && FILLERS.has(c[i])) i++; return c.slice(i); }).filter((c) => c.length > 0);
 export function heardKind(text: string, language = "auto"): HeardKind {
   const all = words(String(text ?? ""));
   if (language !== "auto" && language !== "en") return all.length ? "otherLanguage" : "short";
@@ -73,7 +78,8 @@ export function heardKind(text: string, language = "auto"): HeardKind {
   const parts = clauses(String(text));
   const offs = HOLD_OFF.map((p) => p.split(" "));
   const first = parts[0] ?? all, last = parts[parts.length - 1] ?? all;
-  if (offs.some((p) => startsWith(first, p) || endsWith(last, p) || (last.length <= 3 && startsWith(last, p)))) return "holdOff";
+  // The first words, the last words, or any short clause of its own ("Make it blue, wait, no, make it green").
+  if (offs.some((p) => startsWith(first, p) || endsWith(last, p) || parts.some((c) => c.length <= 3 && startsWith(c, p)))) return "holdOff";
   if (SCREEN_QUESTION.test(all.join(" "))) return "screenQuestion";
   return all.length >= 3 ? "work" : "short";
 }

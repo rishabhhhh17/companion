@@ -146,6 +146,19 @@ describe("spoken words that send themselves", () => {
       expect(sendsItself(t), t).toBe(false);
     }
   });
+  test("a hold off in the middle, after a filler word, or a take back, never sends itself", () => {
+    for (const t of ["Hmm, wait, let me think about that.", "Oh wait, I forgot something", "um wait a second let me check", "Make the button blue, wait, no, make it green.",
+      "No, don't do that.", "Actually let's not do that", "Don't touch anything", "I changed my mind", "Hold up, make it blue", "Add a footer, scratch that, add a header",
+      "Make it red, ignore that", "Not now, make it blue", "Let me think, make it blue", "Pause, make the title bigger", "Do not change the colours", "Oh, don\u2019t do that"]) {
+      expect(heardKind(t), t).toBe("holdOff");
+      expect(sendsItself(t), t).toBe(false);
+    }
+  });
+  test("a long request with a clause that only starts with one of those words still sends itself", () => {
+    for (const t of ["Add a loading spinner while we wait for the server to answer", "make the page pause between slides for three seconds", "Add a stop button to the player page"]) {
+      expect(heardKind(t), t).toBe("work");
+    }
+  });
   test("a word that only looks like one of them is not a hold off", () => {
     for (const t of ["Add a waiting list page", "make the stopwatch start at zero", "cancellation emails go to the wrong person"]) expect(heardKind(t), t).toBe("work");
   });
@@ -167,6 +180,7 @@ describe("spoken words that send themselves", () => {
     const { QUESTIONS } = await import("./onboarding.ts");
     const { S } = await import("./strings.ts");
     const q = QUESTIONS.find((x) => x.key === "autoSend")!;
+    expect(S.set["talk.autoSend"].help).toMatch(/changed my mind|take back|don't/i);
     for (const t of [q.yesEffect, S.set["talk.autoSend"].help, S.voiceAutoSend]) {
       expect(t, t).toMatch(/wait|stop/i);
       expect(/[–—]/.test(t), t).toBe(false);

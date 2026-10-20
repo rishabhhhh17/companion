@@ -1,7 +1,7 @@
 // F19, drop a file on the companion: the menu's state, its keys, its ring and its words. The shell decides what a file
 // may get and runs the tools (convert.rs); this is only what the page shows and how a person moves through it.
 import { describe, expect, test } from "bun:test";
-import { EMPTY, clearsSaid, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, parseTime, refusedLine, ringSpots, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, clearsSaid, kindNote, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, parseTime, refusedLine, ringSpots, trimFrom, type DropState } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 const menu = (over: Record<string, unknown> = {}) => ({ id: 7, names: ["photo.png"], kind: "image", actions: ["toJpeg", "toHeic", "resize"], refused: null, at: "dock", ...over });
@@ -205,4 +205,12 @@ test("a line left by a refused second drop is cleared when the job ends, not whi
   expect(clearsSaid(jobFrom({ id: 1, phase: "running", done: 0, of: 2, percent: null }))).toBe(false);
   expect(clearsSaid(jobFrom({ id: 1, phase: "done", made: [] }))).toBe(true);
   expect(clearsSaid(jobFrom({ id: 1, phase: "stopped", made: [] }))).toBe(true);
+});
+
+test("the menu says what a conversion leaves out before it is chosen", () => {
+  expect(kindNote("document")).toBe(S.drop.noPictures);
+  expect(S.drop.noPictures).toMatch(/pictures/i);
+  expect(kindNote("image")).toBe(S.drop.imageNote);
+  expect(kindNote("pdf")).toBeNull();
+  expect(kindNote(null)).toBeNull();
 });
