@@ -8,6 +8,7 @@ import { readyVersion } from "./updates.ts";
 import { visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
+import { useDrop } from "./dropRing.tsx";
 import "./style.css";
 
 // The island in the notch (F18): Companion's home base, quiet until something needs the person. The app decides its size
@@ -42,9 +43,11 @@ function Island() {
   const line = islandLine(m, { update });
   const state = visualState(m);
   const waiting = m.approvals.length;
+  // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
+  const over = useDrop().s.hover;
   const pill = <span className="pillrow" aria-hidden="true"><span className="mark" data-state={state} />{islandWord(m)}</span>;
   return (
-    <main className={`island ${shape.kind}`} data-mode={shape.mode}>
+    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-drop={over ? "over" : undefined}>
       <button className="island-hit" type="button" aria-label={`${S.islandOpen}. ${line}`} onClick={() => void invoke("island_click")}>
         {shape.kind === "notch" && shape.mode === "alert" && <span className="lip" aria-hidden="true"><span className="mark" data-state={state} />{waiting > 0 ? waiting : ""}</span>}
         {shape.kind === "pill" && shape.mode !== "peek" && pill}

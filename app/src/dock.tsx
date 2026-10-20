@@ -9,6 +9,7 @@ import { roamFrom, type Roam } from "./roam.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
 import { startSettings, useSetting } from "./settingsStore.ts";
+import { DropRing, useDrop } from "./dropRing.tsx";
 import "./style.css";
 
 function Dock() {
@@ -42,6 +43,10 @@ function Dock() {
   }, []);
   // Coming to what it is about (F18 item 2): the app moves the character and says which named state it is in (surface,
   // travel, settle, visiting, return, home) and which way to face, so the founder's art can follow. The dot only hints.
+  // F19: a file dragged over this window lights the character (no motion with reduced motion, style.css); a drop opens the
+  // ring of what can be done with it around the character.
+  const drop = useDrop();
+  const dropMark = drop.s.hover ? "over" : drop.s.menu?.at === "dock" ? "menu" : undefined;
   const [roam, setRoam] = useState<Roam>({ phase: "home", toward: null });
   useEffect(() => {
     const off = listen("roam", (e) => setRoam(roamFrom(e.payload)));
@@ -71,13 +76,15 @@ function Dock() {
   return (
     <main className="dock">
       <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-react={react?.r}
-        data-roam={roam.phase} data-toward={roam.toward ?? undefined}
+        data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
       <div className="muted" role="status" aria-live="polite">{label}</div>
+      {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
+      <DropRing drop={drop} />
     </main>
   );
 }

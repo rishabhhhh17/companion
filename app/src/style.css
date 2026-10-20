@@ -150,3 +150,25 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .mark[data-state="working"], .mark[data-state="thinking"], .mark[data-state="checking"] { background: #f2f2f2; }
 .mark[data-state="error"] { background: #ff7a6e; }
 @media (forced-colors: active) { .island-hit { forced-color-adjust: none; border: 1px solid #fff; } }
+
+/* F19, drop a file on the companion: the character lights up while a file is over its window, and a ring of round
+   choices opens around it on a drop. With reduced motion (the Mac's, or Companion's own Less motion) it lights without
+   growing. The island lights while a file is over it. */
+.dock { position: relative; }
+.character[data-drop="over"] { transform: scale(1.12); transition: transform .15s ease-out; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent); }
+.character[data-drop="menu"] { transform: scale(.7); transition: transform .15s ease-out; }
+@media (prefers-reduced-motion: reduce) { .character[data-drop] { transform: none; transition: none; } }
+:root[data-less-motion] .character[data-drop] { transform: none; transition: none; }
+.drop-ring { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.drop-item { position: absolute; width: calc(38rem / 14); min-height: calc(38rem / 14); border-radius: 50%; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); font-weight: 600; font-size: calc(10rem / 14); padding: 0; cursor: pointer; pointer-events: auto; }
+.drop-item:hover, .drop-item:focus-visible { background: var(--accent); color: #000; }
+.drop-close { font-size: calc(16rem / 14); }
+.drop-over-character { position: absolute; inset: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: var(--bg); border-radius: 12px; text-align: center; }
+.drop-over-character .btn { padding: 2px 8px; font-size: calc(11rem / 14); }
+.drop-over-character .line { font-size: calc(11rem / 14); }
+.drop-outcome { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.drop-progress { width: 100%; }
+.drop-trim { display: flex; flex-direction: column; gap: 6px; }
+.drop-trim input { width: 6em; font: inherit; }
+.island[data-drop="over"] .island-hit { box-shadow: inset 0 0 0 2px var(--accent); }
+@media (forced-colors: active) { .drop-item { forced-color-adjust: none; border: 2px solid CanvasText; } }

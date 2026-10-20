@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sections": ["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "sharing", "display", "updates", "numbers"],
+  "sections": ["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
   "settings": [
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
 
@@ -100,6 +100,15 @@
     { "key": "ph.handBack", "section": "otherApps", "kind": "choice", "default": "paste", "options": ["paste", "copy"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "ph.handBack" },
     { "key": "ph.appAnswers", "section": "otherApps", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "promptHelpApps", "live": true, "protective": true, "floor": "ph.appAnswers" },
     { "key": "pointat.editor", "section": "otherApps", "kind": "choice", "default": "editorInFront", "options": ["editorInFront", "cursor", "vscode", "windsurf", "macDefault"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+
+    { "key": "drop.on", "section": "files", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "drop.local" },
+    { "key": "drop.imageFormat", "section": "files", "kind": "choice", "default": "png", "options": ["png", "jpeg", "heic", "tiff"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "drop.docFormat", "section": "files", "kind": "choice", "default": "pdf", "options": ["pdf", "txt", "docx", "rtf", "html"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "drop.audioFormat", "section": "files", "kind": "choice", "default": "m4a", "options": ["m4a", "wav", "aiff"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "drop.videoFormat", "section": "files", "kind": "choice", "default": "mp4", "options": ["mp4", "mov"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "drop.resizeTo", "section": "files", "kind": "choice", "default": "1600", "options": ["1024", "1600", "2400"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "drop.quality", "section": "files", "kind": "choice", "default": "medium", "options": ["high", "medium", "small"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "drop.saveTo", "section": "files", "kind": "choice", "default": "nextTo", "options": ["nextTo", "downloads", "desktop"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "drop.never" },
 
     { "key": "sharing.hide", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },

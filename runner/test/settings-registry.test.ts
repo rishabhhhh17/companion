@@ -23,7 +23,7 @@ describe("the shipped list of settings", () => {
   });
   test("sections are in page order and every setting names one of them", () => {
     expect(REGISTRY.sections[0]).toBe("keys");
-    expect(REGISTRY.sections).toEqual(["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "sharing", "display", "updates", "numbers"]);
+    expect(REGISTRY.sections).toEqual(["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
     for (const d of REGISTRY.settings) expect(REGISTRY.sections).toContain(d.section);
   });
   test("every setting the core registers is there, with today's behaviour as its usual value", () => {
@@ -50,6 +50,9 @@ describe("the shipped list of settings", () => {
       "point.fixWith": "rescue",
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
       "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
+      // F19, drop a file on the companion: on, since the founder asked for it; results next to the original.
+      "drop.on": true, "drop.imageFormat": "png", "drop.docFormat": "pdf", "drop.audioFormat": "m4a", "drop.videoFormat": "mp4",
+      "drop.resizeTo": "1600", "drop.quality": "medium", "drop.saveTo": "nextTo",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
