@@ -18,6 +18,8 @@
 //     network call goes only to the Messages API, is checked against models.ts before it leaves, and is metered.
 //   --real   the older opt in: open eight public websites instead (network; their asks are made from each page)
 //   --tutor off   ask the everyday set without the tutor's words, to compare (on by default)
+//   --browser on  ask the hard set (builder dashboards) as pages in a web browser with the tutor on (the browser rule), to
+//                 compare its hard rate with a run without it before anyone relies on the rule (off by default)
 // A refusal or a spending stop ends the run and nothing is scored (it is never "no answer"); a lane error is counted apart
 // from the misses. The command line, the harness and the scoring of one ask come from evals/show-me-how/aim.ts, where they
 // are tested.
@@ -33,8 +35,8 @@ import type { Element } from "../../evals/show-me-how/score.ts";
 
 let aim: AimArgs;
 try { aim = parseAimArgs(process.argv.slice(2), process.env); } catch (e) { explainFailure(e); }
-const { args, count: want, which, real, lane, tutor } = aim;
-if (args.help) { console.log(`bun run scripts/eval-aim.ts [--set basic|hard|everyday|all] [--count n] [options]${COMMON_HELP}\n  --lane computer_use, --real, --tutor off (the everyday set without the tutor's words, to compare)`); process.exit(0); }
+const { args, count: want, which, real, lane } = aim;
+if (args.help) { console.log(`bun run scripts/eval-aim.ts [--set basic|hard|everyday|all] [--count n] [options]${COMMON_HELP}\n  --lane computer_use, --real, --tutor off (the everyday set without the tutor's words, to compare), --browser on (the hard set as browser pages with the tutor on, to compare)`); process.exit(0); }
 // Refused before any page is rendered when spending is asked for but cannot happen (no key in the Keychain item).
 const harness: EvalHarness | undefined = await aimHarness(aim).catch(explainFailure);
 /** Ends the script before the run, removing the harness's throwaway folder first. */
@@ -116,12 +118,12 @@ try {
     models: { vision: args.models.vision, lane, ...(lane === "computer_use" ? { aim: args.models.aim } : {}) },
     // One ask over its cap means the estimates are off: the run ends there rather than spending on.
     endRunOnCaseStop: true,
-    run: (a, ctx) => runAimAsk(a, ctx, { model: args.models.vision, lane, aimModel: args.models.aim, tutor }),
+    run: (a, ctx) => runAimAsk(a, ctx, { model: args.models.vision, lane, aimModel: args.models.aim, tutor: aim.tutor, browser: aim.browser }),
   });
   if (results.mode === "dry") {
     console.log(`\n${asks.length} asks rendered${leftOut ? `; ${leftOut} left out because their target was not on the page` : ", every target found on its page"} (basic ${asks.filter((a) => a.set === "basic").length}, hard ${asks.filter((a) => a.set === "hard").length}, everyday ${asks.filter((a) => a.set === "everyday").length}${real ? `, public sites ${asks.filter((a) => a.set === "real").length}` : ""}). Nothing was asked of Claude.`);
-    console.log(aimEstimate(asks, lane === "computer_use" ? args.models.aim : args.models.vision));
+    console.log(aimEstimate(asks, lane === "computer_use" ? args.models.aim : args.models.vision, { browser: aim.browser }));
   }
-  else for (const line of aimReport(results, real)) console.log(line);
+  else for (const line of aimReport(results, real, aim.browser)) console.log(line);
   if (!isClean(results)) process.exitCode = 1;
 } catch (e) { explainFailure(e); }

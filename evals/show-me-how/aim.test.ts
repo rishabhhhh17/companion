@@ -188,3 +188,53 @@ describe("the everyday set in the aim eval", () => {
     expect(src).toContain("aimEstimate(");
   });
 });
+
+// The browser rule (showme.everydayTutor on, a page in a web browser) is decided by the model from the page. The hard set is
+// builder dashboards, the pages the shipped lessons run in, so asking it under the browser rule shows whether the rule
+// hurts pointing there. Compare its hard rate with a run without --browser before anyone relies on the rule.
+describe("the hard set asked as pages in a web browser with the tutor on", () => {
+  const save = { t: "Save", id: "save", x: 100, y: 100, w: 60, h: 30 };
+  let n = 0;
+  const ask = (set: AimAsk["set"], app?: string): AimAsk => ({ id: `${set}:b${++n}`, page: "p", png: "AAAA", els: [save], target: save, targets: [save], question: "Where do I save?", set, ...(app ? { app } : {}) });
+  const seen: any[] = [];
+  const h: EvalHarness = { name: "stub", agent: () => { throw new Error("unused"); }, reviewer: () => { throw new Error("unused"); }, ask: () => async () => ({ text: "", costUsd: 0 }), vision: () => ({ locate: async (r: any) => { seen.push(r); return { point: { x: 110, y: 110, targetText: "Save", confidence: 0.9, caption: "Click Save" }, costUsd: 0.01 }; } }) };
+  const run = (argv: string[], cases: AimAsk[]) => {
+    const aim = parseAimArgs(["--spend", ...argv, "--out", join(tmpdir(), `companion-test-aim-b-${process.pid}-${Math.random().toString(36).slice(2)}.json`)]);
+    return runSet({ set: "show-me-how", setDir: tmpdir(), cases, args: aim.args, models: {}, summarize: summarizeAim, log: () => {}, harness: h, endRunOnCaseStop: true,
+      run: (a, ctx) => runAimAsk(a, ctx, { model: aim.args.models.vision, lane: aim.lane, aimModel: aim.args.models.aim, tutor: aim.tutor, browser: aim.browser }) });
+  };
+  test("--browser on or off, off unless asked; anything else is refused", () => {
+    expect(parseAimArgs([]).browser).toBe(false);
+    expect(parseAimArgs(["--browser", "on"]).browser).toBe(true);
+    expect(parseAimArgs(["--browser=off"]).browser).toBe(false);
+    expect(() => parseAimArgs(["--browser", "maybe"])).toThrow(/--browser is on or off/);
+  });
+  test("on: each hard ask is asked with the browser rule's words; the basic and everyday sets are asked as before", async () => {
+    seen.length = 0;
+    await run(["--browser", "on"], [ask("hard"), ask("basic"), ask("everyday", "com.apple.mail")]);
+    expect(seen[0].tutor).toEqual({ kind: "browser" });
+    expect(seen[1].tutor).toBeUndefined();
+    expect(seen[2].tutor).toEqual({ kind: "everyday", app: "Mail" });
+  });
+  test("off (the usual): the hard set has no tutor, so the two runs can be compared", async () => {
+    seen.length = 0;
+    await run([], [ask("hard")]);
+    expect(seen[0].tutor).toBeUndefined();
+  });
+  test("the report says the hard rate was taken under the browser rule, so it is never mistaken for the usual one", async () => {
+    const { results } = await run(["--browser", "on"], [ask("hard")]);
+    const out = aimReport(results, false, true).join("\n");
+    expect(out).toMatch(/hard \(as browser pages, tutor on\) 100%/);
+    expect(aimReport(results, false).join("\n")).not.toMatch(/browser pages/);
+  });
+  test("its estimate counts the browser rule's words on each hard ask", () => {
+    const asks = [ask("hard"), ask("hard")];
+    const tutor = PROFILES.find((r) => r.set === "show-me-how" && r.model === "claude-sonnet-5-5" && /everyday/.test(r.what))!;
+    expect(aimEstimate(asks, "claude-sonnet-5-5", { browser: true })).toContain(`$${(2 * estimateUsd("claude-sonnet-5-5", tutor.profile)).toFixed(2)}`);
+  });
+  test("the script passes the option through", () => {
+    const src = readFileSync(join(import.meta.dir, "..", "..", "runner", "scripts", "eval-aim.ts"), "utf8");
+    expect(src).toContain("browser: aim.browser");
+    expect(src).toContain("--browser on");
+  });
+});
