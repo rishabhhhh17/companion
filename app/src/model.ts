@@ -649,7 +649,7 @@ function reduceRest(m: Model, e: Ev): Model {
     // time they show or say them (keys.ts keysIn), so a change in Settings while a step is up shows at once.
     case "walk.step": return e.walk !== m.walkWant ? m : { ...m, walk: { stage: e.already === true ? "already" : "step", id: e.walk, lesson: String(e.lesson), title: String(e.title), index: Number(e.index), total: Number(e.total), variant: e.variant === "instead" ? "instead" : "main", say: String(e.say), find: String(e.find), ask: e.ask === true, log: Array.isArray(e.log) ? e.log.filter((x: any) => x && typeof x.say === "string").slice(0, 15).map((x: any) => ({ say: String(x.say), how: x.how === "skipped" ? "skipped" as const : "done" as const })) : [], ...(webLink(e.link) ? { link: String(e.link) } : {}), ...(Number.isInteger(e.passed) && (e.passed as number) > 0 ? { passed: e.passed as number } : {}),
       // The setting practice's lesson stays words only (free, no Claude) even if the practice is skipped meanwhile.
-      ...((m.walk?.id === e.walk && m.walk.wordsOnly) || (m.practice?.stage === "lesson" && m.practice.walk === e.walk) ? { wordsOnly: true } : {}) } };
+      ...((m.walk?.id === e.walk && m.walk?.wordsOnly) || (m.practice?.stage === "lesson" && m.practice.walk === e.walk) ? { wordsOnly: true } : {}) } };
     case "walk.ask": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "asking" } } : m;
     case "walk.help": return m.walk && m.walk.id === e.walk ? { ...m, walk: { ...m.walk, stage: "help", note: String(e.say ?? "") } } : m;
     // The project does not show this step's result yet: the step stays, with words on what is missing. Not a failure.
