@@ -1856,8 +1856,12 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
-    let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or("Check for updates first.")?;
-    u.download_and_install(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
+    // Only a copy is used: if the download fails (the Wi-Fi drops), the found update stays, so Install can be pressed again.
+    let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or("Check for updates first.")?;
+    let bytes = u.download(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
+    // A task may have started during a long download: the restart would cut it off, so it waits for another press.
+    if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
+    u.install(bytes).map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
     log("update_installed", json!({}));
     // `restart` goes round the normal exit path: end the engine (and what it runs) properly first, so nothing is left running.
     app.state::<runner::Runner>().shut_down();

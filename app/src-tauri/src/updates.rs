@@ -159,6 +159,16 @@ mod tests {
         assert_eq!(BUSY_WORDS, "Wait until the current task is finished, then install.", "the same words as the page (S.updatesBusy)");
     }
     #[test]
+    fn a_failed_download_keeps_the_update_so_install_can_be_pressed_again_and_a_task_started_meanwhile_is_not_cut_off() {
+        let main = include_str!("main.rs");
+        let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
+        assert!(!install.contains(".take()"), "the update is only cloned, so a failed download does not use it up");
+        let download = install.find(".download(").expect("a download on its own");
+        let again = install[download..].find("updates::running_now()").expect("asked again after the download") + download;
+        let put_in = install.find(".install(").expect("then installed");
+        assert!(download < again && again < put_in, "the busy check comes after the download and before the install");
+    }
+    #[test]
     fn the_shipped_file_parses_or_is_cleanly_empty() {
         let _ = parse_config(include_str!("../updater.json"));
         assert!(serde_json::from_str::<Config>(include_str!("../updater.json")).is_ok());
