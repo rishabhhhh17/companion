@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { askedByVoice, followVoiceShowMe, lineAnswers, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, VOICE_ASK_MS, type VoiceQuestion } from "./speech.ts";
-import { initial, type Model } from "./model.ts";
+import { initial, reduce, type Model } from "./model.ts";
 import { KEYS_START, setKeysNow, type Keys } from "./keys.ts";
 import { S } from "./strings.ts";
 
@@ -94,6 +94,15 @@ describe("answers said out loud for a question asked by voice (off by default, T
     // A rescue is started by its button, never by voice, so it is not an answer to say.
     expect(repliesIn(m({ rescue: { summary: "The site builds.", works: [], broken: "x", evidence: [] } } as never), "/p")).toEqual([]);
     expect(repliesIn(m({}), "/p")).toEqual([]);
+  });
+  // Found in the M11 audit (A65): an answer asked off the record has no file, so every such answer had the same key and only
+  // the first was ever said, though the next ones were asked by voice too.
+  test("each research answer has its own key, off the record too", () => {
+    const run = (events: Record<string, unknown>[]) => events.reduce<Model>((x, e) => reduce(x, e as never), initial());
+    const answer = (t: string) => ({ v: 1, id: "e", type: "research.done", agent: "builder-1", title: t, answer: `${t} answer.`, notes: [] });
+    const first = run([answer("Login")]), second = run([answer("Login"), answer("Payments")]);
+    const seen = new Set(repliesIn(first, "/p").map((r) => r.key));
+    expect(newReply(repliesIn(second, "/p"), seen)?.text).toBe("Payments answer.");
   });
   test("a new answer is found even when an older one is still on the card", () => {
     const research = { title: "Which host", answer: "Vercel.", notes: [], file: ".companion/research/r.md" };

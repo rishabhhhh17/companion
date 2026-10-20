@@ -69,8 +69,8 @@
 {"v":1,"id":"e76","type":"proof.result","agent":"builder-1","verdict":"passed_with_gaps","steps":[{"rung":"checks","label":"Building and checking the code","status":"passed","detail":"build passed.","ms":120},{"rung":"browser","label":"Opening it in a browser","status":"skipped","detail":"The hidden browser is not installed yet, so the page was not opened.","ms":0,"needs":"browser"}],"tries":1}
 {"v":1,"id":"e77","type":"problem.found","project":"p_9f2c","agent":"a1","verdict":"passed_with_gaps","needs":"browser"}
 {"v":1,"id":"e78","type":"ship.status","project":"p_9f2c","stage":"failed","detail":"The preview could not be checked: The hidden browser is not installed yet, so the page was not opened. It cannot go live until it has been checked.","previewUrl":"https://shop-abc.vercel.app","canGoLive":false,"needs":"browser"}
-{"v":1,"id":"e60","type":"spending.state","project":"p_9f2c","limitUsd":25,"spentUsd":0.42,"minUsd":1,"maxUsd":500}
-{"v":1,"id":"e61","type":"spending.state","project":"p_9f2c","limitUsd":10,"spentUsd":0,"minUsd":1,"maxUsd":500,"problem":"The daily limit must be between 1 and 500 dollars."}
+{"v":1,"id":"es2","type":"spending.state","project":"p_9f2c","limitUsd":25,"spentUsd":0.42,"minUsd":1,"maxUsd":500}
+{"v":1,"id":"es3","type":"spending.state","project":"p_9f2c","limitUsd":10,"spentUsd":0,"minUsd":1,"maxUsd":500,"problem":"The daily limit must be between 1 and 500 dollars."}
 {"v":1,"id":"e110","type":"bisect.progress","project":"p_9f2c","agent":"builder-1","run":1,"maxRuns":6,"what":"now"}
 {"v":1,"id":"e111","type":"bisect.progress","project":"p_9f2c","agent":"builder-1","run":2,"maxRuns":6,"what":"after","label":"Add a contact form that emails me"}
 {"v":1,"id":"e112","type":"bisect.result","project":"p_9f2c","agent":"builder-1","outcome":"found","runs":4,"maxRuns":6,"step":{"rung":"tests","label":"Running the tests"},"task":{"label":"Add a contact form that emails me","at":"2026-10-14T09:12:00.000Z","checkpoint":"cp_0031"},"changed":[{"file":"src/Contact.tsx","kind":"added"},{"file":"src/App.tsx","kind":"modified"}],"changedCount":2,"undo":"safe","diff":"--- src/App.tsx\n+import Contact from './Contact';"}

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { defOf } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
-import { addRule, afterPressShown, askRuleOn, factsFrom, installNote, picturesGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
+import { addRule, afterPressShown, askRuleOn, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import { problemWords, valueWords } from "./settingsRows.ts";
 import { _invokeForTests, _resetForTests, changeSetting } from "./settingsStore.ts";
 
@@ -164,6 +164,33 @@ describe("pictures to keep", () => {
     expect(picturesGoing(230, 100, 200)).toBe(0);   // raising it removes nothing
     expect(picturesGoing(undefined, 200, 50)).toBe(0);
     expect(S.chkPicturesGo(130, 100)).toContain("130");
+  });
+});
+
+// Found in the M11 audit (A76): the row's Reset, Reset this section and Reset all put Pictures to keep back to 200 with no
+// warning (and Reset all said pictures stay as they are), then the next picture deleted every older one past 200.
+describe("a reset that puts Pictures to keep back to usual says first how many pictures go", () => {
+  test("how many go: only when the reset includes it and lowers it below the pictures kept", () => {
+    expect(picturesResetGoing(["pictures.keep"], 500, 1000)).toBe(300);
+    expect(picturesResetGoing(["pictures.keep", "check.press"], 150, 1000)).toBe(0);   // fewer than 200 kept: none go
+    expect(picturesResetGoing(["check.press"], 500, 1000)).toBe(0);
+    expect(picturesResetGoing(["pictures.keep"], 500, 100)).toBe(0);   // back up to 200 removes nothing
+    expect(picturesResetGoing(["pictures.keep"], undefined, 1000)).toBe(0);
+  });
+  test("the words say it, and Reset all no longer says every picture stays", () => {
+    expect(S.setPicturesGo(300, 200)).toBe("Pictures to keep goes back to 200, so 300 of your oldest pictures will be deleted when the next picture is made.");
+    expect(S.setResetAllSure("x")).not.toMatch(/undo points, pictures,/);
+    expect(S.setResetAllSure("x")).toContain("Pictures stay up to the number Pictures to keep allows.");
+  });
+  test("each reset asks with that line: the row's own Reset, Reset this section and Reset all", () => {
+    const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    expect(src).toContain("const resetGo = d.key === \"pictures.keep\" ? picturesResetGoing([d.key], pictures, value) : 0;");
+    expect(src).toContain("onClick={resetGo > 0 ? () => setAskReset(true) : reset}");
+    expect(src).toContain("<div className=\"line\">{S.chkPicturesGo(resetGo, Number(usual))}</div>");
+    expect(src).toContain("const go = picturesResetGoing(changed, pictures, setting(\"pictures.keep\"));");
+    expect(src).toContain("{go > 0 && <div className=\"line\">{S.setPicturesGo(go, Number(defaultOf(\"pictures.keep\")))}</div>}");
+    expect(src).toContain("const goAll = picturesResetGoing(changedAll, inv?.receiptPictures, setting(\"pictures.keep\"));");
+    expect(src).toContain("{goAll > 0 && <div className=\"line\">{S.setPicturesGo(goAll, Number(defaultOf(\"pictures.keep\")))}</div>}");
   });
 });
 

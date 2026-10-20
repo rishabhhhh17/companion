@@ -20,7 +20,9 @@ export type AgentStart = Envelope & {
 // what failed). Either runs as a new checked task that carries on the last task's conversation. It names the project, so the
 // app holds it to the folder the person chose; the runner refuses it for any other project.
 export type AgentSend = Envelope & { type: "agent.send"; agent: string; project: string; text?: string; retry?: boolean };
-export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string };
+// release: the person put aside what the agent was waiting on them for (Cancel on a plan, Close on an answer). Only when
+// nothing runs for the agent, it rests again and a plan waiting for approval is dropped; it never stops anything.
+export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string; release?: boolean };
 export type AgentInterruptAll = Envelope & { type: "agent.interruptAll"; reason: string };
 export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" };
 export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string };
@@ -351,7 +353,7 @@ const COMMANDS: Record<string, Check[]> = {
   "drive.resume": [str("agent")],
   "loop.choose": [str("agent"), oneOf("choice", ["different", "stop"])],
   "agent.send": [str("agent"), str("project"), opt("retry", bool("retry")), (m) => (m.retry === true ? opt("text", (x) => (typeof x.text === "string" ? null : '"text" must be text'))(m) : str("text")(m))],
-  "agent.interrupt": [str("agent")],
+  "agent.interrupt": [str("agent"), opt("release", bool("release"))],
   "agent.interruptAll": [str("reason")],
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
   "checkpoint.restore": [str("project"), str("checkpoint")],

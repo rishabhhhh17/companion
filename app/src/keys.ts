@@ -67,6 +67,8 @@ export const keyHint = (job: Job, template: string, k: Keys = now, off?: string)
 
 /** The Prompt help result's line: its use keys only when the app could take them for this result (ph_ready answers;
  *  another app may have taken them since launch), else only Esc. */
+/** How long the shell holds a Prompt help result's keys (main.rs arm_now gives them back after a minute and a half). */
+export const PH_KEYS_MS = 90_000;
 export const acceptHint = (armed: boolean, k: Keys = now): string => (armed ? keyHint("accept", S.phHotkeys, k, S.phHotkeysOff) : S.phHotkeysOff);
 /** What ph_ready answers: the keys the app took for this result, or null when another app holds them all. The app tries
  *  again for each result (keymap.rs arm), so they can be keys the page did not know: keys another app held at launch, or

@@ -489,6 +489,17 @@ export class AgentRunner {
   private state(agent: string, state: string) { this.agentStates.set(agent, state); this.emit({ type: "agent.state", agent, state } as never); }
   // Each rung of a check as it runs. A rung skipped only for want of the hidden browser says so, so the card can offer it.
   private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never); }
+  /** Something runs for this agent: a task or a plan's step, a check, an answer the loop card waits for, a paused plan. */
+  private runsFor(agent: string): boolean {
+    return this.sessions.has(agent) || this.driving.has(agent) || this.choices.has(agent) || this.resumers.has(agent) || [...this.finding.values()].some((f) => f.agent === agent);
+  }
+  /** Nothing runs for the agent, and the person put aside what it waited on them for (a plan, a problem shown, a failed
+   *  check of their turn): a plan still waiting for approval is dropped, and an agent left on needs you rests again, so
+   *  every window hears it. Nothing else changes: a follow up on its last task, or a turn, is still there. */
+  private release(agent: string) {
+    this.plans.delete(agent);
+    if (this.agentStates.get(agent) === "needsYou") this.state(agent, "idle");
+  }
   private fail(reason: string, agent?: string) { this.emit({ type: "protocol.error", reason, ...(agent ? { agent } : {}) } as never); }
 
   async handle(cmd: Command): Promise<void> {
@@ -535,7 +546,15 @@ export class AgentRunner {
         this.fail("The agent is not paused.", cmd.agent); return;
       }
       case "loop.choose": if (!this.answerChoice(cmd.agent, cmd.choice)) this.fail("Nothing is waiting for an answer.", cmd.agent); return;
-      case "agent.interrupt": { for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.answerChoice(cmd.agent, "interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent); return; }
+      case "agent.interrupt": {
+        const running = this.runsFor(cmd.agent);
+        // Put aside, never stopped: only an agent with nothing running rests again.
+        if (cmd.release === true) { if (!running) this.release(cmd.agent); return; }
+        for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.answerChoice(cmd.agent, "interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent);
+        // Stop with nothing running (a plan waiting, a problem shown): it rests again, so Stop never does nothing.
+        if (!running) this.release(cmd.agent);
+        return;
+      }
       case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "spending.show": this.spendingState(cmd.project); return;
       case "spending.set": this.setDailyLimit(cmd); return;

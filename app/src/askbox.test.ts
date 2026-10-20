@@ -120,7 +120,7 @@ describe("a request the engine says no to is put back", () => {
     expect(card).toContain("sentOutcome(payload, AGENT)");
     // Never on disk: only the box's own draft rules decide what is kept, and a new folder forgets it.
     expect(card).not.toMatch(/localStorage\.setItem\([^)]*sent/i);
-    expect(card).toMatch(/useEffect\(\(\) => \{ clearAttached\(\); sent\.current = null; \}, \[project\]\);/);
+    expect(card).toMatch(/useEffect\(\(\) => \{ dropGen\.current \+= 1; clearAttached\(\); sent\.current = null; \}, \[project\]\);/);
   });
 });
 

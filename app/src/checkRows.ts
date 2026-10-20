@@ -89,3 +89,10 @@ export function picturesGoing(count: number | undefined, from: number, to: numbe
   if (typeof count !== "number" || to >= from) return 0;
   return Math.max(0, count - to);
 }
+/** A reset (the row's own, a section's or Reset all) that puts Pictures to keep back to its usual number: how many of the
+ *  oldest receipt pictures the next picture then deletes, so the confirm says it first, as lowering the number does.
+ *  0 when the reset does not include it or nothing goes. */
+export function picturesResetGoing(resetting: readonly string[], count: number | undefined, now: unknown): number {
+  if (!resetting.includes("pictures.keep") || typeof now !== "number") return 0;
+  return picturesGoing(count, now, Number(defOf("pictures.keep")?.default ?? 200));
+}

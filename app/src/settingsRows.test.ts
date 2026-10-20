@@ -174,7 +174,10 @@ describe("the rows for Home, the island and the character", () => {
     expect(rowModel(d("island.show"), false, true, "").floor).toBe("islandOff");
     expect(floorWords("islandOff")).toContain("Home opens beside the character");
     expect(rowModel(d("home.goToNeeds"), "markTab", "goToIt", "").floor).toBe("needsMarked");
-    expect(floorWords("needsMarked")).toContain("A question waiting for your answer always opens Now");
+    // Changed in the M11 audit (A82): it said a waiting question always opens Now, but while the person types in Home it
+    // only marks Now (home.ts onlyMarked), so the floor says that.
+    expect(floorWords("needsMarked")).toContain("A question a task waits on opens Now, unless you are typing in Home: then Now gets a dot instead, and VoiceOver says it.");
+    expect(floorWords("needsMarked")).not.toContain("always opens Now.");
     for (const t of Object.values(S.floors)) { expect(/[\u2013\u2014]/.test(t), t).toBe(false); expect(t.includes("  "), t).toBe(false); }
   });
   test("When something needs me says what really happens: no island means the mark is on the character, and words only with Speak to me", () => {

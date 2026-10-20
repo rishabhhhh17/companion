@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ATTACH, checkAttachments } from "../../runner/src/attach.ts";
-import { addFiles, addedLine, blocksDrop, carriesFiles, chipLabel, forRequest, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
+import { addFiles, addedLine, blocksDrop, carriesFiles, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
 
@@ -237,5 +237,32 @@ describe("Home takes files only from a drop or a paste the person makes", () => 
   });
   test("words from hold to talk are not sent by themselves while files are added: Start is pressed for them", () => {
     expect(card).toMatch(/else if \(autoSend && attachedNow\.current\.length === 0 &&/);
+  });
+});
+
+// Found in the M11 audit (A66): reading dropped files takes a moment, and the result was the list as it was before the drop
+// plus the new files. Files sent with Start in the meantime came back as chips (and went with the next request), a chip
+// removed meanwhile came back, and files dropped before a folder change showed in the new folder.
+describe("files that finish reading after the box changed", () => {
+  test("only the files this drop added join what the box holds now", async () => {
+    const before = (await addFiles([], [file("a.md", enc("one"))])).have;
+    const r = await addFiles(before, [file("b.md", enc("two")), file("c.md", enc("three"))]);
+    // Start sent a.md meanwhile, so the box is empty: b.md and c.md wait for the next Start, a.md does not come back.
+    expect(mergeAdded(before, r.have, []).map((a) => a.name)).toEqual(["b.md", "c.md"]);
+    // A chip removed meanwhile stays removed.
+    expect(mergeAdded(before, r.have, []).some((a) => a.name === "a.md")).toBe(false);
+    // Another drop that finished first keeps its files, and nothing is added twice.
+    const other = (await addFiles([], [file("d.md", enc("four")), file("b.md", enc("two"))])).have;
+    expect(mergeAdded(before, r.have, other).map((a) => a.name)).toEqual(["d.md", "b.md", "c.md"]);
+  });
+  test("the caps still hold when two drops finish together", async () => {
+    const many = (await addFiles([], Array.from({ length: ATTACH.maxFiles }, (_, i) => file(`f${i}.md`, enc(`text ${i}`))))).have;
+    const r = await addFiles([], [file("late.md", enc("late"))]);
+    expect(mergeAdded([], r.have, many)).toHaveLength(ATTACH.maxFiles);
+  });
+  test("Home merges a drop into the box as it is when the reading ends, and drops it after a folder change", () => {
+    expect(card).toContain("const gen = dropGen.current;");
+    expect(card).toContain("if (gen !== dropGen.current) return; const fresh = r.have.slice(before.length); const next = mergeAdded(before, r.have, attachedNow.current);");
+    expect(card).toMatch(/useEffect\(\(\) => \{ dropGen\.current \+= 1; clearAttached\(\); sent\.current = null; \}, \[project\]\);/);
   });
 });

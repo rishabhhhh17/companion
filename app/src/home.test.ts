@@ -6,6 +6,7 @@ import { initial, reduce, visualState, type Model } from "./model.ts";
 import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
+import { PH_KEYS_MS } from "./keys.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -443,12 +444,28 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(card).toMatch(/listen\("opened", [\s\S]*?setHomeOpen\(true\);/);
     expect(card).toMatch(/listen\("closed", \(\) => \{[^\n]*setHomeOpen\(false\);/);
     const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab, homeOpen);"), card.indexOf("const shipIt = "));
-    expect(fx).toContain('if (!phShown) { if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }');
+    expect(fx).toContain('if (!phShown) { setPhKeysUp(false); clearTimeout(phKeysTimer.current); if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }');
     expect(fx).toContain("if (!m.ph?.text || phArmedFor.current === m.ph.text) return;");
     expect(fx.indexOf("if (!phShown")).toBeLessThan(fx.indexOf('invoke("ph_ready"'));
     // The result is handed back with its own request, so the shell keeps it only for the read still waiting.
     expect(fx).toContain('void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" })');
     expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown]);");
+  });
+  // Found in the M11 audit (A38): the shell gives the keys back when Home closes (Esc, a click away) and after a minute and
+  // a half, without telling the page, so the result kept naming keys that did nothing (or reached the app in front).
+  test("the result names its keys only while the shell holds them, and asks for them again each time Home opens", () => {
+    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab, homeOpen);"), card.indexOf("const shipIt = "));
+    expect(fx).toContain("setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS);");
+    expect(card).toContain("{phKeysUp && <div className=\"line muted\">{acceptHint(phArmed, keys)}</div>}");
+    // Home closing stops it showing (homeOpen false), which puts the line away and gives the keys back; opening Home again
+    // shows it again, so the keys are asked for again (phArmedFor was cleared).
+    expect(fx).toContain("if (!phShown) { setPhKeysUp(false); clearTimeout(phKeysTimer.current); if (phArmedFor.current !== null) { phArmedFor.current = null;");
+    expect(card).toContain('const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false);');
+    // The page's minute and a half is the shell's own (main.rs arm_now).
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const arm = main.slice(main.indexOf("fn arm_now("), main.indexOf("fn ph_consent"));
+    expect(arm).toContain("Duration::from_secs(90)");
+    expect(PH_KEYS_MS).toBe(90_000);
   });
   test("with Only mark the tab, anything that needs the person shows the island's mark", () => {
     const m = run(walkStep());

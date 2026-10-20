@@ -209,6 +209,18 @@ describe("Claude out of reach in the lanes and the explainers", () => {
     expect(d.diagram?.reason).toBe(plainError("claude_stopped:authentication_failed (ask again): x"));
     expect(d.diagram?.reason).not.toMatch(/Invalid API key/);
   });
+  // Found in the M11 audit (A49): an older Show me request that failed after it was ended (Esc, closing Home, a newer
+  // question) was shown as a Prompt help error.
+  test("an old Show me request's error is never shown as Prompt help's, or on a newer Show me", () => {
+    const newer = { ...initial(), showme: { stage: "thinking", message: "", req: "sm_2" } } as Model;
+    const old = run([ev({ type: "assist.error", req: "sm_1", reason: "No clear target was found" })], newer);
+    expect(old.ph).toBeNull();
+    expect(old.showme?.stage).toBe("thinking");
+    expect(run([ev({ type: "assist.error", req: "sm_1", reason: "No clear target was found" })]).ph).toBeNull();
+    // Its own, or a picture of one of its screens, still says it.
+    expect(run([ev({ type: "assist.error", req: "sm_2", reason: "No clear target was found" })], newer).showme?.stage).toBe("error");
+    expect(run([ev({ type: "assist.error", req: "sm_2-s2", reason: "The screenshot was not usable" })], newer).showme).toMatchObject({ stage: "error", message: "The screenshot was not usable" });
+  });
   test("a reason that is not Claude's is shown as before", () => {
     const m = run([ev({ type: "app.prompt_help", stage: "thinking", req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]);
     expect(m.ph?.message).toBe("The improved version came out much longer than yours, so I left yours alone.");
