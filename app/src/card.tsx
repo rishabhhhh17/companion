@@ -801,6 +801,9 @@ function Card() {
     const offKey = listen("find-problem", () => {
       pressed();
       if (!projectRef.current) { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
+      // A check already running answers this press too. A second Find would only be refused, and its "cancelled" answer
+      // would end the running check's panel (and a practice's own checks) before the real answer came.
+      if (nowModel.current.point?.stage === "checking") { homeDispatch({ type: "pick", tab: "now" }); return; }
       dispatch({ type: "ui.findProblem" }); homeDispatch({ type: "pick", tab: "now" }); count("hero_press"); count("builder_use");
       void send(findProblem(projectRef.current));
     });

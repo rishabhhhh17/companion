@@ -210,6 +210,14 @@ describe("the checks after a lesson or a fix can always be left or run again (bu
   test("a refusal for the agent while the checks run (the key pressed again) does not end them", () => {
     for (const e of [s, t]) expect(run([ev({ type: "protocol.error", agent: "builder-1", reason: "That agent is already working. Wait for it to finish, or press Stop." })], proving(e)).practice?.stage, e.id).toBe("proving");
   });
+  test("the key pressed while the checks run sends no second Find, whose refusal would end them before their answer", () => {
+    // What a second Find would bring: the engine refuses it and answers "cancelled", which ends the checks still running.
+    expect(run([ev({ type: "problem.found", project: P(s), agent: "builder-1", verdict: "cancelled" })], proving(s)).practice?.stage).toBe("failed");
+    const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+    const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+    expect(key).toContain('if (nowModel.current.point?.stage === "checking") { homeDispatch({ type: "pick", tab: "now" }); return; }');
+    expect(key.indexOf('nowModel.current.point?.stage === "checking"')).toBeLessThan(key.indexOf("send(findProblem("));
+  });
   test("the person can stop the checks; then they can run them again", () => {
     const m = run([ev({ type: "ui.practiceStopProving" })], proving(s));
     expect(m.practice).toMatchObject({ stage: "failed", checksFailed: true });
