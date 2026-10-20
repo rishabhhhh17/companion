@@ -133,3 +133,14 @@
 - **Accessibility law** (for example the European Accessibility Act) for the app and the website. Some accessibility work is done; it has not been audited.
 - **Website.** Cookie banner, terms of sale, and the "building in public" content and changelog.
 - **Beta and alpha friends.** Whether the friends alpha needs a short agreement or a clear "as is" message before the public terms exist.
+
+## Added 22 Oct 2026: wider file conversion (ffmpeg) and the Tangerine idea
+
+**Facts for the lawyer.** The drop-a-file converter (F19) uses only the Mac's own tools (sips, textutil, afconvert, avconvert, PDFKit), nothing bundled, nothing uploaded. It cannot write WebP and converts only a few audio and video formats. To convert more (MKV, WebM, FLAC, WebP, and so on) the usual route is ffmpeg.
+
+**Questions.**
+1. Can we ship an LGPL build of ffmpeg, run as a separate program (never linked into our app), inside a paid app, and what exactly must we ship with it (licence texts, source offer, notices)? Does a GPL build (with some codecs) change the answer? Do patent or codec royalties apply to H.264, HEVC or AAC when we ship the encoder?
+2. Is it safer to download ffmpeg on the person's first use (like the browser check download) instead of bundling it, and does that change the licence duties?
+3. Several open source converters (for example EasyConvert and convertfile43) are GPL. We have copied no code from any of them. Confirm that studying their features and writing our own code is safe, and what a clean room approach should look like.
+4. Tangerine (a commercial Mac converter by Leap Studio) has a drag and radial menu feel. We have not copied or looked at its code. Is the general idea of dragging a file onto a menu of conversions protectable? Is our own ring menu at any risk of looking too similar (trade dress), and what should we avoid?
+
