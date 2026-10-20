@@ -976,7 +976,9 @@ export const S = {
   setResetSectionSure: (list: string) => `These go back to usual: ${list}.`,
   setResetSectionYes: "Reset them",
   setResetAll: "Reset all settings to usual",
-  setResetAllSure: (list: string) => `These go back to usual: ${list}. Your Claude key, project folders, the lines Companion remembers, history, undo points, pictures, your house rules and other projects' own settings stay as they are.`,
+  setResetAllSure: (list: string) => `These go back to usual: ${list}. Your Claude key, project folders, the lines Companion remembers, history, undo points, your house rules and other projects' own settings stay as they are. Pictures stay up to the number Pictures to keep allows.`,
+  // A reset that puts Pictures to keep back to usual while more are kept (checkRows.ts picturesResetGoing).
+  setPicturesGo: (n: number, keep: number) => `Pictures to keep goes back to ${keep}, so ${n} of your oldest ${n === 1 ? "picture" : "pictures"} will be deleted when the next picture is made.`,
   setNotHeard: (list: string) => `Left as they are, because Companion could not read them yet: ${list}.`,
   setResetAllNone: "Every setting is already at its usual value.",
   setResetAllYes: "Reset all",

@@ -10,14 +10,14 @@ import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
-import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
+import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
 import { canPick, choicesFrom, chordLabel, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
-import { defOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
+import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
@@ -564,7 +564,11 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
   // A project's setting says which project the page was shown it for; the shell refuses it for any other.
   const shownFor = snapshotNow()?.project ?? project;
   const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v, d.scope === "project" && shownFor ? shownFor : undefined)); };
-  const reset = () => { setProblem(""); done(resetSetting(d.key)); };
+  const reset = () => { setProblem(""); setAskReset(false); done(resetSetting(d.key)); };
+  // Reset of Pictures to keep while more are kept: says first how many go, as lowering the number does.
+  const [askReset, setAskReset] = useState(false);
+  const resetId = useId();
+  const resetGo = d.key === "pictures.keep" ? picturesResetGoing([d.key], pictures, value) : 0;
   // Checking your project: the project's own .claude/proof.json or .claude/launch.json wins, and the row shows that, read
   // only; the words after pressing need a button to press; a house rule can make installing ask first.
   const facts_ = facts && facts.project === project ? facts : null;
@@ -607,8 +611,14 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
       {r.projectLine && <div className="line muted">{r.projectLine}</div>}
       <div className="row">
         <span className="line muted">{r.usualLine}</span>
-        {r.canReset && d.key !== "keys.hotkeys" && <button className="btn" type="button" aria-label={r.resetLabel} onClick={reset}>{S.setReset}</button>}
+        {r.canReset && d.key !== "keys.hotkeys" && !askReset && <button id={resetId} className="btn" type="button" aria-label={r.resetLabel} onClick={resetGo > 0 ? () => setAskReset(true) : reset}>{S.setReset}</button>}
       </div>
+      {askReset && resetGo > 0 && (
+        <ConfirmStep className="line" label={S.chkPicturesGo(resetGo, Number(usual))} back={resetId} onCancel={() => setAskReset(false)}>
+          <div className="line">{S.chkPicturesGo(resetGo, Number(usual))}</div>
+          <div className="row"><button className="btn danger" type="button" onClick={reset}>{S.chkPicturesGoYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskReset(false)}>{S.planCancel}</button></div>
+        </ConfirmStep>
+      )}
       {r.later && <div className="line muted">{S.setNextTask}</div>}
       {r.floor && <div className="line muted">{floorWords(r.floor)}</div>}
       {problem && <div className="error" role="alert">{problem}</div>}
@@ -638,6 +648,7 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
   const toast = useUndoToast();
   const changed = changedNow(id);
   const unheard = notHeard(id);
+  const go = picturesResetGoing(changed, pictures, setting("pictures.keep"));
   const yes = () => { setAsking(false); void resetWithUndo(id).then(({ done, back }) => toast.show(done, back)); };
   return (
     <section aria-labelledby={headId} className="settings-section">
@@ -648,6 +659,7 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
       {asking && (
         <ConfirmStep className="line" label={S.setResetSection} back={resetId} onCancel={() => setAsking(false)}>
           <div className="line">{S.setResetSectionSure(names(changed))}</div>
+          {go > 0 && <div className="line">{S.setPicturesGo(go, Number(defaultOf("pictures.keep")))}</div>}
           {unheard.length > 0 && <div className="line muted">{S.setNotHeard(names(unheard))}</div>}
           <div className="row"><button className="btn" type="button" onClick={yes}>{S.setResetSectionYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(false)}>{S.planCancel}</button></div>
         </ConfirmStep>
@@ -733,6 +745,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
   const allToast = useUndoToast();
   const changedAll = changedNow();
   const unheardAll = notHeard();
+  const goAll = picturesResetGoing(changedAll, inv?.receiptPictures, setting("pictures.keep"));
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const fixedShown = (g: FixedGroup) => results.fixed.includes(g);
@@ -842,6 +855,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       {askAll && (
         <ConfirmStep className="line" label={S.setResetAll} back={resetAllId} onCancel={() => setAskAll(false)}>
           <div className="line">{S.setResetAllSure(names(changedAll))}</div>
+          {goAll > 0 && <div className="line">{S.setPicturesGo(goAll, Number(defaultOf("pictures.keep")))}</div>}
           {unheardAll.length > 0 && <div className="line muted">{S.setNotHeard(names(unheardAll))}</div>}
           <div className="row"><button className="btn danger" type="button" onClick={resetEverything}>{S.setResetAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskAll(false)}>{S.planCancel}</button></div>
         </ConfirmStep>
