@@ -1482,6 +1482,9 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
     // Stop everything (or a newer press) moves this on: a look already under way must not send its picture afterwards.
     let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
     let current = move || POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
+    // Only the id of the app in front, read on this press (as Prompt help does), so the engine can answer as a tutor for an
+    // everyday app (showme.everydayTutor). Nothing in the app is read.
+    let front = front_id();
     std::thread::spawn(move || {
         use showme::Platform;
         let req = format!("sm_{}", now());
@@ -1496,7 +1499,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let _ = a2.state::<runner::Runner>().send(&showme::locate_command(&req2, q, pics, cands));
+                let _ = a2.state::<runner::Runner>().send(&showme::locate_command(&req2, q, pics, cands, &front));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );

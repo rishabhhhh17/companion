@@ -14,6 +14,7 @@ import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
 import { LIMIT_REACHED } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
+import { TUTOR_EXAMPLE, tutorFor, tutorLines, type Tutor } from "./tutor.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -159,16 +160,23 @@ const MAX_SCREENS = 4;
 const MAX_CAPTION = 160;
 /** Two targets this close together on the same screen (picture pixels) are the same target. */
 const SAME_SPOT_PX = 16;
-const VISION_SYSTEM = [
+const visionLines = (example: string) => [
   "You look at a screenshot and help someone find where to look and where to click.",
   'Reply with ONLY one line of JSON, nothing before or after it: {"targets":[{"x":number,"y":number,"screen":number,"ocrId":string or null,"targetText":string,"confidence":number from 0 to 1,"caption":string,"mark":"ring" or "arrow" or "underline" or "box"}]}.',
   "Give one target, or up to 5 when the answer needs several things on the screen, in the order the person should look at them; the last one is where they click.",
-  "x and y are pixels in that screenshot (origin top left). ocrId is the id of the matching on screen text if there is one. caption is a short plain line of at most 8 words such as \"Click Deploy\".",
+  `x and y are pixels in that screenshot (origin top left). ocrId is the id of the matching on screen text if there is one. caption is a short plain line of at most 8 words such as ${example}.`,
   "mark: ring for a button, link, tab or icon; underline for a line of text or a field's label; box for a field, panel or area; arrow for something small that is easy to miss.",
   'When there are several screenshots, each is labelled "Screen N of M" and "screen" is that N; with one screenshot "screen" is 1.',
   'If you cannot find it, reply {"none":true}.',
   'When the question says a step was clicked but is not checked yet, also put "lastStepWorked" in the same JSON object: "yes" only when the screen clearly shows that step worked, "no" when it clearly did not, otherwise "unsure".',
-].join(" ");
+];
+/** The pointing prompt as it has always been. */
+export const VISION_SYSTEM = visionLines('"Click Deploy"').join(" ");
+/** The pointing prompt for this answer: today's, or with the everyday tutor (tutor.ts, showme.everydayTutor on) its own
+ *  caption example and the tutor's words added, the answer's shape unchanged. */
+export function visionSystem(t: Tutor | null | undefined): string {
+  return t ? [...visionLines(TUTOR_EXAMPLE), tutorLines(t)].join(" ") : VISION_SYSTEM;
+}
 
 export function buildVisionOptions(c: Common & { model: string; system?: string }) {
   return {
@@ -280,7 +288,7 @@ export class VisionLane {
     try { tmp = await drive.ensure(); } catch (e) { done0(); throw e; }
     function done0() { signal.removeEventListener("abort", link); }
     const model = this.o.model ?? MODELS.vision;
-    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model, signal: ac.signal });
+    const options = buildVisionOptions({ claudeBinary: this.o.claudeBinary, env: { ...this.o.env, CLAUDE_CODE_TMPDIR: tmp }, model, signal: ac.signal, system: visionSystem(req.tutor) });
     const q = (this.o.queryFn ?? realQuery)({ prompt: buildVisionMessages(req.image, req.question, req.ocr, req.screens) as never, options: options as never });
     const done = () => { signal.removeEventListener("abort", link); };
     // The answer is handed back the moment it arrives. Ending the engine process takes about two seconds more, and that
@@ -371,7 +379,8 @@ function validPoint(i: any, pics: Image[]): Point | null {
 
 // ---------- commands in, events out ----------
 
-export type LocateReq = { image: Image; question: string; ocr: Ocr[]; screens?: Screen[] };
+/** tutor: answer as a tutor for the everyday app in front (tutor.ts); absent, the usual answer. */
+export type LocateReq = { image: Image; question: string; ocr: Ocr[]; screens?: Screen[]; tutor?: Tutor };
 /** point: the first target (or none). targets: every target in order, when the lane can name more than one. */
 /** lastStepWorked: the model's judgment of a step that was clicked but not checked yet, when the question asked for it. */
 export type Located = { point: Point | null; targets?: Point[]; costUsd: number; lastStepWorked?: LastStep };
@@ -385,7 +394,8 @@ export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promi
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
-  // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack.
+  // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack, and
+  // showme.everydayTutor for Show me how.
   // spend: Prompt help spends on the person's key, so with a project it waits at the project's daily limit and books what
   // it cost there (the runner's ledger). Show me how names no project, so it has nothing to book against.
   constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings; spend?: { room: (project?: string) => number; book: (project: string | undefined, usd: number) => void } }) {}
@@ -475,7 +485,9 @@ export class AssistService {
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
     let timedOut = false;
     try {
-      const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [], ...(screens.length > 1 ? { screens } : {}) }, ac.signal),
+      // Teach everyday apps in their own words (showme.everydayTutor, off unless turned on): the app in front, by its id.
+      const tutor = tutorFor(cmd.app, this.o.settings?.get("showme.everydayTutor"));
+      const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [], ...(screens.length > 1 ? { screens } : {}), ...(tutor ? { tutor } : {}) }, ac.signal),
         new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
       if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : "cancelled" });
       const list = (r.targets?.length ? r.targets : r.point ? [r.point] : []).slice(0, MAX_TARGETS);

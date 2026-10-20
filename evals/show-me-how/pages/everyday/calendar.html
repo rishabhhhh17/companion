@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Calendar · Daybook</title><link rel="stylesheet" href="everyday.css"></head>
+<body><div class="win">
+<div class="title"><span class="lights"><span></span><span></span><span></span></span>
+  <button class="tb" aria-label="New event" data-eval-target="new-event"><span class="i">＋</span></button>
+  <span class="grow"></span>
+  <span class="row"><button class="box">Day</button><button class="box on">Week</button><button class="box" data-eval-target="view-month">Month</button><button class="box">Year</button></span>
+  <span class="grow"></span>
+  <button class="box" aria-label="Previous week">‹</button><button class="box" data-eval-target="today">Today</button><button class="box" aria-label="Next week">›</button>
+  <input placeholder="Search events" style="width:160px">
+</div>
+<div class="body">
+  <aside class="side">
+    <h4>Calendars</h4>
+    <div class="row" style="padding:3px 8px"><input type="checkbox" checked aria-label="Show Home calendar"><span>Home</span></div>
+    <div class="row" style="padding:3px 8px"><input type="checkbox" checked aria-label="Show Work calendar" data-eval-target="work-toggle"><span>Work</span></div>
+    <div class="row" style="padding:3px 8px"><input type="checkbox" checked aria-label="Show Family calendar"><span>Family</span></div>
+    <div class="row" style="padding:3px 8px"><input type="checkbox" checked aria-label="Show Birthdays calendar"><span>Birthdays</span></div>
+    <h4>October 2026</h4>
+    <div class="muted" style="padding:0 8px">M T W T F S S<br>12 13 14 15 16 17 18<br>19 20 21 22 23 24 25</div>
+  </aside>
+  <main class="main">
+    <table style="width:100%;table-layout:fixed">
+      <tr><th></th><th>Mon 19</th><th>Tue 20</th><th>Wed 21</th><th>Thu 22</th><th>Fri 23</th></tr>
+      <tr><td class="muted">09:00</td><td><button class="box">Dentist</button></td><td></td><td><button class="box">Work trip planning</button></td><td></td><td></td></tr>
+      <tr><td class="muted">12:00</td><td></td><td><button class="box">Lunch with Jo</button></td><td></td><td><button class="box">Team lunch</button></td><td></td></tr>
+      <tr><td class="muted">15:00</td><td></td><td></td><td></td><td><button class="box">School pick up</button></td><td></td></tr>
+      <tr><td class="muted">18:00</td><td><button class="box">Workout</button></td><td></td><td><button class="box">Yoga</button></td><td></td><td><button class="box">Film night</button></td></tr>
+    </table>
+  </main>
+</div>
+</div></body></html>

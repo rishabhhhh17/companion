@@ -30,7 +30,9 @@ export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project
 export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
 // screens: when Show me looked at more than one screen (2 to 4), one picture each, the screen the mouse pointer is on first
 // (its ref is the same as image.ref). label is "Screen N of M"; the engine sends only that exact shape to the model.
-export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[] };
+// app: the id of the app in front when the picture was taken (the shell reads only the id, on the key press), so the engine
+// can answer as a tutor for an everyday app (showme.everydayTutor). Never sent to the model as it is.
+export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[]; app?: string };
 export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaType: "image/jpeg" | "image/png"; base64: string; w: number; h: number };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
@@ -358,7 +360,7 @@ const COMMANDS: Record<string, Check[]> = {
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
   "checkpoint.restore": [str("project"), str("checkpoint")],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
-  "assist.locate": [str("req"), str("question"), obj("image"), screensOk],
+  "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("app", str("app"))],
   "assist.cancel": [str("req")],
   "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
 };

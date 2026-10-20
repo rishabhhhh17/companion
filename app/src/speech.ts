@@ -16,13 +16,15 @@ type ShowMe = { stage: string; message: string; req?: string; step?: number; of?
  *  long before saying it (a step of a multi step answer is said when its pointer lands, after the lead in at the chosen
  *  pace). A lesson's words name the usual keys; they are said with the keys in use (`k`, the keys now unless given), as
  *  the card shows them. */
-export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), pace?: unknown): { key: string; text: string; delayMs?: number } | null {
+export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), pace?: unknown, short?: unknown): { key: string; text: string; delayMs?: number } | null {
+  // Say steps short, one at a time (talk.shortSteps): a step is said as one short line; anything else is said whole.
+  const step = (t: string) => (short === true ? shortLine(t) : t);
   const w = m.walk;
   if (w) {
     // While a lesson is on, only the lesson speaks (its ring's caption says nearly the same thing).
-    if (w.stage === "step" || w.stage === "asking") return w.say ? { key: `walk:${w.id}:${w.index}:${w.variant}`, text: keysIn(w.say, k) } : null;
+    if (w.stage === "step" || w.stage === "asking") return w.say ? { key: `walk:${w.id}:${w.index}:${w.variant}`, text: step(keysIn(w.say, k)) } : null;
     // After a pause: the step, then the question. Its own key, so "No, show me" says the step again as a step to do.
-    if (w.stage === "already") return w.say ? { key: `walk:${w.id}:${w.index}:already`, text: `${keysIn(w.say, k)} ${S.lessonAlready}` } : null;
+    if (w.stage === "already") return w.say ? { key: `walk:${w.id}:${w.index}:already`, text: `${step(keysIn(w.say, k))} ${S.lessonAlready}` } : null;
     if (w.stage === "help" && w.note) return { key: `walk:${w.id}:${w.index}:help`, text: keysIn(w.note, k) };
     if (w.stage === "done") return { key: `walk:${w.id}:done`, text: S.lessonDone };
     return null;
@@ -32,10 +34,32 @@ export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), 
   const seq = typeof s.of === "number" && s.of > 1 && typeof s.step === "number";
   const key = `show:${s.req ?? ""}:${s.stage}${seq ? `:${s.step}` : ""}`;
   const lead = seq ? { delayMs: leadMs(pace) } : {};
-  if (s.stage === "pointing") return { key, text: s.message, ...lead };
-  if (s.stage === "pointing_roughly") return { key, text: `I think it is here. ${s.message}`, ...lead };
+  if (s.stage === "pointing") return { key, text: step(s.message), ...lead };
+  if (s.stage === "pointing_roughly") return { key, text: `I think it is here. ${step(s.message)}`, ...lead };
   if (["not_sure", "needs_permission", "error", "window_changed"].includes(s.stage)) return { key, text: s.message };
   return null;
+}
+
+// ---- Say steps short, one at a time (talk.shortSteps) ----
+/** The most words a short spoken step has before it is cut at a natural break. */
+export const SHORT_WORDS = 14;
+/** A step as one short spoken line: its first sentence, and when that is long, cut at its last natural break (a comma, a
+ *  semicolon, or "then") within SHORT_WORDS words. A long sentence with no break is said whole, never cut in the middle of
+ *  a phrase. Only ever shorter than the words given, so it always fits in the step's time (sequence.ts lineMs). */
+export function shortLine(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const end = /[.!?](?=\s+["'(A-Z0-9])/.exec(t);
+  const first = end ? t.slice(0, end.index + 1) : t;
+  const count = (x: string) => x.split(" ").filter(Boolean).length;
+  if (count(first) <= SHORT_WORDS) return first;
+  let cut = -1;
+  for (const m of first.matchAll(/[,;]\s|\s(?:and )?then\s/g)) {
+    const before = first.slice(0, m.index).trim();
+    if (count(before) > SHORT_WORDS) break;
+    if (count(before) >= 3) cut = m.index!;
+  }
+  return cut < 0 ? first : `${first.slice(0, cut).trim().replace(/[,;:]$/, "")}.`;
 }
 
 // ---- Also say out loud (speak.alsoSay in Settings; nothing more unless chosen) ----

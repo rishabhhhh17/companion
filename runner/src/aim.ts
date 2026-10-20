@@ -9,6 +9,7 @@
 // ...) and carrying toolset_name "computer"; every result sent back echoes it. UNPROVEN until a real run on a key.
 import type { Image, Ocr, Point, VisionLike } from "./lanes.ts";
 import { MODELS, apiShape, computerToolFor, estimateUsd } from "./models.ts";
+import { TUTOR_EXAMPLE, tutorLines, type Tutor } from "./tutor.ts";
 
 export const API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_OCR = 60;
@@ -19,12 +20,12 @@ const MAX_ROUNDS = 2;
 // The toolset's actions that name a place on the screen. Every other action is answered "not available": nothing is pressed.
 const POINTING = new Set(["left_click", "right_click", "middle_click", "double_click", "triple_click", "mouse_move", "left_mouse_down", "left_mouse_up"]);
 
-type Req = { image: Image; question: string; ocr: Ocr[]; screens?: { image: Image; label: string }[] };
+type Req = { image: Image; question: string; ocr: Ocr[]; screens?: { image: Image; label: string }[]; tutor?: Tutor };
 type Block = { type?: string; id?: string; name?: string; input?: { coordinate?: unknown; action?: unknown }; toolset_name?: string; text?: string };
 
 /** What the model is shown: the picture, its size in words (the toolset takes no display size), the question and the on
  *  screen text. Zoom is turned off: Companion has one picture and cannot show a part of it closer. */
-export function buildRequest(o: { model: string; image: Image; question: string; ocr: Ocr[] }): { model: string; messages: unknown[] } & Record<string, unknown> {
+export function buildRequest(o: { model: string; image: Image; question: string; ocr: Ocr[]; tutor?: Tutor }): { model: string; messages: unknown[] } & Record<string, unknown> {
   const words = o.ocr.slice(0, MAX_OCR);
   const list = words.length ? "\nText found on screen:\n" + words.map((w) => `${w.id}: ${w.text} [${w.box.join(",")}]`).join("\n") : "";
   return {
@@ -36,7 +37,7 @@ export function buildRequest(o: { model: string; image: Image; question: string;
     tools: [{ type: "computer_toolset_20260801", configs: { zoom: { enabled: false } } }],
     messages: [{ role: "user", content: [
       { type: "image", source: { type: "base64", media_type: o.image.mediaType, data: o.image.base64 } },
-      { type: "text", text: `This is the person's screen, ${o.image.w} x ${o.image.h} pixels; give coordinates in this picture. The person asked, while looking at it: "${o.question}"\nFirst write one short plain instruction such as "Click Deploy". Then click the one element they should use. If nothing specific on the screen answers it, only say so in words and do not click.${list}` },
+      { type: "text", text: `This is the person's screen, ${o.image.w} x ${o.image.h} pixels; give coordinates in this picture. The person asked, while looking at it: "${o.question}"\nFirst write one short plain instruction such as ${o.tutor ? TUTOR_EXAMPLE : '"Click Deploy"'}. Then click the one element they should use. If nothing specific on the screen answers it, only say so in words and do not click.${o.tutor ? `\n${tutorLines(o.tutor)}` : ""}${list}` },
     ] }],
   };
 }
@@ -110,7 +111,7 @@ export class ComputerUseVision implements VisionLike {
     const stop = () => ac.abort();
     if (signal.aborted) ac.abort(); else signal.addEventListener("abort", stop, { once: true });
     const timer = setTimeout(() => ac.abort(), this.o.timeoutMs ?? 20_000);
-    const body = buildRequest({ model, image: req.image, question: plain(req.question, 300), ocr: req.ocr });
+    const body = buildRequest({ model, image: req.image, question: plain(req.question, 300), ocr: req.ocr, ...(req.tutor ? { tutor: req.tutor } : {}) });
     let cost = 0, said = "";
     const rounded = () => Math.round(cost * 1e6) / 1e6;
     try {

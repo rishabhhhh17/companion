@@ -610,7 +610,7 @@ function Card() {
   const sayIt = (text: string, whole: boolean) => void invoke("speak", { text, whole, rest: S.speakRest }).then((r) => { const n = spokenNote(r); if (n) dispatch({ type: "app.notice", message: n }); }).catch(() => {});
   const answersVoice = (key: string) => lineByVoice(voiceAsked.current, key, Date.now());
   const saidKey = useRef("");
-  const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys, setting("point.pace"));
+  const spoken = lineFor({ walk: m.walk, showme: m.showme }, keys, setting("point.pace"), setting("talk.shortSteps"));
   useEffect(() => {
     if (!spoken || spoken.key === saidKey.current) return;
     const when = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: answersVoice(spoken.key) });

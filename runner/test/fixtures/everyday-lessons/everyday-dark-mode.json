@@ -1,0 +1,38 @@
+{
+  "id": "everyday-dark-mode",
+  "title": "Turn on Dark Mode",
+  "app": "System Settings",
+  "goal": "Change the Mac's appearance to Dark",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open the Apple menu and choose System Settings.",
+      "find": "the Apple menu at the top left",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "appearance",
+      "say": "Click Appearance in the list on the left.",
+      "find": "Appearance in the sidebar",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "Type Appearance in the search box at the top of the sidebar.",
+        "find": "the search box at the top of the sidebar"
+      }
+    },
+    {
+      "id": "dark",
+      "say": "Click Dark.",
+      "find": "the Dark choice",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

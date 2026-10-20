@@ -9,7 +9,8 @@ import { HarnessRefusal, SpendStop } from "../../runner/scripts/realrun-harness.
 import { MODELS } from "../../runner/src/models.ts";
 import { CannotSpend, realHarness, type EvalHarness } from "../lib/harness.ts";
 import { explainFailure, runSet } from "../lib/runset.ts";
-import { aimHarness, parseAimArgs, runAimAsk, summarizeAim, type AimAsk } from "./aim.ts";
+import { aimEstimate, aimHarness, aimReport, parseAimArgs, runAimAsk, summarizeAim, type AimAsk } from "./aim.ts";
+import { estimateUsd, PROFILES } from "../lib/prices.ts";
 
 describe("the aim eval's command line", () => {
   test("with no flags it is dry, on every page, every ask", () => {
@@ -45,7 +46,8 @@ describe("the aim eval's command line", () => {
   test("the set and the lane are checked", () => {
     expect(parseAimArgs(["--set", "basic"]).which).toBe("basic");
     expect(parseAimArgs(["--lane", "computer_use"]).lane).toBe("computer_use");
-    expect(() => parseAimArgs(["--set", "everything"])).toThrow(/basic, hard or all/);
+    expect(parseAimArgs(["--set", "everyday"]).which).toBe("everyday");
+    expect(() => parseAimArgs(["--set", "everything"])).toThrow(/basic, hard, everyday or all/);
     expect(() => parseAimArgs(["--lane", "other"])).toThrow(/default or computer_use/);
     expect(() => parseAimArgs(["--spend=false"])).toThrow(/--spend on its own/);
   });
@@ -131,4 +133,58 @@ describe("one pointing ask", () => {
       expect((results.summary as ReturnType<typeof summarizeAim>).counts.no_answer).toBe(0);
     });
   }
+});
+
+describe("the everyday set in the aim eval", () => {
+  const save = { t: "Save", id: "save", x: 100, y: 100, w: 60, h: 30 };
+  let n = 0;
+  const ask = (set: AimAsk["set"], app?: string): AimAsk => ({ id: `${set}:save${++n}`, page: "p", png: "AAAA", els: [save], target: save, targets: [save], question: "Where do I save?", set, ...(app ? { app } : {}) });
+  const seen: any[] = [];
+  const h: EvalHarness = { name: "stub", agent: () => { throw new Error("unused"); }, reviewer: () => { throw new Error("unused"); }, ask: () => async () => ({ text: "", costUsd: 0 }), vision: () => ({ locate: async (r: any) => { seen.push(r); return { point: { x: 110, y: 110, targetText: "Save", confidence: 0.9, caption: "Click Save" }, costUsd: 0.01 }; } }) };
+  const run = (cases: AimAsk[]) => {
+    const aim = parseAimArgs(["--spend", "--out", join(tmpdir(), `companion-test-aim-e-${process.pid}-${Math.random().toString(36).slice(2)}.json`)]);
+    return runSet({ set: "show-me-how", setDir: tmpdir(), cases, args: aim.args, models: {}, summarize: summarizeAim, log: () => {}, harness: h, endRunOnCaseStop: true,
+      run: (a, ctx) => runAimAsk(a, ctx, { model: aim.args.models.vision, lane: aim.lane, aimModel: aim.args.models.aim }) });
+  };
+  test("an everyday ask is asked as a tutor for its app; the other sets are asked as before", async () => {
+    seen.length = 0;
+    await run([ask("everyday", "com.apple.mail"), ask("hard"), ask("basic")]);
+    expect(seen[0].tutor).toEqual({ kind: "everyday", app: "Mail" });
+    expect(seen[1].tutor).toBeUndefined();
+    expect(seen[2].tutor).toBeUndefined();
+  });
+  test("--tutor off asks the everyday set without the tutor's words, to compare; anything but on or off is refused", async () => {
+    expect(parseAimArgs([]).tutor).toBe(true);
+    expect(parseAimArgs(["--tutor", "off"]).tutor).toBe(false);
+    expect(parseAimArgs(["--tutor=on"]).tutor).toBe(true);
+    expect(() => parseAimArgs(["--tutor", "maybe"])).toThrow(/--tutor is on or off/);
+    seen.length = 0;
+    const aim = parseAimArgs(["--spend", "--tutor", "off", "--out", join(tmpdir(), `companion-test-aim-t-${process.pid}-${Math.random().toString(36).slice(2)}.json`)]);
+    await runSet({ set: "show-me-how", setDir: tmpdir(), cases: [ask("everyday", "com.apple.mail")], args: aim.args, models: {}, summarize: summarizeAim, log: () => {}, harness: h, endRunOnCaseStop: true,
+      run: (a, ctx) => runAimAsk(a, ctx, { model: aim.args.models.vision, lane: aim.lane, aimModel: aim.args.models.aim, tutor: aim.tutor }) });
+    expect(seen[0].tutor).toBeUndefined();
+  });
+  test("its rates are counted and printed on their own", async () => {
+    const { results } = await run([ask("everyday", "com.apple.finder"), ask("everyday", "com.apple.mail")]);
+    const s = results.summary as ReturnType<typeof summarizeAim>;
+    expect(s.everyday).toEqual({ asked: 2, snapped: 2, raw: 2 });
+    expect(aimReport(results, false).join("\n")).toContain("everyday 100%");
+  });
+  test("a dry run says what a spend run of the same asks would cost, from the published prices (an estimate)", () => {
+    const asks = [ask("everyday", "com.apple.mail"), ask("everyday", "com.apple.mail"), ask("hard")];
+    const sonnet = PROFILES.find((r) => r.set === "show-me-how" && r.model === "claude-sonnet-5-5" && /everyday/.test(r.what))!;
+    const usual = PROFILES.find((r) => r.set === "show-me-how" && r.model === "claude-sonnet-5-5" && !/everyday/.test(r.what))!;
+    const want = 2 * estimateUsd("claude-sonnet-5-5", sonnet.profile) + estimateUsd("claude-sonnet-5-5", usual.profile);
+    const line = aimEstimate(asks, "claude-sonnet-5-5");
+    expect(line).toContain(`$${want.toFixed(2)}`);
+    expect(line).toMatch(/3 asks/);
+    expect(line).toMatch(/estimate/i);
+    expect(aimEstimate(asks, "claude-haiku-5-5")).toMatch(/\$0\.0/);
+    expect(aimEstimate(asks, "no-such-model")).toMatch(/no price/i);
+  });
+  test("the script renders the everyday pages and prints the estimate on a dry run", () => {
+    const src = readFileSync(join(import.meta.dir, "..", "..", "runner", "scripts", "eval-aim.ts"), "utf8");
+    expect(src).toContain("everydayPages(");
+    expect(src).toContain("aimEstimate(");
+  });
 });

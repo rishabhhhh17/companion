@@ -2,10 +2,13 @@
 // Pages are rendered in the hidden browser (headless: nothing is shown on the screen, and it is never the person's screen),
 // so the true place of every target is known from the page itself. Scores: raw hit (the point is inside the target), and
 // snapped hit (the clickable thing under the point IS the target, which is what the Mac's Accessibility lookup gives us in
-// the app); see evals/show-me-how/score.ts. Two sets: the basic generated dashboards (48 asks) and the hard set
-// (evals/show-me-how: 40 asks on four synthetic busy dashboards, made up products, local files only).
-// DRY by default: every page is rendered and every target checked, and nothing is asked of Claude, so nothing is spent.
-//   bun run scripts/eval-aim.ts [--set basic|hard|all] [--count n]
+// the app); see evals/show-me-how/score.ts. Three sets: the basic generated dashboards (48 asks), the hard set
+// (evals/show-me-how: 40 asks on four synthetic busy dashboards, made up products, local files only) and the everyday set
+// (40 asks on nine synthetic everyday app windows: mail, calendar, settings, files, a spreadsheet, a word processor, slides,
+// a design tool and a photo editor; asked as a tutor for each app, as the app does with showme.everydayTutor on).
+// DRY by default: every page is rendered and every target checked, and nothing is asked of Claude, so nothing is spent; it
+// prints what a spend run of the same asks would cost (an estimate from evals/lib/prices.ts).
+//   bun run scripts/eval-aim.ts [--set basic|hard|everyday|all] [--count n]
 //   bun run scripts/eval-aim.ts --spend [--vision-model id] [--lane computer_use] [--aim-model id] [--per-case 0.05] [--total 6]
 //     real Claude through the eval sets' real harness (evals/lib/harness.ts), which is runner/scripts/realrun-harness.ts
 //     underneath: the bundled binary, the key read in code from the companion-dev Keychain item, a throwaway Claude Code
@@ -14,6 +17,7 @@
 //     (COMPANION_AIM_MODEL or --aim-model switches its model; it falls back to the vision lane as the app does). Its one
 //     network call goes only to the Messages API, is checked against models.ts before it leaves, and is metered.
 //   --real   the older opt in: open eight public websites instead (network; their asks are made from each page)
+//   --tutor off   ask the everyday set without the tutor's words, to compare (on by default)
 // A refusal or a spending stop ends the run and nothing is scored (it is never "no answer"); a lane error is counted apart
 // from the misses. The command line, the harness and the scoring of one ask come from evals/show-me-how/aim.ts, where they
 // are tested.
@@ -23,14 +27,14 @@ import { browserExecutable } from "../src/proof/browser.ts";
 import { COMMON_HELP, type EvalHarness } from "../../evals/lib/harness.ts";
 import { explainFailure, runSet } from "../../evals/lib/runset.ts";
 import { isClean } from "../../evals/lib/results.ts";
-import { aimHarness, aimReport, parseAimArgs, runAimAsk, summarizeAim, type AimArgs, type AimAsk } from "../../evals/show-me-how/aim.ts";
-import { FIND_ELEMENTS, hardPages, rightTargets, type HardAsk } from "../../evals/show-me-how/hard.ts";
+import { aimEstimate, aimHarness, aimReport, parseAimArgs, runAimAsk, summarizeAim, type AimArgs, type AimAsk } from "../../evals/show-me-how/aim.ts";
+import { everydayPages, FIND_ELEMENTS, hardPages, rightTargets, type HardAsk } from "../../evals/show-me-how/hard.ts";
 import type { Element } from "../../evals/show-me-how/score.ts";
 
 let aim: AimArgs;
 try { aim = parseAimArgs(process.argv.slice(2), process.env); } catch (e) { explainFailure(e); }
-const { args, count: want, which, real, lane } = aim;
-if (args.help) { console.log(`bun run scripts/eval-aim.ts [--set basic|hard|all] [--count n] [options]${COMMON_HELP}\n  --lane computer_use, --real`); process.exit(0); }
+const { args, count: want, which, real, lane, tutor } = aim;
+if (args.help) { console.log(`bun run scripts/eval-aim.ts [--set basic|hard|everyday|all] [--count n] [options]${COMMON_HELP}\n  --lane computer_use, --real, --tutor off (the everyday set without the tutor's words, to compare)`); process.exit(0); }
 // Refused before any page is rendered when spending is asked for but cannot happen (no key in the Keychain item).
 const harness: EvalHarness | undefined = await aimHarness(aim).catch(explainFailure);
 /** Ends the script before the run, removing the harness's throwaway folder first. */
@@ -75,9 +79,11 @@ async function render(): Promise<{ asks: AimAsk[]; leftOut: number }> {
   let leftOut = 0;
   const browser = await chromium.launch({ headless: true, executablePath: exe! });
   try {
-    const list: { name: string; html: string; asks: HardAsk[]; set: AimAsk["set"]; byLabel: boolean }[] = real
+    const wants = (set: string) => which === "all" || which === set;
+    const list: { name: string; html: string; asks: HardAsk[]; set: AimAsk["set"]; byLabel: boolean; app?: string }[] = real
       ? SITES.map((url) => ({ name: new URL(url).host, html: url, asks: [], set: "real", byLabel: false }))
-      : [...(which !== "hard" ? pages().map((p) => ({ ...p, set: "basic" as const, byLabel: false })) : []), ...(which !== "basic" ? hardPages().map((p) => ({ ...p, set: "hard" as const, byLabel: true })) : [])];
+      : [...(wants("basic") ? pages().map((p) => ({ ...p, set: "basic" as const, byLabel: false })) : []), ...(wants("hard") ? hardPages().map((p) => ({ ...p, set: "hard" as const, byLabel: true })) : []),
+        ...(wants("everyday") ? everydayPages().map((p) => ({ ...p, set: "everyday" as const, byLabel: true })) : [])];
     for (const pg of list) {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
       const page = await ctx.newPage();
@@ -95,7 +101,7 @@ async function render(): Promise<{ asks: AimAsk[]; leftOut: number }> {
         // A hard page names its targets by label; the others by the words on it.
         const targets = pg.byLabel ? rightTargets(ask).map((id) => els.find((e) => e.id === id)) : [els.find((e) => e.t.toLowerCase() === ask.target.toLowerCase()) ?? els.find((e) => e.t.toLowerCase().includes(ask.target.toLowerCase()))];
         if (targets.some((t) => !t)) { leftOut++; console.log(`  ${pg.name}: not every right answer to ${ask.target} is on the page, so that ask is left out`); continue; }
-        asks.push({ id: `${pg.name}:${ask.target}`, page: pg.name, png, els, target: targets[0]!, targets: targets as Element[], question: ask.question, set: pg.set });
+        asks.push({ id: `${pg.name}:${ask.target}`, page: pg.name, png, els, target: targets[0]!, targets: targets as Element[], question: ask.question, set: pg.set, ...(pg.app ? { app: pg.app } : {}) });
       }
       await ctx.close();
     }
@@ -110,9 +116,12 @@ try {
     models: { vision: args.models.vision, lane, ...(lane === "computer_use" ? { aim: args.models.aim } : {}) },
     // One ask over its cap means the estimates are off: the run ends there rather than spending on.
     endRunOnCaseStop: true,
-    run: (a, ctx) => runAimAsk(a, ctx, { model: args.models.vision, lane, aimModel: args.models.aim }),
+    run: (a, ctx) => runAimAsk(a, ctx, { model: args.models.vision, lane, aimModel: args.models.aim, tutor }),
   });
-  if (results.mode === "dry") console.log(`\n${asks.length} asks rendered${leftOut ? `; ${leftOut} left out because their target was not on the page` : ", every target found on its page"} (basic ${asks.filter((a) => a.set === "basic").length}, hard ${asks.filter((a) => a.set === "hard").length}${real ? `, public sites ${asks.filter((a) => a.set === "real").length}` : ""}). Nothing was asked of Claude.`);
+  if (results.mode === "dry") {
+    console.log(`\n${asks.length} asks rendered${leftOut ? `; ${leftOut} left out because their target was not on the page` : ", every target found on its page"} (basic ${asks.filter((a) => a.set === "basic").length}, hard ${asks.filter((a) => a.set === "hard").length}, everyday ${asks.filter((a) => a.set === "everyday").length}${real ? `, public sites ${asks.filter((a) => a.set === "real").length}` : ""}). Nothing was asked of Claude.`);
+    console.log(aimEstimate(asks, lane === "computer_use" ? args.models.aim : args.models.vision));
+  }
   else for (const line of aimReport(results, real)) console.log(line);
   if (!isClean(results)) process.exitCode = 1;
 } catch (e) { explainFailure(e); }
