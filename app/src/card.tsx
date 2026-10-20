@@ -10,9 +10,8 @@ import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, still
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
-import { shouldTakeFocus } from "./cardlogic.ts";
-import { AGENT, SETTINGS_LESSON_ID, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines } from "./model.ts";
+import { AGENT, SETTINGS_LESSON_ID, releaseAgent, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
+import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
 import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -370,6 +369,22 @@ function Card() {
   // The follow up box's words (FollowUpBox), kept here so hold to talk can fill it. overReceipt: the pointer is over the
   // finished task's receipt (a hover inside Home's own window, nothing else). followShown: the box shows and can be sent.
   const [followText, setFollowText] = useState("");
+  // The words of a follow up just sent, kept in memory only until its task begins. If the engine says no instead (that
+  // agent is already working, something else works on the project), they come back into the box, as the ask box's do
+  // (askbox.ts sentOutcome and putBack), never over anything typed since.
+  const followWords = useRef<string | null>(null);
+  const followTextNow = useRef(followText); followTextNow.current = followText;
+  const onFollowEvent = useRef((_: unknown) => {});
+  onFollowEvent.current = (payload: unknown) => {
+    if (followWords.current === null) return;
+    const o = sentOutcome(payload, AGENT);
+    if (o === "started") followWords.current = null;
+    else if (o === "refused") { const back = putBack({ prompt: followWords.current, attached: [], off: false }, { text: followTextNow.current, attached: [] }).text; followWords.current = null; if (back !== undefined) setFollowText(back); }
+  };
+  useEffect(() => {
+    const off = listen("runner-event", (e) => onFollowEvent.current(e.payload));
+    return () => { off.then((f) => f()); };
+  }, []);
   const overReceipt = useRef(false), followShown = useRef(false), followFromVoice = useRef(false);
   // homeShown: Home is on screen (the shell's "opened" and "closed"). keysDown: where spoken words may go, as the talk keys
   // went down (askbox.ts FollowAim), used once when the words come back.
@@ -441,14 +456,14 @@ function Card() {
     const t = setInterval(() => dispatch({ type: "ui.approvalsExpire", now: Date.now() }), 5000);
     return () => clearInterval(t);
   }, [m.approvals.length]);
-  // A question that needs the person moves keyboard focus to its first button, but only when this card already has the keyboard.
+  // A question that needs the person takes the keyboard only when Home has it and nothing in Home does (focus.ts
+  // takeIfLost), never off a control the person is on, and then onto its safe choice (Don't allow, No, Stop here: data-safe),
+  // so a key pressed for something else can never say yes to it (rule 13). Its words are said on Home's live line either way.
   const urgent = useRef<HTMLDivElement>(null);
   const urgentKey = m.approvals[0]?.id ?? (m.agentsAsk ? "agents" : m.stuck ? "stuck" : m.paused ? "paused" : m.plan ? "plan" : "");
   useEffect(() => {
     if (!urgentKey) return;
-    const a = document.activeElement as HTMLElement | null;
-    if (!shouldTakeFocus(a ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus())) return;
-    urgent.current?.querySelector<HTMLElement>("button, input")?.focus();
+    takeIfLost(() => urgent.current?.querySelector<HTMLElement>("[data-safe]") ?? urgent.current?.querySelector<HTMLElement>("input, button"));
   }, [urgentKey, home.needKey]);
 
   const [recent, setRecent] = useState<string[]>([]);
@@ -457,7 +472,7 @@ function Card() {
   // Find again by itself, so nothing is checked at launch without a press.
   const switched = useRef(false);
   const loadRecent = () => void invoke("list_projects").then((l) => setRecent(Array.isArray(l) ? (l as string[]) : []));
-  useEffect(() => { void invoke("get_project").then((p) => setProject(String(p ?? ""))); loadRecent(); }, []);
+  useEffect(() => { void invoke("get_project").then((p) => { setProject(String(p ?? "")); dispatch({ type: "ui.folderShown", project: String(p ?? "") }); }); loadRecent(); }, []);
   useEffect(() => {
     const off = listen("project-changed", (e) => { switched.current = true; setProject(String(e.payload ?? "")); dispatch({ type: "ui.projectChanged", project: String(e.payload ?? "") }); setFolderNote(""); loadRecent(); });
     return () => { off.then((f) => f()); };
@@ -973,6 +988,18 @@ function Card() {
   }, []);
   // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
   const working = cardWorking(m);
+  // Putting aside what an agent waited on the person for (Cancel on a plan, Close on an answer): Home lets it rest, and
+  // asks the engine to, so the island and the character hear it too. Never while something else waits on the person for
+  // it (model.ts releasable), and the engine never stops anything for it.
+  const putAside = (agent: string | undefined, planToo = false) => { if (agent && releasable(m, agent, planToo)) void send(releaseAgent(agent)); };
+  // The practice took over a problem Find found (it shows it, with Fix it with me): the agent Find left waiting is put
+  // aside, so the practice's own buttons can be pressed.
+  const hand = foundHandsOver(m, project);
+  useEffect(() => { if (hand) void send(releaseAgent(hand)); }, [hand]);
+  // A task that kept going in the folder before ended waiting on the person (its question cannot be answered here, since
+  // its receipt is not shown): it is put aside too.
+  const awayRest = Object.keys(m.away).filter((a) => releasable(m, a)).join("|");
+  useEffect(() => { for (const a of awayRest.split("|").filter(Boolean)) void send(releaseAgent(a)); }, [awayRest]);
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
@@ -993,7 +1020,7 @@ function Card() {
   useEffect(() => { if (!(canFollowUp(m, project) || m.followUp === "sending")) { setFollowText(""); followFromVoice.current = false; } }, [canFollowUp(m, project) || m.followUp === "sending"]);
   // A follow up asked by voice is answered out loud like any spoken question (Answer out loud); a typed one is not.
   // Try again is always a press, whatever words wait in the box.
-  const followSent = (words: boolean) => { if (words && followFromVoice.current) voiceAsked.current = { kind: "task", at: Date.now() }; else pressed(); followFromVoice.current = false; dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); };
+  const followSent = (words: boolean) => { followWords.current = words ? followTextNow.current : null; if (words && followFromVoice.current) voiceAsked.current = { kind: "task", at: Date.now() }; else pressed(); followFromVoice.current = false; dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); };
   const sendFollowNow = useRef(() => {});
   sendFollowNow.current = () => {
     const c = followUp(project, followText);
@@ -1023,7 +1050,7 @@ function Card() {
     phArmedFor.current = m.ph.text;
     void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
   }, [m.ph?.stage, m.ph?.text, phShown]);
-  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested" }); void send(checkShip(project, { runChecks: true, ...o })); };
+  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "", off);
     if (!c || !project) return;
@@ -1093,6 +1120,7 @@ function Card() {
           </select>
         )}
       </div>
+      {awayFolder(m) && <div className="line muted" role="status">{S.awayWorking(awayFolder(m)!)}</div>}
       {copying && <div className="line muted" role="status">{S.copying}</div>}
       {!linkOpen ? !copying && <div className="row"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
         <div className="row">
@@ -1280,7 +1308,7 @@ function Card() {
           <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>
           <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
           <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
-          <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested" }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
+          <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
           <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>
           <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
         </div>
@@ -1300,17 +1328,18 @@ function Card() {
           <div className="line">{S.agentsAsk} {m.agentsAsk.join(" and ")}. {S.agentsAskEnd}</div>
           <div className="row">
             <button className="btn primary" type="button" onClick={() => { void send(answerAgents(project, "yes")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsYes}</button>
-            <button className="btn" type="button" onClick={() => { void send(answerAgents(project, "no")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsNo}</button>
+            <button className="btn" type="button" data-safe onClick={() => { void send(answerAgents(project, "no")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsNo}</button>
           </div>
         </section>
       )}
       {m.approvals.map((a) => (
         <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>
           <h2>{S.needsYouTitle}</h2>
+          {m.away[a.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[a.agent]))}</div>}
           <div className="line">{a.title}</div>
           <div className="row">
             <button className="btn primary" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
-            <button className="btn" type="button" aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
+            <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
           </div>
         </section>
       ))}
@@ -1318,12 +1347,13 @@ function Card() {
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>
           <h2>{S.stuckTitle}</h2>
+          {m.stuck.agent && m.away[m.stuck.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.stuck.agent]))}</div>}
           <div className="line">{stuckWords(m)}</div>
           <div className="line muted">{stuckHelpWords(m)}</div>
           <div className="line">{m.stuck.failure}</div>
           <div className="row">
             {m.stuck.options.map((o, i) => (
-              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
+              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" data-safe={o.id === "stop" || undefined} onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
             ))}
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
           </div>
@@ -1333,6 +1363,7 @@ function Card() {
       {m.paused && (
         <section className="panel amber" aria-label={S.pausedTitle}>
           <h2>{S.pausedTitle}</h2>
+          {m.paused.agent && m.away[m.paused.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.paused.agent]))}</div>}
           <div className="line">{pausedWords(m)}</div>
           <div className="line muted">{S.pausedHelp}</div>
           <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
@@ -1353,7 +1384,7 @@ function Card() {
           <div className="line muted">{m.plan.estimateUsd > 0 ? `${S.planCost}: ${formatUsd(m.plan.estimateUsd)}` : S.planCostNone}</div>
           <div className="row">
             <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
-            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.planCancel}</button>
+            <button className="btn" type="button" onClick={() => { putAside(m.plan!.agent, true); dispatch({ type: "ui.planCancelled", release: true }); }}>{S.planCancel}</button>
           </div>
         </section>
       )}
@@ -1401,6 +1432,7 @@ function Card() {
         <section className="panel">
           <div className="line">{driveWords(m) ?? `${S.stepOf} ${m.drive.index} of ${m.drive.total}: ${m.drive.title}`}</div>
           {!m.drive.finished && !m.paused && <div className="row"><button className="btn" type="button" onClick={() => void send(pauseDrive())}>{S.pauseNow}</button></div>}
+          {m.drive.finished && <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.driveClosed" })}>{S.closeFinished}</button></div>}
           {m.stepExplains.map((x) => (
             <div key={x.index}>
               <div className="line muted">{S.stepOf} {x.index}: {x.title}</div>
@@ -1449,7 +1481,7 @@ function Card() {
           <div className="row">
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
             <CopyButton text={rescueCopy(m.rescue)} label={S.copyAnswer} />
-            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.planCancelled" })}>{S.closeFinished}</button>
+            <button className="btn" type="button" onClick={() => { putAside(m.plan?.agent, true); dispatch({ type: "ui.planCancelled", release: true }); }}>{S.closeFinished}</button>
           </div>
         </section>
       )}
@@ -1499,6 +1531,7 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
+          {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
             <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
@@ -1542,10 +1575,10 @@ function Card() {
               const t = m.teach!;
               switch (a) {
                 case "where": return <button key={a} className="btn" type="button" onClick={() => pointAt(pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
-                case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking" }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
+                case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking", agent: AGENT }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
                 case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!)); }}>{S.teachPutBack}</button>;
-                case "leave": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
-                case "close": return <button key={a} className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>;
+                case "leave": return <button key={a} className="btn" type="button" onClick={() => { putAside(t.agent); void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
+                case "close": return <button key={a} className="btn" type="button" onClick={() => { putAside(t.agent); void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>;
               }
             })}
           </div>
@@ -1605,7 +1638,7 @@ function Card() {
                 else void send(diagnose(project));
               }}>{S.pointFix}</button>}
               {m.point.stage === "found" && canBisect(m) && project && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
-              <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
+              <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
             </div>
           )}
         </section>
@@ -1632,7 +1665,7 @@ function Card() {
           <div className="row">
             {m.bisect.stage === "running" && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
             {m.bisect.stage === "done" && m.bisect.outcome === "found" && m.bisect.undo === "safe" && !m.bisect.undoStage && project && <button id={bisectUndoId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.bisectUndoAsked" })}>{S.bisectUndo}</button>}
-            {m.bisect.stage === "done" && m.bisect.undoStage !== "working" && <button className="btn" type="button" onClick={() => dispatch({ type: "ui.bisectClosed" })}>{S.bisectClose}</button>}
+            {m.bisect.stage === "done" && m.bisect.undoStage !== "working" && <button className="btn" type="button" onClick={() => { putAside(m.bisect?.agent); dispatch({ type: "ui.bisectClosed" }); }}>{S.bisectClose}</button>}
           </div>
         </section>
       )}

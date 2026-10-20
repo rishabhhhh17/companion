@@ -140,9 +140,17 @@ describe("your turn", () => {
     const m = run([...asked, ev({ type: "ui.teachRestore" }), ev({ type: "protocol.error", reason: "Something is still working on this project. Wait for it to finish, or press Stop, then undo." })]);
     expect(m.teach?.stage).toBe("ready"); expect(m.teach?.note).toMatch(/still working/);
   });
-  test("a new task, another folder or an engine restart ends it", () => {
-    for (const end of [ev({ type: "checkpoint.created", agent: "a", checkpoint: "cp_9", label: "Before: x", files: 1, skipped: [] }), ev({ type: "ui.projectChanged", project: "/q" }), ev({ type: "app.runner_restarted" })])
+  test("a new task or another folder ends it", () => {
+    for (const end of [ev({ type: "checkpoint.created", agent: "a", checkpoint: "cp_9", label: "Before: x", files: 1, skipped: [] }), ev({ type: "ui.projectChanged", project: "/q" })])
       expect(run([...asked, end]).teach).toBeNull();
+  });
+  // Changed in the M11 audit (A59): an engine restart used to drop the turn too, while the old code was still in the file
+  // and Put my fix back was the only way to put the whole fix back. Now the turn stays, with only that and Leave it as it
+  // is (restart.test.ts).
+  test("an engine restart keeps a turn whose place still has the old code", () => {
+    const m = run([...asked, ev({ type: "app.runner_restarted" })]);
+    expect(m.teach?.orphan).toBe(true);
+    expect(teachActions(m.teach!)).not.toContain("check");
   });
 
   // While the second place has its old code on disk, the turn cannot just be closed: the person puts the fix back or says

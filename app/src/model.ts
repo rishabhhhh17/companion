@@ -20,17 +20,21 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // turnTaken: the person's turn was set up from this receipt, so the engine has no offer left to try (Let me try the next one is not shown again).
 // undone: an undo point in this project was restored after it, so the work it shows is no longer what is in the files.
 // said: the agent's last words (secrets hidden again here); asks: they ask the person something, so the task needs them.
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean };
-export type Task = { agent: string; project?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
+// gone: the engine restarted after it, and the new one keeps no conversation to carry on, so it cannot be followed up.
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; gone?: boolean };
+// checkpoint: the undo point it began with (a task that changes files; a read only look has none).
+export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
 // tries and same: how the tries ran out, when it was not the usual three identical failures (work.tries, work.askOnAnyFailure).
-export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[]; tries?: number; same?: boolean };
-export type Paused = { reason: string; path?: string };
+// agent: the one it holds up (a task that keeps going in the folder before is named with its folder).
+export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[]; tries?: number; same?: boolean; agent?: string };
+export type Paused = { reason: string; path?: string; agent?: string };
 export type RescueCard = { summary: string; works: string[]; broken: string; evidence: { label: string; status: string; detail: string }[] };
 // file: where the notes were filed; none when it was asked off the record.
-export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
+// n: which answer this is since Companion started (each one is its own, for Answer out loud, even off the record).
+export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file?: string; n?: number };
 export type PromptHelp = {
   stage: string; app?: string; message?: string; streaming?: string;
   text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
@@ -45,9 +49,11 @@ export type Explain = { checkpoint: string; bullets: string[]; question?: { text
 export type StepExplain = { index: number; title: string; explain: Explain };
 // Your turn. asking: pressed, waiting for the engine. ready: the second place is the person's to change (note: why a check
 // stopped). refused: nothing was changed, and why. checking (steps: the rungs of their check so far), then checked with the
-// result. left: the person chose to leave the place as it is, still not fixed. restoring, then restored.
+// result. left: the person chose to leave the place as it is, still not fixed. restoring, then restored. agent: the one that
+// checked their change (the engine leaves it waiting on the person after a check that failed). orphan: the engine restarted
+// during the turn, so Check my change cannot run any more; the fix can still be put back (its undo point is on disk).
 export type TeachState = {
-  stage: "asking" | "ready" | "refused" | "checking" | "checked" | "left" | "restoring" | "restored"; checkpoint: string; reason?: string; note?: string;
+  stage: "asking" | "ready" | "refused" | "checking" | "checked" | "left" | "restoring" | "restored"; checkpoint: string; reason?: string; note?: string; agent?: string; orphan?: boolean;
   target?: ChangeAt; example?: { file: string; line: number; was: string; now: string }; change?: { was: string; now: string }; restore?: string;
   result?: { verdict: string; same: boolean; label?: string; detail?: string; problem?: Problem }; steps?: ProofLine[];
 };
@@ -111,6 +117,14 @@ export type BisectState = {
 // where is only ever a line confirmed in the project.
 export type ErrorHelp = { stage: string; app?: string; req?: string; why?: string; project?: string; sentences?: string[]; where?: Problem; excerpt?: string; evidence?: string; reason?: string };
 export type Model = {
+  // The folder Home shows (null until the page has heard it). away: agents still at work that was started in another
+  // folder, and that folder: nothing of that work (its steps, checks, receipt, picture or explanation) is shown here, since
+  // its Undo would name an undo point of the wrong project. driveAway: the Drive plan running then is in that folder too.
+  folder: string | null;
+  away: Record<string, string>;
+  driveAway: boolean;
+  // How many research answers have come since Companion started (each answer's own number).
+  researchCount: number;
   bisect: BisectState | null;
   eh: ErrorHelp | null;
   browser: BrowserSetupState;
@@ -171,7 +185,7 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
+export const initial = (): Model => ({ folder: null, away: {}, driveAway: false, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -181,6 +195,39 @@ function top(agents: Record<string, CharacterState>): CharacterState {
   return best;
 }
 const withAgents = (m: Model, agents: Record<string, CharacterState>): Model => ({ ...m, agents, character: m.runnerUp ? top(agents) : "off" });
+const RUNNING: CharacterState[] = ["thinking", "working", "checking"];
+
+/** A folder as Home names it: its last two parts. */
+export const folderName = (path: string): string => path.split("/").filter(Boolean).slice(-2).join("/") || path;
+
+/** Something on Home still waits on the person for this agent: a question for it, the loop card, a pause, the AGENTS.md
+ *  question, a plan (unless that plan is the one being put aside), or its last task ended on a question. */
+function holds(m: Model, agent: string, planToo: boolean): boolean {
+  if (m.approvals.some((a) => a.agent === agent) || m.stuck || m.paused || m.agentsAsk) return true;
+  if (!planToo && m.plan?.agent === agent) return true;
+  return m.task?.agent === agent && !!m.receipt?.asks && !m.receipt.undone && !m.receipt.gone;
+}
+/** May this agent be put aside: it is on needs you, and nothing on Home waits on the person for it any more (a plan put
+ *  aside, a found problem, which task broke it or a failed check of your turn closed)? Then Home lets it rest and asks the
+ *  engine to (agent.interrupt with release, which never stops anything), so every window hears it. planToo: the plan it
+ *  waits with is the one being put aside. */
+export function releasable(m: Model, agent: string, planToo = false): boolean {
+  return m.agents[agent] === "needsYou" && !holds(m, agent, planToo);
+}
+const rest = (m: Model, agent: string | undefined): Model => (agent && releasable(m, agent) ? withAgents(m, { ...m.agents, [agent]: "idle" }) : m);
+/** The practice took over a problem Find found (it shows the problem and Fix it with me): the agent Find left waiting on
+ *  the person, to be put aside, or null. Only while nothing else waits on the person for it. */
+export function foundHandsOver(m: Model, project: string): string | null {
+  const pr = m.practice, a = m.point?.agent;
+  if (!pr || !project || pr.project !== project || pr.stage !== "found" || m.point?.stage !== "found" || !a) return null;
+  return releasable(m, a) ? a : null;
+}
+/** A task that keeps going in the folder Home showed before (the person picked another one while it worked): that
+ *  folder's name, for one line on Now, or null. */
+export function awayFolder(m: Model): string | null {
+  for (const [a, f] of Object.entries(m.away)) if (f && (RUNNING.includes(m.agents[a]) || m.agents[a] === "needsYou")) return folderName(f);
+  return null;
+}
 
 const browserBusy = (b: BrowserSetupState) => b.stage === "asked" || b.stage === "downloading";
 // A new task or another folder: an old offer or an old result goes; a download that is running stays on the card.
@@ -300,10 +347,7 @@ export function reduce(m: Model, e: Ev): Model {
     // ---- which task broke it ----
     case "ui.bisectAsked": return { ...m, bisect: { stage: "running" } };
     // The engine leaves the search's agent waiting on the person while the answer is shown: closing it is the answer, as for Point at the problem.
-    case "ui.bisectClosed": {
-      const a = m.bisect?.agent;
-      return a && m.agents[a] === "needsYou" ? withAgents({ ...m, bisect: null }, { ...m.agents, [a]: "idle" }) : { ...m, bisect: null };
-    }
+    case "ui.bisectClosed": return rest({ ...m, bisect: null }, m.bisect?.agent);
     case "bisect.progress": return m.bisect?.stage === "running" ? { ...m, bisect: { ...m.bisect, run: Number(e.run) || undefined, maxRuns: Number(e.maxRuns) || undefined, what: String(e.what ?? ""), label: typeof e.label === "string" ? e.label : undefined } } : m;
     case "bisect.result": {
       // Only the answer to a search this page asked for and is still waiting on; a stopped one simply goes.
@@ -369,7 +413,7 @@ export function reduce(m: Model, e: Ev): Model {
         ...(ch && typeof ch.was === "string" && typeof ch.now === "string" ? { change: { was: ch.was, now: ch.now } } : {}),
         ...(typeof e.restore === "string" && e.restore ? { restore: e.restore } : {}) } };
     }
-    case "ui.teachChecking": return m.teach && teachActions(m.teach).includes("check") ? { ...m, teach: { ...m.teach, stage: "checking", note: undefined, steps: [] } } : m;
+    case "ui.teachChecking": return m.teach && teachActions(m.teach).includes("check") ? { ...m, teach: { ...m.teach, stage: "checking", note: undefined, steps: [], ...(typeof e.agent === "string" ? { agent: e.agent } : {}) } } : m;
     // The rungs of the person's own check, kept on their card only (never on the finished task's proof).
     case "teach.step": {
       if (m.teach?.stage !== "checking" || m.teach.checkpoint !== e.checkpoint || typeof e.rung !== "string") return m;
@@ -377,7 +421,8 @@ export function reduce(m: Model, e: Ev): Model {
       const steps = m.teach.steps ?? [], at = steps.findIndex((s) => s.rung === line.rung);
       return { ...m, teach: { ...m.teach, steps: at >= 0 ? steps.map((s, i) => (i === at ? line : s)) : [...steps, line].slice(-12) } };
     }
-    case "ui.teachLeft": return m.teach && teachActions(m.teach).includes("leave") ? { ...m, teach: { ...m.teach, stage: "left", note: undefined } } : m;
+    // Leaving it, or closing a finished turn, ends the wait on the person after a check that failed.
+    case "ui.teachLeft": return m.teach && teachActions(m.teach).includes("leave") ? rest({ ...m, teach: { ...m.teach, stage: "left", note: undefined } }, m.teach.agent) : m;
     case "teach.result": {
       if (m.teach?.stage !== "checking" || m.teach.checkpoint !== e.checkpoint) return m;
       if (e.verdict === "cancelled") return { ...m, teach: { ...m.teach, stage: "ready", note: String(e.reason ?? "") || undefined } };
@@ -385,7 +430,7 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "ui.teachRestore": return m.teach && teachActions(m.teach).includes("putBack") ? { ...m, teach: { ...m.teach, stage: "restoring" } } : m;
     // Only a finished turn closes. While the old code is back in the project, the person puts the fix back or leaves it.
-    case "ui.teachClosed": return m.teach && teachActions(m.teach).includes("close") ? { ...m, teach: null } : m;
+    case "ui.teachClosed": return m.teach && teachActions(m.teach).includes("close") ? rest({ ...m, teach: null }, m.teach.agent) : m;
     case "ui.approvalsExpire": {
       const left = m.approvals.filter((a) => !a.expiresAt || Date.parse(a.expiresAt) > Number(e.now));
       return left.length === m.approvals.length ? m : { ...m, approvals: left, notice: "A question ran out of time and was not allowed. Ask again if you still want it." };
@@ -395,7 +440,19 @@ export function reduce(m: Model, e: Ev): Model {
     case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
-    case "app.runner_restarted": return { ...withAgents({ ...m, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: null, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice: "The engine restarted, so anything that was running was stopped. Your files are as they were.", error: null };
+    // The new engine keeps no conversation either: the last task can no longer be followed up or tried again (gone). A check
+    // that was running is not left saying Running. A turn whose place still has the old code stays, with only Put my fix
+    // back (its undo point is on disk) and Leave it as it is (orphan). The notice says what is true: a task that was running
+    // may have changed files before it stopped, and the engine puts nothing back by itself.
+    case "app.runner_restarted": {
+      const ran = Object.values(m.agents).some((s) => RUNNING.includes(s)) || m.approvals.length > 0 || !!m.stuck || !!m.paused || (!!m.drive && !m.drive.finished) || m.practice?.stage === "fixing";
+      const t = m.teach;
+      const turn: TeachState | null = t && teachOpen(t) && t.target ? { ...t, stage: t.stage === "left" ? "left" : "ready", orphan: true, note: undefined, steps: undefined, result: undefined } : null;
+      const proof = m.task?.proof;
+      const task = m.task && proof ? { ...m.task, proof: { ...proof, steps: proof.steps.map((x) => (x.status === "running" ? { ...x, status: "skipped" as const, detail: S.stepStoppedRestart } : x)) } } : m.task;
+      const notice = turn?.target ? S.restartedTurn(turn.target.file, turn.target.line) : ran ? S.restartedStopped : S.restartedNothing;
+      return { ...withAgents({ ...m, away: {}, driveAway: false, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
+    }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
     case "app.stop_everything": return { ...withAgents({ ...m, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
@@ -411,7 +468,7 @@ export function reduce(m: Model, e: Ev): Model {
         const item: StepExplain = { index: st.index, title: st.title, explain: explainOf(e) };
         return { ...m, stepExplains: [...m.stepExplains.filter((x) => x.index !== st.index), item].sort((a, b) => a.index - b.index).slice(-15) };
       }
-      return (m.receipt?.checkpoint ?? m.currentCheckpoint) === e.checkpoint ? { ...m, explain: explainOf(e) } : m;
+      return m.away[e.agent] === undefined && (m.receipt?.checkpoint ?? m.currentCheckpoint) === e.checkpoint ? { ...m, explain: explainOf(e) } : m;
     }
     case "explain.state": return { ...m, explainOn: !!e.enabled };
     case "spending.state": {
@@ -421,7 +478,19 @@ export function reduce(m: Model, e: Ev): Model {
     }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
-    case "ui.projectChanged": return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], followUp: "idle", error: null, notice: null };
+    // The folder Home starts with: known from now on, nothing cleared.
+    case "ui.folderShown": return m.folder === null && typeof e.project === "string" && e.project ? { ...m, folder: e.project } : m;
+    // An agent still at work keeps working in the folder it started in: that work is away from now on (see Model.away).
+    case "ui.projectChanged": {
+      const was = m.folder ?? m.task?.project ?? "", to = String(e.project ?? "");
+      const away: Record<string, string> = { ...m.away };
+      for (const [a, st] of Object.entries(m.agents)) if (RUNNING.includes(st) || st === "needsYou") away[a] ??= was;
+      // A task that has begun but whose agent has not said so yet is at work too.
+      if (m.task?.checkpoint && !m.receipt && !["idle", "done", "error"].includes(m.agents[m.task.agent] ?? "")) away[m.task.agent] ??= was;
+      for (const [a, f] of Object.entries(away)) if (f && f === to) delete away[a];   // back in the folder it works in
+      m = { ...m, folder: to || null, away, driveAway: m.driveAway || (!!m.drive && !m.drive.finished), currentCheckpoint: undefined };
+      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], followUp: "idle", error: null, notice: null };
+    }
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
       const stage = String(e.stage);
@@ -452,16 +521,29 @@ export function reduce(m: Model, e: Ev): Model {
     // A new task ends the person's turn. If the old code was still back at their place, that is said, never dropped silently.
     // A task started while a plan's step is running is that step's, so its explanation belongs to the plan.
     case "checkpoint.created": {
+      // Work in another folder than the one on screen (a Drive plan still running in the folder before): none of it shows.
+      if (m.folder && typeof e.project === "string" && e.project !== m.folder) return { ...m, away: { ...m.away, [e.agent]: e.project } };
+      if (m.away[e.agent] !== undefined) { const away = { ...m.away }; delete away[e.agent]; m = { ...m, away }; }
+      // A task outside a finished plan: the plan's panel and its explanations go.
+      if (m.drive?.finished) m = { ...m, drive: null, stepExplains: [], planCheckpoints: [] };
       // The practice's own fix began: its undo point is the one Undo and the receipt name.
       // A follow up or Try again on it from the result on Now carries the same practice id, so it is the practice's fix too.
       if (m.practice && ["fixing", "failed", "found"].includes(m.practice.stage) && practiceOf(m.practice.kind)?.fix === "task" && typeof e.practice === "string" && e.practice === m.practice.kind && (typeof e.project !== "string" || e.project === m.practice.project)) m = { ...m, practice: { ...m.practice, stage: "fixing", checkpoint: String(e.checkpoint), result: undefined, undone: undefined, gaps: undefined, checksFailed: undefined } };
       const open = m.teach && teachOpen(m.teach) && m.teach.target ? S.teachStillOpen(m.teach.target.file, m.teach.target.line) : null;
       const planCheckpoints = m.drive && !m.drive.finished && typeof e.checkpoint === "string" ? [...m.planCheckpoints, e.checkpoint].slice(-40) : m.planCheckpoints;
-      return { ...m, browser: browserFresh(m.browser), explain: null, teach: null, planCheckpoints, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, followUp: "idle", error: null, notice: open, task: { agent: e.agent, ...(typeof e.project === "string" ? { project: e.project } : {}), label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
+      return { ...m, browser: browserFresh(m.browser), explain: null, teach: null, planCheckpoints, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, followUp: "idle", error: null, notice: open, task: { agent: e.agent, ...(typeof e.project === "string" ? { project: e.project } : {}), ...(typeof e.checkpoint === "string" ? { checkpoint: e.checkpoint } : {}), label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
     }
-    case "agent.state": return withAgents(m, { ...m.agents, [e.agent]: e.state });
+    case "agent.state": {
+      // A plan is waiting only while its agent waits on the person: once the engine says otherwise (it put the plan aside,
+      // or started it), the plan is gone in every window.
+      if (m.plan && m.plan.agent === e.agent && e.state !== "needsYou") m = { ...m, plan: null };
+      // Work that was away has ended (needs you ends it once nothing holds it; Home asks the engine to let it rest).
+      if (m.away[e.agent] !== undefined && (e.state === "idle" || e.state === "done" || e.state === "error")) { const away = { ...m.away }; delete away[e.agent]; m = { ...m, away }; }
+      return withAgents(m, { ...m.agents, [e.agent]: e.state });
+    }
     case "agent.tool": {
-      const t = m.task ?? { agent: e.agent, label: "", lines: [], costUsd: 0 };
+      if (m.away[e.agent] !== undefined) return m;
+      const t = m.task ?? { agent: e.agent, ...(m.folder ? { project: m.folder } : {}), label: "", lines: [], costUsd: 0 };
       // Secrets are hidden again here: the engine already does, and a line on the card must never be the place one slips through.
       const summary = String(e.summary ?? ""), tool = String(e.tool ?? "");
       const line: ToolLine = { id: String(e.toolUseId ?? ""), text: redact(summary), tool, words: activityWords(tool, summary), outcome: e.outcome ?? "" };
@@ -470,12 +552,12 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, task: { ...t, lines: at >= 0 ? t.lines.map((l, i) => (i === at ? line : l)) : [...t.lines, line] } };
     }
     case "approval.resolved": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
-    case "cost.update": return m.task ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
+    case "cost.update": return m.task && m.away[e.agent] === undefined ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
     case "approval.request":
       if (m.approvals.some((a) => a.id === e.approval)) return m;
       return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt }] };
     case "proof.step": {
-      if (!m.task) return m;
+      if (!m.task || m.away[e.agent] !== undefined) return m;
       const p = m.task.proof;
       // A step arriving after a finished try means the work was sent back and is being checked again.
       const base: ProofState = !p || p.verdict ? { steps: [], tries: (p?.tries ?? 0) } : p;
@@ -536,7 +618,7 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.aboutClosed": return { ...m, about: null, install: null };
     case "ui.findProblem": return { ...m, point: { stage: "checking" } };
     // Closing puts the character back to rest; the check is over.
-    case "ui.pointClosed": return m.point?.agent && m.agents[m.point.agent] === "needsYou" ? withAgents({ ...m, point: null }, { ...m.agents, [m.point.agent]: "idle" }) : { ...m, point: null };
+    case "ui.pointClosed": return rest({ ...m, point: null }, m.point?.agent);
     case "problem.found": {
       if (e.needs === "browser") m = { ...m, browser: { ...m.browser, needed: true } };
       m = practiceFound(m, e);
@@ -547,6 +629,7 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, point: { stage: e.verdict === "nothing_to_check" ? "nothing" : e.verdict === "passed_with_gaps" ? "gaps" : "clear", ...(typeof e.note === "string" && e.note ? { note: e.note } : {}) }, where: null };
     }
     case "proof.result": {
+      if (m.away[e.agent] !== undefined) return m;
       if (browserRung(e.steps, (s) => s.status === "skipped" && s.needs === "browser")) m = { ...m, browser: { ...m.browser, needed: true } };
       else if (browserRung(e.steps, (s) => s.status === "passed")) m = { ...m, browser: { ...m.browser, needed: false, installed: true } };
       const failed = e.verdict === "failed" ? (e.steps ?? []).find((s: any) => s.status === "failed") : undefined;
@@ -555,14 +638,16 @@ export function reduce(m: Model, e: Ev): Model {
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
-    case "plan.ready": return { ...m, stepExplains: [], planCheckpoints: [], plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
+    case "plan.ready": if (m.away[e.agent] !== undefined) return m;
+      return { ...m, stepExplains: [], planCheckpoints: [], plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
     case "loop.stuck": return { ...m, plan: null, paused: null, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: Array.isArray(e.options) && e.options.length ? e.options : [{ id: "different", label: "Try a different way" }, { id: "stop", label: "Stop here" }],
-      ...(Number.isInteger(e.tries) && e.tries >= 1 ? { tries: e.tries } : {}), ...(typeof e.same === "boolean" ? { same: e.same } : {}) } };
-    case "drive.paused": return { ...m, stuck: null, paused: { reason: e.reason, path: e.path } };
+      ...(Number.isInteger(e.tries) && e.tries >= 1 ? { tries: e.tries } : {}), ...(typeof e.same === "boolean" ? { same: e.same } : {}), ...(typeof e.agent === "string" ? { agent: e.agent } : {}) } };
+    case "drive.paused": return { ...m, stuck: null, paused: { reason: e.reason, path: e.path, ...(typeof e.agent === "string" ? { agent: e.agent } : {}) } };
     case "ui.resumed": return { ...m, paused: null };
     case "ui.stuckAnswered": return { ...m, stuck: null };
     case "ui.followUpSent": return { ...m, followUp: "sending", error: null, notice: null };
-    case "rescue.report": return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
+    case "rescue.report": if (m.away[e.agent] !== undefined) return m;
+      return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
     case "app.prompt_help":
       // Each stage starts fresh, so the old text never lingers into a new press.
       return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [] } };
@@ -574,21 +659,38 @@ export function reduce(m: Model, e: Ev): Model {
     // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.
     case "ship.card": return m.shipFlow?.stage === "live" && typeof e.image === "string" ? { ...m, shipFlow: { ...m.shipFlow, card: { image: e.image, url: String(e.url ?? ""), title: String(e.title ?? "") } } } : m;
     case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
-    case "research.done": return { ...m, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], ...(typeof e.file === "string" && e.file ? { file: e.file } : {}) }, task: null, receipt: null, error: null, notice: null };
+    case "research.done": return { ...m, researchCount: m.researchCount + 1, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], ...(typeof e.file === "string" && e.file ? { file: e.file } : {}), n: m.researchCount + 1 }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
-    case "ui.planRequested": return { ...m, ship: null, research: null, rescue: null, task: null, receipt: null, drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
-    case "ui.planCancelled": return { ...m, plan: null, rescue: null };
+    // The check before going live and Put it online replace no task: while the last task waits for an answer, its question
+    // and its answer box stay (ship).
+    case "ui.planRequested": {
+      const keep = e.ship === true && waitsForAnswer(m);
+      return { ...m, ship: null, research: null, rescue: null, ...(keep ? {} : { task: null, receipt: null }), drive: null, plan: null, stuck: null, paused: null, error: null, notice: null };
+    }
+    // release: Cancel, or Close on Rescue's report, put the plan aside, so its agent rests (the card asks the engine too).
+    // Start the plan clears the card the same way, but the plan runs.
+    case "ui.planCancelled": { const a = m.plan?.agent, out = { ...m, plan: null, rescue: null }; return e.release === true ? rest(out, a) : out; }
+    case "ui.driveClosed": return m.drive?.finished ? { ...m, drive: null, stepExplains: [], planCheckpoints: [] } : m;
     case "drive.step": {
+      if (m.driveAway) return m;
       const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
       return { ...m, plan: null, rescue: null, stuck: null, paused: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
     }
-    case "drive.done": return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
+    case "drive.done": if (m.driveAway) return { ...m, driveAway: false };
+      return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
-    case "receipt.visual": return m.receipt && m.receipt.checkpoint === e.checkpoint ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
+    case "receipt.visual": return m.receipt && m.receipt.checkpoint === e.checkpoint && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
     // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's
     // card always comes after the step's receipt.
-    case "receipt": return { ...m, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e) } };
+    case "receipt": {
+      // The end of work in another folder: never shown here (its Undo would name an undo point of the wrong project).
+      // Where to see what it did is said instead. With the folder known, only a task begun in it has its receipt shown.
+      const away = m.away[e.agent];
+      if (away !== undefined) return away ? { ...m, notice: S.awayFinished(folderName(away)) } : m;
+      if (m.folder && m.task?.project !== m.folder) return m;
+      return { ...m, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e) } };
+    }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.
     case "memory.state": if (e.project === NO_PROJECT) return m; return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
@@ -666,7 +768,7 @@ function answerGone(m: Model): Model {
  *  waiting for an answer: the follow up box is where they answer, and nothing is running. */
 export function waitsForAnswer(m: Model): boolean {
   const t = m.task, r = m.receipt;
-  if (!r?.asks || r.undone || !t || m.agents[t.agent] !== "needsYou") return false;
+  if (!r?.asks || r.undone || r.gone || !t || m.agents[t.agent] !== "needsYou") return false;
   if (m.approvals.length || m.stuck || m.paused || m.plan || m.agentsAsk) return false;
   return Object.entries(m.agents).every(([a, s]) => a === t.agent || !BUSY.includes(s));
 }
@@ -675,7 +777,7 @@ export function waitsForAnswer(m: Model): boolean {
 // asked or once it has put the files back (the conversation would no longer match them; the engine refuses it too).
 export function canFollowUp(m: Model, project: string): boolean {
   const t = m.task;
-  if (!m.receipt || m.receipt.undone || !t || !project || t.project !== project) return false;
+  if (!m.receipt || m.receipt.undone || m.receipt.gone || !t || !project || t.project !== project) return false;
   if (!waitsForAnswer(m) && (BUSY.includes(m.agents[t.agent] ?? "idle") || BUSY.includes(m.character))) return false;
   if (m.followUp === "sending" || m.undo || m.plan || m.stuck || m.paused || (m.drive && !m.drive.finished)) return false;
   return true;
@@ -946,6 +1048,9 @@ export type TeachAction = "where" | "check" | "putBack" | "leave" | "close";
 export function teachActions(t: TeachState): TeachAction[] {
   const where: TeachAction[] = t.target ? ["where"] : [];
   const putBack: TeachAction[] = t.restore ? ["putBack"] : [];
+  // After an engine restart nothing can be checked any more: put the fix back, or leave it (then it can be closed).
+  if (t.orphan && (t.stage === "ready" || t.stage === "checked")) return [...where, ...putBack, "leave"];
+  if (t.orphan && t.stage === "left") return [...where, ...putBack, "close"];
   switch (t.stage) {
     case "ready": return [...where, "check", ...putBack, "leave"];
     case "checked": return t.result?.verdict === "passed" ? [...where, "close"] : [...where, "check", ...putBack, "leave"];
@@ -959,7 +1064,7 @@ export function teachActions(t: TeachState): TeachAction[] {
 export function receiptSaid(m: Model): { lead: string; words: string; help?: string } | null {
   const r = m.receipt;
   if (!r?.said) return null;
-  if (!r.asks || r.undone) return { lead: S.receiptSaid, words: r.said };
+  if (!r.asks || r.undone || r.gone) return { lead: S.receiptSaid, words: r.said };
   return { lead: waitsForAnswer(m) ? S.receiptAsks : S.receiptAsksToo, words: r.said, help: S.receiptAnswerHelp };
 }
 
@@ -980,6 +1085,8 @@ const STEP_WORD: Record<ProofLine["status"], string> = { running: S.stepRunning,
 
 // Your turn, in plain lines for the card.
 export function teachLines(t: TeachState): string[] {
+  // After an engine restart: the place still has the old code, and only putting the fix back or leaving it is left.
+  if (t.orphan && t.stage === "ready" && t.target) return [S.teachOrphan(t.target.file, t.target.line)];
   switch (t.stage) {
     case "asking": return [S.teachAsking];
     case "refused": return [t.reason || S.teachNothing];

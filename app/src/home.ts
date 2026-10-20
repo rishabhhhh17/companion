@@ -216,7 +216,8 @@ export function islandLine(m: Model, o: { update?: string | null } = {}): string
   // The task's name only while the task itself is what is busy or just done: listening, looking at the screen or a
   // finished ring also show as busy or done, and the last task's name would be wrong for them.
   const v = visualState(m), label = m.task?.label?.trim() ?? "", own = v === m.character;
-  if (v === "needsYou") return cut(S.islandNeedsYou(n?.why ?? stateLabel("needsYou")));
+  // With no reason the island knows (Home's own panels are not in its model), plain Needs you, never the word twice.
+  if (v === "needsYou") return cut(n ? S.islandNeedsYou(n.why) : stateLabel("needsYou"));
   if (v === "done") return cut(own && label ? S.islandDone(label) : stateLabel("done"));
   if (v === "thinking" || v === "working" || v === "checking") return cut(own && label ? S.islandWorkingOn(label) : characterWords(m));
   if (v === "error") return cut(stateLabel("error"));

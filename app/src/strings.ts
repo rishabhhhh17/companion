@@ -138,6 +138,16 @@ export const S = {
   stepPassed: "Passed",
   stepFailed: "Failed",
   stepSkipped: "Skipped",
+  // A check that was running when the engine stopped (model.ts app.runner_restarted).
+  stepStoppedRestart: "Stopped when the engine restarted.",
+  // The engine restarted (model.ts): what is true about the files, never "as they were" (the engine puts nothing back).
+  restartedStopped: "The engine restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.",
+  restartedNothing: "The engine restarted. Nothing was running, so nothing was stopped.",
+  restartedTurn: (file: string, line: number) => `The engine restarted, so what was running was stopped. ${file}, line ${line} still has the code from before my fix: Put my fix back on Now puts it back.`,
+  // A task that keeps going in the folder Home showed before (model.ts away).
+  awayWorking: (folder: string) => `A task is still working in ${folder}. It keeps going there, and Stop stops it.`,
+  awayFinished: (folder: string) => `The task in ${folder} has finished. What it did is in What I did when that folder is open.`,
+  awayQuestion: (folder: string) => `About the task in ${folder}`,
   diffAdded: "added:",
   obTitle: "Welcome to Companion",
   obWelcome1: "Companion helps you finish what you start with AI: it builds and checks your project, helps you write better prompts anywhere, and shows you where to click.",
@@ -601,6 +611,7 @@ export const S = {
   teachLeftNoPlace: "One place still has the code from before my fix. It is not fixed.",
   teachProvenBefore: "Checked and working before your turn. One place has its old code again.",
   teachStillOpen: (file: string, line: number) => `Your turn was not finished, so ${file}, line ${line} still has the code from before my fix.`,
+  teachOrphan: (file: string, line: number) => `The engine restarted, so Check my change cannot run for this turn. ${file}, line ${line} still has the code from before my fix. Put my fix back puts the whole fix back.`,
   yourTurnSetting: "Your turn after a fix",
   yourTurnHelp: "When a fix makes the same change in two places, offer to leave the second one for you.",
   recapTitle: "Where you left off",
@@ -709,6 +720,7 @@ export const S = {
   receiptSaid: "What it said",
   receiptAsks: "It needs your answer",
   receiptAsksToo: "It asks",
+  receiptGone: "The engine restarted after this task, so it cannot be followed up or tried again. Start a new task to carry on.",
   receiptAnswerHelp: "Type your answer below. It carries on from here, with a new undo point and a new check. A key or a password never goes here: add it to your project's settings yourself.",
   followUpAnswer: "Your answer (never a key or a password)",
   followUpAnswerLabel: "Your answer",

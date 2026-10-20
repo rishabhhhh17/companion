@@ -436,9 +436,24 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(asks).not.toContain('role="alert"');
     expect(card).toMatch(/\{m\.error && <div className="error">\{m\.error\}<\/div>\}/);
   });
-  test("a question still takes the keyboard only by the old rule: Home already has it and nobody is typing", () => {
+  // Changed in the M11 audit (A62): a question used to take the keyboard from any button the person was on (Stop, a tab),
+  // and put it on its first button, Allow, so the Return they pressed for Stop said yes. Now it takes the keyboard only when
+  // nothing in Home has it, and puts it on the safe choice.
+  test("a question takes the keyboard only when nothing in Home has it, and then onto its safe choice", () => {
     const card = read("./card.tsx");
-    expect(card).toMatch(/if \(!shouldTakeFocus\(a \? \{ tag: a\.tagName, editable: a\.isContentEditable \} : null, document\.hasFocus\(\)\)\) return;/);
+    const effect = card.slice(card.indexOf("const urgentKey ="), card.indexOf("}, [urgentKey, home.needKey]);"));
+    expect(effect).toContain('takeIfLost(() => urgent.current?.querySelector<HTMLElement>("[data-safe]") ?? urgent.current?.querySelector<HTMLElement>("input, button"));');
+    expect(effect).not.toContain(".focus()");
+    // The safe choice of each question that holds work up: Don't allow, No (AGENTS.md), Stop here (the loop card).
+    const approval = card.slice(card.indexOf("{m.approvals.map((a) => ("), card.indexOf("{m.stuck && ("));
+    expect(approval).toMatch(/data-safe aria-label=\{`\$\{S\.dontAllow\}/);
+    expect(approval).not.toMatch(/data-safe aria-label=\{`\$\{S\.allow\}/);
+    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a) => ("));
+    expect(agents).toContain('data-safe onClick={() => { void send(answerAgents(project, "no"))');
+    const stuck = card.slice(card.indexOf("{m.stuck && ("), card.indexOf("{m.paused && ("));
+    expect(stuck).toContain('data-safe={o.id === "stop" || undefined}');
+    // takeIfLost moves the keyboard only when nothing in Home has it (focus.test.ts runs it on a stand in page).
+    for (const a of [{ tag: "BUTTON" }, { tag: "INPUT" }, { tag: "TEXTAREA" }]) expect(focusLost(a, true), a.tag).toBe(false);
   });
 });
 

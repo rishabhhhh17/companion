@@ -36,7 +36,8 @@ type Busy = { character?: string; drive?: unknown; stuck?: unknown; approvals?: 
 /** Anything under way that a restart would cut off. When in doubt it says busy: the person can wait a minute. */
 export function isBusy(m: Busy): boolean {
   if (["thinking", "working", "checking", "needsYou"].includes(m.character ?? "")) return true;
-  if (m.drive || m.stuck || (m.approvals && m.approvals.length > 0)) return true;
+  // A Drive plan that has finished is not running (its panel stays until closed).
+  if ((m.drive && !(m.drive as { finished?: unknown }).finished) || m.stuck || (m.approvals && m.approvals.length > 0)) return true;
   if (m.install?.stage === "installing" || m.practice?.stage === "fixing") return true;
   if (m.shipFlow && !["ready", "live", "rolled_back", "failed", "refused", "not_signed_in"].includes(m.shipFlow.stage ?? "")) return true;
   if (m.diagram?.stage === "asking" || m.point?.stage === "checking") return true;

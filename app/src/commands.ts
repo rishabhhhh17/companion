@@ -43,6 +43,9 @@ export const answerApproval = (approval: string, allow: boolean): Command =>
 export const undo = (project: string, checkpoint: string): Command =>
   ({ v: 1, id: id(), type: "checkpoint.restore", project, checkpoint });
 export const stopAgent = (): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent: AGENT });
+// The person put aside what the agent was waiting on them for (Cancel on a plan, Close on an answer): it rests again, in
+// every window, only when nothing runs for it. It never stops anything (runner/src/agent.ts release).
+export const releaseAgent = (agent: string = AGENT): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent, release: true });
 export const listTasks = (project: string): Command => ({ v: 1, id: id(), type: "tasks.list", project });
 export const planDrive = (project: string, goal: string, offTheRecord = false): Command =>
   ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: workModel(), budgetUsd: budgetFor("budget.plan"), ...(offTheRecord ? { offTheRecord: true } : {}) });
