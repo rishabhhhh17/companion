@@ -31,20 +31,27 @@ pub fn failure_words(raw: &str) -> &'static str {
 /// waiting for the person, and approvals not answered yet. The page's own check comes first (updates.ts installAllowed,
 /// which knows more: a deploy, an install, a practice); this is the backstop in install_update, so a press that reaches
 /// the shell anyway never restarts Companion under a running task. Ids only, never what a task says or does.
-pub struct Running { agents: std::collections::BTreeSet<String>, approvals: std::collections::BTreeSet<String> }
+pub struct Running { agents: std::collections::BTreeSet<String>, approvals: std::collections::BTreeSet<String>, asked: std::collections::BTreeSet<String> }
 impl Running {
-    pub const fn new() -> Self { Running { agents: std::collections::BTreeSet::new(), approvals: std::collections::BTreeSet::new() } }
+    pub const fn new() -> Self { Running { agents: std::collections::BTreeSet::new(), approvals: std::collections::BTreeSet::new(), asked: std::collections::BTreeSet::new() } }
     pub fn note(&mut self, v: &serde_json::Value) {
         let s = |k: &str| v.get(k).and_then(serde_json::Value::as_str);
         match s("type") {
             Some("agent.state") => {
                 let (Some(agent), Some(state)) = (s("agent"), s("state")) else { return };
-                if matches!(state, "thinking" | "working" | "checking" | "needsYou") { self.agents.insert(agent.to_string()); } else { self.agents.remove(agent); }
+                // A task that ended on a question (its receipt asks) needs the person but runs nothing: a restart cuts nothing off.
+                if state == "needsYou" && self.asked.contains(agent) { self.agents.remove(agent); }
+                else if matches!(state, "thinking" | "working" | "checking" | "needsYou") { self.agents.insert(agent.to_string()); self.asked.remove(agent); }
+                else { self.agents.remove(agent); self.asked.remove(agent); }
+            }
+            Some("receipt") => {
+                let Some(agent) = s("agent") else { return };
+                if v.get("asks").and_then(serde_json::Value::as_bool) == Some(true) { self.asked.insert(agent.to_string()); self.agents.remove(agent); } else { self.asked.remove(agent); }
             }
             Some("approval.request") => { if let Some(a) = s("approval") { self.approvals.insert(a.to_string()); } }
             Some("approval.resolved") => { if let Some(a) = s("approval") { self.approvals.remove(a); } }
             // An engine that has just started, or has stopped, runs nothing.
-            Some("runner.hello") | Some("app.runner_down") => { self.agents.clear(); self.approvals.clear(); }
+            Some("runner.hello") | Some("app.runner_down") => { self.agents.clear(); self.approvals.clear(); self.asked.clear(); }
             _ => {}
         }
     }
@@ -54,6 +61,20 @@ static RUNNING: std::sync::Mutex<Running> = std::sync::Mutex::new(Running::new()
 /// Every engine event, as it is published to the pages.
 pub fn note_running(v: &serde_json::Value) { RUNNING.lock().unwrap_or_else(|e| e.into_inner()).note(v); }
 pub fn running_now() -> bool { RUNNING.lock().unwrap_or_else(|e| e.into_inner()).busy() }
+/// One install at a time: the card's Install and Settings' Install can both be pressed, and two downloads must not race to
+/// replace the app. `try_start` hands out a guard, or None while one is under way; dropping the guard (on every way out,
+/// including an error) lets the next press through.
+pub struct InstallFlight(std::sync::atomic::AtomicBool);
+pub struct InstallGuard<'a>(&'a InstallFlight);
+impl InstallFlight {
+    pub const fn new() -> Self { InstallFlight(std::sync::atomic::AtomicBool::new(false)) }
+    pub fn try_start(&self) -> Option<InstallGuard<'_>> { if self.0.swap(true, std::sync::atomic::Ordering::SeqCst) { None } else { Some(InstallGuard(self)) } }
+}
+impl Drop for InstallGuard<'_> { fn drop(&mut self) { (self.0).0.store(false, std::sync::atomic::Ordering::SeqCst); } }
+pub static INSTALLING: InstallFlight = InstallFlight::new();
+/// What install_update says to a second press while one install is under way.
+pub const INSTALLING_WORDS: &str = "An update is already being installed.";
+
 /// What install_update says when something runs: the page's own words (S.updatesBusy).
 pub const BUSY_WORDS: &str = "Wait until the current task is finished, then install.";
 
@@ -157,6 +178,54 @@ mod tests {
         let busy = install.find("if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }").expect("a busy check");
         assert!(busy < install.find("PENDING_UPDATE").unwrap(), "asked before the update is taken, so it can be installed later");
         assert_eq!(BUSY_WORDS, "Wait until the current task is finished, then install.", "the same words as the page (S.updatesBusy)");
+    }
+    #[test]
+    fn a_task_that_ended_on_a_question_runs_nothing_but_a_new_task_does() {
+        let mut r = Running::new();
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" }));
+        r.note(&serde_json::json!({ "type": "receipt", "agent": "a", "asks": true }));
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "needsYou" }));
+        assert!(!r.busy(), "the task ended and waits for an answer");
+        // A question that is an approval still counts through its approval.
+        r.note(&serde_json::json!({ "type": "approval.request", "approval": "ap_1", "agent": "a" }));
+        assert!(r.busy());
+        r.note(&serde_json::json!({ "type": "approval.resolved", "approval": "ap_1" }));
+        assert!(!r.busy());
+        // The answer starts the agent again.
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" }));
+        assert!(r.busy());
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "needsYou" }));
+        assert!(r.busy(), "a needs you that follows work, not a question that ended a task, still counts");
+        // A receipt that does not ask changes nothing about a needs you.
+        let mut q = Running::new();
+        q.note(&serde_json::json!({ "type": "receipt", "agent": "b", "asks": false }));
+        q.note(&serde_json::json!({ "type": "agent.state", "agent": "b", "state": "needsYou" }));
+        assert!(q.busy());
+    }
+    #[test]
+    fn a_second_install_is_turned_away_until_the_first_is_over() {
+        let f = InstallFlight::new();
+        let g = f.try_start().expect("the first goes");
+        assert!(f.try_start().is_none(), "the second waits");
+        drop(g);
+        assert!(f.try_start().is_some(), "after the first ends, even by an error, the next goes");
+    }
+    #[test]
+    fn install_update_takes_the_flight_before_anything_else_is_done() {
+        let main = include_str!("main.rs");
+        let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
+        let flight = install.find("updates::INSTALLING.try_start()").expect("takes the flight");
+        assert!(flight < install.find(".download(").unwrap());
+    }
+    #[test]
+    fn a_failed_download_keeps_the_update_so_install_can_be_pressed_again_and_a_task_started_meanwhile_is_not_cut_off() {
+        let main = include_str!("main.rs");
+        let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
+        assert!(!install.contains(".take()"), "the update is only cloned, so a failed download does not use it up");
+        let download = install.find(".download(").expect("a download on its own");
+        let again = install[download..].find("updates::running_now()").expect("asked again after the download") + download;
+        let put_in = install.find(".install(").expect("then installed");
+        assert!(download < again && again < put_in, "the busy check comes after the download and before the install");
     }
     #[test]
     fn the_shipped_file_parses_or_is_cleanly_empty() {

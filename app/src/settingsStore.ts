@@ -125,18 +125,26 @@ const asDone = (p: Promise<unknown>): Promise<Done> => p.then((v) => { takeSnaps
  *  while that is still the project in Home, so one project's list is never written over another's ("projectChanged"). */
 export const changeSetting = (key: string, value: unknown, project?: string): Promise<Done> => asDone(call("settings_set", project === undefined ? { key, value } : { key, value, project }));
 // Each reset names the engine's own settings the page has heard away from usual; the shell resets only those of the engine's.
-export const resetSetting = (key: string): Promise<Done> => asDone(call("settings_reset", { key, engine: changedNow().filter((k) => k === key && isEngines(k)) }));
-export const resetSection = (section: string): Promise<Done> => asDone(call("settings_reset", { section, engine: changedNow(section).filter(isEngines) }));
-export const resetAll = (): Promise<Done> => asDone(call("settings_reset", { all: true, engine: changedNow().filter(isEngines) }));
+// A reset names the project the page showed (the confirm named that project's values): the shell refuses it with
+// "projectChanged" if another folder is open by then, so it never resets or writes into a project that was not shown.
+const shown = (): { project?: string } => { const p = snap?.project; return p ? { project: p } : {}; };
+export const resetSetting = (key: string): Promise<Done> => asDone(call("settings_reset", { key, engine: changedNow().filter((k) => k === key && isEngines(k)), ...shown() }));
+export const resetSection = (section: string): Promise<Done> => asDone(call("settings_reset", { section, engine: changedNow(section).filter(isEngines), ...shown() }));
+export const resetAll = (): Promise<Done> => asDone(call("settings_reset", { all: true, engine: changedNow().filter(isEngines), ...shown() }));
+/** The project the last reset was made for, which its Undo (ten seconds) puts a project's own values back to. */
+let lastResetProject = "";
 /** Reset a section (or everything) and keep what Undo puts back, read just before. */
 export async function resetWithUndo(section?: string): Promise<{ done: Done; back: [string, unknown][] }> {
   const back = undoValues(section);
+  lastResetProject = snap?.project ?? "";
   return { done: await (section ? resetSection(section) : resetAll()), back };
 }
-/** Undo after a reset: each value put back, one at a time, through settings_set. Says which could not be. */
-export async function undoReset(back: [string, unknown][]): Promise<string[]> {
+/** Undo after a reset: each value put back, one at a time, through settings_set. A project's own settings go back to the
+ *  project they were reset in (`project`, the last reset's by default), never to whichever folder is open now. Says which
+ *  could not be put back. */
+export async function undoReset(back: [string, unknown][], project: string = lastResetProject): Promise<string[]> {
   const failed: string[] = [];
-  for (const [k, v] of back) { const r = await changeSetting(k, v); if (!r.ok) failed.push(k); }
+  for (const [k, v] of back) { const r = await changeSetting(k, v, project && defOf(k)?.scope === "project" ? project : undefined); if (!r.ok) failed.push(k); }
   return failed;
 }
 
@@ -174,6 +182,6 @@ export function startSettings(o: { ask?: boolean } = {}): void {
 
 /** Tests only: forget everything read. */
 export function _resetForTests(): void {
-  snap = null; engine.clear(); version = 0; started = false;
+  snap = null; engine.clear(); version = 0; started = false; lastResetProject = "";
   ready = new Promise<void>((r) => { readyResolve = r; });
 }

@@ -201,7 +201,15 @@ pub struct Helper<'a> {
     pub wait: &'a dyn Fn(),
 }
 pub fn run_helper(home: &Path, data: &Path, projects: &[PathBuf], with_projects: bool, h: &Helper) -> Vec<String> {
-    for _ in 0..200 { if (h.parent_gone)() { break; } (h.wait)(); }
+    let mut gone = false;
+    for _ in 0..200 { if (h.parent_gone)() { gone = true; break; } (h.wait)(); }
+    // The app is still running (it is slow to close, or hung): deleting under it could leave a half wipe or be written over
+    // again, so nothing is deleted. The person is told on the next start, and nothing else of theirs changes.
+    if !gone {
+        let _ = fs::create_dir_all(data);
+        let _ = fs::write(data.join("wipe-note.txt"), "Companion did not close in time, so nothing was deleted. Quit Companion, then use Settings, Delete everything again.");
+        return vec!["Companion did not close in time".to_string()];
+    }
     if with_projects { for p in projects { let _ = clean_project(p); } }
     let mut failed = vec![];
     for _ in 0..3 {
@@ -468,6 +476,21 @@ mod tests {
         assert_eq!(*polls.borrow(), 4);   // it kept waiting until the app had gone
         assert_eq!(*log.borrow(), vec!["key", "relaunch"]);
         assert!(!m.data.join("runner/tasks.db").exists() && !p.join(".companion").exists() && m.data.join("dev.json").exists());
+    }
+    #[test]
+    fn a_helper_that_gives_up_waiting_for_the_app_deletes_nothing_and_leaves_a_note() {
+        use std::cell::RefCell;
+        let m = mac("helper-wait");
+        let p = m.root.join("site7"); create_dir_all(p.join(".companion")).unwrap(); write(p.join(".companion/project.md"), "x").unwrap();
+        let log = RefCell::new(Vec::<String>::new()); let waits = RefCell::new(0);
+        let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
+            parent_gone: &|| false, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| *waits.borrow_mut() += 1,
+        });
+        assert_eq!(failed, vec!["Companion did not close in time".to_string()]);
+        assert_eq!(*waits.borrow(), 200, "it waited the whole time");
+        assert!(log.borrow().is_empty(), "the key is not deleted and the app is not opened a second time");
+        assert!(m.data.join("runner/tasks.db").exists() && p.join(".companion/project.md").exists(), "nothing was deleted");
+        assert!(fs::read_to_string(m.data.join("wipe-note.txt")).unwrap().contains("nothing was deleted"));
     }
     #[test]
     fn if_something_cannot_be_removed_the_key_stays_a_note_is_left_and_the_app_still_opens() {

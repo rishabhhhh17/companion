@@ -9,7 +9,8 @@ export type Menu = { id: number; names: string[]; kind: Kind | null; actions: st
 export type Made = { name: string; i: number };
 export type Job =
   | { id: number; phase: "running"; done: number; of: number; percent: number | null }
-  | { id: number; phase: "done"; made: Made[]; why: string | null; skipped: number }
+  // failed: how many files could not be converted (the others were still made), with the first one's name and reason.
+  | { id: number; phase: "done"; made: Made[]; why: string | null; skipped: number; failed?: number; failedName?: string; failedWhy?: string }
   | { id: number; phase: "failed"; why: string; made: Made[] }
   // Stopped part way: what was made before the Stop is new, replaces nothing, and stays, so it is named.
   | { id: number; phase: "stopped"; made: Made[] };
@@ -52,7 +53,10 @@ export function jobFrom(v: unknown): Job | null {
   if (!o || typeof o !== "object" || !num(o.id)) return null;
   switch (o.phase) {
     case "running": return { id: o.id, phase: "running", done: num(o.done) ? o.done : 0, of: num(o.of) ? o.of : 1, percent: num(o.percent) ? o.percent : null };
-    case "done": return { id: o.id, phase: "done", made: madeFrom(o.made), why: str(o.why) ? o.why : null, skipped: num(o.skipped) && o.skipped > 0 ? o.skipped : 0 };
+    case "done": return {
+      id: o.id, phase: "done", made: madeFrom(o.made), why: str(o.why) ? o.why : null, skipped: num(o.skipped) && o.skipped > 0 ? o.skipped : 0,
+      ...(num(o.failed) && o.failed > 0 && str(o.failedName) ? { failed: o.failed, failedName: o.failedName, ...(str(o.failedWhy) ? { failedWhy: o.failedWhy } : {}) } : {}),
+    };
     case "failed": return { id: o.id, phase: "failed", why: str(o.why) ? o.why : "other", made: madeFrom(o.made) };
     case "stopped": return { id: o.id, phase: "stopped", made: madeFrom(o.made) };
     default: return null;
@@ -61,6 +65,9 @@ export function jobFrom(v: unknown): Job | null {
 
 /** The new files a job made, for Show in Finder: also those made before it was stopped or failed part way. */
 export const madeOf = (j: Job): Made[] => (j.phase === "running" ? [] : j.made);
+
+/** Whether a job's news means a line said while it ran (a refused second drop, a double click) is out of date. */
+export const clearsSaid = (j: Job | null): boolean => j?.phase !== "running";
 
 /** Whether a job is still going (the menu then cannot be closed: Stop ends it). */
 export const running = (s: DropState): boolean => s.job?.phase === "running";
@@ -109,12 +116,13 @@ export function ringSpots(n: number, r: number): { x: number; y: number }[] {
   });
 }
 
-/** A time typed for a trim: seconds ("90", "2.5"), minutes and seconds ("1:30") or hours too ("1:02:03"). */
+/** A time typed for a trim: seconds ("90", "2.5"), minutes and seconds ("1:30") or hours too ("1:02:03"). Only the seconds
+ *  (the last part) may have a decimal: "1.5:30" is not a time, so a clip is never cut at a place the person did not mean. */
 export function parseTime(text: string): number | null {
   const t = text.trim();
   if (!t) return null;
   const parts = t.split(":");
-  if (parts.length > 3 || !parts.every((p) => /^\d+(\.\d+)?$/.test(p))) return null;
+  if (parts.length > 3 || !parts.every((p, i) => (i === parts.length - 1 ? /^\d+(\.\d+)?$/ : /^\d+$/).test(p))) return null;
   const n = parts.map(Number);
   if (n.slice(1).some((v) => v >= 60)) return null;
   return n.reduce((sum, v) => sum * 60 + v, 0);
@@ -133,7 +141,8 @@ export function jobLine(j: Job): string {
     case "running": return j.percent !== null && j.of <= 1 ? S.drop.working(Math.round(j.percent)) : S.drop.workingOf(Math.min(j.done + 1, j.of), j.of);
     case "done": {
       const made = j.made.length === 1 ? S.drop.made(j.made[0].name) : S.drop.madeMany(j.made.length);
-      return j.skipped > 0 ? `${made} ${S.drop.skipped(j.skipped)}` : made;
+      const rest = [j.skipped > 0 ? S.drop.skipped(j.skipped) : "", j.failed && j.failedName ? S.drop.failedSome(j.failed, j.failedName) : ""].filter(Boolean);
+      return [made, ...rest].join(" ");
     }
     case "failed": return (S.drop.why as Record<string, string>)[j.why] ?? S.drop.why.other;
     case "stopped": return j.made.length > 0 ? S.drop.stoppedMade(j.made.length) : S.drop.stopped;
@@ -145,3 +154,6 @@ export const refusedLine = (code: string): string => (S.drop.refused as Record<s
 
 /** What the menu is about: the file's name, or how many files. */
 export const namesLine = (m: Menu): string => (m.names.length === 1 ? m.names[0] : S.drop.files(m.names.length));
+
+/** A true word of warning for a kind of file, said before an action is chosen: what the Mac's own tools leave out. */
+export const kindNote = (kind: Kind | null): string | null => (kind === "document" ? S.drop.noPictures : kind === "image" ? S.drop.imageNote : null);

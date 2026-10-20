@@ -5,7 +5,7 @@ import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
-import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, waitsForPage } from "./anywhere.ts";
+import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, settlesBeforeLook, waitsForPage } from "./anywhere.ts";
 import { EVERYDAY_ASK, checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, mainAction, nextLookMode, whyShown } from "./everyday.ts";
 import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
@@ -15,10 +15,10 @@ import { AGENT, SETTINGS_LESSON_ID, releaseAgent, checkBrowser, getBrowser, NO_P
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
-import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
+import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
-import { autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
+import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
@@ -560,8 +560,15 @@ function Card() {
     }));
   };
   // Remove my copy (asked first): to the Trash, and out of the recent folders.
+  // The copy that was open goes back to the folder used before it (else the newest folder of the person's own), so Home is not
+  // left with no folder at all.
   const removePractice = (id: string) => practiceAction(() => invoke("remove_practice", { which: id, busy: workingOn(nowModel.current) }).then((n) => {
-    if (nowModel.current.practice?.kind === id) dispatch({ type: "ui.practiceClosed" });
+    const open = nowModel.current.practice;
+    if (open?.kind === id) {
+      const to = backTo(open.previous, recent, practiceRec);
+      dispatch({ type: "ui.practiceClosed" });
+      if (to) useFolder(to);
+    }
     setPracticeNote(S.practiceRemoved(String(n)));
     loadRecent();
   }));
@@ -1004,7 +1011,7 @@ function Card() {
     // whether the error is gone ("recheck"), so fixed only ever comes from a look.
     const mode = nextLookMode(everydayWalk.current, nowModel.current.everyday);
     if (mode) dispatch({ type: "ui.everydayLook", mode });
-    showMe(nextQuestion(w), w.goal, w.steps, waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked")), mode, mode ? nowModel.current.everyday?.code : undefined);
+    showMe(nextQuestion(w), w.goal, w.steps, settlesBeforeLook(mode, setting("showme.waitForPage"), setting("showme.askWorked")), mode, mode ? nowModel.current.everyday?.code : undefined);
   };
   // How this answer's ring went, for asksWorked: a soft ring (a guess), or a click off the target before the hit.
   const ringLook = useRef({ req: "", soft: false, missed: false });
@@ -1050,10 +1057,18 @@ function Card() {
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
   useEffect(() => {
-    if (home.tab === "learn") { void send(walkList(project || NO_PROJECT)); loadPractice(); if (!m.doctor) void send(checkMac()); }
+    if (home.tab === "learn") { void send(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void send(checkMac()); }
     if (home.tab === "memory" && project) void send(listMemory(project));
     if (home.tab === "did" && project) void send(listTasks(project));
   }, [home.tab, project]);
+  // Node was installed while Home stayed open: coming back to Companion checks again, only on Learn and only while Node is
+  // flagged missing.
+  useEffect(() => {
+    if (home.tab !== "learn" || !nodeMissing(m.doctor)) return;
+    const again = () => void send(checkMac());
+    window.addEventListener("focus", again);
+    return () => window.removeEventListener("focus", again);
+  }, [home.tab, m.doctor]);
   const beginLesson = (lesson: string, fresh: boolean) => {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     pressed();
@@ -1106,7 +1121,7 @@ function Card() {
     const off = listen("update-ready", (e) => { setUpdateReady(readyVersion(e.payload)); setUpdateNote(""); });
     return () => { off.then((f) => f()); };
   }, []);
-  const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); found.update = null; void invoke("install_update").catch((e) => setUpdateNote(String(e))); };
+  const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); const prev = found.update; void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUpdateNote(r.note || String(e)); }); };
   useEffect(() => {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };

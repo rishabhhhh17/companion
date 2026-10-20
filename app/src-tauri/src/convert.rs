@@ -226,9 +226,10 @@ const COPY_MAX: u64 = 512 * 1024 * 1024;
 /// `copy` in the work folder: an instant clone on the same disk, else a copy. So a file swapped after this changes nothing
 /// they read, and a web page's relative links point into the work folder, where nothing else is. A file too big to copy
 /// from another disk is read where it is, after the same check made by its path (`copy` is then a link to it).
-pub fn take_input(from: &Path, copy: &Path) -> Result<(), &'static str> { take(from, copy, true, COPY_MAX) }
+/// The copy is made in pieces and stops when the job is stopped ("stopped"), taking away the half made copy.
+pub fn take_input(from: &Path, copy: &Path, job: &Job) -> Result<(), &'static str> { take(from, copy, true, COPY_MAX, job) }
 
-fn take(from: &Path, copy: &Path, may_clone: bool, copy_max: u64) -> Result<(), &'static str> {
+fn take(from: &Path, copy: &Path, may_clone: bool, copy_max: u64, job: &Job) -> Result<(), &'static str> {
     use std::os::fd::AsRawFd;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::OpenOptionsExt;
@@ -242,7 +243,17 @@ fn take(from: &Path, copy: &Path, may_clone: bool, copy_max: u64) -> Result<(), 
     if may_clone && unsafe { libc::fclonefileat(f.as_raw_fd(), libc::AT_FDCWD, to.as_ptr(), 0) } == 0 { return Ok(()); }
     if m.len() <= copy_max {
         let mut out = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(copy).map_err(|_| "noWork")?;
-        if std::io::copy(&mut f, &mut out).is_err() { drop(out); let _ = std::fs::remove_file(copy); return Err("noWork"); }
+        let mut buf = vec![0u8; 1 << 20];
+        let r: Result<(), &'static str> = loop {
+            if job.stopped() { break Err("stopped"); }
+            match f.read(&mut buf) {
+                Ok(0) => break Ok(()),
+                Ok(n) => if out.write_all(&buf[..n]).is_err() { break Err("noWork"); },
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => break Err("noWork"),
+            }
+        };
+        if let Err(why) = r { drop(out); let _ = std::fs::remove_file(copy); return Err(why); }
         return Ok(());
     }
     std::os::unix::fs::symlink(from, copy).map_err(|_| "noWork")?;
@@ -646,70 +657,105 @@ fn smaller(out: &Out, than: &Path) -> bool {
 }
 
 /// How a job ended: what was made, in order; how many files were left as they were (already that small, already in that
-/// format, or not made any smaller); and why it ended early, if it did. What was made before a Stop or a failure is
+/// format, or not made any smaller); how many could not be converted (one bad file does not stop the others), with the
+/// name and the reason of the first; and why it ended early, if it did. What was made before a Stop or a failure is
 /// listed too: it is new, replaces nothing, and stays.
 #[derive(Debug, Default, PartialEq)]
-pub struct Ended { pub made: Vec<PathBuf>, pub skipped: usize, pub fail: Option<Failure> }
+pub struct Ended { pub made: Vec<PathBuf>, pub skipped: usize, pub failed: usize, pub first_failed: Option<(String, &'static str)>, pub fail: Option<Failure> }
 
-/// Runs every unit in order, each result put in its place as soon as it is made (`dest` says where each goes). The work
-/// folder is removed at the end either way, and only then is the job said to have ended.
+/// Runs every unit in order, each result put in its place as soon as it is made (`dest` says where each goes). One file
+/// that cannot be converted is counted and the next is tried; only a problem of the whole job (a Stop, no place to save,
+/// no room to work) ends it early. A unit's own work folder is removed as soon as it is done, so a long job never piles
+/// up copies of every file. The whole work folder is removed at the end either way, and only then is the job said to have
+/// ended. When nothing was made and a file failed, the job failed for that file's reason.
 pub fn run(units: &[Unit], work: &Path, dest: &dyn Fn(&Unit) -> Option<PathBuf>, job: &Job, tell: Tell) -> Ended {
     let mut e = Ended::default();
     let mut why = "alreadySmall";
-    let fail = run_units(units, dest, job, tell, &mut e, &mut why);
+    let fail = run_units(units, work, dest, job, tell, &mut e, &mut why);
     let _ = std::fs::remove_dir_all(work);
-    e.fail = fail.or_else(|| (e.made.is_empty() && e.skipped > 0).then_some(Failure::Failed(why)));
+    e.fail = fail.or_else(|| {
+        if !e.made.is_empty() { return None; }
+        if let Some((_, w)) = e.first_failed { return Some(Failure::Failed(w)); }
+        (e.skipped > 0).then_some(Failure::Failed(why))
+    });
     job.end();
     e
 }
 
-fn run_units(units: &[Unit], dest: &dyn Fn(&Unit) -> Option<PathBuf>, job: &Job, tell: Tell, e: &mut Ended, why: &mut &'static str) -> Option<Failure> {
-    use std::os::unix::fs::DirBuilderExt;
+/// How one unit went: on to the next, a file that could not be converted (the reason), or the whole job ends.
+enum Flow { Next, Bad(&'static str), End(Failure) }
+/// A failure of one file goes on to the next file; a Stop, or a lack of a place or room to work, ends the job.
+fn per_file(f: Failure) -> Flow {
+    match f { Failure::Failed(w) if !matches!(w, "noWork" | "noPlace" | "toolMissing") => Flow::Bad(w), f => Flow::End(f) }
+}
+
+fn run_units(units: &[Unit], work: &Path, dest: &dyn Fn(&Unit) -> Option<PathBuf>, job: &Job, tell: Tell, e: &mut Ended, why: &mut &'static str) -> Option<Failure> {
     let of = units.len();
-    let mut skip = |e: &mut Ended, reason: &'static str| { e.skipped += 1; *why = reason; };
     for (i, u) in units.iter().enumerate() {
         if job.stopped() { return Some(Failure::Stopped); }
         tell(i, of, None);
-        if u.already { skip(e, "alreadyThat"); continue; }
-        // Where the result goes is checked first: nothing is run for a result that could not be saved.
-        let Some(to) = dest(u) else { return Some(Failure::Failed("noPlace")) };
-        if !writable_dir(&to) { return Some(Failure::Failed("noPlace")); }
-        let dir = match &u.out { Out::File { tmp, .. } => tmp.parent().map(Path::to_path_buf), Out::Folder { tmp } => Some(tmp.clone()) };
-        if let Some(d) = dir { if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&d).is_err() { return Some(Failure::Failed("noWork")); } }
-        // Every dropped file this unit reads is taken again just before it is used: it may have been moved, or swapped
-        // for a link, since the drop. The tools read the copy taken here.
-        for input in &u.inputs {
-            if let Some(d) = input.copy.parent() { if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(d).is_err() { return Some(Failure::Failed("noWork")); } }
-            if let Err(why) = take_input(&input.from, &input.copy) { return Some(Failure::Failed(why)); }
-        }
-        let read = u.inputs.first().map(|i| i.copy.clone()).unwrap_or_else(|| u.source.clone());
-        if let Some(max) = u.max_side {
-            let size = cmd(SIPS, vec![os("-g"), os("pixelWidth"), os("-g"), os("pixelHeight"), pth(&read)]);
-            match exec(&size, job, &|_| {}) {
-                Ok(text) => if sips_size(&text).is_some_and(|(w, h)| w.max(h) <= max) { skip(e, "alreadySmall"); continue; },
-                Err(f) => return Some(f),
+        let flow = one_unit(u, i, of, dest, job, tell, e, why);
+        // This unit's copy of the input and its output are not needed any more.
+        let dir = match &u.out { Out::File { tmp, .. } | Out::Folder { tmp } => tmp.parent() };
+        if let Some(d) = dir { if d != work && d.starts_with(work) { let _ = std::fs::remove_dir_all(d); } }
+        match flow {
+            Flow::Next => tell(i + 1, of, None),
+            Flow::Bad(w) => {
+                e.failed += 1;
+                if e.first_failed.is_none() { e.first_failed = Some((u.source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), w)); }
+                tell(i + 1, of, None);
             }
+            Flow::End(f) => return Some(f),
         }
-        let progress = |t: &str| {
-            for piece in t.split(['\r', '\n']) {
-                if let Some((a, b)) = jxa_step(piece) { if b > 0 { tell(i, of, Some((a as f64 / b as f64 * 100.0).min(100.0))); } }
-                else if let Some(p) = avconvert_percent(piece) { tell(i, of, Some(p)); }
-            }
-        };
-        for c in &u.cmds { if let Err(f) = exec(c, job, &progress) { return Some(f); } }
-        if job.stopped() { return Some(Failure::Stopped); }
-        if !made_something(&u.out) { return Some(Failure::Failed("toolFailed")); }
-        if u.shrink && !smaller(&u.out, &read) { skip(e, "notSmaller"); continue; }
-        if !std::fs::metadata(&to).map(|m| m.is_dir()).unwrap_or(false) { return Some(Failure::Failed("noPlace")); }
-        let stem = u.source.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
-        match place(&u.out, &to, &stem, u.label, job) {
-            Ok(p) => e.made.push(p),
-            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => return Some(Failure::Stopped),
-            Err(_) => return Some(Failure::Failed("noPlace")),
-        }
-        tell(i + 1, of, None);
     }
     None
+}
+
+fn one_unit(u: &Unit, i: usize, of: usize, dest: &dyn Fn(&Unit) -> Option<PathBuf>, job: &Job, tell: Tell, e: &mut Ended, why: &mut &'static str) -> Flow {
+    use std::os::unix::fs::DirBuilderExt;
+    let mut skip = |e: &mut Ended, reason: &'static str| { e.skipped += 1; *why = reason; Flow::Next };
+    if u.already { return skip(e, "alreadyThat"); }
+    // Where the result goes is checked first: nothing is run for a result that could not be saved.
+    let Some(to) = dest(u) else { return Flow::End(Failure::Failed("noPlace")) };
+    if !writable_dir(&to) { return Flow::End(Failure::Failed("noPlace")); }
+    let dir = match &u.out { Out::File { tmp, .. } => tmp.parent().map(Path::to_path_buf), Out::Folder { tmp } => Some(tmp.clone()) };
+    if let Some(d) = dir { if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&d).is_err() { return Flow::End(Failure::Failed("noWork")); } }
+    // Every dropped file this unit reads is taken again just before it is used: it may have been moved, or swapped
+    // for a link, since the drop. The tools read the copy taken here.
+    for input in &u.inputs {
+        if let Some(d) = input.copy.parent() { if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(d).is_err() { return Flow::End(Failure::Failed("noWork")); } }
+        match take_input(&input.from, &input.copy, job) {
+            Ok(()) => {}
+            Err("stopped") => return Flow::End(Failure::Stopped),
+            Err(w) => return per_file(Failure::Failed(w)),
+        }
+    }
+    let read = u.inputs.first().map(|i| i.copy.clone()).unwrap_or_else(|| u.source.clone());
+    if let Some(max) = u.max_side {
+        let size = cmd(SIPS, vec![os("-g"), os("pixelWidth"), os("-g"), os("pixelHeight"), pth(&read)]);
+        match exec(&size, job, &|_| {}) {
+            Ok(text) => if sips_size(&text).is_some_and(|(w, h)| w.max(h) <= max) { return skip(e, "alreadySmall"); },
+            Err(f) => return per_file(f),
+        }
+    }
+    let progress = |t: &str| {
+        for piece in t.split(['\r', '\n']) {
+            if let Some((a, b)) = jxa_step(piece) { if b > 0 { tell(i, of, Some((a as f64 / b as f64 * 100.0).min(100.0))); } }
+            else if let Some(p) = avconvert_percent(piece) { tell(i, of, Some(p)); }
+        }
+    };
+    for c in &u.cmds { if let Err(f) = exec(c, job, &progress) { return per_file(f); } }
+    if job.stopped() { return Flow::End(Failure::Stopped); }
+    if !made_something(&u.out) { return Flow::Bad("toolFailed"); }
+    if u.shrink && !smaller(&u.out, &read) { return skip(e, "notSmaller"); }
+    if !std::fs::metadata(&to).map(|m| m.is_dir()).unwrap_or(false) { return Flow::End(Failure::Failed("noPlace")); }
+    let stem = u.source.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
+    match place(&u.out, &to, &stem, u.label, job) {
+        Ok(p) => e.made.push(p),
+        Err(err) if err.kind() == std::io::ErrorKind::Interrupted => return Flow::End(Failure::Stopped),
+        Err(_) => return Flow::End(Failure::Failed("noPlace")),
+    }
+    Flow::Next
 }
 
 /// What the pages are told when a job ends: the new files' names only (never a path) with their number for Show in
@@ -718,7 +764,14 @@ fn run_units(units: &[Unit], dest: &dyn Fn(&Unit) -> Option<PathBuf>, job: &Job,
 pub fn end_news(id: u64, e: &Ended) -> Value {
     let made: Vec<Value> = e.made.iter().enumerate().map(|(i, p)| json!({ "name": p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), "i": i })).collect();
     match e.fail {
-        None => json!({ "id": id, "phase": "done", "made": made, "skipped": e.skipped }),
+        None => {
+            let mut v = json!({ "id": id, "phase": "done", "made": made, "skipped": e.skipped });
+            // Only said when a file could not be converted: its number, and the first one's name (never a path) and reason.
+            if let (true, Some((name, why))) = (e.failed > 0, &e.first_failed) {
+                v["failed"] = json!(e.failed); v["failedName"] = json!(name); v["failedWhy"] = json!(why);
+            }
+            v
+        }
         Some(Failure::Stopped) => json!({ "id": id, "phase": "stopped", "made": made }),
         Some(Failure::Failed(why)) => json!({ "id": id, "phase": "failed", "why": why, "made": made }),
     }
@@ -1334,7 +1387,7 @@ mod tests {
         // A clone (same disk), a copy (another disk, small enough), and a big file on another disk, read where it is.
         for (n, may_clone, max) in [(1, true, COPY_MAX), (2, false, COPY_MAX), (3, false, 0)] {
             let copy = d.join(format!("copy {n}.png"));
-            assert_eq!(take(&f, &copy, may_clone, max), Ok(()), "{n}");
+            assert_eq!(take(&f, &copy, may_clone, max, &Job::default()), Ok(()), "{n}");
             assert_eq!(std::fs::read(&copy).unwrap(), b"the dropped picture", "{n}");
             assert_eq!(std::fs::symlink_metadata(&copy).unwrap().file_type().is_symlink(), n == 3, "{n}");
         }
@@ -1344,14 +1397,69 @@ mod tests {
         assert_eq!(std::fs::read(d.join("copy 2.png")).unwrap(), b"the dropped picture");
         let link = d.join("link.png");
         std::os::unix::fs::symlink(&f, &link).unwrap();
-        assert_eq!(take_input(&link, &d.join("from link.png")), Err("gone"));
+        assert_eq!(take_input(&link, &d.join("from link.png"), &Job::default()), Err("gone"));
         assert!(!d.join("from link.png").exists());
         let pipe = d.join("pipe.png");
         let c = std::ffi::CString::new(pipe.to_str().unwrap()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
-        assert_eq!(take_input(&pipe, &d.join("from pipe.png")), Err("gone"), "refused at once, never waiting on the pipe");
-        assert_eq!(take_input(&d, &d.join("from folder.png")), Err("gone"));
-        assert_eq!(take_input(&d.join("missing.png"), &d.join("from missing.png")), Err("gone"));
+        assert_eq!(take_input(&pipe, &d.join("from pipe.png"), &Job::default()), Err("gone"), "refused at once, never waiting on the pipe");
+        assert_eq!(take_input(&d, &d.join("from folder.png"), &Job::default()), Err("gone"));
+        assert_eq!(take_input(&d.join("missing.png"), &d.join("from missing.png"), &Job::default()), Err("gone"));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn one_bad_file_does_not_stop_the_others_and_is_named() {
+        let d = tmp("onebad");
+        let (a, c) = (d.join("a.png"), d.join("c.png"));
+        jpeg(&a);
+        jpeg(&c);
+        let b = d.join("b.png");
+        std::fs::write(&b, b"this is not a picture").unwrap();
+        let work = d.join("work");
+        let units = plan("toJpeg", &[a, b, c], &work, &Prefs::usual(), None).unwrap();
+        let e = run(&units, &work, &|u| u.source.parent().map(Path::to_path_buf), &Job::default(), &|_, _, _| {});
+        assert_eq!(e.fail, None, "the job went on to the end");
+        assert_eq!(e.made.len(), 2, "the files after the bad one were made");
+        assert_eq!(e.failed, 1);
+        assert_eq!(e.first_failed, Some(("b.png".to_string(), "toolFailed")));
+        let news = end_news(9, &e);
+        assert_eq!((news["failed"].clone(), news["failedName"].clone()), (json!(1), json!("b.png")));
+        // When nothing at all was made, the job fails for that file's reason, as before.
+        let work2 = d.join("work2");
+        let units = plan("toJpeg", std::slice::from_ref(&d.join("b.png")), &work2, &Prefs::usual(), None).unwrap();
+        let e = run(&units, &work2, &|u| u.source.parent().map(Path::to_path_buf), &Job::default(), &|_, _, _| {});
+        assert_eq!((e.made.len(), e.fail), (0, Some(Failure::Failed("toolFailed"))));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn a_finished_unit_takes_its_copy_and_output_out_of_the_work_folder_at_once() {
+        let d = tmp("tidy");
+        let (a, b) = (d.join("a.png"), d.join("b.png"));
+        jpeg(&a);
+        jpeg(&b);
+        let work = d.join("work");
+        let units = plan("toJpeg", &[a, b], &work, &Prefs::usual(), None).unwrap();
+        let seen = Mutex::new(vec![]);
+        let tell = |done: usize, _of: usize, _p: Option<f64>| { if done >= 1 { seen.lock().unwrap().push(work.join("0").exists()); } };
+        let e = run(&units, &work, &|u| u.source.parent().map(Path::to_path_buf), &Job::default(), &tell);
+        assert_eq!(e.made.len(), 2);
+        let seen = seen.into_inner().unwrap();
+        assert!(!seen.is_empty() && seen.iter().all(|x| !x), "the first file's folder was gone before the next one began");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn copying_a_big_file_for_the_tools_stops_when_the_job_is_stopped_and_leaves_no_copy() {
+        let d = tmp("stopcopy");
+        let f = d.join("big.mov");
+        std::fs::write(&f, vec![7u8; 3 << 20]).unwrap();
+        let job = Job::default();
+        job.stop();
+        let copy = d.join("copy.mov");
+        assert_eq!(take(&f, &copy, false, COPY_MAX, &job), Err("stopped"));
+        assert!(!copy.exists(), "no half made copy is left");
         std::fs::remove_dir_all(&d).unwrap();
     }
 
@@ -1415,11 +1523,11 @@ mod tests {
     #[test]
     fn the_pages_are_told_what_was_made_even_when_the_job_was_stopped_part_way() {
         let made = vec![p("/Users/me/Pictures/a (converted).png"), p("/Users/me/Pictures/b (converted).png")];
-        let stopped = end_news(4, &Ended { made: made.clone(), skipped: 0, fail: Some(Failure::Stopped) });
+        let stopped = end_news(4, &Ended { made: made.clone(), fail: Some(Failure::Stopped), ..Default::default() });
         assert_eq!(stopped, json!({ "id": 4, "phase": "stopped", "made": [{ "name": "a (converted).png", "i": 0 }, { "name": "b (converted).png", "i": 1 }] }));
-        let done = end_news(4, &Ended { made: made[..1].to_vec(), skipped: 1, fail: None });
+        let done = end_news(4, &Ended { made: made[..1].to_vec(), skipped: 1, ..Default::default() });
         assert_eq!(done, json!({ "id": 4, "phase": "done", "made": [{ "name": "a (converted).png", "i": 0 }], "skipped": 1 }));
-        let failed = end_news(4, &Ended { made: vec![], skipped: 0, fail: Some(Failure::Failed("noPlace")) });
+        let failed = end_news(4, &Ended { fail: Some(Failure::Failed("noPlace")), ..Default::default() });
         assert_eq!(failed, json!({ "id": 4, "phase": "failed", "why": "noPlace", "made": [] }));
         // Names only: no path ever reaches the pages.
         assert!(!stopped.to_string().contains("/Users"));

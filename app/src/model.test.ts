@@ -532,3 +532,21 @@ describe("Ship: the report on the card", () => {
     expect((checkShip("/p", { confirm: ["database_access"] }) as any).confirm).toEqual(["database_access"]);
   });
 });
+
+describe("the engine's first words after a restart", () => {
+  test("the restart notice is not wiped by the connection news the new engine sends right after it starts", () => {
+    let m = run([{ type: "app.runner_restarted" }]);
+    expect(m.notice).toBe(S.restartedNothing);
+    m = run([{ type: "runner.hello" }, { type: "auth.status", method: "none" }, { type: "auth.status", method: "api_key" }], m);
+    expect(m.notice).toBe(S.restartedNothing);
+    expect(m.connected).toBe("api_key");
+  });
+  test("the not connected line comes and goes with the connection, and only that line", () => {
+    let m = run([{ type: "auth.status", method: "none" }]);
+    expect(m.notice).toBe(S.notConnectedNotice);
+    m = run([{ type: "auth.status", method: "api_key" }], m);
+    expect(m.notice).toBeNull();
+    m = run([{ type: "app.notice", message: "Stopped everything." }, { type: "auth.status", method: "api_key" }], m);
+    expect(m.notice).toBe("Stopped everything.");
+  });
+});

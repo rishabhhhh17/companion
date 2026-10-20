@@ -69,6 +69,9 @@ const ACTIONS = new Set([
   "retry", "upload", "attach", "search", "zoom", "apply", "insert", "format", "resize", "crop", "give", "tick", "untick", "uncheck", "toggle",
   "export", "import", "print", "draw", "filter", "let", "ask", "answer", "tell", "reply", "swipe", "highlight", "place", "invite", "join", "do", "dont",
   "skip", "pause", "resume", "play", "sort", "pin", "unpin", "duplicate", "undo", "redo", "cut", "fix", "publish", "redeploy", "deploy", "push", "commit",
+  // Less common openings of a second thing to do: it is said, never left out as explanation.
+  "dismiss", "submit", "continue", "proceed", "approve", "ignore", "review", "grant", "launch", "decline", "reject", "cancel", "acknowledge",
+  "authorize", "authorise", "finish", "finalize", "verify", "grab", "agree", "register", "subscribe", "unsubscribe", "navigate", "browse",
 ]);
 /** Words that may come before the action ("Then click OK."). */
 const LEADS = new Set(["then", "now", "next", "first", "finally", "also", "and", "so", "just"]);
