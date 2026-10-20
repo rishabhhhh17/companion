@@ -64,10 +64,19 @@ pub fn marker(data: &std::path::Path) -> std::path::PathBuf { data.join("key-own
 /// wider trust. Either way the item is this app's own afterwards, and that is remembered.
 #[cfg(target_os = "macos")]
 pub fn save(raw: &str, data: &std::path::Path) -> Result<(), String> {
+    save_with(raw, data,
+        || { let _ = delete_item(&service(), ACCOUNT); gone(&service(), ACCOUNT) },   // the delete's own answer is not trusted: the look decides
+        |k| security_framework::passwords::set_generic_password(&service(), ACCOUNT, k.as_bytes()).map_err(|_| ()))
+}
+
+/// The save, with the Keychain passed in. `clear_old` takes an older version's item away and says whether it is gone; it
+/// is asked only when the item is not known to be this app's own. The item counts as this app's own (the marker) only when
+/// the old one is gone, so an old item that could not be taken away is not marked and the move is tried again next time.
+pub fn save_with(raw: &str, data: &std::path::Path, clear_old: impl FnOnce() -> bool, set: impl FnOnce(&str) -> Result<(), ()>) -> Result<(), String> {
     let key = check(raw)?;
-    if !marker(data).exists() { let _ = delete_item(&service(), ACCOUNT); }   // gone or not there: either is fine, the add below says if it really failed
-    security_framework::passwords::set_generic_password(&service(), ACCOUNT, key.as_bytes()).map_err(|_| "The Keychain did not accept the key. Try again.".to_string())?;
-    let _ = std::fs::write(marker(data), "1");
+    let old_gone = if marker(data).exists() { true } else { clear_old() };
+    set(&key).map_err(|_| "The Keychain did not accept the key. Try again.".to_string())?;
+    if old_gone { let _ = std::fs::write(marker(data), "1"); }
     Ok(())
 }
 
@@ -184,12 +193,37 @@ mod tests {
         assert_eq!(move_with(&marker, &tried3, || panic!("asked again"), || panic!("asked again"), |_| panic!("saved again")), None);
         let _ = std::fs::remove_dir_all(&d);
     }
+    fn fresh(name: &str) -> std::path::PathBuf { let d = std::env::temp_dir().join(format!("ks-{name}-{}", std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d }
+    const KEY: &str = "sk-ant-test-0123456789012345678901234567890123456789";
     #[test]
     fn saving_an_item_this_app_made_does_not_delete_it_first() {
-        let src = include_str!("keystore.rs");
-        let body = &src[src.find("pub fn save(raw: &str, data").unwrap()..]; let body = &body[..body.find("\n}\n").unwrap()];
-        assert!(body.contains("if !marker(data).exists() { let _ = delete_item"), "only an older version's item is taken away first");
-        assert!(body.contains("fs::write(marker(data)"), "a saved key is remembered as this app's own");
+        let d = fresh("own"); std::fs::write(marker(&d), "1").unwrap();
+        let mut cleared = false; let mut set = false;
+        let r = save_with(KEY, &d, || { cleared = true; true }, |_| { set = true; Ok(()) });
+        assert!(r.is_ok() && set && !cleared, "updated where it is, nothing taken away first");
+        // A refusing Keychain leaves the marker and reports plainly.
+        let r = save_with(KEY, &d, || true, |_| Err(()));
+        assert!(r.is_err() && marker(&d).exists());
+    }
+    #[test]
+    fn an_older_item_is_taken_away_and_then_marked() {
+        let d = fresh("old");
+        assert!(save_with(KEY, &d, || true, |_| Ok(())).is_ok());
+        assert!(marker(&d).exists());
+    }
+    #[test]
+    fn an_old_item_that_could_not_be_taken_away_is_not_marked_so_the_move_is_tried_again() {
+        let d = fresh("stuck");
+        assert!(save_with(KEY, &d, || false, |_| Ok(())).is_ok(), "the key is still saved");
+        assert!(!marker(&d).exists(), "not marked as this app's own");
+        let mut cleared = false;
+        let _ = save_with(KEY, &d, || { cleared = true; true }, |_| Ok(()));
+        assert!(cleared && marker(&d).exists(), "asked again next time, then marked");
+    }
+    #[test]
+    fn a_key_that_does_not_check_out_touches_nothing() {
+        let d = fresh("bad"); let touched = std::cell::Cell::new(false);
+        assert!(save_with("nope", &d, || { touched.set(true); true }, |_| { touched.set(true); Ok(()) }).is_err() && !touched.get());
     }
     #[test]
     fn nothing_to_move_when_there_is_no_old_item() {

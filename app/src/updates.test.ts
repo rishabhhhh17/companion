@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { autoCheckDue, canInstall, DAY_MS, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
+import { autoCheckDue, canInstall, DAY_MS, installAllowed, isBusy, readyVersion, updateLine, afterInstallFailed } from "./updates.ts";
 
 describe("daily update check", () => {
   const now = 1_800_000_000_000;
@@ -73,5 +73,24 @@ describe("the shell saying an update is ready", () => {
     expect(readyVersion({ version: "0.2.0" })).toBe("0.2.0");
     expect(readyVersion({ version: "1.0.0-beta.2+7" })).toBe("1.0.0-beta.2+7");
     for (const v of [null, undefined, {}, { version: "" }, { version: 2 }, { version: "<b>9</b>" }, { version: "x".repeat(41) }, "0.2.0"]) expect(readyVersion(v)).toBeNull();
+  });
+});
+
+describe("an install that failed", () => {
+  const prev = { stage: "found", version: "0.2.0", notes: "n" } as const;
+  test("the found update comes back, so Install shows again, with the reason beside it", () => {
+    const r = afterInstallFailed(prev, "I could not reach the update address.");
+    expect(r.update).toEqual(prev);
+    expect(r.state).toEqual(prev);
+    expect(r.note).toBe("I could not reach the update address.");
+  });
+  test("with nothing found before, the failure is shown as it was", () => {
+    const r = afterInstallFailed(null, "x");
+    expect(r.update).toBeNull();
+    expect(r.state).toEqual({ stage: "failed", reason: "x" });
+  });
+  test("both pages put it back", async () => {
+    const fs = await import("node:fs");
+    for (const f of ["settingsPage.tsx", "card.tsx"]) expect(fs.readFileSync(new URL("./" + f, import.meta.url), "utf8")).toContain("afterInstallFailed(");
   });
 });

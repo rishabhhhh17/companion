@@ -28,6 +28,13 @@ export function updateLine(s: UpdateState, current: string, configured: boolean)
   }
 }
 
+/** An install that failed (the Wi-Fi dropped, a task started): the shell kept the update, so the page puts it back as found,
+ *  Install shows again, and the reason sits beside it. With no update known, the failure is simply shown. */
+export function afterInstallFailed(prev: UpdateState | null, reason: string): { update: UpdateState | null; state: UpdateState; note: string } {
+  if (prev && prev.stage === "found") return { update: prev, state: prev, note: reason };
+  return { update: null, state: { stage: "failed", reason }, note: "" };
+}
+
 /** Installing restarts Companion, which would stop anything running, so it waits until nothing is running. */
 export const canInstall = (working: boolean) => !working;
 

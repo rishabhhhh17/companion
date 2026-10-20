@@ -61,8 +61,13 @@ export type HeardKind = "work" | "short" | "holdOff" | "screenQuestion" | "other
 const HOLD_OFF = ["wait", "hold on", "hang on", "one second", "one sec", "a second", "a sec", "just a second", "just a sec", "one moment", "just a moment", "a moment",
   "a minute", "give me a second", "give me a sec", "give me a minute", "give me a moment", "not yet", "never mind", "nevermind", "cancel", "cancel that", "stop", "stop that", "forget it", "no wait",
   // Taking it back: said first, or as a short clause of its own anywhere in the words.
-  "hold up", "hold it", "pause", "don't", "do not", "no don't", "i changed my mind", "changed my mind", "scratch that", "ignore that", "forget that",
+  "no don't", "i changed my mind", "changed my mind", "scratch that", "ignore that", "forget that",
   "not now", "let me think", "let's not", "lets not", "let us not"];
+/** Bare verbs that are a take back only when they stand almost alone ("Don't.", "Pause", "Hold up please", "Don't do that"),
+ *  never at the start of a real request ("Don't use red anywhere", "Pause the video when I scroll"). Only these words may follow. */
+const BARE_OFF = ["hold up", "hold it", "pause", "don't", "do not"].map((p) => p.split(" "));
+const BARE_TAIL = new Set(["that", "it", "this", "please", "now", "do", "touch", "anything"]);
+const bareOff = (c: string[]) => BARE_OFF.some((p) => startsWith(c, p) && c.slice(p.length).every((x) => BARE_TAIL.has(x)));
 /** Sounds and little words that start a clause without changing it ("Hmm, wait", "Oh wait", "No, don't"). */
 const FILLERS = new Set(["oh", "hmm", "hm", "um", "uh", "er", "ah", "so", "okay", "ok", "well", "actually", "no", "yeah", "sorry"]);
 const SCREEN_QUESTION = /^(where (is|are|do|does|can|should)|how (do|can|would) i|what (is|are|does) (this|that|these|those|the)\b|what's (this|that)|which (button|menu|tab|link|one)|show me|can you show me|could you show me)\b/;
@@ -80,6 +85,7 @@ export function heardKind(text: string, language = "auto"): HeardKind {
   const first = parts[0] ?? all, last = parts[parts.length - 1] ?? all;
   // The first words, the last words, or any short clause of its own ("Make it blue, wait, no, make it green").
   if (offs.some((p) => startsWith(first, p) || endsWith(last, p) || parts.some((c) => c.length <= 3 && startsWith(c, p)))) return "holdOff";
+  if (parts.some(bareOff)) return "holdOff";
   if (SCREEN_QUESTION.test(all.join(" "))) return "screenQuestion";
   return all.length >= 3 ? "work" : "short";
 }

@@ -149,7 +149,7 @@ describe("spoken words that send themselves", () => {
   test("a hold off in the middle, after a filler word, or a take back, never sends itself", () => {
     for (const t of ["Hmm, wait, let me think about that.", "Oh wait, I forgot something", "um wait a second let me check", "Make the button blue, wait, no, make it green.",
       "No, don't do that.", "Actually let's not do that", "Don't touch anything", "I changed my mind", "Hold up, make it blue", "Add a footer, scratch that, add a header",
-      "Make it red, ignore that", "Not now, make it blue", "Let me think, make it blue", "Pause, make the title bigger", "Do not change the colours", "Oh, don\u2019t do that"]) {
+      "Make it red, ignore that", "Not now, make it blue", "Let me think, make it blue", "Pause, make the title bigger", "Do not do that", "Oh, don\u2019t do that"]) {
       expect(heardKind(t), t).toBe("holdOff");
       expect(sendsItself(t), t).toBe(false);
     }
@@ -158,6 +158,14 @@ describe("spoken words that send themselves", () => {
     for (const t of ["Add a loading spinner while we wait for the server to answer", "make the page pause between slides for three seconds", "Add a stop button to the player page"]) {
       expect(heardKind(t), t).toBe("work");
     }
+  });
+  test("don't, do not, pause, hold it and hold up are a take back only when they stand nearly alone, not in a real request", () => {
+    for (const t of ["Don't use red anywhere on the page, make it blue", "Pause the video when I scroll away", "Add a login page, don't use passwords", "Hold it in a flex container please",
+      "Do not change the colours of the header", "Hold up the sign in a modal when the page opens", "Add a footer, pause the animation on hover"]) {
+      expect(heardKind(t), t).toBe("work");
+      expect(sendsItself(t), t).toBe(true);
+    }
+    for (const t of ["Don't", "Do not do that", "Pause", "hold it", "Make it blue, don't do it", "Hold up please", "Don't touch anything"]) expect(heardKind(t), t).toBe("holdOff");
   });
   test("a word that only looks like one of them is not a hold off", () => {
     for (const t of ["Add a waiting list page", "make the stopwatch start at zero", "cancellation emails go to the wrong person"]) expect(heardKind(t), t).toBe("work");

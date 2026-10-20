@@ -1858,6 +1858,8 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
+    // One install at a time (the card and Settings both have an Install). The guard lets go on every way out, errors too.
+    let Some(_flight) = updates::INSTALLING.try_start() else { return Err(updates::INSTALLING_WORDS.into()) };
     // Only a copy is used: if the download fails (the Wi-Fi drops), the found update stays, so Install can be pressed again.
     let u = PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or("Check for updates first.")?;
     let bytes = u.download(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;

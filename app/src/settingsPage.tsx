@@ -14,7 +14,7 @@ import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, pictur
 import type { Spending } from "./model.ts";
 import { canPick, choicesFrom, chordLabel, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
-import { canInstall, found, updateLine, type UpdateState } from "./updates.ts";
+import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
@@ -720,7 +720,13 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       setUp(found.update ?? { stage: "none" });
     }).catch((e) => setUp({ stage: "failed", reason: String(e) }));
   };
-  const installNow = () => { if (!canInstall(working)) return; setUp({ stage: "installing" }); found.update = null; void invoke("install_update").catch((e) => setUp({ stage: "failed", reason: String(e) })); };
+  const [upNote, setUpNote] = useState("");
+  const installNow = () => {
+    if (!canInstall(working)) return;
+    const prev = found.update; setUpNote(""); setUp({ stage: "installing" });
+    // The shell keeps the update when an install fails, so it is put back and Install can be pressed again.
+    void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUp(r.state); setUpNote(r.note); });
+  };
   const [nums, setNums] = useState<NumbersSummary | null>(null);
   const [showNums, setShowNums] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -768,6 +774,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       <div className="line muted">{S.updatesHelp}</div>
       <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
       {up.stage === "found" && up.notes && <div className="line muted">{up.notes}</div>}
+      {up.stage === "found" && upNote && <div className="line" role="alert">{upNote}</div>}
       {upInfo.configured && <div className="row">
         <button className="btn" type="button" disabled={up.stage === "checking" || up.stage === "installing"} onClick={checkNow}>{S.updatesCheck}</button>
         {up.stage === "found" && <button className="btn primary" type="button" disabled={!canInstall(working)} onClick={installNow}>{S.updatesInstall}</button>}

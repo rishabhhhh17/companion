@@ -18,7 +18,7 @@ import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./mode
 import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
-import { autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
+import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
@@ -1096,7 +1096,7 @@ function Card() {
     const off = listen("update-ready", (e) => { setUpdateReady(readyVersion(e.payload)); setUpdateNote(""); });
     return () => { off.then((f) => f()); };
   }, []);
-  const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); found.update = null; void invoke("install_update").catch((e) => setUpdateNote(String(e))); };
+  const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); const prev = found.update; void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUpdateNote(r.note || String(e)); }); };
   useEffect(() => {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };

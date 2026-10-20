@@ -61,6 +61,20 @@ static RUNNING: std::sync::Mutex<Running> = std::sync::Mutex::new(Running::new()
 /// Every engine event, as it is published to the pages.
 pub fn note_running(v: &serde_json::Value) { RUNNING.lock().unwrap_or_else(|e| e.into_inner()).note(v); }
 pub fn running_now() -> bool { RUNNING.lock().unwrap_or_else(|e| e.into_inner()).busy() }
+/// One install at a time: the card's Install and Settings' Install can both be pressed, and two downloads must not race to
+/// replace the app. `try_start` hands out a guard, or None while one is under way; dropping the guard (on every way out,
+/// including an error) lets the next press through.
+pub struct InstallFlight(std::sync::atomic::AtomicBool);
+pub struct InstallGuard<'a>(&'a InstallFlight);
+impl InstallFlight {
+    pub const fn new() -> Self { InstallFlight(std::sync::atomic::AtomicBool::new(false)) }
+    pub fn try_start(&self) -> Option<InstallGuard<'_>> { if self.0.swap(true, std::sync::atomic::Ordering::SeqCst) { None } else { Some(InstallGuard(self)) } }
+}
+impl Drop for InstallGuard<'_> { fn drop(&mut self) { (self.0).0.store(false, std::sync::atomic::Ordering::SeqCst); } }
+pub static INSTALLING: InstallFlight = InstallFlight::new();
+/// What install_update says to a second press while one install is under way.
+pub const INSTALLING_WORDS: &str = "An update is already being installed.";
+
 /// What install_update says when something runs: the page's own words (S.updatesBusy).
 pub const BUSY_WORDS: &str = "Wait until the current task is finished, then install.";
 
@@ -187,6 +201,21 @@ mod tests {
         q.note(&serde_json::json!({ "type": "receipt", "agent": "b", "asks": false }));
         q.note(&serde_json::json!({ "type": "agent.state", "agent": "b", "state": "needsYou" }));
         assert!(q.busy());
+    }
+    #[test]
+    fn a_second_install_is_turned_away_until_the_first_is_over() {
+        let f = InstallFlight::new();
+        let g = f.try_start().expect("the first goes");
+        assert!(f.try_start().is_none(), "the second waits");
+        drop(g);
+        assert!(f.try_start().is_some(), "after the first ends, even by an error, the next goes");
+    }
+    #[test]
+    fn install_update_takes_the_flight_before_anything_else_is_done() {
+        let main = include_str!("main.rs");
+        let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
+        let flight = install.find("updates::INSTALLING.try_start()").expect("takes the flight");
+        assert!(flight < install.find(".download(").unwrap());
     }
     #[test]
     fn a_failed_download_keeps_the_update_so_install_can_be_pressed_again_and_a_task_started_meanwhile_is_not_cut_off() {
