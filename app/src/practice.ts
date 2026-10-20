@@ -71,6 +71,10 @@ export function rowState(r: RecordRow | undefined): RowState {
 /** Node that is not on this Mac at all: only then does a practice wait (its checks run on an older Node too). */
 export const nodeMissing = (doctor: DoctorItem[] | null): DoctorItem | null => doctor?.find((d) => d.id === "node" && d.missing === true) ?? null;
 
+/** Whether the Mac check should run (again): there is no report yet, or it said Node is missing. A person who installed Node
+ *  while Companion was open would otherwise stay blocked until it was restarted. */
+export const needsMacCheck = (doctor: DoctorItem[] | null): boolean => doctor === null || nodeMissing(doctor) !== null;
+
 export type ListRow = { entry: PracticeEntry; state: RowState; there: boolean; title: string; teaches: string; time: string; cost: string; needsNode: boolean };
 export const timeWords = (e: PracticeEntry) => S.practiceMinutes(e.minutes);
 export const costWords = (e: PracticeEntry) => (e.costUsd > 0 ? S.practiceCostKey(Math.round(e.costUsd * 100)) : S.practiceFree);

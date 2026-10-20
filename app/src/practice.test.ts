@@ -12,7 +12,7 @@ import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 import { canFollowUp, canRetry, initial, lessonWordsOnly, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
-import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
+import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, needsMacCheck, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -388,6 +388,15 @@ describe("the record and the list on Learn", () => {
     // An old Node still runs node --test: no wait for it.
     expect(listRows(NO, [{ id: "node", label: "Node", ok: false, detail: "Version 18 is too old", fix: "x" }]).some((r) => r.needsNode)).toBe(false);
     expect(nodeMissing(noNode)?.fix).toBe("Install it from nodejs.org.");
+  });
+  test("the Mac is checked again while Node is flagged missing (after it was installed), never again once Node is there", () => {
+    const noNode = [{ id: "node", label: "Node", ok: false, detail: "x", missing: true as const }];
+    const fine = [{ id: "node", label: "Node", ok: true, detail: "Node 22" }];
+    expect(needsMacCheck(null)).toBe(true);
+    expect(needsMacCheck(noNode)).toBe(true);
+    expect(needsMacCheck(fine)).toBe(false);
+    // An old Node is not a missing Node: nothing to wait for.
+    expect(needsMacCheck([{ id: "node", label: "Node", ok: false, detail: "Version 18 is too old", fix: "x" }])).toBe(false);
   });
   test("a practice starts only while nothing is working, and only with Node when it needs it", () => {
     const e = entry("signup"), noNode = [{ id: "node", label: "Node", ok: false, detail: "x", missing: true as const }];

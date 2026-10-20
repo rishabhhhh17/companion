@@ -15,7 +15,7 @@ import { AGENT, SETTINGS_LESSON_ID, releaseAgent, checkBrowser, getBrowser, NO_P
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
-import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
+import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
@@ -1025,10 +1025,18 @@ function Card() {
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
   useEffect(() => {
-    if (home.tab === "learn") { void send(walkList(project || NO_PROJECT)); loadPractice(); if (!m.doctor) void send(checkMac()); }
+    if (home.tab === "learn") { void send(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void send(checkMac()); }
     if (home.tab === "memory" && project) void send(listMemory(project));
     if (home.tab === "did" && project) void send(listTasks(project));
   }, [home.tab, project]);
+  // Node was installed while Home stayed open: coming back to Companion checks again, only on Learn and only while Node is
+  // flagged missing.
+  useEffect(() => {
+    if (home.tab !== "learn" || !nodeMissing(m.doctor)) return;
+    const again = () => void send(checkMac());
+    window.addEventListener("focus", again);
+    return () => window.removeEventListener("focus", again);
+  }, [home.tab, m.doctor]);
   const beginLesson = (lesson: string, fresh: boolean) => {
     // With no folder chosen the lesson is asked to start without one; if it needs a project it says so itself.
     pressed();
