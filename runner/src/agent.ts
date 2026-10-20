@@ -33,6 +33,9 @@ import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, te
 import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
 import { readDeployFailure } from "./ship/buildlog.ts";
+import { ciEvidence, type CiReader } from "./connections.ts";
+import { whereWasI, type WatchLite } from "./wherewasi.ts";
+import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
@@ -67,6 +70,7 @@ export const NO_PROJECT = "no-project";
 // Point at the problem and Rescue, when the last Vercel deploy is what failed.
 const DEPLOY_FAILED = "Your last Vercel deploy failed";
 const DEPLOY_EVIDENCE = "Your last Vercel deploy";
+const CI_EVIDENCE = "Your latest GitHub run";
 
 /** The saved receipt picture's file name. Checkpoint numbers repeat from one project to the next, so the project is part of the name. */
 export const receiptPictureName = (project: string, checkpoint: string): string => `${createHash("sha1").update(resolve(project)).digest("hex").slice(0, 8)}-${checkpoint}.jpg`;
@@ -106,6 +110,10 @@ export type RunnerOptions = {
   deployer?: Deployer;
   // Reading why the last Vercel deploy failed (read only), for Point at the problem and Rescue. Without it, off.
   deployLogs?: DeployLogReader;
+  // Reading why the latest GitHub run failed (read only, through the person's own gh tool), for Rescue. Without it, off.
+  ci?: CiReader;
+  // The watches of a project, for Where was I (F21). Without it, Where was I names none.
+  watches?: { forProject(project: string): WatchLite[] };
   browser?: typeof browserCheck;
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
@@ -351,6 +359,47 @@ export class AgentRunner {
     const rows = this.o.log.list(cmd.project, 100);
     this.emit({ type: "recap.ready", project: cmd.project, lines: recapLines(rows, new Date(cmd.since).toISOString(), pending) } as never);
   }
+  // Where was I (F21): what you were doing, what is unfinished, what changed since, and one next step. Plain code from the
+  // task history, the project's watches and what is waiting here; no model, nothing sent anywhere.
+  private where(cmd: Extract<Command, { type: "where.was.i" }>) {
+    const key = resolve(cmd.project);
+    let pendingApprovals = 0;
+    for (const s of this.sessions.values()) pendingApprovals += s.pending.size;
+    const waitingPlans = [...this.plans.values()].filter((p) => resolve(p.project) === key).length;
+    const pausedPlans = [...this.pauseReq.keys()].filter((a) => { const t = this.lastTask.get(a); return !!t && resolve(t.project) === key; }).length;
+    const asked = [...this.lastTask.entries()].find(([a, t]) => resolve(t.project) === key && t.asked === true && !this.sessions.has(a));
+    const r = whereWasI({
+      rows: this.o.log.list(cmd.project, 100), since: cmd.since ?? null, now: this.now().getTime(), watches: this.o.watches?.forProject(cmd.project) ?? [],
+      pendingApprovals, waitingPlans, pausedPlans, question: asked ? { text: asked[1].offTheRecord ? null : asked[1].question ?? null } : null,
+    });
+    this.emit({ type: "where.ready", project: cmd.project, lines: r.lines, next: r.next } as never);
+  }
+
+  /** The project's own checks with no model and nothing changed, for a watch: the proof ladder as Point at the problem runs
+   *  it (no installs). skip: something else is working on this folder, so a half finished project is not judged. */
+  async checkWithoutModel(project: string, signal: AbortSignal): Promise<CheckResult | { skip: string } | null> {
+    if (this.finding.has(project) || this.projectInUse(project)) return { skip: "Companion is working on this project right now." };
+    const abort = new AbortController();
+    const stop = () => abort.abort();
+    signal.addEventListener("abort", stop, { once: true });
+    this.finding.set(project, { abort, agent: "watch", flow: true });
+    try {
+      const store = this.store(project);
+      const snap = await store.snapshot("Watch: the project as it was found");
+      let res: LadderResult;
+      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: snap.id, afterId: snap.id, onStep: () => {}, signal: abort.signal, noInstall: true, ...this.checkFor(project), approvals: this.approvals(project) }); }
+      catch (e) { return { outcome: "unknown", reason: `The checker itself stopped (${clip(redact(String((e as Error).message ?? e)), 80)}).` }; }
+      if (abort.signal.aborted || res.verdict === "cancelled") return null;
+      const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
+      if (res.verdict === "failed") return { outcome: "failing", reason: failed ? `${failed.label} did not pass: ${clip(redact(failed.detail).replace(/\s+/g, " ").trim(), 140)}` : "The project's checks did not pass." };
+      if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: "There is nothing in this project that Companion can check yet." };
+      if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redact(res.gaps[0]), 120) : "Some could not run."}`.trim() };
+      return { outcome: "ok", reason: "All of the project's own checks passed." };
+    } catch (e) {
+      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `Companion could not check the project (${clip(redact(String((e as Error).message ?? e)), 100)}).` };
+    } finally { signal.removeEventListener("abort", stop); this.finding.delete(project); }
+  }
+
   // Explain: asks the fast model why the task did what it did, from the real change. A problem here is never a problem for
   // the task. Its cost is the person's own, so it counts in today's spending, and it is not asked for once the day's limit is reached.
   private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1) {
@@ -521,6 +570,7 @@ export class AgentRunner {
     switch (cmd.type) {
       case "agent.start": await this.run(cmd); return;
       case "recap.ask": return this.recap(cmd);
+      case "where.was.i": return this.where(cmd);
       case "ship.preview": return this.shipPreview(cmd);
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
@@ -1827,6 +1877,12 @@ export class AgentRunner {
         if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
         if (d?.state === "failed") evidence.push({ label: DEPLOY_EVIDENCE, status: "failed", detail: d.evidence });
         else if (d?.state === "unknown") evidence.push({ label: DEPLOY_EVIDENCE, status: "skipped", detail: d.reason });
+      }
+      // A project on GitHub: why its latest CI run failed is evidence too (read only, the person's own gh tool).
+      if (this.o.ci && this.setting<boolean>("rescue.readCiRun") !== false) {
+        const c = await ciEvidence(cmd.project, this.o.ci, st.abort.signal);
+        if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
+        if (c) evidence.push({ label: CI_EVIDENCE, status: c.ok ? "passed" : "failed", detail: c.text });
       }
       this.state(cmd.agent, "thinking");
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));

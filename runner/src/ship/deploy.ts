@@ -8,6 +8,7 @@ import { runCommand, shq, type RunResult } from "../proof/exec.ts";
 import { minimalEnv } from "../env.ts";
 import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
 import { clip, redact } from "../redact.ts";
+import { refuseWrite } from "../readonly.ts";
 
 export type Ok<T = object> = { ok: true } & T;
 // unclear: the command was sent and then stopped, ran out of time or ended in a way that does not say what happened, so
@@ -37,11 +38,26 @@ export type FailedBuild =
   | { state: "unavailable"; reason: string }
   | { state: "cancelled" };
 export interface DeployLogReader { lastFailedBuild(project: string, signal?: AbortSignal): Promise<FailedBuild> }
+// A watch on deploys (F21): how the newest finished deploy ended. none: there is no finished deploy yet.
+export type LatestDeploy =
+  | { state: "ready" | "failed"; url: string; building: boolean; createdAt?: number }
+  | { state: "none"; building: boolean }
+  | { state: "not_linked" }
+  | { state: "unavailable"; reason: string }
+  | { state: "cancelled" };
+export interface LatestDeployReader { latestDeploy(project: string, signal?: AbortSignal): Promise<LatestDeploy> }
 const COULD_NOT = "I could not read why the Vercel deploy failed:";
+const COULD_NOT_WATCH = "I could not check your Vercel deploys:";
 const LOG_NO_CLI = `${COULD_NOT} the Vercel tool is not installed. Install it with: npm install -g vercel`;
 const LOG_NO_LOGIN = `${COULD_NOT} you are not signed in to Vercel. Open Terminal, run: vercel login, then try again.`;
 // The list holds teammates' names and commit messages, so when it cannot be read none of it is shown or passed on.
 const LOG_NO_LIST = `${COULD_NOT} the Vercel tool's list of deploys could not be read. Open this project on vercel.com to see why the last deploy failed.`;
+// The same three lines for a watch, which asks about the latest deploy rather than why one failed.
+const watchWords = (prefix: string) => ({
+  noCli: `${prefix} the Vercel tool is not installed. Install it with: npm install -g vercel`,
+  noLogin: `${prefix} you are not signed in to Vercel. Open Terminal, run: vercel login, then try again.`,
+  noList: `${prefix} the Vercel tool's list of deploys could not be read. Open this project on vercel.com to look.`,
+});
 // The list of 20 deployments with their GitHub details runs to tens of thousands of characters (pretty printed JSON).
 const LIST_KEEP = 256_000;
 // The team (or personal account) the linked project belongs to, as Vercel writes its id: never anything a shell could read.
@@ -82,7 +98,7 @@ const LOGIN_FLOW = /Starting login flow|oauth\/device|No existing credentials/i;
 const URL_RE = /https:\/\/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.vercel\.app\b[^\s)"']*/gi;
 const plain = (r: RunResult) => clip(redact(`${r.stderr}\n${r.stdout}`).replace(/\s+/g, " ").trim(), 300);
 
-export class VercelCli implements Deployer, DeployLogReader {
+export class VercelCli implements Deployer, DeployLogReader, LatestDeployReader {
   // scale: "my internet is slow" (2) doubles the waits for a deploy, going live and rolling back; read at each call.
   constructor(private run: typeof runCommand = runCommand, private authFile = join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), private hasCli: () => boolean = cliOnPath, private scale: () => number = () => 1) {}
   // Only whether the file exists: its contents are never opened.
@@ -120,31 +136,50 @@ export class VercelCli implements Deployer, DeployLogReader {
     return fail ? { ok: false as const, reason: fail, ...(unclear ? { unclear } : {}) } : { ok: true as const };
   }
 
-  // Read only: `vercel list`, then `vercel inspect <url> --logs` for the newest finished deploy if it failed.
-  async lastFailedBuild(project: string, signal?: AbortSignal): Promise<FailedBuild> {
-    if (!existsSync(join(project, ".vercel", "project.json"))) return { state: "not_linked" };
-    if (!this.hasCli()) return { state: "unavailable", reason: LOG_NO_CLI };
-    if (!this.signedIn()) return { state: "unavailable", reason: LOG_NO_LOGIN };
-    const read = (args: string, timeoutMs: number, keep?: number) => this.run(`vercel ${args}`, { cwd: project, timeoutMs, signal, stopWhen: LOGIN_FLOW, ...(keep ? { keep } : {}) });
+  // Read only, and checked in code: nothing but `vercel list` and `vercel inspect` is ever run here (readonly.ts).
+  private reading(project: string, signal: AbortSignal | undefined) {
+    return (args: string, timeoutMs: number, keep?: number): Promise<RunResult> => {
+      const command = `vercel ${args}`;
+      const refused = refuseWrite(command);
+      if (refused) throw new Error(refused);
+      return this.run(command, { cwd: project, timeoutMs, signal, stopWhen: LOGIN_FLOW, ...(keep ? { keep } : {}) });
+    };
+  }
+  // The deployments of a linked project, newest first, or why they cannot be read.
+  private async listed(project: string, signal: AbortSignal | undefined, words: { noCli: string; noLogin: string; noList: string; could: string }): Promise<{ deployments: Listed[] } | { fail: FailedBuild }> {
+    if (!existsSync(join(project, ".vercel", "project.json"))) return { fail: { state: "not_linked" } };
+    if (!this.hasCli()) return { fail: { state: "unavailable", reason: words.noCli } };
+    if (!this.signedIn()) return { fail: { state: "unavailable", reason: words.noLogin } };
+    const read = this.reading(project, signal);
     const stopped = (r: RunResult): FailedBuild | null =>
-      r.aborted ? { state: "cancelled" } : r.matched ? { state: "unavailable", reason: LOG_NO_LOGIN }
-      : r.timedOut ? { state: "unavailable", reason: `${COULD_NOT} Vercel took too long, so I stopped it.` }
-      : r.code === 127 ? { state: "unavailable", reason: LOG_NO_CLI } : null;
+      r.aborted ? { state: "cancelled" } : r.matched ? { state: "unavailable", reason: words.noLogin }
+      : r.timedOut ? { state: "unavailable", reason: `${words.could} Vercel took too long, so I stopped it.` }
+      : r.code === 127 ? { state: "unavailable", reason: words.noCli } : null;
     // Kept whole: the default keeps only the end of a command's output, and a list cut short is not JSON.
     let r = await read("list --format json", 60_000, LIST_KEEP);
     let deployments: Listed[] | null = null;
-    if (stopped(r)) return stopped(r)!;
+    if (stopped(r)) return { fail: stopped(r)! };
     if (r.code === 0) deployments = parseDeploymentList(r.stdout);
     else if (/unknown or unexpected option|unknown option/i.test(`${r.stderr}\n${r.stdout}`)) {
       r = await read("list", 60_000, LIST_KEEP);
-      if (stopped(r)) return stopped(r)!;
+      if (stopped(r)) return { fail: stopped(r)! };
       if (r.code === 0) deployments = parseDeploymentTable(`${r.stderr}\n${r.stdout}`);
     }
     // A no from the tool says why on its error stream; a list it printed but that cannot be read is never shown.
-    if (!deployments) return { state: "unavailable", reason: r.code === 0 ? LOG_NO_LIST : `${COULD_NOT} Vercel said no: ${plain({ ...r, stdout: "" }) || "no details"}` };
+    if (!deployments) return { fail: { state: "unavailable", reason: r.code === 0 ? words.noList : `${words.could} Vercel said no: ${plain({ ...r, stdout: "" }) || "no details"}` } };
+    return { deployments };
+  }
+
+  // Read only: `vercel list`, then `vercel inspect <url> --logs` for the newest finished deploy if it failed.
+  async lastFailedBuild(project: string, signal?: AbortSignal): Promise<FailedBuild> {
+    const l = await this.listed(project, signal, { noCli: LOG_NO_CLI, noLogin: LOG_NO_LOGIN, noList: LOG_NO_LIST, could: COULD_NOT });
+    if ("fail" in l) return l.fail;
     // The newest deploy that finished; one still building, queued or cancelled says nothing yet.
-    const last = deployments.find((d) => d.state === "READY" || d.state === "ERROR");
+    const last = l.deployments.find((d) => d.state === "READY" || d.state === "ERROR");
     if (!last || last.state !== "ERROR") return { state: "none" };
+    return this.buildLog(project, last, signal);
+  }
+  private async buildLog(project: string, last: Listed, signal: AbortSignal | undefined): Promise<FailedBuild> {
     const host = last.url.replace(/^https:\/\//, "").replace(/\/$/, "");
     if (!DEPLOYMENT_HOST.test(host)) return { state: "unavailable", reason: `${COULD_NOT} its address looked wrong, so I did not use it.` };
     const url = `https://${host}`;
@@ -152,11 +187,24 @@ export class VercelCli implements Deployer, DeployLogReader {
     // default team, so it is told the same team. [verify] with a team project that is not the default (T08).
     const org = linkedOrg(project);
     // Exit code 1 is what inspect gives for a failed deployment, so the log itself is what counts.
-    const l = await read(`inspect ${shq(url)} --logs${org ? ` --scope ${shq(org)}` : ""}`, 90_000, 64_000);
-    if (stopped(l)) return stopped(l)!;
+    const l = await this.reading(project, signal)(`inspect ${shq(url)} --logs${org ? ` --scope ${shq(org)}` : ""}`, 90_000, 64_000);
+    if (l.aborted) return { state: "cancelled" };
+    if (l.matched) return { state: "unavailable", reason: LOG_NO_LOGIN };
+    if (l.timedOut) return { state: "unavailable", reason: `${COULD_NOT} Vercel took too long, so I stopped it.` };
+    if (l.code === 127) return { state: "unavailable", reason: LOG_NO_CLI };
     const log = [l.stderr, l.stdout].filter(Boolean).join("\n");
     if (!LOG_LINE.test(log)) return { state: "unavailable", reason: `${COULD_NOT} Vercel said no: ${plain(l) || "no details"}` };
     return { state: "failed", url, log, ...(last.createdAt ? { createdAt: last.createdAt } : {}) };
+  }
+
+  // A watch (F21): how the newest finished deploy of a linked project ended, read only. building: a newer one is still going.
+  async latestDeploy(project: string, signal?: AbortSignal): Promise<LatestDeploy> {
+    const l = await this.listed(project, signal, { ...watchWords(COULD_NOT_WATCH), could: COULD_NOT_WATCH });
+    if ("fail" in l) return l.fail as LatestDeploy;
+    const last = l.deployments.find((d) => d.state === "READY" || d.state === "ERROR");
+    const building = l.deployments.some((d) => ["BUILDING", "QUEUED", "INITIALIZING", "DEPLOYING", "ANALYZING"].includes(d.state)) && (!last || l.deployments.indexOf(last) > 0);
+    if (!last) return { state: "none", building };
+    return { state: last.state === "ERROR" ? "failed" : "ready", url: last.url, building, ...(last.createdAt ? { createdAt: last.createdAt } : {}) };
   }
 }
 

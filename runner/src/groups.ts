@@ -52,9 +52,11 @@ export type Parts = {
   walks: { stopAll(): void };
   browser: { stop(): unknown };
   assist?: { cancel(g: "guide" | "voice"): void } | null;
+  /** Watch routines (F21) belong to Flow: a running check ends, the schedule setting stays as it is. */
+  watches?: { stopAll(): void } | null;
 };
 export function stopGroupWork(groups: string[], p: Parts): void {
-  if (groups.includes("flow")) { void p.runner.stopGroup("flow"); void p.browser.stop(); }
+  if (groups.includes("flow")) { void p.runner.stopGroup("flow"); void p.browser.stop(); p.watches?.stopAll(); }
   if (groups.includes("guide")) { p.walks.stopAll(); p.assist?.cancel("guide"); }
   if (groups.includes("voice")) { p.assist?.cancel("voice"); void p.runner.stopGroup("voice"); }
 }

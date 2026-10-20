@@ -34,6 +34,10 @@ const ALLOWED: &[&str] = &[
     "bisect.start", "bisect.undo",
     // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
     "teach.try", "teach.check",
+    // Watch routines and Where was I (F21). All name the project, so all are project bound. The engine reads only the person's
+    // own tools and the address they typed, and only while Companion is open. watch.fix asks for the evidence; the page then
+    // starts an ordinary task, on the person's press.
+    "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
     // The zero cost warm up when Home opens or the ask box gets the keyboard (runner/src/warm.ts). Names nothing.
     "engine.warm",
 ];
@@ -73,6 +77,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
     "spending.show", "spending.set", "teach.try", "teach.check",
     "bisect.start", "bisect.undo",
+    "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -367,7 +372,7 @@ mod tests {
         assert!(check_project(&c("problem.find", "/"), "/Users/me/site").is_err());
         assert!(check_project(&c("project.inspect", "/Users/me/site"), "").is_err());
         // Every command that works on a project is held to the chosen folder (found by the 15 Oct 2026 review).
-        for t in ["agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback", "checkpoint.restore", "tasks.list", "recap.ask", "explain.set", "memory.list", "memory.erase", "memory.add"] {
+        for t in ["agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback", "checkpoint.restore", "tasks.list", "recap.ask", "explain.set", "memory.list", "memory.erase", "memory.add", "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i"] {
             assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t} must not accept another folder");
             assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t} must accept the chosen folder");
             assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t} must not work before a folder is chosen");

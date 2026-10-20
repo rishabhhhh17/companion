@@ -26,6 +26,9 @@ import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
 import { groupsOff, newlyOff, refusal, stopGroupWork } from "./groups.ts";
 import { slowFactor } from "./proof/options.ts";
+import { WATCH_FILE, WatchEngine } from "./watch.ts";
+import { GhCli } from "./connections.ts";
+import { makeChecks, makeEvidence } from "./watchwire.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -50,7 +53,16 @@ const spending = new SpendingStore(join(settings.data, SPENDING_FILE));
 const slow = () => slowFactor((k) => runnerSettings.get(k));
 // The person's own Vercel tool: Ship deploys through it, and Point at the problem and Rescue read a failed deploy's build log through it (read only).
 const vercel = new VercelCli(undefined, undefined, undefined, slow);
-const runner = new AgentRunner({ settings: runnerSettings, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: new TaskLog(join(settings.data, "tasks.db"), problem), reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+// Watch routines and the read only connections (F21): the person's own vercel and gh tools, through the same safe runner.
+const gh = new GhCli(undefined, undefined, slow);
+const watchList: { engine: WatchEngine | null } = { engine: null };
+const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
+const runner = new AgentRunner({ settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const watches = new WatchEngine({
+  file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
+  checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
+});
+watchList.engine = watches;
 // Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength), and reads
 // ph.useProjectInfo and ph.handBack on each request.
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data), settings: runnerSettings, spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) } }) : null;
@@ -66,6 +78,7 @@ const browser = new BrowserSetup({ emit: say, timeoutMs: () => 15 * 60_000 * slo
 process.stdout.on("error", () => process.exit(0));
 say({ type: "runner.hello", runnerVersion: "0.0.1", sdk: SDK_VERSION });
 for (const m of notes) say({ type: "protocol.error", reason: m });
+watches.start();   // the schedule runs only while this engine does
 async function announceAuth() {
   if (settings.engine !== "sdk") return;
   const a = await currentAuth(settings);
@@ -81,7 +94,7 @@ process.on("uncaughtException", survive("uncaughtException"));
 /** A group that has just been switched off stops its tools here: Flow ends the tasks and checks that are running, Guide the
  *  lessons and Show me, Voice what Prompt help and the error explainer were reading. (The shell stops its own: the
  *  microphone, speech, the pointer, a conversion.) What they made stays, and Undo of it still works. */
-function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, browser, assist }); }
+function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, browser, assist, watches }); }
 
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
@@ -111,8 +124,10 @@ function dispatch(cmd: Command) {
     say({ type: "metrics.summary", ...metrics.summary() });
     return;
   }
+  // Watch routines: the schedule and the checks live in watch.ts; the group switch was checked above.
+  if (cmd.type.startsWith("watch.")) { const p = Promise.resolve(watches.handle(cmd)).catch((e: Error) => say({ type: "protocol.error", reason: `could not handle ${cmd.type}: ${e.message}` })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   metrics.observeCommand(cmd);
-  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); }
+  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); watches.stopAll(); }
   const work = cmd.type.startsWith("walk.") ? walks.handle(cmd as never) : cmd.type.startsWith("assist.")
     ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
     : runner.handle(cmd);
@@ -151,6 +166,7 @@ async function main() {
     }
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
+  watches.stop(); watches.stopAll();
   void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
   void browser.stop();   // a real download runs in its own process group, so it is ended and waited for, never left behind
   void releaseShotDrive();
