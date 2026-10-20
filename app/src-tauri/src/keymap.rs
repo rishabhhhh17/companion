@@ -913,7 +913,31 @@ mod tests {
         let arm_body = body("fn arm_now(");
         assert!(arm_body.contains("keymap::arm(accept, was, &keys_picked(), |c| gs.register(keymap::shortcut(c)).is_ok())"), "{arm_body}");
         assert!(arm_body.contains("if got != was { set_key_using(accept, got);") && arm_body.contains("ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);"), "{arm_body}");
-        assert!(line("#[tauri::command] fn ph_ready(").ends_with("arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id) }"));
+        assert!(body("#[tauri::command] fn ph_ready(").contains("arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id)"));
+    }
+    #[test]
+    fn the_result_keys_go_back_whichever_way_home_closes() {
+        // Use a suggestion's keys and the bare Esc work in every app while a Prompt help result shows (T11). Every way Home
+        // goes away (Esc or Close, the island or the character clicked again, a full screen app, Hide in the menu bar)
+        // orders the card out and then runs home_closed, which gives them back, so none of them can leave the keys taken
+        // for a result nobody can see.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let closed = body("fn home_closed(");
+        assert!(closed.contains("std::thread::spawn(move || arm_result_keys(&a, false))"), "home_closed gives the keys back, on its own thread: {closed}");
+        let outs: Vec<usize> = main.match_indices("c.orderOut(None)").map(|(i, _)| i).collect();
+        assert_eq!(outs.len(), 4, "close_card, toggle_home, the full screen hide and Hide in the menu bar");
+        for at in outs {
+            let rest = &main[at..];
+            let next = rest.find("home_closed();").unwrap_or_else(|| panic!("the card is ordered out at {at} with no home_closed after it"));
+            assert!(!rest[..next].contains("\nfn "), "the card is ordered out at {at} and home_closed is not in the same function");
+        }
+        // close_card has no second way of its own: the one in home_closed is the only one.
+        assert!(!body("fn close_card(").contains("arm_result_keys"));
+        // The keys are taken only while Home shows the result of the request waiting now.
+        let ready = body("#[tauri::command] fn ph_ready(");
+        assert!(ready.contains("if !card_visible()") && ready.find("card_visible()").unwrap() < ready.find("arm_result_keys(&app, true)").unwrap(), "{ready}");
+        assert!(main.contains("#[tauri::command] fn ph_disarm(app: AppHandle) { arm_result_keys(&app, false); }"));
     }
     #[test]
     fn the_page_is_told_every_jobs_keys_now_and_picked() {

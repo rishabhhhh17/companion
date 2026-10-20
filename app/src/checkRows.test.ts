@@ -121,6 +121,13 @@ describe("house rules are saved only for the project they came from", () => {
     expect(problemWords("projectChanged")).toBe(S.setProblem.projectChanged);
     expect(S.setProblem.projectChanged).not.toBe(S.setProblem.other);
   });
+  test("a reset after the settings file could be read again says so, and changes nothing until asked again", () => {
+    // The page was shown the usual values while the file could not be read; once it can, the shell takes the person's own
+    // values, refuses the reset ("readAgain") and tells every window, so the confirm can name what would change.
+    expect(problemWords("readAgain")).toBe((S.setProblem as Record<string, unknown>).readAgain as string);
+    expect(problemWords("readAgain")).not.toBe(S.setProblem.other);
+    expect(problemWords("readAgain")).toMatch(/could be read again/);
+  });
 });
 
 describe("the keyboard and VoiceOver on these rows", () => {

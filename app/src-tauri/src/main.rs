@@ -118,6 +118,8 @@ static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
 static FS_SMOOTH: Mutex<Option<visibility::Debounce>> = Mutex::new(None);
+/// What each display was seen to keep free while no full screen app was in front (fullscreen.rs).
+static FS_SEEN: Mutex<fullscreen::Seen> = Mutex::new(fullscreen::Seen::new());
 static FS_RAW_LOGGED: AtomicU64 = AtomicU64::new(0);
 static FS_LAST_RAW: AtomicBool = AtomicBool::new(false);
 
@@ -520,8 +522,14 @@ fn home_closed() {
     HOME_GEN.fetch_add(1, Ordering::SeqCst);
     reset_hover();
     if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "home_closed"); }
-    // The page is told, so it forgets the pointer was on a part of it (a hidden window sends no pointerleave).
-    if let Some(a) = APP.get() { let _ = a.emit_to("card", "closed", json!({})); }
+    if let Some(a) = APP.get() {
+        // A Prompt help result no longer shows, so the keys it borrows from every app (Esc, and Use a suggestion's) go back
+        // now, whichever way Home went away (T11); the page takes them again if the result shows again. On its own thread,
+        // because this can run inside a hotkey handler, where changing shortcuts can deadlock.
+        { let a = a.clone(); std::thread::spawn(move || arm_result_keys(&a, false)); }
+        // The page is told, so it forgets the pointer was on a part of it (a hidden window sends no pointerleave).
+        let _ = a.emit_to("card", "closed", json!({}));
+    }
 }
 
 /// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
@@ -922,11 +930,12 @@ fn settings_line() -> String {
 /// when it starts.
 fn send_settings(app: &AppHandle) { let _ = app.state::<runner::Runner>().send_line(settings_line()); }
 /// Before settings.json is written: one that could not be read is read again (settings::ready_to_save). Still not
-/// readable, the change is refused and nothing is saved over it; readable now, the engine is given what it holds.
-fn settings_writable(app: &AppHandle) -> Result<(), &'static str> {
+/// readable, the change is refused and nothing is saved over it; readable now, the engine is given what it holds, and
+/// Ok(true) says it was read again just now (the page was shown the usual values, not the person's own).
+fn settings_writable(app: &AppHandle) -> Result<bool, &'static str> {
     let again = with_settings(|s| settings::ready_to_save(settings::registry(), &data_dir(), &mut s.file, &mut s.problems))?;
     if again { log("settings_read_again", json!({})); send_settings(app); }
-    Ok(())
+    Ok(again)
 }
 
 /// What the page shows and reads: every value in force, the usual ones, the project, and the problems found.
@@ -1040,8 +1049,10 @@ fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<Stri
     };
     let r = settings::registry();
     // A settings.json that could not be read stays as it is (nothing in it is in force, so the reset below changes
-    // nothing there); one readable again is taken first.
-    let _ = settings_writable(&app);
+    // nothing there). One readable again holds the person's own values, which the page was never shown, so it could
+    // neither name them first nor put them back with Undo: nothing is reset, every window is told what is in force now,
+    // and the page asks again.
+    if let Ok(true) = settings_writable(&app) { settings_told(&app, &[]); return Err("readAgain".into()); }
     let shown = settings_snapshot(&[]);
     let (none, mut problems) = (serde_json::Map::new(), Vec::<&'static str>::new());
     let plan = settings::reset_plan(r, which, shown["values"].as_object().unwrap_or(&none), shown["usual"].as_object().unwrap_or(&none), &engine.unwrap_or_default())?;
@@ -1164,8 +1175,16 @@ fn arm_now(app: &AppHandle, on: bool) {
 #[tauri::command] fn ph_consent(app: AppHandle, choice: String) { phelp::consent_answer(&app, &choice); }
 /// Answers which keys use a suggestion has for this result (keymap::arm may take other keys than the page knew, or none
 /// when another app holds them all), so the result names them only when they work. A sync command: on the main thread,
-/// arming runs before the answer.
-#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String) -> Option<String> { phelp::ready(text, handback == "copy"); arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id) }
+/// arming runs before the answer. Only while Home shows: the keys work in every app, so never for a result nobody sees.
+/// `req`: the request the result answers; one that is not the request waiting now (cancelled since, or an older box's)
+/// is not kept and arms nothing.
+#[tauri::command] fn ph_ready(app: AppHandle, text: String, handback: String, req: String) -> Option<String> {
+    if !card_visible() || !phelp::ready(text, handback == "copy", &req) { return None; }
+    arm_result_keys(&app, true); key_registered(keymap::Action::Accept).map(keymap::id)
+}
+/// The result stopped showing (another tab was picked, or Home closed): the keys go back; ph_ready takes them again when it
+/// shows again. Nothing else changes, so the result can still be used with its button.
+#[tauri::command] fn ph_disarm(app: AppHandle) { arm_result_keys(&app, false); }
 #[tauri::command] fn ph_accept(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, false); }
 #[tauri::command] fn ph_restore(app: AppHandle) { arm_result_keys(&app, false); phelp::put_back(&app, true); }
 #[tauri::command] fn ph_dismiss(app: AppHandle) { arm_result_keys(&app, false); phelp::dismiss(&app); }
@@ -1306,12 +1325,16 @@ fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
     p.use_folder(&folder);
     let _ = logfile::write_atomic(&projects_path(), serde_json::to_string(&p).unwrap_or_default().as_bytes());
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = Some(folder.clone());
-    log("project_changed", json!({}));
-    let _ = app.emit("project-changed", &folder);
-    // This project's own settings: to the engine (the line names the folder), and to the pages.
-    send_settings(&app);
-    settings_told(&app, &[]);
+    project_now(&app, &folder);
     Ok(folder)
+}
+/// The project folder changed (`folder`, or "" for none): every page is told, and this project's own settings go to the
+/// engine (the line names the folder) and to the pages (T16). The one place that says so.
+fn project_now(app: &AppHandle, folder: &str) {
+    log("project_changed", json!({ "none": folder.is_empty() }));
+    let _ = app.emit("project-changed", folder);
+    send_settings(app);
+    settings_told(app, &[]);
 }
 
 /// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
@@ -1371,8 +1394,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
 
 #[tauri::command]
 fn close_card(app: AppHandle) {
-    card_closed_hush(&app);   // closing the card silences it
-    { let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false)); }   // and gives back Esc and Accept, which Prompt help borrows system wide while a result waits
+    card_closed_hush(&app);   // closing the card silences it (home_closed gives back the keys Prompt help borrowed)
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         with_panels(|_, c| c.orderOut(None));
@@ -1436,7 +1458,13 @@ fn showme_stop(app: &AppHandle) {
     let a = app.clone(); std::thread::spawn(move || arm_result_keys(&a, false));
     showme_stop_rest(app);
 }
-fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_send(app, VoiceMsg::Cancel); hide_overlay(app); showme_pending().end(); roam_end(app); }
+fn showme_stop_rest(app: &AppHandle) {
+    speech_off(app); point_cancel();
+    // Counted at once: the Cancel waits behind whatever hold to talk is doing (the light's wait, a slow microphone, the words
+    // being turned into text), and the worker looks at this count after each of those.
+    VOICE_STOPS.fetch_add(1, Ordering::SeqCst);
+    voice_send(app, VoiceMsg::Cancel); hide_overlay(app); showme_pending().end(); roam_end(app);
+}
 
 /// The hotkey or the button: look at the screen once (light first), cover secrets, and ask the engine where to click.
 /// `all_screens`: the person's setting to include every display, not only the one under the pointer (off unless turned on).
@@ -1444,6 +1472,9 @@ fn showme_stop_rest(app: &AppHandle) { speech_off(app); point_cancel(); voice_se
 /// `settle`: a walkthrough step after a click, so the look first waits (bounded, under the light, Stop ends it) for the page
 /// to stop changing (showme::wait_to_settle). The page asks for it only when its settings say so (anywhere.ts waitsForPage).
 fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>) {
+    // Nothing of Companion can be seen (hidden, with Home closed): the light could not be seen either, so nothing is looked
+    // at, not even a lesson's next step (rule 5: a walkthrough looks again only while it is visibly on).
+    if light_unseen() { log("showme_hidden", json!({})); say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); return; }
     // A new question replaces whatever ring was up (and any pointing still on its way); what an older answer saw is forgotten.
     point_cancel(); hide_overlay(&app); showme_pending().end();
     let question = question.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1469,8 +1500,9 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
-        // Stop everything or a newer press after the light came on: no picture is taken (and a wait for the page ends).
-        let plat = plat.while_wanted(Box::new(move || current())).settling(settle.unwrap_or(false));
+        // Stop everything or a newer press after the light came on, or Companion hidden meanwhile: no picture is taken (and a
+        // wait for the page ends).
+        let plat = plat.while_wanted(Box::new(move || current() && !light_unseen())).settling(settle.unwrap_or(false));
         if !plat.screen_recording_granted() {
             // Asked here, the first time the feature is used, with a plain sentence first.
             macos_see::request_screen_recording();
@@ -1490,8 +1522,9 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             Err(showme::Refusal::SecureInput) => say_showme(&app, "error", "A password box is active, so I did not look at your screen. Click away from it and try again.", json!({})),
             Err(showme::Refusal::CaptureFailed(e)) => say_showme(&app, "error", &format!("I could not look at your screen ({e})."), json!({})),
             Err(showme::Refusal::PictureFailed(e)) => say_showme(&app, "error", &format!("I could not prepare the picture ({e})."), json!({})),
-            // Stop everything or a newer question already said what happens next: nothing more is said.
-            Err(showme::Refusal::Stopped) => {}
+            // Stop everything or a newer question already said what happens next: nothing more is said. Still current, it
+            // was ended because Companion was hidden meanwhile, and the person is told why.
+            Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); } }
         }
     });
 }
@@ -1516,12 +1549,21 @@ struct Look { mark: Option<&'static str>, fly_ms: Option<u64>, fade_ms: Option<u
 /// waits for a click, `watch_ring` for one that does not), with how long a ring that does not wait stays (How long a ring
 /// stays, point.ringSeconds).
 #[allow(clippy::too_many_arguments)]
-fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look, under: Option<anchor::Anchor>) -> (anchor::Watched, u64) {
+fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look, under: Option<anchor::Anchor>, point: u64) -> Option<(anchor::Watched, u64)> {
     // The overlay takes a ring that does not wait away this long after this order (the flight included; it is sent the
     // same number); the watch and this busy time last half a second longer, so confetti never plays over it and no part
     // of it goes unwatched.
+    // `point`: the pointer number the caller claimed for this ring. Stop everything or a newer pointer since then (a caller
+    // off the main thread) means nothing is set, drawn or said (None). It is checked before the busy time is set and again
+    // after, since Stop may reset that time in between; then only this ring's busy time is taken back.
+    if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { return None; }
     let ring = anchor::ring_ms(&setting_now("point.ringSeconds"));
-    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + anchor::watch_ms(ring) }, std::sync::atomic::Ordering::SeqCst);
+    let until = if hold { u64::MAX } else { now() as u64 + anchor::watch_ms(ring) };
+    OVERLAY_BUSY_UNTIL.store(until, std::sync::atomic::Ordering::SeqCst);
+    if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point {
+        let _ = OVERLAY_BUSY_UNTIL.compare_exchange(until, 0, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst);
+        return None;
+    }
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);   // a ring is never replaced by a new picture
     let a = app.clone();
     let caption2 = caption.to_string();
@@ -1535,6 +1577,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     // the ring's colour, lettering and pace).
     let settings = settings_snapshot(&[]);
     let _ = app.run_on_main_thread(move || {
+        if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { return; }
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
         // The flight starts at the last target of the same answer on this display, or else where the character is now,
@@ -1549,7 +1592,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
     });
-    (watched, ring)
+    Some((watched, ring))
 }
 
 /// What the person is told when a ring went away because its window changed (moved, closed, covered, another app in front).
@@ -1583,11 +1626,17 @@ fn watch_ring(app: &AppHandle, target: coords::R, an: anchor::Watched, ring: u64
 /// sends one step at a time (the page plays them in order, sequence.ts): every step but the last keeps what was seen for
 /// the next one and does not wait for a click; the last one takes it and waits. Nothing is drawn over a window that changed
 /// since the picture was taken (rule 22): then the answer is over and the page is told why.
-#[tauri::command]
+/// Async: snapping asks the app under the point through Accessibility, which a busy app can hold for seconds, so this runs
+/// on the thread pool, never on the main thread (the hotkeys, Stop everything, the island and Home live there).
+#[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String>, target_text: String, caption: String, mark: Option<String>, screen: Option<u32>, step: Option<u32>, of: Option<u32>, hold: Option<bool>, fly_ms: Option<u64>, fade_ms: Option<u64>) -> Value {
+    use std::sync::atomic::Ordering::SeqCst;
     let last = showme::is_last(step, of);
     let hold = hold.unwrap_or(true) && last;
+    // Stop everything, a newer question or Point at the problem can come in while this aims (off the main thread): noted
+    // now, so the ring is drawn only if none did.
+    let asked = POINT_GEN.load(SeqCst);
     // Gone: the answer was ended (Stop, the card closed, hold to talk, Point at the problem, a newer question) or is over.
     let Some((prep, from)) = showme_pending().step(&req, last) else { return json!({ "ok": false, "why": "gone" }) };
     let plat = macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}), Box::new(|_| {}));
@@ -1602,7 +1651,13 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
         point_cancel(); hide_overlay(&app);
         return json!({ "ok": false, "why": "window_changed" });
     }
-    POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);   // a point_problem still on its way must not draw over this
+    // Claimed in one step: a point_problem still on its way must not draw over this, and a Stop, a newer question or a
+    // point_problem since the aim began means this one is gone and nothing is drawn.
+    if POINT_GEN.compare_exchange(asked, asked + 1, SeqCst, SeqCst).is_err() {
+        log("showme_aim_gone", json!({}));
+        showme_pending().end_if(&req);
+        return json!({ "ok": false, "why": "gone" });
+    }
     // When Companion is only guessing (point.guesses), words only: nothing is drawn, the page says where to look. What was
     // seen is kept for the steps after this one (as a step said in words below the confidence line), and an earlier step's
     // ring goes. A confirmed target is drawn either way, and a guess is never drawn solid.
@@ -1615,10 +1670,15 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     if !last { showme_pending().pointed(&req, s.rect.center()); }
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact, "step": step, "of": of, "screen": screen.unwrap_or(1) }));
     let look = Look { mark: showme::mark_name(mark.as_deref()), fly_ms, fade_ms, from: if step.unwrap_or(1) > 1 { from } else { None } };
-    let (watched, ring) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under);
+    let Some((watched, ring)) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under, asked + 1) else {
+        // Stop everything or a newer question came in after the claim (while the window was looked up): nothing drawn.
+        log("showme_aim_gone", json!({}));
+        showme_pending().end_if(&req);
+        return json!({ "ok": false, "why": "gone" });
+    };
     // The ring goes away the moment its window changes (or, with no window under it, another app comes to the front): the
     // last step's while it waits for the click, the others while they are up.
-    if hold { your_turn(&app, display, s.rect, &target_text); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
+    if hold { your_turn(&app, display, s.rect, &target_text, asked + 1); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
     say_showme(&app, if s.exact { "pointing" } else { "pointing_roughly" }, &caption, showme::pointing_extra(&req, step.unwrap_or(1), of.unwrap_or(1), hold));
     json!({ "ok": true })
 }
@@ -1635,11 +1695,15 @@ fn showme_clear(app: AppHandle) { point_cancel(); hide_overlay(&app); showme_pen
 // ---------- Your turn ----------
 
 /// The ring stays up and waits for the person's own click. Only the mouse position and whether a button is down are
-/// read, only while the ring is up (no permission needed, never keys, never screen content).
-fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str) {
+/// read, only while the ring is up (no permission needed, never keys, never screen content). `point`: the pointer number
+/// the ring was drawn for; Stop everything or a newer pointer since then (a caller off the main thread) means no wait.
+fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str, point: u64) {
     turn_cancel();
     *TURN.lock().unwrap_or_else(|e| e.into_inner()) = Some((target, label.to_string()));
     let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    // Stop bumps the pointer number before the ring's: one that came before this point is seen here, one after it ends
+    // the wait below.
+    if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { turn_cancel(); return; }
     let alive = move || TURN_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
     let app = app.clone();
     std::thread::spawn(move || {
@@ -2074,7 +2138,8 @@ fn forget_folder(app: &AppHandle, folder: &std::path::Path) {
     p.forget(&f);
     let _ = logfile::write_atomic(&projects_path(), serde_json::to_string(&p).unwrap_or_default().as_bytes());
     let mut cur = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
-    if cur.as_deref() == Some(f.as_str()) { *cur = None; drop(cur); let _ = app.emit("project-changed", ""); }
+    // The removed project's own settings are no longer in force anywhere: the engine and the pages are told.
+    if cur.as_deref() == Some(f.as_str()) { *cur = None; drop(cur); project_now(app, ""); }
 }
 
 /// A practice project (the first one unless the page names another in the catalog): copied into a new folder in the home
@@ -2301,17 +2366,18 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
 // ---------- Celebration ----------
 
 /// Confetti from the character for the big moments (proof passed, it went live). Never over a ring that is waiting
-/// for the person, and it leaves the moment anything else needs the pointer.
+/// for the person, and it leaves the moment anything else needs the pointer. Never while Companion is hidden (a full
+/// screen app is in front, or the person hid it): it would land on a video, a show or what they chose not to share.
 #[tauri::command]
 fn celebrate(app: AppHandle) {
     use std::sync::atomic::Ordering::SeqCst;
     let free = || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none() && !overlay_busy();
-    if !free() || quiet() { return; }
+    if !free() || quiet() || companion_hidden() { return; }
     let (gen, party) = (POINT_GEN.load(SeqCst), PARTY_GEN.fetch_add(1, SeqCst) + 1);
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
-        // Checked again here: a pointer may have been drawn since the command came in.
-        if !free() || POINT_GEN.load(SeqCst) != gen { return; }
+        // Checked again here: a pointer may have been drawn, or Companion hidden, since the command came in.
+        if !free() || companion_hidden() || POINT_GEN.load(SeqCst) != gen { return; }
         let mtm = MainThreadMarker::new().unwrap();
         let screens = NSScreen::screens(mtm);
         let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
@@ -2381,9 +2447,17 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         }
         if !alive() { return; }
         let said = opened.as_ref().map(|o| o.0.clone()).unwrap_or_default();
+        // Nothing of Companion can be seen (hidden, with Home closed): the file is open, but the screen is not looked at.
+        if light_unseen() {
+            log("point_hidden", json!({}));
+            say_showme(&app, "error", format!("{said} {}", showme::HIDDEN_WORDS).trim(), json!({}));
+            return;
+        }
         let a3 = app.clone();
         let plat = macos_see::MacPlatform::new(Box::new(|_, _, _, _| {}), Box::new(|_, _, _| {}),
-            Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); }));
+            Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); }))
+            // Stop, a newer run, or Companion hidden after the light came on: no picture.
+            .while_wanted(Box::new(move || alive() && !light_unseen()));
         {
             use showme::Platform;
             if !plat.screen_recording_granted() {
@@ -2414,7 +2488,8 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
                 Err(showme::Refusal::SecureInput) => { say_showme(&app, "error", format!("{said} A password box is active, so I did not look at your screen.").trim(), json!({})); return; }
                 Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { say_showme(&app, "error", format!("{said} I could not look at your screen ({e}).").trim(), json!({})); return; }
                 Err(showme::Refusal::NeedsScreenRecording) => break,
-                Err(showme::Refusal::Stopped) => return,
+                // Hidden meanwhile (not Stop or a newer run, which said what happens next): the person is told why.
+                Err(showme::Refusal::Stopped) => { if alive() { say_showme(&app, "error", format!("{said} {}", showme::HIDDEN_WORDS).trim(), json!({})); } return; }
             }
         }
         if !alive() { return; }
@@ -2431,9 +2506,9 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
             }
             (Some(f), Some(d)) => {
                 let button = kind == "button";
-                let (watched, ring) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under);
+                let Some((watched, ring)) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under, gen) else { return; };
                 say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
-                if button { your_turn(&app, d, f.rect, &label); } else { watch_ring(&app, f.rect, watched, ring, None); }
+                if button { your_turn(&app, d, f.rect, &label, gen); } else { watch_ring(&app, f.rect, watched, ring, None); }
             }
             _ => {
                 say_showme(&app, "opened", &format!("{lead}I could not spot {what} on your screen. {cap}"), json!({}));
@@ -2677,6 +2752,9 @@ static LISTENING_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 fn listening_now() -> bool { LISTENING_NOW.load(std::sync::atomic::Ordering::SeqCst) }
 fn listening(on: bool) { LISTENING_NOW.store(on, std::sync::atomic::Ordering::SeqCst); }
 static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(None);
+/// How many times Stop everything was pressed. Bumped before its Cancel is queued, so the worker sees a Stop that came while
+/// it was busy: the microphone never opens after one, and words heard before one are dropped (rule 11).
+static VOICE_STOPS: AtomicU64 = AtomicU64::new(0);
 
 fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
     let mut v = json!({ "v": 1, "id": format!("vo{}", now()), "type": "app.voice", "stage": stage, "message": message });
@@ -2697,6 +2775,26 @@ fn voice_send(app: &AppHandle, m: VoiceMsg) {
 /// Companion is hidden: a full screen app is in front, or the person hid it from the menu bar. The light (the character)
 /// cannot be seen, so the microphone is never open (rule 5).
 fn companion_hidden() -> bool { HIDDEN_BY_US.load(Ordering::SeqCst) || USER_HID.load(Ordering::SeqCst) }
+/// Nothing of Companion can be seen: it is hidden and Home is closed too (a hotkey can open Home while it is hidden, and
+/// then Home's own line is the light). Show me and Point at the problem never look then (rule 5). Any thread.
+fn light_unseen() -> bool { companion_hidden() && !HOME_OPEN.load(Ordering::SeqCst) }
+/// Companion was just hidden (a full screen app came forward, or Hide in the menu bar): every pointer goes, so no ring stays
+/// drawn over what the person chose not to share, and no your turn watch keeps reading the mouse to start the next step's
+/// look with nothing of Companion showing. The page is told only when something was up.
+fn pointers_gone_hidden(app: &AppHandle) {
+    let up = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+    let seen = showme_pending().end();
+    point_cancel(); hide_overlay(app);
+    if up || seen { log("pointers_gone_hidden", json!({})); say_showme(app, "done", "", json!({})); }
+}
+/// Hide or show Companion (the menu bar icon): the character, the island and Home. Main thread.
+fn set_user_hidden(app: &AppHandle, hide: bool) {
+    USER_HID.store(hide, Ordering::SeqCst);
+    with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
+    island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
+    if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }
+    log("menu_hide", json!({ "hidden": hide }));
+}
 /// Companion was just hidden: wake the hold to talk worker if it is running, so a microphone that is open closes at once.
 /// A worker that was never started has nothing open, so none is started here.
 fn voice_tell_hidden() {
@@ -2719,6 +2817,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let mut last_used = std::time::Instant::now();
     // The microphone that listened cannot hear now (the Mac's own with the lid closed): its silence is the lid, not the permission.
     let mut quiet_mic = false;
+    // Stop everything's count as the keys went down: any Stop since then ends this hold.
+    let mut stops_at = VOICE_STOPS.load(Ordering::SeqCst);
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
@@ -2739,8 +2839,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 // The cap is read as the keys go down and kept for this hold (there is always one, at most two minutes).
                 let cap = voice::max_hold_ms(&setting_now("talk.maxHold"));
                 if hold.down_for(t, cap) != voice::Step::Start { continue; }
+                stops_at = VOICE_STOPS.load(Ordering::SeqCst);
                 voice_mac::set_buffer_room(voice::buffer_samples(cap));
-                if !voice_mac::model_ready(&data) { hold.cancel(); say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); continue; }
+                if !voice_mac::model_ready(&data) { hold.cancel(); if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); } else { say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); } continue; }
                 match voice_mac::mic_status() {
                     voice_mac::Mic::NotAsked => { hold.cancel(); voice_mac::ask_for_mic(); say_voice(&app, "needs_mic", "Allow the microphone in the box macOS shows, then hold the keys again.", json!({})); continue; }
                     voice_mac::Mic::Refused => { hold.cancel(); say_voice(&app, "mic_refused", "The microphone is switched off for Companion. Turn it on in System Settings, Privacy and Security, Microphone. If it is not in the list, run this in Terminal and reopen Companion: tccutil reset Microphone dev.companion.app", json!({})); continue; }
@@ -2763,9 +2864,13 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
                 // Hidden meanwhile: the light is gone again, so the microphone never opens.
                 if companion_hidden() { hold.cancel(); listening(false); say_voice(&app, "error", voice::HIDDEN_WORDS, json!({})); continue; }
+                // Stop everything meanwhile: the microphone never opens.
+                if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.cancel(); listening(false); say_voice(&app, "idle", "", json!({})); continue; }
                 // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
+                        // Stop everything while it opened (a Bluetooth microphone can take seconds): closed again at once.
+                        if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { let _ = r.finish(); hold.cancel(); listening(false); log("voice_stopped_opening", json!({})); say_voice(&app, "idle", "", json!({})); continue; }
                         quiet_mic = opened.quiet;
                         rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some(), "quiet": opened.quiet }));
                         // The picked microphone is not connected, so the default listens: one plain line, once each time it goes away.
@@ -2806,6 +2911,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                             voice::Heard::Blocked => { hold.finished(); let why = voice::why_silent(crate::permissions::current().microphone == crate::permissions::Status::Granted, quiet_mic); mic["why"] = json!(why.word()); say_voice(&app, "blocked", why.fallback(), mic); }
                             voice::Heard::Silent => { hold.finished(); say_voice(&app, "silent", "I did not hear anything. Try again a little closer.", mic); }
                             voice::Heard::Sound => {
+                                // Stop everything since the keys went down: nothing is turned into text.
+                                if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.finished(); say_voice(&app, "idle", "", json!({})); continue; }
                                 say_voice(&app, "transcribing", "Understanding what you said", json!({}));
                                 let t0 = now();
                                 if speech.is_none() { speech = preload.lock().unwrap_or_else(|e| e.into_inner()).take(); }
@@ -2818,6 +2925,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                 // Timing and how many project words were given, never the words or what was said.
                                 log("voice_transcribed", json!({ "ms": (now() - t0) as u64, "words": words.split(", ").filter(|w| !w.is_empty()).count(), "language": language.is_some() }));
                                 hold.finished();
+                                // Stop everything while the words were turned into text: they are dropped, never sent on (to
+                                // Show me after its key, or as a task with auto send on).
+                                if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { log("voice_dropped_after_stop", json!({})); say_voice(&app, "idle", "", json!({})); continue; }
                                 match out {
                                     // Only the word list written back is not what the person said (voicewords::is_echo).
                                     Ok(text) if voicewords::is_echo(&text, &words) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
@@ -2838,17 +2948,26 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     }
 }
 
-/// Download the speech model once (the person asked for it with a button).
+/// A speech model download is running, and how far it got: one at a time (a second one would remove the first one's half
+/// written file), and holding the talk keys meanwhile says it is still going instead of offering Download again.
+static DOWNLOADING: AtomicBool = AtomicBool::new(false);
+static DOWNLOAD_PERCENT: AtomicU64 = AtomicU64::new(0);
+
+/// Download the speech model once (the person asked for it with a button). A press while one runs does nothing.
 #[tauri::command]
 fn voice_download(app: AppHandle) {
+    if DOWNLOADING.swap(true, Ordering::SeqCst) { return; }
+    DOWNLOAD_PERCENT.store(0, Ordering::SeqCst);
     std::thread::spawn(move || {
         let data = data_dir();
         say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": 0 }));
         let a = app.clone();
         let r = voice_mac::download_model(&data, &move |got| {
             let pct = ((got as f64 / voice_mac::MODEL_BYTES as f64) * 100.0).min(99.0) as u64;
+            DOWNLOAD_PERCENT.store(pct, Ordering::SeqCst);
             say_voice(&a, "downloading", "Downloading the speech model", json!({ "percent": pct }));
         });
+        DOWNLOADING.store(false, Ordering::SeqCst);
         match r {
             Ok(()) => say_voice(&app, "model_ready", &talkkeys::ready_words(key_using(keymap::Action::Talk)), json!({})),
             Err(e) => say_voice(&app, "error", &e, json!({})),
@@ -2860,8 +2979,9 @@ fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
     // Stay out of full screen apps unless the setting says otherwise.
     let front_pid = NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier()).unwrap_or(0);
-    let displays: Vec<Rect> = screens_now(mtm).iter().map(|s| s.frame).collect();
+    let areas: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();
     let wins = fullscreen::sys::on_screen_windows();
+    let displays = FS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).look(&wins, front_pid, &areas);
     let raw = fullscreen::front_app_is_full_screen(&wins, front_pid, &displays);
     // The raw reading flickered in the field, so it must agree three times in a row before it counts.
     // Raw changes are logged (a limited number) so the cause can be found from the log.
@@ -2877,6 +2997,7 @@ fn tick(app: &AppHandle) {
         island_show(false);
         home_closed();
         voice_tell_hidden();
+        pointers_gone_hidden(app);
         log("hidden_for_full_screen", json!({}));
     } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
         with_panels(|d, _| d.orderFrontRegardless());
@@ -3033,7 +3154,7 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
+        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss])
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();
@@ -3128,14 +3249,7 @@ fn main() {
                 .tooltip("Companion")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
-                    "hide" => { let _ = app.run_on_main_thread(|| {
-                        let hide = !USER_HID.load(Ordering::SeqCst);
-                        USER_HID.store(hide, Ordering::SeqCst);
-                        with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
-                        island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
-                        if hide { home_closed(); voice_tell_hidden(); }
-                        log("menu_hide", json!({ "hidden": hide }));
-                    }); }
+                    "hide" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }
                     "stop" => {
                         let r = app.state::<runner::Runner>().stop_everything("menu");
                         log("menu_stop_everything", json!({ "sent": r.is_ok() }));
@@ -3157,11 +3271,20 @@ fn main() {
         .expect("build");
     let mut app = app;
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-    app.run(|app, ev| {
-        if let RunEvent::Exit = ev {
-            app.state::<runner::Runner>().shut_down();
-        }
+    app.run(|app, ev| match ev {
+        RunEvent::Exit => app.state::<runner::Runner>().shut_down(),
+        // Companion opened again while it runs (Finder, Spotlight, Launchpad): macOS asks this copy to reopen.
+        RunEvent::Reopen { .. } => reopened(app),
+        _ => {}
     });
+}
+
+/// Opening Companion again shows it if the person hid it from the menu bar (that icon can be out of reach: behind the notch,
+/// or turned off in macOS's menu bar settings), the same way the menu does; otherwise it opens Home. Never the keyboard.
+/// Main thread (the app's own event loop).
+fn reopened(app: &AppHandle) {
+    log("reopened", json!({ "hidden": USER_HID.load(Ordering::SeqCst) }));
+    if USER_HID.load(Ordering::SeqCst) { set_user_hidden(app, false); } else { open_card(app, "reopen", false); }
 }
 
 #[cfg(test)]

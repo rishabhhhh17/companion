@@ -40,6 +40,10 @@ export type EngineOptions = {
   maxTurns?: number;
   // The built in tools this session is given (tools.ts). Without it: the looking tools when planOnly, else the task tools.
   tools?: readonly string[];
+  // What the round used that no turn has counted yet, when it ends before Claude Code says what it cost (Stop, Stop
+  // everything, a Drive pause or a crash end its process, so no result comes): an estimate from the token counts Claude
+  // reported, at list price. Called at most once per round, when the engine's turns end, however they end.
+  unbilled?: (usd: number) => void;
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

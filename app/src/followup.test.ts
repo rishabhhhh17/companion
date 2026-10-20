@@ -145,6 +145,9 @@ describe("following up by voice", () => {
     const box = card.slice(card.indexOf("function FollowUpBox("), card.indexOf("function ExplainBox("));
     expect(box).toMatch(/e\.key === "Escape" && !composing\(e\) && text\) \{ e\.preventDefault\(\); e\.stopPropagation\(\); setText\(""\); \}/);
   });
+  test("Stop everything ends the Show me key's question, so words heard after it are never a question about the screen", () => {
+    expect(card).toContain('const offStop = listen("runner-event", (e) => { if ((e.payload as { type?: string } | null)?.type === "app.stop_everything") setAskMode("task"); });');
+  });
   test("the words go where heardGoesTo says, from what was true as the keys went down", () => {
     expect(heard).toContain('heardGoesTo({ showme: askModeRef.current === "showme", atKeysDown: keysDown.current, followUpShownNow: followShown.current })');
     // Taken when listening begins (the one line that follows for a microphone that is away keeps it), cleared when the
@@ -165,10 +168,11 @@ describe("following up by voice", () => {
     expect(opened).toContain("homeShown.current = true;");
     // Every way Home goes away (Esc, Close, a click elsewhere, the island or the character, a full screen app, Hide) goes
     // through the shell's home_closed, which tells the page: no pointerleave fires for a window that was just hidden.
-    expect(card).toContain('listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null;');
+    expect(card).toContain('listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; })');
     const main = require("node:fs").readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8") as string;
     const closed = main.slice(main.indexOf("fn home_closed()"), main.indexOf("\n}\n", main.indexOf("fn home_closed()")));
-    expect(closed).toContain('if let Some(a) = APP.get() { let _ = a.emit_to("card", "closed", json!({})); }');
+    expect(closed).toContain('if let Some(a) = APP.get() {');
+    expect(closed).toContain('let _ = a.emit_to("card", "closed", json!({}));');
     expect(card).toContain('followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project);');
   });
   test("a follow up sent by itself goes through the same checks as the Send button", () => {

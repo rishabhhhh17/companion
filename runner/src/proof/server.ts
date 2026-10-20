@@ -9,7 +9,16 @@ import type { Start } from "./detect.ts";
 import type { PythonServer } from "./python.ts";
 
 export type Running = { ok: true; url: string; port: number; stop: () => Promise<void> };
-export type Failed = { ok: false; reason: string; notAServer?: boolean; aborted?: boolean; output?: string };
+// portBusy: the server stopped because its port is held by another program (often the person's own copy of the site, on a
+// port the project hard codes), which says nothing about the project.
+export type Failed = { ok: false; reason: string; notAServer?: boolean; aborted?: boolean; output?: string; portBusy?: number };
+/** The port a server's output says is already in use (Node's EADDRINUSE, Bun's "Is port N in use?", Vite's and Next's own
+ *  words), or null. 0 when it says so without naming the port. */
+export function busyPort(output: string): number | null {
+  const m = /address already in use[^\n]*?:(\d{2,5})\b|\bport (\d{2,5}) is (?:already )?in use|Is port (\d{2,5}) in use/i.exec(output);
+  if (m) return Number(m[1] ?? m[2] ?? m[3]);
+  return /\bEADDRINUSE\b|address already in use/i.test(output) ? 0 : null;
+}
 
 export function freePort(): Promise<number> {
   return new Promise((res, rej) => {
@@ -89,7 +98,8 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
     if (o.signal?.aborted) { await stop(); return { ok: false, aborted: true, reason: "Stopped before the server was ready." }; }
     if (exited) {
       if (exitCode === 0) return { ok: false, notAServer: true, reason: `The start command finished without staying on, so it is a tool and not a website. ${tail(output)}`.trim() };
-      return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim(), output };
+      const busy = busyPort(output);
+      return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim(), output, ...(busy !== null ? { portBusy: busy } : {}) };
     }
     for (const p of [port, ...portsInOutput(output).filter((x) => x !== port)]) {
       const found = await answers(p);

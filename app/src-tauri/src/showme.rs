@@ -18,6 +18,10 @@ const MAX_DISPLAYS: usize = 4;
 pub struct Captured { pub frame: Frame, /// The display in global top-left points.
     pub display: R }
 
+/// What is said when Show me or Point at the problem would look while nothing of Companion can be seen (hidden from the
+/// menu bar, or for a full screen app, with Home closed): the light could not be seen, so nothing is looked at (rule 5).
+pub const HIDDEN_WORDS: &str = "Companion is hidden right now, so I did not look at your screen. Leave full screen or show Companion from the menu bar icon, then try again.";
+
 #[derive(Debug, PartialEq, Eq)]
 /// Stopped: Stop everything or a newer question came after the light went on, so no picture was taken at all.
 pub enum Refusal { NeedsScreenRecording, SecureInput, CaptureFailed(String), PictureFailed(String), Stopped }
@@ -208,6 +212,8 @@ pub fn look_for<T>(p: &dyn Platform, find: impl Fn(&[OcrBox]) -> Option<T>) -> R
     if p.secure_input_on() { return Err(Refusal::SecureInput); }
     p.indicator(true);
     let result = (|| {
+        // Stop, a newer run or Companion hidden since the light came on: no picture.
+        if !p.still_wanted() { return Err(Refusal::Stopped); }
         // The display the mouse is on first; if the place is not there, the other displays, one after another, all under
         // the same light. Each picture is dropped as soon as its text has been read.
         let mut cap = p.capture().map_err(Refusal::CaptureFailed)?;
@@ -335,7 +341,7 @@ mod tests {
             let b = body(f);
             assert_eq!(b.matches("anchor_for(").count(), 1, "{f}: the window under the target is looked up once");
             assert!(b.contains("said_in_words(") && b.contains("under.is_some()"), "{f}: words only reads that one look");
-            assert!(b.contains("draw_pointer_with(") && b.contains(", under)"), "{f}: and the ring is drawn from it");
+            assert!(b.contains("draw_pointer_with(") && b.contains(", under, "), "{f}: and the ring is drawn from it");
         }
         let draw = body("fn draw_pointer_with(");
         assert!(!draw.contains("anchor_for("), "the ring never looks again");
@@ -680,6 +686,61 @@ mod tests {
         let aim = &aim[..aim.find("\n}\n").unwrap()];
         assert!(aim.contains("showme::pointing_extra(&req"), "showme_aim must say which request it points for");
     }
+    #[test]
+    fn aiming_runs_off_the_main_thread_and_never_draws_after_stop() {
+        // Finding what is clickable under the point asks the app under it, through Accessibility, which a busy app can hold
+        // for seconds. That must never freeze the main thread (the hotkeys, Stop everything, the island, Home), so the
+        // command runs on the thread pool, and the questions to that app are short.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        assert!(main.contains("#[tauri::command(async)]\n#[allow(clippy::too_many_arguments)]\nfn showme_aim("), "showme_aim runs off the main thread");
+        // Off the main thread, Stop everything or a newer question can come in while it aims: then nothing is drawn. The
+        // ring is claimed in one step after the aim, and checked again on the main thread just before it is drawn.
+        let aim = body("fn showme_aim(");
+        let (asked, claim) = (aim.find("let asked = POINT_GEN.load(SeqCst);").expect("noted before the aim"), aim.find("POINT_GEN.compare_exchange(asked, asked + 1, SeqCst, SeqCst).is_err()").expect("claimed after"));
+        assert!(asked < aim.find("showme::aim(").unwrap() && aim.find("showme::aim(").unwrap() < claim && claim < aim.find("draw_pointer_with(").unwrap(), "{aim}");
+        assert!(!aim.contains("POINT_GEN.fetch_add("), "{aim}");
+        assert!(aim.contains("your_turn(&app, display, s.rect, &target_text, asked + 1)"), "{aim}");
+        // The pointer number claimed is handed to the drawing, never read again inside it: a Stop or a newer question in
+        // between (the window lookup, the log) would otherwise become the number checked, and the ring would be drawn
+        // after Stop. It is checked before the busy time is set and again after (Stop resets that time), and on the main
+        // thread; when it changed, nothing is set, drawn or said.
+        let draw = body("fn draw_pointer_with(");
+        assert!(draw.contains("look: Look, under: Option<anchor::Anchor>, point: u64) -> Option<(anchor::Watched, u64)>"), "{draw}");
+        assert!(!draw.contains("let gen = POINT_GEN.load("), "{draw}");
+        let stale = "POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point";
+        let busy = draw.find("OVERLAY_BUSY_UNTIL.store(").expect("busy");
+        let first = draw.find(&format!("if {stale} {{ return None; }}")).expect("checked before the busy time");
+        let again = draw[busy..].find(&format!("if {stale} {{")).map(|i| i + busy).expect("checked again after it");
+        assert!(first < busy && busy < again && again < draw.find("run_on_main_thread(").unwrap(), "{draw}");
+        assert!(draw[again..].contains("OVERLAY_BUSY_UNTIL.compare_exchange(until, 0,"), "only this ring's busy time is taken back: {draw}");
+        let on_main = &draw[draw.find("run_on_main_thread(").unwrap()..];
+        assert!(on_main.contains(&format!("if {stale} {{ return; }}")), "{draw}");
+        assert!(aim.contains("let Some((watched, ring)) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under, asked + 1) else {"), "{aim}");
+        let pp = body("fn point_problem(");
+        assert!(pp.contains("let Some((watched, ring)) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under, gen) else { return; };"), "{pp}");
+        for (b, at) in [(&aim, "draw_pointer_with("), (&pp, "draw_pointer_with(")] {
+            assert!(b.find(at).unwrap() < b.find("\"pointing\"").unwrap(), "pointing is said only after the ring was drawn");
+        }
+        let turn = body("fn your_turn(");
+        let (set, check) = (turn.find("*TURN.lock()").unwrap(), turn.find("if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { turn_cancel(); return; }").expect("a ring stopped before it waits never waits"));
+        assert!(set < check && check < turn.find("std::thread::spawn(").unwrap(), "{turn}");
+        assert!(body("fn point_problem(").contains("your_turn(&app, d, f.rect, &label, gen)"));
+        // Each question to the app under the point may take half a second at most; the system wide element (which would
+        // change every Accessibility call Companion makes) is never given a timeout.
+        let ax = include_str!("ax.rs");
+        let click = &ax[ax.find("pub fn clickable_at(").unwrap()..]; let click = &click[..click.find("\n}\n").unwrap()];
+        assert_eq!(click.matches("quick(&cur);").count(), 2, "the element under the point and each parent asked: {click}");
+        assert!(!click.contains("quick(&sys)"));
+        assert!(ax.contains("fn quick(el: &Cf) { unsafe { AXUIElementSetMessagingTimeout(el.0, QUICK_S); } }"));
+        // Stop everything and Cancel run on the main thread, and switching another app's Accessibility off again writes into
+        // it: that is done on a helper thread, with what was woken taken at once (so a newer read keeps what it wakes).
+        let ph = include_str!("phelp.rs");
+        let dismiss = &ph[ph.find("pub fn dismiss(").unwrap()..]; let dismiss = &dismiss[..dismiss.find("\n}\n").unwrap()];
+        assert!(dismiss.contains("ax::let_apps_sleep_soon();") && !dismiss.contains("ax::let_apps_sleep();"), "{dismiss}");
+        let soon = &ax[ax.find("pub fn let_apps_sleep_soon(").unwrap()..]; let soon = &soon[..soon.find("\n}\n").unwrap()];
+        assert!(soon.find("std::mem::take(").unwrap() < soon.find("std::thread::spawn(").unwrap(), "{soon}");
+    }
     // ---- one answer at a time, and what ends it (found in review, 16 Oct 2026) ----
     // Before this, closing the card or holding to talk only silenced the current line: the rest of a multi step answer went
     // on pointing and talking with the card closed. And Point at the problem did not end an answer still playing, so its
@@ -859,6 +920,45 @@ mod tests {
         }
     }
     #[test]
+    fn point_at_the_problem_takes_no_picture_once_it_is_no_longer_wanted() {
+        // Companion hidden after the light came on (Hide in the menu bar, a full screen app), or Stop meanwhile: the light
+        // goes off again and nothing is captured.
+        let mut f = Fake::new(); f.unwanted = true;
+        assert_eq!(look_for(&f, |b| b.first().map(|x| x.rect)).err(), Some(Refusal::Stopped));
+        let s = f.said();
+        assert!(!s.iter().any(|x| x.starts_with("capture")), "{s:?}");
+        assert_eq!(s.last().map(String::as_str), Some("light off"));
+    }
+    #[test]
+    fn nothing_is_looked_at_while_companion_cannot_be_seen_and_hiding_it_ends_every_pointer() {
+        // Rule 5: the light is the character, the island and Home. Hidden (from the menu bar, or for a full screen app) with
+        // Home closed, none of it can be seen, so no look starts, and a look already under the light takes no picture.
+        assert!(HIDDEN_WORDS.starts_with("Companion is hidden right now, so I did not look at your screen.") && !HIDDEN_WORDS.contains('\u{2014}'));
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let unseen = body("fn light_unseen(");
+        assert!(unseen.contains("companion_hidden()") && unseen.contains("!HOME_OPEN.load("), "{unseen}");
+        let start = body("fn showme_start(");
+        let check = start.find("if light_unseen() {").expect("showme_start checks before anything");
+        for later in ["point_cancel();", "std::thread::spawn(", "showme::start_on("] { assert!(check < start.find(later).unwrap(), "{later}"); }
+        assert!(start[check..].contains("showme::HIDDEN_WORDS"));
+        assert!(start.contains(".while_wanted(Box::new(move || current() && !light_unseen()))"), "hidden during the light or the wait: no picture");
+        let point = body("fn point_problem(");
+        let look = point.find("showme::look_for(").unwrap();
+        assert!(point[..look].contains("if light_unseen() {") && point[..look].contains("showme::HIDDEN_WORDS"), "{point}");
+        assert!(point.contains(".while_wanted(Box::new(move || alive() && !light_unseen()))"), "{point}");
+        // Both ways of hiding take every pointer away, so no ring stays drawn and no your turn watch keeps reading the mouse
+        // (its next step would look at the screen with nothing of Companion showing).
+        let gone = body("fn pointers_gone_hidden(");
+        for p in ["point_cancel();", "hide_overlay(app);", "showme_pending().end()"] { assert!(gone.contains(p), "{p}: {gone}"); }
+        let tick = body("fn tick(");
+        let hide = &tick[tick.find("HIDDEN_BY_US.swap(true").unwrap()..tick.find("} else if show && HIDDEN_BY_US.swap(false").unwrap()];
+        assert!(hide.contains("pointers_gone_hidden(app);"), "the full screen hide: {hide}");
+        let user = body("fn set_user_hidden(");
+        assert!(user.contains("if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide in the menu bar: {user}");
+        assert!(main.contains("\"hide\" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }"));
+    }
+    #[test]
     fn a_password_box_that_takes_focus_during_the_wait_stops_the_look() {
         let mut f = Fake::new(); f.settles = true; f.secure_after = true;
         assert_eq!(start(&f, "where?").err(), Some(Refusal::SecureInput));
@@ -876,8 +976,8 @@ mod tests {
     fn a_stopped_look_says_nothing_and_point_at_the_problem_never_waits() {
         let main = include_str!("main.rs");
         let b = &main[main.find("fn showme_start(").unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
-        assert!(b.contains("Err(showme::Refusal::Stopped) => {}"), "a look ended by Stop or a newer question says nothing: {b}");
-        assert!(b.contains(".while_wanted(Box::new(move || current()))"), "{b}");
+        assert!(b.contains("Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, \"error\", showme::HIDDEN_WORDS, json!({})); } }"), "a look ended by Stop or a newer question says nothing; only one ended by hiding says why: {b}");
+        assert!(b.contains(".while_wanted(Box::new(move || current() && !light_unseen()))"), "{b}");
         let see = include_str!("macos_see.rs");
         assert!(see.contains("fn still_wanted(&self) -> bool { self.wanted.as_ref().map_or(true, |w| w()) }"));
     }

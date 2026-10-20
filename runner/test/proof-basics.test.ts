@@ -87,7 +87,7 @@ describe("what a project has", () => {
   });
   test("a start command in .claude/launch.json wins, with its port", () => {
     const d = put(tmp(), { "package.json": JSON.stringify({ scripts: { dev: "vite", start: "node x" } }), ".claude/launch.json": JSON.stringify({ version: "0.0.1", configurations: [{ name: "web", runtimeExecutable: "npm", runtimeArgs: ["run", "serve"], port: 4321, autoPort: true }] }) });
-    expect(detectProject(d).start).toEqual({ kind: "server", command: "npm run serve", port: 4321, autoPort: true });
+    expect(detectProject(d).start).toEqual({ kind: "server", command: "npm run serve", port: 4321, autoPort: true, from: "launch" });
   });
   test("without launch.json the dev script, then the start script, is used", () => {
     expect(detectProject(put(tmp(), { "package.json": JSON.stringify({ scripts: { start: "node s.js" } }) })).start).toMatchObject({ kind: "server", command: "npm run start" });

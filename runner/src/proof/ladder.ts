@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult } from "./browser.ts";
-import { detectProject, withStartScript, type Detected } from "./detect.ts";
+import { changesData, detectProject, withStartScript, type Detected } from "./detect.ts";
 import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
@@ -15,6 +15,7 @@ import { startServer } from "./server.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
+import { RUN_FILES, runPrint, type RunApprovals } from "./approvedruns.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
 // needs: "browser" when the browser rung was skipped only because the hidden browser is not installed (the page offers it).
@@ -62,13 +63,21 @@ export type LadderOptions = {
   // The install question (check.install "ask", or the house rule): true only for a yes. No answer, a Stop or no way to
   // ask is a no, and the check then runs on the project as it is, with a gap.
   askInstall?: (command: string) => Promise<boolean>;
+  // The question for a check whose scripts, packages, lock file, .replit or .claude/launch.json differ from what the person
+  // last said yes to running (approvals), or, without a record, that the task changed: those run on this Mac outside the
+  // sandbox Claude's own commands get, so they are run only on a yes. byTask: this task made the change (else it came
+  // since the last yes, by a task that got a no or by hand). True only for a yes.
+  askScripts?: (byTask: boolean) => Promise<boolean>;
+  // What the person said yes to running in this project (approvedruns.ts), kept across checks. Every flow gives it, so a
+  // no holds for the next ship check and Point at the problem too: with no way to ask, nothing that differs from it runs.
+  // An empty record starts with the project as it was before this check. Without it, only a change made by the task asks.
+  approvals?: RunApprovals;
 };
 
 const LABELS: Record<Rung, string> = {
   install: "Installing what the project needs", checks: "Building and checking the code", tests: "Running the tests",
   start: "Starting the project", browser: "Opening it in a browser", review: "A second model reviewed the change",
 };
-const LOCKS = ["bun.lock", "bun.lockb", "pnpm-lock.yaml", "yarn.lock", "package-lock.json"];
 
 function deps(pkgText: string | undefined): string {
   try { const p = JSON.parse(pkgText ?? "{}"); return JSON.stringify([p.dependencies ?? {}, p.devDependencies ?? {}]); } catch { return ""; }
@@ -117,6 +126,17 @@ const SKIP_WORDS: Record<SkipName, string> = { typecheck: "The type check", lint
 const leftOut = (n: SkipName) => `${SKIP_WORDS[n]} ${n === "test" ? "were" : "was"} left out (turned off in Settings), so ${n === "test" ? "they were" : "it was"} not run.`;
 const NOT_INSTALLED_NO = "The project's packages were not installed (you said no, or did not answer), so it was checked as it is.";
 const NOT_INSTALLED_NEVER = "The project's packages are not installed, and Settings says never to install them for a check, so it was checked as it is.";
+// A script the check would run that changes a database or puts something online (detect.ts changesData): never run.
+const CHANGES_DATA_WORDS = { install: "The project's install steps", typecheck: "The type check script", lint: "The lint script", build: "The build script", test: "The test script", start: "The start script" } as const;
+const changesDataGap = (what: keyof typeof CHANGES_DATA_WORDS) => `${CHANGES_DATA_WORDS[what]} also changes a database or puts something online, so Companion did not run it${what === "start" ? ", and the page was not checked" : what === "install" ? " and checked the project as it is" : ""}.`;
+// The task changed what the project runs, and no yes came to running it.
+const RUN_CHANGED_NO = "This task changed the project's scripts or packages, which run on this Mac outside the safety box, and you did not say yes to running them, so the install, build, tests and server were not run.";
+const RUN_CHANGED_SHORT = "Not run: this task changed the project's scripts or packages, and running them needs your yes.";
+// The scripts or packages changed since the person last said yes to running them, by a task that got a no or by hand.
+const RUN_SINCE_NO = "The project's scripts or packages changed since you last said yes to running them. They run on this Mac outside the safety box, and you did not say yes this time, so the install, build, tests and server were not run.";
+const RUN_SINCE_SHORT = "Not run: the project's scripts or packages changed since you last said yes to running them.";
+// The same, in a check that has no way to ask (Point at the problem, Your turn, which task broke it).
+const RUN_UNASKED = "The project's scripts or packages changed since you last said yes to running them, and they run on this Mac outside the safety box, so the install, build, tests and server were not run here. You are asked about them in the next task's check or in Put it online.";
 // A step that could not run because the project's packages were not installed for this check.
 const WITHOUT_PACKAGES = {
   typecheck: "The type check could not run because the project's packages are not installed.",
@@ -151,6 +171,18 @@ function proofHints(dir: string): BrowserOptions {
   catch { return {}; }
 }
 
+// A start command that finishes on its own is a tool, not a website, unless the project looks like one: it is started from
+// .claude/launch.json, a dev script or a Python server, it has a page of its own (index.html), or it lists a web framework
+// or server. Then it finishing means the page was not checked.
+const FINISHED_SITE = "The start command finished without opening a page, so the page was not checked.";
+const WEB_PACKAGE = /^(?:next|vite|react-scripts|react-dom|vue|nuxt|svelte|@sveltejs\/kit|astro|gatsby|@remix-run\/.+|@angular\/core|preact|solid-js|express|koa|fastify|hono|@hono\/.+|@nestjs\/core|elysia|polka|restify|@hapi\/hapi|webpack-dev-server|parcel|serve|http-server|live-server)$/;
+function looksLikeSite(start: NonNullable<Detected["start"]>, dir: string): boolean {
+  if (start.kind !== "server") return false;
+  if (start.python || start.from === "launch" || start.from === "dev") return true;
+  if (["index.html", "public/index.html", "src/index.html"].some((f) => existsSync(join(dir, f)))) return true;
+  try { const p = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")); return Object.keys({ ...(p.dependencies ?? {}), ...(p.devDependencies ?? {}) }).some((d) => WEB_PACKAGE.test(d)); } catch { return false; }
+}
+
 export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   const r = await runRungs(o);
   if (!o.review || (r.verdict !== "passed" && r.verdict !== "passed_with_gaps")) return r;
@@ -160,6 +192,8 @@ export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   o.onStep?.({ rung: "review", label: LABELS.review, status: "running", detail: "", ms: 0 });
   let review: Review | null = null;
   try { review = await o.review(); } catch { review = null; }
+  // Stop during the review: a stop, never a pass with a gap.
+  if (o.signal?.aborted) return { ...r, verdict: "cancelled" };
   const done = (status: Step["status"], detail: string): Step => { const s: Step = { rung: "review", label: LABELS.review, status, detail: redact(detail), ms: Date.now() - t0 }; o.onStep?.(s); return s; };
   if (!review) return { ...r, verdict: "passed_with_gaps", steps: [...r.steps, done("skipped", "The second review could not be completed, so this change was not double checked.")] };
   if (review.verdict === "approve") return { ...r, steps: [...r.steps, done("passed", "The second model found no problems.")] };
@@ -242,12 +276,40 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // --- 1. install
   if (cancelled()) return result("cancelled");
   let t0 = Date.now(); emit("install", "running");
-  const isPackageFile = (p: string) => p === "package.json" || LOCKS.includes(p);
-  const [bf, af] = [await o.store.readFiles(o.beforeId, isPackageFile), await o.store.readFiles(o.afterId, isPackageFile)];
+  const isRunFile = (p: string) => (RUN_FILES as readonly string[]).includes(p);
+  const [bf, af] = [await o.store.readFiles(o.beforeId, isRunFile), await o.store.readFiles(o.afterId, isRunFile)];
+  // What the check would run differs from what the person said yes to (or, with no record, the task changed it): none of
+  // it runs without a yes, since it runs outside the sandbox (rule 13). A yes covers installing the packages too, so the
+  // person answers one card, and it is remembered. [verify] Running the checks under the same sandbox as Claude's own
+  // commands would make this question unneeded.
+  let runYes = false, noRun = false, runShort = RUN_CHANGED_SHORT;
+  const [printBefore, printAfter] = [runPrint(bf), runPrint(af)];
+  let unapproved: "task" | "since" | null = null;
+  if (!py && o.approvals) {
+    if (o.approvals.empty()) o.approvals.add(printBefore);
+    if (!o.approvals.has(printAfter)) unapproved = printAfter !== printBefore ? "task" : "since";
+  } else if (!py && o.askScripts && printAfter !== printBefore) unapproved = "task";
+  if (unapproved) {
+    if (o.askScripts) {
+      runYes = await o.askScripts(unapproved === "task").then((x) => x === true, () => false);
+      if (cancelled()) return result("cancelled");
+    }
+    if (runYes) o.approvals?.add(printAfter);
+    else {
+      noRun = true;
+      runShort = o.askScripts && unapproved === "task" ? RUN_CHANGED_SHORT : RUN_SINCE_SHORT;
+      left.push(!o.askScripts ? RUN_UNASKED : unapproved === "task" ? RUN_CHANGED_NO : RUN_SINCE_NO);
+    }
+  }
+  // Scripts that change a database or put something online are never run by a check.
+  // A Python check is the checker's own command, not a script of the project's; a start from .claude/launch.json or .replit
+  // is the project's, whatever it is written in.
+  const screened = (command: string, install = false, own = !!py) => !own && changesData(command, o.project, install);
   // Python packages are never installed by Companion; the note says what it uses. With no Python to use (none on this
   // Mac, or a virtual environment whose Python is gone), nothing can be checked, and Point at the problem says so.
   if (py && !py.command && o.noInstall) return result("failed", finish("install", "failed", py.note, t0));
   if (py) finish("install", "skipped", py.note, t0);
+  else if (noRun) { heldBack = true; finish("install", "skipped", runShort, t0); }
   else if (det.packageManager && needsInstall(bf, af, det.lockfile, existsSync(join(o.project, "node_modules")))) {
     if (o.noInstall) {
       const why = `This project's packages are not installed, so it cannot be checked yet. Run ${det.packageManager} install in the project folder, or press Fix it with me.`;
@@ -258,11 +320,15 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     // not be read). Only a yes installs.
     const rules = loadRules(o.project);
     const mode = installMode(o.check?.install, rules.rules, rules.broken === true);
-    const yes = mode === "auto" || (mode === "ask" && !!o.askInstall && await o.askInstall(command).then((x) => x === true, () => false));
+    const risky = screened(command, true);
+    const yes = !risky && (mode === "auto" || (mode === "ask" && runYes) || (mode === "ask" && !!o.askInstall && await o.askInstall(command).then((x) => x === true, () => false)));
     if (cancelled()) return result("cancelled");
-    if (!yes) { const why = mode === "never" ? NOT_INSTALLED_NEVER : NOT_INSTALLED_NO; left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
+    if (risky) { const why = changesDataGap("install"); left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
+    else if (!yes) { const why = mode === "never" ? NOT_INSTALLED_NEVER : NOT_INSTALLED_NO; left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
     else {
       const r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
+      // Stop (or Stop everything) ended the command: that says nothing about the project, so it is never a failure.
+      if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) return noRoom("install", t0);
       if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install")));
       finish("install", "passed", "Installed.", t0);
@@ -275,11 +341,14 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // A task that "fixes" a failing check by making it check nothing has not fixed anything.
   const weakened = analyzeScripts(bf["package.json"], af["package.json"]);
   if (!weakened.ok) return result("failed", finish("checks", "failed", weakened.problems.join(". ") + ". Please fix the real problem instead of weakening the check.", t0));
-  if (det.checks.length) {
+  if (det.checks.length && noRun) finish("checks", "skipped", runShort, t0);
+  else if (det.checks.length) {
     const ran: string[] = [], missed: string[] = [], skipped: string[] = [];
     for (const c of det.checks) {
       if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
+      if (screened(c.command)) { const w = changesDataGap(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
+      if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
         const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : `the ${c.name} check`);
@@ -301,12 +370,21 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const guard = analyzeTests(bt, at);
   if (!guard.ok) return result("failed", finish("tests", "failed", guard.problems.join(". ") + ".", t0));
   if (det.tests && skip.has("test")) { const w = leftOut("test"); left.push(w); finish("tests", "skipped", w, t0); }
+  else if (det.tests && noRun) finish("tests", "skipped", runShort, t0);
+  else if (det.tests && screened(det.tests.command)) { const w = changesDataGap("test"); left.push(w); finish("tests", "skipped", w, t0); }
   else if (det.tests) {
     const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
+    if (r.aborted || cancelled()) return result("cancelled");
     if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
-    // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed.
-    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) { cannotTell(false, "tests"); finish("tests", "skipped", "pytest found no tests to run.", t0); }
+    // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed. When the test files do
+    // have tests, something stops pytest finding them (a conftest.py, the project's pytest settings), so the tests were not
+    // checked: a gap, never a pass. Not a failure either: the same may have been true before the task.
+    if (det.tests.tool === "pytest" && r.code === 5 && !r.timedOut) {
+      cannotTell(false, "tests");
+      if (guard.after > 0) { const w = `pytest found no tests to run, though the test files have ${guard.after} test${guard.after === 1 ? "" : "s"}, so the tests were not checked.`; if (!left.includes(w)) left.push(w); finish("tests", "skipped", w, t0); }
+      else finish("tests", "skipped", "pytest found no tests to run.", t0);
+    }
     else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
     else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
@@ -320,6 +398,16 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     return hasEvidence(steps) ? result("passed") : unchecked();
   }
   t0 = Date.now(); emit("start", "running");
+  // The project's own server is project code like the rest: not without a yes for what the task changed, and never when it
+  // changes a database or puts something online. A plain folder of files is served by Companion itself, so it is still opened.
+  if (det.start.kind === "server" && (noRun || screened(det.start.command, false, !!det.start.python))) {
+    const why = noRun ? runShort : changesDataGap("start");
+    if (!noRun && !left.includes(why)) left.push(why);
+    cannotTell(false, "start", "browser");
+    finish("start", "skipped", why, t0);
+    finish("browser", "skipped", "There is no page to open.", Date.now());
+    return hasEvidence(steps) ? result("passed") : unchecked();
+  }
   const textOf = (start: NonNullable<Detected["start"]>) => {
     try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); return m ? JSON.parse(readFileSync(join(o.project, "package.json"), "utf8")).scripts?.[m[1]] ?? "" : ""; } catch { return ""; }
   };
@@ -336,12 +424,32 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     const other = !!usual && !(usual.kind === "server" && det.start.kind === "server" && usual.command === det.start.command);
     startNote = `The start script chosen in Settings (${chosen}) finished without opening a page, so ${other ? "the project was started the usual way" : "the page was not checked"}.`;
     left.push(startNote);
-    if (other) { srv = await serve(usual!); chosen = undefined; }
+    if (other && usual!.kind === "server" && screened(usual!.command, false, !!usual!.python)) { const w = changesDataGap("start"); if (!left.includes(w)) left.push(w); }
+    else if (other) { srv = await serve(usual!); chosen = undefined; }
   }
   try {
     if (!srv.ok && srv.aborted) return result("cancelled");
+    if (!srv.ok && srv.notAServer && (looksLikeSite(det.start, o.project) || (!!found.start && looksLikeSite(found.start, o.project)))) {
+      // A website whose start command finished instead of staying on (a task can break its server that way): the page
+      // was never opened, so it is a gap, never a pass (F14). A chosen start script that did this already says so.
+      if (!startNote) left.push(FINISHED_SITE);
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", startNote ?? FINISHED_SITE, t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
     if (!srv.ok && srv.notAServer) {
       finish("start", "skipped", "This project's start command is a tool, not a website, so there is no page to open.", t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
+    // Its port is held by another program, perhaps the person's own copy of the site: the page could not be opened, which
+    // is a gap, never the project's failure (no ring on the listen line, no fix round).
+    if (!srv.ok && srv.portBusy !== undefined) {
+      const w = `${srv.portBusy ? `Port ${srv.portBusy}` : "The port it uses"} is in use by another program, perhaps your own copy of the site, so the page was not checked.`;
+      if (!left.includes(w)) left.push(w);
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", w, t0);
       finish("browser", "skipped", "There is no page to open.", Date.now());
       return hasEvidence(steps) ? result("passed") : unchecked();
     }
@@ -365,7 +473,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     let shot: import("./browser.ts").PageShot | undefined;
     const notDone: string[] = [];   // what the browser check was asked for in Settings and did not do (a button it would not press)
     for (const [i, size] of sizes.entries()) {
-      const b = await browser(srv.url, { ...hints, timeoutMs: limits.browserMs, shot: i === 0, ...(size === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}) });
+      // The stop signal goes with it, so Stop everything closes the hidden browser at once.
+      const b = await browser(srv.url, { ...hints, timeoutMs: limits.browserMs, shot: i === 0, ...(size === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}), ...(o.signal ? { signal: o.signal } : {}) });
+      if (cancelled()) return result("cancelled", undefined, srv.url);
       if (b.skipped) { cannotTell(false, "browser"); finish("browser", "skipped", b.skipped, t0, null, b.notInstalled ? "browser" : undefined); return result("passed_with_gaps", undefined, srv.url); }
       for (const g of b.gaps ?? []) if (!left.includes(g)) { left.push(g); notDone.push(g); }
       const at = two ? `At ${size} size: ` : size === "phone" ? "At phone size: " : "";

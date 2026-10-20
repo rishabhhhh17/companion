@@ -6,7 +6,7 @@
 
 #![cfg(target_os = "macos")]
 
-use crate::prompthelp::{ReadSession, ReadVerdict};
+use crate::prompthelp::{self as rules, ReadSession, ReadVerdict};
 use crate::{ax, errorsel, phelp};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -67,6 +67,14 @@ pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
 
 fn read_and_send(app: &AppHandle, mut session: ReadSession, gen: u64, pid: i32, bundle: &str, name: &str, t0: Instant) {
     if session.begin_read().is_err() { return; }
+    // The box and the keyboard as they are now (a question about this app may have waited for its answer): never a
+    // password box, never during secure typing.
+    let now = ax::focused(pid);
+    let (role, subrole) = now.as_ref().map(|f| (f.role.as_str(), f.subrole.as_str())).unwrap_or(("", ""));
+    if let Some(v) = rules::secure_now(role, subrole, ax::secure_input_enabled()) {
+        session.finish(); say(app, "refused", json!({ "why": v.code() })); note(bundle, 0, 0, "refused"); return;
+    }
+    drop(now);
     let read = ax::read_selection(pid);
     ax::let_apps_sleep();   // whatever reading switched on in the other app goes off again at once
     session.finish();

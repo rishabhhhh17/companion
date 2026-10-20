@@ -392,8 +392,8 @@ function Card() {
   // homeShown: Home is on screen (the shell's "opened" and "closed"). keysDown: where spoken words may go, as the talk keys
   // went down (askbox.ts FollowAim), used once when the words come back.
   const homeShown = useRef(false), keysDown = useRef<FollowAim | null>(null);
-  // How many times Home has opened (the shell's "opened"), so a Prompt help result still showing asks for its keys again.
-  const [homeOpens, setHomeOpens] = useState(0);
+  // The same as state, for what must follow Home on and off screen (the Prompt help result's keys).
+  const [homeOpen, setHomeOpen] = useState(false);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
@@ -717,8 +717,7 @@ function Card() {
     const off = listen("opened", (e) => {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
-      homeShown.current = true;
-      setHomeOpens((n) => n + 1);   // a Prompt help result still showing asks for its keys again
+      homeShown.current = true; setHomeOpen(true);
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
@@ -732,7 +731,7 @@ function Card() {
       touch();
     });
     // Every way Home goes away goes through the shell, which says so: a window that was just hidden sends no pointerleave.
-    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null; phArmedFor.current = null; setPhKeysUp(false); clearTimeout(phKeysTimer.current); });
+    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; });
     return () => { off.then((f) => f()); offClosed.then((f) => f()); };
   }, []);
   // Tell the app how tall the content is, so the panel fits it.
@@ -889,7 +888,9 @@ function Card() {
   const showMeRef = useRef<(q: string, g: string, s: string[]) => void>(() => {});
   useEffect(() => {
     const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
-    return () => { off.then((f) => f()); };
+    // Stop everything ends the Show me key's question too: words heard after it are never a question about the screen.
+    const offStop = listen("runner-event", (e) => { if ((e.payload as { type?: string } | null)?.type === "app.stop_everything") setAskMode("task"); });
+    return () => { off.then((f) => f()); offStop.then((f) => f()); };
   }, []);
   // settle: this look follows an action (a click, an answer), so the shell may wait for the page to stop changing first
   // (waitsForPage: bounded, the light on throughout, Stop ends it).
@@ -1051,21 +1052,22 @@ function Card() {
   };
   // When the improved text is ready, tell the app so Use it can paste it (nothing is stored on disk). It answers which
   // use keys it took for this result, if any, so the line under it names them only when they work. Those keys work in
-  // every app, so only once the result, with its change, is on screen (home.ts phArmable), and once for each result.
+  // every app, so only while the result, with its change, is on screen (home.ts phArmable), and once for each showing:
+  // when it stops showing (Home closed, another tab) they go back, and they are taken again when it shows again.
   const [phArmed, setPhArmed] = useState(true);
-  // The shell holds the keys only while Home shows the result: it gives them back when Home closes (Esc, a click away)
-  // and after a minute and a half (main.rs arm_now), without a word to the page. So the line under the result names them
-  // only while they are held (phKeysUp), and each time Home opens with the result the keys are asked for again (homeOpens).
+  // The shell also gives the keys back after a minute and a half (main.rs arm_now), without a word to the page. So the line
+  // under the result names them only while they are held (phKeysUp): from the moment ph_ready takes them until the result
+  // stops showing (Home closed, another tab) or the minute and a half is up.
   const [phKeysUp, setPhKeysUp] = useState(false);
   const phKeysTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const phShown = phArmable(m, home.tab);
+  const phShown = phArmable(m, home.tab, homeOpen);
   const phArmedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (m.ph?.stage !== "ready") { phArmedFor.current = null; setPhKeysUp(false); clearTimeout(phKeysTimer.current); return; }
-    if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;
+    if (!phShown) { setPhKeysUp(false); clearTimeout(phKeysTimer.current); if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }
+    if (!m.ph?.text || phArmedFor.current === m.ph.text) return;
     phArmedFor.current = m.ph.text;
-    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => { setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS); }).catch(() => {});
-  }, [m.ph?.stage, m.ph?.text, phShown, homeOpens]);
+    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" }).then((v) => { setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS); }).catch(() => {});
+  }, [m.ph?.stage, m.ph?.text, phShown]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "", off);

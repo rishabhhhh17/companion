@@ -264,9 +264,11 @@ pub fn validate_key(r: &Registry, key: &str, v: &Value) -> Result<Value, &'stati
 // ---------- the settings file ----------
 
 /// What settings.json holds. `values` are the app's values, `projects` each project's (under its hash), `migrated` the
-/// migrations already run, `extra` any other field (kept as it is).
+/// migrations already run, `extra` any other field (kept as it is). `held` and `held_projects` are values of settings this
+/// version knows but refuses (a newer version's new choice or wider range): never in force here, written back exactly as
+/// they were, until that setting is set or reset in this version, so going back a version loses nothing (T16).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct File { pub values: Map<String, Value>, pub projects: Map<String, Value>, pub migrated: Vec<String>, pub extra: Map<String, Value> }
+pub struct File { pub values: Map<String, Value>, pub projects: Map<String, Value>, pub migrated: Vec<String>, pub extra: Map<String, Value>, pub held: Map<String, Value>, pub held_projects: Map<String, Value> }
 
 /// Something wrong with what was read: the whole file (`damaged`, key None) or one value (`badValue`).
 #[derive(Clone, Debug, PartialEq)]
@@ -280,15 +282,16 @@ pub fn project_key(path: &str) -> String {
     format!("p_{}", &hex[..12])
 }
 
-/// Keeps a value only when it is valid and not the usual one. A bad one is listed. Unknown names stay as they are.
-fn clean(r: &Registry, m: &Map<String, Value>, project: bool, problems: &mut Vec<Problem>) -> Map<String, Value> {
-    let mut out = Map::new();
+/// Keeps a value only when it is valid and not the usual one. A bad one is listed, and held as it was stored (the second
+/// map): never in force, written back unchanged. Unknown names stay as they are.
+fn clean(r: &Registry, m: &Map<String, Value>, project: bool, problems: &mut Vec<Problem>) -> (Map<String, Value>, Map<String, Value>) {
+    let (mut out, mut held) = (Map::new(), Map::new());
     for (k, v) in m {
         let Some(d) = r.get(k) else { out.insert(k.clone(), v.clone()); continue };
         if d.store != "settings" || d.kind == Kind::Custom || d.project != project { continue; }   // never kept here
         match validate(d, v) {
             Ok(n) => { if !same(&n, &d.default) { out.insert(k.clone(), n); } }
-            Err(_) => problems.push(Problem { key: Some(k.clone()), code: "badValue" }),
+            Err(_) => { problems.push(Problem { key: Some(k.clone()), code: "badValue" }); held.insert(k.clone(), v.clone()); }
         }
     }
     // An old name read once into the new one, when the new one is not set yet.
@@ -300,7 +303,7 @@ fn clean(r: &Registry, m: &Map<String, Value>, project: bool, problems: &mut Vec
             }
         }
     }
-    out
+    (out, held)
 }
 
 /// Reads the file's text (None when there is none). Ok(None) is a missing file; Err is a damaged one.
@@ -311,23 +314,51 @@ pub fn parse_file(r: &Registry, text: Option<&str>) -> (File, Vec<Problem>, bool
     let obj = |k: &str| match top.get(k) { None => Some(Map::new()), Some(Value::Object(m)) => Some(m.clone()), Some(_) => None };
     let (Some(values), Some(projects)) = (obj("values"), obj("projects")) else { return damaged() };
     let mut problems = vec![];
-    let values = clean(r, &values, false, &mut problems);
-    let mut kept = Map::new();
+    let (values, held) = clean(r, &values, false, &mut problems);
+    let (mut kept, mut held_projects) = (Map::new(), Map::new());
     for (p, m) in projects {
-        match m { Value::Object(m) => { let c = clean(r, &m, true, &mut problems); if !c.is_empty() { kept.insert(p, Value::Object(c)); } } other => { kept.insert(p, other); } }
+        match m {
+            Value::Object(m) => {
+                let (c, h) = clean(r, &m, true, &mut problems);
+                if !c.is_empty() { kept.insert(p.clone(), Value::Object(c)); }
+                if !h.is_empty() { held_projects.insert(p, Value::Object(h)); }
+            }
+            other => { kept.insert(p, other); }
+        }
     }
     let migrated = top.get("migrated").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
     let extra = top.into_iter().filter(|(k, _)| !["version", "values", "projects", "migrated"].contains(&k.as_str())).collect();
-    (File { values, projects: kept, migrated, extra }, problems, false)
+    (File { values, projects: kept, migrated, extra, held, held_projects }, problems, false)
+}
+
+/// `values` with the values held for it (refused here, kept as stored) where this version has none of its own.
+fn with_held(values: &Map<String, Value>, held: Option<&Value>) -> Map<String, Value> {
+    let mut out = values.clone();
+    for (k, v) in held.and_then(Value::as_object).into_iter().flatten() { if !out.contains_key(k) { out.insert(k.clone(), v.clone()); } }
+    out
 }
 
 pub fn to_json(f: &File) -> Value {
     let mut o = f.extra.clone();
     o.insert("version".into(), json!(1));
-    o.insert("values".into(), Value::Object(f.values.clone()));
-    o.insert("projects".into(), Value::Object(f.projects.iter().filter(|(_, v)| !v.as_object().is_some_and(Map::is_empty)).map(|(k, v)| (k.clone(), v.clone())).collect()));
+    o.insert("values".into(), Value::Object(with_held(&f.values, Some(&Value::Object(f.held.clone())))));
+    let mut projects: Map<String, Value> = f.projects.iter().map(|(k, v)| (k.clone(), match v { Value::Object(m) => Value::Object(with_held(m, f.held_projects.get(k))), other => other.clone() })).collect();
+    for (k, h) in &f.held_projects { if !projects.contains_key(k) { projects.insert(k.clone(), h.clone()); } }
+    o.insert("projects".into(), Value::Object(projects.into_iter().filter(|(_, v)| !v.as_object().is_some_and(Map::is_empty)).collect()));
     o.insert("migrated".into(), json!(f.migrated));
     Value::Object(o)
+}
+
+/// This version sets or resets `key` (for `project`, or the app's): a value held for it from a newer version goes.
+fn drop_held(f: &mut File, key: &str, project: Option<&str>) {
+    match project.filter(|p| !p.is_empty()) {
+        Some(p) => {
+            let pk = project_key(p);
+            if let Some(m) = f.held_projects.get_mut(&pk).and_then(Value::as_object_mut) { m.remove(key); }
+            if f.held_projects.get(&pk).and_then(Value::as_object).is_some_and(Map::is_empty) { f.held_projects.remove(&pk); }
+        }
+        None => { f.held.remove(key); }
+    }
 }
 
 pub fn path(dir: &Path) -> PathBuf { dir.join(FILE) }
@@ -412,6 +443,7 @@ pub fn set(r: &Registry, f: &mut File, key: &str, v: &Value, project: Option<&st
         e.as_object_mut().unwrap()
     } else { &mut f.values };
     if same(&n, &d.default) { map.remove(key); } else { map.insert(key.to_string(), n); }
+    drop_held(f, key, if d.project { project } else { None });
     Ok(before != value_of(r, f, key, project))
 }
 
@@ -452,8 +484,10 @@ pub fn reset(r: &Registry, f: &mut File, which: Which, project: Option<&str>) ->
     let before = effective(r, f, project);
     for d in &targets {
         f.values.remove(&d.key);
+        drop_held(f, &d.key, None);
         if let Some(p) = project.filter(|p| !p.is_empty()) {
             if let Some(m) = f.projects.get_mut(&project_key(p)).and_then(Value::as_object_mut) { m.remove(&d.key); }
+            drop_held(f, &d.key, Some(p));
         }
     }
     f.projects.retain(|_, v| !v.as_object().is_some_and(Map::is_empty));
@@ -835,6 +869,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
     #[test]
+    fn a_newer_versions_value_for_a_setting_this_version_knows_survives_going_back() {
+        // T16: going back a version loses nothing. A later version may allow a value this one refuses (a new choice, a wider
+        // range): here it is not in force (the usual value is, and the problem is listed), but it is written back exactly as
+        // it was, through any other change, until this setting itself is set or reset here.
+        let r = registry();
+        let p = "/Users/me/site";
+        let pk = project_key(p);
+        let text = format!(r#"{{"version":1,"values":{{"drawIt.seconds":"60","work.maxTurns":5000,"fun.reactions":false}},"projects":{{"{pk}":{{"check.skip":"everything"}}}}}}"#);
+        let (mut f, problems, _) = parse_file(r, Some(&text));
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        assert_eq!(value_of(r, &f, "drawIt.seconds", None), Some(json!("15")), "not in force");
+        assert_eq!(value_of(r, &f, "check.skip", Some(p)), Some(r.get("check.skip").unwrap().default.clone()));
+        assert!(!apply_line(r, &f, Some(p), "x").contains("everything"), "never sent to the engine");
+        // Another setting changes, and the file is written: the stored values go back as they were.
+        set(r, &mut f, "talk.speak", &json!(true), None).unwrap();
+        let back = to_json(&f);
+        assert_eq!((back["values"]["drawIt.seconds"].clone(), back["values"]["work.maxTurns"].clone()), (json!("60"), json!(5000)));
+        assert_eq!(back["projects"][&pk]["check.skip"], json!("everything"));
+        let d = dir("held");
+        save(&d, &f).unwrap();
+        let (again, _) = load(r, &d);
+        assert_eq!(to_json(&again), back, "read again, it is the same file");
+        let _ = std::fs::remove_dir_all(&d);
+        // Set here, the stored value goes: this version's value is the one kept.
+        set(r, &mut f, "drawIt.seconds", &json!("30"), None).unwrap();
+        assert_eq!(to_json(&f)["values"]["drawIt.seconds"], json!("30"));
+        set(r, &mut f, "work.maxTurns", &json!(80), None).unwrap();
+        assert!(to_json(&f)["values"].get("work.maxTurns").is_none(), "set to its usual value here: nothing kept");
+        // Reset here, the same; another project's own stored values stay, as its values do.
+        let (mut g, _, _) = parse_file(r, Some(&text));
+        reset(r, &mut g, Which::All, Some(p)).unwrap();
+        let back = to_json(&g);
+        assert!(back["values"].get("drawIt.seconds").is_none() && back["values"].get("work.maxTurns").is_none(), "{back}");
+        assert!(back["projects"].get(&pk).is_none(), "{back}");
+        let (mut h, _, _) = parse_file(r, Some(&text));
+        reset(r, &mut h, Which::All, Some("/Users/me/other")).unwrap();
+        assert_eq!(to_json(&h)["projects"][&pk]["check.skip"], json!("everything"));
+    }
+    #[test]
     fn a_value_equal_to_its_usual_one_is_not_stored() {
         let r = registry();
         let mut f = File::default();
@@ -1129,7 +1202,11 @@ mod tests {
         assert!(!change.contains("voiceset::parse(") && !change.contains("keymap::parse("), "{change}");
         // A file that could not be read is never saved over: every path that writes settings.json asks first.
         for c in ["fn settings_migrate(", "fn setting_change(", "fn settings_reset("] { assert!(body(c).contains("settings_writable("), "{c}"); }
-        assert!(body("fn settings_writable(").contains("settings::ready_to_save("));
+        assert!(body("fn settings_writable(").contains("settings::ready_to_save(") && body("fn settings_writable(").contains("-> Result<bool, &'static str>"));
+        // A file read again just now holds the person's own values, which the page was never shown: a reset then changes
+        // nothing, every window is told, and the page asks again (T16: decided from exactly what the page was shown).
+        let read_again = reset.find("if let Ok(true) = settings_writable(&app) { settings_told(&app, &[]); return Err(\"readAgain\".into()); }").expect("a reset after the file was read again");
+        assert!(read_again < reset.find("settings::reset_plan(").unwrap(), "{reset}");
     }
     #[test]
     fn house_rules_are_shown_from_the_projects_own_file_and_no_reset_ever_touches_them() {
@@ -1174,6 +1251,19 @@ mod tests {
         let rules_arm = &change[change.find("\"rules\" => {").unwrap()..];
         let rules_arm = &rules_arm[..rules_arm.find("\n        }\n").unwrap()];
         assert!(!rules_arm.contains("project_opt()"), "the rules are written to the project they came from, never to whichever is current");
+    }
+    #[test]
+    fn the_engine_and_every_window_are_told_whenever_the_project_changes() {
+        // T16: settings.apply is sent again when the project folder changes, and every window is told what is in force.
+        // A folder chosen, and the open practice copy removed (Companion then has no folder): both go through one place.
+        let main = include_str!("main.rs");
+        let body = |c: &str| { let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
+        let now = body("fn project_now(");
+        for p in ["app.emit(\"project-changed\", folder)", "send_settings(app);", "settings_told(app, &[]);"] { assert!(now.contains(p), "{p}: {now}"); }
+        assert!(body("fn use_project_inner(").contains("project_now(&app, &folder);"));
+        let forget = body("fn forget_folder(");
+        assert!(forget.contains("project_now(app, \"\");"), "{forget}");
+        assert_eq!(main.matches("\"project-changed\"").count(), 1, "no other place says the project changed");
     }
     #[test]
     fn a_start_is_one_of_the_projects_own_scripts_and_never_a_command() {

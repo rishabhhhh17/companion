@@ -15,7 +15,10 @@ pub const PROTOCOL_VERSION: i64 = 1;
 /// The commands a web page may send. Everything else is refused here, in Rust.
 const ALLOWED: &[&str] = &[
     "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
-    "assist.prompt", "assist.locate", "assist.image", "assist.cancel", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
+    // Not here: assist.prompt, assist.locate, assist.image and assist.cancel. Only the shell sends them (Prompt help after its
+    // hotkey, Show me after its light), straight to the engine: from a page, assist.prompt could name any folder and
+    // assist.image could hand in any picture outside a Show me press (rule 5).
+    "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
     // Not here: memory.pause, explain.set, spending.set and metrics.set. Those are settings (settings.rs, T16): the page asks
     // the shell (settings_set), the shell checks the value and sends the engine's own command itself. settings.apply is
     // the shell's own line too.
@@ -435,6 +438,17 @@ mod tests {
         assert!(check_command(&w).is_ok());
         assert!(!PROJECT_BOUND.contains(&"engine.warm"));
         assert!(check_project(&w, "").is_ok());
+    }
+    #[test]
+    fn a_page_can_never_send_a_prompt_a_picture_or_a_question_about_the_screen() {
+        // Only the shell sends these (Prompt help after its hotkey, Show me after its light), straight to the engine. From a
+        // page, assist.prompt could name any folder for its project details, and assist.image could hand in any picture for
+        // a vision question outside a Show me press (rule 5).
+        for t in ["assist.prompt", "assist.locate", "assist.image", "assist.cancel"] {
+            let c = json!({ "v": 1, "id": "x", "type": t, "req": "r", "app": "a", "target": "other", "text": "hi", "style": "full", "project": "/Users/me/other-private-repo" });
+            assert!(check_command(&c).is_err(), "{t}");
+            assert!(!ALLOWED.contains(&t), "{t}");
+        }
     }
     #[test]
     fn a_page_can_never_send_text_to_be_explained_as_if_it_was_read_from_another_app() {

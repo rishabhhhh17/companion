@@ -154,7 +154,7 @@ describe("every hint names the keys in use", () => {
     // (it tries again for each result, so they may differ from the keys the page knew), or null when it took none.
     expect(card).toContain("acceptHint(phArmed, keys)");
     expect(card).toMatch(/invoke\("ph_ready", \{[^}]*\}\)\.then\(\(v\) => \{ setPhArmed\(armedFor\(v\)\);/);
-    expect(main).toMatch(/fn ph_ready\([^)]*\) -> Option<String> \{[^\n]*arm_result_keys\(&app, true\); key_registered\(keymap::Action::Accept\)\.map\(keymap::id\) \}/);
+    expect(main).toMatch(/fn ph_ready\([^)]*\) -> Option<String> \{\n[^\n]*\n[^\n]*arm_result_keys\(&app, true\); key_registered\(keymap::Action::Accept\)\.map\(keymap::id\)\n\}/);
     const model = read("./model.ts");
     expect(model).not.toMatch(/Control, Option, Command/);
     expect(model).toContain('withKeys(S.phNeedsAccess, "read")');

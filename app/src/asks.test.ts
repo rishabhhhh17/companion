@@ -195,7 +195,7 @@ describe("a failed request is said in plain words", () => {
 
 describe("Claude out of reach in the lanes and the explainers", () => {
   test("Prompt help says it plainly, with nothing to paste back", () => {
-    const m = run([ev({ type: "assist.error", req: "ph_1", reason: "no_connection (ask again): Companion could not reach Claude (API Error: Connection error.)" })]);
+    const m = run([ev({ type: "app.prompt_help", stage: "thinking", req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: "no_connection (ask again): Companion could not reach Claude (API Error: Connection error.)" })]);
     expect(m.ph).toMatchObject({ stage: "error", message: S.noConnectionAsk });
   });
   test("Show me says it plainly, never that it could not find it", () => {
@@ -222,7 +222,7 @@ describe("Claude out of reach in the lanes and the explainers", () => {
     expect(run([ev({ type: "assist.error", req: "sm_2-s2", reason: "The screenshot was not usable" })], newer).showme).toMatchObject({ stage: "error", message: "The screenshot was not usable" });
   });
   test("a reason that is not Claude's is shown as before", () => {
-    const m = run([ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]);
+    const m = run([ev({ type: "app.prompt_help", stage: "thinking", req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: "The improved version came out much longer than yours, so I left yours alone." })]);
     expect(m.ph?.message).toBe("The improved version came out much longer than yours, so I left yours alone.");
   });
 });

@@ -394,7 +394,7 @@ describe("When something needs me (home.goToNeeds)", () => {
   const PH_STAGES = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
   const EH_STAGES = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
   const phAt = (stage: string) => run(stage === "ready"
-    ? [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]
+    ? [ev({ type: "app.prompt_help", stage: "thinking", app: "Notes", req: "ph_1" }), ev({ type: "assist.prompt.done", req: "ph_1", text: "Better words", diff: [] })]
     : [ev({ type: "app.prompt_help", stage, app: "Notes" })]);
   const ehAt = (stage: string) => run([ev({ type: "app.explain_error", stage, app: "Terminal", req: "r1" })]);
   test("Prompt help and the error explainer always show Now, from every tab, with Only mark the tab and while typing", () => {
@@ -418,39 +418,49 @@ describe("When something needs me (home.goToNeeds)", () => {
   test("a whole Prompt help press from Settings with Only mark the tab: each step that needs the person is on screen", () => {
     let s = go(homeStart(), { type: "pick", tab: "settings" });
     let m = initial();
-    for (const e of [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "consent", app: "Notes" }), ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "thinking", app: "Notes" }), ev({ type: "assist.prompt.done", text: "Better words", diff: [] })]) {
+    for (const e of [ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "consent", app: "Notes" }), ev({ type: "app.prompt_help", stage: "reading", app: "Notes" }), ev({ type: "app.prompt_help", stage: "thinking", app: "Notes", req: "ph_1" }), ev({ type: "assist.prompt.done", req: "ph_1", text: "Better words", diff: [] })]) {
       m = reduce(m, e as never);
       s = homeReduce(s, { type: "need", need: need(m), markOnly: true });
       if (need(m)) expect(shownOn("promptHelp", s.tab, m), String(m.ph?.stage)).toBe(true);
     }
     expect(m.ph?.stage).toBe("ready");
-    expect(phArmable(m, s.tab)).toBe(true);
+    expect(phArmable(m, s.tab, true)).toBe(true);
   });
   test("the result's keys, which work in every app, are armed only while its panel with the change shows", () => {
     const m = phAt("ready");
-    for (const t of TABS) expect(phArmable(m, t), t).toBe(shownOn("promptHelp", t, m));
-    expect(phArmable(m, "settings")).toBe(false);
-    expect(phArmable(m, "now")).toBe(true);
+    for (const t of TABS) expect(phArmable(m, t, true), t).toBe(shownOn("promptHelp", t, m));
+    expect(phArmable(m, "settings", true)).toBe(false);
+    expect(phArmable(m, "now", true)).toBe(true);
+    // Home closed (Esc, the island or the character clicked, a full screen app, Hide): nothing shows, so never armed.
+    for (const t of TABS) expect(phArmable(m, t, false), t).toBe(false);
     // Not before there is a result, and never with no text to put back.
-    expect(phArmable(phAt("reading"), "now")).toBe(false);
-    expect(phArmable(run([ev({ type: "app.prompt_help", stage: "ready", app: "Notes" })]), "now")).toBe(false);
-    expect(phArmable(initial(), "now")).toBe(false);
-    // The card arms them in one place only, behind this check, once for each result.
+    expect(phArmable(phAt("reading"), "now", true)).toBe(false);
+    expect(phArmable(run([ev({ type: "app.prompt_help", stage: "ready", app: "Notes" })]), "now", true)).toBe(false);
+    expect(phArmable(initial(), "now", true)).toBe(false);
+    // The card arms them in one place only, behind this check, once for each result, and gives them back the moment the
+    // result stops showing (Home closed, another tab), to take them again when it shows again.
     expect(card.match(/invoke\("ph_ready"/g)?.length).toBe(1);
-    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab);"), card.indexOf("const shipIt = "));
-    expect(fx).toContain('if (m.ph?.stage !== "ready") { phArmedFor.current = null; setPhKeysUp(false); clearTimeout(phKeysTimer.current); return; }');
-    expect(fx).toContain("if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;");
+    expect(card).toContain("const [homeOpen, setHomeOpen] = useState(false);");
+    expect(card).toMatch(/listen\("opened", [\s\S]*?setHomeOpen\(true\);/);
+    expect(card).toMatch(/listen\("closed", \(\) => \{[^\n]*setHomeOpen\(false\);/);
+    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab, homeOpen);"), card.indexOf("const shipIt = "));
+    expect(fx).toContain('if (!phShown) { setPhKeysUp(false); clearTimeout(phKeysTimer.current); if (phArmedFor.current !== null) { phArmedFor.current = null; void invoke("ph_disarm").catch(() => {}); } return; }');
+    expect(fx).toContain("if (!m.ph?.text || phArmedFor.current === m.ph.text) return;");
     expect(fx.indexOf("if (!phShown")).toBeLessThan(fx.indexOf('invoke("ph_ready"'));
-    expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown, homeOpens]);");
+    // The result is handed back with its own request, so the shell keeps it only for the read still waiting.
+    expect(fx).toContain('void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" })');
+    expect(fx).toContain("}, [m.ph?.stage, m.ph?.text, phShown]);");
   });
   // Found in the M11 audit (A38): the shell gives the keys back when Home closes (Esc, a click away) and after a minute and
   // a half, without telling the page, so the result kept naming keys that did nothing (or reached the app in front).
   test("the result names its keys only while the shell holds them, and asks for them again each time Home opens", () => {
-    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab);"), card.indexOf("const shipIt = "));
+    const fx = card.slice(card.indexOf("const phShown = phArmable(m, home.tab, homeOpen);"), card.indexOf("const shipIt = "));
     expect(fx).toContain("setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS);");
     expect(card).toContain("{phKeysUp && <div className=\"line muted\">{acceptHint(phArmed, keys)}</div>}");
-    expect(card).toContain('const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null; phArmedFor.current = null; setPhKeysUp(false); clearTimeout(phKeysTimer.current); });');
-    expect(card).toContain("setHomeOpens((n) => n + 1);");
+    // Home closing stops it showing (homeOpen false), which puts the line away and gives the keys back; opening Home again
+    // shows it again, so the keys are asked for again (phArmedFor was cleared).
+    expect(fx).toContain("if (!phShown) { setPhKeysUp(false); clearTimeout(phKeysTimer.current); if (phArmedFor.current !== null) { phArmedFor.current = null;");
+    expect(card).toContain('const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false);');
     // The page's minute and a half is the shell's own (main.rs arm_now).
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
     const arm = main.slice(main.indexOf("fn arm_now("), main.indexOf("fn ph_consent"));

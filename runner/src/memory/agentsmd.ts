@@ -5,6 +5,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { screenLine } from "./filter.ts";
+import { readCompanionFile } from "../companionfile.ts";
 import type { MemoryStore } from "./store.ts";
 
 export type SyncResult = { status: "written" | "unchanged" | "needs_ask" | "declined" | "nothing_to_write" | "failed"; files: string[]; reason?: string };
@@ -13,7 +14,8 @@ const END = "<!-- companion:end -->";
 const BLOCK = new RegExp(`\\n?${BEGIN.replace(/[()]/g, "\\$&")}[\\s\\S]*?${END}\\n?`);
 
 function ruleLines(project: string): string[] {
-  try { return readFileSync(join(project, ".companion", "rules.txt"), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).slice(0, 20); } catch { return []; }
+  const r = readCompanionFile(project, "rules.txt");   // never through a link (companionfile.ts)
+  return r.state === "ok" ? r.text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).slice(0, 20) : [];
 }
 
 function section(project: string, m: MemoryStore): string | null {

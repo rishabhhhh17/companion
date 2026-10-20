@@ -35,10 +35,14 @@ export type RescueCard = { summary: string; works: string[]; broken: string; evi
 // file: where the notes were filed; none when it was asked off the record.
 // n: which answer this is since Companion started (each one is its own, for Answer out loud, even off the record).
 export type ResearchCard = { title: string; answer: string; notes: { text: string; source: string }[]; file?: string; n?: number };
+/** `req`: the request the read was sent as (said with "thinking"). Only that request's stream, result or error is taken,
+ *  so a result cancelled since, or an older box's, never comes back over a newer one. */
 export type PromptHelp = {
   stage: string; app?: string; message?: string; streaming?: string;
-  text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string;
+  text?: string; diff: [string, string][]; question?: string; options?: string[]; handback?: string; req?: string;
 };
+/** Is this engine event for the Prompt help request on the card now? */
+const phOwn = (m: Model, req: unknown): boolean => !!m.ph?.req && req === m.ph.req;
 export type ShipGate = { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean };
 export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[] };
 export type MemoryLine = { id: string; text: string; source: string; date: string };
@@ -240,6 +244,12 @@ export function awayFolder(m: Model): string | null {
 }
 
 const browserBusy = (b: BrowserSetupState) => b.stage === "asked" || b.stage === "downloading";
+// A ship step that was running when everything stopped (Stop everything, or an engine restart, which sends nothing more)
+// ends as stopped, so the Online box gets its Close back and is no longer counted as busy (audit A28). Making it live keeps
+// the preview's address on its line, and once that was sent Vercel may finish it anyway, so it is never said that nothing
+// went live then (the engine's own words for a promote cut short, agent.ts shipLive).
+const shipStopped = (f: ShipFlow | null): ShipFlow | null => !f || !["checking_gates", "deploying", "checking_preview"].includes(f.stage) ? f
+  : { ...f, stage: "failed", canGoLive: false, detail: f.stage === "deploying" && f.previewUrl ? "Stopped. Companion could not confirm whether it went live. Check your project on vercel.com." : "Stopped. Nothing went live." };
 // A new task or another folder: an old offer or an old result goes; a download that is running stays on the card.
 const browserFresh = (b: BrowserSetupState): BrowserSetupState => (browserBusy(b) ? b : { needed: false, stage: "idle", ...(b.installed !== undefined ? { installed: b.installed } : {}) });
 const browserRung = (steps: unknown, test: (s: any) => boolean) => Array.isArray(steps) && steps.some((s: any) => !!s && s.rung === "browser" && test(s));
@@ -461,10 +471,10 @@ export function reduce(m: Model, e: Ev): Model {
       const proof = m.task?.proof;
       const task = m.task && proof ? { ...m.task, proof: { ...proof, steps: proof.steps.map((x) => (x.status === "running" ? { ...x, status: "skipped" as const, detail: S.stepStoppedRestart } : x)) } } : m.task;
       const notice = turn?.target ? S.restartedTurn(turn.target.file, turn.target.line) : ran ? S.restartedStopped : S.restartedNothing;
-      return { ...withAgents({ ...m, away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
+      return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
@@ -526,6 +536,7 @@ export function reduce(m: Model, e: Ev): Model {
         if (!own || (req !== own && !req.startsWith(`${own}-`)) || e.reason === "cancelled") return m;
         return { ...m, showme: { stage: "error", message: said ?? (String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason)) } };
       }
+      if (!phOwn(m, e.req)) return m;   // only the Prompt help request on the card now
       return e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: said ?? String(e.reason), diff: [] } };
     }
     case "app.voice": {
@@ -679,9 +690,9 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, rescue: { summary: e.summary, works: e.works ?? [], broken: e.broken, evidence: [...(e.evidence ?? [])].sort((a: any, b: any) => (a.status === "failed" ? 0 : 1) - (b.status === "failed" ? 0 : 1)) }, task: null, receipt: null, error: null, notice: null };
     case "app.prompt_help":
       // Each stage starts fresh, so the old text never lingers into a new press.
-      return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [] } };
-    case "assist.prompt.delta": return m.ph ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
-    case "assist.prompt.done": return { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback } };
+      return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [], ...(typeof e.req === "string" && e.req ? { req: e.req } : {}) } };
+    case "assist.prompt.delta": return m.ph && phOwn(m, e.req) ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
+    case "assist.prompt.done": return phOwn(m, e.req) ? { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback, req: m.ph?.req } } : m;
     case "ship.gates": m = practiceGates(m, e); return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
     case "ship.status": if (e.needs === "browser") m = { ...m, browser: { ...m.browser, needed: true } };
       return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };

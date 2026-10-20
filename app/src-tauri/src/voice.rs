@@ -217,6 +217,44 @@ mod tests {
         assert!(HIDDEN_WORDS.starts_with("Companion is hidden right now") && !HIDDEN_WORDS.contains('\u{2014}'));
     }
     #[test]
+    fn stop_everything_reaches_hold_to_talk_even_while_it_waits_or_turns_words_into_text() {
+        // Rule 11. Stop reaches the worker as a Cancel queued behind whatever it is doing: the light's wait, a slow
+        // microphone opening (up to seconds for a Bluetooth one), or the words being turned into text. So Stop also counts
+        // itself at once, and the worker looks at that count after each of those: the microphone never opens after a Stop,
+        // and words heard before a Stop are dropped, never sent on to Show me or a task.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let rest = body("fn showme_stop_rest(");
+        assert!(rest.find("VOICE_STOPS.fetch_add(1, Ordering::SeqCst);").expect("Stop counts itself") < rest.find("voice_send(app, VoiceMsg::Cancel)").unwrap(), "{rest}");
+        let w = body("fn voice_worker(");
+        let down = &w[w.find("Ok(VoiceMsg::Down(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()];
+        let up = &w[w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Cancel) =>").unwrap()];
+        let stopped = "if VOICE_STOPS.load(Ordering::SeqCst) != stops_at {";
+        assert!(down.find("stops_at = VOICE_STOPS.load(Ordering::SeqCst);").unwrap() < down.find("voice_mac::model_ready(").unwrap(), "noted as the keys go down");
+        let (light, mic) = (down.find("std::thread::sleep(Duration::from_millis(150))").unwrap(), down.find("voice_mac::Recorder::start(").unwrap());
+        assert!(down[light..mic].contains(stopped), "a Stop during the light: the microphone never opens");
+        let opened = &down[mic..];
+        assert!(opened[..opened.find("rec = Some(r);").unwrap()].contains(stopped), "a Stop while the microphone opened: it is closed at once");
+        let (said, heard) = (up.find("say_voice(&app, \"transcribing\"").unwrap(), up.find("say_voice(&app, \"heard\"").unwrap());
+        assert!(up[said..heard].contains(stopped), "a Stop while the words were turned into text: they are dropped");
+        assert!(up[..said].contains(stopped), "and none are turned into text after a Stop");
+    }
+    #[test]
+    fn the_speech_model_downloads_once_at_a_time() {
+        // A second Download while one runs used to remove the first one's half written file, and each then threw the other's
+        // away. A second press does nothing now, and holding the talk keys meanwhile says the download is still going
+        // (with how far it got) instead of offering Download again.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
+        let d = body("fn voice_download(");
+        assert!(d.find("if DOWNLOADING.swap(true, Ordering::SeqCst) { return; }").expect("one at a time") < d.find("std::thread::spawn(").unwrap(), "{d}");
+        assert!(d.contains("DOWNLOAD_PERCENT.store(pct, Ordering::SeqCst);") && d.contains("DOWNLOADING.store(false, Ordering::SeqCst)"), "{d}");
+        let w = body("fn voice_worker(");
+        let ready = &w[w.find("if !voice_mac::model_ready(&data) {").unwrap()..];
+        let ready = &ready[..ready.find('\n').unwrap()];
+        assert!(ready.contains("if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, \"downloading\", \"Downloading the speech model\", json!({ \"percent\": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); }"), "{ready}");
+    }
+    #[test]
     fn both_ways_of_hiding_close_the_microphone_at_once() {
         let main = include_str!("main.rs");
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
@@ -231,7 +269,7 @@ mod tests {
         let tick = body("fn tick(");
         let hide = &tick[tick.find("HIDDEN_BY_US.swap(true").unwrap()..tick.find("} else if show && HIDDEN_BY_US.swap(false").unwrap()];
         assert!(hide.contains("voice_tell_hidden();"), "the full screen hide wakes the microphone's worker");
-        assert!(main.contains("if hide { home_closed(); voice_tell_hidden(); }"), "Hide from the menu bar wakes it too");
+        assert!(main.contains("if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide from the menu bar wakes it too");
         let tell = body("fn voice_tell_hidden(");
         assert!(tell.contains("VoiceMsg::Hidden") && !tell.contains("voice_worker"), "only a worker already running is woken");
         assert!(body("fn companion_hidden(").contains("HIDDEN_BY_US") && body("fn companion_hidden(").contains("USER_HID"));

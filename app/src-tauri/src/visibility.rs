@@ -82,4 +82,15 @@ mod tests {
         assert!(!should_show(i(true, over_full_screen(Some("1"), true), true)));
         assert!(should_show(i(true, over_full_screen(None, true), false)));
     }
+
+    #[test] fn opening_companion_again_shows_what_the_menu_bar_hid_or_else_opens_home() {
+        // Hide or show Companion is in the menu bar icon only, and that icon can be out of reach (behind the notch, or
+        // turned off in macOS's menu bar settings). Opening Companion again (Finder, Spotlight, Launchpad) sends the copy
+        // that runs a reopen: it shows what the person hid, the same way the menu does, or else opens Home. Never the keyboard.
+        let main = include_str!("main.rs");
+        let run = &main[main.find("app.run(|app, ev|").unwrap()..];
+        assert!(run.contains("RunEvent::Reopen { .. } => reopened(app),"), "{run}");
+        let f = &main[main.find("fn reopened(").unwrap()..]; let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("if USER_HID.load(Ordering::SeqCst) { set_user_hidden(app, false); } else { open_card(app, \"reopen\", false); }"), "{f}");
+    }
 }

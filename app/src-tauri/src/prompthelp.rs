@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 // ---------- apps that are never read ----------
 
-const BUILT_IN_NEVER: &[&str] = &[
+/// Also left out of every picture Show me takes (macos_see.rs left_out_of_pictures), except System Settings.
+pub(crate) const BUILT_IN_NEVER: &[&str] = &[
     "com.1password.1password", "com.agilebits.onepassword7", "com.agilebits.onepassword-osx", "com.bitwarden.desktop",
     "com.lastpass.lastpass", "com.dashlane.dashlane", "org.keepassxc.keepassxc", "com.apple.keychainaccess", "com.apple.Passwords",
     "com.nordsec.nordpass", "com.enpass.Enpass", "in.sinew.Enpass-Desktop", "com.apple.systempreferences", "com.apple.SecurityAgent",
@@ -186,9 +187,23 @@ impl ReadVerdict {
 pub fn read_verdict(role: &str, subrole: &str, secure_input_on: bool, bundle_id: &str, deny: &Denylist, consent: &mut Consent) -> ReadVerdict {
     // The strictest refusals come first and never reach the question about consent.
     if deny.contains(bundle_id) { return ReadVerdict::RefuseNeverApp; }
-    if role == "AXSecureTextField" || subrole == "AXSecureTextField" { return ReadVerdict::RefuseSecureField; }
-    if secure_input_on { return ReadVerdict::RefuseSecureInput; }
+    if let Some(v) = secure_now(role, subrole, secure_input_on) { return v; }
     match consent.decide(bundle_id) { Decision::Allow => ReadVerdict::Ok, Decision::Ask => ReadVerdict::NeedConsent, Decision::Refuse => ReadVerdict::RefusedByYou }
+}
+
+// ---------- one request per read ----------
+
+/// Each read is sent as its own request. A result is kept for Use it only when it answers the request still waiting: never
+/// one cancelled since (Cancel, Stop everything, a newer press), and never an older box's rewrite over a newer box.
+pub fn same_request(waiting: Option<&str>, answered: &str) -> bool { !answered.is_empty() && waiting == Some(answered) }
+
+/// The refusals that depend on the box and the keyboard right now: never a password box, never during secure typing. Asked
+/// at the press (read_verdict) and again right before reading, since the person may have moved to a password box or started
+/// typing a password (sudo in Terminal) while a question about the app waited for its answer.
+pub fn secure_now(role: &str, subrole: &str, secure_input_on: bool) -> Option<ReadVerdict> {
+    if role == "AXSecureTextField" || subrole == "AXSecureTextField" { return Some(ReadVerdict::RefuseSecureField); }
+    if secure_input_on { return Some(ReadVerdict::RefuseSecureInput); }
+    None
 }
 
 // ---------- the indicator comes first ----------
@@ -366,6 +381,42 @@ pub fn log_line(kind: &str, bundle_id: &str, ms: u64, chars: usize, outcome: &st
 mod tests {
     use super::*;
     const APP: &str = "com.openai.codex";
+
+    #[test] fn the_box_and_the_keyboard_are_checked_again_right_before_reading() {
+        // After a question about the app was answered (or while a slow app wakes), the person may be in a password box now,
+        // or typing a password in Terminal: never read then, whatever the app's answer says.
+        assert_eq!(secure_now("AXSecureTextField", "", false), Some(ReadVerdict::RefuseSecureField));
+        assert_eq!(secure_now("AXTextField", "AXSecureTextField", false), Some(ReadVerdict::RefuseSecureField));
+        assert_eq!(secure_now("AXTextArea", "", true), Some(ReadVerdict::RefuseSecureInput));
+        assert_eq!(secure_now("", "", true), Some(ReadVerdict::RefuseSecureInput), "no box found, but secure typing is on");
+        assert_eq!(secure_now("AXTextArea", "", false), None);
+        // The rules at the press ask the same question, so the two can never differ.
+        let mut c = Consent::default(); c.record(APP, Choice::Always);
+        for (role, sub, secure) in [("AXSecureTextField", "", false), ("AXTextArea", "", true), ("AXTextArea", "", false)] {
+            let at_press = read_verdict(role, sub, secure, APP, &Denylist::default(), &mut c);
+            assert_eq!(secure_now(role, sub, secure).unwrap_or(ReadVerdict::Ok), at_press, "{role} {secure}");
+        }
+        // Both readers ask it right before reading, and the reading itself never takes a password box.
+        for (file, src, read) in [("phelp.rs", include_str!("phelp.rs"), "ax::read_ladder(pid)"), ("errhelp.rs", include_str!("errhelp.rs"), "ax::read_selection(pid)")] {
+            let at = src.find(read).unwrap_or_else(|| panic!("{file}"));
+            let before = &src[..at];
+            let fun = &before[before.rfind("\nfn ").unwrap()..];
+            assert!(fun.contains("rules::secure_now(") && fun.contains("ax::focused(pid)") && fun.contains("ax::secure_input_enabled()"), "{file}: {fun}");
+        }
+        let ax = include_str!("ax.rs");
+        for f in ["pub fn read_ladder(", "pub fn read_selection("] {
+            let b = &ax[ax.find(f).unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
+            assert!(b.contains("let f = focused(pid).filter(|f| !secure_field(f))?;"), "{f}: {b}");
+        }
+    }
+    #[test] fn a_result_belongs_only_to_the_request_still_waiting() {
+        // Each read is sent as its own request. A result is kept for Use it only when it answers the request waiting now:
+        // never one cancelled since, and never an older box's rewrite over a newer box.
+        assert!(same_request(Some("ph_2"), "ph_2"));
+        assert!(!same_request(Some("ph_2"), "ph_1"), "an older press's answer");
+        assert!(!same_request(None, "ph_1"), "nothing waits (cancelled, dismissed, stopped)");
+        assert!(!same_request(Some(""), ""), "a request always has a name");
+    }
 
     #[test] fn password_managers_and_system_settings_are_never_read() {
         let d = Denylist::default();

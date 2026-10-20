@@ -1,6 +1,7 @@
 // Prompt help logic, in plain code (no Claude needed to test it): what must never be rewritten, how long a rewrite
 // may be, what each kind of app needs, and what project information may be shared with the model.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readCompanionFile } from "./companionfile.ts";
 import { join } from "node:path";
 import { hideSecrets } from "./proof/review.ts";
 
@@ -160,10 +161,10 @@ export function buildContext(project?: string): string | null {
     const all = readdirSync(project).filter((n) => !n.startsWith(".") && !SKIP.has(n)).sort();
     if (all.length) lines.push(`Top level: ${all.slice(0, 30).join(", ")}${all.length > 30 ? ` and ${all.length - 30} more` : ""}`);
   } catch { /* unreadable folder */ }
-  try {
-    const rules = readFileSync(join(project, ".companion", "rules.txt"), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).slice(0, 10);
-    if (rules.length) lines.push(`House rules: ${rules.join("; ")}`);
-  } catch { /* no rules */ }
+  // Read safely (companionfile.ts): a rules file that is a link, a pipe or too large is left out.
+  const read = readCompanionFile(project, "rules.txt");
+  const rules = read.state === "ok" ? read.text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).slice(0, 10) : [];
+  if (rules.length) lines.push(`House rules: ${rules.join("; ")}`);
   if (lines.length === 0) return null;
   return hideSecrets(lines.join("\n")).slice(0, 2000);
 }

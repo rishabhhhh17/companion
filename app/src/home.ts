@@ -131,10 +131,11 @@ export function markedLine(s: HomeState, a: NeedAction): string | null {
   return a.markOnly && a.need && onlyMarked(s, a) ? S.homeWaiting(tabName(a.need.tab), a.need.why) : null;
 }
 
-/** May the Prompt help result's keys be armed (ph_ready)? They work in every app for a while, so only once its panel,
- *  with the change it would put back, is on the tab that is open: one press never puts back a rewrite that was not shown. */
-export function phArmable(m: Model, tab: Tab): boolean {
-  return m.ph?.stage === "ready" && !!m.ph.text && shownOn("promptHelp", tab, m);
+/** May the Prompt help result's keys be armed (ph_ready)? They work in every app for a while, so only while Home is on
+ *  screen (`shown`, the shell's "opened" and "closed") with its panel, and the change it would put back, on the tab that is
+ *  open: one press never puts back a rewrite that was not shown. */
+export function phArmable(m: Model, tab: Tab, shown: boolean): boolean {
+  return shown && m.ph?.stage === "ready" && !!m.ph.text && shownOn("promptHelp", tab, m);
 }
 
 /** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. */
