@@ -78,4 +78,16 @@ out.push(state("the old ring's landing time"));
 advance(2000);
 out.push(state("a new ring during the flight"));
 
+// The confetti with a ring on screen leaves the ring's caption as it is.
+fire("overlay-party", { x: 1300, y: 800, settings: null });
+advance(100);
+out.push(state("party with the ring there"));
+
+// A caption still on with no ring under it (here the ring is taken off the stand in page directly): the confetti, which
+// brings the overlay to the front, turns it off rather than show it over another app.
+for (const e of svg.querySelectorAll("ellipse")) e.remove();
+fire("overlay-party", { x: 1300, y: 800, settings: null });
+advance(100);
+out.push(state("party with a caption and no ring"));
+
 for (const o of out) console.log(JSON.stringify(o));

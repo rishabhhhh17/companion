@@ -13,11 +13,15 @@ const seen = new Map<string, { captionOn: boolean; caption: string; drawn: numbe
 describe("a ring that is cleared never lands", () => {
   test("the harness ran", () => {
     expect(run.exitCode, run.stderr.toString()).toBe(0);
-    expect(seen.size).toBe(4);
+    expect(seen.size).toBe(6);
   });
   test("cleared while flying: no caption and nothing drawn, then or later", () => {
     expect(seen.get("cleared while flying")).toMatchObject({ captionOn: false, drawn: 0 });
     expect(seen.get("party after the clear")?.captionOn).toBe(false);
+  });
+  test("the confetti never shows a caption with no ring under it, and leaves one that has its ring", () => {
+    expect(seen.get("party with the ring there")).toMatchObject({ captionOn: true, caption: "Your turn: Click Publish" });
+    expect(seen.get("party with a caption and no ring")?.captionOn).toBe(false);
   });
   test("a new ring during an old flight: the old one never shows its caption, the new one does", () => {
     expect(seen.get("the old ring's landing time")?.captionOn).toBe(false);

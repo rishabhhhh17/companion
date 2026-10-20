@@ -175,6 +175,21 @@ describe("the fix is the practice's own task, matched by its practice id", () =>
     const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), ev({ type: "protocol.error", reason: "could not handle agent.start: boom" })]);
     expect(m.practice?.stage).toBe("failed");
   });
+  // Found in review of the A55 fix: the engine catches a task that throws itself, tells the reason for its agent and sets it to
+  // error, with no receipt. The fix must end then too, or the practice stayed on fixing and blocked updates and other practices.
+  test("the fix's task stopping unexpectedly (the engine's own order of events) ends it as not passed", () => {
+    const st = (s: string, agent = "builder-1") => ev({ type: "agent.state", agent, state: s });
+    const began = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), st("thinking"), st("working")]);
+    for (const reason of ["The task stopped unexpectedly (boom). Look at your project, and use Undo if something is not right.", "The task could not start (boom). Nothing in your project was changed."]) {
+      expect(run([ev({ type: "protocol.error", agent: "builder-1", reason }), st("error")], began).practice?.stage).toBe("failed");
+    }
+    // Stopped: the agent rests with no receipt.
+    expect(run([st("idle")], began).practice?.stage).toBe("failed");
+    // Another agent resting, or the fix's own receipt and then its end, change nothing more.
+    expect(run([st("idle", "checker-1")], began).practice?.stage).toBe("fixing");
+    expect(run([receipt(e, "passed"), st("done")], began).practice?.stage).toBe("done");
+    expect(run([receipt(e, "failed"), st("error")], began).practice?.stage).toBe("failed");
+  });
   test("Undo of the practice's own fix puts it back to found, with Try again; another undo does nothing to it", () => {
     const done = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), receipt(e, "passed")]);
     expect(run([restored(e, "cp_0042")], done).practice?.stage).toBe("done");

@@ -89,6 +89,52 @@ describe("A52: a task from the folder before never shows on the new folder's Now
     expect(m.task?.project).toBe(A);
     expect(m.receipt?.checkpoint).toBe("cp_0003");
   });
+  // Found in review of the A52 fix: a task already in its checks sends no more steps, so coming back (or picking the same
+  // folder again) must bring its task back by itself, or its receipt, its Undo and its question were dropped for good.
+  test("back in the folder while the task is in its checks, its receipt and its question show, with nothing in between", () => {
+    const checking = run([tool, state("checking")], run([ev({ type: "ui.folderShown", project: A }), cp(A, "cp_0003"), state("working")]));
+    for (const back of [run([ev({ type: "ui.projectChanged", project: B }), ev({ type: "ui.projectChanged", project: A })], checking), run([ev({ type: "ui.projectChanged", project: A })], checking)]) {
+      expect(back.task).toMatchObject({ agent: AGENT, project: A, checkpoint: "cp_0003", label: "fix the cart" });
+      const m = run([receipt("cp_0003", { said: "Which colour?", asks: true }), state("needsYou")], back);
+      expect(m.receipt?.checkpoint).toBe("cp_0003");
+      expect(canFollowUp(m, A)).toBe(true);
+      expect(run([ev({ type: "explain.ready", agent: AGENT, checkpoint: "cp_0003", bullets: ["b"], usdEstimate: 0 })], m).explain).not.toBeNull();
+    }
+  });
+  test("a task that ended before the person came back is not brought back", () => {
+    const m = run([receipt("cp_0003"), state("done"), ev({ type: "ui.projectChanged", project: A })], moved);
+    expect(m.task).toBeNull();
+    expect(m.receipt).toBeNull();
+  });
+  test("a plan or a Rescue report from the folder before is not shown here", () => {
+    const m = run([ev({ type: "plan.ready", agent: AGENT, steps: [{ id: 1, title: "Make the page" }], truncated: false, estimateUsd: 0.2 }), ev({ type: "rescue.report", agent: AGENT, summary: "s", works: [], broken: "b", steps: [], evidence: [], estimateUsd: 0.1 })], moved);
+    expect(m.plan).toBeNull();
+    expect(m.rescue).toBeNull();
+  });
+  test("while another agent works here, the away task's cost, checks, picture and explanation never reach this folder's task", () => {
+    // Undo points are numbered per project, so the away task's cp_0003 can be the same name as this folder's own.
+    const here = run([ev({ type: "checkpoint.created", project: B, agent: "builder-2", checkpoint: "cp_0003", label: "Before: b", files: 1, skipped: [] }), ev({ type: "agent.state", agent: "builder-2", state: "working" })], moved);
+    const m = run([ev({ type: "cost.update", agent: AGENT, usdEstimate: 0.5, basis: "x", tokens: { in: 1, cacheRead: 0, out: 1 } }), ev({ type: "proof.step", agent: AGENT, rung: "checks", label: "Running the tests", status: "running" }), proof, ev({ type: "explain.ready", agent: AGENT, checkpoint: "cp_0003", bullets: ["b"], usdEstimate: 0 })], here);
+    expect(m.task).toMatchObject({ agent: "builder-2", costUsd: 0 });
+    expect(m.task?.proof).toBeUndefined();
+    expect(m.explain).toBeNull();
+    const shown = run([ev({ type: "receipt", agent: "builder-2", checkpoint: "cp_0003", changed: [], commands: 0, notUndoable: [], proof: "passed", usdEstimate: 0 }), ev({ type: "receipt.visual", agent: AGENT, project: A, checkpoint: "cp_0003", made: true, image: "abc", caption: "x", circles: 0 })], m);
+    expect(shown.receipt?.checkpoint).toBe("cp_0003");
+    expect(shown.receipt?.visual).toBeUndefined();
+  });
+  test("a Drive plan from the folder before shows again once the person is back in its folder", () => {
+    const step = (index: number, status: string) => ev({ type: "drive.step", agent: AGENT, index, total: 2, title: index === 1 ? "One" : "Two", status });
+    const driving = run([ev({ type: "ui.folderShown", project: A }), step(1, "started"), cp(A, "cp_0003"), state("working")]);
+    const away = run([ev({ type: "ui.projectChanged", project: B }), step(1, "done")], driving);
+    expect(away.drive).toBeNull();
+    const back = run([ev({ type: "ui.projectChanged", project: A }), step(2, "started")], away);
+    expect(back.drive).toMatchObject({ index: 2, total: 2, status: "started" });
+    const done = run([ev({ type: "drive.done", agent: AGENT, status: "done", completed: 2, total: 2 })], back);
+    expect(done.drive?.finished).toMatchObject({ status: "done", completed: 2 });
+    // In a third folder it is still away.
+    const third = run([ev({ type: "ui.projectChanged", project: B }), ev({ type: "ui.projectChanged", project: "/Users/me/notes" }), step(2, "started")], driving);
+    expect(third.drive).toBeNull();
+  });
   test("with the folder not known yet (nothing changed it), nothing is dropped", () => {
     const m = run([cp(A, "cp_0003"), tool, receipt("cp_0003")]);
     expect(m.receipt?.checkpoint).toBe("cp_0003");

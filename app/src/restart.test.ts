@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { AGENT } from "./commands.ts";
-import { canFollowUp, canRetry, initial, receiptSaid, reduce, teachActions, teachLines, waitsForAnswer, type Model } from "./model.ts";
+import { canFollowUp, canOfferTurn, canRetry, initial, receiptSaid, reduce, teachActions, teachLines, waitsForAnswer, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -31,6 +31,13 @@ describe("A58: a finished task cannot be followed up once the engine restarted",
     const failed = run([...begin, receipt({ proof: "failed" }), state("error"), ...restart]);
     expect(canRetry(failed, P)).toBe(false);
     expect(card).toContain("{m.receipt.gone && <div className=\"line\">{S.receiptGone}</div>}");
+  });
+  // Found in review: the new engine has no offer to try, so Let me try the next one was refused with a reason that was not true.
+  test("after: Let me try the next one is not offered either", () => {
+    const place = (line: number) => ({ file: "a.js", line, lineText: "x" });
+    const offered = run([...begin, receipt({ repeat: { first: place(3), second: place(9), was: "user", now: "user?" } }), state("done")]);
+    expect(canOfferTurn(offered)).toBe(true);
+    expect(canOfferTurn(run(restart, offered))).toBe(false);
   });
   test("a check that was running when the engine stopped is not left saying Running", () => {
     const m = run([...begin, ev({ type: "proof.step", agent: AGENT, rung: "checks", label: "Running the tests", status: "running", detail: "" }), ...restart]);

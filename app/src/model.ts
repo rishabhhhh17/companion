@@ -85,6 +85,8 @@ export type Practice = {
   where?: { file?: string; line?: number; message?: string }; problem?: Problem; label?: string; why?: string; block?: "couldNotRun" | "elsewhere" | "nothing";
   walk?: string; nameSet?: boolean; checkpoint?: string; result?: PracticeResult; checksFailed?: boolean; gaps?: boolean; undone?: boolean;
   resumed?: boolean; already?: boolean; previous?: string;
+  // The agent the fix's task runs on, from its undo point: the fix ends if that agent stops with no receipt.
+  agent?: string;
 };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
@@ -119,10 +121,13 @@ export type ErrorHelp = { stage: string; app?: string; req?: string; why?: strin
 export type Model = {
   // The folder Home shows (null until the page has heard it). away: agents still at work that was started in another
   // folder, and that folder: nothing of that work (its steps, checks, receipt, picture or explanation) is shown here, since
-  // its Undo would name an undo point of the wrong project. driveAway: the Drive plan running then is in that folder too.
+  // its Undo would name an undo point of the wrong project. driveAway: the folder of the Drive plan running then, until the
+  // person is back in it. workIn: each agent's task that has begun and has no receipt yet, with its folder, so that coming
+  // back to that folder (or picking it again) brings the task back on Home even when it sends no more steps.
   folder: string | null;
   away: Record<string, string>;
-  driveAway: boolean;
+  driveAway: string | null;
+  workIn: Record<string, { project: string; checkpoint?: string; label: string }>;
   // How many research answers have come since Companion started (each answer's own number).
   researchCount: number;
   bisect: BisectState | null;
@@ -185,7 +190,9 @@ export type Model = {
   error: string | null;
 };
 
-export const initial = (): Model => ({ folder: null, away: {}, driveAway: false, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
+// The record without one agent's entry.
+function without<T>(r: Record<string, T>, agent: string): Record<string, T> { const o = { ...r }; delete o[agent]; return o; }
+export const initial = (): Model => ({ folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -454,7 +461,7 @@ export function reduce(m: Model, e: Ev): Model {
       const proof = m.task?.proof;
       const task = m.task && proof ? { ...m.task, proof: { ...proof, steps: proof.steps.map((x) => (x.status === "running" ? { ...x, status: "skipped" as const, detail: S.stepStoppedRestart } : x)) } } : m.task;
       const notice = turn?.target ? S.restartedTurn(turn.target.file, turn.target.line) : ran ? S.restartedStopped : S.restartedNothing;
-      return { ...withAgents({ ...m, away: {}, driveAway: false, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
+      return { ...withAgents({ ...m, away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
     case "app.stop_everything": return { ...withAgents({ ...m, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
@@ -491,8 +498,12 @@ export function reduce(m: Model, e: Ev): Model {
       // A task that has begun but whose agent has not said so yet is at work too.
       if (m.task?.checkpoint && !m.receipt && !["idle", "done", "error"].includes(m.agents[m.task.agent] ?? "")) away[m.task.agent] ??= was;
       for (const [a, f] of Object.entries(away)) if (f && f === to) delete away[a];   // back in the folder it works in
-      m = { ...m, folder: to || null, away, driveAway: m.driveAway || (!!m.drive && !m.drive.finished), currentCheckpoint: undefined };
-      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, task: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], followUp: "idle", error: null, notice: null };
+      const plan = m.driveAway ?? (m.drive && !m.drive.finished ? was : null);
+      // A task still at work in the folder now on screen comes back with its undo point, so its receipt shows when it comes.
+      const back = Object.entries(m.workIn).find(([a, w]) => to && w.project === to && away[a] === undefined && !["idle", "done", "error"].includes(m.agents[a] ?? ""));
+      const task: Task | null = back ? { agent: back[0], project: to, ...(back[1].checkpoint ? { checkpoint: back[1].checkpoint } : {}), label: back[1].label, lines: [], costUsd: 0 } : null;
+      m = { ...m, folder: to || null, away, driveAway: plan && plan !== to ? plan : null, currentCheckpoint: task?.checkpoint };
+      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], followUp: "idle", error: null, notice: null, task };
     }
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
@@ -534,6 +545,8 @@ export function reduce(m: Model, e: Ev): Model {
     // A new task ends the person's turn. If the old code was still back at their place, that is said, never dropped silently.
     // A task started while a plan's step is running is that step's, so its explanation belongs to the plan.
     case "checkpoint.created": {
+      const where = typeof e.project === "string" ? e.project : m.folder;
+      if (where) m = { ...m, workIn: { ...m.workIn, [e.agent]: { project: where, ...(typeof e.checkpoint === "string" ? { checkpoint: e.checkpoint } : {}), label: String(e.label ?? "").replace(/^Before:\s*/, "") } } };
       // Work in another folder than the one on screen (a Drive plan still running in the folder before): none of it shows.
       if (m.folder && typeof e.project === "string" && e.project !== m.folder) return { ...m, away: { ...m.away, [e.agent]: e.project } };
       if (m.away[e.agent] !== undefined) { const away = { ...m.away }; delete away[e.agent]; m = { ...m, away }; }
@@ -541,7 +554,7 @@ export function reduce(m: Model, e: Ev): Model {
       if (m.drive?.finished) m = { ...m, drive: null, stepExplains: [], planCheckpoints: [] };
       // The practice's own fix began: its undo point is the one Undo and the receipt name.
       // A follow up or Try again on it from the result on Now carries the same practice id, so it is the practice's fix too.
-      if (m.practice && ["fixing", "failed", "found"].includes(m.practice.stage) && practiceOf(m.practice.kind)?.fix === "task" && typeof e.practice === "string" && e.practice === m.practice.kind && (typeof e.project !== "string" || e.project === m.practice.project)) m = { ...m, practice: { ...m.practice, stage: "fixing", checkpoint: String(e.checkpoint), result: undefined, undone: undefined, gaps: undefined, checksFailed: undefined } };
+      if (m.practice && ["fixing", "failed", "found"].includes(m.practice.stage) && practiceOf(m.practice.kind)?.fix === "task" && typeof e.practice === "string" && e.practice === m.practice.kind && (typeof e.project !== "string" || e.project === m.practice.project)) m = { ...m, practice: { ...m.practice, stage: "fixing", checkpoint: String(e.checkpoint), agent: String(e.agent), result: undefined, undone: undefined, gaps: undefined, checksFailed: undefined } };
       const open = m.teach && teachOpen(m.teach) && m.teach.target ? S.teachStillOpen(m.teach.target.file, m.teach.target.line) : null;
       const planCheckpoints = m.drive && !m.drive.finished && typeof e.checkpoint === "string" ? [...m.planCheckpoints, e.checkpoint].slice(-40) : m.planCheckpoints;
       return { ...m, browser: browserFresh(m.browser), explain: null, teach: null, planCheckpoints, currentCheckpoint: e.checkpoint, ship: null, research: null, receipt: null, followUp: "idle", error: null, notice: open, task: { agent: e.agent, ...(typeof e.project === "string" ? { project: e.project } : {}), ...(typeof e.checkpoint === "string" ? { checkpoint: e.checkpoint } : {}), label: String(e.label ?? "").replace(/^Before:\s*/, ""), lines: [], costUsd: 0 } };
@@ -552,6 +565,9 @@ export function reduce(m: Model, e: Ev): Model {
       if (m.plan && m.plan.agent === e.agent && e.state !== "needsYou") m = { ...m, plan: null };
       // Work that was away has ended (needs you ends it once nothing holds it; Home asks the engine to let it rest).
       if (m.away[e.agent] !== undefined && (e.state === "idle" || e.state === "done" || e.state === "error")) { const away = { ...m.away }; delete away[e.agent]; m = { ...m, away }; }
+      if (m.workIn[e.agent] && (e.state === "idle" || e.state === "done" || e.state === "error")) m = { ...m, workIn: without(m.workIn, e.agent) };
+      // The practice's fix whose task stopped with no receipt (the engine caught a failure, or it was stopped) has ended.
+      if (m.practice?.stage === "fixing" && m.practice.checkpoint && m.practice.agent === e.agent && (e.state === "idle" || e.state === "done" || e.state === "error")) m = { ...m, practice: { ...m.practice, stage: "failed" } };
       return withAgents(m, { ...m.agents, [e.agent]: e.state });
     }
     case "agent.tool": {
@@ -685,11 +701,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "ui.planCancelled": { const a = m.plan?.agent, out = { ...m, plan: null, rescue: null }; return e.release === true ? rest(out, a) : out; }
     case "ui.driveClosed": return m.drive?.finished ? { ...m, drive: null, stepExplains: [], planCheckpoints: [] } : m;
     case "drive.step": {
-      if (m.driveAway) return m;
+      if (m.driveAway !== null) return m;
       const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
       return { ...m, plan: null, rescue: null, stuck: null, paused: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
     }
-    case "drive.done": if (m.driveAway) return { ...m, driveAway: false };
+    case "drive.done": if (m.driveAway !== null) return { ...m, driveAway: null };
       return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
@@ -699,9 +715,10 @@ export function reduce(m: Model, e: Ev): Model {
     case "receipt": {
       // The end of work in another folder: never shown here (its Undo would name an undo point of the wrong project).
       // Where to see what it did is said instead. With the folder known, only a task begun in it has its receipt shown.
-      const away = m.away[e.agent];
+      const away = m.away[e.agent], w = m.workIn[e.agent];
+      m = { ...m, workIn: without(m.workIn, e.agent) };
       if (away !== undefined) return away ? { ...m, notice: S.awayFinished(folderName(away)) } : m;
-      if (m.folder && m.task?.project !== m.folder) return m;
+      if (m.folder && (w?.project ?? m.task?.project) !== m.folder) return m;
       return { ...m, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
@@ -723,8 +740,8 @@ export function reduce(m: Model, e: Ev): Model {
       // Put my fix back could not be done: the person's turn stays as it was, with the reason.
       if (m.teach?.stage === "restoring") return { ...m, teach: { ...m.teach, stage: "ready", note: plainError(String(e.reason)) }, error: null };
       // The practice's fix ends on an error only before its task began, or when the engine failed that request itself; once
-      // its undo point is made, only its receipt ends it (a refusal of another command, such as the key pressed again during
-      // the fix, is not its end). Its checks end on an error only from the engine itself (no agent): a refusal for the agent
+      // its undo point is made, only its receipt or its agent stopping ends it (agent.state; a refusal of another command,
+      // such as the key pressed again during the fix, is not its end). Its checks end on an error only from the engine itself (no agent): a refusal for the agent
       // comes with that check's own answer.
       return { ...m, followUp: "idle", ...(m.practice?.stage === "fixing" && (!m.practice.checkpoint || /^could not handle agent\./.test(String(e.reason))) ? { practice: { ...m.practice, stage: "failed" as const } } : m.practice?.stage === "proving" && typeof e.agent !== "string" ? { practice: { ...m.practice, stage: "failed" as const, checksFailed: true } } : {}), error: plainError(String(e.reason)) };
     // The browser check's download. A second press while it runs changes nothing.
@@ -1095,7 +1112,8 @@ export function receiptProofWords(m: Model): string {
 // Let me try the next one: only for a receipt that made the same change twice, once (the engine keeps no second offer),
 // and not while a turn or an undo is on the card.
 export function canOfferTurn(m: Model): boolean {
-  return !!m.receipt?.repeat && !m.receipt.turnTaken && !m.teach && !m.undo;
+  // After an engine restart (gone) the new engine has no offer to try.
+  return !!m.receipt?.repeat && !m.receipt.turnTaken && !m.receipt.gone && !m.teach && !m.undo;
 }
 
 const STEP_WORD: Record<ProofLine["status"], string> = { running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped };
