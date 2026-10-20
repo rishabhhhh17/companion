@@ -3,9 +3,11 @@
 //! area included (y 0, full height), while a maximized one stops below the menu bar. On a display that
 //! keeps nothing free (no menu bar there and no Dock: a second display with Displays have separate Spaces
 //! off, or a menu bar that hides itself with the Dock elsewhere), a maximized window fills it exactly too,
-//! so there it counts only when the desktop picture is gone as well, as on a full screen Space. Window
-//! sizes, layers and positions need no permission (names and contents would). Pure logic is tested with
-//! real numbers.
+//! so there it counts only when the desktop picture is gone as well, as on a full screen Space. A full
+//! screen Space hides the menu bar, so what a display keeps free is read only while no window of the front
+//! app fills it (`Seen`); a display never seen that way keeps the size only check, which was measured.
+//! Window sizes, layers and positions need no permission (names and contents would). Pure logic is tested
+//! with real numbers.
 
 pub type Rect = [f64; 4];
 /// One on screen window: owner process id, layer, bounds.
@@ -20,14 +22,39 @@ fn same(a: Rect, b: Rect) -> bool { a.iter().zip(b.iter()).all(|(x, y)| (x - y).
 const DESKTOP_LEVEL: i64 = -2147483623;
 fn desktop_shows(wins: &[Win], display: Rect) -> bool { wins.iter().any(|w| (w.layer - DESKTOP_LEVEL).abs() <= 2 && same(w.bounds, display)) }
 
-/// True when the front app has an ordinary (layer 0) window that exactly covers a whole display. `displays` are each
-/// display's frame and work area. Where the work area is the whole display, a maximized window covers it too, so it counts
-/// only when that display's desktop picture is not on screen either. Overlay windows (layer above 0, like a click
-/// catcher) never count.
-pub fn front_app_is_full_screen(wins: &[Win], front_pid: i32, displays: &[(Rect, Rect)]) -> bool {
-    displays.iter().any(|&(frame, work)| {
-        wins.iter().any(|w| w.pid == front_pid && w.layer == 0 && same(w.bounds, frame)) && (!same(work, frame) || !desktop_shows(wins, frame))
-    })
+/// An ordinary (layer 0) window of the front app that exactly covers this display. Overlay windows (layer above 0, like a
+/// click catcher) never count.
+fn filled(wins: &[Win], front_pid: i32, frame: Rect) -> bool { wins.iter().any(|w| w.pid == front_pid && w.layer == 0 && same(w.bounds, frame)) }
+
+/// What each display was seen to keep free, read only while no window of the front app filled it: then macOS reports the
+/// display as it is on an ordinary Space. Keyed by the display's frame; a display that goes away is forgotten.
+#[derive(Default, Debug)]
+pub struct Seen { nothing_free: Vec<(Rect, bool)> }
+
+impl Seen {
+    pub const fn new() -> Self { Seen { nothing_free: Vec::new() } }
+    /// Each display's frame and work area now, to each frame and whether it was seen keeping nothing free (false when it
+    /// was never seen with nothing filling it: the size only check then decides).
+    pub fn look(&mut self, wins: &[Win], front_pid: i32, displays: &[(Rect, Rect)]) -> Vec<(Rect, bool)> {
+        self.nothing_free.retain(|(f, _)| displays.iter().any(|(d, _)| same(*f, *d)));
+        displays.iter().map(|&(frame, work)| {
+            let at = self.nothing_free.iter().position(|(f, _)| same(*f, frame));
+            if !filled(wins, front_pid, frame) {
+                let now = same(work, frame);
+                match at { Some(i) => self.nothing_free[i].1 = now, None => self.nothing_free.push((frame, now)) }
+                (frame, now)
+            } else {
+                (frame, at.map(|i| self.nothing_free[i].1).unwrap_or(false))
+            }
+        }).collect()
+    }
+}
+
+/// True when the front app has an ordinary window that exactly covers a whole display. `displays` are each display's frame
+/// and whether it was seen keeping nothing free (`Seen::look`). There a maximized window covers it too, so it counts only
+/// when that display's desktop picture is not on screen either.
+pub fn front_app_is_full_screen(wins: &[Win], front_pid: i32, displays: &[(Rect, bool)]) -> bool {
+    displays.iter().any(|&(frame, nothing_free)| filled(wins, front_pid, frame) && (!nothing_free || !desktop_shows(wins, frame)))
 }
 
 #[cfg(target_os = "macos")]
@@ -73,7 +100,8 @@ mod tests {
     const DISPLAY: Rect = [0.0, 0.0, 1512.0, 982.0];
     /// Its work area: below the 33 point menu bar, with the Dock hidden (measured).
     const WORK: Rect = [0.0, 33.0, 1512.0, 949.0];
-    const MAC: (Rect, Rect) = (DISPLAY, WORK);
+    const MAC: (Rect, bool) = (DISPLAY, false);
+    const MAC_AREAS: (Rect, Rect) = (DISPLAY, WORK);
     const SAFARI: i32 = 100;
     const CLAUDE: i32 = 200;
     const WINDOW_MANAGER: i32 = 300;
@@ -100,7 +128,7 @@ mod tests {
         // with the Dock elsewhere: the work area is the whole display, so a maximized window fills it exactly. Size alone
         // cannot tell, so it counts only once the desktop picture is gone too, as it is on a full screen Space.
         let ext: Rect = [1512.0, 0.0, 1920.0, 1080.0];
-        let edge = (ext, ext);
+        let edge = (ext, true);   // seen keeping nothing free while no full screen app was in front
         let mut wins = desktop(ext);
         wins.extend(desktop(DISPLAY));
         wins.push(w(SAFARI, 0, ext));
@@ -134,7 +162,7 @@ mod tests {
     #[test]
     fn works_on_the_second_display_too() {
         let ext: Rect = [1512.0, 0.0, 1920.0, 1080.0];
-        assert!(front_app_is_full_screen(&[w(SAFARI, 0, ext)], SAFARI, &[MAC, (ext, [1512.0, 25.0, 1920.0, 1055.0])]));
+        assert!(front_app_is_full_screen(&[w(SAFARI, 0, ext)], SAFARI, &[MAC, (ext, false)]));
     }
     #[test]
     fn no_windows_or_no_displays_is_not_full_screen() {
@@ -150,9 +178,43 @@ mod tests {
         let _ = sys::on_screen_windows();   // would block on a permission prompt if it needed one
     }
     #[test]
-    fn the_shell_gives_each_display_with_its_work_area() {
+    fn a_display_counts_as_keeping_nothing_free_only_when_seen_so_with_no_full_screen_app() {
+        // A full screen Space hides the menu bar, so there macOS may report the Mac's own display as all free (not measured).
+        // What a display keeps free is therefore recorded only while no window of the front app fills it, and a display
+        // never seen that way keeps the size only check, which was measured.
+        let mut seen = Seen::default();
+        let ext: Rect = [1512.0, 0.0, 1920.0, 1080.0];
+        // First look: Safari full screen on the Mac's display, which now reports nothing kept free. Not recorded.
+        let full = [w(SAFARI, 0, DISPLAY)];
+        assert_eq!(seen.look(&full, SAFARI, &[(DISPLAY, DISPLAY)]), vec![(DISPLAY, false)], "unknown means the measured size check");
+        assert!(front_app_is_full_screen(&full, SAFARI, &seen.look(&full, SAFARI, &[(DISPLAY, DISPLAY)])), "a full screen video hides Companion");
+        // Out of full screen: the menu bar is back and the display keeps room. Recorded as keeping room.
+        assert_eq!(seen.look(&[w(SAFARI, 0, WORK)], SAFARI, &[MAC_AREAS]), vec![MAC]);
+        // Full screen again, with the desktop picture still listed (not measured either): it still counts.
+        let mut again = desktop(DISPLAY);
+        again.push(w(SAFARI, 0, DISPLAY));
+        assert!(front_app_is_full_screen(&again, SAFARI, &seen.look(&again, SAFARI, &[(DISPLAY, DISPLAY)])));
+        // A second display with no menu bar and no Dock, seen with nothing filling it: recorded as keeping nothing free, so
+        // a window maximized there later does not count while its desktop picture shows.
+        let mut quiet = desktop(ext);
+        quiet.push(w(SAFARI, 0, [1600.0, 100.0, 800.0, 600.0]));
+        assert_eq!(seen.look(&quiet, SAFARI, &[MAC_AREAS, (ext, ext)]), vec![MAC, (ext, true)]);
+        let mut maxed = desktop(ext);
+        maxed.push(w(SAFARI, 0, ext));
+        assert!(!front_app_is_full_screen(&maxed, SAFARI, &seen.look(&maxed, SAFARI, &[MAC_AREAS, (ext, ext)])));
+        // A display that goes away is forgotten, and one seen again starts over.
+        seen.look(&[], SAFARI, &[MAC_AREAS]);
+        assert_eq!(seen.look(&maxed, SAFARI, &[MAC_AREAS, (ext, ext)]), vec![MAC, (ext, false)]);
+        // Only the front app's ordinary windows hold a reading back; another app's window or an overlay does not.
+        let mut s2 = Seen::default();
+        assert_eq!(s2.look(&[w(CLAUDE, 0, ext), w(SAFARI, 1000, ext)], SAFARI, &[(ext, ext)]), vec![(ext, true)]);
+    }
+    #[test]
+    fn the_shell_gives_each_display_with_what_it_was_seen_to_keep_free() {
         let main = include_str!("main.rs");
         let tick = &main[main.find("fn tick(").unwrap()..]; let tick = &tick[..tick.find("\n}\n").unwrap()];
-        assert!(tick.contains("let displays: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();"), "{tick}");
+        assert!(tick.contains("let areas: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();"), "{tick}");
+        assert!(tick.contains("let displays = FS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).look(&wins, front_pid, &areas);"), "{tick}");
+        assert!(tick.contains("fullscreen::front_app_is_full_screen(&wins, front_pid, &displays)"), "{tick}");
     }
 }
