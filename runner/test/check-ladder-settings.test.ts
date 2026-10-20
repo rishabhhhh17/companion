@@ -144,11 +144,11 @@ describe("how to start the project for the check (check.start)", () => {
   test("auto is today's choice", () => {
     const d = dir();
     expect(withStartScript(detectProject(d), d, "auto")).toEqual({ det: detectProject(d) });
-    expect(detectProject(d).start).toEqual({ kind: "server", command: "npm run dev" });
+    expect(detectProject(d).start).toEqual({ kind: "server", command: "npm run dev", from: "dev" });
   });
   test("one of the project's own scripts that starts it is used as it is", () => {
     const d = dir();
-    expect(withStartScript(detectProject(d), d, "serve").det.start).toEqual({ kind: "server", command: "npm run serve" });
+    expect(withStartScript(detectProject(d), d, "serve").det.start).toEqual({ kind: "server", command: "npm run serve", from: "settings" });
   });
   test("through the ladder, a script that is gone is said in the start step and is a gap", async () => {
     const { result } = await check({ "package.json": pkg({ build: "vite build" }), "index.html": PAGE }, { check: all({ start: "gone" }) });
@@ -158,20 +158,20 @@ describe("how to start the project for the check (check.start)", () => {
   test("a script that is not there any more falls back to the usual way, and says so as a gap", () => {
     const d = dir();
     const r = withStartScript(detectProject(d), d, "gone");
-    expect(r.det.start).toEqual({ kind: "server", command: "npm run dev" });
+    expect(r.det.start).toEqual({ kind: "server", command: "npm run dev", from: "dev" });
     expect(r.gap).toContain("gone");
   });
   test("a name that is not a script name is never run, whatever reached the engine", () => {
     const d = tmp();
     put(d, { "package.json": JSON.stringify({ scripts: { dev: "vite", "dev; rm -rf ~": "x" } }) });
     const r = withStartScript(detectProject(d), d, "dev; rm -rf ~");
-    expect(r.det.start).toEqual({ kind: "server", command: "npm run dev" });
+    expect(r.det.start).toEqual({ kind: "server", command: "npm run dev", from: "dev" });
     expect(r.gap).toBeTruthy();
   });
   test("the project's own .claude/launch.json still wins", () => {
     const d = dir();
     put(d, { ".claude/launch.json": JSON.stringify({ configurations: [{ runtimeExecutable: "bun", runtimeArgs: ["run", "serve"], port: 4000 }] }) });
-    expect(withStartScript(detectProject(d), d, "serve").det.start).toEqual({ kind: "server", command: "bun run serve", port: 4000 });
+    expect(withStartScript(detectProject(d), d, "serve").det.start).toEqual({ kind: "server", command: "bun run serve", port: 4000, from: "launch" });
   });
   // Only a script that starts the project is ever run for a check: never one that deploys, publishes, deletes or changes data
   // or git, which would happen after every task, Rescue and Ship check with no question asked (rule 13).
@@ -186,7 +186,7 @@ describe("how to start the project for the check (check.start)", () => {
     const d = tmp();
     put(d, { "package.json": pkg(risky) });
     const usual = detectProject(d).start;
-    expect(usual).toEqual({ kind: "server", command: "npm run dev" });
+    expect(usual).toEqual({ kind: "server", command: "npm run dev", from: "dev" });
     for (const name of ["deploy", "publish", "db:reset", "clean", "build", "lint", "test", "postinstall", "web", "start:prod", "start:ship", "dev:all", "start", "serve:db", "dev:deploy", "preview:clean"]) {
       const r = withStartScript(detectProject(d), d, name);
       expect(r.det.start, name).toEqual(usual);

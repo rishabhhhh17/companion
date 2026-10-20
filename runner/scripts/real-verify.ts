@@ -11,8 +11,8 @@
 // Every rule for real runs is in realrun-harness.ts. A task that fails the same way three times shows the loop card
 // (loop.stuck); it is answered and noted, so no scenario waits forever, and each scenario has its own time limit.
 // Since 17 Oct 2026 this runs on the API key route; the older test plan login is no longer used here.
-// Money: a runner books a round only when that round's result arrives, so a round still running is not seen by the
-// spending watcher. The hard bound is each task's own budget (the runner passes it to Claude Code as its spending limit):
+// Money: a runner books a round when that round's result arrives (or, for a round stopped first, an estimate from its
+// token counts as it ends), so a round still running is not seen by the spending watcher. The hard bound is each task's own budget (the runner passes it to Claude Code as its spending limit):
 // before a command is sent, its budget is cut to the room left under the case's and the run's stops, and a task that is
 // cut short (Stop everything, a spending stop, a time limit, the end of a scenario) counts its whole budget, less what
 // the runner booked for it. A small Explain or diagram call the runner makes in the background is not bounded this way.

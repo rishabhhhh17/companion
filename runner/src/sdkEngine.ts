@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
 import { projectNotes, readDenyRules, sandboxSettings } from "./sandbox.ts";
-import { thinkingFor } from "./models.ts";
+import { estimateUsd, thinkingFor } from "./models.ts";
 import { toolsFor } from "./tools.ts";
 import { turnStop, type ApiError } from "./reach.ts";
 import { APPROVAL_TIMEOUT_MS, EngineStop, MAX_APPROVAL_WAIT_MS, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
@@ -154,11 +154,27 @@ export class SdkEngine implements Engine {
     // A continued conversation starts from what it had already cost, so that is not booked again.
     let lastTotal = (opts.resumeSession && totals.get(opts.resumeSession)) || 0, sessionId: string | undefined;
     let apiError: ApiError | undefined;
+    // What this round has used by the token counts of its replies, for a round that ends before its result (Stop, Stop
+    // everything and a Drive pause end Claude Code's process, so no result comes). Each request is one message id; one reply
+    // can arrive as several messages that repeat its usage, so each id counts once, at the most it said. A result says what
+    // the round really cost, so it replaces the estimate. A model the table does not know is priced as the dearest one
+    // known (models.ts), never low. [verify] Whether a conversation continued after such a stop carries the stopped round's
+    // cost in its saved total is not known: if it does, that round is counted twice, never missed.
+    const replies = new Map<string, { in: number; out: number; cacheRead: number; cacheWrite: number }>();
+    let unnamed = 0;
+    const unbilled = () => [...replies.values()].reduce((sum, u) => sum + estimateUsd(opts.model, { input_tokens: u.in, output_tokens: u.out, cache_read_input_tokens: u.cacheRead, cache_creation_input_tokens: u.cacheWrite }), 0);
+    try {
     for await (const m of q as AsyncIterable<any>) {
       if (m.session_id) sessionId = String(m.session_id);
       if (m.type === "assistant") {
-        // An assistant message's own usage is not counted: the result already holds it, and one reply can arrive as
-        // several messages that each repeat the same usage.
+        // An assistant message's own usage is not booked: the result holds it. It is only kept for the estimate above.
+        const u = m.message?.usage;
+        if (u && typeof u === "object") {
+          const id = typeof m.message?.id === "string" && m.message.id ? m.message.id : `unnamed-${++unnamed}`;
+          const was = replies.get(id);
+          const now = { in: count(u.input_tokens), out: count(u.output_tokens), cacheRead: count(u.cache_read_input_tokens), cacheWrite: count(u.cache_creation_input_tokens) };
+          replies.set(id, was ? { in: Math.max(was.in, now.in), out: Math.max(was.out, now.out), cacheRead: Math.max(was.cacheRead, now.cacheRead), cacheWrite: Math.max(was.cacheWrite, now.cacheWrite) } : now);
+        }
         const content: any[] = Array.isArray(m.message?.content) ? m.message.content : [];
         const text = content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
         // Claude Code's own message about a failed request (an API error, or a reply cut at its output limit) is not the
@@ -172,8 +188,10 @@ export class SdkEngine implements Engine {
         // Below what was already counted: the saved conversation held no total, so this one started from nothing.
         const delta = round(total >= lastTotal ? total - lastTotal : Math.max(0, total));
         lastTotal = total;
-        // A zeroed total (a crash or start up error) is not what the conversation cost, so it is not remembered.
+        // A zeroed total (a crash or start up error) is not what the conversation cost, so it is not remembered, and the
+        // estimate stands.
         if (sessionId && total > 0 && !opts.offTheRecord) totals.set(sessionId, total);
+        if (total > 0) replies.clear();
         // A turn that ended on a failed request is not a finished turn, whatever its subtype says. Claude out of reach and
         // each kind of failed request are named (reach.ts), so the card can say so in plain words; a limit keeps its own
         // name. After Stop the runner ends the task as stopped; an error the stop itself caused is not named here.
@@ -183,6 +201,13 @@ export class SdkEngine implements Engine {
         const usage = turnTokens(m.usage);
         yield { costUsd: delta, sessionId, ...(usage ? { usage } : {}) };
       }
+    }
+    } finally {
+      // However the turns end (the round finished, Claude Code was stopped and threw or just ended, it crashed, or the
+      // runner stopped reading), what was used since the last result is booked, once.
+      const est = round(unbilled());
+      replies.clear();
+      if (est > 0) try { opts.unbilled?.(est); } catch { /* booking is the runner's; it never breaks the engine */ }
     }
   }
 }

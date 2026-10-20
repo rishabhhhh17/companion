@@ -94,7 +94,7 @@ describe("what a Python project has to check", () => {
   });
   test("the project's own launch settings still come first", () => {
     const det = detectProject(project({ ...VENV, ".claude/launch.json": JSON.stringify({ configurations: [{ runtimeExecutable: "make", runtimeArgs: ["serve"], port: 9000 }] }), "main.py": "from flask import Flask\napp = Flask(__name__)\n" }));
-    expect(det.start).toEqual({ kind: "server", command: "make serve", port: 9000 });
+    expect(det.start).toEqual({ kind: "server", command: "make serve", port: 9000, from: "launch" });
   });
   test("a project with a package.json is still a Node project, exactly as before", () => {
     const det = detectProject(project({ "package.json": JSON.stringify({ scripts: { test: "vitest" } }), "requirements.txt": "flask\n", "api/index.py": "" }));

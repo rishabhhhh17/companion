@@ -79,11 +79,24 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
   command; the practice task stays on the usual model.
 - The rough cost shown before a plan's Start ("at most") follows the plan's model: $0.25 a step is today's figure for the
   job's usual model (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue), scaled by the chosen model's list price against
-  it (`priceRatio` in `models.ts`; a model the table does not know counts as the dearest it knows). The usual figures are
+  it (`priceRatio` in `models.ts`; a model the table does not know counts at the dearest current list price, see below). The usual figures are
   unchanged. A pages test checks that each option's words name the model `MODEL_CHOICES` sends and say its cost truly, so
   a model upgrade in the map cannot leave old words on screen.
 - Haiku 4.5's retirement (section 14): checked on 19 Oct 2026 against the model list bundled with the Claude API notes
   (cached 6 Oct 2026), not the live list: still listed as active and served. Check the live list before shipping.
+
+## What the build settled (audit fixes, 20 Oct 2026)
+Found by the audit of 20 Oct 2026 and checked against the code; each is fixed, with tests that failed first.
+- **Small answers count against the day.** Draw it for me, the error explainer and Prompt help (both of its calls, the
+  first answer and the "make it shorter" one) spend on the person's key, yet were never booked and ran past the daily
+  limit. Each is now booked against the project in the daily total, as Explain after a task already was, and each waits
+  once the project has reached its limit ("This project has reached its daily spending limit. New work starts again
+  tomorrow, or you can raise the limit in Settings."). With no folder chosen nothing is booked, as before (T16). Not
+  covered: Show me how names no project, so it is still not counted against one.
+- **A model the table does not know is never priced low.** It was priced at Opus 5's $5 in and $25 out, half the dearest
+  current list price, so a tester's switch to an unlisted model could overshoot a spending stop up to two times on the
+  paths that price from token counts. It is now $10 in, $50 out (Claude Fable 5.1's list price, section 3's table), with
+  cache reads at $1 and cache writes at $12.50, both on the high side on purpose (`UNKNOWN_PRICE` in `models.ts`).
 
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).

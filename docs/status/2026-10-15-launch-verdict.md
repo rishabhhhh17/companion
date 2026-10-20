@@ -23,9 +23,9 @@
 
 ## Known engineering risks (not fixed)
 - Keychain access list for the API key is not narrowed to the app.
-- Cost shown after Stop may under-count the turn that was cut off mid-way. The engine books every turn that finishes or stops cleanly; the SDK reports no cost for an interrupted one, so this cannot be fixed on our side.
+- Cost after Stop: since 20 Oct 2026 (audit A1) a round that is stopped before Claude Code reports its cost (Stop, Stop everything, a Drive pause) is booked from the token counts in its replies, at list price, so the daily limit, the receipt and a plan's budget count it. It is an estimate, and if a conversation carried on after the stop already holds the stopped round's cost, that round is counted twice (never missed) [verify]. Before, it was not counted at all.
 - Ignored files (gitignored) are not covered by undo.
-- Project scripts run unsandboxed once approved.
+- Project scripts run unsandboxed. (Corrected 20 Oct 2026, audit A12: nothing approved them. Since then a task that changed the project's scripts or packages gets an approval card before the check runs them, and a check never runs a script that changes a database or puts something online (A30). The project's source and test files a task changed still run in the tests outside the sandbox.)
 - A website that resolves to a private address could slip past the network check (DNS).
 - AGENTS.md / CLAUDE.md pre-snapshot creation edge case.
 - Lessons are drafts: marked "tried" only after a real run.

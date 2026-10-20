@@ -114,8 +114,12 @@ const RULES: Record<string, Rule> = {
 };
 /** Every model id the table knows (the dated Haiku 4.5 id and a "[1m]" suffix are the same models). */
 export const KNOWN_MODELS = Object.keys(RULES);
-// An unknown model is priced as the dearest one known, so a spending stop never trusts a guess that is too low.
-const UNKNOWN_PRICE: Price = { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 };
+// An unknown model is priced at the dearest current list price, so a spending stop never trusts a guess that is too low:
+// Claude Fable 5.1 and Mythos 5.1, $10 in and $50 out per million tokens (the Claude API notes' model table, cached 6 Oct
+// 2026). Their cache read is $0.25; $1 is kept here, and the cache write at the five minute rate of 1.25 times the input,
+// both on the high side on purpose. Before 20 Oct 2026 (audit A36) this was Opus 5's $5 and $25, half the dearest price, so
+// a tester's switch to an unlisted model could overshoot a spending stop up to two times.
+const UNKNOWN_PRICE: Price = { in: 10, out: 50, cacheRead: 1, cacheWrite: 12.5 };
 
 /** A model's list price in dollars per million tokens (in and out), or null for a model the table does not know. */
 export function listPrice(model: string): { in: number; out: number } | null {
