@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "./engine.ts";
 import { DEFAULT_REF, resolveAuth, type KeychainRef } from "./keychain.ts";
 import { ComputerUseVision, withFallback } from "./aim.ts";
-import { FastLane, StubFast, VisionLane, type DescribeReq, type FastLike, type VisionLike } from "./lanes.ts";
+import { FastLane, StubFast, VisionLane, type DescribeReq, type FastLike, type Look, type VisionLike } from "./lanes.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS, modelForChoice } from "./models.ts";
@@ -101,7 +101,9 @@ export type Describe = (req: DescribeReq, signal: AbortSignal) => Promise<{ text
 export const quickModelOf = (settings: { get(key: string): unknown }, passed?: readonly string[]): string => modelForChoice("quick", settings.get("model.quick"), passed);
 // quickModel: asked for every request on the fast lane (Prompt help, Explain, Draw it for me, the error explainer), so a
 // change in Settings reaches the next request. A developer's COMPANION_FAST_MODEL (dev.json) still wins over it.
-export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?: () => string } = {}): { fast: FastLike; vision: VisionLike; describe: Describe } {
+// look: an everyday stuck moment's look (everyday.ts), on the vision lane's model; the free stand in has none, so there only
+// the spreadsheet table can name one.
+export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?: () => string } = {}): { fast: FastLike; vision: VisionLike; describe: Describe; look?: Look } {
   if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) }, describe: async () => { throw new Error("pictures cannot be looked at in this mode"); } };
   const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });
   const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
@@ -114,5 +116,6 @@ export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?
     vision,
     // Pictures added to a request (attach.ts): looked at on the vision lane's model, the way Show me looks at a screen picture.
     describe: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).describe(req, signal),
+    look: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).ask(req, signal),
   };
 }

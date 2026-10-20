@@ -7,6 +7,7 @@ import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 import { withKeys } from "./keys.ts";
 import { webLink } from "./links.ts";
+import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -141,6 +142,8 @@ export type Model = {
   doctor: DoctorItem[] | null;
   voice: Voice | null;
   showme: ShowMe | null;
+  // An everyday stuck moment (everyday.ts): the key with no project, or with an app in front that is not a code tool.
+  everyday: Everyday | null;
   // Point at the problem: the key was pressed and the project is being checked, or the answer came back.
   point: PointCard | null;
   // The place the last failed check pointed to, for "Show me where".
@@ -196,7 +199,7 @@ export type Model = {
 
 // The record without one agent's entry.
 function without<T>(r: Record<string, T>, agent: string): Record<string, T> { const o = { ...r }; delete o[agent]; return o; }
-export const initial = (): Model => ({ folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
+export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -361,7 +364,16 @@ function practiceReceipt(pr: Practice | null, e: Ev): Practice | null {
   return { ...next, stage: "done", ...(e.proof === "partial" ? { gaps: true } : {}) };
 }
 
+// The everyday look (everyday.ts) is taken first, from the Show me look waiting then, and settled after everything else:
+// a look whose Show me went away or failed waits no more.
 export function reduce(m: Model, e: Ev): Model {
+  const ed = everydayReduce(m.everyday, e, m.showme?.req);
+  const n = reduceRest(ed === m.everyday ? m : { ...m, everyday: ed }, e);
+  const settled = everydaySettle(n.everyday, m.showme, n.showme);
+  return settled === n.everyday ? n : { ...n, everyday: settled };
+}
+
+function reduceRest(m: Model, e: Ev): Model {
   switch (e.type) {
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
     // ---- which task broke it ----

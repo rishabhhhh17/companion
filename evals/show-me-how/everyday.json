@@ -1,0 +1,51 @@
+[
+  { "page": "mail", "app": "com.apple.mail", "asks": [
+    { "target": "compose", "key": "new message", "question": "How do I write a new email?" },
+    { "target": "reply-all", "key": "reply all", "question": "How do I answer everyone on this email at once?" },
+    { "target": "sent", "key": "sent", "question": "Where are the emails I sent?" },
+    { "target": "archive", "key": "archive", "decoys": 1, "question": "How do I get this email out of my inbox without deleting it?" },
+    { "target": "search", "key": "search", "question": "How do I find the email from Priya about the trip?" } ] },
+  { "page": "calendar", "app": "com.apple.iCal", "asks": [
+    { "target": "new-event", "key": "new event", "question": "How do I add a new appointment?" },
+    { "target": "view-month", "key": "month", "question": "How do I see the whole month?" },
+    { "target": "today", "key": "today", "question": "I scrolled away. How do I get back to this week?" },
+    { "target": "work-toggle", "key": "work", "decoys": 1, "question": "How do I hide my work appointments?" } ] },
+  { "page": "settings", "app": "com.apple.systempreferences", "asks": [
+    { "target": "appearance-dark", "key": "dark", "question": "How do I make everything dark?" },
+    { "target": "nav-wifi", "key": "wi-fi", "question": "Where do I turn off the wireless internet?" },
+    { "target": "nav-sound", "key": "sound", "question": "Where do I change how loud my computer is?" },
+    { "target": "nav-displays", "key": "displays", "question": "Where do I change how bright my screen is?" },
+    { "target": "nav-battery", "key": "battery", "question": "Where can I see how much charge is left?" } ] },
+  { "page": "files", "app": "com.apple.finder", "asks": [
+    { "target": "nav-downloads", "key": "downloads", "question": "Where did the file I just got from the internet go?" },
+    { "target": "view-list", "key": "list", "question": "How do I see these files as a list with their dates?" },
+    { "target": "share", "key": "share", "question": "How do I send the selected file to someone?" },
+    { "target": "file-april", "key": "april", "question": "How do I open the invoice from April?" },
+    { "target": "tags", "key": "tags", "question": "How do I put a colour label on this file?" } ] },
+  { "page": "spreadsheet", "app": "com.apple.iWork.Numbers", "asks": [
+    { "target": "chart", "key": "chart", "question": "How do I make a chart from these numbers?" },
+    { "target": "add-sheet", "key": "add sheet", "question": "How do I add another sheet?" },
+    { "target": "format", "key": "format", "question": "How do I make these numbers show as money?" },
+    { "target": "collaborate", "key": "collaborate", "question": "How do I let my partner edit this with me?" },
+    { "target": "tab-budget", "key": "budget", "question": "Where is my budget sheet?" } ] },
+  { "page": "document", "app": "com.apple.iWork.Pages", "asks": [
+    { "target": "bold", "key": "bold", "question": "How do I make this word stand out in thick letters?" },
+    { "target": "align-center", "key": "center", "question": "How do I put this line in the middle of the page?" },
+    { "target": "share", "key": "share", "question": "How do I send this letter to someone?" },
+    { "target": "comment", "key": "comment", "question": "How do I leave a note for my friend in the margin?" } ] },
+  { "page": "slides", "app": "com.apple.iWork.Keynote", "asks": [
+    { "target": "add-slide", "key": "add slide", "question": "How do I add a new slide?" },
+    { "target": "play", "key": "play", "question": "How do I start showing the presentation?" },
+    { "target": "animate", "key": "animate", "question": "How do I make the title fly in?" },
+    { "target": "slide-3", "key": "slide 3", "question": "How do I go to the slide about money?" } ] },
+  { "page": "design", "app": "com.figma.Desktop", "asks": [
+    { "target": "tool-rect", "key": "rectangle", "question": "How do I draw a box?" },
+    { "target": "export", "key": "export", "decoys": 1, "question": "How do I save the price tag as a picture?" },
+    { "target": "share", "key": "share", "question": "How do I show this poster to my friend?" },
+    { "target": "fill", "key": "fill", "decoys": 1, "question": "How do I change the colour inside the price tag?" } ] },
+  { "page": "photo", "app": "com.adobe.Photoshop", "asks": [
+    { "target": "tool-crop", "key": "crop", "question": "How do I cut off the edges of this photo?" },
+    { "target": "tool-heal", "key": "healing", "question": "How do I remove a small spot from the photo?" },
+    { "target": "adj-brightness", "key": "brightness", "question": "How do I make the picture brighter?" },
+    { "target": "new-layer", "key": "new layer", "question": "How do I add a new layer?" } ] }
+]

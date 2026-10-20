@@ -40,6 +40,8 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 
 `"needsProject": false` marks a lesson that reads nothing from a project folder (installing a tool, leaving a builder, allowing a permission). It can start with no folder chosen, and may use only `ask` checks, which the checker enforces. Any lesson that uses `env_name`, `file_exists` or `file_contains` needs a chosen folder and says so if there is none.
 
+Lessons for everyday apps are not shipped at launch (F17). Five are kept as test cases only, in `runner/test/fixtures/everyday-lessons/` (share a document in Pages, a mail rule in Mail, a chart in Numbers, Dark Mode in System Settings, renaming files in Finder): `runner/test/everyday-lessons.test.ts` walks each one through the walkthrough engine with no project, asks each step's ring as a tutor for its app (`showme.everydayTutor`), and checks they never land in `lessons/`. Their words were written from how these apps usually look, not tried on a real screen.
+
 ## Proving steps from the project
 
 A step is proven from the project whenever its result lands there: a setting name in a `.env` file, a file made, a line in a config file. `ask` stays only where the result is on another app's screen. Checked step by step on 16 Oct 2026 for the shipped lessons:

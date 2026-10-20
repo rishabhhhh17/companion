@@ -53,6 +53,11 @@ describe("the shipped list of settings", () => {
       // F19, drop a file on the companion: on, since the founder asked for it; results next to the original.
       "drop.on": true, "drop.imageFormat": "png", "drop.docFormat": "pdf", "drop.audioFormat": "m4a", "drop.videoFormat": "mp4",
       "drop.resizeTo": "1600", "drop.quality": "medium", "drop.saveTo": "nextTo",
+      // Everyday stuck moments: the key works in any app. On by default, since it only ever acts on the person's own key
+      // press; turned off, the key only checks the project, as before. The why is two reasons and a question, like Explain.
+      "point.everyday": true, "point.everydayWhy": "reasonsAndQuestion",
+      // Everyday apps: the tutor for everyday apps and short spoken steps are off until turned on, so every answer is as today.
+      "showme.everydayTutor": false, "talk.shortSteps": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

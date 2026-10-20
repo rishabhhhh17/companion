@@ -1,0 +1,55 @@
+{
+  "id": "everyday-share-document",
+  "title": "Share a document",
+  "app": "Pages",
+  "goal": "Share a document so someone else can open it",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open the document you want to share.",
+      "find": "the document window",
+      "check": {
+        "kind": "ask"
+      },
+      "maybeDone": true
+    },
+    {
+      "id": "share",
+      "say": "Click Share in the toolbar at the top of the window.",
+      "find": "the Share button in the toolbar",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If you do not see Share, open the File menu and choose Share.",
+        "find": "the File menu in the menu bar"
+      }
+    },
+    {
+      "id": "who",
+      "say": "Choose who can open it: only people you invite, or anyone with the link.",
+      "find": "the Who can access menu",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "how",
+      "say": "Pick how to send it, for example Mail, Messages or Copy Link.",
+      "find": "the list of ways to send it",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "send",
+      "say": "Click Share to send the invitation.",
+      "find": "the Share button at the bottom of the window",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

@@ -48,6 +48,9 @@ export const PROFILES: { set: string; what: string; model: string; cases: number
   // One picture of 1280 by 800 (about 1,400 tokens) plus the instructions, a short answer out.
   { set: "show-me-how", what: "one pointing ask (Sonnet 5.5)", model: "claude-sonnet-5-5", cases: 40, profile: { fresh: 3_500, written: 0, cacheRead: 0, out: 1_000 } },
   { set: "show-me-how", what: "one pointing ask (Haiku 5.5)", model: "claude-haiku-5-5", cases: 40, profile: { fresh: 3_500, written: 0, cacheRead: 0, out: 800 } },
+  // The everyday set: the same, plus the tutor's words (about 150 tokens).
+  { set: "show-me-how", what: "one everyday pointing ask, as a tutor (Sonnet 5.5)", model: "claude-sonnet-5-5", cases: 40, profile: { fresh: 3_650, written: 0, cacheRead: 0, out: 1_000 } },
+  { set: "show-me-how", what: "one everyday pointing ask, as a tutor (Haiku 5.5)", model: "claude-haiku-5-5", cases: 40, profile: { fresh: 3_650, written: 0, cacheRead: 0, out: 800 } },
 ];
 
 const usd = (n: number) => (n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);

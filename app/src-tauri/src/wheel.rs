@@ -9,13 +9,13 @@ impl Class {
     pub fn reason(self) -> &'static str { match self { Class::Editor => "editor", Class::Terminal => "terminal" } }
 }
 
-const EDITORS: &[&str] = &[
+pub(crate) const EDITORS: &[&str] = &[
     "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92", // VS Code, Cursor
     "com.apple.dt.Xcode", "dev.zed.Zed", "dev.zed.Zed-Preview", "com.panic.Nova", "com.sublimetext.4", "com.sublimetext.3",
     "com.github.atom", "org.vim.MacVim", "com.exafunction.windsurf", "com.visualstudio.code.oss",
 ];
-const EDITOR_PREFIXES: &[&str] = &["com.jetbrains."];
-const TERMINALS: &[&str] = &[
+pub(crate) const EDITOR_PREFIXES: &[&str] = &["com.jetbrains."];
+pub(crate) const TERMINALS: &[&str] = &[
     "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty",
     "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm", "io.alacritty",
 ];

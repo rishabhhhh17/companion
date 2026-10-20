@@ -15,7 +15,7 @@ export const tabPanelId = (t: Tab) => `home-panel-${t}`;
 // notice, an error from something done on any tab) and must never be hidden on a tab the person is not looking at.
 export type Panel =
   | "folder" | "ask" | "urgent" | "notes" | "about" | "diagram" | "promptHelp" | "drive" | "ship" | "research" | "rescue"
-  | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "bisect" | "errorHelp" | "showMe" | "recap" | "toast"
+  | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "everyday" | "bisect" | "errorHelp" | "showMe" | "recap" | "toast"
   | "whatsNew"
   | "history"
   | "practice" | "lessons" | "walk"
@@ -26,7 +26,7 @@ export const PLACES: readonly Place[] = [...TABS, "every"];
 export const PANEL_TAB: Record<Panel, Place> = {
   notes: "every",
   folder: "now", ask: "now", urgent: "now", about: "now", diagram: "now", promptHelp: "now", drive: "now", ship: "now",
-  research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now",
+  research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now", everyday: "now",
   bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now",
   history: "did",
   practice: "learn", lessons: "learn", walk: "learn",
@@ -62,6 +62,7 @@ const PRACTICE_NEEDS = ["start", "found", "failed", "blocked", "done"];
 const SHOWME_NEEDS = ["needs_permission", "pointing", "pointing_roughly", "your_turn_miss", "window_changed", "error", "not_sure"];
 // Show me during a lesson: the pointer is the lesson's own step, but these say why no pointer came, so they are new.
 const SHOWME_PROBLEMS = ["needs_permission", "your_turn_miss", "window_changed", "error", "not_sure"];
+const EVERYDAY_NEEDS = ["found", "none", "fixed", "still", "ask"];
 const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "blocked", "error"];
 // Prompt help and the error explainer start from a hotkey and answer on Now: each step there, a refusal included.
 const PH_NEEDS = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
@@ -82,6 +83,8 @@ export function need(m: Model): Need | null {
   if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle, mustShow: true };
   if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle, mustShow: true };
   if (m.point?.stage === "found") return { key: `point:${m.point.label ?? ""}`, tab: "now", why: S.pointTitle };
+  // An everyday look's answer (everyday.ts): what is wrong, whether it is fixed, or Did that work?
+  if (m.everyday && EVERYDAY_NEEDS.includes(m.everyday.stage)) return { key: `everyday:${m.everyday.req ?? ""}:${m.everyday.stage}`, tab: "now", why: S.everydayTitle };
   // A pointer during a lesson belongs to the lesson, which is on Learn (its problems are above).
   if (!m.walk && m.showme && SHOWME_NEEDS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "now", why: S.showMe };
   if (m.voice && VOICE_NEEDS.includes(m.voice.stage)) return { key: `voice:${m.voice.stage}`, tab: "now", why: S.voiceTitle };
