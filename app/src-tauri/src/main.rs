@@ -3224,7 +3224,7 @@ fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: Stri
         let ended = convert::run(&units, &work, &dest, &job, &tell);
         // What was made is named even when the job was stopped or failed part way, so the person can find it.
         let end = convert::end_news(id, &ended);
-        log("drop_job_ended", json!({ "action": action, "made": ended.made.len(), "skipped": ended.skipped, "ended": end["phase"], "why": end["why"] }));
+        log("drop_job_ended", json!({ "action": action, "made": ended.made.len(), "skipped": ended.skipped, "failed": ended.failed, "ended": end["phase"], "why": end["why"] }));
         if let Some(d) = drop_now_lock().as_mut().filter(|d| d.id == id) { d.running = None; d.made = ended.made; d.job = Some(end.clone()); }
         let _ = app.emit("drop-job", end);
     });

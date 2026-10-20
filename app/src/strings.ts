@@ -1187,6 +1187,7 @@ export const S = {
     stopped: "Stopped. Nothing half made was kept, and the original is unchanged.",
     stoppedMade: (n: number) => n === 1 ? "Stopped after making 1 new file. Nothing half made was kept, and the originals are unchanged." : `Stopped after making ${n} new files. Nothing half made was kept, and the originals are unchanged.`,
     skipped: (n: number) => n === 1 ? "1 file was left as it was: it was already in that format, or could not be made smaller." : `${n} files were left as they were: they were already in that format, or could not be made smaller.`,
+    failedSome: (n: number, name: string) => n === 1 ? `${name} could not be converted, so it was left as it was.` : `${n} files could not be converted, starting with ${name}. They were left as they were.`,
     why: {
       toolFailed: "The Mac could not convert this file. The original is unchanged.",
       toolMissing: "The tool for this is not on this Mac.",

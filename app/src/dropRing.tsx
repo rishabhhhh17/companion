@@ -4,7 +4,7 @@
 // sends the menu's number and the chosen action, and the shell does the rest (convert.rs).
 import { useEffect, useReducer, useRef, useState } from "react";
 import { invoke, listen } from "./tauri.ts";
-import { EMPTY, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, actionWords, clearsSaid, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 type Dispatch = (a: Parameters<typeof dropReduce>[1]) => void;
@@ -25,7 +25,8 @@ export function useDrop(): Drop {
     const offs = [
       listen("drop-hover", (e) => dispatch({ type: "hover", over: (e.payload as { over?: unknown } | null)?.over === true })),
       listen("drop-menu", (e) => { setSaid(""); dispatch({ type: "menu", menu: menuFrom(e.payload) }); }),
-      listen("drop-job", (e) => dispatch({ type: "job", job: jobFrom(e.payload) })),
+      // A line left by a refused second drop or a double click belongs to the job that was running: it goes when that ends.
+      listen("drop-job", (e) => { const job = jobFrom(e.payload); if (clearsSaid(job)) setSaid(""); dispatch({ type: "job", job }); }),
       // A drop while a job still runs changes nothing; it is only said.
       listen("drop-said", (e) => setSaid(whyLine((e.payload as { why?: unknown } | null)?.why))),
     ];

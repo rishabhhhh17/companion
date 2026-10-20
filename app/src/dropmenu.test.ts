@@ -1,7 +1,7 @@
 // F19, drop a file on the companion: the menu's state, its keys, its ring and its words. The shell decides what a file
 // may get and runs the tools (convert.rs); this is only what the page shows and how a person moves through it.
 import { describe, expect, test } from "bun:test";
-import { EMPTY, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, parseTime, refusedLine, ringSpots, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, clearsSaid, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, parseTime, refusedLine, ringSpots, trimFrom, type DropState } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 const menu = (over: Record<string, unknown> = {}) => ({ id: 7, names: ["photo.png"], kind: "image", actions: ["toJpeg", "toHeic", "resize"], refused: null, at: "dock", ...over });
@@ -135,6 +135,12 @@ describe("trim times", () => {
     expect(parseTime("-3")).toBeNull();
     expect(parseTime("abc")).toBeNull();
   });
+  test("only the last part may have a decimal, so 1.5:30 is not read as a different time", () => {
+    expect(parseTime("1.5:30")).toBeNull();
+    expect(parseTime("2.30:00")).toBeNull();
+    expect(parseTime("1:02.5")).toBe(62.5);
+    expect(parseTime("0:90.5")).toBeNull();
+  });
   test("the end must come after the start", () => {
     expect(trimFrom("0:05", "0:20")).toEqual({ start: 5, end: 20 });
     expect(trimFrom("0:20", "0:05")).toBeNull();
@@ -178,4 +184,25 @@ describe("words", () => {
   test("no em dashes in anything a person reads here", () => {
     expect(JSON.stringify(S.drop)).not.toContain("—");
   });
+});
+
+describe("a batch where some files could not be converted", () => {
+  const made = [{ name: "a (converted).jpg", i: 0 }, { name: "c (converted).jpg", i: 1 }];
+  test("the job keeps how many failed and the first one's name", () => {
+    const j = jobFrom({ id: 3, phase: "done", made, skipped: 0, failed: 1, failedName: "b.png", failedWhy: "toolFailed" });
+    expect(j).toMatchObject({ phase: "done", failed: 1, failedName: "b.png", failedWhy: "toolFailed" });
+    expect(jobFrom({ id: 3, phase: "done", made, skipped: 0 })).not.toHaveProperty("failed");
+  });
+  test("the line says how many were made and which one could not be, in plain words", () => {
+    const j = jobFrom({ id: 3, phase: "done", made, skipped: 0, failed: 1, failedName: "b.png", failedWhy: "toolFailed" })!;
+    expect(jobLine(j)).toBe(`${S.drop.madeMany(2)} ${S.drop.failedSome(1, "b.png")}`);
+    expect(S.drop.failedSome(3, "b.png")).toContain("3");
+    expect(S.drop.failedSome(3, "b.png")).toContain("b.png");
+  });
+});
+
+test("a line left by a refused second drop is cleared when the job ends, not while it runs", () => {
+  expect(clearsSaid(jobFrom({ id: 1, phase: "running", done: 0, of: 2, percent: null }))).toBe(false);
+  expect(clearsSaid(jobFrom({ id: 1, phase: "done", made: [] }))).toBe(true);
+  expect(clearsSaid(jobFrom({ id: 1, phase: "stopped", made: [] }))).toBe(true);
 });
