@@ -29,6 +29,7 @@ extern "C" {
     fn AXValueGetValue(v: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
     fn AXValueGetTypeID() -> usize;
     fn AXUIElementGetPid(el: CFTypeRef, pid: *mut i32) -> AXError;
+    fn AXUIElementSetMessagingTimeout(el: CFTypeRef, secs: f32) -> AXError;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
@@ -147,8 +148,15 @@ pub fn focused(pid: i32) -> Option<Focused> {
 static WOKEN: std::sync::Mutex<Vec<(i32, &'static str)>> = std::sync::Mutex::new(Vec::new());
 fn wake(app: &Cf, pid: i32, name: &'static str) { set_true(app, name); WOKEN.lock().unwrap_or_else(|e| e.into_inner()).push((pid, name)); }
 /// Switches off whatever reading switched on in other apps.
-pub fn let_apps_sleep() {
+pub fn let_apps_sleep() { sleep_these(std::mem::take(&mut *WOKEN.lock().unwrap_or_else(|e| e.into_inner()))); }
+/// The same, for a caller on the main thread (Stop everything, Cancel): writing into a busy app can take seconds, so the
+/// switching off is done on a helper thread. What was woken is taken now, so a read that starts after this keeps what it wakes.
+pub fn let_apps_sleep_soon() {
     let woken: Vec<(i32, &'static str)> = std::mem::take(&mut *WOKEN.lock().unwrap_or_else(|e| e.into_inner()));
+    if woken.is_empty() { return; }
+    std::thread::spawn(move || sleep_these(woken));
+}
+fn sleep_these(woken: Vec<(i32, &'static str)>) {
     for (pid, name) in woken { if let Some(app) = Cf::new(unsafe { AXUIElementCreateApplication(pid) }) { set_bool(&app, name, false); } }
 }
 
@@ -162,11 +170,15 @@ fn read_field(el: &Cf) -> Option<(String, bool)> {
     None
 }
 
+/// A password box (its role or subrole). Never read, whatever else is true.
+fn secure_field(f: &Focused) -> bool { f.role == "AXSecureTextField" || f.subrole == "AXSecureTextField" }
+
 /// Reads the focused box. Chromium and Electron apps build their Accessibility tree late, so this wakes it and retries
-/// a few times. It never touches the clipboard. Returns None when the app exposes nothing readable.
+/// a few times. It never touches the clipboard, and never reads a password box the person moved to meanwhile. Returns None
+/// when the app exposes nothing readable.
 pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
     ladder(pid, |rung| {
-        let f = focused(pid)?;
+        let f = focused(pid).filter(|f| !secure_field(f))?;
         let (text, sel) = read_field(&f.element)?;
         let sel_start = if sel { selection_start(&f.element) } else { None };
         Some((f.element, Read { text, had_selection: sel, sel_start, rung }))
@@ -177,7 +189,7 @@ pub fn read_ladder(pid: i32) -> Option<(Cf, Read)> {
 /// box. The same wake up steps as `read_ladder`. None when nothing is selected or the app exposes nothing readable.
 pub fn read_selection(pid: i32) -> Option<(String, &'static str)> {
     ladder(pid, |rung| {
-        let f = focused(pid)?;
+        let f = focused(pid).filter(|f| !secure_field(f))?;
         text_attr(&f.element, "AXSelectedText").filter(|s| !s.trim().is_empty()).map(|s| (s, rung))
     })
 }
@@ -363,6 +375,12 @@ fn frame_of(el: &Cf) -> Option<(f64, f64, f64, f64)> {
     Some((p.x, p.y, s.w, s.h))
 }
 
+/// How long one question to the app under a point may take while finding what is clickable there (Show me): a busy app, or
+/// one that is not answering, would otherwise hold each for about six seconds. Given to those elements only, never to the
+/// system wide one, which would shorten every Accessibility call Companion makes (Prompt help's reads wait for slow apps).
+const QUICK_S: f32 = 0.5;
+fn quick(el: &Cf) { unsafe { AXUIElementSetMessagingTimeout(el.0, QUICK_S); } }
+
 /// The nearest clickable thing at a point (global top-left points): the element the Mac reports there, or the closest
 /// parent that is a button, link, tab, field or similar. None if Accessibility is off or the app exposes nothing there.
 pub fn clickable_at(x: f64, y: f64) -> Option<(f64, f64, f64, f64)> {
@@ -371,10 +389,12 @@ pub fn clickable_at(x: f64, y: f64) -> Option<(f64, f64, f64, f64)> {
     let mut out: CFTypeRef = std::ptr::null();
     if unsafe { AXUIElementCopyElementAtPosition(sys.0, x as f32, y as f32, &mut out) } != AX_OK { return None; }
     let mut cur = Cf::new(out)?;
+    quick(&cur);
     for _ in 0..6 {
         let role = text_attr(&cur, "AXRole").unwrap_or_default();
         if CLICKABLE.contains(&role.as_str()) { return frame_of(&cur); }
         cur = attr(&cur, "AXParent")?;
+        quick(&cur);
     }
     None
 }

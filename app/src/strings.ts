@@ -1007,6 +1007,7 @@ export const S = {
     notRule: "Build the rule from the choices shown.",
     rulesUnreadable: "Your house rules file could not be opened here, so it was not changed. Change it in the file itself.",
     projectChanged: "The project folder changed before this was saved, so nothing was saved. Check it again for this project.",
+    readAgain: "Your settings file could be read again, so Settings now shows your own settings and nothing was reset. Look them over, then reset again if you still want to.",
   },
   // Also say out loud (speak.alsoSay): fixed words only, never anything from the task or the question.
   alsoSay: {

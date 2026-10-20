@@ -72,8 +72,8 @@ describe("the island window", () => {
     expect(hide).toContain("island_show(false)");
     const back = tick.slice(tick.indexOf("hidden_for_full_screen"), tick.indexOf("shown_after_full_screen"));
     expect(back).toContain("island_show(true)");
-    const menu = main.slice(main.indexOf('"hide" =>'), main.indexOf('log("menu_hide"'));
-    expect(menu).toContain("island_show(!hide");
+    expect(main.slice(main.indexOf('"hide" =>'), main.indexOf('"stop" =>'))).toContain("set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))");
+    expect(fnBody("set_user_hidden")).toContain("island_show(!hide");
   });
   test("follows the screen sharing setting with the card and the overlay", () => {
     expect(fnBody("apply_sharing")).toContain("ISLAND.with(");
