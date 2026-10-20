@@ -79,7 +79,7 @@ fn note(kind: &str, app_id: &str, ms: u64, chars: usize, outcome: &str) {
 }
 
 const TERMINALS: &[&str] = &["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"];
-const CHAT_APPS: &[&str] = &["com.openai.codex", "com.anthropic.claudefordesktop", "com.openai.chat", "com.google.gemini"];
+pub(crate) const CHAT_APPS: &[&str] = &["com.openai.codex", "com.anthropic.claudefordesktop", "com.openai.chat", "com.google.gemini"];
 pub fn target_kind(bundle: &str) -> &'static str {
     if TERMINALS.contains(&bundle) { "claude_code" } else if CHAT_APPS.contains(&bundle) { "chat" } else { "other" }
 }

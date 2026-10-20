@@ -1473,8 +1473,10 @@ fn showme_stop_rest(app: &AppHandle) {
 /// `settle`: a walkthrough step after a click, so the look first waits (bounded, under the light, Stop ends it) for the page
 /// to stop changing (showme::wait_to_settle). The page asks for it only when its settings say so (anywhere.ts waitsForPage).
 /// `mode`: an everyday stuck moment's look (everyday.rs): "everyday" or "recheck"; anything else is an ordinary question.
-fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>, mode: Option<String>) {
+/// `before`: with "recheck", the spreadsheet error code the first look read (only one of the table's codes).
+fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>, mode: Option<String>, before: Option<String>) {
     let mode = everyday::mode(mode.as_deref());
+    let before = everyday::before_code(before.as_deref());
     // Nothing of Companion can be seen (hidden, with Home closed): the light could not be seen either, so nothing is looked
     // at, not even a lesson's next step (rule 5: a walkthrough looks again only while it is visibly on).
     if light_unseen() { log("showme_hidden", json!({})); say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); return; }
@@ -1499,7 +1501,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let _ = a2.state::<runner::Runner>().send(&everyday::with_mode(showme::locate_command(&req2, q, pics, cands), mode));
+                let _ = a2.state::<runner::Runner>().send(&everyday::with_mode(showme::locate_command(&req2, q, pics, cands), mode, before));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
@@ -1773,14 +1775,15 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
 }
 
 /// Do it for me: press the target through Accessibility (asked for the first time this is used). Never anything that
-/// sends, pays, deletes or publishes: the label is checked again on the real element at the moment of pressing.
+/// sends, pays, deletes, publishes, signs in or connects an account: the label is checked again on the real element at the
+/// moment of pressing.
 #[tauri::command]
 fn do_it_for_me(app: AppHandle) {
     let Some((target, label)) = TURN.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return };
     let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
     // Off the main thread: an app that is not answering can hold Accessibility for seconds, and Stop must still work.
     std::thread::spawn(move || {
-        const SELF: &str = "This one sends, pays, deletes, publishes or answers a question, so please click it yourself.";
+        const SELF: &str = "This one sends, pays, deletes, publishes, signs in, connects an account or answers a question, so please click it yourself.";
         if yourturn::risky(&label) { say_showme(&app, "your_turn_miss", SELF, json!({})); return; }
         if !ax::trusted(false) {
             ax::trusted(true);

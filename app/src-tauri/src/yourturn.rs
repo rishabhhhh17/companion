@@ -43,6 +43,8 @@ impl Watch {
 /// without accents: labels are folded the same way before they are compared).
 const RISKY_WORDS: &[&str] = &["delet", "remov", "pay", "buy", "purchas", "send", "submit", "sign out", "log out", "logout", "publish", "deploy", "reset", "checkout", "order", "erase", "clear", "cancel", "unsubscribe", "subscribe", "post", "confirm", "donat", "upload", "install", "transfer", "withdraw", "go live", "make live", "promote", "rollback", "roll back", "merge", "drop", "destroy", "revoke", "archive", "close account",
     "trash", "discard", "accept", "approve", "share", "reply", "commit", "push", "leave", "book", "sign up", "register", "agree", "allow", "grant", "invite", "kick", "ban", "overwrite", "replace", "apply", "continue",
+    // Signing in or connecting an account (reconnect and disconnect too): the person's own step, in any app.
+    "sign in", "log in", "login", "connect", "authoriz", "authoris",
     // Spanish, French, German, Portuguese, Italian
     "eliminar", "borrar", "pagar", "comprar", "enviar", "publicar", "cerrar sesion", "confirmar", "desplegar", "supprimer", "effacer", "payer", "acheter", "envoyer", "publier", "deconnexion", "confirmer", "deployer",
     "loschen", "entfernen", "bezahlen", "kaufen", "senden", "veroffentlichen", "abmelden", "bestatigen", "excluir", "apagar", "sair", "elimina", "cancella", "paga", "acquista", "invia", "pubblica", "esci",
@@ -79,8 +81,8 @@ fn skeleton(s: &str) -> String {
 }
 fn compact(s: &str) -> String { s.chars().filter(|c| !c.is_whitespace() && !matches!(c, '-' | '_' | '.' | '\u{b7}')).collect() }
 
-/// Labels that send, pay, delete or publish: "Do it for me" never presses these; the person clicks them (rule 13). Spaced
-/// out, accented, mixed alphabet and other language spellings count too.
+/// Labels that send, pay, delete, publish, sign in or connect an account: "Do it for me" never presses these; the person
+/// clicks them (rule 13). Spaced out, accented, mixed alphabet and other language spellings count too.
 pub fn risky(label: &str) -> bool {
     let f = fold(label);
     let c = compact(&f);
@@ -204,6 +206,15 @@ mod attacks {
     #[test]
     fn a_bare_yes_or_ok_is_never_pressed_whatever_the_spelling_or_language() {
         for l in ["OK", "\u{41e}\u{43a}", "O K", "Yes", "Y", "Oui", "Ja", "Sim", "\u{306f}\u{3044}", "\u{597d}"] { assert_eq!(may_press("AXButton", &t(&[l]), false, false), Err("risky"), "{l:?}"); }
+    }
+    #[test]
+    fn signing_in_or_connecting_an_account_is_never_pressed_for_the_person() {
+        // The everyday look offers Do it for me in any app (Mail, Zapier, Notion, System Settings): a sign in or a
+        // reconnect is the person's own step (rule 13), whatever a prompt says (rule 12).
+        for l in ["Sign in", "Sign In", "Signin", "Sign in with Google", "Log in", "Login", "Log In", "Connect", "Reconnect", "Reconnect account", "Disconnect", "Connect Gmail", "Authorize", "Authorise Zapier", "Re-authorize"] {
+            assert!(risky(l), "{l:?} must count as risky");
+            assert_eq!(may_press("AXButton", &t(&[l]), false, false), Err("risky"), "{l:?}");
+        }
     }
     #[test]
     fn ordinary_labels_are_still_pressable() {
