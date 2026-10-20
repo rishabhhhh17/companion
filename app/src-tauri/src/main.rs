@@ -1342,7 +1342,7 @@ fn project_now(app: &AppHandle, folder: &str) {
 /// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
 #[tauri::command]
 fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
-    keystore::save(&key)?;
+    keystore::save(&key, &data_dir())?;
     log("api_key_saved", json!({}));
     hand_key_over(&app, Some(&key));
     Ok(())
@@ -1365,7 +1365,7 @@ fn hand_key_over(app: &AppHandle, key: Option<&str>) {
 fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String) -> Result<(), String> {
     let svc = keystore::service();
     // The tested gate: an unconfirmed call never reaches the Keychain, and the key counts as gone only once it is not there.
-    keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || keystore::exists(&svc, keystore::ACCOUNT))?;
+    keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || !keystore::gone(&svc, keystore::ACCOUNT))?;
     log("api_key_removed", json!({}));
     // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
     let _ = app.state::<runner::Runner>().hand_key(None);
@@ -2319,7 +2319,7 @@ fn wipe_helper_mode() -> bool {
     let bundle = std::env::current_exe().ok().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")).map(|p| p.to_path_buf()));
     wipe::run_helper(&home, &data, &projects, with_projects, &wipe::Helper {
         parent_gone: &|| !std::process::Command::new("/bin/kill").args(["-0", &pid]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success()),
-        delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || !keystore::exists(&keystore::service(), keystore::ACCOUNT) },
+        delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || keystore::gone(&keystore::service(), keystore::ACCOUNT) },
         relaunch: &|| { if let Some(b) = &bundle { let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(b).status(); } },   // not from a built app (a development run): nothing to open
         wait: &|| std::thread::sleep(Duration::from_millis(150)),
     });

@@ -19,12 +19,29 @@ pub fn check(raw: &str) -> Result<String, String> {
     Ok(k.to_string())
 }
 
-/// Whether an item exists. Asks for its description only, never the secret, so the Mac shows no dialog.
-#[cfg(target_os = "macos")]
-pub fn exists(service: &str, account: &str) -> bool {
-    use security_framework::item::{ItemClass, ItemSearchOptions};
-    ItemSearchOptions::new().class(ItemClass::generic_password()).service(service).account(account).load_attributes(true).search().is_ok_and(|r| !r.is_empty())
+/// What a look in the Keychain found. A look that failed (the Keychain is locked, access was refused or cancelled) is not
+/// the same as an item that is not there, so it is never taken for "the key is gone".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Presence { Found, NotFound, Error }
+/// errSecItemNotFound: the Keychain looked and there is no such item.
+pub const ITEM_NOT_FOUND: i32 = -25300;
+/// The answer of a search: how many items it found, or the Keychain's error code.
+pub fn presence_from(found: Result<usize, i32>) -> Presence {
+    match found { Ok(0) => Presence::NotFound, Ok(_) => Presence::Found, Err(ITEM_NOT_FOUND) => Presence::NotFound, Err(_) => Presence::Error }
 }
+/// The key counts as gone only when the Keychain looked and said there is no such item.
+pub fn is_gone(p: Presence) -> bool { p == Presence::NotFound }
+
+/// Looks for an item. Asks for its description only, never the secret, so the Mac shows no dialog.
+#[cfg(target_os = "macos")]
+pub fn presence(service: &str, account: &str) -> Presence {
+    use security_framework::item::{ItemClass, ItemSearchOptions};
+    presence_from(ItemSearchOptions::new().class(ItemClass::generic_password()).service(service).account(account).load_attributes(true).search().map(|r| r.len()).map_err(|e| e.code()))
+}
+/// Whether an item was found (a failed look counts as not found here: for showing, never for deciding a key is gone).
+pub fn exists(service: &str, account: &str) -> bool { presence(service, account) == Presence::Found }
+/// Whether the Keychain says for sure that the item is not there.
+pub fn gone(service: &str, account: &str) -> bool { is_gone(presence(service, account)) }
 
 /// Removes one Keychain item by exact service and account. Only ever called with Companion's own.
 #[cfg(target_os = "macos")]
@@ -39,12 +56,19 @@ pub fn read() -> Option<String> {
     String::from_utf8(bytes).ok().map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
 }
 
-/// Saves the key. The item is replaced, so a key saved by an older version is not left behind with wider trust.
+/// The file that says the key's item was made by this app (so only this app is trusted to read it).
+pub fn marker(data: &std::path::Path) -> std::path::PathBuf { data.join("key-owner-v2") }
+
+/// Saves the key. An item this app made is updated where it is, so a Keychain that refuses the new key leaves the working
+/// one in place. Only an item an older version made is replaced (taken away, then added), so it is not left behind with
+/// wider trust. Either way the item is this app's own afterwards, and that is remembered.
 #[cfg(target_os = "macos")]
-pub fn save(raw: &str) -> Result<(), String> {
+pub fn save(raw: &str, data: &std::path::Path) -> Result<(), String> {
     let key = check(raw)?;
-    let _ = delete_item(&service(), ACCOUNT);   // gone or not there: either is fine, the add below says if it really failed
-    security_framework::passwords::set_generic_password(&service(), ACCOUNT, key.as_bytes()).map_err(|_| "The Keychain did not accept the key. Try again.".to_string())
+    if !marker(data).exists() { let _ = delete_item(&service(), ACCOUNT); }   // gone or not there: either is fine, the add below says if it really failed
+    security_framework::passwords::set_generic_password(&service(), ACCOUNT, key.as_bytes()).map_err(|_| "The Keychain did not accept the key. Try again.".to_string())?;
+    let _ = std::fs::write(marker(data), "1");
+    Ok(())
 }
 
 /// A key saved by an older version sits in an item that Apple's `security` tool is trusted to read, which any program
@@ -52,22 +76,34 @@ pub fn save(raw: &str) -> Result<(), String> {
 /// Returns whether the key is now this app's own, or None when there was nothing to move.
 #[cfg(target_os = "macos")]
 pub fn move_old_item(data: &std::path::Path) -> Option<bool> {
-    let marker = data.join("key-owner-v2");
-    if marker.exists() || !exists(&service(), ACCOUNT) { return None; }
+    static TRIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    move_with(&marker(data), &TRIED, || exists(&service(), ACCOUNT), read, |k| save(k, data))
+}
+
+/// The move, with its look, read and save passed in. The Mac is asked once per run of Companion: after a "Don't allow", or a
+/// key that cannot be saved again, the engine starting again (up to six times after a crash) never asks again.
+pub fn move_with(marker: &std::path::Path, tried: &std::sync::atomic::AtomicBool, exists: impl FnOnce() -> bool, read: impl FnOnce() -> Option<String>, save: impl FnOnce(&str) -> Result<(), String>) -> Option<bool> {
+    use std::sync::atomic::Ordering::SeqCst;
+    if marker.exists() || !exists() { return None; }
+    if tried.swap(true, SeqCst) { return Some(false); }
     let Some(k) = read() else { return Some(false) };   // the person said no, or it cannot be read: leave it, they can paste the key again
     if save(&k).is_err() { return Some(false); }
-    let _ = std::fs::write(&marker, "1");
+    let _ = std::fs::write(marker, "1");
     Some(true)
 }
 
 #[cfg(not(target_os = "macos"))]
+pub fn presence(_: &str, _: &str) -> Presence { Presence::NotFound }
+#[cfg(not(target_os = "macos"))]
 pub fn exists(_: &str, _: &str) -> bool { false }
+#[cfg(not(target_os = "macos"))]
+pub fn gone(_: &str, _: &str) -> bool { true }
 #[cfg(not(target_os = "macos"))]
 pub fn delete_item(_: &str, _: &str) -> bool { false }
 #[cfg(not(target_os = "macos"))]
 pub fn read() -> Option<String> { None }
 #[cfg(not(target_os = "macos"))]
-pub fn save(raw: &str) -> Result<(), String> { check(raw).map(|_| ()) }
+pub fn save(raw: &str, _: &std::path::Path) -> Result<(), String> { check(raw).map(|_| ()) }
 #[cfg(not(target_os = "macos"))]
 pub fn move_old_item(_: &std::path::Path) -> Option<bool> { None }
 
@@ -107,14 +143,53 @@ mod tests {
         use security_framework::passwords::set_generic_password;
         let (svc, other) = (format!("companion-test-{}", std::process::id()), format!("companion-test-other-{}", std::process::id()));
         std::env::set_var("COMPANION_KEYCHAIN_SERVICE", &svc);
-        save(GOOD).unwrap();
+        let data = std::env::temp_dir().join(format!("companion-test-ks-{}", std::process::id())); std::fs::create_dir_all(&data).unwrap();
+        save(GOOD, &data).unwrap();
         assert!(exists(&svc, ACCOUNT)); assert_eq!(read().as_deref(), Some(GOOD));
-        save(&GOOD.replace("Ab", "Zz")).unwrap();   // saving again replaces it
+        save(&GOOD.replace("Ab", "Zz"), &data).unwrap();   // saving again replaces it
         assert_eq!(read().as_deref(), Some(GOOD.replace("Ab", "Zz").as_str()));
         set_generic_password(&other, ACCOUNT, b"dummy-value-not-a-key").unwrap();
         assert!(delete_item(&svc, ACCOUNT)); assert!(!exists(&svc, ACCOUNT)); assert!(exists(&other, ACCOUNT));
         assert!(!delete_item(&svc, ACCOUNT)); assert!(delete_item(&other, ACCOUNT));
         assert!(read().is_none());
+    }
+    #[test]
+    fn a_failed_look_is_not_the_same_as_a_key_that_is_gone() {
+        assert_eq!(presence_from(Ok(1)), Presence::Found);
+        assert_eq!(presence_from(Ok(0)), Presence::NotFound);
+        assert_eq!(presence_from(Err(ITEM_NOT_FOUND)), Presence::NotFound);
+        // Locked (errSecInteractionNotAllowed -25308), refused (-25293) or cancelled (-128): nothing is known.
+        for code in [-25308, -25293, -128, -25299] { assert_eq!(presence_from(Err(code)), Presence::Error, "{code}"); }
+        assert!(is_gone(Presence::NotFound) && !is_gone(Presence::Found) && !is_gone(Presence::Error));
+    }
+    #[test]
+    fn a_denied_move_is_asked_for_once_not_on_every_engine_restart() {
+        use std::cell::Cell;
+        let d = std::env::temp_dir().join(format!("ks-deny-{}", std::process::id())); std::fs::create_dir_all(&d).unwrap();
+        let (marker, tried, reads) = (d.join("key-owner-v2"), std::sync::atomic::AtomicBool::new(false), Cell::new(0));
+        let go = || move_with(&marker, &tried, || true, || { reads.set(reads.get() + 1); None }, |_| Ok(()));
+        assert_eq!(go(), Some(false));
+        for _ in 0..5 { assert_eq!(go(), Some(false)); }
+        assert_eq!(reads.get(), 1, "the Mac was asked once");
+        assert!(!marker.exists());
+        // A key that reads but cannot be saved is not retried either.
+        let (tried2, saves) = (std::sync::atomic::AtomicBool::new(false), Cell::new(0));
+        let go2 = || move_with(&marker, &tried2, || true, || Some("k".into()), |_| { saves.set(saves.get() + 1); Err("no".into()) });
+        assert_eq!((go2(), go2()), (Some(false), Some(false)));
+        assert_eq!(saves.get(), 1);
+        // A move that works is remembered, and then nothing more is asked.
+        let tried3 = std::sync::atomic::AtomicBool::new(false);
+        assert_eq!(move_with(&marker, &tried3, || true, || Some("k".into()), |_| Ok(())), Some(true));
+        assert!(marker.exists());
+        assert_eq!(move_with(&marker, &tried3, || panic!("asked again"), || panic!("asked again"), |_| panic!("saved again")), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn saving_an_item_this_app_made_does_not_delete_it_first() {
+        let src = include_str!("keystore.rs");
+        let body = &src[src.find("pub fn save(raw: &str, data").unwrap()..]; let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(body.contains("if !marker(data).exists() { let _ = delete_item"), "only an older version's item is taken away first");
+        assert!(body.contains("fs::write(marker(data)"), "a saved key is remembered as this app's own");
     }
     #[test]
     fn nothing_to_move_when_there_is_no_old_item() {
