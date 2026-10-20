@@ -497,3 +497,13 @@ HeyClicky's newest release is still v1.0.53 (2 Oct 2026). These are the parts of
 - **Lessons and walkthroughs:** a lesson can start where you already are (off by default), walkthroughs wait for a slow page before looking again, and anywhere mode stops asking "Did that work?" after a clean click on a solid ring.
 - **Steadier on the Mac:** no beachball after sleep or a headset change, hold to talk works with the lid closed, Home steps aside for the windows it opens, the island tells you when an update is ready, and Home opens with a short motion (none with Reduce motion).
 - **The practice library is finished:** five practice stuck moments on the Learn tab, each in its own new folder, with progress, Start over, Try again and Remove my copy (to the Trash, after you confirm). The first run offers one in minute one. The fix runs exactly like it would on your own project, with Undo and Explain.
+
+## Dependability audit (20 Oct 2026)
+Eight independent readers went through everything built in M11 and found 83 distinct issues. The 55 serious ones were each checked by two skeptics; 49 were confirmed and fixed, each with a test that failed first. None of this has been tried on a real screen or with real Claude yet.
+- **Spending is counted when you press Stop.** Before, the work done in a stopped round never reached the daily limit or the receipt.
+- **Plans no longer hang** when you edit a file or press Undo while Companion waits for your answer, and a pause during "try a different approach" carries on instead of ending the plan.
+- **"Done" is harder to fool:** a page whose server no longer starts is not called proven, the browser check's own guard no longer fails working pages, and checks the agent could edit no longer run without a tap.
+- **Privacy:** with Companion hidden, nothing captures the screen without the visible light, and Stop everything ends speech to text before the Show me key can use it. The "free" setting practice no longer sends screen pictures to Claude.
+- **After changing folders,** an old folder's receipt and Undo are gone, so Undo can never roll back the wrong project.
+- **No more stuck "Needs you"** after cancelling a plan or closing Rescue's report, and first run practice can be fixed straight from Learn.
+- Smaller fixes to web fetch checks, house rules with links, wording that was not true, and docs.
