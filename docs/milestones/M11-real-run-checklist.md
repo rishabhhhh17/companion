@@ -99,6 +99,8 @@ Built and tested with stand ins only: the tutor for everyday apps (`showme.every
 
 **With the key (costs about $0.69 on Sonnet 5.5, see `evals/README.md`):** `cd runner && bun run scripts/eval-aim.ts --set everyday --spend`. Note the snapped hit rate beside the hard set's. Run it a second time with `--tutor off` (the same asks without the tutor's words) to see whether they help or hurt pointing; if they hurt, say so before the setting's usual value is ever changed.
 
+Then the browser rule on builder pages: `bun run scripts/eval-aim.ts --set hard --browser on --spend` asks the hard set (made up builder dashboards, the kind of page the shipped lessons run in) as pages in a web browser with the tutor on. A dry run without `--spend` prints the cost first. Compare its hard rate with the hard rate of a run without `--browser`; if it is lower, say so before anyone relies on the browser rule.
+
 **In the hands on session (no cost beyond each Show me press):** turn on Teach everyday apps in their own words and Speak to me, then Say steps short, one at a time. In each app below, press Show me how with the question given, then ask an anywhere mode goal of a few steps. For each, write down: did the ring land on the right control (solid or soft), was the caption a plain step in the app's own words, did any answer mention projects, code or deploying (it must not), was each spoken step short and said when its ring landed, and did Did that work? come at the right time. Then turn the tutor off and ask the first question again, to compare.
 
 | App | Show me how | Anywhere mode goal |
@@ -113,6 +115,10 @@ Built and tested with stand ins only: the tutor for everyday apps (`showme.every
 | Photoshop | "How do I cut off the edges of this photo?" | Make the photo brighter with an adjustment layer |
 
 Also check, once: in Cursor or Terminal the answer is the usual one (no tutor); with Hide from screen sharing on nothing changes; and the light is on before each look.
+
+Also with the tutor on: start the Vercel lesson that adds a setting in Safari or Chrome and check that each ring is answered as usual, in the words on Vercel's page (Settings, Environment Variables, Redeploy), never as if it were an everyday app; and in Android Studio or Firefox Developer Edition check that the answer never says you are not building anything.
+
+**Do it for me must refuse these (20 Oct 2026):** with the tutor on, press Do it for me on a ring that lands on a Sign In button (a site's sign in page, with nothing typed), on a price button in the App Store, and on Rent in the TV app. Each must be refused with "This one signs in, sends, pays, deletes, publishes or answers a question, so please click it yourself.", and nothing is pressed.
 
 ## Known gaps: unproven, and no script covers them yet
 
