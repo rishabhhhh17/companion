@@ -515,3 +515,10 @@ None of this has been seen on a real screen or run with real Claude yet.
 - **Short spoken steps,** paced with the rings, when you have speaking on (off by default).
 - **Do it for me never presses sign in or connect account buttons,** on top of send, pay, delete, publish and answer.
 - **Drop a file on the companion** (the character or the notch island) to convert it: pictures between PNG, JPEG, HEIC and TIFF, resize and compress; PDFs merge, split, compress and pages to pictures; documents to PDF, text, Word, RTF or HTML; sound and video convert and trim. Everything happens on your Mac with its own tools, nothing is uploaded, the result is saved next to the original with a new name, and the original is never changed.
+
+## Groups, and a second dependability audit (21 Oct 2026)
+None of this has been seen on a real screen or run with real Claude yet.
+- **Tools are grouped by what they do on your Mac:** Flow (find, fix, prove, undo, explain), Guide (Show me how, lessons, practice), Voice (hold to talk, spoken answers, Prompt help, the error explainer) and Files (drop a file to convert it). The names are placeholders. Each group has a switch in Settings; a group that is off really stops its tools (keys, buttons, commands and anything it was running) and says so in one plain line. Stop everything, the daily limit, your key and the safety rules are never part of a group.
+- **Home shows which tools you have not tried yet,** with a one line invitation that goes away once you try them. No scores, streaks or levels. A setting hides it. The first run explains the four groups.
+- **The island names the group at work,** and the character has calm, clear and murky water states ready for the art.
+- **Second audit of the newer code:** 25 more issues confirmed and fixed. Examples: a spreadsheet error is only called fixed when the same sheet is still in view; a wrong built-in explanation can no longer override Claude's own finding; the file converter now carries on past one bad file and cleans each file's work folder as it goes; plus the small leftovers from the first audit.
