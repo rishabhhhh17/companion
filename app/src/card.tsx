@@ -7,7 +7,7 @@ import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, waitsForPage } from "./anywhere.ts";
 import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
-import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, type AskKind, type VoiceQuestion } from "./speech.ts";
+import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { AGENT, SETTINGS_LESSON_ID, releaseAgent, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
@@ -616,9 +616,11 @@ function Card() {
     const when = speakWhen({ speech: speechOn(), replies: repliesOn(), byVoice: answersVoice(spoken.key) });
     if (!when.say) return;
     saidKey.current = spoken.key;
+    // Say steps short (talk.shortSteps) gives Speak to me the step without its explanation; an answer said whole is all of it.
+    const text = wordsToSay(spoken, when);
     // A step of a multi step answer is said when its pointer lands; if something else comes first, it is not said late.
-    if (!spoken.delayMs) { sayIt(spoken.text, when.whole); return; }
-    player.current.sayLater(() => sayIt(spoken.text, when.whole), spoken.delayMs);
+    if (!spoken.delayMs) { sayIt(text, when.whole); return; }
+    player.current.sayLater(() => sayIt(text, when.whole), spoken.delayMs);
     return () => player.current.cancelLine();
   }, [spoken?.key]);
   // The answer to a question asked by voice (a research answer, a finished task's result), said once, whole when short:
