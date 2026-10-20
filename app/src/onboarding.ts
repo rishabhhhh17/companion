@@ -1,10 +1,11 @@
 // The first run, as plain decisions: which step comes next, what each answer changes, and what a key must look like.
 // Nothing here touches the screen, so every rule can be tested.
 import type { Command } from "../../protocol/index.ts";
+import { switchKey, type SwitchedId } from "./groups.ts";
 
 // The practice comes right after Connect, so everyone can see the hero in minute one (F17); it can be skipped, and taking
 // it ends the first run there (the practice opens its own folder; Back to my project asks for the person's own later).
-export const STEPS = ["welcome", "connect", "practice", "folder", "questions", "permissions", "first"] as const;
+export const STEPS = ["welcome", "connect", "practice", "folder", "questions", "groups", "permissions", "first"] as const;
 export type Step = (typeof STEPS)[number];
 export type Answers = { explain: boolean; short: boolean; plain: boolean; autoSend: boolean };
 export const DEFAULT_ANSWERS: Answers = { explain: true, short: false, plain: true, autoSend: false };
@@ -33,6 +34,12 @@ export const QUESTIONS: { key: keyof Answers; ask: string; yes: string; no: stri
 /// reasons and a quick check question; no is off), and auto send. Sent through the shell like any other change in Settings.
 export function settingsFor(a: Answers): [string, unknown][] {
   return [["explain.mode", a.explain ? "reasonsAndQuestion" : "off"], ["talk.autoSend", a.autoSend]];
+}
+
+/// The groups the person switched off in the first run (F20 item 6), as the settings Settings changes: a group left on
+/// changes nothing. Sent through the shell like any other change.
+export function groupSettingsFor(off: readonly SwitchedId[]): [string, unknown][] {
+  return off.map((g) => [switchKey(g)!, false] as [string, unknown]);
 }
 
 export function effectsOf(a: Answers): string[] {

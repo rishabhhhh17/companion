@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { addMemory } from "./commands.ts";
-import { back, canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, keyLooksRight, next, QUESTIONS, settingsFor, STEPS } from "./onboarding.ts";
+import { back, canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, groupSettingsFor, keyLooksRight, next, QUESTIONS, settingsFor, STEPS } from "./onboarding.ts";
 import { readFileSync } from "node:fs";
 import { S } from "./strings.ts";
 
 describe("moving through the first run", () => {
   test("the steps go in order, and the first and last have nowhere to go", () => {
     expect(next("welcome")).toBe("connect"); expect(next("first")).toBeNull(); expect(back("connect")).toBe("welcome"); expect(back("welcome")).toBeNull();
-    expect(STEPS.length).toBe(7);
+    expect(STEPS.length).toBe(8);
   });
   test("the practice comes in minute one: right after Connect, before the folder, the questions and the permissions (F17)", () => {
     expect(STEPS.slice(0, 4)).toEqual(["welcome", "connect", "practice", "folder"]);
@@ -21,7 +21,7 @@ describe("moving through the first run", () => {
     expect(canContinue("connect", { connected: true, project: "" })).toBe(true);
     expect(canContinue("folder", { connected: true, project: "" })).toBe(false);
     expect(canContinue("folder", { connected: true, project: "/p" })).toBe(true);
-    for (const s of ["welcome", "practice", "questions", "permissions", "first"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+    for (const s of ["welcome", "practice", "questions", "groups", "permissions", "first"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
   });
 });
 
@@ -72,5 +72,28 @@ describe("the first run and INSTALL name every feature that asks for each permis
   test("Screen Recording: Show me, a lesson's step and Point at the problem", () => {
     for (const t of [S.obPerm2, section]) for (const f of ["Show me", "lesson", "Point at the problem"]) expect(t, f).toContain(f);
     expect(S.obPerm2).not.toMatch(/only the first time you use Show me,/);
+  });
+});
+
+describe("the first run explains the four groups (F20 item 6)", () => {
+  test("a step after the questions and before the permissions, which can always be passed", () => {
+    expect(next("questions")).toBe("groups"); expect(next("groups")).toBe("permissions"); expect(back("permissions")).toBe("groups");
+    expect(canContinue("groups", { connected: false, project: "" })).toBe(true);
+  });
+  test("each group is explained in one short line, four lines in all, in plain words with no score or level", () => {
+    const lines = Object.values(S.groups.short);
+    expect(lines.length).toBe(4);
+    for (const l of lines) { expect(l.length).toBeGreaterThan(20); expect(l.length).toBeLessThan(110); expect(l).toMatch(/\.$/); }
+  });
+  test("switching a group off in the first run changes the same setting Settings does, and leaving it on changes nothing", () => {
+    expect(groupSettingsFor([])).toEqual([]);
+    expect(groupSettingsFor(["voice", "files"])).toEqual([["voice.on", false], ["files.on", false]]);
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);");
+  });
+  test("skipping the questions goes on to the groups, and the practice route keeps nothing from this step", () => {
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain('onClick={() => { setAnswers(DEFAULT_ANSWERS); go("groups"); }}');
+    expect(ui).toContain("onDone(); startPractice(first.id);");
   });
 });

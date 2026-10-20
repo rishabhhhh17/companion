@@ -49,7 +49,7 @@ describe("the keys main.rs registers", () => {
     const setup = main.slice(main.indexOf(".setup(move |app|"));
     expect(setup.indexOf("start_keys(app.handle())")).toBeGreaterThan(0);
     expect(setup.indexOf("start_keys(app.handle())")).toBeLessThan(setup.indexOf("keymap::launch_notice(&launch.started, launch.damaged)"));
-    expect(body(main, "fn start_keys(")).toContain("keymap::start(&picked,");
+    expect(body(main, "fn start_keys(")).toContain("keymap::start_held(&picked, &held,");
     expect(main).not.toMatch(/Code::Key[A-Z]/);
     expect(main + shipped(keymapRs)).not.toContain("Code::KeyV");
   });
@@ -162,7 +162,7 @@ describe("every hint names the keys in use", () => {
     // the spoken line fill in the keys in use each time they draw or speak (with `keys`, so the card draws again when they
     // change), so a step that arrived before key_map answered, or a change in Settings while a step is up, shows at once.
     expect(model).not.toMatch(/keysIn\(/);
-    const walkPanel = card.slice(card.indexOf('{show("walk") && m.walk && ('), card.indexOf("</section>", card.indexOf('{show("walk") && m.walk && (')));
+    const walkPanel = card.slice(card.indexOf('show("walk") && m.walk && ('), card.indexOf("</section>", card.indexOf('show("walk") && m.walk && (')));
     expect(walkPanel).toContain("<b>{keysIn(m.walk.say, keys)}</b>");
     expect(walkPanel.match(/\{keysIn\(m\.walk\.note \?\? "", keys\)\}/g)?.length).toBe(2);
     expect(walkPanel).toContain("{keysIn(h.say, keys)}");

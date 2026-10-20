@@ -21,6 +21,8 @@ import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../proto
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
+import { GroupsPanel } from "./groupsPanel.tsx";
+import { buttonShown, permissionNeeded, type Permission } from "./groups.ts";
 import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, neverFrontOp, type Answer, type AppRow } from "./appanswers.ts";
 import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
 
@@ -206,7 +208,7 @@ function VoiceRows() {
         {v.voice && v.voiceMissing && <option value={v.voice}>{S.voicePickLabel}: {S.notOnThisMac(v.voiceMissing)}</option>}
         {v.voices.map((x) => <option key={x.id} value={x.id}>{S.voicePickLabel}: {voiceLabel(x)}</option>)}
       </select>
-      <button className="btn" type="button" onClick={() => void invoke("speak", { text: S.voiceSample }).then(heard).catch(() => {})}>{S.voiceTry}</button>
+      {buttonShown("voiceTry") && <button className="btn" type="button" onClick={() => void invoke("speak", { text: S.voiceSample }).then(heard).catch(() => {})}>{S.voiceTry}</button>}
     </div>
     {voiceLine(v) && <div className="line" role="status">{voiceLine(v)}</div>}
     <div className="line muted">{S.voiceMoreHelp}</div>
@@ -626,6 +628,7 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
   );
 }
 
+const PERM_OF: Record<PermissionKind, Permission> = { screen_recording: "screenRecording", accessibility: "accessibility", microphone: "microphone" };
 const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
 
 /** After Reset this section or Reset all: a line saying what happened, and Undo for ten seconds, which puts back the
@@ -753,6 +756,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
   const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
   const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
   const extras: Record<string, ReactNode> = {
+    groups: <GroupsPanel />,
     home: (<>
       <div className="line muted">{S.dragHint}</div>
       {placeChanged.length > 0 && <div className="row"><button className="btn" type="button" onClick={() => void resetPlace()}>{S.setResetPlace}</button></div>}
@@ -802,6 +806,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
         return (
           <div className="line" key={k}>
             <b>{r.label}:</b> {r.state}.{r.todo ? ` ${r.todo}` : ""} <span className="muted">{r.why}</span>
+            {!permissionNeeded(PERM_OF[k]) && <span className="muted"> {S.groups.permissionNotNeeded}</span>}
             {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button> <button className="btn" type="button" onClick={() => onLesson(permissionLesson(k))}>{S.settingsWalkMe}</button></>}
           </div>
         );

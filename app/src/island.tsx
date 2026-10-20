@@ -9,6 +9,8 @@ import { visualState } from "./model.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import { useDrop } from "./dropRing.tsx";
+import { activeGroup } from "./groups.ts";
+import { running } from "./dropmenu.ts";
 import "./style.css";
 
 // The island in the notch (F18): Companion's home base, quiet until something needs the person. The app decides its size
@@ -40,11 +42,15 @@ function Island() {
   // needs me set to only mark the tab (home.goToNeeds), anything that needs the person shows it too.
   const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");
   useEffect(() => { void invoke("island_alert", { on: alert }).catch(() => {}); }, [alert]);
-  const line = islandLine(m, { update });
+  // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
+  const drop = useDrop();
+  const g = activeGroup(m, running(drop.s));
+  const showGroup = useSetting("groups.islandName") !== false;
+  const line = islandLine(m, { update, group: showGroup && g && g !== "core" ? S.groups.names[g] : null });
   const state = visualState(m);
   const waiting = m.approvals.length;
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
-  const over = useDrop().s.hover;
+  const over = drop.s.hover;
   const pill = <span className="pillrow" aria-hidden="true"><span className="mark" data-state={state} />{islandWord(m)}</span>;
   return (
     <main className={`island ${shape.kind}`} data-mode={shape.mode} data-drop={over ? "over" : undefined}>

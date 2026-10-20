@@ -205,7 +205,7 @@ describe("show you why", () => {
 describe("the card", () => {
   const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
   test("the key chooses with heroRoute and the setting, before anything is checked or looked at", () => {
-    expect(key).toContain('heroRoute({ everyday: setting("point.everyday"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current })');
+    expect(key).toContain('heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current })');
     expect(key.indexOf("heroRoute(")).toBeLessThan(key.indexOf("send(findProblem("));
     expect(key).toContain("lookEveryday()");
   });

@@ -1,7 +1,15 @@
 {
   "version": 1,
-  "sections": ["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
+  "sections": ["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
   "settings": [
+    { "key": "flow.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
+    { "key": "guide.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
+    { "key": "voice.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
+    { "key": "files.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
+    { "key": "groups.islandName", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "groups.showUntried", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 17, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "showMe", "lessons", "yourTurn", "practice", "talk", "speak", "promptHelp", "errorHelp", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
+
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
 
     { "key": "talk.voice", "section": "talking", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "voice", "live": true },
