@@ -12,17 +12,27 @@ export const speechOn = (): boolean => setting("talk.speak") === true;
 type Walk = { id: string; index: number; variant: string; stage: string; say: string; note?: string } | null;
 type ShowMe = { stage: string; message: string; req?: string; step?: number; of?: number } | null;
 
+/** A line to say: `text` is the whole of it. `short`: with Say steps short (talk.shortSteps) on, the same step with its
+ *  explanation left out, only when there is any to leave out; which of the two is said is decided after speakWhen
+ *  (wordsToSay), since an answer said whole is said all of it. */
+export type Line = { key: string; text: string; short?: string; delayMs?: number };
+
 /** The one line to say for what is on the card right now, with a key so the same thing is said once. delayMs: wait this
  *  long before saying it (a step of a multi step answer is said when its pointer lands, after the lead in at the chosen
  *  pace). A lesson's words name the usual keys; they are said with the keys in use (`k`, the keys now unless given), as
  *  the card shows them. */
-export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), pace?: unknown): { key: string; text: string; delayMs?: number } | null {
+export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), pace?: unknown, short?: unknown): Line | null {
+  // Say steps short, one at a time (talk.shortSteps): a step also carries its short line; anything else is said whole.
+  const step = (key: string, t: string, wrap: (x: string) => string = (x) => x): Line => {
+    const s = short === true ? shortLine(t) : "";
+    return { key, text: wrap(t), ...(s && s !== t.replace(/\s+/g, " ").trim() ? { short: wrap(s) } : {}) };
+  };
   const w = m.walk;
   if (w) {
     // While a lesson is on, only the lesson speaks (its ring's caption says nearly the same thing).
-    if (w.stage === "step" || w.stage === "asking") return w.say ? { key: `walk:${w.id}:${w.index}:${w.variant}`, text: keysIn(w.say, k) } : null;
+    if (w.stage === "step" || w.stage === "asking") return w.say ? step(`walk:${w.id}:${w.index}:${w.variant}`, keysIn(w.say, k)) : null;
     // After a pause: the step, then the question. Its own key, so "No, show me" says the step again as a step to do.
-    if (w.stage === "already") return w.say ? { key: `walk:${w.id}:${w.index}:already`, text: `${keysIn(w.say, k)} ${S.lessonAlready}` } : null;
+    if (w.stage === "already") return w.say ? step(`walk:${w.id}:${w.index}:already`, keysIn(w.say, k), (x) => `${x} ${S.lessonAlready}`) : null;
     if (w.stage === "help" && w.note) return { key: `walk:${w.id}:${w.index}:help`, text: keysIn(w.note, k) };
     if (w.stage === "done") return { key: `walk:${w.id}:done`, text: S.lessonDone };
     return null;
@@ -32,10 +42,68 @@ export function lineFor(m: { walk: Walk; showme: ShowMe }, k: Keys = keysNow(), 
   const seq = typeof s.of === "number" && s.of > 1 && typeof s.step === "number";
   const key = `show:${s.req ?? ""}:${s.stage}${seq ? `:${s.step}` : ""}`;
   const lead = seq ? { delayMs: leadMs(pace) } : {};
-  if (s.stage === "pointing") return { key, text: s.message, ...lead };
-  if (s.stage === "pointing_roughly") return { key, text: `I think it is here. ${s.message}`, ...lead };
+  if (s.stage === "pointing") return { ...step(key, s.message), ...lead };
+  if (s.stage === "pointing_roughly") return { ...step(key, s.message, (x) => `I think it is here. ${x}`), ...lead };
   if (["not_sure", "needs_permission", "error", "window_changed"].includes(s.stage)) return { key, text: s.message };
   return null;
+}
+
+/** The words to say for a line, once speakWhen has said it is said: the whole line when it is said as a whole answer
+ *  (Answer out loud, to a question asked by voice; with Speak to me off that is the only way a line is said), otherwise
+ *  the short line when there is one (Speak to me with Say steps short on). */
+export const wordsToSay = (line: Line, when: { say: boolean; whole: boolean }): string => (when.whole || !line.short ? line.text : line.short);
+
+// ---- Say steps short, one at a time (talk.shortSteps) ----
+// A step is cut only at the end of a sentence, never inside one, and only when its first sentence says what to do and
+// every sentence after it is explanation. Lesson writers put warnings, keys and second actions in later sentences
+// ("If unsure, choose Private.", "Do not paste it anywhere else."), so any of those keeps the whole step.
+/** Words that open what to do, after a lead in such as Then or Now. */
+const ACTIONS = new Set([
+  "click", "double", "double-click", "right", "right-click", "press", "tap", "open", "choose", "select", "pick", "type", "enter", "paste", "copy",
+  "drag", "drop", "scroll", "go", "run", "sign", "log", "look", "find", "refresh", "reload", "leave", "keep", "use", "turn", "switch", "set", "save",
+  "close", "wait", "check", "read", "add", "make", "hold", "put", "move", "hover", "download", "install", "restart", "start", "stop", "quit", "return",
+  "follow", "visit", "share", "send", "delete", "remove", "rename", "allow", "accept", "confirm", "unpack", "unzip", "connect", "create", "fill",
+  "write", "change", "edit", "name", "mark", "release", "unlock", "lock", "enable", "disable", "expand", "collapse", "view", "show", "hide", "try",
+  "retry", "upload", "attach", "search", "zoom", "apply", "insert", "format", "resize", "crop", "give", "tick", "untick", "uncheck", "toggle",
+  "export", "import", "print", "draw", "filter", "let", "ask", "answer", "tell", "reply", "swipe", "highlight", "place", "invite", "join", "do", "dont",
+  "skip", "pause", "resume", "play", "sort", "pin", "unpin", "duplicate", "undo", "redo", "cut", "fix", "publish", "redeploy", "deploy", "push", "commit",
+]);
+/** Words that may come before the action ("Then click OK."). */
+const LEADS = new Set(["then", "now", "next", "first", "finally", "also", "and", "so", "just"]);
+/** Words that make a later sentence part of the step, never explanation: a warning, a limit, a condition, a check, or a
+ *  question the app will put to the person ("Mail asks whether to apply it"). */
+const KEEP = /\b(?:asks|whether|not|no|never|only|must|cannot|live|public|private|secret|secrets|password|passwords|key|keys|unsure|sure|careful|confirm|safe|warning|important|wait|before|after|until|unless|if|when|otherwise|instead|or)\b|n't\b/i;
+/** Key names as the app writes them (keys.ts): a sentence that names one is never left out. */
+const KEY_NAMES = /\b(?:Command|Control|Option|Shift|Return|Enter|Escape|Esc|Tab|Space|Fn|Delete)\b/;
+/** The ends of sentences: a stop after a word (never a lone dot, as in "git add ."), then a space and a new sentence. */
+const SENTENCE_END = /(?<=[^\s][.!?])\s+(?=["'(A-Z0-9])/;
+const word = (w: string | undefined) => (w ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+/** The sentence's first word after any lead in. */
+function opening(s: string): string {
+  const ws = s.replace(/^[^A-Za-z]+/, "").split(" ");
+  let i = 0;
+  while (i < ws.length - 1 && LEADS.has(word(ws[i]))) i++;
+  return word(ws[i]);
+}
+/** Whether a sentence says something to do: it opens with an action, or one follows a comma, a colon, "and", "then",
+ *  "or" or "so" ("In Companion, choose Open from a link"). */
+function asksToDo(s: string): boolean {
+  if (ACTIONS.has(opening(s))) return true;
+  for (const m of s.matchAll(/(?:[,;:]\s+|\s(?:and|then|or|so)\s+)((?:(?:then|now|next|first|finally|also|so|and|just)\s+)*)([A-Za-z-]+)/gi)) if (ACTIONS.has(word(m[2]))) return true;
+  return false;
+}
+/** A step as one short spoken line: its first sentence, when that says what to do (it opens with an action and is not a
+ *  question) and every sentence after it is only explanation (nothing to do, no warning, condition or limit, no key, no
+ *  question). Otherwise the whole step, however long: a sentence is never cut. Only ever shorter than the words given, so
+ *  it always fits in the step's time (sequence.ts lineMs). */
+export function shortLine(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const [first, ...rest] = t.split(SENTENCE_END);
+  if (!rest.length) return t;
+  if (/\?\s*$/.test(first) || !ACTIONS.has(opening(first))) return t;
+  if (rest.some((s) => asksToDo(s) || KEEP.test(s) || s.includes("?") || KEY_NAMES.test(s))) return t;
+  return first;
 }
 
 // ---- Also say out loud (speak.alsoSay in Settings; nothing more unless chosen) ----

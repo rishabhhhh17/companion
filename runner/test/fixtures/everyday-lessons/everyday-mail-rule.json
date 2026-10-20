@@ -1,0 +1,70 @@
+{
+  "id": "everyday-mail-rule",
+  "title": "Make a mail rule",
+  "app": "Mail",
+  "goal": "Make a rule that moves emails from one sender into a mailbox",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "settings",
+      "say": "Open the Mail menu at the top left and choose Settings.",
+      "find": "the Mail menu in the menu bar",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "rules",
+      "say": "Click Rules at the top of the Settings window.",
+      "find": "the Rules tab",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "add",
+      "say": "Click Add Rule.",
+      "find": "the Add Rule button",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "name",
+      "say": "Type a name for the rule in the Description box.",
+      "find": "the Description box",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "when",
+      "say": "Set the condition to From contains, then type the sender's address.",
+      "find": "the first condition menus",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "then",
+      "say": "Set the action to Move Message, then pick the mailbox.",
+      "find": "the action menus under Perform the following actions",
+      "check": {
+        "kind": "ask"
+      },
+      "instead": {
+        "say": "If the menus are hidden, make the window bigger so the actions show.",
+        "find": "the bottom edge of the rule window"
+      }
+    },
+    {
+      "id": "ok",
+      "say": "Click OK. Mail asks whether to apply it to messages you already have.",
+      "find": "the OK button",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

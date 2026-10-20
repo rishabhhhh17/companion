@@ -1,0 +1,31 @@
+/* Shared look for the synthetic everyday app windows (mail, calendar, settings, files, spreadsheet, word processor, slides,
+   design, photo editor). Made up content only, local files only; never a real app's artwork or a real person's data. */
+:root { --bg: #ececec; --panel: #ffffff; --side: #f3f3f5; --line: #d9d9de; --text: #1d1d1f; --muted: #6e6e73; --accent: #0a64d6; --sel: #dbe7fb; --dark: #2b2b2e; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+button { font: inherit; padding: 4px 9px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--text); cursor: pointer; }
+button.tb { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 8px; font-size: 11px; color: var(--muted); }
+button.tb .i { font-size: 16px; color: var(--text); }
+button.on, a.on { background: var(--sel); }
+button.primary { background: var(--accent); color: #fff; }
+button.box { border-color: var(--line); background: var(--panel); }
+a { color: var(--text); text-decoration: none; }
+input, select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.win { margin: 0; height: 100vh; display: flex; flex-direction: column; background: var(--panel); }
+.title { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--side); }
+.lights { display: flex; gap: 7px; margin-right: 10px; } .lights span { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; display: inline-block; }
+.lights span:nth-child(2) { background: #febc2e; } .lights span:nth-child(3) { background: #28c840; }
+.title .name { font-weight: 600; margin-right: 12px; }
+.title .grow { flex: 1; }
+.body { flex: 1; display: flex; min-height: 0; }
+.side { width: 200px; padding: 10px 8px; background: var(--side); border-right: 1px solid var(--line); overflow: hidden; }
+.side h4 { margin: 10px 8px 4px; font-size: 11px; color: var(--muted); font-weight: 600; }
+.side a { display: block; padding: 4px 8px; border-radius: 6px; }
+.main { flex: 1; min-width: 0; padding: 12px 16px; overflow: hidden; }
+.right { width: 250px; padding: 12px; border-left: 1px solid var(--line); background: var(--side); overflow: hidden; }
+.row { display: flex; gap: 6px; align-items: center; }
+.muted { color: var(--muted); }
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; }
+.canvas { background: #f5f5f7; border: 1px solid var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; }

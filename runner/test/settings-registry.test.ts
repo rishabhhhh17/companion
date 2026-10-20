@@ -50,6 +50,8 @@ describe("the shipped list of settings", () => {
       "point.fixWith": "rescue",
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
       "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
+      // Everyday apps: the tutor for everyday apps and short spoken steps are off until turned on, so every answer is as today.
+      "showme.everydayTutor": false, "talk.shortSteps": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

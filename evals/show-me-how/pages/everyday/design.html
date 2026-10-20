@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Bakery app · Sketchboard</title><link rel="stylesheet" href="everyday.css"></head>
+<body><div class="win">
+<div class="title"><span class="lights"><span></span><span></span><span></span></span>
+  <span class="row"><button aria-label="Move" class="on">➤</button><button aria-label="Frame">#</button><button aria-label="Rectangle" data-eval-target="tool-rect">▢</button><button aria-label="Ellipse">◯</button><button aria-label="Pen">✒</button><button aria-label="Text">T</button><button aria-label="Hand">✋</button><button aria-label="Comment">💬</button></span>
+  <span class="grow"></span><span class="name">Bakery poster</span><span class="grow"></span>
+  <button aria-label="Present">▶</button><button class="primary" data-eval-target="share">Share</button>
+</div>
+<div class="body">
+  <aside class="side">
+    <div class="row" style="margin-bottom:6px"><button class="box on">Layers</button><button class="box">Assets</button></div>
+    <a href="#" class="on">Poster</a><a href="#">  Title</a><a href="#">  Price tag</a><a href="#">  Bread photo</a><a href="#">  Background</a>
+  </aside>
+  <main class="main" style="background:#e5e5ea;display:flex;align-items:center;justify-content:center">
+    <div class="canvas" style="width:360px;height:480px;background:#fff8ee;flex-direction:column;gap:14px">
+      <div style="font-size:30px;font-weight:700">Fresh bread</div>
+      <div style="width:140px;height:60px;background:#f4a259;border-radius:8px;outline:2px solid var(--accent)"></div>
+      <div class="muted">Every morning from 7</div>
+    </div>
+  </main>
+  <aside class="right">
+    <div class="row" style="margin-bottom:10px"><button class="box on">Design</button><button class="box">Prototype</button></div>
+    <div class="muted" style="margin-bottom:4px">Layer</div>
+    <div class="row" style="margin-bottom:12px"><select style="flex:1"><option>Pass through</option></select><input value="100%" style="width:60px" aria-label="Opacity"></div>
+    <div class="row" style="margin-bottom:4px"><span class="muted" style="flex:1">Fill</span><button aria-label="Add fill">＋</button></div>
+    <div class="row" style="margin-bottom:12px"><button class="box" aria-label="Fill colour" data-eval-target="fill" style="width:28px;height:22px;background:#f4a259"></button><input value="F4A259" style="width:90px" aria-label="Hex value"></div>
+    <div class="row" style="margin-bottom:4px"><span class="muted" style="flex:1">Stroke</span><button aria-label="Add stroke">＋</button></div>
+    <div class="row" style="margin-bottom:4px;margin-top:12px"><span class="muted" style="flex:1">Effects</span><button aria-label="Add effect">＋</button></div>
+    <div class="row" style="margin-bottom:4px;margin-top:12px"><span class="muted" style="flex:1">Export</span><button aria-label="Add export setting">＋</button></div>
+    <button class="box" style="width:100%;margin-top:8px" data-eval-target="export">Export Price tag</button>
+  </aside>
+</div>
+</div></body></html>

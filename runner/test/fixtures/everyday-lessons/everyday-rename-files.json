@@ -1,0 +1,50 @@
+{
+  "id": "everyday-rename-files",
+  "title": "Rename many files at once",
+  "app": "Finder",
+  "goal": "Give a group of files the same name with a number",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "select",
+      "say": "Select the files you want to rename.",
+      "find": "the files in the Finder window",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "menu",
+      "say": "Control click one of them and choose Rename.",
+      "find": "one of the selected files",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "format",
+      "say": "In the first menu, choose Format.",
+      "find": "the first menu in the Rename window",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "name",
+      "say": "Type the new name in the Custom Format box.",
+      "find": "the Custom Format box",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "go",
+      "say": "Click Rename.",
+      "find": "the Rename button",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

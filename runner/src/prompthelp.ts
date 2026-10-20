@@ -109,7 +109,7 @@ export function wordDiff(a: string, b: string): [string, string][] {
 
 export type Kind = "claude_code" | "chat" | "app_builder" | "other";
 export type Adapter = { kind: Kind; guidance: string; handback: "paste" | "copy" };
-const TERMINALS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
+export const TERMINALS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 const GUIDANCE: Record<Kind, string> = {
   claude_code: "This prompt goes to a coding agent in a terminal. Name the files or areas involved, say how to check the work (run the tests, open the page), and keep it a short, direct task.",
   chat: "This goes to a chat assistant. State the goal, the background, the format wanted and any limits, in plain sentences.",
