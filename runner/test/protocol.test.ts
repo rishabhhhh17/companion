@@ -173,6 +173,13 @@ describe("teaching from the change", () => {
     expect(e({ ...receipt, repeat: { first: at, was: "a", now: "b" } })).toBe(false);
     expect(e({ ...receipt, repeat: { first: at, second: at, was: "a" } })).toBe(false);
   });
+  test("a receipt may say how the task ended and the mode it ran in, and only with known words", () => {
+    for (const ended of ["done", "needs_you", "stopped", "failed"]) expect(e({ ...receipt, ended })).toBe(true);
+    for (const mode of ["drive", "rescue", "research", "ship"]) expect(e({ ...receipt, mode })).toBe(true);
+    expect(e(receipt)).toBe(true);
+    expect(e({ ...receipt, ended: "finished" })).toBe(false);
+    expect(e({ ...receipt, mode: "chat" })).toBe(false);
+  });
   test("an explanation for a Drive step names the step", () => {
     const x = { type: "explain.ready", agent: "a", checkpoint: "cp_1", bullets: ["Why."], usdEstimate: 0.001 };
     expect(e({ ...x, step: { index: 2, title: "Add the form" } })).toBe(true);

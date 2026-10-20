@@ -431,6 +431,7 @@ export const SEEN_MS = 5 * 60_000;
 
 export class AssistService {
   private active = new Map<string, AbortController>();
+  private kind = new Map<string, "guide" | "voice">();   // whose question each one in flight is: Show me is Guide, Prompt help is Voice
   private n = 0;
   // The spreadsheet error the last first look read, with a few plain words read beside it, in memory only: a look again says
   // Fixed only when the same place is read again (everyday.ts sameView). Forgotten on Stop everything.
@@ -447,6 +448,12 @@ export class AssistService {
 
   // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
   cancelAll() { for (const ac of this.active.values()) ac.abort(); this.o.images.clear(); this.seen = null; }
+  /** A group was switched off (F20): only its own questions are dropped. Guide: the questions about the screen and any
+   *  screenshot still held. Voice: Prompt help. */
+  cancel(group: "guide" | "voice") {
+    for (const [req, ac] of this.active) if (this.kind.get(req) === group) ac.abort();
+    if (group === "guide") this.o.images.clear();
+  }
 
   async handle(cmd: Command): Promise<void> {
     if (cmd.type === "assist.cancel") { this.active.get(cmd.req)?.abort(); return; }
@@ -470,7 +477,7 @@ export class AssistService {
     if (this.o.spend && this.o.spend.room(cmd.project) <= 0) return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED });
     const book = (usd: number) => { try { this.o.spend?.book(cmd.project, usd); } catch { /* booking never breaks Prompt help */ } };
     const ac = new AbortController();
-    this.active.set(cmd.req, ac);
+    this.active.set(cmd.req, ac); this.kind.set(cmd.req, "voice");
     try {
       // Code, links, commands and error text are set aside first, so they come back exactly as they were.
       const { masked, spans } = protect(cmd.text);
@@ -507,7 +514,7 @@ export class AssistService {
       // Prompt help has no Try again, so it says to ask again.
       const msg = String((e as Error).message ?? e);
       this.emit({ type: "assist.error", req: cmd.req, reason: ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not improve the prompt (${msg})` });
-    } finally { this.active.delete(cmd.req); }
+    } finally { this.active.delete(cmd.req); this.kind.delete(cmd.req); }
   }
 
   private async locate(cmd: Extract<Command, { type: "assist.locate" }>) {
@@ -526,7 +533,7 @@ export class AssistService {
     // An everyday look has its own instructions (everyday.ts) and never the tutor's; the shell sends it no app id.
     if (cmd.mode === "everyday" || cmd.mode === "recheck") return this.everyday(cmd, { ...img, w: cmd.image.w, h: cmd.image.h }, screens, cmd.mode, dropAll);
     const ac = new AbortController();
-    this.active.set(cmd.req, ac);
+    this.active.set(cmd.req, ac); this.kind.set(cmd.req, "guide");
     // A question about the screen that has not been answered in half a minute is not coming; the person is told, not left waiting.
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
     let timedOut = false;
@@ -547,7 +554,7 @@ export class AssistService {
     } finally {
       clearTimeout(timer);
       dropAll();   // every screenshot is dropped as soon as it has been used
-      this.active.delete(cmd.req);
+      this.active.delete(cmd.req); this.kind.delete(cmd.req);
     }
   }
 
@@ -557,7 +564,7 @@ export class AssistService {
   // its words are right even when Claude cannot answer; Claude's own different diagnosis is never replaced.
   private async everyday(cmd: Extract<Command, { type: "assist.locate" }>, image: Image, screens: Screen[], mode: "everyday" | "recheck", dropAll: () => void) {
     const ac = new AbortController();
-    this.active.set(cmd.req, ac);
+    this.active.set(cmd.req, ac); this.kind.set(cmd.req, "guide");
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
     const ocr = cmd.ocr ?? [];
@@ -572,7 +579,7 @@ export class AssistService {
       answer = parseEveryday(got.text, pictures);
       if (!answer) failure = "No clear answer came back";
     } catch (e) { failure = String((e as Error).message ?? e); }
-    finally { clearTimeout(timer); dropAll(); this.active.delete(cmd.req); }
+    finally { clearTimeout(timer); dropAll(); this.active.delete(cmd.req); this.kind.delete(cmd.req); }
     if (ac.signal.aborted && !timedOut) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
     const failed = (what: string) => this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `${what} (${failure})` });
     const base = { req: cmd.req, mode, usdEstimate: round(cost) };

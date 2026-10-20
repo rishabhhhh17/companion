@@ -24,6 +24,7 @@ import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
 import { Warmer } from "./warm.ts";
 import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
+import { groupsOff, newlyOff, refusal, stopGroupWork } from "./groups.ts";
 import { slowFactor } from "./proof/options.ts";
 
 const SDK_VERSION = "0.3.293";
@@ -77,13 +78,26 @@ const survive = (what: string) => (e: unknown) => { try { say({ type: "protocol.
 process.on("unhandledRejection", survive("unhandledRejection"));
 process.on("uncaughtException", survive("uncaughtException"));
 
+/** A group that has just been switched off stops its tools here: Flow ends the tasks and checks that are running, Guide the
+ *  lessons and Show me, Voice what Prompt help and the error explainer were reading. (The shell stops its own: the
+ *  microphone, speech, the pointer, a conversion.) What they made stays, and Undo of it still works. */
+function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, browser, assist }); }
+
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
   // The settings line from the shell: each value checked again, names (never values) in the answer.
-  if (cmd.type === "settings.apply") { say({ type: "settings.applied", ...runnerSettings.apply(cmd) }); return; }
+  if (cmd.type === "settings.apply") {
+    const before = groupsOff((k) => runnerSettings.get(k));
+    say({ type: "settings.applied", ...runnerSettings.apply(cmd) });
+    stopGroups(newlyOff(before, groupsOff((k) => runnerSettings.get(k))));
+    return;
+  }
+  // A tool whose group is switched off does nothing (F20): the shell refuses it first, and this is the second check.
+  const off = refusal((k) => runnerSettings.get(k), cmd);
+  if (off) { say({ type: "protocol.error", reason: off, line: cmd.type }); return; }
   // Home opened or the ask box got the keyboard: read the Claude binary through once (nothing is run or sent). How long it
   // took goes to the log, never anything else.
   if (cmd.type === "engine.warm") { void warmer.warm().then((r) => { if (r.read) process.stderr.write(`warm: read the Claude binary (${Math.round(r.bytes / 1048576)} MB) in ${r.ms} ms\n`); }); return; }

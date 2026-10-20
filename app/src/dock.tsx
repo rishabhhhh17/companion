@@ -10,6 +10,8 @@ import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./
 import { S } from "./strings.ts";
 import { startSettings, useSetting } from "./settingsStore.ts";
 import { DropRing, useDrop } from "./dropRing.tsx";
+import { activeGroup, groupLook, groupOn } from "./groups.ts";
+import { running } from "./dropmenu.ts";
 import "./style.css";
 
 function Dock() {
@@ -56,6 +58,10 @@ function Dock() {
   // also carries the island's mark (home.ts characterShows); its own lights for the screen and the microphone stay.
   const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);
   const label = characterWords(m);
+  // The group at work and its named look, as data for the founder's art (F20 item 4): Flow is water, clearer when the checks
+  // pass and murkier when they fail. Only names on the element; the art decides what they look like, and the reduced motion
+  // rules above still apply to every motion.
+  const look = groupLook(m, activeGroup(m, running(drop.s)) ?? (groupOn("flow") && (m.receipt || m.character === "error") ? "flow" : null), running(drop.s));
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
   // A click opens or closes the card; dragging moves the character to any edge or corner of the screen.
@@ -75,7 +81,7 @@ function Dock() {
   };
   return (
     <main className="dock">
-      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-react={react?.r}
+      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}

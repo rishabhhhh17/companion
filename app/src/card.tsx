@@ -25,6 +25,7 @@ import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
@@ -55,17 +56,17 @@ const composing = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.key
 // (`text`), so hold to talk can put spoken words into it (heardGoesTo, askbox.ts); Esc empties it first, and only an empty
 // box lets Esc close Home as before.
 // answer: the task ended on a question, so what is typed (or spoken) here is the answer to it.
-function FollowUpBox({ project, retry, sending, text, setText, listening, onSent, answer }: { project: string; retry: boolean; sending: boolean; text: string; setText: (t: string) => void; listening: boolean; onSent: (words: boolean) => void; answer?: boolean }) {
+function FollowUpBox({ project, retry, sending, text, setText, listening, onSent, onRefused, answer }: { project: string; retry: boolean; sending: boolean; text: string; setText: (t: string) => void; listening: boolean; onSent: (words: boolean) => void; onRefused: (e: unknown) => void; answer?: boolean }) {
   const sendIt = () => {
     const c = followUp(project, text);
     if (!c || sending) return;
-    onSent(true); void send(c); setText("");
+    onSent(true); void send(c).catch(onRefused); setText("");
   };
   return (
     <div className="followup">
       {retry && (
         <div className="row">
-          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)); }}>{S.tryAgain}</button>
+          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
           <span className="muted">{S.tryAgainHelp}</span>
         </div>
       )}
@@ -273,8 +274,27 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 
 function Card() {
   const [m, dispatch] = useModel();
+  // A command of a tool whose group is switched off is refused with one plain line (the shell, then the engine). The line is
+  // shown, and whatever waiting state the press had set is closed, so nothing stays on "checking", "fixing" or "asking".
+  const explainRefusal = (e: unknown) => { const line = refusalNotice(e); if (line) dispatch({ type: "app.notice", message: line }); };
+  const sendOrExplain = (cmd: unknown, closed?: () => void): Promise<void> => send(cmd).then(() => undefined, (e) => { closed?.(); explainRefusal(e); });
   // The model as it is now, for callbacks set up once (a click elsewhere, a practice button pressed after a change).
   const nowModel = useRef(m); nowModel.current = m;
+  // Groups of tools (F20): re-draws when a group is switched; the buttons of a group that is off are not drawn.
+  const groups = useGroups();
+  // The first real use of a tool is kept on this Mac (tried, groups.tried), only from what the engine reports, and only once.
+  // A follow up's task is told apart from a new one by the press that started it.
+  const followPending = useRef(false);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string } | null;
+      const used = usedBy(ev, { followUp: followPending.current, walk: !!nowModel.current.walk });
+      followPending.current = followPendingAfter(ev, followPending.current);
+      const done = triedList();
+      for (const tool of used) if (!done.includes(tool)) void invoke("tried_mark", { tool }).catch(() => {});
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   // The keys every job uses now (keymap.rs keeps them): every line on the card that names a key is filled from them.
   const keys = useKeys();
   useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, []);
@@ -560,13 +580,17 @@ function Card() {
     const e = practiceOf(nowModel.current.practice?.kind);
     if (!e || !project) return;
     if (e.find === "gate") { void send(checkShip(project)); return; }
-    pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project));
+    // The check is Point at the problem (Flow): with Flow off nothing is sent and the panel never waits on it.
+    if (!toolOn("findProblem")) return;
+    pressed(); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.pointClosed" }));
   };
   // The practice's own fix (Fix it with me on Learn, and Point at the problem's Fix it in a practice copy): one small checked
   // task named for its practice. Like the Point panel's own Fix it, it takes the ring off and closes that panel.
   const practiceFix = (pr: Practice) => {
+    // The fix is a task (Flow): with Flow off nothing is sent and the panel never waits on it.
+    if (!toolOn("drive")) return;
     pressed(); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.practiceFixing" });
-    void send(fixFound(pr.project, { label: pr.label, detail: pr.where?.message ?? pr.why, problem: pr.problem }, { practice: pr.kind }));
+    void sendOrExplain(fixFound(pr.project, { label: pr.label, detail: pr.where?.message ?? pr.why, problem: pr.problem }, { practice: pr.kind }), () => dispatch({ type: "ui.practiceFixRefused" }));
   };
   const resumedKey = useRef("");
   const quietFind = useRef("");   // the project whose next Find answer is not pointed at (a copy opened again)
@@ -584,7 +608,8 @@ function Card() {
     const pr = m.practice, e = practiceOf(pr?.kind);
     if (pr?.stage !== "proving" || pr.project !== project || !e) return;
     if (e.prove === "gate") void send(checkShip(project));
-    else { pressed(); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }
+    else if (!toolOn("findProblem")) dispatch({ type: "ui.practiceStopProving" });   // Flow was switched off: the checks cannot run, and the panel says so
+    else { pressed(); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.practiceStopProving" })); }
   }, [m.practice?.stage]);
   // Each stage counts once in the beta numbers (only if they are on), and found and done go in the shell's record.
   const practiceWas = useRef<Practice | null>(null);
@@ -709,10 +734,10 @@ function Card() {
   const askedId = useRef("");
   useEffect(() => { if (!m.diagram) asked.current = false; }, [m.diagram]);
   const drawIt = (question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }) => {
-    if (!projectRef.current || asked.current) return;
+    if (!projectRef.current || asked.current || !toolOn("explain")) return;
     const cmd = askDiagram(projectRef.current, question, problem);
     asked.current = true; askedId.current = (cmd as { id: string }).id; dispatch({ type: "ui.diagramAsked", ask: (cmd as { id: string }).id, project: projectRef.current });
-    void send(cmd);
+    void sendOrExplain(cmd, () => { asked.current = false; dispatch({ type: "ui.diagramClosed" }); });
   };
   useEffect(() => {
     const off = listen("runner-event", (e) => {
@@ -832,7 +857,7 @@ function Card() {
       // The key works in any app (everyday.ts): with no project, or with an app in front that is not a code tool, it looks
       // at the screen instead (point.everyday, on unless turned off; off, exactly as before). Only the kind of app in
       // front is known, never its id.
-      const route = heroRoute({ everyday: setting("point.everyday"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current });
+      const route = heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current });
       // One press, counted once: the key, and an anywhere use (the project route counts a builder use).
       if (route === "screen") { count("hero_press"); count("anywhere_use"); latest.current.lookEveryday(); return; }
       if (route === "noProject") { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
@@ -840,7 +865,7 @@ function Card() {
       // would end the running check's panel (and a practice's own checks) before the real answer came.
       if (nowModel.current.point?.stage === "checking") { homeDispatch({ type: "pick", tab: "now" }); return; }
       dispatch({ type: "ui.findProblem" }); homeDispatch({ type: "pick", tab: "now" }); count("hero_press"); count("builder_use");
-      void send(findProblem(projectRef.current));
+      void sendOrExplain(findProblem(projectRef.current), () => dispatch({ type: "ui.pointClosed" }));
     });
     const offFound = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; verdict?: string; problem?: Problem; project?: string };
@@ -1103,6 +1128,9 @@ function Card() {
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (!prompt || !project) return;
+    // A task is Flow's. With Flow off the words stay in the box and the box says why, instead of bouncing silently (the ask
+    // box is core, so it stays; Enter and hold to talk both come through here).
+    if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
     // The engine checks what goes with the request again and refuses all of it if anything is off. That check runs here
     // first, so a request it would refuse is never sent, and nothing is cleared.
     const added = forRequest(attachedNow.current);
@@ -1110,26 +1138,28 @@ function Card() {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
     sent.current = { prompt, attached: attachedNow.current, off };
-    void send(startTask(project, prompt, off, added)).catch(() => putBackSent()); setOff(offRecordAtStart());
+    void send(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
     clearBox(); clearAttached();
   };
   // The words from hold to talk send through this, so they always go with the current folder and settings.
   const submitNow = useRef(submit); submitNow.current = submit;
   // The follow up box under a finished task's receipt: shown, sent, and sent by itself from hold to talk (auto send on).
-  followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project);
+  followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project) && groups.on("followUp");
   useEffect(() => { if (!(canFollowUp(m, project) || m.followUp === "sending")) { setFollowText(""); followFromVoice.current = false; } }, [canFollowUp(m, project) || m.followUp === "sending"]);
   // A follow up asked by voice is answered out loud like any spoken question (Answer out loud); a typed one is not.
   // Try again is always a press, whatever words wait in the box.
-  const followSent = (words: boolean) => { followWords.current = words ? followTextNow.current : null; if (words && followFromVoice.current) voiceAsked.current = { kind: "task", at: Date.now() }; else pressed(); followFromVoice.current = false; dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); };
+  const followSent = (words: boolean) => { followWords.current = words ? followTextNow.current : null; if (words && followFromVoice.current) voiceAsked.current = { kind: "task", at: Date.now() }; else pressed(); followFromVoice.current = false; dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.followUpSent" }); followPending.current = true; };
+  // A follow up the shell refused never began: the next new task is not a follow up, and the box is free again.
+  const followRefused = (e: unknown) => { followPending.current = false; dispatch({ type: "ui.followUpRefused" }); explainRefusal(e); };
   const sendFollowNow = useRef(() => {});
   sendFollowNow.current = () => {
     const c = followUp(project, followText);
     if (!c || m.followUp === "sending" || !followShown.current) return;
-    followSent(true); void send(c); setFollowText("");
+    followSent(true); void send(c).catch(followRefused); setFollowText("");
   };
 
   // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
-  const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void send(findBreakingTask(project)); };
+  const findBreaker = () => { if (!project || !canBisect(m)) return; dispatch({ type: "ui.bisectAsked" }); void sendOrExplain(findBreakingTask(project), () => dispatch({ type: "ui.bisectClosed" })); };
   const rescue = () => {
     if (!project) return;
     pressed();
@@ -1251,7 +1281,7 @@ function Card() {
         </section>
       )}
       {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} />}
-      {show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
+      {groups.groupOn("guide") && show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
         const pr = m.practice!, entry = practiceOf(pr.kind)!;
         return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}
           nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={practiceNote} next={pr.stage === "done" ? nextPractice(practiceRec, pr.kind) : null}
@@ -1278,12 +1308,13 @@ function Card() {
             back: () => { const to = backTo(pr.previous, recent, practiceRec); dispatch({ type: "ui.practiceClosed" }); if (to) useFolder(to); else pickFolder(); },
           }} />;
       })()}
-      {show("practice") && (
+      {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
+      {groups.groupOn("guide") && show("practice") && (
         <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
           openId={m.practice && m.practice.project === project ? m.practice.kind : null}
           act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} />
       )}
-      {show("lessons") && !m.walk && (
+      {groups.groupOn("guide") && show("lessons") && !m.walk && (
         <section className="panel" role="status" aria-label={S.lessonsTitle}>
           <h2>{S.lessonsTitle}</h2>
           {lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID).length === 0 && <div className="line">{S.lessonsNone}</div>}
@@ -1302,7 +1333,7 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => pickTab("now")}>{S.pointClose}</button></div>
         </section>
       )}
-      {show("walk") && m.walk && (
+      {groups.groupOn("guide") && show("walk") && m.walk && (
         <section className={`panel ${m.walk.stage === "help" ? "amber" : ""}`} role="status" aria-label={S.lessonsTitle}>
           <h2>{m.walk.title}</h2>
           {m.walk.stage === "done" && <div className="line">{S.lessonDone}</div>}
@@ -1392,6 +1423,7 @@ function Card() {
         {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
       </div>
       <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
+      {(() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
       {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
       {dragging && <div className="line" role="status">{S.attachDrop}</div>}
       {attached.length > 0 && (
@@ -1411,17 +1443,17 @@ function Card() {
       {attached.length === 0 && <div className="line muted">{S.attachHint}</div>}
       {!working && (
         <div className="row">
-          <button className="btn primary" type="button" onClick={submit}>{S.start}</button>
-          <button className="btn" type="button" onClick={plan}>{S.planIt}</button>
-          <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>
-          <button className="btn" type="button" onClick={research}>{S.researchIt}</button>
-          <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>
-          <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>
-          <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>
-          <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>
+          {buttonShown("start") && <button className="btn primary" type="button" onClick={submit}>{S.start}</button>}
+          {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
+          {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
+          {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
+          {buttonShown("shipCheck") && <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>}
+          {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
+          {buttonShown("showMe") && <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>}
+          {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
         </div>
       )}
-      {!working && (
+      {!working && buttonShown("autoSend") && (
         <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
       )}
       {!working && (
@@ -1613,7 +1645,7 @@ function Card() {
           ))}
           {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
           {notDoneReason(m) && !isFixing(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
-          {canBisect(m) && project && <div className="row"><button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button></div>}
+          {canBisect(m) && project && buttonShown("whichTask") && <div className="row"><button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button></div>}
         </section>
       )}
 
@@ -1664,8 +1696,8 @@ function Card() {
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
           {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
-          {(canFollowUp(m, project) || m.followUp === "sending") && (
-            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent}
+          {groups.on("followUp") && (canFollowUp(m, project) || m.followUp === "sending") && (
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent} onRefused={followRefused}
               text={followText} setText={(t) => { setFollowText(t); if (!t) followFromVoice.current = false; }}
               listening={m.voice?.stage === "listening" && overReceipt.current && setting("talk.followUpByPointing") === true}
               answer={!!m.receipt.asks && !undone} />
@@ -1743,10 +1775,10 @@ function Card() {
                 // and the problem is one line (point.fixWith).
                 const route = pointFixRoute(setting("point.fixWith"), pt.problem, nowModel.current.practice, project);
                 if (route === "practice") practiceFix(nowModel.current.practice!);
-                else if (route === "smallFix") { pressed(); dispatch({ type: "ui.undoClosed" }); void send(fixFound(project, { label: pt.label, detail: pt.message, problem: pt.problem })); }
+                else if (route === "smallFix") { pressed(); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(project, { label: pt.label, detail: pt.message, problem: pt.problem })); }
                 else void send(diagnose(project));
               }}>{S.pointFix}</button>}
-              {m.point.stage === "found" && canBisect(m) && project && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
+              {m.point.stage === "found" && canBisect(m) && project && buttonShown("whichTask") && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               {/* The project's checks found nothing wrong: the problem may be in another app, so the screen can be looked at (point.everyday). */}
               {["clear", "gaps", "nothing"].includes(m.point.stage) && everydayOn && <button className="btn" type="button" onClick={() => { pressed(); putAside(m.point?.agent); dispatch({ type: "ui.pointClosed" }); lookEveryday(); }}>{S.everydayLookInstead}</button>}
               <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
@@ -1778,7 +1810,7 @@ function Card() {
             </>}
             {/* With no step shown yet: Show me the steps, a fresh everyday look (never a look again, so it cannot say fixed before anything was done). After that: Check it is fixed looks again, and points at the next step when it is not. */}
             {(() => { const act = mainAction(ed, !!walk, lastWalk.current?.steps.length ?? 0); return act && <button className="btn primary" type="button" onClick={() => { if (act === "steps") { pressed(); lookEveryday(everydayStepsAsk(ed.problem)); } else checkEveryday(); }}>{act === "steps" ? S.everydaySteps : S.everydayCheck}</button>; })()}
-            {ed.stage === "none" && project && <button className="btn" type="button" onClick={() => { pressed(); dispatch({ type: "ui.everydayClosed" }); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.everydayCheckProject}</button>}
+            {ed.stage === "none" && project && buttonShown("findProblem") && <button className="btn" type="button" onClick={() => { pressed(); dispatch({ type: "ui.everydayClosed" }); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.pointClosed" })); }}>{S.everydayCheckProject}</button>}
             <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); dispatch({ type: "ui.everydayClosed" }); }}>{S.pointClose}</button>
           </div>
         </section>

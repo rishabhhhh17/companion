@@ -173,12 +173,12 @@ describe("following up by voice", () => {
     const closed = main.slice(main.indexOf("fn home_closed()"), main.indexOf("\n}\n", main.indexOf("fn home_closed()")));
     expect(closed).toContain('if let Some(a) = APP.get() {');
     expect(closed).toContain('let _ = a.emit_to("card", "closed", json!({}));');
-    expect(card).toContain('followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project);');
+    expect(card).toContain('followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project) && groups.on("followUp");');
   });
   test("a follow up sent by itself goes through the same checks as the Send button", () => {
     const now = card.slice(card.indexOf("sendFollowNow.current = () => {"), card.indexOf("};", card.indexOf("sendFollowNow.current = () => {")));
     expect(now).toContain("followUp(project, followText)");
     expect(now).toContain('m.followUp === "sending" || !followShown.current');
-    expect(now).toContain("followSent(true); void send(c);");
+    expect(now).toContain("followSent(true); void send(c).catch(followRefused);");
   });
 });

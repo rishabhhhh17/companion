@@ -52,6 +52,7 @@ mod wheel;
 mod everyday;
 mod presentation;
 mod settings;
+mod groups;
 mod convert;
 mod homeset;
 mod houserules;
@@ -1033,7 +1034,85 @@ fn setting_applied(app: &AppHandle, key: &str) {
     let off = |k: &str| with_settings(|s| settings::value_of(settings::registry(), &s.file, k, None)) == Some(json!(false));
     // Speak to me or Answer out loud turned off: silence at once.
     if (key == "talk.speak" || key == "talk.speakReplies") && off(key) { speech_off(app); }
+    // A group was switched (F20): its keys are let go or taken again, and a group just switched off stops its tools.
+    if groups::is_switch(key) { groups_applied(app); }
     home_setting_applied(app, key);
+}
+
+// ---------- Groups of tools (F20, M12; the catalog and its rules are in groups.rs) ----------
+
+/// Is this group switch (a settings key) off? Read from settings.json as every shell setting is.
+fn group_off(key: &str) -> bool { setting_now(key) == json!(false) }
+/// The switches that are off now, one bit each in the catalog's order.
+fn groups_mask() -> u32 {
+    groups::catalog().switches().iter().enumerate().fold(0u32, |m, (i, k)| if group_off(k) { m | (1 << i) } else { m })
+}
+
+/// The shell refuses a command of a tool whose group is switched off with one plain line, before it runs
+/// (`invoke_handler` below asks this for every command a page sends).
+fn group_refusal(command: &str) -> Option<&'static str> { groups::refuse_command(&group_off, command) }
+
+/// A group was switched on or off, or put back by Reset. Main thread (settings commands are sync). A job of a group that
+/// is off gives its keys back through the key map, the choice stays saved; switched on again, the keys are taken again
+/// (the keys in use, else the picked then the usual ones, the same two tries as at launch). A group that has just been
+/// switched off also stops what it was doing here: hold to talk and speech, a Prompt help or error result, a pointer on the
+/// screen, a conversion. (The engine stops its own work when it is given the switch, runner/src/groups.ts.)
+fn groups_applied(app: &AppHandle) {
+    let (was, now) = (GROUPS_OFF.swap(groups_mask(), Ordering::SeqCst), GROUPS_OFF.load(Ordering::SeqCst));
+    {
+        let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+        let gs = app.global_shortcut();
+        for a in keymap::ACTIONS {
+            let (held_now, held_before) = (groups::hotkey_held(&group_off, a.id()), key_held(a));
+            if held_now == held_before { continue; }
+            if held_now {
+                // Let go of what is registered for the job, then mark it held (so nothing registers it again meanwhile).
+                if let Some(c) = key_registered(a) { let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()); }
+                KEYS_HELD[a.index()].store(true, Ordering::SeqCst);
+                if a == keymap::Action::Accept && ACCEPT_ARMED.swap(false, Ordering::SeqCst) { let _ = gs.unregister(sc_esc()); }
+                log("keys_held", json!({ "action": a.id() }));
+            } else {
+                KEYS_HELD[a.index()].store(false, Ordering::SeqCst);
+                // Use a suggestion's keys are taken only while a result shows; the others are registered now.
+                if keymap::registered_on_return(a) {
+                    let got = keymap::arm(a, key_using(a), &keys_picked(), |c| gs.register(keymap::shortcut(c)).is_ok());
+                    set_key_using(a, got);
+                    log("keys_back", json!({ "action": a.id(), "id": got.map(keymap::id) }));
+                }
+            }
+        }
+    }
+    let bit = |g: &str| groups::catalog().switches().iter().position(|k| *k == format!("{g}.on")).map_or(0, |i| 1u32 << i);
+    let newly_off = now & !was;
+    if newly_off & bit("voice") != 0 {
+        TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset();
+        voice_send(app, VoiceMsg::Cancel);
+        speech_off(app);
+        phelp::dismiss(app);
+        errhelp::dismiss(app);
+    }
+    if newly_off & bit("guide") != 0 { showme_stop(app); }
+    if newly_off & bit("files") != 0 { drop_stop_all(); }
+    if now != was { log("groups_applied", json!({ "off": now })); }
+}
+
+/// A real use of a tool, kept on this Mac: its id goes in the tried list (groups.tried) once. Only a tool that can be
+/// tried, whose group is on, and not yet listed (groups::tried_after). Only ids are kept, never what was done.
+fn mark_tried(app: &AppHandle, tool: &str) {
+    let current: Vec<String> = match setting_now("groups.tried") { Value::Array(a) => a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect(), _ => vec![] };
+    let Some(next) = groups::tried_after(&current, tool, &group_off) else { return };
+    if setting_change(app, "groups.tried", &json!(next), None).is_ok() { log("tool_tried", json!({ "tool": tool })); settings_told(app, &["groups.tried".to_string()]); }
+}
+
+/// Home says it saw a tool really used (a finished task, a Show me answer, a check that ran): the tool's id is kept as tried.
+/// Only from Home, and only a tool a page can see used (the catalog's "page"); hold to talk, spoken answers, a conversion
+/// and a practice are noted by the shell itself where they happen.
+#[tauri::command]
+fn tried_mark(app: AppHandle, window: tauri::WebviewWindow, tool: String) -> Result<(), String> {
+    settings::only_card(window.label())?;
+    if !groups::page_may_mark(&tool) { return Err("unknown".into()); }
+    mark_tried(&app, &tool);
+    Ok(())
 }
 
 /// Puts one setting, a section or everything back to its usual value, in every store. Never a protective setting in a
@@ -1154,6 +1233,8 @@ fn arm_now(app: &AppHandle, on: bool) {
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
     let accept = keymap::Action::Accept;
+    // Prompt help is in Voice: with that group off no result is ever armed (its commands are refused too).
+    if on && key_held(accept) { return; }
     if on {
         let gen = ARMED.fetch_add(1, Ordering::SeqCst) + 1;
         // The keys in use, else the picked then the usual ones (keymap::arm), so keys another app held at launch work once
@@ -1262,6 +1343,8 @@ fn click_log(app: &AppHandle, label: &str, n: u64) {
 fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
     runner::check_command(&cmd)?;
     runner::check_project(&cmd, &current_project())?;
+    // A tool whose group is switched off does nothing (groups.rs): one plain line, and the engine is not even asked.
+    if let Some(line) = groups::refuse_runner(&group_off, &cmd) { return Err(line.into()); }
     app.state::<runner::Runner>().send(&cmd)
 }
 
@@ -1933,6 +2016,7 @@ fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Opti
     log("speak", json!({ "chars": line.chars().count(), "whole": whole == Some(true) }));   // how long, never what
     let set = voice_now();
     let _ = app.run_on_main_thread(move || speak::mac::say(&line, set.voice.as_ref(), set.speed));
+    if whole.is_some() { mark_tried(&app, "speak"); }   // an answer really said out loud; the voice sample in Settings sends no `whole`, so trying a voice is not a use
     Ok(json!({ "said": true }))
 }
 
@@ -2182,13 +2266,15 @@ fn practice_list() -> Value {
 
 /// The practice open now reached a stage ("found" or "done"). Only counts for its own recorded copy, open as the project.
 #[tauri::command]
-fn practice_mark(window: tauri::WebviewWindow, which: String, stage: String) -> Result<(), String> {
+fn practice_mark(app: AppHandle, window: tauri::WebviewWindow, which: String, stage: String) -> Result<(), String> {
     settings::only_card(window.label())?;   // only Home, on the person's press
     let e = practice::pick(Some(&which))?;
     let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
     let (mut r, _) = practice_record();
     if !r.mark(&e.id, &stage, &today(), std::path::Path::new(&current_project())) { return Err("That practice is not the project open now.".into()); }
-    save_practice(&r)
+    let saved = save_practice(&r);
+    if saved.is_ok() && stage == "done" { mark_tried(&app, "practice"); }   // a practice finished
+    saved
 }
 
 /// Continue: opens a practice's recorded copy as the project (it may have left the recent list).
@@ -2587,6 +2673,13 @@ fn open_link(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
 static KEYS_USING: [AtomicU32; keymap::N] = [const { AtomicU32::new(keymap::NONE) }; keymap::N];
 /// What the person picked (saved on this Mac in keys.json), the usual keys until they pick.
 static KEYS_PICKED: Mutex<keymap::Map> = Mutex::new(keymap::Map::DEFAULT);
+/// Jobs held back because their group is switched off (groups.rs, F20): their keys are let go through the key map so other
+/// apps may use them, and what the person picked stays saved. Never Stop everything or the ask box.
+static KEYS_HELD: [AtomicBool; keymap::N] = [const { AtomicBool::new(false) }; keymap::N];
+fn key_held(a: keymap::Action) -> bool { KEYS_HELD[a.index()].load(Ordering::SeqCst) }
+/// Which groups were off when they were last applied (one bit for each switch, in the catalog's order), so only a group
+/// that has just been switched off stops what it was doing.
+static GROUPS_OFF: AtomicU32 = AtomicU32::new(0);
 /// One change or check at a time. Taken only on the main thread (the commands and arm_now run there), never while the
 /// hotkey handler runs, and nothing that holds it waits for the main thread.
 static KEYS_SWITCH: Mutex<()> = Mutex::new(());
@@ -2601,7 +2694,9 @@ fn set_key_using(a: keymap::Action, c: Option<keymap::Chord>) { KEYS_USING[a.ind
 fn keys_using() -> keymap::Using { keymap::ACTIONS.map(key_using) }
 fn keys_picked() -> keymap::Map { *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) }
 /// What is registered for a job right now: use a suggestion only while a Prompt help result shows.
-fn key_registered(a: keymap::Action) -> Option<keymap::Chord> { keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)) }
+fn key_registered(a: keymap::Action) -> Option<keymap::Chord> { keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)).filter(|_| !key_held(a)) }
+/// Whether a job's keys stay registered once they work: not use a suggestion's outside a result, and not a job whose group is off.
+fn key_keep(a: keymap::Action, armed: bool) -> bool { keymap::keep_registered_in(a, armed, key_held(a)) }
 /// Every other job's keys, in use and picked: Companion's own, never offered to this job and never touched for it.
 fn key_others(a: keymap::Action, picked: &keymap::Map) -> Vec<(keymap::Action, keymap::Chord)> {
     keymap::others(a, &keys_using(), picked)
@@ -2634,7 +2729,11 @@ fn start_keys(app: &AppHandle) -> KeysLaunch {
     let (picked, damaged) = keymap::parse(saved.as_deref(), old_talk.as_deref());
     let gs = app.global_shortcut();
     // Use a suggestion's keys are let go again at once (keymap::keep_registered): they are taken only for a result.
-    let started = keymap::start(&picked,
+    // A job whose group is switched off is tried and let go at once, like use a suggestion (groups.rs).
+    let mut held = [false; keymap::N];
+    for a in keymap::ACTIONS { held[a.index()] = groups::hotkey_held(&group_off, a.id()); KEYS_HELD[a.index()].store(held[a.index()], Ordering::SeqCst); }
+    GROUPS_OFF.store(groups_mask(), Ordering::SeqCst);
+    let started = keymap::start_held(&picked, &held,
         |_, c| gs.register(keymap::shortcut(c)).is_ok(),
         |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
     *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = picked;
@@ -2642,7 +2741,10 @@ fn start_keys(app: &AppHandle) -> KeysLaunch {
     if damaged { let _ = save_keys(&picked); }
     let without: Vec<&str> = keymap::ACTIONS.iter().filter(|a| started[a.index()].using().is_none()).map(|a| a.id()).collect();
     log("keys", json!({ "changed": keymap::to_json(&picked)["keys"], "damaged": damaged, "without": without }));
-    KeysLaunch { started, damaged }
+    // The launch notice speaks only of jobs that are meant to work: a job whose group is off is not "taken" by anyone.
+    let mut shown = started;
+    for a in keymap::ACTIONS { if held[a.index()] { shown[a.index()] = keymap::Started::Ready(started[a.index()].picked()); } }
+    KeysLaunch { started: shown, damaged }
 }
 
 /// Settings and the first run: the keys every job uses now (none when another app holds them) and the ones picked.
@@ -2675,7 +2777,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let (picked, before, was) = (keys_picked(), key_registered(a), key_using(a));
     let gs = app.global_shortcut();
-    let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));
+    let keep = key_keep(a, ACCEPT_ARMED.load(Ordering::SeqCst));
     let r = keymap::switch(a, wanted, before, keep, &picked, &key_others(a, &picked),
         |c| gs.register(keymap::shortcut(c)).is_ok(),
         save_keys,
@@ -2710,7 +2812,7 @@ fn keys_to_usual(app: &AppHandle) -> Result<Value, &'static str> {
     let registered = keymap::ACTIONS.map(key_registered);
     let armed = ACCEPT_ARMED.load(Ordering::SeqCst);
     let gs = app.global_shortcut();
-    let r = keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),
+    let r = keymap::reset(&picked, &using, &registered, |a| key_keep(a, armed),
         |c| gs.register(keymap::shortcut(c)).is_ok(),
         save_keys,
         |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
@@ -2741,7 +2843,7 @@ fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
         let (picked, want) = (keys_picked(), wanted.get(a));
         if picked.get(a) == want { continue; }
         let (before, was) = (key_registered(a), key_using(a));
-        let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));
+        let keep = key_keep(a, ACCEPT_ARMED.load(Ordering::SeqCst));
         match keymap::switch(a, want, before, keep, &picked, &key_others(a, &picked), |c| gs.register(keymap::shortcut(c)).is_ok(), save_keys, |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())) {
             Ok(next) => {
                 *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
@@ -2946,7 +3048,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                     // Only the word list written back is not what the person said (voicewords::is_echo).
                                     Ok(text) if voicewords::is_echo(&text, &words) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     // The language picked in Settings goes with the words: the page sends by itself only in English for now.
-                                    Ok(text) if !text.is_empty() => { mic["text"] = json!(text); mic["language"] = json!(voice_now().language); say_voice(&app, "heard", "", mic) }
+                                    Ok(text) if !text.is_empty() => { mic["text"] = json!(text); mic["language"] = json!(voice_now().language); say_voice(&app, "heard", "", mic); mark_tried(&app, "talk") }
                                     Ok(_) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     Err(e) => say_voice(&app, "error", &e, mic),
                                 }
@@ -3107,7 +3209,7 @@ static WEBP: OnceLock<bool> = OnceLock::new();
 fn drop_now_lock() -> std::sync::MutexGuard<'static, Option<DropNow>> { DROP.lock().unwrap_or_else(|e| e.into_inner()) }
 
 /// Drop a file on the character to convert it (drop.on, usual on).
-fn drop_on() -> bool { setting_now("drop.on") != json!(false) }
+fn drop_on() -> bool { setting_now("drop.on") != json!(false) && !group_off("files.on") }
 /// Whether sips on this Mac can write WebP (asked once, the first time a picture is dropped).
 fn webp_writable() -> bool {
     *WEBP.get_or_init(|| std::process::Command::new("/usr/bin/sips").arg("--formats").env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output()
@@ -3224,6 +3326,8 @@ fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: Stri
         let ended = convert::run(&units, &work, &dest, &job, &tell);
         // What was made is named even when the job was stopped or failed part way, so the person can find it.
         let end = convert::end_news(id, &ended);
+        // Files really made: the first use of Convert a file.
+        if !ended.made.is_empty() { mark_tried(&app, "convert"); }
         log("drop_job_ended", json!({ "action": action, "made": ended.made.len(), "skipped": ended.skipped, "ended": end["phase"], "why": end["why"] }));
         if let Some(d) = drop_now_lock().as_mut().filter(|d| d.id == id) { d.running = None; d.made = ended.made; d.job = Some(end.clone()); }
         let _ = app.emit("drop-job", end);
@@ -3348,7 +3452,14 @@ fn main() {
                 .build(),
         )
         .manage(runner::Runner::new())
-        .invoke_handler(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim])
+        .invoke_handler({
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark]);
+            move |invoke: tauri::ipc::Invoke| {
+                // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
+                if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
+                handler(invoke)
+            }
+        })
         .setup(move |app| {
             log("launch", json!({}));
             let mtm = MainThreadMarker::new().unwrap();

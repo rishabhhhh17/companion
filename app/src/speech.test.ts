@@ -258,7 +258,7 @@ describe("answers in another project", () => {
     const sent = card.slice(card.indexOf("const followSent = "), card.indexOf("\n", card.indexOf("const followSent = ")));
     expect(sent).toMatch(/if \(words && followFromVoice\.current\) voiceAsked\.current = \{ kind: "task", at: Date\.now\(\) \}; else pressed\(\);/);
     const box = card.slice(card.indexOf("function FollowUpBox("), card.indexOf("function ExplainBox("));
-    expect(box).toContain("onSent(false); void send(retryTask(project));");
+    expect(box).toContain("onSent(false); void send(retryTask(project)).catch(onRefused);");
     expect(card).toMatch(/setText=\{\(t\) => \{ setFollowText\(t\); if \(!t\) followFromVoice\.current = false; \}\}/);
     const fix = card.split("\n").find((l) => l.includes("send(fixError("))!;
     expect(fix).toContain("pressed();");

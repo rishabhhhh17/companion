@@ -208,7 +208,7 @@ describe("the island says what is next", () => {
   test("the island page hears of an update from the shell, and asks for nothing new", () => {
     const page = read("./island.tsx");
     expect(page).toContain('listen("update-ready"');
-    expect(page).toContain("islandLine(m, { update })");
+    expect(page).toContain("islandLine(m, { update, group:");
     const calls = [...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]);
     expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state"]));
     // The shell tells every window when a check finds (or no longer has) an update, and the island can ask on load.

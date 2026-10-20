@@ -13,9 +13,10 @@ export function offeredOptions(key: string, passed: readonly string[] = SMOKE_PA
   const job = Object.hasOwn(JOB, key) ? JOB[key] : undefined;
   return job ? offeredChoices(job, passed) : null;
 }
-/** The settings the Settings page shows and searches: every one, except a model row that could offer only one option. */
+/** The settings the Settings page shows and searches: every one, except a model row that could offer only one option and a
+ *  hidden one (the tools tried, set only by a real use, groups.ts). */
 export function shownSettings(settings: readonly Def[] = REGISTRY.settings, passed: readonly string[] = SMOKE_PASSED): Def[] {
-  return settings.filter((d) => { const o = offeredOptions(d.key, passed); return o === null || o.length > 1; });
+  return settings.filter((d) => !d.hidden && (() => { const o = offeredOptions(d.key, passed); return o === null || o.length > 1; })());
 }
 /** The model a page sends for a saved option (the usual one's for anything not offered yet, or not an option at all). */
 export const modelFor = (key: "model.work" | "model.rescue", value: unknown, passed: readonly string[] = SMOKE_PASSED): string => modelForChoice(JOB[key], value, passed);
