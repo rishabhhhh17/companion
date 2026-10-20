@@ -1,7 +1,7 @@
 // The engine's side of Watch routines and Where was I (F21): Where was I from the real task log, Rescue given the failing CI
 // run as evidence, and the project's own checks run for a watch with no model. Stand ins for the tools, no network.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
@@ -9,6 +9,7 @@ import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { RunnerSettings } from "../src/settings.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
+import { runPrint } from "../src/proof/approvedruns.ts";
 import type { CiLatest, CiReader } from "../src/connections.ts";
 import type { Event } from "../../protocol/index.ts";
 
@@ -20,7 +21,7 @@ const passed: LadderResult = { verdict: "passed", steps: [{ rung: "checks", labe
 const failed: LadderResult = { verdict: "failed", steps: [{ rung: "tests", label: "Running the tests", status: "failed", detail: "2 tests failed: cart total is wrong. password=hunter2hunter2", ms: 1 }] };
 const diag: Step = { text: JSON.stringify({ summary: "A shop.", works: ["It builds"], broken: "CI fails.", steps: ["Fix the test"] }), costUsd: 0.01 };
 
-function setup(o: { ladder?: LadderResult; ci?: CiReader; settings?: Record<string, unknown>; watches?: any[] } = {}) {
+function setup(o: { ladder?: LadderResult; ci?: CiReader; settings?: Record<string, unknown>; watches?: any[]; approve?: boolean } = {}) {
   const project = tmp("p");
   writeFileSync(join(project, "package.json"), JSON.stringify({ name: "shop", scripts: { build: "true" } }));
   const events: Event[] = [];
@@ -30,6 +31,8 @@ function setup(o: { ladder?: LadderResult; ci?: CiReader; settings?: Record<stri
   const ladderCalls: any[] = [];
   const engine = new ScriptedEngine([[diag]]);
   const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, settings, now: () => new Date(2026, 9, 22, 15), emit: (e) => events.push(e), proof: async (opts: any) => { ladderCalls.push(opts); return o.ladder ?? passed; }, ci: o.ci, watches: { forProject: () => o.watches ?? [] } });
+  // The person has already run something of their own here, so Companion has recorded the project's scripts as allowed.
+  if (o.approve !== false) (runner as any).approvals(project).add(runPrint({ "package.json": readFileSync(join(project, "package.json"), "utf8") }));
   return { project, events, log, runner, engine, ladderCalls };
 }
 const ci = (latest: CiLatest, text: string | null = "Failed: test, step \"Run tests\"\nThe end of its log:\nboom"): CiReader & { reads: number } => { const r = { reads: 0, latestRun: async () => { r.reads++; return latest; }, failureLog: async () => text }; return r; };
@@ -83,7 +86,12 @@ describe("Rescue is given the failing CI run", () => {
     const missing = ci({ state: "unknown", reason: "The GitHub tool (gh) is not installed. Install it from cli.github.com, then sign in with: gh auth login" });
     const b = setup({ ci: missing });
     await b.runner.handle({ v: 1, id: "r", type: "rescue.diagnose", project: b.project, agent: "r1", model: "m", budgetUsd: 5 } as never);
-    expect(of(b.events, "rescue.report")[0].evidence.find((x: any) => x.label === "Your latest GitHub run").detail).toMatch(/gh auth login/);
+    // A tool that is missing or not signed in says nothing about the project: skipped, never failed.
+    const item = of(b.events, "rescue.report")[0].evidence.find((x: any) => x.label === "Your latest GitHub run");
+    expect(item.detail).toMatch(/gh auth login/);
+    expect(item.status).toBe("skipped");
+    const prompt = JSON.stringify(b.engine.calls[0]);
+    expect(prompt).not.toMatch(/GitHub run: failed/i);
     const off = ci(failingRun);
     const c = setup({ ci: off, settings: { "rescue.readCiRun": false } });
     await c.runner.handle({ v: 1, id: "r", type: "rescue.diagnose", project: c.project, agent: "r1", model: "m", budgetUsd: 5 } as never);
@@ -107,6 +115,56 @@ describe("the project's own checks for a watch", () => {
     expect(await run(n)).toMatchObject({ outcome: "unknown" });
     const g = setup({ ladder: { verdict: "passed_with_gaps", steps: passed.steps, gaps: ["The browser check could not run."] } });
     expect(await run(g)).toMatchObject({ outcome: "ok" });
+  });
+  test("it takes no checkpoint, so a check every few minutes leaves nothing in the list of things to undo", async () => {
+    const s = setup();
+    for (let i = 0; i < 3; i++) await run(s);
+    expect(await (s.runner as any).store(s.project).list()).toHaveLength(0);
+    expect(s.events.some((e) => e.type === "checkpoint.created")).toBe(false);
+    expect(s.ladderCalls[0].beforeId).toBe("live");
+    // what the checks read is the folder as it is now, and nothing else
+    const files = await s.ladderCalls[0].store.readFiles("live", () => true);
+    expect(Object.keys(files)).toEqual(["package.json"]);
+  });
+  test("it builds and tests only: it never starts the project, and its commands end with Companion", async () => {
+    const s = setup();
+    await run(s);
+    expect(s.ladderCalls[0].noServer).toBe(true);
+    // what the ladder runs goes through a wrapper that makes each command end with Companion (exec.ts endWithUs)
+    const wrapped = s.ladderCalls[0].run as (c: string, o: any) => Promise<{ code: number | null }>;
+    expect(typeof wrapped).toBe("function");
+    expect((await wrapped("true", { cwd: s.project, timeoutMs: 5000 })).code).toBe(0);
+  });
+  test("a project nobody has allowed Companion to run is not run: it says so, once, in the watch", async () => {
+    const s = setup({ approve: false });
+    const r = await run(s);
+    expect(r).toMatchObject({ outcome: "unknown", reason: expect.stringMatching(/not been allowed to run this project's scripts/) });
+    expect(s.ladderCalls).toHaveLength(0);
+    // the scripts changed since the person last allowed them: still nothing runs
+    (s.runner as any).approvals(s.project).add(runPrint({ "package.json": "{}" }));
+    expect(await run(s)).toMatchObject({ outcome: "unknown" });
+    expect(s.ladderCalls).toHaveLength(0);
+    writeFileSync(join(s.project, "package.json"), "{}");
+    expect(await run(s)).toMatchObject({ outcome: "ok" });
+    expect(s.ladderCalls).toHaveLength(1);
+  });
+  test("the person's own work comes first: a slow check never holds the project, it ends and is tried again", async () => {
+    const s = setup();
+    let seen: AbortSignal | undefined;
+    let n = 0;
+    (s.runner as any).o.proof = async (opts: any) => {
+      if (n++ === 0) { seen = opts.signal; await new Promise<void>((res) => opts.signal.addEventListener("abort", () => res(), { once: true })); return { verdict: "cancelled", steps: [] }; }
+      return passed;
+    };
+    const slow = run(s);
+    for (let i = 0; i < 100 && !seen; i++) await Bun.sleep(5);
+    expect(seen).toBeDefined();
+    // Point at the problem is refused while something else works, and is not refused for a watch's check
+    await s.runner.handle({ v: 1, id: "p", type: "problem.find", project: s.project, agent: "f1" } as never);
+    expect(seen!.aborted).toBe(true);
+    expect(await slow).toMatchObject({ skip: expect.stringMatching(/came first/) });
+    expect(of(s.events, "protocol.error").some((e) => /already working/.test(e.reason))).toBe(false);
+    expect(of(s.events, "problem.found")[0].verdict).not.toBe("cancelled");
   });
   test("a stop says nothing about the project, and a task at work on the folder is not judged half way", async () => {
     const s = setup({ ladder: { verdict: "cancelled", steps: [] } });

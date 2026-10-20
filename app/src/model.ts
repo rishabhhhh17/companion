@@ -555,6 +555,8 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "watch.evidence": {
       if (typeof e.watch !== "string" || typeof e.project !== "string" || typeof e.text !== "string" || m.watchAsked !== e.watch) return m;
+      // Stopped or too slow: nothing was gathered. The page stops waiting, and no task starts.
+      if (e.stopped === true) return { ...m, watchAsked: null };
       return { ...m, watchFix: { project: e.project, watch: e.watch, kind: e.kind, ...(typeof e.target === "string" ? { target: e.target } : {}), text: redact(e.text) } };
     }
     case "ui.watchAsked": return { ...m, watchAsked: typeof e.watch === "string" ? e.watch : null };

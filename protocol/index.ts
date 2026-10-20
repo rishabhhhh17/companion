@@ -295,7 +295,8 @@ export type WatchStateEvent = Envelope & { type: "watch.state" } & WatchView;
 export type WatchListEvent = Envelope & { type: "watch.list"; project: string; watches: WatchView[] };
 // One alert when a watch goes from fine to failing, and one when it is fine again. Never repeated while it stays the same.
 export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watch: string; what: "failing" | "recovered"; kind: WatchKind; target?: string; reason: string; since: string };
-export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string };
+// stopped: it was stopped or took too long, so text is only the watch's own reason; the page stops waiting and starts nothing.
+export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
 export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
 export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
 export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
@@ -462,7 +463,7 @@ const EVENTS: Record<string, Check[]> = {
   "watch.state": [str("project"), str("watch"), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("schedule"), oneOf("state", [...WATCH_STATES]), str("since"), str("reason"), bool("checking"), list("history")],
   "watch.list": [str("project"), list("watches")],
   "watch.alert": [str("project"), str("watch"), oneOf("what", ["failing", "recovered"]), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("reason"), str("since")],
-  "watch.evidence": [str("project"), str("watch"), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("text")],
+  "watch.evidence": [str("project"), str("watch"), oneOf("kind", [...WATCH_KINDS]), opt("target", str("target")), str("text"), opt("stopped", bool("stopped"))],
   "where.ready": [str("project"), list("lines"), (m) => (typeof m.next === "object" && m.next !== null && !Array.isArray(m.next) && oneOfNext((m.next as Record<string, unknown>)) ? null : '"next" must say what to do next')],
   "memory.agents_ask": [str("project"), list("files")],
   "memory.agents_written": [str("project"), list("files")],

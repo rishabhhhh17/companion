@@ -26,6 +26,12 @@ export function redact(text: string): string {
   for (const p of PATTERNS) out = out.replace(p, "[secret]");
   return out.replace(NAMED, (_m, name: string, sep: string) => `${name}${sep}[secret]`);
 }
+// Colour and cursor codes and carriage returns inside raw tool output. A secret split by one is not seen by redact, and joins up
+// again once the code is gone, so raw output is cleaned of them first and only then redacted (redactOutput).
+const TERMINAL = /\u001b\[[0-9;?]*[ -\/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
+export const stripTerminal = (text: string): string => text.replace(TERMINAL, "").replace(/\r/g, "");
+/** Raw output of a tool (a log, an error), cleaned of terminal codes and then of secrets. */
+export const redactOutput = (text: string): string => redact(stripTerminal(text));
 // Cut by whole characters, so an emoji is never split in half (half an emoji is not valid text).
 export const clip = (text: string, max: number): string => { const chars = Array.from(text); return chars.length <= max ? text : chars.slice(0, max).join(""); };
 export const label = (text: string, max = 120): string => clip(redact(text).replace(/\s+/g, " ").trim(), max);

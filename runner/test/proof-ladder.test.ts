@@ -49,6 +49,23 @@ describe("a healthy project reaches the end", () => {
   }, 90000);
 });
 
+describe("a watch's check (noServer)", () => {
+  test("it builds and tests, and never starts the project or opens a browser; a broken build still fails", async () => {
+    let started = 0;
+    const server = (async () => { started++; return { ok: false, reason: "no" }; }) as never;
+    const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ build: "sh -c 'exit 0'", test: "bun test", dev: "bun server.js" }), "server.js": SERVER(200), "a.test.ts": TESTS(1) }), {}, { noServer: true, server });
+    expect(started).toBe(0);
+    expect(result.verdict).toBe("passed");
+    expect(result.steps.map((s) => [s.rung, s.status])).toEqual([["install", "skipped"], ["checks", "passed"], ["tests", "passed"], ["start", "skipped"], ["browser", "skipped"]]);
+    const bad = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ build: "sh -c 'echo broke >&2; exit 1'", dev: "bun server.js" }), "server.js": SERVER(200) }), {}, { noServer: true, server });
+    expect(bad.result.verdict).toBe("failed");
+    expect(started).toBe(0);
+    // a project with nothing to build or test has nothing to check: it is not called fine
+    const none = await scenario({ "x.txt": "1" }, (d) => put(d, { "index.html": GOOD_PAGE }), {}, { noServer: true, server });
+    expect(none.result.verdict).toBe("nothing_to_check");
+  }, 90000);
+});
+
 describe("a broken project never reaches 'passed'", () => {
   test("a build that fails stops the ladder there, with the error text", async () => {
     const { result } = await scenario({ "x.txt": "1" }, (d) => put(d, { "package.json": pkg({ build: "sh -c 'echo build exploded >&2; exit 1'" }), "index.html": GOOD_PAGE }));

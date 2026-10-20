@@ -81,6 +81,15 @@ describe("what the model keeps", () => {
     expect(run([ev({ type: "ui.watchFixUsed" })], asked)).toMatchObject({ watchFix: null, watchAsked: null });
     expect(run([ev({ type: "ui.watchAsked", watch: "w_1" }), ev({ type: "watch.evidence", project: P, watch: "w_1", kind: "ci_status", text: "key sk-abcdefghijklmnopqrstuv" })]).watchFix!.text).not.toContain("sk-abcdefghijklmnopqrstuv");
   });
+  test("evidence marked stopped ends the wait and starts nothing, so the Fix it button never stays on 'reading'", () => {
+    const stopped = ev({ type: "watch.evidence", project: P, watch: "w_1", kind: "ci_status", text: "down", stopped: true });
+    const asked = run([ev({ type: "ui.watchAsked", watch: "w_1" })]);
+    expect(asked.watchAsked).toBe("w_1");
+    const after = run([stopped], asked);
+    expect(after).toMatchObject({ watchAsked: null, watchFix: null });
+    // a stopped answer for a watch that was not asked for changes nothing
+    expect(run([ev({ type: "ui.watchAsked", watch: "w_2" }), stopped]).watchAsked).toBe("w_2");
+  });
   test("Where was I keeps its lines and one next step; an unknown step is dropped, never guessed", () => {
     const ok = run([ev({ type: "where.ready", project: P, lines: ["a", "b"], next: { action: "fixWatch", watch: "w_1" } })]);
     expect(ok.recap).toEqual({ lines: ["a", "b"], next: { action: "fixWatch", watch: "w_1" } });

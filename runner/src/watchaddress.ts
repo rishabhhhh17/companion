@@ -6,6 +6,7 @@ import { isIP } from "node:net";
 
 export type Address = { ok: true; url: string; host: string; local: boolean } | { ok: false; reason: string };
 const MAX_LENGTH = 2000;
+export const QUERY_REFUSED = "Leave the part after the ? out of the address. Companion keeps watched addresses on this Mac and never keeps keys or passwords.";
 
 /** A host that is this Mac itself, typed by the person: localhost, 127.0.0.1, ::1, or a name ending in .localhost. */
 export function isLocalName(host: string): boolean {
@@ -14,36 +15,71 @@ export function isLocalName(host: string): boolean {
 }
 
 function v4(parts: number[]): boolean { return parts.length === 4 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255); }
-/** The reason an IP address (v4 or v6, as the URL parser writes it) is not for a public visit, or null when it is public. */
+
+/** The eight 16 bit groups of an IPv6 address (any spelling the URL parser or a lookup gives), or null when it is not one. */
+function groups6(a: string): number[] | null {
+  let t = a.split("%")[0];
+  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(t);
+  if (dotted) {
+    const p = dotted[2].split(".").map(Number);
+    if (!v4(p)) return null;
+    t = `${dotted[1]}${((p[0] << 8) | p[1]).toString(16)}:${((p[2] << 8) | p[3]).toString(16)}`;
+  }
+  const halves = t.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (halves.length === 1 && head.length !== 8) return null;
+  if (halves.length === 2 && head.length + tail.length > 7) return null;
+  const all = halves.length === 2 ? [...head, ...Array(8 - head.length - tail.length).fill("0"), ...tail] : head;
+  const g = all.map((h) => (/^[0-9a-f]{1,4}$/.test(h) ? parseInt(h, 16) : NaN));
+  return g.length === 8 && g.every((n) => Number.isInteger(n)) ? g : null;
+}
+const embedded = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+const UNUSABLE = "not a public address";
+
+/** The reason an IP address (v4 or v6, as the URL parser writes it) is not for a public visit, or null when it is public.
+ *  IPv6 forms that carry an IPv4 address inside (mapped, compatible, NAT64, 6to4) are judged by the address inside, and the
+ *  ranges that lead nowhere public (Teredo, site local, discard, documentation) are never visited. */
 export function privateReason(ip: string): string | null {
   const a = ip.toLowerCase().replace(/^\[|\]$/g, "");
   const kind = isIP(a);
   if (kind === 4) {
     const p = a.split(".").map(Number);
     if (!v4(p)) return "not a real address";
-    const [x, y] = p;
+    const [x, y, z] = p;
     if (x === 127) return "this Mac itself";
     if (x === 0) return "not a real address";
     if (x === 10 || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168)) return "a private network";
     if (x === 169 && y === 254) return "a link local address";
     if (x === 100 && y >= 64 && y <= 127) return "a private network";
-    if (x >= 224) return "not a public address";
+    if (x === 198 && (y === 18 || y === 19)) return "a private network";
+    if (x === 192 && y === 0 && (z === 0 || z === 2)) return UNUSABLE;
+    if (x === 192 && y === 88 && z === 99) return UNUSABLE;
+    if ((x === 198 && y === 51 && z === 100) || (x === 203 && y === 0 && z === 113)) return UNUSABLE;
+    if (x >= 224) return UNUSABLE;
     return null;
   }
   if (kind === 6) {
-    if (a === "::" || a === "::1") return "this Mac itself";
-    const mapped = /^(?:0:0:0:0:0:ffff:|::ffff:)(.+)$/.exec(a);
-    if (mapped) {
-      const rest = mapped[1];
-      if (rest.includes(".")) return privateReason(rest);
-      const hex = rest.split(":").map((h) => parseInt(h, 16));
-      if (hex.length === 2 && hex.every((n) => Number.isInteger(n))) return privateReason(`${hex[0] >> 8}.${hex[0] & 255}.${hex[1] >> 8}.${hex[1] & 255}`);
-      return "not a public address";
-    }
-    const first = parseInt(a.split(":")[0] || "0", 16);
-    if ((first & 0xfe00) === 0xfc00) return "a private network";
-    if ((first & 0xffc0) === 0xfe80) return "a link local address";
-    if ((first & 0xff00) === 0xff00) return "not a public address";
+    const g = groups6(a);
+    if (!g) return "not a real address";
+    if (g.every((n) => n === 0)) return "this Mac itself";
+    if (g.slice(0, 7).every((n) => n === 0) && g[7] === 1) return "this Mac itself";
+    const first96zero = g.slice(0, 6).every((n) => n === 0);
+    // ::ffff:a.b.c.d (mapped), ::ffff:0:a.b.c.d (translated) and 64:ff9b::a.b.c.d (NAT64): the address inside decides.
+    if (g.slice(0, 5).every((n) => n === 0) && g[5] === 0xffff) return privateReason(embedded(g[6], g[7]));
+    if (g.slice(0, 4).every((n) => n === 0) && g[4] === 0xffff && g[5] === 0) return privateReason(embedded(g[6], g[7]));
+    if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((n) => n === 0)) return privateReason(embedded(g[6], g[7]));
+    if (g[0] === 0x2002) return privateReason(embedded(g[1], g[2]));
+    // ::a.b.c.d (compatible), 64:ff9b:1::/48 (local NAT64), Teredo, site local, discard and documentation addresses.
+    if (first96zero) return UNUSABLE;
+    if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return UNUSABLE;
+    if (g[0] === 0x2001 && (g[1] === 0 || g[1] === 0xdb8)) return UNUSABLE;
+    if ((g[0] & 0xffc0) === 0xfec0) return UNUSABLE;
+    if (g[0] === 0x100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return UNUSABLE;
+    if ((g[0] & 0xfe00) === 0xfc00) return "a private network";
+    if ((g[0] & 0xffc0) === 0xfe80) return "a link local address";
+    if ((g[0] & 0xff00) === 0xff00) return UNUSABLE;
     return null;
   }
   return "not a real address";
@@ -74,6 +110,9 @@ export function parseTarget(text: string): Address {
   if (u.username || u.password) return { ok: false, reason: "Leave the user name and password out of the address. Companion never keeps passwords." };
   const host = u.hostname.toLowerCase();
   if (!host) return { ok: false, reason: "That does not look like a web address." };
+  // The address is kept on this Mac and shown in Companion, and a part after ? is where keys and tokens go. Companion keeps
+  // no secrets, so an address with one is refused rather than kept or quietly changed.
+  if (u.search) return { ok: false, reason: QUERY_REFUSED };
   // Local only when the person really typed localhost (or 127.0.0.1, or ::1): a number written another way (2130706433,
   // 0x7f000001) reads as this Mac itself after tidying, but it was not typed as localhost.
   const local = isLocalName(host) && isLocalName(typedHost(t));

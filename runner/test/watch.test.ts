@@ -102,6 +102,22 @@ describe("adding, listing, removing", () => {
     expect(r.engine.all()).toEqual([]);
     expect(existsSync(r.file)).toBe(false);
   });
+  test("an address with a part after ? is refused, and one saved earlier is kept without it, never in the file or an event", async () => {
+    const r = rig();
+    await r.cmd("watch.add", { kind: "site_up", target: "https://shop.example.com/health?k=abc123secretvalue", schedule: "15m" }); await r.settle();
+    expect(r.engine.all()).toHaveLength(0);
+    expect(ofType(r, "protocol.error").at(-1).reason).toMatch(/after the \?/);
+    const dir = tmp("q");
+    const file = join(dir, "watch.json");
+    const p = tmp("proj");
+    writeFileSync(file, JSON.stringify({ version: 1, watches: [{ id: "w_aaaaaaaaaa", project: p, kind: "site_up", target: "https://old.example.com/health?k=abc123secretvalue#frag", schedule: "15m", state: "ok", since: "2026-10-22T09:00:00.000Z", reason: "fine", lastCheckedAt: null, alerted: false, history: [], createdAt: "2026-10-22T09:00:00.000Z" }] }));
+    const q = rig({ file });
+    expect(q.engine.all()[0].target).toBe("https://old.example.com/health");
+    await q.engine.handle({ v: 1, id: "l", type: "watch.list", project: p } as never);
+    q.engine.tick(); await q.settle();
+    expect(JSON.stringify(q.events)).not.toContain("abc123secretvalue");
+    expect(readFileSync(file, "utf8")).not.toContain("abc123secretvalue");
+  });
   test("a typed localhost is fine for a dev server", async () => {
     const r = rig();
     r.script.site = [r.ok()];
@@ -275,6 +291,38 @@ describe("the schedule", () => {
     expect(r.calls).toHaveLength(2);
     r.clock.t += 15 * MIN; r.engine.tick(); await r.settle();
     expect(r.calls).toHaveLength(3);
+  });
+  test("a clock set back is not waited out: a check planned on the wrong clock is due again within one schedule", async () => {
+    const r = rig();
+    await addSite(r);
+    expect(r.calls).toHaveLength(1);
+    r.clock.t -= 24 * 60 * MIN;   // set back a day
+    r.engine.tick(); await r.settle();
+    expect(r.calls).toHaveLength(2);
+    for (let i = 0; i < 4; i++) { r.clock.t += 15 * MIN; r.engine.tick(); await r.settle(); }
+    expect(r.calls).toHaveLength(6);   // and every 15 minutes on the new clock, as before
+    // a daily watch whose clock goes back several hours is not left waiting until the next day after that
+    const d = rig();
+    await addSite(d, { schedule: "daily@9" });
+    d.clock.t = new Date(2026, 9, 22, 4, 0, 0).getTime();
+    d.engine.tick(); await d.settle();
+    expect(d.calls).toHaveLength(2);
+    // a small step back inside the schedule changes nothing
+    const q = rig();
+    await addSite(q);
+    q.clock.t -= 2 * MIN; q.engine.tick(); await q.settle();
+    expect(q.calls).toHaveLength(1);
+  });
+  test("a last check dated in the future (the clock was set back before the engine started) does not silence the watch", async () => {
+    const r = rig();
+    await addSite(r);
+    const file = JSON.parse(readFileSync(r.file, "utf8"));
+    file.watches[0].lastCheckedAt = new Date(START + 3 * 24 * 60 * MIN).toISOString();
+    writeFileSync(r.file, JSON.stringify(file));
+    const again = r.make();
+    r.clock.t += 31_000;
+    again.tick(); await again.idle(); await new Promise((x) => setTimeout(x, 2));
+    expect(r.calls).toHaveLength(2);
   });
   test("a daily watch runs at its hour, and once on wake if its hour passed asleep", async () => {
     const r = rig();
@@ -516,18 +564,43 @@ describe("Fix it from a failed watch", () => {
     expect(text).toContain("Tests did not pass");
     expect(text).not.toContain("hunter2hunter2");
   });
-  test("a Stop in the middle of gathering it sends nothing", async () => {
-    const dir = tmp("fix");
-    const events: any[] = [];
-    let release!: (t: string) => void;
+  const slow = (dir: string, events: any[], o: { fixMs?: number } = {}) => {
     const project = tmp("proj");
-    const e = new WatchEngine({ file: join(dir, "watch.json"), emit: (x) => events.push(x), get: (k) => defaultOf(k), checks: { site: async () => ({ outcome: "failing", reason: "down" }), deploy: async () => null, ci: async () => null, project: async () => null }, evidence: () => new Promise<string>((res) => { release = res; }), now: () => START, random: () => 0 });
+    const state: { release?: (t: string) => void; signal?: AbortSignal } = {};
+    const e = new WatchEngine({ file: join(dir, "watch.json"), emit: (x) => events.push(x), get: (k) => defaultOf(k), checks: { site: async () => ({ outcome: "failing", reason: "down password=hunter2hunter2" }), deploy: async () => null, ci: async () => null, project: async () => null }, evidence: (_w, sig) => new Promise<string>((res) => { state.release = res; state.signal = sig; }), now: () => START, random: () => 0, ...o });
+    return { e, project, state };
+  };
+  test("a Stop in the middle of gathering it still answers the page: no evidence, so nothing starts, and the watch's own words", async () => {
+    const events: any[] = [];
+    const { e, project, state } = slow(tmp("fix"), events);
     await e.handle({ v: 1, id: "a", type: "watch.add", project, kind: "site_up", target: "https://a.example.com", schedule: "15m" } as never);
     await e.idle(); await new Promise((x) => setTimeout(x, 2));
     const p = e.handle({ v: 1, id: "b", type: "watch.fix", project, watch: e.all()[0].id } as never);
     e.stopAll();
-    release("late evidence");
+    state.release?.("late evidence");
     await p;
-    expect(events.some((x) => x.type === "watch.evidence")).toBe(false);
+    const got = events.filter((x) => x.type === "watch.evidence");
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ stopped: true, watch: e.all()[0].id });
+    expect(got[0].text).not.toContain("late evidence");
+    expect(got[0].text).not.toContain("hunter2hunter2");
+    expect(parseEvent(JSON.stringify({ v: 1, id: "x", ...got[0] })).ok).toBe(true);
+    expect(state.signal?.aborted).toBe(true);
+  });
+  test("gathering that takes too long is stopped and answered the same way, so the button never stays on 'reading'", async () => {
+    const events: any[] = [];
+    const { e, project } = slow(tmp("fix"), events, { fixMs: 30 });
+    await e.handle({ v: 1, id: "a", type: "watch.add", project, kind: "site_up", target: "https://a.example.com", schedule: "15m" } as never);
+    await e.idle(); await new Promise((x) => setTimeout(x, 2));
+    await e.handle({ v: 1, id: "b", type: "watch.fix", project, watch: e.all()[0].id } as never);
+    expect(events.filter((x) => x.type === "watch.evidence")).toEqual([expect.objectContaining({ stopped: true })]);
+    expect(e.busy()).toBe(0);
+  });
+  test("evidence that arrives in time carries no stopped mark", async () => {
+    const r = rig();
+    r.script.ci = [r.bad("test failed")];
+    await r.cmd("watch.add", { kind: "ci_status", schedule: "15m" }); await r.settle();
+    await r.cmd("watch.fix", { watch: r.engine.all()[0].id }); await r.settle();
+    expect(ofType(r, "watch.evidence")[0].stopped).toBeUndefined();
   });
 });

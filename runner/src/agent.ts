@@ -20,7 +20,7 @@ import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse
 import { MODELS, usualModel } from "./models.ts";
 import { agentModesOf } from "./groups.ts";
 import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, LIMIT_REACHED, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
-import { clip, label as makeLabel, redact } from "./redact.ts";
+import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
 import { Ledger } from "./ledger.ts";
@@ -42,7 +42,8 @@ import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
-import { fileApprovals, type RunApprovals } from "./proof/approvedruns.ts";
+import { fileApprovals, RUN_FILES, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
+import { liveFiles } from "./proof/livefiles.ts";
 import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
@@ -83,7 +84,8 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // check and limits: what the person chose in Settings for checking this project, read when the task or check started.
 // askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
 // askScripts: the question for a task that changed the project's scripts or packages, on the same card and the same terms.
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean) => Promise<boolean>; approvals?: RunApprovals };
+// noServer, run: a watch builds and tests only, and its commands end with Companion (F21).
+export type ProofContext = { project: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; noServer?: boolean; run?: (command: string, o: RunOptions) => Promise<RunResult>; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean) => Promise<boolean>; approvals?: RunApprovals };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -375,29 +377,35 @@ export class AgentRunner {
     this.emit({ type: "where.ready", project: cmd.project, lines: r.lines, next: r.next } as never);
   }
 
-  /** The project's own checks with no model and nothing changed, for a watch: the proof ladder as Point at the problem runs
-   *  it (no installs). skip: something else is working on this folder, so a half finished project is not judged. */
+  /** The project's own build and tests with no model, nothing changed and nothing saved, for a watch: the proof ladder as
+   *  Point at the problem runs it (no installs), without starting the project. It runs only scripts the person has already
+   *  allowed (a check or a task of their own on this project recorded them), nowhere but this folder, ends with Companion,
+   *  and takes no checkpoint, so a check every few minutes leaves nothing in the list of things to undo. It never holds the
+   *  project: the person's own work on it comes first and ends the check (projectInUse), which is then tried again soon. */
   async checkWithoutModel(project: string, signal: AbortSignal): Promise<CheckResult | { skip: string } | null> {
-    if (this.finding.has(project) || this.projectInUse(project)) return { skip: "Companion is working on this project right now." };
-    const abort = new AbortController();
-    const stop = () => abort.abort();
+    const key = resolve(project);
+    if (this.finding.has(project) || this.workBlocks(project) || this.watchRuns.has(key)) return { skip: "Companion is working on this project right now." };
+    const run = { abort: new AbortController(), yielded: false };
+    const stop = () => run.abort.abort();
     signal.addEventListener("abort", stop, { once: true });
-    this.finding.set(project, { abort, agent: "watch", flow: true });
+    this.watchRuns.set(key, run);
     try {
-      const store = this.store(project);
-      const snap = await store.snapshot("Watch: the project as it was found");
+      const store = liveFiles(project);
+      const approvals = this.approvals(project);
+      const print = runPrint(await store.readFiles("live", (f) => (RUN_FILES as readonly string[]).includes(f)));
+      if (approvals.empty() || !approvals.has(print)) return { outcome: "unknown", reason: "Companion has not been allowed to run this project's scripts yet. Run Point at the problem or a task here once, and this watch will start checking." };
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: snap.id, afterId: snap.id, onStep: () => {}, signal: abort.signal, noInstall: true, ...this.checkFor(project), approvals: this.approvals(project) }); }
-      catch (e) { return { outcome: "unknown", reason: `The checker itself stopped (${clip(redact(String((e as Error).message ?? e)), 80)}).` }; }
-      if (abort.signal.aborted || res.verdict === "cancelled") return null;
+      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: true, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals }); }
+      catch (e) { return { outcome: "unknown", reason: `The checker itself stopped (${clip(redactOutput(String((e as Error).message ?? e)), 80)}).` }; }
+      if (run.abort.signal.aborted || res.verdict === "cancelled") return run.yielded && !signal.aborted ? { skip: "Your own work on this project came first." } : null;
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      if (res.verdict === "failed") return { outcome: "failing", reason: failed ? `${failed.label} did not pass: ${clip(redact(failed.detail).replace(/\s+/g, " ").trim(), 140)}` : "The project's checks did not pass." };
+      if (res.verdict === "failed") return { outcome: "failing", reason: failed ? `${failed.label} did not pass: ${clip(redactOutput(failed.detail).replace(/\s+/g, " ").trim(), 140)}` : "The project's checks did not pass." };
       if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: "There is nothing in this project that Companion can check yet." };
-      if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redact(res.gaps[0]), 120) : "Some could not run."}`.trim() };
+      if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
       return { outcome: "ok", reason: "All of the project's own checks passed." };
     } catch (e) {
-      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `Companion could not check the project (${clip(redact(String((e as Error).message ?? e)), 100)}).` };
-    } finally { signal.removeEventListener("abort", stop); this.finding.delete(project); }
+      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `Companion could not check the project (${clip(redactOutput(String((e as Error).message ?? e)), 100)}).` };
+    } finally { signal.removeEventListener("abort", stop); if (this.watchRuns.get(key) === run) this.watchRuns.delete(key); }
   }
 
   // Explain: asks the fast model why the task did what it did, from the real change. A problem here is never a problem for
@@ -562,6 +570,7 @@ export class AgentRunner {
     for (const p of this.picturing) if (this.owner.get(p) === group) p.abort();
     if (group !== "flow") return;
     for (const f of this.finding.values()) if (f.flow) f.abort.abort();
+    for (const w of this.watchRuns.values()) w.abort.abort();
     const modes = agentModesOf("flow");
     for (const a of new Set([...this.sessions.keys(), ...this.driving])) if (modes.has(this.modes.get(a) ?? "")) await this.handle({ v: PROTOCOL_VERSION, id: "group-off", type: "agent.interrupt", agent: a });
   }
@@ -620,7 +629,7 @@ export class AgentRunner {
         if (!running) this.release(cmd.agent);
         return;
       }
-      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const w of this.watchRuns.values()) w.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "spending.show": this.spendingState(cmd.project); return;
       case "spending.set": this.setDailyLimit(cmd); return;
       case "approval.resolve": {
@@ -742,8 +751,19 @@ export class AgentRunner {
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
   private projectInUse(project: string): boolean {
+    this.yieldWatch(project);
+    return this.workBlocks(project);
+  }
+  /** Is a task or other work of the person's on this folder? A watch's own check does not count. */
+  private workBlocks(project: string): boolean {
     return this.projectBusy.has(resolve(project)) || this.otherWorkOn(project);
   }
+  /** The person's own work on a project ends a watch's check of it, so a slow check never makes them wait or press Stop. */
+  private yieldWatch(project: string): void {
+    const w = this.watchRuns.get(resolve(project));
+    if (w) { w.yielded = true; w.abort.abort(); }
+  }
+  private watchRuns = new Map<string, { abort: AbortController; yielded: boolean }>();   // project folder -> the watch's check running in it
   /** Anything but a task: a check or a search (Point at the problem, Find which task broke it), an install, a copy, a ship step. */
   private otherWorkOn(project: string): boolean {
     const key = resolve(project);
@@ -1816,6 +1836,7 @@ export class AgentRunner {
   private async projectInstall(project: string): Promise<void> {
     const say = (stage: string, detail: string) => this.emit({ type: "project.install", project, stage, detail } as never);
     const key = resolve(project);
+    this.yieldWatch(project);
     // Never while anything else works in this project: a check building while node_modules is rewritten would fail for nothing.
     const busy = this.installing.has(key) || this.finding.size > 0 || this.shipping.size > 0 || this.sessions.size > 0 || this.driving.size > 0;
     if (busy) { say("failed", "Companion is already working on this project. Wait for it to finish, or press Stop."); return; }
@@ -1882,7 +1903,7 @@ export class AgentRunner {
       if (this.o.ci && this.setting<boolean>("rescue.readCiRun") !== false) {
         const c = await ciEvidence(cmd.project, this.o.ci, st.abort.signal);
         if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
-        if (c) evidence.push({ label: CI_EVIDENCE, status: c.ok ? "passed" : "failed", detail: c.text });
+        if (c) evidence.push({ label: CI_EVIDENCE, status: c.unknown ? "skipped" : c.ok ? "passed" : "failed", detail: c.text });
       }
       this.state(cmd.agent, "thinking");
       const d = parseDiagnosis(await ask(rescuePrompt(evidence)));

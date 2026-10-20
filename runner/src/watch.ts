@@ -68,9 +68,12 @@ export type Opts = {
   now?: () => number; random?: () => number; onProblem?: (message: string) => void;
   /** The longest each kind may take before it is stopped (tests make these short). */
   timeouts?: Partial<Record<Kind, number>>;
+  /** The longest Fix it may spend gathering evidence before it answers with what it has (tests make this short). */
+  fixMs?: number;
 };
 const TIMEOUTS: Record<Kind, number> = { site_up: 20_000, deploy_status: 120_000, ci_status: 120_000, project_checks: 15 * MIN };
 const SKIP_RETRY_MS = 2 * MIN;
+const FIX_MS = 2 * MIN;
 
 const isIso = (s: unknown): s is string => typeof s === "string" && !Number.isNaN(Date.parse(s));
 
@@ -123,7 +126,8 @@ export class WatchEngine {
       if (typeof x.project !== "string" || !x.project) return null;
       if (!KINDS.includes(x.kind) || !parseSchedule(x.schedule) || !STATES.includes(x.state)) return null;
       let target = typeof x.target === "string" ? x.target : "";
-      if (x.kind === "site_up") { const t = parseTarget(target); if (!t.ok) return null; target = t.url; } else target = "";
+      // An address saved with a part after ? (kept before that was refused) is kept without it, never with a possible key in it.
+      if (x.kind === "site_up") { const t = parseTarget(target.replace(/\?.*$/s, "").replace(/#.*$/s, "")); if (!t.ok) return null; target = t.url; } else target = "";
       const created = isIso(x.createdAt) ? x.createdAt : new Date(this.now()).toISOString();
       const history: HistoryItem[] = Array.isArray(x.history) ? x.history.filter((h: any) => isIso(h?.at) && STATES.includes(h?.state)).slice(-HISTORY).map((h: any) => ({ at: h.at, state: h.state })) : [];
       return {
@@ -165,9 +169,16 @@ export class WatchEngine {
   private jitter(s: Parsed): number { return Math.floor(this.random() * ("every" in s ? Math.min(60_000, s.every / 10) : 5 * MIN)); }
   private firstDue(w: Watch, t: number): number {
     const s = parseSchedule(w.schedule)!;
-    const last = w.lastCheckedAt ? Date.parse(w.lastCheckedAt) : null;
+    // A last check that is in the future (the clock was set back) says nothing about when the next one is due.
+    const last = w.lastCheckedAt && Date.parse(w.lastCheckedAt) <= t ? Date.parse(w.lastCheckedAt) : null;
     const planned = last === null ? t : nextRun(s, last);
     return planned <= t ? t + Math.floor(this.random() * 30_000) : planned + this.jitter(s);
+  }
+  /** The latest a due time can honestly be at time t: the next whole schedule from t, and its spread. Anything later was planned
+   *  on a clock that has since been set back. A few minutes either way (a clock being corrected) is not counted. */
+  private latestDue(w: Watch, t: number): number {
+    const s = parseSchedule(w.schedule)!;
+    return nextRun(s, t) + ("every" in s ? Math.min(60_000, s.every / 10) : 5 * MIN) + 5 * MIN;
   }
   private quiet(t: number): boolean {
     if (this.o.get("watch.quiet") !== true) return false;
@@ -191,6 +202,9 @@ export class WatchEngine {
       if (this.running.size >= MAX_PARALLEL) return;
       if (w.state === "paused" || this.running.has(w.id)) continue;
       const d = this.due.get(w.id);
+      // Due further ahead than one schedule can ever be (plus its spread): the clock went back after this was planned.
+      // It is due now, not when the clock catches up.
+      if (d !== undefined && d > this.latestDue(w, t)) { this.due.set(w.id, t); void this.run(w); continue; }
       if (d !== undefined && d <= t) void this.run(w);
     }
   }
@@ -337,10 +351,18 @@ export class WatchEngine {
     const slot = { abort: ac, timedOut: false };
     const key = `fix:${id}`;
     this.running.set(key, slot);
+    const limit = this.o.fixMs ?? FIX_MS;
+    const timer = setTimeout(() => { slot.timedOut = true; ac.abort(); }, limit);
+    const gone = new Promise<"stopped">((res) => ac.signal.addEventListener("abort", () => res("stopped"), { once: true }));
     let text: string | null = null;
-    try { text = (await this.o.evidence?.(w, ac.signal)) ?? null; } catch { text = null; } finally { this.running.delete(key); }
-    if (ac.signal.aborted) return;
-    const body = clip(redact(text ?? w.reason), 6000);
-    this.o.emit({ type: "watch.evidence", project: w.project, watch: w.id, kind: w.kind, ...(w.target ? { target: clip(redact(w.target), 300) } : {}), text: body });
+    try {
+      const got = await Promise.race([Promise.resolve(this.o.evidence?.(w, ac.signal)).catch(() => null), gone]);
+      text = got === "stopped" ? null : got ?? null;
+    } finally { clearTimeout(timer); if (this.running.get(key) === slot) this.running.delete(key); }
+    const where = { project: w.project, watch: w.id, kind: w.kind, ...(w.target ? { target: clip(redact(w.target), 300) } : {}) };
+    // Stopped (Stop everything) or too slow: the page is always answered, with the watch's own words and no evidence, so it
+    // stops waiting and never starts a task on its own. A task starts only from evidence.
+    if (ac.signal.aborted) { this.o.emit({ type: "watch.evidence", ...where, text: clip(redact(w.reason), 6000), stopped: true }); return; }
+    this.o.emit({ type: "watch.evidence", ...where, text: clip(redact(text ?? w.reason), 6000) });
   }
 }

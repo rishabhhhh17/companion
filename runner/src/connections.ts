@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { minimalEnv } from "./env.ts";
 import { runCommand, shq, type RunResult } from "./proof/exec.ts";
-import { clip, redact } from "./redact.ts";
+import { clip, redact, redactOutput, stripTerminal } from "./redact.ts";
 import { refuseWrite } from "./readonly.ts";
 import { readDeployFailure } from "./ship/buildlog.ts";
 import type { DeployLogReader, LatestDeploy, LatestDeployReader } from "./ship/deploy.ts";
@@ -29,11 +29,14 @@ const GOOD = new Set(["success"]);
 const BAD = new Set(["failure", "timed_out", "startup_failure"]);
 
 const ghOnPath = () => process.env.COMPANION_TEST_ASSUME_TOOLS === "1" || (minimalEnv().PATH ?? "").split(":").some((d) => d && existsSync(join(d, "gh")));
-const plain = (r: RunResult) => clip(redact(`${r.stderr}\n${r.stdout}`).replace(/\s+/g, " ").trim(), 240);
+const plain = (r: RunResult) => clip(redactOutput(`${r.stderr}\n${r.stdout}`).replace(/\s+/g, " ").trim(), 240);
 /** The last lines of a log, secrets hidden, colours and times taken off, and capped. */
 export function logTail(log: string, maxLines = 40, maxChars = 3000): string {
-  const lines = redact(log).replace(/\u001b\[[0-9;?]*[ -\/]*[@-~]/g, "").replace(/\r/g, "").split("\n")
+  // Colour codes, carriage returns and the time and job prefix of each line come off first, so a secret they cut in two is
+  // whole again when it is looked for.
+  const cleaned = stripTerminal(log).split("\n")
     .map((l) => l.replace(/^\S+\t\S+\t/, "").replace(/^\[?\d{4}-\d{2}-\d{2}T[\d:.]+Z\]?\s?/, "").trimEnd()).filter((l) => l.trim());
+  const lines = redact(cleaned.join("\n")).split("\n");
   const tail = lines.slice(-maxLines).join("\n");
   return tail.length > maxChars ? tail.slice(-maxChars) : tail;
 }
@@ -109,7 +112,9 @@ export class GhCli implements CiReader {
 
 // ---------- evidence, in the words a task or a plan is given ----------
 
-export type Evidence = { ok: boolean; text: string };
+/** ok: it is fine or failed. unknown: it could not be read (no tool, not signed in, no project), which says nothing about the
+ *  project, so it is never a failure. */
+export type Evidence = { ok: boolean; text: string; unknown?: boolean };
 export type ConnectionTools = { deploys?: (DeployLogReader & Partial<LatestDeployReader>) | null; ci?: CiReader | null };
 
 /** Why the project's last Vercel deploy failed: the located problem, then the end of the build log. null: not a Vercel project. */
@@ -117,7 +122,7 @@ export async function deployEvidence(project: string, reader: DeployLogReader, s
   const d = await readDeployFailure(project, reader, signal);
   if (!d || d.state === "cancelled") return null;
   if (d.state === "fine") return { ok: true, text: "Your last Vercel deploy worked." };
-  if (d.state === "unknown") return { ok: false, text: d.reason };
+  if (d.state === "unknown") return { ok: false, unknown: true, text: d.reason };
   let tail = "";
   try { const b = await reader.lastFailedBuild(project, signal); if (b.state === "failed") tail = logTail(b.log, 30, 2500); } catch { /* the located problem is enough */ }
   return { ok: false, text: clip(`${d.summary}${tail ? `\nThe end of its build log:\n${tail}` : ""}`, EVIDENCE_MAX) };
@@ -127,7 +132,7 @@ export async function deployEvidence(project: string, reader: DeployLogReader, s
 export async function ciEvidence(project: string, ci: CiReader, signal?: AbortSignal): Promise<Evidence | null> {
   const r = await ci.latestRun(project, signal);
   if (r.state === "cancelled" || r.state === "none") return null;
-  if (r.state === "unknown") return { ok: false, text: r.reason };
+  if (r.state === "unknown") return { ok: false, unknown: true, text: r.reason };
   if (r.state === "ok") return null;
   const log = await ci.failureLog(project, r.run, signal);
   return { ok: false, text: clip([`Your latest GitHub run failed: ${r.reason}`, r.run.title ? `Change: ${r.run.title}` : "", log ?? ""].filter(Boolean).join("\n"), EVIDENCE_MAX) };

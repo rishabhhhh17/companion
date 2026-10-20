@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ciEvidence, ciResult, deployEvidence, deployResult, GH_NO_CLI, GH_NO_LOGIN, GH_NO_REPO, GhCli, logTail, type CiReader } from "../src/connections.ts";
+import { redactOutput, stripTerminal } from "../src/redact.ts";
 import { refuseWrite, words } from "../src/readonly.ts";
 import { VercelCli } from "../src/ship/deploy.ts";
 import { shq, type RunResult } from "../src/proof/exec.ts";
@@ -194,7 +195,7 @@ describe("evidence for Fix it and Rescue", () => {
     expect(await ciEvidence("/p", ci({ state: "ok", reason: "", run: {}, failing: [] }))).toBeNull();
     expect(await ciEvidence("/p", ci({ state: "none", reason: "x" }))).toBeNull();
     expect(await ciEvidence("/p", ci({ state: "cancelled" }))).toBeNull();
-    expect(await ciEvidence("/p", ci({ state: "unknown", reason: GH_NO_LOGIN }))).toEqual({ ok: false, text: GH_NO_LOGIN });
+    expect(await ciEvidence("/p", ci({ state: "unknown", reason: GH_NO_LOGIN }))).toEqual({ ok: false, unknown: true, text: GH_NO_LOGIN });
     const huge = await ciEvidence("/p", ci({ state: "failing", reason: "x", run: { id: 1, workflow: "w", branch: "", url: "", title: "" }, failing: [] }, "y".repeat(20_000)));
     expect(huge!.text.length).toBeLessThanOrEqual(6000);
   });
@@ -208,7 +209,16 @@ describe("evidence for Fix it and Rescue", () => {
     expect(e!.text).not.toContain("abcdef123456789");
     expect(await deployEvidence(tmp(), { lastFailedBuild: async () => ({ state: "not_linked" as const }) })).toBeNull();
     expect(await deployEvidence(tmp(), { lastFailedBuild: async () => ({ state: "none" as const }) })).toEqual({ ok: true, text: "Your last Vercel deploy worked." });
-    expect(await deployEvidence(tmp(), { lastFailedBuild: async () => ({ state: "unavailable" as const, reason: "no tool" }) })).toEqual({ ok: false, text: "no tool" });
+    expect(await deployEvidence(tmp(), { lastFailedBuild: async () => ({ state: "unavailable" as const, reason: "no tool" }) })).toEqual({ ok: false, unknown: true, text: "no tool" });
+  });
+  test("a secret that a colour code cuts in two is still hidden, in a log and in what a tool said", () => {
+    for (const raw of ["token ghp_\u001b[0mABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", "key sk-ant-\u001b[1mabcdefghijklmnopqrstuvwxyz0123", "key sk-ant-abcdefgh\r\u001b[2Kijklmnopqrstuvwxyz0123"]) {
+      const t = logTail(raw);
+      expect(t, raw).not.toMatch(/ABCDEFGHIJKLM|abcdefghijklm|ijklmnop/);
+      expect(t).toContain("[secret]");
+    }
+    expect(redactOutput("ghp_\u001b[0mABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")).toBe("[secret]");
+    expect(stripTerminal("a\u001b[31mb\u001b[0m\rc")).toBe("abc");
   });
   test("a log tail drops colours and times, hides secrets, and keeps the end", () => {
     const t = logTail(`\u001b[31mred\u001b[0m\n${Array.from({ length: 100 }, (_, i) => `2026-10-22T10:00:00Z row ${i}`).join("\n")}\nSECRET_KEY=abcdefgh1234`, 5, 400);
