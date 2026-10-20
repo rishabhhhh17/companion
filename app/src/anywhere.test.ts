@@ -78,7 +78,7 @@ describe("waiting for the page", () => {
   });
   test("the card asks the shell to wait only for a look that follows an action, and reads both settings", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    expect(card).toMatch(/invoke\("showme_start", \{ question, allScreens: allScreensOn\(\), settle, mode \}\)/);   // mode: an everyday look (everyday.ts)
+    expect(card).toMatch(/invoke\("showme_start", \{ question, allScreens: allScreensOn\(\), settle, mode, before \}\)/);   // mode and before: an everyday look (everyday.ts)
     expect(card).toContain('waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked"))');
     // The question asked by itself after a clean click: the setting decides, and a soft ring, a miss or Do it for me ask.
     expect(card).toContain('asksWorked({ setting: setting("showme.askWorked"), how: stage, soft: ringLook.current.soft, missed: ringLook.current.missed })');

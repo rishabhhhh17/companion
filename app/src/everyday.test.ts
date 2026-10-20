@@ -3,7 +3,7 @@
 // two sentences, walks the person through the fix, looks again only on a press, and says fixed only when the error is gone.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { checkQuestion, everydayGoal, frontOf, heroRoute, whyShown, type Everyday } from "./everyday.ts";
+import { checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, mainAction, nextLookMode, whyShown, type Everyday } from "./everyday.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { need, islandLine } from "./home.ts";
 import { defOf } from "../../protocol/settings.ts";
@@ -78,8 +78,28 @@ describe("prove it: fixed only when the error is gone", () => {
   test("it cannot tell from the screen: it asks Did that work?, and the person's yes is never called fixed", () => {
     const ask = recheck(found(), { found: false, gone: "unsure" });
     expect(ask.everyday?.stage).toBe("ask");
+    expect(ask.everyday?.ask).toBeUndefined();
     expect(run([ev({ type: "ui.everydaySaid", worked: true })], ask).everyday?.stage).toBe("saidWorks");
     expect(run([ev({ type: "ui.everydaySaid", worked: false })], ask).everyday?.stage).toBe("still");
+  });
+  test("only the look says it is gone (a guess from a picture): it asks, and never says Fixed", () => {
+    const m = recheck(found(), { found: false, gone: "looks" });
+    expect(m.everyday).toMatchObject({ stage: "ask", ask: "looks" });
+    const said = run([ev({ type: "ui.everydaySaid", worked: true })], m);
+    expect(said.everyday).toMatchObject({ stage: "saidWorks", ask: "looks" });
+  });
+  test("the code the first look read is still read: it says so and asks, never Fixed", () => {
+    const m = recheck(found(), { found: false, gone: "unsure", code: "#REF!" });
+    expect(m.everyday).toMatchObject({ stage: "ask", ask: "stillRead", code: "#REF!" });
+    // A later verdict starts clean.
+    expect(recheck(m, { found: false, gone: "unsure" }).everyday?.ask).toBeUndefined();
+  });
+  test("still there in Claude's own words is never shown under the table's label", () => {
+    const m = recheck(found(), { found: true, gone: "no", problem: "C4 now shows a different number." });
+    expect(m.everyday).toMatchObject({ stage: "still", problem: "C4 now shows a different number.", code: "#REF!" });
+    expect(m.everyday?.fromTable).toBeUndefined();
+    const t = recheck(found(), { found: true, gone: "no", problem: "Table words.", code: "#REF!", fromTable: true, fixes: ["Undo it."] });
+    expect(t.everyday).toMatchObject({ stage: "still", fromTable: true, fixes: ["Undo it."] });
   });
   test("a look again that failed goes back to where it was, so Check again is still there", () => {
     const m = run([ev({ type: "ui.everydayLook", mode: "recheck" }), ev({ type: "app.showme", stage: "thinking", message: "Finding it", req: "sm_2" }), ev({ type: "assist.error", req: "sm_2", reason: "boom" })], found());
@@ -89,6 +109,77 @@ describe("prove it: fixed only when the error is gone", () => {
     const uses = card.split("\n").filter((l) => l.includes("S.everydayFixed"));
     expect(uses.length).toBe(1);
     expect(uses[0]).toContain('ed.stage === "fixed"');
+  });
+  test("the card words the question by why it asks", () => {
+    expect(card).toContain('ed.ask === "looks" ? S.everydayLooksFixed : ed.ask === "stillRead" && ed.code ? S.everydayStillRead(ed.code) : S.everydayAsk');
+    expect(S.everydayLooksFixed).toMatch(/Did it work\?/);
+    expect(S.everydayLooksFixed).not.toMatch(/^Fixed/);
+    expect(S.everydayStillRead("#REF!")).toContain("#REF!");
+  });
+});
+
+describe("only the everyday walkthrough is an everyday fix", () => {
+  test("a step of the everyday walkthrough looks again with the recheck; any other walkthrough never does", () => {
+    const f = found().everyday;
+    expect(nextLookMode(true, f)).toBe("recheck");
+    expect(nextLookMode(true, { ...f!, stage: "still" })).toBe("recheck");
+    // An ordinary Show me question asked while the everyday panel is up (S, or the ask box): an ordinary next step.
+    expect(nextLookMode(false, f)).toBeUndefined();
+    for (const stage of ["fixed", "ask", "none", "saidWorks", "looking", "checking"] as const) expect(nextLookMode(true, { ...f!, stage }), stage).toBeUndefined();
+    expect(nextLookMode(true, null)).toBeUndefined();
+  });
+  test("an ordinary Show me question closes the everyday panel, so no verdict can land on it", () => {
+    const m = run([ev({ type: "ui.everydayClosed" }), ev({ type: "assist.problem", req: "sm_1", mode: "recheck", found: false, gone: "yes", steps: 0, usdEstimate: 0 })], found());
+    expect(m.everyday).toBeNull();
+  });
+  test("the card marks the everyday walkthrough itself, and an ordinary question clears the mark and closes the panel", () => {
+    const show = card.slice(card.indexOf("const showMe = "), card.indexOf("// An everyday stuck moment: Show me's own look"));
+    expect(show).toContain("everydayWalk.current = !!mode;");
+    expect(show).toContain('if (!mode) { lastWalk.current = null; if (nowModel.current.everyday) dispatch({ type: "ui.everydayClosed" }); }');
+    const next = card.slice(card.indexOf("const nextStep = "), card.indexOf("// How this answer's ring went"));
+    expect(next).toContain("nextLookMode(everydayWalk.current, nowModel.current.everyday)");
+    const check = card.slice(card.indexOf("const checkEveryday = "), card.indexOf("latest.current.lookEveryday = "));
+    expect(check).toContain("everydayWalk.current && walk ? walk : null");
+  });
+  test("a look again carries the code the first look read, so the engine can prove it gone", () => {
+    expect(card).toContain('invoke("showme_start", { question, allScreens: allScreensOn(), settle, mode, before })');
+    const check = card.slice(card.indexOf("const checkEveryday = "), card.indexOf("latest.current.lookEveryday = "));
+    expect(check).toContain('showMe(checkQuestion(w), w.goal, w.steps, true, "recheck", ed.code)');
+  });
+  test("what the walkthrough saw is forgotten when the panel closes, on Stop and on a new look", () => {
+    expect(card).toContain("if (walk && everydayWalk.current) lastWalk.current = walk;");
+    expect(card).toContain("useEffect(() => { if (!m.everyday) { lastWalk.current = null; everydayWalk.current = false; } }, [m.everyday]);");
+    const look = card.slice(card.indexOf("const lookEveryday = "), card.indexOf("const checkEveryday = "));
+    expect(look).toContain("lastWalk.current = null;");
+  });
+});
+
+describe("the main button", () => {
+  test("Show me the steps is a fresh look while no step was shown yet; after that, Check it is fixed looks again", () => {
+    const f = found().everyday;
+    expect(mainAction(f, false, 0)).toBe("steps");
+    expect(mainAction(f, true, 0)).toBe("check");
+    expect(mainAction(f, false, 1)).toBe("check");
+    expect(mainAction({ ...f!, stage: "still" }, false, 0)).toBe("check");
+    for (const stage of ["fixed", "ask", "none", "saidWorks", "looking", "checking"] as const) expect(mainAction({ ...f!, stage }, false, 0), stage).toBeNull();
+    expect(mainAction(null, false, 0)).toBeNull();
+    expect(everydayStepsAsk("C4 shows #REF!.")).toContain("C4 shows #REF!.");
+  });
+  test("the card's Show me the steps is an everyday look, never a look again", () => {
+    const line = card.split("\n").find((l) => l.includes("S.everydaySteps")) ?? "";
+    expect(line).toContain("mainAction(ed, !!walk, lastWalk.current?.steps.length ?? 0)");
+    expect(line).toContain("lookEveryday(everydayStepsAsk(ed.problem))");
+  });
+});
+
+describe("the numbers count each press once", () => {
+  test("the key counts the press and an anywhere use; the everyday look and its looks again count nothing more", () => {
+    const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+    expect(key).toContain('if (route === "screen") { count("hero_press"); count("anywhere_use"); latest.current.lookEveryday(); return; }');
+    const look = card.slice(card.indexOf("const lookEveryday = "), card.indexOf("const checkEveryday = "));
+    expect(look).not.toContain("count(");
+    const show = card.slice(card.indexOf("const showMe = "), card.indexOf("// An everyday stuck moment: Show me's own look"));
+    expect(show).toContain('if (!mode && steps.length === 0) count("anywhere_use");');
   });
 });
 
@@ -122,7 +213,7 @@ describe("the card", () => {
     const look = card.slice(card.indexOf("const lookEveryday = "), card.indexOf("const lookEveryday = ") + 600);
     expect(look).toContain('dispatch({ type: "ui.everydayLook", mode: "everyday" })');
     expect(look).toContain('"everyday")');
-    expect(card).toContain('invoke("showme_start", { question, allScreens: allScreensOn(), settle, mode })');
+    expect(card).toContain('invoke("showme_start", { question, allScreens: allScreensOn(), settle, mode, before })');
   });
   test("a step of an everyday fix looks again with the recheck, so the next look says whether the error is gone", () => {
     const next = card.slice(card.indexOf("const nextStep = "), card.indexOf("const nextStep = ") + 900);

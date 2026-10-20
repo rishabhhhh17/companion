@@ -42,6 +42,11 @@ describe("the privacy note names every flow that reads or sends something", () =
     const r = row("You press **F** with no project");
     expect(r).not.toBe("");
     for (const w of ["picture", "Claude", "blacked out", S.set["point.everyday"].label, S.everydayCheck, "spreadsheet"]) expect(r, w).toContain(w);
+    // Never less than really leaves the Mac: the picture shows the app in front, and the words read on it go with it.
+    expect(r).not.toContain("never its name or anything in it");
+    expect(r).toContain("shows whatever is on that display");
+    expect(r).toContain("The picture and the words the Mac read on it");
+    expect(r).toContain("the spreadsheet error the first look read");
     // The plain F row still says nothing of the project or the screen leaves the Mac, so it must say when that changes.
     expect(row("You press **F** (point at the problem)")).toContain("You press **F** with no project");
   });
