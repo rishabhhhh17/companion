@@ -1,13 +1,14 @@
 #!/bin/bash
 # Put the built Companion.app in a disk image with a shortcut to Applications. Run build-app.sh first.
-# Output: app/installer/Companion-<version>.dmg (never committed). With COMPANION_SIGN_ID the image is signed too.
+# Output: app/installer/Companion-<version>.dmg (never committed), or the folder in COMPANION_DMG_DIR (used by tests). With COMPANION_SIGN_ID the image is signed too.
 set -eu
 cd "$(dirname "$0")/.."
 APP="src-tauri/target/release/bundle/macos/Companion.app"
 [ -d "$APP" ] || { echo "FAIL: build the app first (sh scripts/build-app.sh)"; exit 1; }
-if ! codesign -dvv "$APP" 2>&1 | grep -q "(runtime)"; then echo "NOTE: this app is NOT NOTARIZABLE (no hardened runtime): fine for friends who press Open Anyway, not for a release. Use release.sh."; fi
+SIGINFO="$(codesign -dvv "$APP" 2>&1)"
+if ! echo "$SIGINFO" | grep -q "flags=.*runtime" || echo "$SIGINFO" | grep -q "Signature=adhoc"; then echo "NOTE: this app is NOT NOTARIZABLE (not signed with a Developer ID and the hardened runtime): fine for friends who press Open Anyway, not for a release. Use release.sh."; fi
 VERSION="$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")"
-OUT="installer"; mkdir -p "$OUT"
+OUT="${COMPANION_DMG_DIR:-installer}"; mkdir -p "$OUT"
 DMG="$OUT/Companion-$VERSION.dmg"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

@@ -8,5 +8,6 @@ echo "== prompt help eval, free (the scorer and its 30 cases; no model, no netwo
 echo "== eval sets, dry (the whole pipeline on stand ins: no model, no cost, no network)"; (cd evals && ../runner/node_modules/.bin/tsc -p . && bun test ./lib ./fix-projects ./loop-breaker ./review-catch ./explain ./show-me-how)
 echo "== rust shell"; (cd app/src-tauri && cargo test)
 echo "== pages"; (cd app && bun run typecheck && bun test ./src)
+echo "== release scripts (offline: parse, dry run, refuse without credentials)"; (cd app && bun test ./scripts)
 echo "== acknowledgements (licence notices match the dependencies)"; python3 scripts/make-acknowledgements.py --check
 echo "All suites passed. Real Claude checks are separate: cd runner && bun run scripts/real-verify.ts"

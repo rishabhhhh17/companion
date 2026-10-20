@@ -1,20 +1,56 @@
 #!/bin/bash
-# The whole release, once Apple has approved the developer account. NOT YET RUN: it needs things only the founder has
+# The whole release, once Apple has approved the developer account. NOT YET RUN FOR REAL: it needs things only the founder has
 # (a "Developer ID Application" certificate in the Keychain, and notary credentials stored once with
 #   xcrun notarytool store-credentials companion-notary --apple-id <id> --team-id <team>  ).
 # Usage: COMPANION_SIGN_ID="Developer ID Application: Name (TEAM)" sh app/scripts/release.sh
+#        sh app/scripts/release.sh --dry-run     prints every step and what it needs; runs nothing risky (no build, no signing,
+#                                                 no Keychain, no network). Safe on any Mac, with or without credentials.
 # Order: build and sign the app (hardened runtime) -> notarize the app -> staple -> disk image (signed) -> notarize -> staple.
 set -eu
 cd "$(dirname "$0")/.."
-: "${COMPANION_SIGN_ID:?set COMPANION_SIGN_ID to the Developer ID Application identity}"
 PROFILE="${COMPANION_NOTARY_PROFILE:-companion-notary}"
+
+if [ "${1:-}" = "--dry-run" ]; then
+  echo "DRY RUN: nothing below is run. Each step, and what it needs from you:"
+  echo "  1. Build the app (scripts/build-app.sh)         needs: Apple Silicon Mac, bun 1.4.2, Rust, the Tauri tool; no credentials"
+  echo "  2. Sign it for release (hardened runtime)       needs: a 'Developer ID Application' certificate in your login Keychain"
+  echo "  3. Notarize the app (xcrun notarytool)          needs: notary profile '$PROFILE' stored once; internet; Apple's approval of the account"
+  echo "  4. Staple the ticket to the app                 needs: the notarization to have been accepted"
+  echo "  5. Make and sign the disk image (make-dmg.sh)   needs: the same certificate"
+  echo "  6. Notarize, staple and check the disk image    needs: the same notary profile and internet"
+  echo "Your setup, checked without touching the Keychain or the network:"
+  if [ -n "${COMPANION_SIGN_ID:-}" ]; then echo "  COMPANION_SIGN_ID: set ($COMPANION_SIGN_ID)"; else echo "  COMPANION_SIGN_ID: NOT SET (the real run stops at once)"; fi
+  echo "  notary profile name: $PROFILE (set COMPANION_NOTARY_PROFILE to use another)"
+  for t in xcrun codesign hdiutil bun cargo python3 ditto; do command -v "$t" >/dev/null 2>&1 && echo "  tool $t: found" || echo "  tool $t: MISSING"; done
+  xcrun --find notarytool >/dev/null 2>&1 && echo "  tool notarytool: found" || echo "  tool notarytool: MISSING (install Xcode or the Command Line Tools)"
+  xcrun --find stapler >/dev/null 2>&1 && echo "  tool stapler: found" || echo "  tool stapler: MISSING (install Xcode or the Command Line Tools)"
+  V="$(python3 -c 'import json;print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+  C="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+  [ "$V" = "$C" ] && echo "  version: $V (same in tauri.conf.json and Cargo.toml)" || echo "  version: MISMATCH, tauri.conf.json says $V and Cargo.toml says $C"
+  UP="$(python3 -c 'import json;d=json.load(open("src-tauri/updater.json"));print("set" if d.get("pubkey") and d.get("endpoint") else "EMPTY")')"
+  echo "  updater.json (public key and address): $UP$([ "$UP" = EMPTY ] && echo ' (this build could not update itself; run make-update-key.sh BEFORE building)')"
+  exit 0
+fi
+
+: "${COMPANION_SIGN_ID:?set COMPANION_SIGN_ID to the Developer ID Application identity, or run with --dry-run to see what is needed}"
+PROFILE="${COMPANION_NOTARY_PROFILE:-companion-notary}"
+# Plain checks first, so a missing piece shows up now and not after a ten minute build.
+for t in xcrun codesign hdiutil bun cargo python3 ditto; do command -v "$t" >/dev/null 2>&1 || { echo "FAIL: the tool '$t' is missing"; exit 1; }; done
+xcrun --find notarytool >/dev/null 2>&1 || { echo "FAIL: notarytool is missing (install Xcode or the Command Line Tools)"; exit 1; }
+xcrun --find stapler >/dev/null 2>&1 || { echo "FAIL: stapler is missing (install Xcode or the Command Line Tools)"; exit 1; }
+# Lists the names of signing certificates (not their keys).
+security find-identity -v -p codesigning 2>/dev/null | grep -qF "$COMPANION_SIGN_ID" || { echo "FAIL: no valid signing certificate named \"$COMPANION_SIGN_ID\" in your Keychain. Check the exact name with: security find-identity -v -p codesigning"; exit 1; }
+V="$(python3 -c 'import json;print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+C="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+[ "$V" = "$C" ] || { echo "FAIL: the version is $V in tauri.conf.json but $C in Cargo.toml; make them the same"; exit 1; }
+[ "${COMPANION_ALLOW_NO_UPDATER:-}" = "1" ] || python3 -c 'import json,sys;d=json.load(open("src-tauri/updater.json"));sys.exit(0 if d.get("pubkey") and d.get("endpoint") else 1)' || { echo "FAIL: updater.json is empty, so this build could never update itself. Run make-update-key.sh first, commit the file, then release. (To skip on purpose: COMPANION_ALLOW_NO_UPDATER=1.)"; exit 1; }
 sh scripts/build-app.sh
 APP="src-tauri/target/release/bundle/macos/Companion.app"
 ZIPDIR="$(mktemp -d)"; trap 'rm -rf "$ZIPDIR"' EXIT
 ZIP="$ZIPDIR/Companion.zip"
 # A notarization that comes back Invalid must stop here, whatever the exit code of the tool.
 notarize() {
-  OUT="$(xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait --output-format json)"
+  OUT="$(xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait --output-format json)" || { echo "FAIL: notarytool could not submit. Is the profile '$PROFILE' stored (xcrun notarytool store-credentials $PROFILE ...), is the internet on, and is the Apple account approved?"; exit 1; }
   echo "$OUT"
   echo "$OUT" | grep -q '"status" *: *"Accepted"' || { ID="$(echo "$OUT" | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -1)"; [ -n "$ID" ] && xcrun notarytool log "$ID" --keychain-profile "$PROFILE"; echo "FAIL: Apple did not accept it"; exit 1; }
 }
