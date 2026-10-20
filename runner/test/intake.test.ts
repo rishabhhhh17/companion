@@ -41,7 +41,7 @@ describe("where it came from and what it is", () => {
     const d = project({ ".replit": 'run = ["bash", "main.sh"]\nlanguage = "bash"\n\n[env]\nDB_PASS="password"\n\n[deployment]\nrun = ["sh", "-c", "other"]\n', "main.sh": "echo hi" });
     const r = inspectProject(d);
     expect(r.origin).toBe("replit"); expect(r.start).toBe("bash main.sh");
-    expect(detectProject(d).start).toEqual({ kind: "server", command: "bash main.sh" });
+    expect(detectProject(d).start).toEqual({ kind: "server", command: "bash main.sh", from: "replit" });
     expect(r.notes.join(" ")).toContain(".replit file");
     expect(JSON.stringify(r)).not.toContain("password");   // never a value
   });

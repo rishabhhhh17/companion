@@ -522,7 +522,7 @@ function evaluatePackageManager(name: string, args: string[]): Verdict {
   // A version bump makes a git commit and a tag in a git project (npm, pnpm, yarn version; bun pm version), unless it is
   // told not to.
   const bumps = sub === "version" || (name === "bun" && sub === "pm" && args.includes("version"));
-  if (bumps && !args.some((a) => a === "--no-git-tag-version" || a === "--git-tag-version=false" || a === "--no-commit-hooks=false")) return ask("git", `${name} version makes a git commit and a tag in your project`, false);
+  if (bumps && !args.some((a) => a === "--no-git-tag-version" || a === "--git-tag-version=false")) return ask("git", `${name} version makes a git commit and a tag in your project`, false);
   return allow();
 }
 

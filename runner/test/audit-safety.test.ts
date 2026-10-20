@@ -70,7 +70,7 @@ describe("git pointed at another folder (A15)", () => {
 });
 
 describe("a version bump that commits and tags (A16)", () => {
-  for (const c of ["npm version patch", "npm version 1.2.0", "pnpm version minor", "yarn version --new-version 1.2.0", "bun pm version patch"]) {
+  for (const c of ["npm version patch", "npm version 1.2.0", "pnpm version minor", "yarn version --new-version 1.2.0", "bun pm version patch", "npm version patch --no-commit-hooks", "npm version patch --no-commit-hooks=false"]) {
     test(`${c} asks, as a change to git`, () => { const v = bash(dir("p"), c); expect(v.decision).toBe("ask"); expect(v.risk).toBe("git"); });
   }
   for (const c of ["npm version patch --no-git-tag-version", "npm version minor --git-tag-version=false", "npm --version", "npm -v"]) {

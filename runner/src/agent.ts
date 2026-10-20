@@ -1289,7 +1289,7 @@ export class AgentRunner {
       const { report } = await this.gateReport(cmd.project, false);
       if (!report.canShip) { this.shipSay(cmd.project, "refused", "The safety checks no longer pass. Make a new preview first."); return; }
       if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
-      this.shipSay(cmd.project, "deploying", "Making it live.");
+      this.shipSay(cmd.project, "deploying", "Making it live.", { previewUrl: p.url });   // the address says which preview, and that it is being made live
       const r = await d.promote(p.url, cmd.project, ac.signal);
       // Once the promote has been sent, a stop, a time limit or an answer that cannot be read does not mean nothing went
       // live: Vercel may finish it anyway. It is said as not known, and kept as a live record that is not confirmed, so Roll

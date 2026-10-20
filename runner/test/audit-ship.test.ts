@@ -114,6 +114,9 @@ describe("going live that may have happened is never called nothing (A29)", () =
     expect(t.last().detail).not.toMatch(/Nothing went live/);
     expect(t.last().detail).toMatch(/could not confirm whether it went live/i);
     expect(readShips(t.project).at(-1)).toMatchObject({ action: "live", unconfirmed: true, url: UP });
+    // While it was being made live, the line named the preview, so a page whose engine restarts then never says nothing
+    // went live either (app/src/model.ts shipStopped).
+    expect(of(t.events, "ship.status").find((e) => e.detail === "Making it live.")).toMatchObject({ stage: "deploying", previewUrl: UP });
     await t.cmd({ type: "ship.rollback", confirm: true });
     expect(t.deployer.calls).toContain("rollback");
   });
