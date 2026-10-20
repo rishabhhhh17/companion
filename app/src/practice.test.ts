@@ -646,3 +646,17 @@ describe("the setting practice's lesson uses no Claude and never looks at the sc
     expect(S.practiceLessonWords).toMatch(/does not look at your screen/);
   });
 });
+
+// Found in the M11 audit (A77): the practice said its fix was "the same request Companion uses after its own check has found
+// a problem in your project", but on a person's own project Fix it looks deeper first (Rescue, on the careful model, with a
+// plan to approve) unless Settings says One small checked fix.
+describe("the practice says what its fix is, and what Fix it does on your own project", () => {
+  test("it names the setting and both of its choices, and promises no sameness", () => {
+    const f = S.set["point.fixWith"];
+    expect(S.practiceFixHelp).toContain(f.label);
+    expect(S.practiceFixHelp).toContain(f.options.smallFix);
+    expect(S.practiceFixHelp).toMatch(/looks deeper first/);
+    expect(S.practiceFixHelp).not.toMatch(/the same request/);
+    expect(defaultOf("point.fixWith")).toBe("rescue");
+  });
+});

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { addMemory } from "./commands.ts";
 import { back, canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, keyLooksRight, next, QUESTIONS, settingsFor, STEPS } from "./onboarding.ts";
 import { readFileSync } from "node:fs";
+import { S } from "./strings.ts";
 
 describe("moving through the first run", () => {
   test("the steps go in order, and the first and last have nowhere to go", () => {
@@ -58,4 +59,18 @@ describe("the key box", () => {
     for (const bad of ["", "hello", "sk-ant-short", `${good} extra`, "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789abcdef"]) expect(keyLooksRight(bad)).toMatch(/\.$/);
   });
   test("the message never repeats what was typed", () => { expect(keyLooksRight("sk-ant-secretsecret space")).not.toContain("secretsecret"); });
+});
+
+// Found in the M11 audit (A81): the first run said Screen Recording comes only with Show me and Accessibility only with
+// Prompt help and the error explainer, and INSTALL.md gave other, incomplete reasons. Both now name every feature that asks.
+describe("the first run and INSTALL name every feature that asks for each permission", () => {
+  const install = readFileSync(new URL("../../docs/alpha/INSTALL.md", import.meta.url), "utf8");
+  const section = install.slice(install.indexOf("## What it asks for, and when"), install.indexOf("## The keys"));
+  test("Accessibility: Prompt help, the error explainer and Do it for me", () => {
+    for (const t of [S.obPerm1, section]) for (const f of ["Prompt help", "error", "Do it for me"]) expect(t, f).toContain(f);
+  });
+  test("Screen Recording: Show me, a lesson's step and Point at the problem", () => {
+    for (const t of [S.obPerm2, section]) for (const f of ["Show me", "lesson", "Point at the problem"]) expect(t, f).toContain(f);
+    expect(S.obPerm2).not.toMatch(/only the first time you use Show me,/);
+  });
 });

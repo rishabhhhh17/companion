@@ -16,8 +16,8 @@
 
 ## What it asks for, and when
 Companion asks for each permission **only the first time you use the feature that needs it**, and says why first:
-- **Screen Recording**: when you press the key and it needs to look at your screen once.
-- **Accessibility**: to find the exact button or line, and to click it only if you press Do it for me.
+- **Screen Recording**: the first time Companion needs to look at your screen, with a light on first: Show me (**S**), a lesson's step, or Point at the problem (**F**) circling what it found on your screen. The setting practice never looks at your screen.
+- **Accessibility**: the first time you use Prompt help (**R**) or the error explainer (**E**), to read the box you are typing in or the text you selected, and the first time you press Do it for me, to press the button for you. Once allowed, Show me also uses it to find the exact button.
 - **Microphone**: when you hold the talk keys. It listens only while you hold them.
 You can see and change all three in **Settings** on the card.
 

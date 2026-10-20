@@ -17,6 +17,14 @@ describe("protocol v1 fixtures", () => {
       expect(r.ok, l).toBe(true);
     }
   });
+  // Found in the M11 audit (A72): two command fixtures shared c80, and two events each shared e60 and e61, so anything that
+  // keys the cases by id (a "which case failed" report) kept only one of them or named the wrong one.
+  test("every fixture has its own id", () => {
+    for (const f of ["commands.jsonl", "events.jsonl"]) {
+      const ids = lines(f).map((l) => JSON.parse(l).id as string);
+      expect(ids.filter((id, i) => ids.indexOf(id) !== i), f).toEqual([]);
+    }
+  });
   test("serialize then parse gives the same message", () => {
     for (const l of lines("commands.jsonl")) {
       const r = parseCommand(l);

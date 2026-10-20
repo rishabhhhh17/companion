@@ -165,8 +165,8 @@ export const S = {
   obQuestionsHelp: "Each answer says what it changes. You can change any of them later.",
   obSkip: "Skip",
   obPermTitle: "What Companion may ask for, and when",
-  obPerm1: "Accessibility: only the first time you use Prompt help or ask about an error, so it can read the box you are typing in or the text you selected.",
-  obPerm2: "Screen Recording: only the first time you use Show me, so it can look at your screen once, with a light on first.",
+  obPerm1: "Accessibility: only the first time you use Prompt help, ask about an error or press Do it for me, so it can read the box you are typing in or the text you selected, or press the button for you.",
+  obPerm2: "Screen Recording: only the first time Companion needs to look at your screen, with a light on first: Show me, a lesson's step, or Point at the problem circling what it found.",
   obPerm3: "Microphone: only the first time you hold the talk keys. macOS also asks about screen recording again about once a month; that is Apple's rule.",
   obPermNone: "Nothing is asked now.",
   obFirstTitle: "Try something",
@@ -486,7 +486,7 @@ export const S = {
   practiceSkip: "Skip the practice",
   practiceFound: "Found it:",
   practiceFix: "Fix it with me",
-  practiceFixHelp: "Fix it with me makes one small checked change on your key, with the same request Companion uses after its own check has found a problem in your project.",
+  practiceFixHelp: "Fix it with me makes one small checked change on your key. On your own project, Fix it looks deeper first and shows you a plan to approve, unless Fix it after Point at the problem, in Settings, says One small checked fix.",
   practiceFixing: "Fixing it with the smallest change, then checking that it really works. This takes about a minute and costs around 20 cents on your key.",
   practiceStopFix: "Stop the fix",
   practiceStopChecks: "Stop the checks",
@@ -923,7 +923,7 @@ export const S = {
   // The fixed part of a setting that can never change, shown under its row, by the id its definition names (floor).
   floors: {
     islandOff: "With the island off, Home opens beside the character and its keys still open it. Before Companion looks at your screen or listens, the character lights up, and before it reads your text, Home opens.",
-    needsMarked: "A question waiting for your answer always opens Now. Prompt help and the error explainer you start always open Now too. Anything else that needs you puts a dot on its tab and a mark on the island, or on the character when the island is off, and is said out loud when Speak to me is on.",
+    needsMarked: "A question a task waits on opens Now, unless you are typing in Home: then Now gets a dot instead, and VoiceOver says it. Prompt help and the error explainer you start always open Now too. Anything else that needs you puts a dot on its tab and a mark on the island, or on the character when the island is off, and is said out loud when Speak to me is on.",
     budgetDay: "Never more than what is left of today's daily spending limit.",
     rulesStricter: "House rules can only add care: Companion's own safety rules always apply, and no reset ever removes a rule.",
     pressNeverRisky: "A button whose words sound like it sends, pays, deletes or publishes is never pressed, whatever this says.",
