@@ -368,7 +368,7 @@ mod tests {
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-signup");
         let made = make(&src, &home, signup(), exists_at).unwrap();
         let rules = fs::read_to_string(made.join(".companion/rules.txt")).unwrap();
-        assert_eq!(rules, format!("{RULES_MARK}\nnever edit test/signup.test.js\n"));
+        assert_eq!(rules, format!("{RULES_MARK}\nnever edit test/signup.test.js\nnever edit package.json\n"));   // the test command is protected with the test (second audit)
         // Each line is a rule the engine enforces (the same reading as houserules.rs and runner/src/rules.ts).
         assert!(crate::houserules::rule_of("never edit test/signup.test.js").is_some());
         // byte for byte the sample, plus only that one file

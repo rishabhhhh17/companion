@@ -167,6 +167,10 @@ describe("they are lessons like the others", () => {
     expect(envSteps(s)).toEqual(names.slice(0, 13));
     expect(s.goal).toMatch(/13 of the 20/);
     expect(v.goal).toMatch(/12 of the 20/);
+    // Second audit: it does not promise that opening it again reaches the rest (Companion cannot see what Vercel has).
+    expect(v.goal).not.toMatch(/for the rest/);
+    expect(v.goal).toMatch(/other 8/);
+    expect(v.goal.length).toBeLessThanOrEqual(200);
   });
   test("a paused lesson keeps its list of names, so its place still fits; a name the code no longer reads starts it afresh", () => {
     const p = project({ "package.json": VITE, "src/a.ts": "import.meta.env.VITE_ONE; import.meta.env.VITE_TWO" });

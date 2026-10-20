@@ -297,7 +297,9 @@ const SAID_MAX = 600;
 const saidOf = (e: Ev): { said?: string; asks?: boolean } => {
   if (typeof e.said !== "string") return {};
   const flat = redact(e.said).replace(/\s+/g, " ").trim();
-  const said = Array.from(flat).length <= SAID_MAX ? flat : `${Array.from(flat).slice(0, SAID_MAX - 1).join("").trimEnd()}…`;
+  // Words that ask the person keep their end (the question is the last line); any other keeps its start.
+  const chars = Array.from(flat);
+  const said = chars.length <= SAID_MAX ? flat : e.asks === true ? `…${chars.slice(chars.length - (SAID_MAX - 1)).join("").trimStart()}` : `${chars.slice(0, SAID_MAX - 1).join("").trimEnd()}…`;
   return said ? { said, ...(e.asks === true ? { asks: true } : {}) } : {};
 };
 

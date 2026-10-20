@@ -305,3 +305,108 @@ describe("the words Claude is given", () => {
   });
   test("a task that asked ends as asked, so Try again never says it failed", () => expect(endingOf("needs_you", "skipped")).toBe("asked"));
 });
+
+// Second audit (asks.ts): habitual endings, questions answered by the agent itself, permission questions, the tail of a long
+// message, and a Drive step that passed but still waits for an answer.
+describe("second audit: what counts as a question for the person", () => {
+  test("habitual offers and check ins in other words are not questions", () => {
+    for (const t of [
+      "Here is how the project is laid out. Would you like to see the routes?",
+      "I updated the form. Would you like to see it?",
+      "I updated the form. Do you want to deploy it?",
+      "I updated the form. Do you want to continue?",
+      "I fixed the bug. Would you like to add a test?",
+      "I fixed the bug. Want to try it?",
+      "The page is built. Ready to deploy?",
+      "The page is built. Shall we continue?",
+      "The page is built. Should we deploy it?",
+      "That is how it works. Is that clear?",
+      "I changed the layout. Have I covered everything?",
+      "I fixed the button. Did the button work for you?",
+      "I made the page. Would you like any changes?",
+    ]) { expect(asksPerson(t), t).toBe(false); expect(asksForWhatOnlyTheyHave(t), t).toBe(false); }
+  });
+  test("a real choice in those words is still a question", () => {
+    expect(asksPerson("I made the page. Would you like it blue or green?")).toBe(true);
+    expect(asksPerson("Do you have a Stripe account?")).toBe(true);
+  });
+  test("a question Claude answers itself later in the message is not a question", () => {
+    for (const t of [
+      "Is the build passing? Yes it passes. The page is live.",
+      "Why did it fail? The port was taken. I changed it to 3001.",
+      "What changed? I added the footer. I fixed the link.",
+    ]) expect(asksPerson(t), t).toBe(false);
+  });
+  test("a question followed only by where the answer lives, or that Claude waits, still is one", () => {
+    expect(asksPerson("I need a value. What is your project address? You can copy it from the dashboard. Let me know.")).toBe(true);
+    expect(asksPerson("Which email address should the form send to? Once you tell me, I will carry on.")).toBe(true);
+    expect(asksPerson("Which address should it use? Want me to add a test too?")).toBe(true);
+  });
+  test("a question followed by an ordinary line is still a question; only an answer cancels it", () => {
+    for (const t of [
+      "What is your Stripe key? Without it I can't set up payments.",
+      "What is your Stripe key? Please paste it here.",
+      "Which email should I use? I'll need it before I continue.",
+      "Which email address should I use? This is needed to send the form.",
+      "Which email address should I use? Note: the form stays off until then.",
+    ]) { expect(asksPerson(t), t).toBe(true); expect(questionOf(t), t).not.toBeNull(); }
+    expect(asksForWhatOnlyTheyHave("What is your Stripe key? Without it I can't set up payments.")).toBe(true);
+    for (const t of ["Is the build passing? The tests pass.", "Which port? I used 3001.", "Is it live? It is live."]) expect(asksPerson(t), t).toBe(false);
+  });
+  test("the other ways to ask before something destructive or theirs are questions too", () => {
+    for (const t of [
+      "Do you want me to delete the users table?",
+      "Would you like me to overwrite your config?",
+      "Do you want to delete your account data?",
+      "Want me to wipe the database?",
+    ]) { expect(asksPerson(t), t).toBe(true); expect(asksForWhatOnlyTheyHave(t), t).toBe(true); }
+    for (const t of ["I fixed it. Do you want me to add a test?", "I fixed it. Would you like to see it?", "Done. Do you want to continue?", "Done. Want me to tidy the styles?"]) expect(asksPerson(t), t).toBe(false);
+  });
+  test("a yes or no before something destructive or that is theirs is a question, not an offer", () => {
+    for (const t of [
+      "Done. Should I delete the old users table?",
+      "I stopped. Can I overwrite the existing .env file?",
+      "I found old exports. May I delete these files?",
+      "Should I use your existing Supabase project?",
+    ]) { expect(asksPerson(t), t).toBe(true); expect(asksForWhatOnlyTheyHave(t), t).toBe(true); expect(questionOf(t), t).not.toBeNull(); }
+    // Habitual endings with the same words stay offers.
+    expect(asksPerson("I fixed it. Shall I go ahead and tidy the styles?")).toBe(false);
+    expect(asksPerson("I fixed it. Should I proceed with your plan?")).toBe(false);
+  });
+});
+
+describe("second audit: the receipt keeps the question", () => {
+  test("a long message ending on a question keeps its end", () => {
+    const text = `${"I built the signup page and wired up the form. ".repeat(15)}Which email address should the messages go to?`;
+    expect(Array.from(text).length).toBeGreaterThan(MAX_SAID_CHARS);
+    const s = saidLine(text);
+    expect(Array.from(s).length).toBeLessThanOrEqual(MAX_SAID_CHARS);
+    expect(s.startsWith("…")).toBe(true);
+    expect(s).toContain("Which email address should the messages go to?");
+    expect(s.endsWith("?")).toBe(true);
+  });
+  test("a long message that asks nothing keeps its start, as before", () => {
+    const s = saidLine("I built the signup page. ".repeat(60));
+    expect(s.startsWith("I built")).toBe(true);
+    expect(s.endsWith("…")).toBe(true);
+  });
+});
+
+describe("second audit: a Drive step that passed but asks", () => {
+  test("it stops the plan there, as needs you, and the next step does not start", async () => {
+    const r = setup([[{ text: JSON.stringify(["Add the form", "Add the email"]), costUsd: 0 }], [write("b.txt", "form"), say("I added the form. Which email address should the form send to?")], [write("c.txt", "never")]], [good()], { empty: true });
+    await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "b1", goal: "signup", model: "m", budgetUsd: 3 });
+    await r.runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "b1", steps: ["Add the form", "Add the email"] });
+    expect(r.engine.calls.length).toBe(2);
+    expect(of(r.events, "drive.done")[0].status).toBe("needs_you");
+    const receipt = of(r.events, "receipt")[0];
+    expect(receipt.asks).toBe(true);
+    expect(receipt.proof).toBe("passed");
+  });
+  test("a step that ends on an offer carries on to the next step", async () => {
+    const r = setup([[{ text: JSON.stringify(["Add the form", "Add the email"]), costUsd: 0 }], [write("b.txt", "form"), say("I added the form. Want me to add a test too?")], [write("c.txt", "email"), say("Done.")]], [good()], { empty: true });
+    await r.runner.handle({ v: 1, id: "p1", type: "drive.plan", project: r.project, agent: "b1", goal: "signup", model: "m", budgetUsd: 3 });
+    await r.runner.handle({ v: 1, id: "p2", type: "drive.approve", agent: "b1", steps: ["Add the form", "Add the email"] });
+    expect(of(r.events, "drive.done")[0].status).toBe("done");
+  });
+});

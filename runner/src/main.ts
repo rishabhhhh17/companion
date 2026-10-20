@@ -29,7 +29,6 @@ import { slowFactor } from "./proof/options.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
-mkdirSync(join(settings.data, "shadow"), { recursive: true });
 
 let n = 0;
 const metrics = new Metrics(join(settings.data, "metrics.json"));
@@ -39,6 +38,8 @@ const say = (e: Record<string, unknown>) => emit({ v: PROTOCOL_VERSION, id: `r${
 // If a local file is damaged or cannot be written, Companion still starts and says so in plain words.
 const notes: string[] = [];
 const problem = (m: string) => { notes.push(m); };
+// A full disk or a folder that cannot be written must not stop the engine from starting (the supervisor gives up after a few tries).
+try { mkdirSync(join(settings.data, "shadow"), { recursive: true }); } catch { problem("Companion's folder for undo points could not be made on this Mac, so Undo may not work until there is room."); }
 // The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts, and by the fast lane
 // for each request ("Claude for quick answers").
 const runnerSettings = new RunnerSettings();

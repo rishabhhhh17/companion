@@ -78,7 +78,9 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
 export function withStartScript(det: Detected, dir: string, script: string | undefined): { det: Detected; gap?: string; chosen?: string } {
   if (!script || script === "auto") return { det };
   const launch = readJson(join(dir, ".claude", "launch.json"));
-  if (Array.isArray(launch?.configurations) && launch!.configurations[0]?.runtimeExecutable) return { det };
+  if (Array.isArray(launch?.configurations) && launch!.configurations[0]?.runtimeExecutable) {
+    return { det, gap: `The start script chosen in Settings (${script.slice(0, 60)}) was not used, because this project has its own .claude/launch.json, so it was started from that. Set the start choice to the usual way to stop seeing this.` };
+  }
   const pkg = det.packageManager ? readJson(join(dir, "package.json")) : null;
   const scripts: Record<string, unknown> = pkg && typeof pkg.scripts === "object" && pkg.scripts ? pkg.scripts : {};
   const name = script.slice(0, 60);

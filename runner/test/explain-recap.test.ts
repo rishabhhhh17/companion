@@ -76,6 +76,30 @@ describe("Where was I", () => {
   test("off the record tasks are not described at all", () => {
     expect(recapLines([row({ label: "Off the record task", startedAt: "2026-10-09T11:10:00.000Z", endedAt: "2026-10-09T11:20:00.000Z" })], since, 0)).toEqual([]);
   });
+  // Second audit: a task waiting for an answer is waiting for the person, and stops for other reasons are named.
+  test("a task that ended by asking a question is waiting for the person", () => {
+    const l = recapLines([row({ status: "needs_you", proof: "skipped", startedAt: "2026-10-09T11:10:00.000Z", endedAt: "2026-10-09T11:20:00.000Z" })], since, 0);
+    expect(l[1]).toMatch(/1 task ended/); expect(l[1]).toMatch(/1 waiting for your answer/);
+    expect(l[2]).toBe("1 thing is waiting for you");
+    // With an approval pending as well, both count.
+    expect(recapLines([row({ status: "needs_you", startedAt: "2026-10-09T11:10:00.000Z" })], since, 2)[2]).toBe("3 things are waiting for you");
+  });
+  test("a question that was answered afterwards no longer waits", () => {
+    const l = recapLines([
+      row({ id: 5, status: "needs_you", startedAt: "2026-10-09T11:10:00.000Z", endedAt: "2026-10-09T11:12:00.000Z" }),
+      row({ id: 6, status: "done", startedAt: "2026-10-09T11:13:00.000Z", endedAt: "2026-10-09T11:15:00.000Z" }),
+    ], since, 0);
+    expect(l[2]).toBe("Nothing is waiting for you");
+  });
+  test("tasks cut off by no connection, Claude being busy or the turn limit are stopped, and an error is not done", () => {
+    const l = recapLines([
+      row({ id: 7, status: "no_connection", proof: null, startedAt: "2026-10-09T11:10:00.000Z" }),
+      row({ id: 8, status: "claude_busy", proof: null, startedAt: "2026-10-09T11:11:00.000Z" }),
+      row({ id: 9, status: "error_max_turns", proof: null, startedAt: "2026-10-09T11:12:00.000Z" }),
+      row({ id: 10, status: "error", proof: null, startedAt: "2026-10-09T11:13:00.000Z" }),
+    ], since, 0);
+    expect(l[1]).toMatch(/4 tasks ended/); expect(l[1]).toMatch(/3 stopped/); expect(l[1]).toMatch(/1 not done/);
+  });
   test("a task still running is said as running", () => {
     const l = recapLines([row({ status: "running", endedAt: null, startedAt: "2026-10-09T11:10:00.000Z" })], since, 0);
     expect(l.join(" ")).toMatch(/still running/i);

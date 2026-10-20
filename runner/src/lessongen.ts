@@ -155,7 +155,7 @@ export function vercelLesson(n: Needs, shape?: string): Lesson | null {
     return { id: stepId("add", name), say, find: "the Name and Value boxes under Environment Variables", check: { kind: "ask" } };
   });
   const goal = total > names.length
-    ? `Add this project's settings to its Vercel project so the live site has them too. This covers ${names.length} of the ${total}; open it again afterwards for the rest.`
+    ? `Add this project's settings to its Vercel project so the live site has them too. This covers ${names.length} of the ${total}; the other ${total - names.length} are not in it, so add those in Vercel yourself.`
     : `Add the ${plural(names.length, "setting")} this project needs to its Vercel project, so the live site has ${names.length === 1 ? "it" : "them"} too. Paste values only into Vercel and ${file}.`;
   return made({
     id: VERCEL_LESSON, title: "Add this project's settings to Vercel", app: "Vercel", goal, status: "draft", needsProject: true,

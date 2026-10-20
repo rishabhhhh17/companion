@@ -1,9 +1,9 @@
 // The shared AGENTS.md (and a CLAUDE.md that imports it), so any editor or command line tool a person codes with starts
 // from the same project facts. Project facts and house rules only: never the personal profile, never a key or private line.
 // Files the person already has are never changed without a yes, and then only one marked block is added, which can be removed.
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { writeAtomic } from "../atomic.ts";
 import { screenLine } from "./filter.ts";
 import { readCompanionFile } from "../companionfile.ts";
 import type { MemoryStore } from "./store.ts";
@@ -25,16 +25,17 @@ function section(project: string, m: MemoryStore): string | null {
   return [BEGIN, "## Project notes (from Companion)", ...(facts.length ? facts.map((f) => `- ${f}`) : ["- Nothing yet."]), ...(rules.length ? ["", "## House rules", ...rules.map((r) => `- ${r}`)] : []), END].join("\n");
 }
 
-type State = { kind: "absent" } | { kind: "text"; text: string } | { kind: "unreadable" };
+type State = { kind: "absent" } | { kind: "text"; text: string } | { kind: "unreadable" } | { kind: "link" };
+// A link is never written through or over: CLAUDE.md pointing at AGENTS.md is the person's own setup (and a link in a project
+// that came from the internet could point anywhere), so nothing is changed while either file is one.
+const isLink = (file: string) => { try { return lstatSync(file).isSymbolicLink(); } catch { return false; } };
 function stateOf(file: string): State {
+  if (isLink(file)) return { kind: "link" };
   if (!existsSync(file)) return { kind: "absent" };
   try { return { kind: "text", text: readFileSync(file, "utf8") }; } catch { return { kind: "unreadable" }; }
 }
-function save(file: string, text: string) {
-  const tmp = `${file}.${randomBytes(4).toString("hex")}.tmp`;
-  writeFileSync(tmp, text);
-  renameSync(tmp, file);
-}
+// The new file keeps the old file's permissions.
+const save = (file: string, text: string) => writeAtomic(file, text, "keep");
 const withBlock = (text: string, block: string) => (BLOCK.test(text) ? text.replace(BLOCK, `\n${block}\n`) : `${text.replace(/\n*$/, "\n")}\n${block}\n`);
 
 export function syncAgentsFiles(project: string, m: MemoryStore, o: { approved: boolean; declined?: boolean; onlyIfPresent?: boolean }): SyncResult {
@@ -45,6 +46,7 @@ export function syncAgentsFiles(project: string, m: MemoryStore, o: { approved: 
   // Keeping in step after a change: only where Companion already wrote its block, and a block with nothing left goes away.
   if (o.onlyIfPresent && !hasOurs) return { status: "unchanged", files: [] };
   if (!block) return hasOurs && removeSection(aPath) ? { status: "written", files: ["AGENTS.md"] } : { status: "nothing_to_write", files: [] };
+  if (a.kind === "link" || c.kind === "link") return { status: "failed", files: [], reason: `${a.kind === "link" ? "AGENTS.md" : "CLAUDE.md"} in your project is a link to another file, so nothing was changed. Companion never writes through a link.` };
   if (a.kind === "unreadable" || c.kind === "unreadable") return { status: "failed", files: [], reason: "A file in your project could not be read, so nothing was changed." };
 
   const ours = (s: State) => s.kind === "text" && BLOCK.test(s.text);
@@ -73,6 +75,7 @@ export function syncAgentsFiles(project: string, m: MemoryStore, o: { approved: 
 
 // Takes our block out of a file and leaves everything else exactly as it was.
 export function removeSection(file: string): boolean {
+  if (isLink(file)) return false;
   try {
     const text = readFileSync(file, "utf8");
     if (!BLOCK.test(text)) return false;

@@ -16,7 +16,7 @@ export function proofGate(p: ProofRecord | undefined): GateResult {
   switch (p.verdict) {
     case "passed": return { ...CHECKED, status: "passed", detail: "The checks passed on this exact version." };
     case "failed": return { ...CHECKED, status: "blocked", detail: "The last check of this version failed. Fix what it found first.", overridable: false };
-    case "passed_with_gaps": return { ...CHECKED, status: "could_not_check", detail: "Some checks were skipped (for example the browser check), so this version is not fully checked. Run them again once they can run.", overridable: false };
+    case "passed_with_gaps": return { ...CHECKED, status: "could_not_check", detail: "Some checks could not run or were left out, for example the browser check is not installed, or a check is turned off in Settings, so this version is not fully checked. Fix that, then press Put it online again and the checks run again.", overridable: false };
     case "nothing_to_check": return { ...CHECKED, status: "could_not_check", detail: "There was nothing I could check automatically in this project. If you have looked at it yourself, you can confirm that.", overridable: true };
     default: return { ...CHECKED, status: "blocked", detail: "The last check did not finish. Run it again.", overridable: false };
   }

@@ -1,9 +1,9 @@
 // Putting a project on the internet, through the person's own Vercel login. Companion never holds a deploy token:
 // the Vercel tool keeps the login in its own place, and everything it says is cleaned before it is shown or saved.
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { writeAtomic } from "../atomic.ts";
 import { runCommand, shq, type RunResult } from "../proof/exec.ts";
 import { minimalEnv } from "../env.ts";
 import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
@@ -176,7 +176,16 @@ export function addShipReceipt(project: string, r: ShipReceipt) {
   if (!companionDirUsable(project)) throw new Error("The project's .companion folder is a link, so the record was not written.");
   const f = join(project, FILE);
   mkdirSync(dirname(f), { recursive: true });
-  const tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
-  writeFileSync(tmp, JSON.stringify([...readShips(project), r].slice(-50), null, 2) + "\n");
-  renameSync(tmp, f);
+  // A record that is there but cannot be understood (cut short, edited by hand into something else) is kept next to the new
+  // one as ships.damaged.json, never written over: Roll back looks for the last live version in it.
+  const read = readCompanionFile(project, "ships.json", 1024 * 1024);
+  if (read.state === "ok") {
+    let fine = false;
+    try { fine = Array.isArray(JSON.parse(read.text)); } catch { /* damaged */ }
+    if (!fine) {
+      const keep = join(dirname(f), "ships.damaged.json");
+      writeAtomic(existsSync(keep) ? join(dirname(f), `ships.damaged-${Date.now()}.json`) : keep, read.text);
+    }
+  }
+  writeAtomic(f, JSON.stringify([...readShips(project), r].slice(-50), null, 2) + "\n");
 }

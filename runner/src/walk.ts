@@ -134,6 +134,9 @@ export type Acted = "clicked" | "done_for_you" | "pressed";
 
 export class Walkthrough {
   private p: Progress;
+  /** Was the saved progress taken? False when there was none, or it was for another lesson, project or list of steps (it is
+   *  then thrown away and the walk begins at step one, as a new start). */
+  readonly accepted: boolean;
   private stopped = false;
   // After a pause, on a step only the person can confirm: "Did you already do this?" is asked before anything is pointed
   // at. Never saved: it is worked out again at every resume.
@@ -147,6 +150,7 @@ export class Walkthrough {
     // Saved progress counts only for this very lesson, this project and this list of steps (a changed lesson starts over).
     const ok = saved && saved.version === 1 && saved.shape === shape && saved.lesson === lesson.id && saved.project === o.project && Array.isArray(saved.log) && saved.log.every(goodLog) && Array.isArray(saved.failed) && Array.isArray(saved.usedInstead) && Number.isInteger(saved.index) && saved.index >= 0;
     const n = lesson.steps.length;
+    this.accepted = !!ok;
     this.p = ok
       ? { version: 1, shape, lesson: lesson.id, project: o.project, index: Math.min(saved.index, n), log: saved.log.slice(-200), failed: saved.failed.filter((x) => typeof x === "string"), usedInstead: saved.usedInstead.filter((x) => typeof x === "string"), blocked: typeof saved.blocked === "string" ? saved.blocked : null, done: saved.done === true || saved.index >= n }
       : { version: 1, shape, lesson: lesson.id, project: o.project, index: 0, log: [], failed: [], usedInstead: [], blocked: null, done: false };
