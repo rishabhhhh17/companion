@@ -30,7 +30,10 @@ export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project
 export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
 // screens: when Show me looked at more than one screen (2 to 4), one picture each, the screen the mouse pointer is on first
 // (its ref is the same as image.ref). label is "Screen N of M"; the engine sends only that exact shape to the model.
-export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[] };
+export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[]; mode?: LocateMode };
+// mode: an everyday stuck moment (the hero key with no project, or with an app in front that is not a code tool). "everyday"
+// asks what is wrong and the first steps of the fix; "recheck" looks again to say whether it is gone (runner/src/everyday.ts).
+export type LocateMode = "everyday" | "recheck";
 export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaType: "image/jpeg" | "image/png"; base64: string; w: number; h: number };
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
@@ -168,6 +171,11 @@ export type PointTarget = { x: number; y: number; ocrId?: string; targetText: st
  *  worked (a judgment from the picture, never proof). */
 export type AssistPoint = Envelope & { type: "assist.point"; req: string; step: number; x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: PointMark; screen?: number; targets?: PointTarget[]; lastStepWorked?: "yes" | "no" | "unsure" };
 export type AssistError = Envelope & { type: "assist.error"; req: string; reason: string };
+// An everyday look's answer, before its steps (which come as an ordinary assist.point with the same req, when steps > 0).
+// found: a problem is on screen (for a recheck: still there). problem: at most two plain sentences. code: a spreadsheet
+// error's code when the words on screen show one, and fromTable when its words come from the runner's own table. gone: the
+// recheck's verdict, "yes" only when the error is gone from the screen. fixes: the table's usual fixes for that error.
+export type AssistProblem = Envelope & { type: "assist.problem"; req: string; mode: LocateMode; found: boolean; problem?: string; kind?: string; code?: string; why?: string[]; question?: { text: string; options: string[]; correct: number }; fixes?: string[]; gone?: "yes" | "no" | "unsure"; steps: number; fromTable?: boolean; usdEstimate: number };
 
 // Where a check failed: a line in the project, a button in the app, or at least the error sentence.
 export type Problem =
@@ -251,7 +259,7 @@ export type BisectUndone = Envelope & { type: "bisect.undone"; project: string; 
 export type ErrorExplained = Envelope & { type: "error.explained"; req: string; project?: string; ok: boolean; sentences: string[]; where?: Problem; excerpt: string; evidence: string; reason?: string; usdEstimate: number };
 // What the engine took from settings.apply (names only) and what it refused (each then at its usual value), never values.
 export type SettingsApplied = Envelope & { type: "settings.applied"; accepted: string[]; refused: string[] };
-export type Event = SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -358,7 +366,7 @@ const COMMANDS: Record<string, Check[]> = {
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
   "checkpoint.restore": [str("project"), str("checkpoint")],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
-  "assist.locate": [str("req"), str("question"), obj("image"), screensOk],
+  "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("mode", oneOf("mode", ["everyday", "recheck"]))],
   "assist.cancel": [str("req")],
   "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
 };
@@ -430,6 +438,7 @@ const EVENTS: Record<string, Check[]> = {
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
   "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption"), pointExtrasOk],
   "assist.error": [str("req"), str("reason")],
+  "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
 };
 
 function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {
