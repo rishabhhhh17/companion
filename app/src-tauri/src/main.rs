@@ -1313,7 +1313,7 @@ fn home_dir() -> String { std::env::var("HOME").unwrap_or_default() }
 
 /// The folders the person chose before (still on disk), newest first.
 #[tauri::command]
-fn list_projects() -> Vec<String> { projects::load(&projects_path()).still_there() }
+fn list_projects() -> Vec<String> { projects::load(&projects_path()).checked(&home_dir(), &data_dir()).still_there() }
 
 /// Switch to a folder from the list, or one just picked. Only folders that pass the checks are ever used.
 #[tauri::command]
@@ -3074,7 +3074,7 @@ fn start_runner(app: &AppHandle) {
     let first = dev.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
         .and_then(|v| v.get("project").and_then(|p| p.as_str().map(String::from)));
     // The folder the person chose last wins; the development settings file only supplies the first one.
-    let saved = projects::load(&projects_path()).current.filter(|c| std::path::Path::new(c).is_dir());
+    let saved = projects::load(&projects_path()).checked(&home_dir(), &data_dir()).current.filter(|c| std::path::Path::new(c).is_dir());
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = saved.or(first);
     let bundle = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e));
     let result = runner::locations_with_bundle(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"), bundle)
