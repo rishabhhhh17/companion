@@ -10,3 +10,6 @@ Founder approved on 21 Oct 2026 (F20). One builder, then the usual adversarial r
 5. **Island and character:** the island can show the working group's name; the character gets named group states (water states for Flow) as data for the art, reduced motion respected.
 6. **First run:** explains the four groups in four short lines and lets the person switch any off.
 7. Docs, architecture, T16 settings section, F20 true; a test that no user text has praise, streak or level words.
+
+## Status (20 Oct 2026)
+All seven items built on branch m12/elementals, with tests; see F20 ("Built") and `docs/architecture.md` (module `groups`). Not tried in the built app. Next: the adversarial review, then the fixes.

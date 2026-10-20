@@ -3,12 +3,13 @@ import type { DoctorItem } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac } from "./commands.ts";
 import { changeSetting } from "./settingsStore.ts";
-import { canContinue, commandsFor, settingsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
+import { canContinue, commandsFor, groupSettingsFor, settingsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
 import { keyHints, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
+import { SWITCHED, type SwitchedId } from "./groups.ts";
 import { FIRST_PRACTICE, costWords, needsMacCheck, nodeMissing, practiceOf, timeWords } from "./practice.ts";
 
 // startPractice: copy a practice and open it (the first run ends there); pickPractice: end the first run on the Learn
@@ -18,6 +19,8 @@ type Props = { doctor: DoctorItem[] | null; connected: string; project: string; 
 export function Onboarding({ doctor, connected, project, send, pickFolder, useTask, startPractice, pickPractice, onDone }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
+  // The groups switched off here (F20): none unless the person switches one. Applied when the first run finishes.
+  const [groupsOff, setGroupsOff] = useState<SwitchedId[]>([]);
   const [key, setKey] = useState("");
   const [keyNote, setKeyNote] = useState("");
   // The keys every job uses now (the person may have picked others, or another app may hold the usual ones). The card
@@ -29,6 +32,7 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
   const finish = () => {
     for (const c of commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command)) void send(c);
     for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);
+    for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);
     onDone();
   };
   const saveKey = () => {
@@ -105,6 +109,20 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
         ))}
         <div className="line muted">{effectsOf(answers).join(" ")}</div>
       </>)}
+      {step === "groups" && (<>
+        <h2>{S.groups.firstTitle}</h2><div className="line muted">{S.groups.firstHelp}</div>
+        {SWITCHED.map((g) => {
+          const id = g.id as SwitchedId, on = !groupsOff.includes(id);
+          return (
+            <div key={id} className="row">
+              <span className="line">{S.groups.short[id]}</span>
+              <button className={`btn ${on ? "primary" : ""}`} type="button" aria-pressed={on} aria-label={`${S.groups.names[id]}: ${on ? S.groups.isOn : S.groups.isOff}`}
+                onClick={() => setGroupsOff((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))}>{on ? S.groups.isOn : S.groups.isOff}</button>
+            </div>
+          );
+        })}
+        <div className="line muted">{S.groups.core}</div>
+      </>)}
       {step === "permissions" && (<>
         <h2>{S.obPermTitle}</h2><div className="line">{S.obPerm1}</div><div className="line">{S.obPerm2}</div><div className="line">{S.obPerm3}</div><div className="line muted">{S.obPermNone}</div>
         {doctor && (<>
@@ -126,7 +144,7 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
         {back(step) && <button className="btn" type="button" onClick={() => go(back(step))}>{S.obBack}</button>}
         {step === "welcome" && <button className="btn primary" type="button" onClick={() => go(next(step))}>{S.obStart}</button>}
         {step !== "welcome" && step !== "first" && <button className={`btn${step === "practice" ? "" : " primary"}`} type="button" disabled={!canContinue(step, ctx)} onClick={() => go(next(step))}>{step === "practice" ? S.obPracticeSkip : S.obContinue}</button>}
-        {step === "questions" && <button className="btn" type="button" onClick={() => { setAnswers(DEFAULT_ANSWERS); go("permissions"); }}>{S.obSkip}</button>}
+        {step === "questions" && <button className="btn" type="button" onClick={() => { setAnswers(DEFAULT_ANSWERS); go("groups"); }}>{S.obSkip}</button>}
         {step === "first" && <button className="btn primary" type="button" onClick={finish}>{S.obFinish}</button>}
       </div>
     </section>

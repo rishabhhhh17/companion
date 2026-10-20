@@ -85,7 +85,7 @@ export function searchSettings(query: string, settings: readonly Def[] = REGISTR
   const sections: { id: string; title: string; keys: string[] }[] = [];
   for (const id of REGISTRY.sections) {
     const title = sectionTitle(id);
-    const inIt = settings.filter((d) => d.section === id);
+    const inIt = settings.filter((d) => d.section === id && !d.hidden);
     if (!inIt.length) continue;
     const whole = all || matches(q, [title]);
     const keys = inIt.filter((d) => {

@@ -293,7 +293,7 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
   test("the island says what it is and its state in one line", () => {
     const island = read("./island.tsx");
     // The update a check found is part of the same one line (home.ts islandLine), so VoiceOver hears what the eye sees.
-    expect(island).toContain("const line = islandLine(m, { update });");
+    expect(island).toContain("const line = islandLine(m, { update, group: showGroup && g && g !== \"core\" ? S.groups.names[g] : null });");
     expect(island).toMatch(/aria-label=\{`\$\{S\.islandOpen\}\. \$\{line\}`\}/);
     // What it draws for sighted people is hidden from VoiceOver, so nothing is read twice.
     for (const part of ["pillrow", "lip", "peekline"]) expect(island).toMatch(new RegExp(`className="${part}" aria-hidden="true"`));

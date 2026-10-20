@@ -258,10 +258,21 @@ fn try_keys(p: Chord, d: Chord, mut register: impl FnMut(Chord) -> bool) -> Star
 
 /// At launch, for each job: the keys picked, else the usual ones. Keys that work stay registered, except use a
 /// suggestion's, which are let go again at once (`keep_registered`): they are taken only while a result shows.
-pub fn start(picked: &Map, mut register: impl FnMut(Action, Chord) -> bool, mut unregister: impl FnMut(Chord)) -> [Started; N] {
+pub fn start(picked: &Map, register: impl FnMut(Action, Chord) -> bool, unregister: impl FnMut(Chord)) -> [Started; N] {
+    start_held(picked, &[false; N], register, unregister)
+}
+/// Whether a job's keys stay registered: `keep_registered`, and never while the job is held back because its group is
+/// switched off (F20, groups.rs). The person's choice of keys stays saved either way.
+pub fn keep_registered_in(a: Action, armed: bool, held: bool) -> bool { !held && keep_registered(a, armed) }
+/// When a job comes back (its group is switched on again), its keys are registered at once, except use a suggestion's:
+/// those are taken only while a Prompt help result shows (`arm`).
+pub fn registered_on_return(a: Action) -> bool { !a.armed_only() }
+/// `start`, with the jobs of groups that are switched off (`held`): their keys are tried like any other job's, so the
+/// choice and a fall back are known, and let go again at once. They are registered when the group is switched on.
+pub fn start_held(picked: &Map, held: &[bool; N], mut register: impl FnMut(Action, Chord) -> bool, mut unregister: impl FnMut(Chord)) -> [Started; N] {
     ACTIONS.map(|a| {
         let s = try_keys(picked.get(a), default(a), |c| register(a, c));
-        if let Some(c) = s.using() { if !keep_registered(a, false) { unregister(c); } }
+        if let Some(c) = s.using() { if !keep_registered_in(a, false, held[a.index()]) { unregister(c); } }
         s
     })
 }
@@ -899,13 +910,16 @@ mod tests {
         // Use a suggestion's keys are taken from other apps only while a result shows (T11), and every other job's keys
         // stay off limits: these rules decide, tested above, and the shell only calls them.
         let line = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find('\n').unwrap()].to_string() };
-        assert!(start.contains("keymap::start(&picked,") && start.contains("|c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())"), "{start}");
-        assert!(body("fn set_key(").contains("let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
+        assert!(start.contains("keymap::start_held(&picked, &held,") && start.contains("|c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())"), "{start}");
+        // Whether a job's keys stay registered is still the rule here (keep_registered), with a job held back by its group
+        // switched off counted in one place (key_keep, groups.rs).
+        assert!(line("fn key_keep(").contains("{ keymap::keep_registered_in(a, armed, key_held(a)) }"));
+        assert!(body("fn set_key(").contains("let keep = key_keep(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
         assert!(body("fn set_key(").contains("keymap::switch(a, wanted, before, keep, &picked, &key_others(a, &picked),"));
-        assert!(body("fn keys_to_usual(").contains("keymap::reset(&picked, &using, &registered, |a| keymap::keep_registered(a, armed),"));
-        assert!(body("fn keys_restore(").contains("let keep = keymap::keep_registered(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
+        assert!(body("fn keys_to_usual(").contains("keymap::reset(&picked, &using, &registered, |a| key_keep(a, armed),"));
+        assert!(body("fn keys_restore(").contains("let keep = key_keep(a, ACCEPT_ARMED.load(Ordering::SeqCst));"));
         assert!(body("fn keys_to_usual(").contains("let registered = keymap::ACTIONS.map(key_registered);"));
-        assert!(line("fn key_registered(").contains("{ keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)) }"));
+        assert!(line("fn key_registered(").contains("{ keymap::registered(a, key_using(a), ACCEPT_ARMED.load(Ordering::SeqCst)).filter(|_| !key_held(a)) }"));
         assert!(body("fn key_others(").contains("keymap::others(a, &keys_using(), picked)"));
         assert!(body("fn key_choices(").contains("keymap::free(a, key_registered(a), &key_others(a, &keys_picked()),"));
         assert!(!main.contains("armed_only()"), "no job's rule for when its keys stay registered is decided in main.rs");

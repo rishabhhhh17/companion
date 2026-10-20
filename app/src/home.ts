@@ -211,7 +211,12 @@ export function islandWord(m: Model): string {
 /** The one line shown when the pointer is on the island. `update`: the version a check found ready to install (the shell's
  *  "update-ready"). With nothing else going on, it says what is next instead of Ready: connect Claude first (Not connected
  *  yet), then the update waiting for Install on Home. Neither shows the mark (islandAlert). */
-export function islandLine(m: Model, o: { update?: string | null } = {}): string {
+export function islandLine(m: Model, o: { update?: string | null; group?: string | null } = {}): string {
+  const line = islandLineBase(m, o);
+  // With Show the working group on the island (groups.islandName) and a group at work, its name starts the line (F20 item 5).
+  return o.group && m.runnerUp ? cut(S.groups.islandGroup(o.group, line)) : line;
+}
+function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (!m.runnerUp) return S.islandOff;
   if (m.voice?.stage === "listening") return S.islandListening;
   if (m.approvals.length) return cut(S.islandNeedsYou(m.approvals[0].title));

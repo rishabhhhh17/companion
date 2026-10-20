@@ -717,7 +717,7 @@ mod tests {
     fn the_shipped_registry_reads_and_every_definition_is_valid() {
         let r = registry();
         assert_eq!(check_registry(r), Vec::<String>::new());
-        assert_eq!(r.sections.first().map(String::as_str), Some("keys"));
+        assert_eq!(r.sections.first().map(String::as_str), Some("groups"));
         assert!(r.get("work.maxTurns").is_some_and(|d| d.applies == ["runner"] && !d.live && d.store == "settings"));
         assert_eq!(check_registry(&test_registry()), Vec::<String>::new());
     }

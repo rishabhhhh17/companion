@@ -115,7 +115,7 @@ describe("a request the engine says no to is put back", () => {
     expect(submit).toMatch(/const added = forRequest\(attachedNow\.current\);\s*if \("error" in checkAttachments\(added\)\)/);
     expect(submit.indexOf("checkAttachments(added)")).toBeLessThan(submit.indexOf("void send("));
     expect(submit).toContain("sent.current = { prompt, attached: attachedNow.current, off };");
-    expect(submit).toMatch(/void send\(startTask\(project, prompt, off, added\)\)\.catch\(\(\) => putBackSent\(\)\)/);
+    expect(submit).toMatch(/void send\(startTask\(project, prompt, off, added\)\)\.catch\(\(e\) => \{ putBackSent\(\); explainRefusal\(e\); \}\)/);
     expect(card).toMatch(/listen\("runner-event", \(e\) => onSentEvent\.current\(e\.payload\)\)/);
     expect(card).toContain("sentOutcome(payload, AGENT)");
     // Never on disk: only the box's own draft rules decide what is kept, and a new folder forgets it.

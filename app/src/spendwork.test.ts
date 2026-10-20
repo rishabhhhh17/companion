@@ -87,7 +87,8 @@ describe("the model rows in Settings", () => {
     const shown = shownSettings().map((d) => d.key);
     for (const k of ["model.work", "model.rescue", "model.quick"]) expect(shown, k).not.toContain(k);
     expect(shown).toContain("budget.task");
-    expect(shown.length).toBe(REGISTRY.settings.length - 3);
+    // The three model rows, and the tools tried (hidden: set only by a real use, groups.ts).
+    expect(shown.length).toBe(REGISTRY.settings.length - 3 - REGISTRY.settings.filter((d) => d.hidden).length);
     expect(offeredOptions("model.work")).toEqual(["recommended"]);
     expect(offeredOptions("budget.task")).toBeNull();
   });

@@ -107,6 +107,21 @@ describe("each practice from start to done", () => {
   });
 });
 
+describe("a fix that was refused goes back to where it was", () => {
+  const e = entry("signup");
+  test("the waiting line ends and Fix it with me can be pressed again (Flow switched off between the press and the engine)", () => {
+    const fixing = run([start(e), found(e), ev({ type: "ui.practiceFixing" })]);
+    expect(fixing.practice?.stage).toBe("fixing");
+    const back = run([ev({ type: "ui.practiceFixRefused" })], fixing);
+    expect(back.practice?.stage).toBe("found");
+    expect(back.practice?.problem).toEqual(fixing.practice?.problem);
+  });
+  test("it changes nothing when the practice is not fixing", () => {
+    const at = run([start(e), found(e)]);
+    expect(run([ev({ type: "ui.practiceFixRefused" })], at)).toEqual(at);
+  });
+});
+
 describe("the fix is the practice's own task, matched by its practice id", () => {
   const e = entry("signup");
   test("only a receipt carrying this practice's id finishes it, never one from another task or another practice", () => {
@@ -231,7 +246,7 @@ describe("the checks after a lesson or a fix can always be left or run again (bu
     const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
     const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
     expect(key).toContain('if (nowModel.current.point?.stage === "checking") { homeDispatch({ type: "pick", tab: "now" }); return; }');
-    expect(key.indexOf('nowModel.current.point?.stage === "checking"')).toBeLessThan(key.indexOf("send(findProblem("));
+    expect(key.indexOf('nowModel.current.point?.stage === "checking"')).toBeLessThan(key.indexOf("sendOrExplain(findProblem("));
   });
   test("the person can stop the checks; then they can run them again", () => {
     const m = run([ev({ type: "ui.practiceStopProving" })], proving(s));
