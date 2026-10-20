@@ -6,7 +6,7 @@
 - Companion looks at your screen or listens **only when you press its key**, with a light on first. It never watches in the background.
 - It uses **your own Claude key**. Companion has no server and never sees your key, your project or your screen: what Claude is sent goes from your Mac to Anthropic, under your account.
 - Other sites hear from your Mac only where the table below says: your own Vercel tool, a project you open from a link, packages a check installs, web pages a task opens, and downloads you press for (the speech model, the browser check, updates).
-- Nothing you did is kept anywhere but on your Mac, and **Settings, Delete everything** removes all of it.
+- Nothing you did is kept anywhere but on your Mac, and **Settings, Delete everything** removes what Companion keeps in its own folders. The Mac's own temporary folder is not Companion's: while a task runs, Claude Code can leave the output of a command there, and macOS clears it by itself.
 
 ## Feature by feature
 | When | What Companion reads | Where it goes |
