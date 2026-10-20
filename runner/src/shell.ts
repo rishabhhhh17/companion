@@ -98,11 +98,81 @@ export function commandsOf(cmd: string, depth = 0): string[][] {
   return out;
 }
 
+// ---------- here documents ----------
+
+// The command line with the text of each here document taken out (`cat <<EOF` ... `EOF`). That text is data handed to the
+// command, never shell, so a `</div>` or a `1 > 0` in a page written this way is no redirection. The line that starts a here
+// document and everything after its closing line are kept. A here document with no closing line runs to the end, as in a
+// shell.
+export function withoutHereDocs(raw: string): string {
+  const cmd = normalize(raw);
+  let out = "";
+  let q: "" | "'" | '"' = "";
+  // Inside arithmetic, $(( )), (( )) or $[ ], << shifts bits; it starts no here document.
+  let arith = 0, closer = "";
+  const pending: { word: string; tabs: boolean }[] = [];
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q) { out += c; if (c === q) q = ""; else if (c === "\\" && q === '"' && i + 1 < cmd.length) out += cmd[++i]; continue; }
+    if (c === "'" || c === '"') { q = c; out += c; continue; }
+    if (c === "\\" && i + 1 < cmd.length) { out += c + cmd[++i]; continue; }
+    if (arith) {
+      out += c;
+      if (c === (closer === ")" ? "(" : "[")) arith++;
+      else if (c === closer) arith--;
+      continue;
+    }
+    if ((c === "(" && cmd[i + 1] === "(") || (c === "$" && cmd[i + 1] === "[")) {
+      closer = c === "(" ? ")" : "]";
+      arith = c === "(" ? 2 : 1;
+      out += cmd.slice(i, i + 2); i++;
+      continue;
+    }
+    if (c === "<" && cmd[i + 1] === "<" && cmd[i + 2] !== "<") {
+      let j = i + 2;
+      const tabs = cmd[j] === "-";
+      if (tabs) j++;
+      while (cmd[j] === " " || cmd[j] === "\t") j++;
+      let word = "", wq = "";
+      for (; j < cmd.length; j++) {
+        const t = cmd[j];
+        if (wq) { if (t === wq) wq = ""; else word += t; continue; }
+        if (t === "'" || t === '"') { wq = t; continue; }
+        if (t === "\\" && j + 1 < cmd.length) { word += cmd[++j]; continue; }
+        if (/[\s;&|()<>]/.test(t)) break;
+        word += t;
+      }
+      out += cmd.slice(i, j);
+      if (word) pending.push({ word, tabs });
+      i = j - 1;
+      continue;
+    }
+    if (c === "\n" && pending.length) {
+      // Skip each here document's text in turn, up to and including its closing line.
+      out += c;
+      let k = i + 1;
+      for (const { word, tabs } of pending) {
+        while (k < cmd.length) {
+          const e = cmd.indexOf("\n", k), end = e < 0 ? cmd.length : e;
+          const line = cmd.slice(k, end);
+          k = end + 1;
+          if ((tabs ? line.replace(/^\t+/, "") : line) === word) break;
+        }
+      }
+      pending.length = 0;
+      i = k - 1;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
 // ---------- redirections: where output is written ----------
 
 // The files a command line writes to with >, >>, >|, &> or 2>. File descriptor copies (>&2) and /dev/null are left out.
 export function redirectTargets(raw: string): string[] {
-  const cmd = normalize(raw);
+  const cmd = withoutHereDocs(raw);
   const out: string[] = [];
   let q: "" | "'" | '"' = "";
   for (let i = 0; i < cmd.length; i++) {
@@ -126,6 +196,39 @@ export function redirectTargets(raw: string): string[] {
     }
     i = j - 1;
     if (target && !/^\/dev\/(null|stdout|stderr|tty|zero)$/.test(target)) out.push(target);
+  }
+  return out;
+}
+
+// ---------- input redirections: where input is read from ----------
+
+// The files a command line reads with < (or <>). Here documents (<<, <<<), process substitution (<(...)) and descriptor
+// copies (<&3) name no file, so they are left out.
+export function inputTargets(raw: string): string[] {
+  const cmd = withoutHereDocs(raw);
+  const out: string[] = [];
+  let q: "" | "'" | '"' = "";
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q) { if (c === q) q = ""; else if (c === "\\" && q === '"') i++; continue; }
+    if (c === "'" || c === '"') { q = c; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c !== "<") continue;
+    let j = i + 1;
+    if (cmd[j] === "<") { i = j + (cmd[j + 1] === "<" ? 1 : 0); continue; }   // a here document or here string
+    if (cmd[j] === "(" || cmd[j] === "&") { i = j; continue; }               // process substitution, or a descriptor copy
+    if (cmd[j] === ">") j++;
+    while (cmd[j] === " " || cmd[j] === "\t") j++;
+    let target = "", tq = "";
+    for (; j < cmd.length; j++) {
+      const t = cmd[j];
+      if (tq) { if (t === tq) { tq = ""; continue; } target += t; continue; }
+      if (t === "'" || t === '"') { tq = t; continue; }
+      if (/[\s;&|()<>]/.test(t)) break;
+      target += t;
+    }
+    i = j - 1;
+    if (target && !/^\/dev\/(null|stdin|zero|urandom|random|tty)$/.test(target)) out.push(target);
   }
   return out;
 }

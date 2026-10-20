@@ -29,7 +29,9 @@ async function go(initial: Record<string, string>, rounds: Step[][]) {
   const events: Event[] = [];
   const log = new TaskLog(":memory:");
   const engine = new ScriptedEngine(rounds);
-  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, emit: (e) => events.push(e) });
+  // A task that changes the project's scripts asks before the check runs them (they run outside the sandbox): here the
+  // person says yes, as these cases are about what the checks find.
+  const runner: AgentRunner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, emit: (e) => { events.push(e); if (e.type === "approval.request") setTimeout(() => void runner.handle({ v: 1, id: "y", type: "approval.resolve", approval: (e as any).approval, decision: "allow", scope: "once" }), 0); } });
   await runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "make it work", model: "m", budgetUsd: 3 });
   return { events, log, engine, project };
 }

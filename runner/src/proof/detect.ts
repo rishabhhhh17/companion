@@ -9,7 +9,9 @@ export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 // tool: for a Python check, the module it runs (so "No module named ruff" reads as not installed, not as a failure).
 export type Check = { name: "typecheck" | "lint" | "build"; command: string; tool?: string };
 // python: a Python dev server, told its host and port on the command line. env: fixed settings it needs (never the person's).
-export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean; python?: PythonServer; env?: Record<string, string> } | { kind: "static"; dir: string };
+// from: where the command came from (the project's .claude/launch.json, its dev or start script, its .replit file), so a
+// start that finishes on its own can be told apart from a tool (ladder.ts looksLikeSite).
+export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean; python?: PythonServer; env?: Record<string, string>; from?: "launch" | "dev" | "start" | "replit" | "settings" } | { kind: "static"; dir: string };
 export type Detected = {
   kind: "node" | "python" | "static" | "unknown";
   packageManager: PackageManager | null;
@@ -58,11 +60,11 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
   const launch = readJson(join(dir, ".claude", "launch.json"));
   const cfg = Array.isArray(launch?.configurations) ? launch!.configurations[0] : null;
   if (cfg?.runtimeExecutable) {
-    start = { kind: "server", command: [cfg.runtimeExecutable, ...(Array.isArray(cfg.runtimeArgs) ? cfg.runtimeArgs : [])].join(" "), ...(typeof cfg.port === "number" ? { port: cfg.port } : {}), ...(typeof cfg.autoPort === "boolean" ? { autoPort: cfg.autoPort } : {}) };
-  } else if (pm && scripts.dev) start = { kind: "server", command: run("dev") };
-  else if (pm && scripts.start) start = { kind: "server", command: run("start") };
+    start = { kind: "server", command: [cfg.runtimeExecutable, ...(Array.isArray(cfg.runtimeArgs) ? cfg.runtimeArgs : [])].join(" "), ...(typeof cfg.port === "number" ? { port: cfg.port } : {}), ...(typeof cfg.autoPort === "boolean" ? { autoPort: cfg.autoPort } : {}), from: "launch" };
+  } else if (pm && scripts.dev) start = { kind: "server", command: run("dev"), from: "dev" };
+  else if (pm && scripts.start) start = { kind: "server", command: run("start"), from: "start" };
   else if (py?.start) start = py.start;
-  else if (existsSync(join(dir, ".replit")) && replitRun(readFileSync(join(dir, ".replit"), "utf8"))) start = { kind: "server", command: replitRun(readFileSync(join(dir, ".replit"), "utf8"))! };
+  else if (existsSync(join(dir, ".replit")) && replitRun(readFileSync(join(dir, ".replit"), "utf8"))) start = { kind: "server", command: replitRun(readFileSync(join(dir, ".replit"), "utf8"))!, from: "replit" };
   else if (existsSync(join(dir, "dist", "index.html"))) start = { kind: "static", dir: join(dir, "dist") };
   else if (existsSync(join(dir, "index.html"))) start = { kind: "static", dir };
 
@@ -86,7 +88,7 @@ export function withStartScript(det: Detected, dir: string, script: string | und
   // The engine is the boundary: whatever reached it, a script that is not a way to start the project, or that sounds like it
   // puts something online or deletes something, is never run (it would run after every task with no question asked).
   if (!usableStartScript(script, scripts)) return { det, gap: `The start script chosen in Settings (${name}) does not look like it only starts the project, so it was not run and the project was started the usual way.` };
-  return { det: { ...det, start: { kind: "server", command: `${det.packageManager} run ${script}` } }, chosen: script };
+  return { det: { ...det, start: { kind: "server", command: `${det.packageManager} run ${script}`, from: "settings" } }, chosen: script };
 }
 // Words in a script that mean it does more than start the project: it puts something online, publishes or releases it,
 // deletes files, changes a database or git, or reaches another machine. Long words match inside others (predeploy, a
@@ -95,7 +97,7 @@ const RISKY_SCRIPT = /deploy|publish|release|vercel|netlify|firebase|surge|migra
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Does a script's text run another script by its name ("npm run ship", "run-p dev ship", "concurrently npm:ship"), or by a
 // pattern ("run-p dev:*", "concurrently npm:dev:*")?
-const names = (text: string, name: string) =>
+const names_ = (text: string, name: string) =>
   new RegExp(`(?:^|[^A-Za-z0-9:._-]|\\b(?:npm|yarn|pnpm|bun):)${escapeRe(name)}(?:$|[^A-Za-z0-9:._-])`).test(text)
   || [...text.matchAll(/(?:^|[\s"'])(?:(?:npm|yarn|pnpm|bun):)?([A-Za-z0-9][A-Za-z0-9:._-]*)\*/g)].some((m) => name.startsWith(m[1]));
 
@@ -114,9 +116,57 @@ export function usableStartScript(name: string, scripts: Record<string, unknown>
     if (!Object.hasOwn(scripts, n) || typeof scripts[n] !== "string") continue;
     const text = scripts[n] as string;
     if (RISKY_SCRIPT.test(text)) return false;
-    for (const other of all) if (!seen.has(other) && names(text, other)) todo.push(other, `pre${other}`, `post${other}`);
+    for (const other of all) if (!seen.has(other) && names_(text, other)) todo.push(other, `pre${other}`, `post${other}`);
   }
   return true;
+}
+
+// Words in a script a check runs by itself that mean it does more than build, lint, test or start the project on this Mac:
+// it changes a database (a migration, a push, a reset, a seed), puts something online or publishes it, uploads, changes git,
+// or reaches another machine. A check runs after every task, on Point at the problem, on every ship check and on a copy of
+// an earlier version, with no question asked (rule 13), so such a script is never run there: it is a gap instead. Narrower
+// than RISKY_SCRIPT on purpose: deleting build output (rm -rf dist, clean) stays inside the project, which a snapshot can
+// put back, and the local servers of the hosting tools (vercel dev, netlify dev, wrangler dev, firebase emulators) stay on
+// this Mac.
+const CHANGES_DATA = new RegExp([
+  String.raw`deploy|publish|migrat|upload|--prod\b`,
+  String.raw`\b(?:seed|dropdb|truncate|sudo|ssh|scp|rsync|surge|gh)\b`,
+  String.raw`\bdb\s+(?:push|reset|execute|drop|seed)\b`, String.raw`\bdrizzle-kit\s+(?:push|drop|up)\b`,
+  String.raw`\bgit\s+(?:push|commit|tag|reset|checkout|clean|merge|rebase|pull|am|apply|stash)\b`,
+  String.raw`\bvercel\b(?!\s+(?:dev|build|pull|link|whoami)\b)`, String.raw`\bnetlify\b(?!\s+(?:dev|build|status)\b)`,
+  String.raw`\bwrangler\b(?!\s+(?:dev|types|whoami)\b)`, String.raw`\bfirebase\b(?!\s+(?:emulators:\S+|serve)\b)`,
+].join("|"), "i");
+/** The scripts npm runs for an install of the project itself (its own lifecycle steps). */
+export const INSTALL_STEPS = ["preinstall", "install", "postinstall", "preprepare", "prepare", "postprepare"];
+/** Whether one of the project's scripts (and the scripts npm runs around it, pre<name> and post<name>, and every script
+ *  they run by name) changes data or puts something online (CHANGES_DATA), by its text or its name. */
+function scriptsChangeData(names: string[], scripts: Record<string, unknown>): boolean {
+  const all = Object.keys(scripts).filter((k) => typeof scripts[k] === "string").slice(0, 200);
+  const seen = new Set<string>(), todo = names.flatMap((n) => [n, `pre${n}`, `post${n}`]);
+  while (todo.length) {
+    const n = todo.shift()!;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    if (!Object.hasOwn(scripts, n) || typeof scripts[n] !== "string") continue;
+    const text = scripts[n] as string;
+    if (CHANGES_DATA.test(text) || CHANGES_DATA.test(n)) return true;
+    for (const other of all) if (!seen.has(other) && names_(text, other)) todo.push(other, `pre${other}`, `post${other}`);
+  }
+  return false;
+}
+/** Whether a command a check would run changes data or puts something online: a "<package manager> run <name>" command is
+ *  read through the project's scripts (scriptsChangeData), any other command (.claude/launch.json, .replit) by its own
+ *  words, and by the script it runs when it is such a command. An install is read through the project's own install
+ *  steps (INSTALL_STEPS). A Python command is the checker's own and is not read. */
+export function changesData(command: string, dir: string, install = false): boolean {
+  let scripts: Record<string, unknown> = {};
+  try { const p = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")); if (p && typeof p.scripts === "object" && p.scripts) scripts = p.scripts; } catch { /* no scripts */ }
+  if (install) return scriptsChangeData(INSTALL_STEPS, scripts);
+  const m = /^(?:npm|pnpm|yarn|bun)\s+run\s+(\S+)\s*$/.exec(command.trim());
+  if (m) return scriptsChangeData([m[1]], scripts);
+  if (CHANGES_DATA.test(command)) return true;
+  const inner = /\b(?:npm|pnpm|yarn|bun)\s+run\s+([A-Za-z0-9:._-]+)/.exec(command);
+  return inner ? scriptsChangeData([inner[1]], scripts) : false;
 }
 
 // Is this package manager on the Mac's tool path (the same path Companion runs commands with)?

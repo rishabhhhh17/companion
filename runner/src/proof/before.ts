@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { runCommand, shq } from "./exec.ts";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
-import { detectProject, withStartScript } from "./detect.ts";
+import { changesData, detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
@@ -30,6 +30,8 @@ export async function captureBefore(o: {
     const started = withStartScript(found, dir, o.start);
     const det = started.det;
     if (!det.start) return { none: "no_page" };
+    // A start script that changes a database or puts something online is never run for a picture either (detect.ts).
+    if (det.start.kind === "server" && !det.start.python && changesData(det.start.command, dir)) return { none: "not_pictured" };
     const serve = (start: NonNullable<typeof det.start>) => {
       let scriptText = "";
       try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
@@ -42,7 +44,8 @@ export async function captureBefore(o: {
     if (!srv.ok && srv.notAServer && started.chosen && usual && !o.signal?.aborted && !(usual.kind === "server" && det.start.kind === "server" && usual.command === det.start.command)) srv = await serve(usual);
     // A package that is not installed says nothing about whether the earlier version worked.
     const missing = /No module named|Couldn't import Django/.test(srv.ok ? "" : srv.output ?? srv.reason);
-    if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
+    // A port held by another program says nothing about the earlier version either.
+    if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : srv.portBusy === undefined && /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
     // Stop ends the earlier version's server at once, not after the browser gives up.
     const onAbort = () => { void srv.stop(); };
     o.signal?.addEventListener("abort", onAbort, { once: true });

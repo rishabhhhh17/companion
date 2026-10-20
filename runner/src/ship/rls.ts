@@ -59,10 +59,12 @@ const SET_SCHEMA = new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:o
 const POLICY = /create\s+policy\s+(?:"[^"]+"|\w+)\s+on\s+((?:"[^"]+"|\w+)(?:\s*\.\s*(?:"[^"]+"|\w+))?)([^;]*)/gi;
 
 // made: where each table still there was last made (its file, the line of create table and that line's text).
-export function analyzeMigrations(files: Record<string, string>): { tables: string[]; withoutRls: string[]; openPolicies: string[]; dynamic: boolean; made: Record<string, { file: string; line: number; lineText: string }> } {
+// signedInOpen: tables with a rule for signed in people that says "true", so every account can read or change every row (on
+// Supabase anyone can usually sign up).
+export function analyzeMigrations(files: Record<string, string>): { tables: string[]; withoutRls: string[]; openPolicies: string[]; signedInOpen: string[]; dynamic: boolean; made: Record<string, { file: string; line: number; lineText: string }> } {
   const state = new Map<string, boolean>();
   const made: Record<string, { file: string; line: number; lineText: string }> = {};
-  const openPolicies = new Set<string>();
+  const openPolicies = new Set<string>(), signedInOpen = new Set<string>();
   let dynamic = false;
   for (const name of Object.keys(files).sort()) {
     const cleaned = cleanSql(files[name]);
@@ -73,6 +75,7 @@ export function analyzeMigrations(files: Record<string, string>): { tables: stri
       const toWho = /\bto\s+([\w\s,"]+?)(?=\s+(?:using|with)\b|$)/i.exec(rest)?.[1].toLowerCase() ?? "public";
       const wide = /\busing\s*\(\s*true\s*\)/i.test(rest) || /\bwith\s+check\s*\(\s*true\s*\)/i.test(rest);
       if (t && wide && /\b(anon|public)\b/.test(toWho)) openPolicies.add(t);
+      else if (t && wide && /\bauthenticated\b/.test(toWho)) signedInOpen.add(t);
     }
     const events: { at: number; kind: "create" | "enable" | "disable" | "drop" | "rename" | "leave"; table: string | null; to?: string }[] = [];
     for (const m of sql.matchAll(RENAME)) events.push({ at: m.index!, kind: "rename", table: publicTable(m[1]), to: m[2].replace(/^"|"$/g, "").toLowerCase() });
@@ -95,7 +98,7 @@ export function analyzeMigrations(files: Record<string, string>): { tables: stri
   }
   const tables = [...state.keys()];
   for (const t of Object.keys(made)) if (!state.has(t)) delete made[t];
-  return { tables, withoutRls: tables.filter((t) => !state.get(t)), openPolicies: [...openPolicies].filter((t) => state.has(t)), dynamic, made };
+  return { tables, withoutRls: tables.filter((t) => !state.get(t)), openPolicies: [...openPolicies].filter((t) => state.has(t)), signedInOpen: [...signedInOpen].filter((t) => state.has(t) && !openPolicies.has(t)), dynamic, made };
 }
 
 export function liveRows(rows: { table: string; rls: boolean | null }[]): { tables: string[]; withoutRls: string[] } {
@@ -122,19 +125,28 @@ export async function rlsGate(o: { project: string; query?: () => Promise<{ tabl
     return { id: ID, label: LABEL, status: "blocked", detail: open(stat.withoutRls), findings: stat.withoutRls, overridable: false, ...(places.length ? { places } : {}) };
   }
   const note = stat.dynamic ? " Some of your database code builds its tables while it runs, which I cannot read, so tables made that way are not covered." : "";
-  if (!o.query && stat.openPolicies.length) {
-    return { id: ID, label: LABEL, status: "could_not_check", overridable: true, findings: stat.openPolicies,
-      detail: `${stat.openPolicies.join(", ")} can be read or changed by anyone, signed in or not, because of a rule that says "true". Make the rule check who the person is, or confirm it is meant to be public.${note}` };
+  // The live database first: a table there with row level security off is open to anyone, whatever the files say, and
+  // nobody may confirm that away.
+  let live: { tables: string[]; withoutRls: string[] } | null = null, liveError: string | null = null;
+  if (o.query) {
+    try { live = liveRows(await o.query()); } catch (e) { liveError = (e as Error).message; }
+    if (live?.withoutRls.length) return { id: ID, label: LABEL, status: "blocked", detail: open(live.withoutRls), findings: live.withoutRls, overridable: false };
+  }
+  // A rule that says "true" lets everyone it names read or change every row. Row level security being on, in the files or
+  // in the live database, says nothing about that, so these tables are always named, both kinds together. The person may
+  // confirm it is meant.
+  if (stat.openPolicies.length || stat.signedInOpen.length) {
+    const parts: string[] = [];
+    if (stat.openPolicies.length) parts.push(`${stat.openPolicies.join(", ")} can be read or changed by anyone, signed in or not, because of a rule that says "true".`);
+    if (stat.signedInOpen.length) parts.push(`Every signed in account can read or change all rows of ${stat.signedInOpen.join(", ")}, because of a rule for signed in people that says "true". On Supabase anyone can usually sign up.`);
+    const unchecked = liveError ? ` I also could not check your live database (${liveError}).` : !o.query ? " I also could not check your live database." : "";
+    return { id: ID, label: LABEL, status: "could_not_check", overridable: true, findings: [...stat.openPolicies, ...stat.signedInOpen],
+      detail: `${parts.join(" ")} Make each rule check who the person is and whose row it is, or confirm it is meant to be shared.${unchecked}${note}` };
   }
   if (!o.query) {
     return { id: ID, label: LABEL, status: "could_not_check", overridable: true,
       detail: hasFiles ? `The tables in your migration files are protected, but I could not check your live database, where tables made in the Supabase dashboard would not show up. Connect it to be sure, or confirm you have checked it yourself.${note}` : `I could not check your live database, and there are no migration files to read. Connect it to be sure, or confirm you have checked it yourself.${note}` };
   }
-  try {
-    const live = liveRows(await o.query());
-    if (live.withoutRls.length) return { id: ID, label: LABEL, status: "blocked", detail: open(live.withoutRls), findings: live.withoutRls, overridable: false };
-    return { id: ID, label: LABEL, status: "passed", detail: live.tables.length ? `All ${live.tables.length} table${live.tables.length === 1 ? "" : "s"} in your live database have row level security on.` : "Your live database has no public tables." };
-  } catch (e) {
-    return { id: ID, label: LABEL, status: "could_not_check", overridable: true, detail: `I could not check your live database (${(e as Error).message}). Fix the connection, or confirm you have checked it yourself.` };
-  }
+  if (live) return { id: ID, label: LABEL, status: "passed", detail: live.tables.length ? `All ${live.tables.length} table${live.tables.length === 1 ? "" : "s"} in your live database have row level security on.` : "Your live database has no public tables." };
+  return { id: ID, label: LABEL, status: "could_not_check", overridable: true, detail: `I could not check your live database (${liveError}). Fix the connection, or confirm you have checked it yourself.` };
 }
