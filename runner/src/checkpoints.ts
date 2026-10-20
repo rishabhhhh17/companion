@@ -42,10 +42,13 @@ const stores = new Map<string, CheckpointStore>();
 
 // git is Apple's, and a new Mac asks to install it the first time it is used. Say what to do, in plain words.
 export const NEEDS_GIT = "Companion needs Apple's free developer tools to keep a safe copy of your project. Open Terminal, type  xcode-select --install  and press Return. When it finishes, try again.";
-const friendly = (e: unknown): Error => {
+// xcrun's own words included ("xcrun: error: invalid active developer path"), which Apple's stand in for git says when the
+// developer tools were removed or never installed.
+export const friendlyGitError = (e: unknown): Error => {
   const m = String((e as Error)?.message ?? e);
-  return /xcode-select|developer tools|Executable not found|ENOENT|not found in \$PATH|spawn git/i.test(m) ? new Error(NEEDS_GIT) : (e as Error);
+  return /xcode-select|developer tools|xcrun: error|invalid active developer path|CommandLineTools|Executable not found|ENOENT|not found in \$PATH|spawn git/i.test(m) ? new Error(NEEDS_GIT) : (e as Error);
 };
+const friendly = friendlyGitError;
 
 export class CheckpointStore {
   /** One store per project for the whole program, so two jobs can never take a snapshot at the same moment. */

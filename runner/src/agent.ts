@@ -13,7 +13,7 @@ import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt }
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
 import { answerPrompt, differentTaskPrompt, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
-import { CheckpointStore } from "./checkpoints.ts";
+import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
@@ -55,6 +55,8 @@ import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { defaultOf } from "../../protocol/settings.ts";
+
+const isNeedsGit = (e: unknown): boolean => String((e as Error)?.message ?? e) === NEEDS_GIT;
 
 /** The stand in for "no folder chosen" (the app's NO_PROJECT): the settings for every project (Explain, pausing, the daily
  *  limit) work with it, reading and writing no folder (profile only memory, nothing spent). */
@@ -676,7 +678,8 @@ export class AgentRunner {
       const row = this.openTasks.get(cmd.agent);
       if (row !== undefined) { try { this.o.log.finish(row, "error", 0, this.now().toISOString()); } catch { /* the log is not worth a second failure */ } this.openTasks.delete(cmd.agent); }
       const why = clip(redact(String((e as Error).message ?? e).split("\n")[0]), 160);
-      this.fail(this.touched.has(cmd.agent) ? `The task stopped unexpectedly (${why}). Look at your project, and use Undo if something is not right.` : `The task could not start (${why}). Nothing in your project was changed.`, cmd.agent);
+      // No Git on this Mac (checkpoints.ts NEEDS_GIT) is said as the one thing to do, whole, never inside another sentence.
+      this.fail(isNeedsGit(e) ? NEEDS_GIT : this.touched.has(cmd.agent) ? `The task stopped unexpectedly (${why}). Look at your project, and use Undo if something is not right.` : `The task could not start (${why}). Nothing in your project was changed.`, cmd.agent);
       this.state(cmd.agent, "error");
       return { status: "error", usd: 0 };
     } finally {
@@ -1114,7 +1117,7 @@ export class AgentRunner {
       const msg = (e as Error).message;
       // Claude out of reach, or a failed request of a known kind (reach.ts): these flows have no Try again, so the card is
       // told to say ask again instead of pointing at a button that is not there.
-      this.fail(/^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${isClaudeStop(msg) ? withoutTryAgain(msg) : msg}`, spec.agent);
+      this.fail(isNeedsGit(e) ? NEEDS_GIT : /^error_max_[a-z_]+/.test(msg) ? msg : `engine error: ${isClaudeStop(msg) ? withoutTryAgain(msg) : msg}`, spec.agent);
       this.state(spec.agent, "error");
     } finally {
       book();
@@ -1401,7 +1404,7 @@ export class AgentRunner {
       say(res.verdict, did === "same", { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
       this.state(cmd.agent, res.verdict === "failed" ? "needsYou" : "idle");
     } catch (e) {
-      say("cancelled", false, { reason: `Companion could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });
+      say("cancelled", false, { reason: isNeedsGit(e) ? NEEDS_GIT : `Companion could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
   }
@@ -1441,7 +1444,7 @@ export class AgentRunner {
       found(res.verdict, fl, needs, notes.length ? notes.join(" ") : undefined);
       this.state(cmd.agent, fl ? "needsYou" : "idle");
     } catch (e) {
-      this.fail(`Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
+      this.fail(isNeedsGit(e) ? NEEDS_GIT : `Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
       found("cancelled");
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
@@ -1589,7 +1592,7 @@ export class AgentRunner {
       result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}),
         ...(o.kind === "unsure" && why.length ? { detail: why.join(" ") } : {}) });
     } catch (e) {
-      result("failed", { detail: `Companion could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
+      result("failed", { detail: isNeedsGit(e) ? NEEDS_GIT : `Companion could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
     } finally {
       this.finding.delete(cmd.project);
       if (shown) this.state(cmd.agent, found ? "needsYou" : "idle");
