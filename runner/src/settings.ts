@@ -11,9 +11,14 @@ type Apply = Extract<Command, { type: "settings.apply" }>;
 /** A setting the engine applies from settings.apply: kept in settings.json, and read by the engine. */
 const ours = (d: Def) => d.store === "settings" && d.kind !== "custom" && d.applies.includes("runner");
 
+const MAX_PROJECTS = 50;
+
 export class RunnerSettings {
   private app = new Map<string, unknown>();
-  private project: { path: string; values: Map<string, unknown> } | null = null;
+  // The project values of every project the shell has named, newest last: work still running in the folder the person just
+  // left reads its own project's values, never the usual ones. A new settings.apply for a project replaces that project's
+  // values only. Bounded, so a long session cannot grow it without end.
+  private projects = new Map<string, Map<string, unknown>>();
 
   /** Replaces what was applied before. Names this version does not know are ignored; a setting the engine does not apply,
    *  or a value that breaks its rules, is refused (and stays at its usual value). Names only in the answer. */
@@ -32,18 +37,24 @@ export class RunnerSettings {
       return out;
     };
     this.app = take(cmd.values, "app");
-    this.project = cmd.project ? { path: resolve(cmd.project), values: take(cmd.projectValues, "project") } : null;
+    if (cmd.project) {
+      const path = resolve(cmd.project);
+      const values = take(cmd.projectValues, "project");
+      this.projects.delete(path);
+      this.projects.set(path, values);
+      while (this.projects.size > MAX_PROJECTS) this.projects.delete(this.projects.keys().next().value as string);
+    }
     return { accepted, refused };
   }
 
-  /** The value in force: for a project setting, the named project's own (only the project the shell named), else the
-   *  usual value; for an app setting, what was applied, else the usual value. Undefined for a name that does not exist. */
+  /** The value in force: for a project setting, the project's own (any project the shell has named since the engine
+   *  started, not only the latest), else the usual value; for an app setting, what was applied, else the usual value. Undefined for a name that does not exist. */
   get(key: string, project?: string): unknown {
     const d = defOf(key);
     if (!d) return undefined;
     if (d.scope === "project") {
-      const p = this.project;
-      return project && p && resolve(project) === p.path && p.values.has(key) ? p.values.get(key) : d.default;
+      const own = project ? this.projects.get(resolve(project)) : undefined;
+      return own?.has(key) ? own.get(key) : d.default;
     }
     return this.app.has(key) ? this.app.get(key) : d.default;
   }

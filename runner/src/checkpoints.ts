@@ -227,6 +227,17 @@ export class CheckpointStore {
     try { return JSON.parse(readFileSync(join(this.metaPath(id), "meta.json"), "utf8")); } catch { return null; }
   }
 
+  // An engine killed in the middle of a snapshot can leave a lock on the next checkpoint's name (refs/cp/N.lock, which git never
+  // clears, and which would stop every later snapshot of this project) and its temporary index and path list. Snapshots run one at
+  // a time per project (serial), so none of these belongs to a snapshot in progress: they are removed before the next one.
+  private sweepLeftovers() {
+    try {
+      const refs = join(this.shadowDir, "refs", "cp");
+      if (existsSync(refs)) for (const n of readdirSync(refs)) if (/^\d+\.lock$/.test(n)) rmSync(join(refs, n), { force: true });
+      for (const n of readdirSync(this.shadowDir)) if (/^(index-tmp|pathspec)-\d+-[0-9a-f]{8}$/.test(n)) rmSync(join(this.shadowDir, n), { force: true });
+    } catch { /* best effort: the snapshot will say what is wrong */ }
+  }
+
   private tmpIndex(): string { return join(this.shadowDir, `index-tmp-${process.pid}-${randomBytes(4).toString("hex")}`); }
 
   // ---------- snapshot ----------
@@ -234,6 +245,7 @@ export class CheckpointStore {
   private async snapshotNow(label: string): Promise<Checkpoint> {
     this.assertSensible();
     this.ensureInit();
+    this.sweepLeftovers();
     this.writeExcludes();
     this.writeAttributes();
     const idx = this.tmpIndex();

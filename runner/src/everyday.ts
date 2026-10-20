@@ -119,7 +119,7 @@ export const EVERYDAY_SYSTEM = [
 export const RECHECK_SYSTEM = [
   "You check whether a person fixed a problem in an everyday app, from a new screenshot.",
   `Reply with ONLY one line of JSON: {"gone":"yes" or "no" or "unsure","problem":string,"targets":[${TARGET_SHAPE}]}.`,
-  '"gone" is "yes" only when the screen clearly shows the problem is gone, "no" when it clearly is still there, otherwise "unsure" (for example when the result cannot be seen on this screen).',
+  '"gone" is "yes" only when the screen clearly shows the same place as before (the same sheet, cell or window) with the problem gone, "no" when it clearly is still there, otherwise "unsure" (for example when the result cannot be seen on this screen, or the earlier cell, sheet or window is not in view).',
   "When it is still there, problem says in at most two short plain sentences what is still wrong, and targets point at the next step, up to 5 in order.",
   ...SAFE,
 ].join(" ");
@@ -173,34 +173,62 @@ export function parseEveryday(text: string, pictures: Image[]): EverydayAnswer |
   const problem = typeof j.problem === "string" ? tidy(twoSentences(j.problem), 400) : "";
   const kind: EverydayKind = (EVERYDAY_KINDS as readonly string[]).includes(j.kind) ? j.kind : "other";
   const targets = parseTargetsText(JSON.stringify({ targets: Array.isArray(j.targets) ? j.targets : [] }), pictures);
-  if (gone !== undefined) return { found: gone === "no", kind, problem, why: [], targets: gone === "no" ? targets : [], gone };
+  // A look that says "no" or cannot tell may still point at the next step (the Mac can read the code still there while the look
+  // is unsure); a "yes" has nothing left to point at.
+  if (gone !== undefined) return { found: gone === "no", kind, problem, why: [], targets: gone === "yes" ? [] : targets, gone };
   if (j.found !== true) return j.found === false ? { found: false, kind, problem: "", why: [], targets: [] } : null;
   if (!problem) return null;
   const ex = parseExplain(JSON.stringify({ why: j.why, question: j.question }));
   return { found: true, kind, problem, why: ex?.bullets ?? [], ...(ex?.question ? { question: ex.question } : {}), targets };
 }
 
-/** Is Claude's first look about this spreadsheet error? Its problem or a step names the code, a step points at a box the
- *  Mac read the code in, or it calls it a spreadsheet problem without naming another code. Otherwise its own diagnosis
- *  stands (an ordinary #N/A elsewhere on screen, or a help page on a second display, never replaces it). */
+/** Is Claude's first look about this spreadsheet error? Its problem or a step names the code, or a step points at a box the
+ *  Mac read the code in. Otherwise its own diagnosis stands (an ordinary #N/A elsewhere on screen, a help page that mentions
+ *  a code, or a protected sheet that names none, never replaces it). Calling it "a spreadsheet problem" is not enough. */
 export function tableAgrees(a: EverydayAnswer, e: SheetError, ocr: Ocr[]): boolean {
   const said = sheetErrorsIn([a.problem, ...a.targets.flatMap((t) => [t.targetText, t.caption])]);
   if (said.some((x) => x.id === e.id)) return true;
   const boxes = new Set(ocr.filter((b) => sheetErrorsIn([b.text]).some((x) => x.id === e.id)).map((b) => b.id));
-  if (a.targets.some((t) => t.ocrId && boxes.has(t.ocrId))) return true;
-  return a.kind === "sheet" && said.length === 0;
+  return a.targets.some((t) => t.ocrId && boxes.has(t.ocrId));
+}
+
+// ---------- the same place, seen again ----------
+
+const MAX_LANDMARKS = 12;
+const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+/** A few plain words read on the screen next to the error (header cells, the sheet's title, tab names), kept in memory with
+ *  the first look so a look again can tell the same sheet is in view. Never the error's own text, never numbers alone. */
+export function landmarksOf(ocr: Ocr[]): string[] {
+  const out: string[] = [];
+  for (const b of ocr) {
+    const t = norm(b.text);
+    if (t.length < 3 || t.length > 40 || !/\p{L}{2}/u.test(t) || sheetErrorsIn([b.text]).length > 0) continue;
+    if (!out.includes(t)) out.push(t);
+    if (out.length >= MAX_LANDMARKS) break;
+  }
+  return out;
+}
+/** Are enough of those landmarks read again? At least three, and half of them: the same sheet, tab or window is in view. With
+ *  fewer than three kept the place cannot be vouched for, so nothing counts as the same place. */
+export function sameView(landmarks: string[], ocr: Ocr[]): boolean {
+  if (landmarks.length < 3) return false;
+  const now = ocr.map((b) => norm(b.text));
+  const found = landmarks.filter((l) => now.some((t) => t === l || t.includes(l))).length;
+  return found >= Math.max(3, Math.ceil(landmarks.length / 2));
 }
 
 /** The look again's verdict. "yes" (fixed) only with the Mac's own evidence: the code the first look read (before) is no
- *  longer read anywhere on the screen, no other spreadsheet error is read, and the look agrees. The same code still read is
+ *  longer read anywhere on the screen, no other spreadsheet error is read, the same place is in view again (same: enough of
+ *  the first look's landmarks are read again, so a code that is missing because another display, tab or scroll position is
+ *  in front is never Fixed), and the look agrees. Without the same place, a look's yes is only "looks". The same code still read is
  *  never fixed: "no", or, when the look says it is gone, "unsure" so the person is asked (never a "no" with no next step).
  *  "looks": only the look says so, a guess from a picture (rule 14), so the person is asked. Like with like: another code
  *  on screen does not keep it open, but is not proof either. */
 export type Verdict = "yes" | "looks" | "no" | "unsure";
-export function goneVerdict(model: Gone | undefined, before: SheetError | null, now: SheetError[]): Verdict {
+export function goneVerdict(model: Gone | undefined, before: SheetError | null, now: SheetError[], same = false): Verdict {
   if (before && now.some((e) => e.id === before.id)) return model === "yes" ? "unsure" : "no";
   if (model === "no") return "no";
   if (model !== "yes") return "unsure";
   if (now.length > 0) return before ? "looks" : "unsure";
-  return before ? "yes" : "looks";
+  return before && same ? "yes" : "looks";
 }

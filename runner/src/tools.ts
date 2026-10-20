@@ -2,9 +2,14 @@
 // (sdk-tools.d.ts). The engine is handed exactly these (sdkEngine.ts, the SDK's `tools` option), so each request to Claude
 // carries only their definitions, not the whole Claude Code set, which on the person's own key is their money on every
 // turn. The real run harness checks system/init against the same lists (scripts/realrun-harness.ts AGENT_TOOLS).
-// Every other built in tool is left out, and if one is ever asked for anyway (an older or newer Claude, or the list not
-// honoured), safety.ts refuses it with a plain reason instead of showing the person a card about an unknown tool.
-// [verify] in the next real smoke test: that system/init lists exactly these; whether this binary still has TodoWrite or
+// Every other built in tool is left out. If one is ever asked for anyway (an older or newer Claude, or the list not
+// honoured), safety.ts refuses most of them with a plain reason instead of showing the person a card about an unknown tool.
+// A few it is not given are still judged by their path as before, as a second line of defence, never refused outright:
+// MultiEdit and NotebookEdit (only inside the project, like Edit and Write), LS and NotebookRead (reads), BashOutput and
+// TaskOutput (a background command this task started). So "left out" is true of what Claude is handed, not a promise that
+// the hook refuses each of these.
+// [verify] in the next real smoke test: that system/init lists exactly these; that ExitPlanMode in plan mode reaches the
+// hook as a tool call with its plan in `plan` (agent.ts readOnly takes that as the answer); whether this binary still has TodoWrite or
 // only the TaskCreate family; and whether, with an explicit list, Claude Code still holds WebFetch, WebSearch and TaskStop
 // back behind ToolSearch.
 

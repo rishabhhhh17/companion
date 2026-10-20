@@ -14,7 +14,7 @@ import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
 import { LIMIT_REACHED } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
-import { everydayRequest, goneVerdict, parseEveryday, sheetFromTable, tableAgrees, type EverydayAnswer } from "./everyday.ts";
+import { everydayRequest, goneVerdict, landmarksOf, parseEveryday, sameView, sheetFromTable, tableAgrees, type EverydayAnswer } from "./everyday.ts";
 import { TUTOR_EXAMPLE, tutorFor, tutorLines, type Tutor } from "./tutor.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
@@ -429,6 +429,9 @@ export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promi
 export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
+  // The spreadsheet error the last first look read, with a few plain words read beside it, in memory only: a look again says
+  // Fixed only when the same place is read again (everyday.ts sameView). Forgotten on Stop everything.
+  private seen: { code: string; landmarks: string[] } | null = null;
   // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack, and
   // showme.everydayTutor for Show me how.
   // spend: Prompt help spends on the person's key, so with a project it waits at the project's daily limit and books what
@@ -439,7 +442,7 @@ export class AssistService {
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
-  cancelAll() { for (const ac of this.active.values()) ac.abort(); this.o.images.clear(); }
+  cancelAll() { for (const ac of this.active.values()) ac.abort(); this.o.images.clear(); this.seen = null; }
 
   async handle(cmd: Command): Promise<void> {
     if (cmd.type === "assist.cancel") { this.active.get(cmd.req)?.abort(); return; }
@@ -576,7 +579,8 @@ export class AssistService {
       const still = r.before && r.now.some((e) => e.id === r.before!.id) ? r.before : null;
       // The look failed: said so (the stage goes back and the reason shows), unless the Mac itself still reads the error.
       if (!answer && !still) return failed("Could not look again");
-      const gone = goneVerdict(answer?.gone, r.before, r.now);
+      const same = !!r.before && this.seen?.code === r.before.code && sameView(this.seen.landmarks, ocr);
+      const gone = goneVerdict(answer?.gone, r.before, r.now, same);
       const list = gone === "no" ? steps(answer) : [];
       const table = still ? sheetFromTable(still) : null;
       const said = gone === "no"
@@ -585,7 +589,11 @@ export class AssistService {
       this.emit({ type: "assist.problem", ...base, found: gone === "no", gone, steps: list.length, ...said });
       return point(list);
     }
-    const sheet = r.sheet && (!answer || !answer.found || tableAgrees(answer, r.sheet, ocr)) ? r.sheet : null;
+    // What a look again needs to know the same place is in view; nothing from a screen without a spreadsheet error.
+    this.seen = r.sheet ? { code: r.sheet.code, landmarks: landmarksOf(ocr) } : null;
+    // The table names the problem when Claude has no answer, or its answer is about that error. Claude's own "nothing wrong"
+    // or different diagnosis is never overridden by a code that is merely somewhere on the screen.
+    const sheet = r.sheet && (!answer || tableAgrees(answer, r.sheet, ocr)) ? r.sheet : null;
     if (sheet) {
       // The table's meaning, why and question (never Claude's sentences under the table's label), and Claude's steps.
       const t = sheetFromTable(sheet), list = answer?.found ? steps(answer) : [];

@@ -88,7 +88,9 @@ export class WalkService {
     const a: Active = { walk: cmd.id, project: cmd.project, lesson, w, busy: true, asked: false };
     this.active.set(a.walk, a);
     try {
-      if (saved) { try { await w.resume(this.o.checker(cmd.project)); } catch { this.o.store.forget(cmd.project, lesson.id); } }
+      // Saved progress of a lesson whose steps changed was thrown away by the Walkthrough: that is a new start, not a resume.
+      if (saved && !w.accepted) this.o.store.forget(cmd.project, lesson.id);
+      if (saved && w.accepted) { try { await w.resume(this.o.checker(cmd.project)); } catch { this.o.store.forget(cmd.project, lesson.id); } }
       // A new start, not Start over (which always begins at step one, so the person can do the steps again): with the
       // setting on, steps already done are passed by, and the first step shown says how many (passed).
       else if (!cmd.fresh && this.o.startWhereYouAre?.() === true) { try { await w.startHere(this.o.checker(cmd.project)); } catch { /* looking is a nicety; the lesson starts at step one */ } a.passed = w.passed(); }

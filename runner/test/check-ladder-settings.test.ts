@@ -171,7 +171,12 @@ describe("how to start the project for the check (check.start)", () => {
   test("the project's own .claude/launch.json still wins", () => {
     const d = dir();
     put(d, { ".claude/launch.json": JSON.stringify({ configurations: [{ runtimeExecutable: "bun", runtimeArgs: ["run", "serve"], port: 4000 }] }) });
-    expect(withStartScript(detectProject(d), d, "serve").det.start).toEqual({ kind: "server", command: "bun run serve", port: 4000, from: "launch" });
+    const r = withStartScript(detectProject(d), d, "serve");
+    expect(r.det.start).toEqual({ kind: "server", command: "bun run serve", port: 4000, from: "launch" });
+    // Second audit: and it says so, as the other reasons a chosen script is not used do.
+    expect(r.gap).toMatch(/launch\.json/);
+    expect(r.chosen).toBeUndefined();
+    expect(withStartScript(detectProject(d), d, "auto").gap).toBeUndefined();
   });
   // Only a script that starts the project is ever run for a check: never one that deploys, publishes, deletes or changes data
   // or git, which would happen after every task, Rescue and Ship check with no question asked (rule 13).

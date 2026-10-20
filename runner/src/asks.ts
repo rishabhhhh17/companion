@@ -18,22 +18,37 @@ const sentencesOf = (text: string) => withoutCode(String(text ?? "")).split(/(?<
 const bare = (s: string) => s.replace(/^[\s"'“‘*_>#-]+|["'”’)\]*_\s]+$/g, "");
 
 // Claude's habitual endings, which ask for nothing only the person has: an offer of more work ("Want me to add a test?",
-// "Should I also update the README?", "Shall I go ahead?", "Do you want a test too?") and a check in ("Anything else?",
-// "Does that look right?", "What do you think?"). A choice between two ways ("Should I use Resend or Postmark?") is the
-// person's, so it is no offer, unless the other way is only not doing it ("or leave it", "or not") or it offers more ("also").
-const OFFER = /\b(?:want|like|need)s? me to\b|\bif you(?:'d| would)? like\b|^(?:so |then |and )?(?:shall|should|can|could|may) I\b|\b(?:also|too|as well)\b.*\b(?:want|like|need)\b|\b(?:want|like|need)\b.*\b(?:too|also|as well)\b/i;
+// "Should I also update the README?", "Shall I go ahead?", "Would you like to see it?", "Do you want to continue?", "Shall we
+// deploy it?", "Ready to deploy?") and a check in ("Anything else?", "Does that look right?", "What do you think?", "Is that
+// clear?", "Did it work for you?"). A choice between two ways ("Should I use Resend or Postmark?") is the person's, so it is
+// no offer, unless the other way is only not doing it ("or leave it", "or not") or it offers more ("also").
+const OFFER = /\b(?:want|like|need)s? me to\b|\bif you(?:'d| would)? like\b|^(?:so |then |and )?(?:shall|should|can|could|may) (?:I|we)\b|^(?:so |then |and )?(?:would you like|would you prefer|do you want|did you want|are you ready|ready|want)\b|\b(?:also|too|as well)\b.*\b(?:want|like|need)\b|\b(?:want|like|need)\b.*\b(?:too|also|as well)\b/i;
 const CHOICE = /\b(?:or|which|whichever)\b/i;
 const ONLY_NOT_DOING_IT = /\bor (?:not|leave|skip|keep|stop|is that|anything)\b|\b(?:also|too|as well)\b/i;
-const CHECK_IN = /\banything else\b|\bwhat else\b|\b(?:any|other|more) questions\b|\blet me know\b|\bwhat do you think\b|\bhow does (?:that|this|it) (?:look|sound|feel)\b|\bsounds? good\b|^(?:does|did|do|is|was|will|would) (?:that|this|it|everything|these|those)(?: all| now)? (?:look|looks|work|works|working|help|helps|fix|fixed|seem|seems|sound|sounds|make sense|okay|ok|alright|fine|good|what you)\b/i;
-const isOffer = (q: string) => CHECK_IN.test(q) || (OFFER.test(q) && (!CHOICE.test(q) || ONLY_NOT_DOING_IT.test(q)));
+const CHECK_IN = /\banything else\b|\bwhat else\b|\b(?:any|other|more) questions\b|\blet me know\b|\bwhat do you think\b|\bhow does (?:that|this|it) (?:look|sound|feel)\b|\bsounds? good\b|^(?:does|did|do|is|was|will|would) (?:that|this|it|everything|these|those)(?: all| now)? (?:look|looks|work|works|working|help|helps|fix|fixed|seem|seems|sound|sounds|make sense|okay|ok|alright|fine|good|clear|enough|what you)\b|^(?:is|was) (?:that|this|it) (?:clear|enough|helpful|what you)\b|^have I (?:covered|missed|answered|addressed|explained|got)\b|^(?:did|does|do) (?:the|that|this|it|everything)\b[^?]*\b(?:work|works|worked|help|helps|helped)\b[^?]*\bfor you\b|^(?:would you like|do you want) any (?:changes|more|further)\b/i;
+// "Should I delete the old users table?" is the person's to say, however it is worded: a yes or no before something that
+// cannot be taken back, goes out, or is theirs. Only "I" asking is such a request; "Should we deploy it?" is a habitual
+// ending (rule 13: nothing goes live without a tap anyway).
+const ASKS_LEAVE = /^(?:so |then |and )?(?:shall|should|can|could|may) I\b/i;
+const RISKY_VERB = /\b(?:delete|deleting|remove|removing|overwrite|overwriting|replace|replacing|drop|dropping|wipe|wiping|erase|erasing|reset|truncate|push|pushing|deploy|deploying|publish|publishing|send|sending|pay|paying|charge|charging|email|emailing)\b/i;
+const THEIR_THING = /\byour\b/i;
+const HABITUAL = /\b(?:proceed|continue|go ahead|carry on|move on|keep going|get started|go on|add (?:a |some )?tests?|tidy|clean up|double.check|run the tests)\b/i;
+const asksLeave = (q: string) => ASKS_LEAVE.test(q) && (RISKY_VERB.test(q) || (THEIR_THING.test(q) && !HABITUAL.test(q)));
+const isOffer = (q: string) => !asksLeave(q) && (CHECK_IN.test(q) || (OFFER.test(q) && (!CHOICE.test(q) || ONLY_NOT_DOING_IT.test(q))));
+
+// A line after a question that only says where its answer lives or that Claude waits ("You can copy it from the Supabase
+// dashboard.", "Put it in your settings.", "Let me know.", "Once you tell me I will carry on."). Any other statement after
+// it ("Yes it passes.", "The port was taken.", "I changed it to 3001.") is Claude answering its own question.
+const POINTER = /^(?:you(?:'ll| will| can| could| may| might| should)\b|it(?:'s| is)? (?:in|under|at|on|from|listed|shown|inside|found)\b|this (?:is|can be|will be) (?:in|under|found|listed)\b|(?:put|add|copy|paste|type|tell|reply|answer|send|give|share|open|go|look|check|find|set|enter|use|just|then|or|e\.g)\b|(?:in|under|on|from|at|inside) (?:the|your|a)\b|(?:once|when|after|as soon as|if|thanks?|thank you|let me know)\b|i(?:'ll| will| am|'m) (?:wait|waiting|pause|paused|stop|stopped|carry|continue)|i (?:need|can't|cannot|could not|couldn't|don't have|do not have)\b)/i;
+const isPointer = (s: string) => POINTER.test(bare(s)) || (QUESTION_END.test(s) && isOffer(bare(s)));
 
 // The last of the message's last three sentences that is a question for the person (the question, then a line or two on
-// where to find the answer), with the sentence before it.
+// where to find the answer), with the sentence before it. A question followed by Claude's own answer is no question.
 function lastQuestion(text: string): { q: string; before: string } | null {
   const last = sentencesOf(text).slice(-3);
   for (let i = last.length - 1; i >= 0; i--) {
     const q = bare(last[i]);
-    if (QUESTION_END.test(last[i]) && !isOffer(q)) return { q, before: i > 0 ? bare(last[i - 1]) : "" };
+    if (QUESTION_END.test(last[i]) && !isOffer(q) && last.slice(i + 1).every(isPointer)) return { q, before: i > 0 ? bare(last[i - 1]) : "" };
   }
   return null;
 }
@@ -55,11 +70,18 @@ const THEIRS = /\byours?\b|\byou(?:'d| would)? (?:want|prefer|like|use|have|need
  *  anything else gets the fix round as before. */
 export function asksForWhatOnlyTheyHave(text: string): boolean {
   const l = lastQuestion(text);
-  return !!l && THEIRS.test(`${l.before} ${l.q}`);
+  return !!l && (asksLeave(l.q) || THEIRS.test(`${l.before} ${l.q}`));
 }
 
-/** The agent's last words as the receipt carries them: secrets hidden, spaces folded, clipped by whole characters. */
+/** The agent's last words as the receipt carries them: secrets hidden, spaces folded, clipped by whole characters. The
+ *  question is the last line of the message, so words that ask the person keep their end ("…" then the tail, from a word
+ *  start); any other message keeps its start. */
 export function saidLine(text: string): string {
   const flat = redact(String(text ?? "")).replace(/\s+/g, " ").trim();
-  return Array.from(flat).length <= MAX_SAID_CHARS ? flat : `${clip(flat, MAX_SAID_CHARS - 1).trimEnd()}…`;
+  const chars = Array.from(flat);
+  if (chars.length <= MAX_SAID_CHARS) return flat;
+  if (!asksPerson(text)) return `${clip(flat, MAX_SAID_CHARS - 1).trimEnd()}…`;
+  const tail = chars.slice(chars.length - (MAX_SAID_CHARS - 1)).join("");
+  const space = tail.indexOf(" ");
+  return `…${(space >= 0 && space < 40 ? tail.slice(space + 1) : tail).trimStart()}`;
 }

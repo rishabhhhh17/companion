@@ -804,7 +804,7 @@ export class AgentRunner {
     // with its own task (the id changes nothing else here).
     const practice = cmd.practice ? { practice: cmd.practice } : {};
     this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped, ...practice } as never);
-    const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString() });
+    const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString(), checkpoint: before.id });
     this.openTasks.set(cmd.agent, taskId);
     this.touched.add(cmd.agent);
     this.state(cmd.agent, "thinking");
@@ -977,6 +977,9 @@ export class AgentRunner {
       if (!ok || status !== "done") continue;
       proof = "skipped";
     }
+    // A step of a plan that passed its checks but ends on a question for the person waits for the answer, like a step that
+    // changed nothing: the next step must not start over it (a single task stays done, with the question on its receipt).
+    if (status === "done" && this.driving.has(cmd.agent) && asking() && !abort.signal.aborted) status = "needs_you";
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
@@ -1112,7 +1115,16 @@ export class AgentRunner {
     const book = () => { this.ledger.add(spec.project, st.usd - booked); booked = st.usd; };
     const exec = this.o.executor ?? defaultExecutor;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
+    // ExitPlanMode is how plan mode hands back its plan: it changes nothing, so it is let through, and the plan in its input is
+    // what the flow reads as the answer (the model may give nothing else). Taken as text only; clipped, secrets hidden.
+    let handed = "";
     const authorize = async (tool: ToolUse) => {
+      if (tool.name === "ExitPlanMode" && (spec.tools ?? LOOK_TOOLS).includes("ExitPlanMode")) {
+        const plan = (tool.input as { plan?: unknown } | undefined)?.plan;
+        if (typeof plan === "string") handed = clip(redact(plan), 20_000);
+        this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "ran" } as never);
+        return { allow: true, reason: "" };
+      }
       // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.
       const notGiven = NOT_GIVEN.get(tool.name);
       let refusal = notGiven ? `Blocked by Companion: ${notGiven}` : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
@@ -1138,11 +1150,12 @@ export class AgentRunner {
           let result: ToolResult | undefined;
           if (turn.tool) {
             const a = await authorize(turn.tool);
-            result = a.allow ? await exec(turn.tool, { project: spec.project }) : { ok: false, output: a.reason };
+            result = !a.allow ? { ok: false, output: a.reason } : turn.tool.name === "ExitPlanMode" ? { ok: true, output: "The plan was handed back." } : await exec(turn.tool, { project: spec.project });
           } else if (turn.text) text += turn.text + "\n";
           next = await gen.next(result);
         }
       } finally { try { await gen.return(undefined); } catch { /* finished */ } }
+      if (handed) { text += handed + "\n"; handed = ""; }
       return text;
     };
     try {
@@ -1217,7 +1230,10 @@ export class AgentRunner {
     const store = this.store(project);
     const now = await store.snapshot("Ship check");
     let rec = this.lastProof.get(project);
-    const stale = async () => !rec || (await this.changedSince(store, rec.snapshot, now.id)).length > 0;
+    const changed = async () => !rec || (await this.changedSince(store, rec.snapshot, now.id)).length > 0;
+    // A check that did not fully pass (gaps, a failure, nothing to check) is run again when the person presses Put it online:
+    // what stopped it may have been fixed in Settings or on the Mac without any file changing. Only a pass is reused.
+    const stale = async () => !rec || rec.verdict !== "passed" || (await changed());
     if (runChecks && (await stale())) {
       // Check the project exactly as it is now, with no model involved.
       const ac = new AbortController();
@@ -1230,7 +1246,7 @@ export class AgentRunner {
         if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
     }
-    const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await stale()) } : undefined;
+    const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await changed()) } : undefined;
     const report = await runGates({ project, proof, confirmed: confirm });
     return { report, snapshot: now.id, proof: rec?.verdict ?? "skipped" };
   }

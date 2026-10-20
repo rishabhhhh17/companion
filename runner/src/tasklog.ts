@@ -9,6 +9,17 @@ export class TaskLog {
   private db: Database;
   constructor(path: string, onProblem?: (message: string) => void) {
     this.db = openDatabase(path, onProblem);
+    // Opening can work and the first write still fail (a full disk, a file restored read-only). The engine must still start:
+    // fall back to a log in memory, and say so, as when the file cannot be opened at all.
+    try { this.setup(); }
+    catch {
+      try { this.db.close(); } catch { /* already unusable */ }
+      onProblem?.("Your task history could not be saved on this Mac, so it will be lost when Companion closes.");
+      this.db = openDatabase(":memory:");
+      this.setup();
+    }
+  }
+  private setup() {
     this.db.run(`CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, agent TEXT NOT NULL, mode TEXT NOT NULL,
       label TEXT NOT NULL, status TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, started_at TEXT NOT NULL, ended_at TEXT)`);
@@ -20,12 +31,14 @@ export class TaskLog {
     // A task still marked "running" when the log opens was cut short by a crash or a forced quit.
     this.db.run("UPDATE tasks SET status = 'interrupted', ended_at = COALESCE(ended_at, started_at) WHERE status = 'running'");
   }
-  start(r: { project: string; agent: string; mode: string; label: string; startedAt: string }): number {
-    const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at) VALUES (?, ?, ?, ?, 'running', ?)");
-    return Number(q.run(r.project, r.agent, r.mode, r.label, r.startedAt).lastInsertRowid);
+  // The Before snapshot is stored with the row at the start, so a task cut short by a crash or a forced quit still has its
+  // Undo point (finish keeps it when it has no receipt of its own).
+  start(r: { project: string; agent: string; mode: string; label: string; startedAt: string; checkpoint?: string }): number {
+    const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, checkpoint) VALUES (?, ?, ?, ?, 'running', ?, ?)");
+    return Number(q.run(r.project, r.agent, r.mode, r.label, r.startedAt, r.checkpoint ?? null).lastInsertRowid);
   }
   finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string }) {
-    this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = ?, changed = ?, proof = ? WHERE id = ?")
+    this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = COALESCE(?, checkpoint), changed = ?, proof = ? WHERE id = ?")
       .run(status, usd, endedAt, receipt?.checkpoint ?? null, receipt?.changed ?? null, receipt?.proof ?? null, id);
   }
   // Newest first. Pass a project to see only its tasks.

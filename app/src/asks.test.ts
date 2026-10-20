@@ -43,6 +43,12 @@ describe("the agent's last words on the receipt", () => {
     expect(receiptSaid(run([...begin, receipt({ said: "Your key sk_live_abcdefghijklmnopqrstuvwx is set. Is that right?", asks: true }), state("needsYou")]))!.words).not.toContain("sk_live_abcdefghijklmnopqrstuvwx");
     expect(Array.from(receiptSaid(run([...begin, receipt({ said: "word ".repeat(400) }), state("done")]))!.words).length).toBeLessThanOrEqual(600);
   });
+  test("words too long that ask the person keep their end, so the question is on the card", () => {
+    const long = `${"word ".repeat(300)}Which email address should the messages go to?`;
+    const w = receiptSaid(run([...begin, receipt({ said: long, asks: true }), state("needsYou")]))!.words;
+    expect(w.endsWith("Which email address should the messages go to?")).toBe(true);
+    expect(Array.from(w).length).toBeLessThanOrEqual(600);
+  });
   test("Home shows the line, under the receipt's heading", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toMatch(/receiptSaid\(m\)/);

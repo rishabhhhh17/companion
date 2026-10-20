@@ -6,7 +6,7 @@
     {
       "id": "signup", "folder": "stuck-signup", "order": 1, "copyName": "signup page",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "test/signup.test.js", "line": 17, "about": "/api/signup" },
-      "fix": "task", "prove": "receipt", "protect": ["test/signup.test.js"],
+      "fix": "task", "prove": "receipt", "protect": ["test/signup.test.js", "package.json"],
       "needsNode": true, "budgetUsd": 0.6, "minutes": 2, "costUsd": 0.2
     },
     {
@@ -18,13 +18,13 @@
     {
       "id": "route", "folder": "stuck-route", "order": 3, "copyName": "missing page",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "test/links.test.js", "line": 19, "about": "goes to /prices" },
-      "fix": "task", "prove": "receipt", "protect": ["test/links.test.js"],
+      "fix": "task", "prove": "receipt", "protect": ["test/links.test.js", "package.json"],
       "needsNode": true, "budgetUsd": 0.6, "minutes": 2, "costUsd": 0.2
     },
     {
       "id": "import", "folder": "stuck-import", "order": 4, "copyName": "renamed file",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "server.js", "line": 3, "about": "Cannot find module" },
-      "fix": "task", "prove": "receipt", "protect": ["test/prices.test.js"],
+      "fix": "task", "prove": "receipt", "protect": ["test/prices.test.js", "package.json"],
       "needsNode": true, "budgetUsd": 0.6, "minutes": 2, "costUsd": 0.2
     },
     {

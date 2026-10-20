@@ -1,9 +1,10 @@
 // Companion's memory: plain markdown files a person can read and edit. Every line has a source and a date.
 // The project's file lives in the project (.companion/project.md); the profile lives in Companion's own folder.
-import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { screenLine } from "./filter.ts";
+import { writeAtomic } from "../atomic.ts";
 import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
 import { EXPLAIN_MODES, type ExplainMode } from "../../../protocol/index.ts";
 
@@ -66,33 +67,45 @@ export class MemoryStore {
     const hasHead = raw.some((r) => r.kind === "other" && r.text.startsWith("# "));
     const out = (hasHead ? body : HEAD[scope] + "\n" + body).replace(/\n*$/, "\n");
     mkdirSync(dirname(f), { recursive: true });
-    const tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
-    writeFileSync(tmp, out, { mode: scope === "profile" ? 0o600 : 0o644 });
-    renameSync(tmp, f);
+    writeAtomic(f, out, scope === "profile" ? 0o600 : 0o644);
     if (scope === "profile") { try { chmodSync(f, 0o600); } catch { /* best effort */ } }
   }
 
   list(scope: Scope): ListResult {
     const { raw, problem } = this.read(scope);
-    return { entries: raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => r.entry), problems: problem ? [problem] : [] };
+    this.prefs();
+    const problems = [...(problem ? [problem] : []), ...(this.damagedNote ? ["Companion's memory settings file was damaged, so learning is paused. The old file was kept as memory-settings.damaged.json. Turn learning back on to start it again."] : [])];
+    return { entries: raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => r.entry), problems };
   }
 
+  // Only a missing file means the usual choices. A file that is there but cannot be read or understood (cut short, edited by
+  // hand, unreadable for a moment) must not switch learning back on or bring forgotten lines back: learning is paused until the
+  // person turns it back on, the file is kept as memory-settings.damaged.json, and the memory page says so.
+  private damagedNote = false;
   private prefs(): Prefs {
+    const f = this.settings();
     try {
-      const j = JSON.parse(readFileSync(this.settings(), "utf8"));
+      const j = JSON.parse(readFileSync(f, "utf8"));
+      if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error("not an object");
+      this.damagedNote = false;
       // A file from before the choice: the old switch off is off, on (or nothing) is reasons and a question, as it was.
       const explainMode: ExplainMode = (EXPLAIN_MODES as readonly string[]).includes(j.explainMode) ? j.explainMode : j.explain === false ? "off" : "reasonsAndQuestion";
       return { paused: j.paused === true, forgotten: j.forgotten && typeof j.forgotten === "object" ? j.forgotten : {}, agents: j.agents && typeof j.agents === "object" ? j.agents : {}, explain: explainMode !== "off", explainMode };
-    } catch { return { paused: false, forgotten: {}, agents: {}, explain: true, explainMode: "reasonsAndQuestion" }; }
+    } catch (e) {
+      const usual: Prefs = { paused: false, forgotten: {}, agents: {}, explain: true, explainMode: "reasonsAndQuestion" };
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") { this.damagedNote = false; return usual; }
+      this.damagedNote = true;
+      const keep = join(this.o.profileDir, "memory-settings.damaged.json");
+      try { if (!existsSync(keep)) copyFileSync(f, keep); } catch { /* the original is still where it was */ }
+      return { ...usual, paused: true };
+    }
   }
   // Whether the person said yes or no to Companion adding its block to their own AGENTS.md and CLAUDE.md.
   agentsChoice(): "approved" | "declined" | undefined { return this.prefs().agents[this.key("project")]; }
   setAgentsChoice(c: "approved" | "declined" | undefined) { const p = this.prefs(), k = this.key("project"); const { [k]: _old, ...rest } = p.agents; this.savePrefs({ ...p, agents: c ? { ...rest, [k]: c } : rest }); }
   private savePrefs(p: Prefs) {
     mkdirSync(this.o.profileDir, { recursive: true });
-    const f = this.settings(), tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`;
-    writeFileSync(tmp, JSON.stringify(p), { mode: 0o600 });
-    renameSync(tmp, f);
+    writeAtomic(this.settings(), JSON.stringify(p), 0o600);
   }
   // A line that was forgotten stays forgotten: it is not learned again from the same file or the same words.
   private key(scope: Scope) { return scope === "profile" ? "profile" : "project:" + createHash("sha256").update(this.o.project).digest("hex").slice(0, 12); }

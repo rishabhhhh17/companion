@@ -75,6 +75,23 @@ describe("starting where the person already is (teach.startWhereYouAre)", () => 
     await s.cmd("walk.start", { project: s.project, lesson: "keys" });
     expect(s.of("walk.step").at(-1)).toMatchObject({ index: 1 });
   });
+  // Second audit: progress saved for a lesson whose steps changed is thrown away, so the start is a new one and follows the setting.
+  const stale = (project: string) => ({ version: 1 as const, shape: "old1,old2", lesson: "ship", project, index: 1, log: [{ step: "old1", outcome: "passed" as const, at: "t" }], failed: [], usedInstead: [], blocked: null, done: false });
+  test("saved progress of a changed lesson starts at step one when the setting is off, with nothing passed or asked", async () => {
+    const s = setup({ ship: true }); ready(s.project);
+    s.store.save(s.project, stale(s.project));
+    await s.cmd("walk.start", { project: s.project, lesson: "ship" });
+    expect(s.of("walk.step")[0]).toMatchObject({ index: 0, say: "Add the key" });
+    expect(s.of("walk.step")[0].passed).toBeUndefined();
+    expect(s.of("walk.step")[0].already).toBeUndefined();
+    expect(s.store.load(s.project, "ship")).not.toMatchObject({ shape: "old1,old2" });
+  });
+  test("and follows the setting when it is on, like any new start", async () => {
+    const s = setup({ startWhereYouAre: () => true, ship: true }); ready(s.project);
+    s.store.save(s.project, stale(s.project));
+    await s.cmd("walk.start", { project: s.project, lesson: "ship" });
+    expect(s.of("walk.step")[0]).toMatchObject({ index: 2, passed: 2 });
+  });
   test("the engine reads the setting when a lesson starts", () => {
     const main = require("node:fs").readFileSync(new URL("../src/main.ts", import.meta.url), "utf8") as string;
     expect(main).toContain('startWhereYouAre: () => runnerSettings.get("teach.startWhereYouAre") === true');

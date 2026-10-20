@@ -5,7 +5,7 @@
 // in for real output); nothing reaches the network.
 import { describe, expect, test } from "bun:test";
 import { AssistService, ImageStore, VisionLane, type Ocr } from "../src/lanes.ts";
-import { EVERYDAY_SYSTEM, RECHECK_SYSTEM, SHEET_ERRORS, everydayRequest, goneVerdict, parseEveryday, sheetErrorIn, sheetErrorsIn, sheetFromTable, tableAgrees, twoSentences } from "../src/everyday.ts";
+import { EVERYDAY_SYSTEM, RECHECK_SYSTEM, SHEET_ERRORS, everydayRequest, goneVerdict, landmarksOf, parseEveryday, sameView, sheetErrorIn, sheetErrorsIn, sheetFromTable, tableAgrees, twoSentences } from "../src/everyday.ts";
 import { SHEET_CODES, parseCommand, parseEvent, serialize, type Event, type SheetCode } from "../../protocol/index.ts";
 
 const img = (w = 1280, h = 800) => ({ base64: "AAAA", mediaType: "image/jpeg", w, h });
@@ -134,12 +134,17 @@ describe("reading the answer", () => {
     expect(tableAgrees(a({ problem: "C4 shows #N/A because the name is missing from the list." }), na, ocr)).toBe(true);
     expect(tableAgrees(a({ targets: [target({ targetText: "#N/A", caption: "Click the cell" })] }), na, ocr)).toBe(true);
     expect(tableAgrees(a({ targets: [target({ targetText: "C4", caption: "Click C4", ocrId: "t1" })] }), na, ocr)).toBe(true);
-    expect(tableAgrees(a({ kind: "sheet", problem: "The lookup in C4 cannot find the name." }), na, ocr)).toBe(true);
+    // Calling it a spreadsheet problem names no code: Claude's own diagnosis stands (second audit).
+    expect(tableAgrees(a({ kind: "sheet", problem: "The lookup in C4 cannot find the name." }), na, ocr)).toBe(false);
+    expect(tableAgrees(a({ kind: "sheet", problem: "The sheet is protected so you cannot edit it." }), na, ocr)).toBe(false);
     expect(tableAgrees(a({ kind: "sheet", problem: "B2 shows #REF! after a column was deleted." }), na, ocr)).toBe(false);
   });
   test("fixed only with the Mac's own evidence: the code read before is no longer read, and the look agrees", () => {
     const ref = SHEET_ERRORS[0], na = SHEET_ERRORS[3];
-    expect(goneVerdict("yes", ref, [])).toBe("yes");
+    expect(goneVerdict("yes", ref, [], true)).toBe("yes");
+    // The same place not vouched for (another display, tab or scroll position): only a guess, so the person is asked.
+    expect(goneVerdict("yes", ref, [])).toBe("looks");
+    expect(goneVerdict("yes", ref, [], false)).toBe("looks");
     // The same error still read: never fixed. The look saying gone is put to the person, never a step-less "no".
     expect(goneVerdict("yes", ref, [ref])).toBe("unsure");
     expect(goneVerdict("no", ref, [ref])).toBe("no");
@@ -182,7 +187,7 @@ describe("the look, end to end with a stand in vision lane", () => {
     expect(r.asked[0].system).toBe(EVERYDAY_SYSTEM);
   });
   test("a spreadsheet error: the words and the why come from the table, and Claude still finds the cell", async () => {
-    const r = rig(JSON.stringify({ found: true, kind: "sheet", problem: "Something is wrong in the sheet.", why: ["made up", "also made up"], targets: [target()] }));
+    const r = rig(JSON.stringify({ found: true, kind: "sheet", problem: "Something is wrong in the sheet.", why: ["made up", "also made up"], targets: [target({ ocrId: "t1", targetText: "#DIV/0!" })] }));
     r.images.put("sm_1", img());
     await r.svc.handle(locate("everyday", "Find the problem on my screen.", [box("t1", "#DIV/0!")]));
     const p = r.events[0] as any, div0 = SHEET_ERRORS.find((e) => e.id === "div0")!;
@@ -213,12 +218,27 @@ describe("the look, end to end with a stand in vision lane", () => {
     expect(p.fixes).toBeUndefined();
     expect(p.why).toEqual(["Export waits for every picture.", "When it is in, export works."]);
   });
-  test("Claude seeing nothing wrong while the Mac reads a code: the code is named from the table, in words only", async () => {
+  test("Claude seeing nothing wrong while the Mac reads a code: Claude's answer stands, the table never overrides it", async () => {
     const r = rig('{"found":false}');
     r.images.put("sm_1", img());
     await r.svc.handle(locate("everyday", "Find the problem on my screen.", [box("t1", "#REF!")]));
     expect(r.events.map((e) => e.type)).toEqual(["assist.problem"]);
-    expect(r.events[0]).toMatchObject({ found: true, code: "#REF!", fromTable: true, steps: 0 });
+    expect(r.events[0]).toMatchObject({ found: false, steps: 0 });
+    expect((r.events[0] as any).code).toBeUndefined();
+    expect((r.events[0] as any).fromTable).toBeUndefined();
+  });
+  test("a help page, chat or protected sheet that merely mentions a code is not the person's problem", async () => {
+    const protectedSheet = rig(JSON.stringify({ found: true, kind: "sheet", problem: "The sheet is protected so you cannot edit it.", why: ["a", "b"], targets: [target({ targetText: "Review", caption: "Open Review" })] }));
+    protectedSheet.images.put("sm_1", img());
+    await protectedSheet.svc.handle(locate("everyday", "Find the problem on my screen.", [box("t1", "Tip: #N/A means a lookup failed"), box("t2", "Review")]));
+    expect(protectedSheet.events[0]).toMatchObject({ found: true, kind: "sheet", problem: "The sheet is protected so you cannot edit it." });
+    expect((protectedSheet.events[0] as any).code).toBeUndefined();
+    expect((protectedSheet.events[0] as any).fromTable).toBeUndefined();
+    const nothing = rig('{"found":false}');
+    nothing.images.put("sm_1", img());
+    await nothing.svc.handle(locate("everyday", "Find the problem on my screen.", [box("t1", "Tip: #N/A means a lookup failed")]));
+    expect(nothing.events[0]).toMatchObject({ found: false });
+    expect((nothing.events[0] as any).code).toBeUndefined();
   });
   test("when Claude cannot be reached, a spreadsheet error is still named from the table, in words only", async () => {
     const r = rig(() => Promise.reject(new Error("API Error: Connection error.")));
@@ -241,20 +261,71 @@ describe("the look, end to end with a stand in vision lane", () => {
     expect(r.events.map((e) => e.type)).toEqual(["assist.problem"]);
     expect(r.events[0]).toMatchObject({ found: false, steps: 0 });
   });
-  test("a recheck says fixed only when the code the first look read is gone and the look agrees", async () => {
+  // The first look's words on screen next to the error: the same sheet seen again is how Fixed is vouched for.
+  const sheetWords = ["Quarterly budget", "Region", "Revenue", "Costs", "Margin", "Sheet1"];
+  const sheet = (...extra: string[]): Ocr[] => [...sheetWords, ...extra].map((t, i) => box(`t${i}`, t));
+  const firstLook = async (r: ReturnType<typeof rig>, ocr: Ocr[]) => {
+    r.images.put("sm_1", img());
+    await r.svc.handle(locate("everyday", "Find the problem on my screen.", ocr));
+    r.events.length = 0;
+  };
+  test("a recheck says fixed only when the code the first look read is gone, the same sheet is in view and the look agrees", async () => {
     const q = "Fix this problem on my screen: The cell C4 shows #REF! because a row was deleted.";
     const still = rig('{"gone":"yes"}');
+    await firstLook(still, sheet("#REF!"));
     still.images.put("sm_1", img());
-    await still.svc.handle(locate("recheck", q, [box("t1", "#REF!")], "#REF!"));
+    await still.svc.handle(locate("recheck", q, sheet("#REF!"), "#REF!"));
     // Still read: never fixed, and since the look said gone, the person is asked (not a "no" with no next step).
     expect(still.events[0]).toMatchObject({ mode: "recheck", gone: "unsure", found: false, code: "#REF!", steps: 0 });
-    expect(still.asked[0].system).toBe(RECHECK_SYSTEM);
-    expect(still.asked[0].question).toContain("#REF!");
+    expect(still.asked.at(-1)!.system).toBe(RECHECK_SYSTEM);
+    expect(still.asked.at(-1)!.question).toContain("#REF!");
     const gone = rig('{"gone":"yes"}');
+    await firstLook(gone, sheet("#REF!"));
     gone.images.put("sm_1", img());
-    await gone.svc.handle(locate("recheck", q, [box("t1", "Total 1,240")], "#REF!"));
+    await gone.svc.handle(locate("recheck", q, sheet("Total 1,240"), "#REF!"));
     expect(gone.events.map((e) => e.type)).toEqual(["assist.problem"]);
     expect(gone.events[0]).toMatchObject({ gone: "yes", found: false, steps: 0 });
+  });
+  test("the code missing from a different place is not Fixed: another display, tab or scroll position, or no first look at all", async () => {
+    const q = "Fix this problem on my screen: The cell C4 shows #REF! because a row was deleted.";
+    // The sheet is not in view any more (the pointer moved to another display): nothing of it is read again.
+    const away = rig('{"gone":"yes"}');
+    await firstLook(away, sheet("#REF!"));
+    away.images.put("sm_1", img());
+    await away.svc.handle(locate("recheck", q, [box("x1", "Inbox"), box("x2", "Calendar"), box("x3", "Notes")], "#REF!"));
+    expect(away.events[0]).toMatchObject({ gone: "looks", found: false, steps: 0 });
+    // Scrolled away: only a little of it is read again.
+    const scrolled = rig('{"gone":"yes"}');
+    await firstLook(scrolled, sheet("#REF!"));
+    scrolled.images.put("sm_1", img());
+    await scrolled.svc.handle(locate("recheck", q, [box("x1", "Quarterly budget"), box("x2", "Row 80"), box("x3", "Row 81")], "#REF!"));
+    expect(scrolled.events[0]).toMatchObject({ gone: "looks" });
+    // The engine kept nothing of a first look (restarted, or Stop everything): the same place cannot be vouched for.
+    const forgotten = rig('{"gone":"yes"}');
+    await firstLook(forgotten, sheet("#REF!"));
+    forgotten.svc.cancelAll();
+    forgotten.images.put("sm_1", img());
+    await forgotten.svc.handle(locate("recheck", q, sheet(), "#REF!"));
+    expect(forgotten.events[0]).toMatchObject({ gone: "looks" });
+    // A first look of another code is not this one's.
+    const other = rig('{"gone":"yes"}');
+    await firstLook(other, sheet("#N/A"));
+    other.images.put("sm_1", img());
+    await other.svc.handle(locate("recheck", q, sheet(), "#REF!"));
+    expect(other.events[0]).toMatchObject({ gone: "looks" });
+  });
+  test("the look again is told to answer unsure when the earlier place is not in view", () => {
+    expect(RECHECK_SYSTEM).toMatch(/same (sheet|place)/);
+    expect(RECHECK_SYSTEM).toMatch(/not in view/);
+  });
+  test("landmarks are plain words beside the error, and the same view needs enough of them again", () => {
+    const l = landmarksOf([box("a", "#REF!"), box("b", "Quarterly budget"), box("c", "1234"), box("d", "ok"), box("e", "Quarterly budget"), box("f", "Revenue"), box("g", "Costs"), box("h", "Circular reference warning")]);
+    expect(l).toEqual(["quarterly budget", "revenue", "costs"]);
+    expect(sameView(l, [box("1", "Quarterly Budget"), box("2", "Revenue"), box("3", "Costs"), box("4", "Total")])).toBe(true);
+    expect(sameView(l, [box("1", "Revenue"), box("2", "Costs")])).toBe(false);
+    // Fewer than three landmarks cannot vouch for a place.
+    expect(sameView(["revenue", "costs"], [box("1", "Revenue"), box("2", "Costs")])).toBe(false);
+    expect(sameView([], [])).toBe(false);
   });
   test("a recheck compares like with like: another code on screen does not keep it open, and is not proof", async () => {
     const r = rig('{"gone":"yes"}');
@@ -279,6 +350,14 @@ describe("the look, end to end with a stand in vision lane", () => {
     await r.svc.handle(locate("recheck", "q", [box("t1", "#REF!")], "#REF!"));
     expect(r.events.map((e) => e.type)).toEqual(["assist.problem", "assist.point"]);
     expect(r.events[0]).toMatchObject({ gone: "no", found: true, code: "#REF!", fromTable: true, steps: 1, problem: sheetFromTable(SHEET_ERRORS[0]).problem, fixes: SHEET_ERRORS[0].fixes });
+  });
+  test("the error still read while the look is unsure keeps the walkthrough going: its steps are used", async () => {
+    const r = rig(JSON.stringify({ gone: "unsure", problem: "", targets: [target()] }));
+    r.images.put("sm_1", img());
+    await r.svc.handle(locate("recheck", "q", [box("t1", "#REF!")], "#REF!"));
+    expect(r.events.map((e) => e.type)).toEqual(["assist.problem", "assist.point"]);
+    expect(r.events[0]).toMatchObject({ gone: "no", found: true, code: "#REF!", steps: 1 });
+    expect(parseEveryday('{"gone":"yes","targets":[' + JSON.stringify(target()) + ']}', [img()])?.targets).toEqual([]);
   });
   test("a look again that failed says so, unless the Mac itself still reads the error", async () => {
     const failed = rig(() => Promise.reject(new Error("API Error: Connection error.")));
