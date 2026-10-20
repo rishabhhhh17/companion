@@ -153,7 +153,7 @@ describe("every hint names the keys in use", () => {
     // The use keys are named only when the app could take them for this result: ph_ready answers which keys it took
     // (it tries again for each result, so they may differ from the keys the page knew), or null when it took none.
     expect(card).toContain("acceptHint(phArmed, keys)");
-    expect(card).toMatch(/invoke\("ph_ready", \{[^}]*\}\)\.then\(\(v\) => setPhArmed\(armedFor\(v\)\)\)/);
+    expect(card).toMatch(/invoke\("ph_ready", \{[^}]*\}\)\.then\(\(v\) => \{ setPhArmed\(armedFor\(v\)\);/);
     expect(main).toMatch(/fn ph_ready\([^)]*\) -> Option<String> \{[^\n]*arm_result_keys\(&app, true\); key_registered\(keymap::Action::Accept\)\.map\(keymap::id\) \}/);
     const model = read("./model.ts");
     expect(model).not.toMatch(/Control, Option, Command/);

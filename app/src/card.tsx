@@ -19,7 +19,7 @@ import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
@@ -392,6 +392,8 @@ function Card() {
   // homeShown: Home is on screen (the shell's "opened" and "closed"). keysDown: where spoken words may go, as the talk keys
   // went down (askbox.ts FollowAim), used once when the words come back.
   const homeShown = useRef(false), keysDown = useRef<FollowAim | null>(null);
+  // How many times Home has opened (the shell's "opened"), so a Prompt help result still showing asks for its keys again.
+  const [homeOpens, setHomeOpens] = useState(0);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
@@ -716,6 +718,7 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
       homeShown.current = true;
+      setHomeOpens((n) => n + 1);   // a Prompt help result still showing asks for its keys again
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
@@ -729,7 +732,7 @@ function Card() {
       touch();
     });
     // Every way Home goes away goes through the shell, which says so: a window that was just hidden sends no pointerleave.
-    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null; });
+    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; keysDown.current = null; phArmedFor.current = null; setPhKeysUp(false); clearTimeout(phKeysTimer.current); });
     return () => { off.then((f) => f()); offClosed.then((f) => f()); };
   }, []);
   // Tell the app how tall the content is, so the panel fits it.
@@ -1047,14 +1050,19 @@ function Card() {
   // use keys it took for this result, if any, so the line under it names them only when they work. Those keys work in
   // every app, so only once the result, with its change, is on screen (home.ts phArmable), and once for each result.
   const [phArmed, setPhArmed] = useState(true);
+  // The shell holds the keys only while Home shows the result: it gives them back when Home closes (Esc, a click away)
+  // and after a minute and a half (main.rs arm_now), without a word to the page. So the line under the result names them
+  // only while they are held (phKeysUp), and each time Home opens with the result the keys are asked for again (homeOpens).
+  const [phKeysUp, setPhKeysUp] = useState(false);
+  const phKeysTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const phShown = phArmable(m, home.tab);
   const phArmedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (m.ph?.stage !== "ready") { phArmedFor.current = null; return; }
+    if (m.ph?.stage !== "ready") { phArmedFor.current = null; setPhKeysUp(false); clearTimeout(phKeysTimer.current); return; }
     if (!phShown || !m.ph.text || phArmedFor.current === m.ph.text) return;
     phArmedFor.current = m.ph.text;
-    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => setPhArmed(armedFor(v))).catch(() => {});
-  }, [m.ph?.stage, m.ph?.text, phShown]);
+    void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste" }).then((v) => { setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS); }).catch(() => {});
+  }, [m.ph?.stage, m.ph?.text, phShown, homeOpens]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
     const c = askResearch(project, box.current?.value ?? "", off);
@@ -1426,7 +1434,7 @@ function Card() {
                 <button className="btn primary" type="button" onClick={() => void invoke("ph_accept")}>{S.phUse}</button>
                 <button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.phDismiss}</button>
               </div>
-              <div className="line muted">{acceptHint(phArmed, keys)}</div>
+              {phKeysUp && <div className="line muted">{acceptHint(phArmed, keys)}</div>}
             </>
           )}
           {(m.ph.stage === "pasted") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_restore")}>{S.phRestore}</button></div>}
