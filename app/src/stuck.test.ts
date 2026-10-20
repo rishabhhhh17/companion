@@ -116,6 +116,7 @@ describe("A56: closing Point at the problem or which task broke it is heard by t
   test("Close on Home asks the engine to let the agent rest, only when nothing else waits for it", () => {
     const point = card.slice(card.indexOf("{show(\"point\") && m.point && ("), card.indexOf("{show(\"bisect\")"));
     expect(point).toContain("putAside(m.point?.agent); void invoke(\"showme_clear\"); dispatch({ type: \"ui.pointClosed\" });");
+    expect(point).toContain("putAside(pt.agent); void invoke(\"showme_clear\"); dispatch({ type: \"ui.pointClosed\" });");   // Fix it too
     const bisect = card.slice(card.indexOf("{show(\"bisect\") && m.bisect && ("), card.indexOf("{show(\"errorHelp\")"));
     expect(bisect).toContain("putAside(m.bisect?.agent); dispatch({ type: \"ui.bisectClosed\" });");
   });

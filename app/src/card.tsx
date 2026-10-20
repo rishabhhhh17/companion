@@ -1644,7 +1644,8 @@ function Card() {
               {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => {
                 const pt = m.point!;
-                void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" });
+                // The fix asked next sets its own state; if it is refused, the agent is not left on Needs you anywhere.
+                putAside(pt.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" });
                 if (!project) return;
                 // In a practice copy whose problem was found: the practice's own fix, the same as Fix it with me on Learn. Else
                 // look deeper first (Rescue), as usual; one small checked fix (the practices' own request) when Settings says so
