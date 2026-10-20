@@ -31,6 +31,9 @@ shasum -a 256 "$CLAUDE" | cut -d' ' -f1 > "$OUT/claude.sha256"
 shasum -a 256 "$OUT/bin/bun" | cut -d' ' -f1 > "$OUT/bun.sha256"
 # Test and type files are not needed at run time.
 find "$OUT/runner/src" -name '*.test.ts' -delete
+# Source maps and hidden folders from the packages are not needed in the app.
+find "$OUT" -type f -name '*.map' -delete
+find "$OUT" -type d -name '.github' -prune -exec rm -rf {} +
 # Every program inside the engine (any Mach-O file, whatever its name) must carry its maker's real signature: a notarized app
 # is refused otherwise. A release build (COMPANION_SIGN_ID set) fails here, minutes before Apple would; a development build
 # only says so.
