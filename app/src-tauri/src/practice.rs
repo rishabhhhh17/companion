@@ -235,6 +235,22 @@ pub fn restart(r: &mut Record, e: &Entry, src: &Path, home: &Path, data: &Path, 
     Ok(Restarted { path, kept_old })
 }
 
+/// Records a copy that was just made. If the record cannot be saved (the data folder is full or not writable), the save is
+/// tried once more, and then the new copy is taken away (`discard`, it has none of the person's work in it): a copy that no
+/// list knows could never be removed or moved again.
+pub fn save_or_discard(save: impl Fn() -> Result<(), String>, discard: impl FnOnce()) -> Result<(), String> {
+    if save().is_ok() || save().is_ok() { return Ok(()); }
+    discard();
+    Err("Could not save your practice progress, so the new copy was not kept. Try again.".into())
+}
+
+/// A practice record that was read as damaged (a row it did not understand) is copied aside once as `practice.damaged.json`
+/// before anything is saved over it, so one bad row never silently deletes the other rows for good.
+pub fn keep_damaged(file: &Path, damaged: bool) {
+    if !damaged { return; }
+    if let Some(dir) = file.parent() { let aside = dir.join("practice.damaged.json"); if !aside.exists() { let _ = fs::copy(file, aside); } }
+}
+
 /// Every recorded copy still there, for "Move all my practice copies to the Trash" and Delete everything's opt in line.
 pub fn copies(r: &Record, home: &Path) -> Vec<(String, PathBuf)> {
     entries().iter().filter_map(|e| r.practices.get(&e.id).and_then(|p| p.path.clone()).map(|x| (e.id.clone(), PathBuf::from(x)))).filter(|(_, p)| copy_path_ok(p, home) && p.is_dir()).collect()
@@ -546,6 +562,30 @@ mod tests {
         assert_eq!(r3, before, "the record still points at the old copy");
         // Never while something works on the copy that is open.
         assert!(restart(&mut r2, pick(Some("import")).unwrap(), &Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-import"), &home, &data, out2.path.to_str().unwrap(), true, D, |_: &Path| Ok(())).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_copy_that_cannot_be_recorded_is_taken_away_and_a_damaged_record_is_kept_aside() {
+        use std::cell::Cell;
+        let (tries, gone) = (Cell::new(0), Cell::new(false));
+        assert!(save_or_discard(|| { tries.set(tries.get() + 1); Ok(()) }, || gone.set(true)).is_ok());
+        assert_eq!((tries.get(), gone.get()), (1, false));
+        // One failure is retried.
+        let n = Cell::new(0);
+        assert!(save_or_discard(|| { n.set(n.get() + 1); if n.get() == 1 { Err("x".into()) } else { Ok(()) } }, || gone.set(true)).is_ok());
+        assert!(!gone.get());
+        // A save that keeps failing takes the new copy away and says so.
+        let err = save_or_discard(|| Err("disk full".into()), || gone.set(true)).unwrap_err();
+        assert!(gone.get() && err.contains("not kept"), "{err}");
+        let root = tmp("damaged-record"); let f = root.join("practice.json");
+        fs::write(&f, r#"{"practices":{"signup":{"path":"/etc/x"},"route":{}}}"#).unwrap();
+        keep_damaged(&f, false);
+        assert!(!root.join("practice.damaged.json").exists());
+        keep_damaged(&f, true);
+        assert!(fs::read_to_string(root.join("practice.damaged.json")).unwrap().contains("/etc/x"));
+        fs::write(&f, "{}").unwrap();
+        keep_damaged(&f, true);
+        assert!(fs::read_to_string(root.join("practice.damaged.json")).unwrap().contains("/etc/x"), "the first damaged copy is not replaced by a later one");
         let _ = fs::remove_dir_all(&root);
     }
     #[test]

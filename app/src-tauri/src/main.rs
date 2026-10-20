@@ -2132,7 +2132,9 @@ static PRACTICE: Mutex<()> = Mutex::new(());
 fn today() -> String { let d = cmd_out("/bin/date", &["+%Y-%m-%d"]); if d.len() == 10 { d } else { "1970-01-01".into() } }
 /// The record as it is on disk, checked (a damaged file reads as empty, and the page says so once).
 fn practice_record() -> (practice::Record, bool) {
-    practice::Record::parse(std::fs::read_to_string(practice_path()).ok().as_deref(), std::path::Path::new(&home_dir()))
+    let (r, damaged) = practice::Record::parse(std::fs::read_to_string(practice_path()).ok().as_deref(), std::path::Path::new(&home_dir()));
+    practice::keep_damaged(&practice_path(), damaged);   // a row it did not understand is kept aside before the next save drops it
+    (r, damaged)
 }
 fn save_practice(r: &practice::Record) -> Result<(), String> {
     let _ = std::fs::create_dir_all(data_dir());
@@ -2171,7 +2173,8 @@ fn create_practice(window: tauri::WebviewWindow, app: AppHandle, which: Option<S
     let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
     let (mut r, _) = practice_record();
     let dst = practice::create(&mut r, e, &src, std::path::Path::new(&home_dir()), &data_dir(), &today())?;
-    let _ = save_practice(&r);   // the copy is there either way; the list only loses its progress line
+    // A copy that cannot be recorded is taken away again (it could never be listed, removed or moved).
+    practice::save_or_discard(|| save_practice(&r), || { let _ = move_to_trash(&dst); })?;
     log("practice_created", json!({ "practice": e.id }));
     use_project_inner(app, dst.to_string_lossy().to_string())
 }
@@ -2220,7 +2223,8 @@ fn restart_practice(window: tauri::WebviewWindow, app: AppHandle, which: String,
         let (mut r, _) = practice_record();
         let home = PathBuf::from(home_dir());
         let out = practice::restart(&mut r, e, &src, &home, &data_dir(), &current_project(), busy, &today(), move_to_trash)?;
-        let _ = save_practice(&r);
+        let fresh = out.path.clone();
+        practice::save_or_discard(|| save_practice(&r), || { let _ = move_to_trash(&fresh); }).map_err(|_| match &out.kept_old { None => "Could not save your practice progress. Your old copy is in the Trash, and the new one was not kept. Press Start for a fresh one.".to_string(), Some(_) => "Could not save your practice progress, so the new copy was not kept. Your old copy is still in your home folder.".to_string() })?;
         out
     };
     log("practice_restarted", json!({ "practice": e.id, "keptOld": out.kept_old.is_some() }));
