@@ -219,6 +219,7 @@ pub fn remove(r: &mut Record, id: &str, home: &Path, current: &str, busy: bool, 
     Ok(p)
 }
 
+#[derive(Debug)]
 pub struct Restarted { pub path: PathBuf, pub kept_old: Option<PathBuf> }
 /// Start over: a fresh copy is made in a new folder first, and only when it is made does the old copy go to the Trash (the
 /// person tapped Start over and confirmed it). So a copy that cannot be made leaves the old one where it was. If the Trash
