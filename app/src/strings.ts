@@ -530,6 +530,8 @@ export const S = {
   practiceMinutes: (n: number) => `About ${n} minutes`,
   practiceCostKey: (cents: number) => `About ${cents} cents on your key`,
   practiceFree: "Free, no Claude",
+  // The setting practice's lesson (model.ts lessonWordsOnly): each step in words, nothing looked at or sent.
+  practiceLessonWords: "This lesson tells you each step in words. It does not look at your screen and uses no Claude.",
   practiceNeedsNode: "Needs Node",
   practiceState: { notStarted: "Not started", inProgress: "In progress", done: "Done" },
   practiceStart: "Start",

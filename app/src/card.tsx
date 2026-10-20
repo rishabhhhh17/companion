@@ -11,7 +11,7 @@ import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, ne
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { AGENT, SETTINGS_LESSON_ID, releaseAgent, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName } from "./model.ts";
+import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
 import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -33,7 +33,7 @@ import { DRAFT_KEY, askKey, draftToKeep, heardGoesTo, heardKind, putBack, sendsI
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
-import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
+import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -330,7 +330,10 @@ function Card() {
   const [dragging, setDragging] = useState(false);
   // What was just added or taken away, said politely for VoiceOver (the chips show it to everyone else).
   const [attachSaid, setAttachSaid] = useState("");
-  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); const before = attachedNow.current; void addFiles(before, list).then((r) => { attachedNow.current = r.have; setAttached(r.have); setAttachNotes(r.notes); setAttachSaid(addedLine(r.have.slice(before.length))); }); };
+  // Reading takes a moment: what it added joins the box as it is when it ends (mergeAdded), so files Start sent or a chip
+  // removed meanwhile never come back. Files dropped before a folder change are dropped with it (dropGen).
+  const dropGen = useRef(0);
+  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); const before = attachedNow.current; const gen = dropGen.current; void addFiles(before, list).then((r) => { if (gen !== dropGen.current) return; const fresh = r.have.slice(before.length); const next = mergeAdded(before, r.have, attachedNow.current); attachedNow.current = next; setAttached(next); setAttachNotes(r.notes); setAttachSaid(addedLine(fresh.filter((f) => next.includes(f)))); }); };
   const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); setAttachSaid(""); };
   // What Start sent, kept in memory only until the engine says the task began (askbox.ts sentOutcome). If it says no
   // instead (a file it will not take, no Claude for a picture, something else working, the daily limit), or Stop came
@@ -357,7 +360,7 @@ function Card() {
     const off = listen("runner-event", (e) => onSentEvent.current(e.payload));
     return () => { off.then((f) => f()); };
   }, []);
-  useEffect(() => { clearAttached(); sent.current = null; }, [project]);
+  useEffect(() => { dropGen.current += 1; clearAttached(); sent.current = null; }, [project]);
   // A file dropped on Home outside the drop handling must never be opened in place of Home's page, and neither may a link
   // dropped anywhere but the ask box (blocksDrop); words dragged onto the ask box land there.
   useEffect(() => {
@@ -949,7 +952,9 @@ function Card() {
     if (!wk || wk.stage !== "step") { if (aimed.current) { aimed.current = ""; void invoke("showme_clear"); } return; }
     if (aimed.current === wkKey) return;
     aimed.current = wkKey; staleReq.current = m.showme?.req;
-    if (noAim.current) return;   // the screen permission was not given: words only, and it is not asked for again at every step
+    // The screen permission was not given: words only, and it is not asked for again at every step. The setting practice's
+    // lesson is words only by design (free, no Claude).
+    if (noAim.current || lessonWordsOnly(m)) return;
     // A step that follows the person's action (a click, I did it, an answer) may wait for the page to settle first.
     const settle = afterAct.current && waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked"));
     afterAct.current = false;
@@ -1205,6 +1210,7 @@ function Card() {
             <div className="line"><b>{keysIn(m.walk.say, keys)}</b></div>
             {m.walk.link && <div className="row"><OpenButton url={m.walk.link} onNote={setLessonNote} /></div>}
             {m.walk.link && lessonNote && <div className="line" role="status">{lessonNote}</div>}
+            {lessonWordsOnly(m) && <div className="line muted">{S.practiceLessonWords}</div>}
           </>}
           {/* Started where the person already is (teach.startWhereYouAre): what was passed by, and the way to do it again. */}
           {m.walk.passed && m.walk.stage !== "done" && m.walk.stage !== "stopped" && (
@@ -1220,7 +1226,7 @@ function Card() {
           )}
           <div className="row">
             {m.walk.stage === "step" && <>
-              <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}`, allScreens: allScreensOn() }); }}>{S.lessonPoint}</button>
+              {m.walk.stage === "step" && !lessonWordsOnly(m) && <button className="btn" type="button" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req; void invoke("showme_start", { question: `Where do I click for this: ${w.find}`, allScreens: allScreensOn() }); }}>{S.lessonPoint}</button>}
               {m.showme?.turn && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage) && <button className="btn" type="button" onClick={() => { pressed(); void invoke("do_it_for_me"); }}>{S.doItForMe}</button>}
               <button className="btn primary" type="button" onClick={() => { acted.current = wkKey; afterAct.current = true; clearTimeout(actTimer.current); void send(walkActed(m.walk!.id, "pressed", m.walk!.index)); }}>{S.lessonDid}</button>
             </>}

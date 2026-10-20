@@ -141,7 +141,8 @@ export type Reply = { key: string; text: string; kind: AskKind };
 export function repliesIn(m: Model, project: string): Reply[] {
   const out: Reply[] = [];
   if (m.receipt?.checkpoint) out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: receiptProofWords(m), kind: "task" });
-  if (m.research?.answer) out.push({ key: `research:${project}:${m.research.file}`, text: m.research.answer, kind: "research" });
+  // Each answer by its own number (n): one asked off the record has no file, and two such answers must not share a key.
+  if (m.research?.answer) out.push({ key: `research:${project}:${m.research.n ?? m.research.file}`, text: m.research.answer, kind: "research" });
   return out;
 }
 /** The answer that was not on the card before (an older one may still be shown beside it), or null. */

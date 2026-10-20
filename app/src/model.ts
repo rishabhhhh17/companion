@@ -222,6 +222,9 @@ export function foundHandsOver(m: Model, project: string): string | null {
   if (!pr || !project || pr.project !== project || pr.stage !== "found" || m.point?.stage !== "found" || !a) return null;
   return releasable(m, a) ? a : null;
 }
+/** The lesson open now is the setting practice's own fix: words only. That practice is free, with no Claude (F17 section
+ *  13), so its steps never look at the screen: nothing is sent to Claude and Screen Recording is never asked for. */
+export const lessonWordsOnly = (m: Model): boolean => !!m.walk && m.practice?.stage === "lesson" && m.practice.walk === m.walk.id;
 /** A task that keeps going in the folder Home showed before (the person picked another one while it worked): that
  *  folder's name, for one line on Now, or null. */
 export function awayFolder(m: Model): string | null {
@@ -503,7 +506,17 @@ export function reduce(m: Model, e: Ev): Model {
       return { ...m, showme: { stage, message: String(e.message ?? ""), ...(req ? { req } : {}), ...(turn ? { turn } : {}), ...seq } };
     }
     // Claude out of reach, or a failed request, is said in plain words (claudeStopWords), never as "not found".
-    case "assist.error": { const said = claudeStopWords(String(e.reason)); return m.showme && m.showme.req && e.req === m.showme.req ? { ...m, showme: { stage: "error", message: said ?? (String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason)) } } : (e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: said ?? String(e.reason), diff: [] } }); }
+    // A Show me request's error belongs only to the Show me still waiting for it (its own request, or the picture of one of
+    // its screens, "sm_7-s2"): one that was ended (Esc, closing Home, a newer question) is dropped, never shown as Prompt help's.
+    case "assist.error": {
+      const said = claudeStopWords(String(e.reason)), req = String(e.req ?? "");
+      if (req.startsWith("sm_")) {
+        const own = m.showme?.req;
+        if (!own || (req !== own && !req.startsWith(`${own}-`)) || e.reason === "cancelled") return m;
+        return { ...m, showme: { stage: "error", message: said ?? (String(e.reason) === "No clear target was found" ? "I could not find that on your screen. Try asking in different words." : String(e.reason)) } };
+      }
+      return e.reason === "cancelled" ? { ...m, ph: null } : { ...m, ph: { stage: "error", app: m.ph?.app, message: said ?? String(e.reason), diff: [] } };
+    }
     case "app.voice": {
       // Which microphone listened, in one line above the tabs (voiceset.rs): the picked one is not connected so the
       // default listens, the one in use went away (even after another took over), or another one took over while talking.
@@ -709,7 +722,11 @@ export function reduce(m: Model, e: Ev): Model {
     case "protocol.error": if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };
       // Put my fix back could not be done: the person's turn stays as it was, with the reason.
       if (m.teach?.stage === "restoring") return { ...m, teach: { ...m.teach, stage: "ready", note: plainError(String(e.reason)) }, error: null };
-      return { ...m, followUp: "idle", ...(m.practice?.stage === "fixing" ? { practice: { ...m.practice, stage: "failed" as const } } : m.practice?.stage === "proving" ? { practice: { ...m.practice, stage: "failed" as const, checksFailed: true } } : {}), error: plainError(String(e.reason)) };
+      // The practice's fix ends on an error only before its task began, or when the engine failed that request itself; once
+      // its undo point is made, only its receipt ends it (a refusal of another command, such as the key pressed again during
+      // the fix, is not its end). Its checks end on an error only from the engine itself (no agent): a refusal for the agent
+      // comes with that check's own answer.
+      return { ...m, followUp: "idle", ...(m.practice?.stage === "fixing" && (!m.practice.checkpoint || /^could not handle agent\./.test(String(e.reason))) ? { practice: { ...m.practice, stage: "failed" as const } } : m.practice?.stage === "proving" && typeof e.agent !== "string" ? { practice: { ...m.practice, stage: "failed" as const, checksFailed: true } } : {}), error: plainError(String(e.reason)) };
     // The browser check's download. A second press while it runs changes nothing.
     case "ui.browserInstallAsked": return browserBusy(m.browser) ? m : { ...m, browser: { ...m.browser, stage: "asked", percent: undefined, mb: undefined, detail: undefined } };
     case "ui.browserClosed": return browserBusy(m.browser) ? m : { ...m, browser: { needed: false, stage: "idle", ...(m.browser.installed !== undefined ? { installed: m.browser.installed } : {}) } };

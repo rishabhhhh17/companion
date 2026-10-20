@@ -36,6 +36,15 @@ export async function addFiles(have: Attached[], files: FileLike[]): Promise<{ h
   return { have: list, notes };
 }
 
+/** A drop that finished reading after the box changed (Start sent what it held, a chip was removed, another drop finished
+ *  first): only the files this drop added (`have` past `before`) join the box as it is now, each checked again against
+ *  what it holds, so nothing sent or removed comes back and the caps still hold. */
+export function mergeAdded(before: Attached[], have: Attached[], now: Attached[]): Attached[] {
+  const out = [...now];
+  for (const f of have.slice(before.length)) if (!("refused" in precheck(out, { name: f.name, size: f.bytes, type: f.kind === "image" ? f.mediaType : "" }))) out.push(f);
+  return out;
+}
+
 /** The files a paste carries: its files, or else its file items (a picture copied from a screenshot can come only as an
  *  item), or none for plain text, which the box then takes as typing. When the paste also carries text, it is text: apps
  *  such as Word, Excel and Keynote put a picture of what was copied next to its text, and that picture is never taken in

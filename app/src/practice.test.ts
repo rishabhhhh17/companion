@@ -10,7 +10,7 @@ import { parseCommand, serialize } from "../../protocol/index.ts";
 import { DEFAULT_MODEL, SETTINGS_LESSON_ID, VERCEL_LESSON_ID, fixFound } from "./commands.ts";
 import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
-import { canFollowUp, canRetry, initial, reduce, type Model } from "./model.ts";
+import { canFollowUp, canRetry, initial, lessonWordsOnly, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
 import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
 import { S } from "./strings.ts";
@@ -161,6 +161,20 @@ describe("the fix is the practice's own task, matched by its practice id", () =>
     for (const bad of [ev({ type: "protocol.error", reason: "That agent is busy" }), ev({ type: "app.runner_restarted" })]) expect(run([start(e), found(e), ev({ type: "ui.practiceFixing" }), bad]).practice?.stage).toBe("failed");
     expect(run([start(e), ev({ type: "protocol.error", reason: "x" })]).practice?.stage).toBe("start");
   });
+  // Found in the M11 audit (A55): any refusal while the fix ran (the Point at the problem key, which the practice teaches,
+  // or Check before going live with checks) marked the practice failed while its fix kept running, and the passing receipt
+  // was then dropped, so it never reached Done.
+  test("once its task has begun, a refusal of another command does not end the fix; its receipt does", () => {
+    for (const refused of [ev({ type: "protocol.error", agent: "builder-1", reason: "Companion is already working on this project. Wait for it to finish, or press Stop." }), ev({ type: "protocol.error", reason: "A task is still working on this project. Wait for it to finish, or press Stop, then check it." })]) {
+      const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), refused]);
+      expect(m.practice?.stage).toBe("fixing");
+      expect(run([receipt(e, "passed")], m).practice).toMatchObject({ stage: "done" });
+    }
+  });
+  test("the engine failing the fix's own request still ends it", () => {
+    const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), ev({ type: "protocol.error", reason: "could not handle agent.start: boom" })]);
+    expect(m.practice?.stage).toBe("failed");
+  });
   test("Undo of the practice's own fix puts it back to found, with Try again; another undo does nothing to it", () => {
     const done = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), receipt(e, "passed")]);
     expect(run([restored(e, "cp_0042")], done).practice?.stage).toBe("done");
@@ -192,6 +206,9 @@ describe("the checks after a lesson or a fix can always be left or run again (bu
       expect(run([ev({ type: "ui.practiceProving" })], m).practice?.stage, e.id).toBe("proving");
     }
     expect(run([ev({ type: "protocol.error", reason: "x" })], proving(s)).practice).toMatchObject({ stage: "failed", checksFailed: true });
+  });
+  test("a refusal for the agent while the checks run (the key pressed again) does not end them", () => {
+    for (const e of [s, t]) expect(run([ev({ type: "protocol.error", agent: "builder-1", reason: "That agent is already working. Wait for it to finish, or press Stop." })], proving(e)).practice?.stage, e.id).toBe("proving");
   });
   test("the person can stop the checks; then they can run them again", () => {
     const m = run([ev({ type: "ui.practiceStopProving" })], proving(s));
@@ -603,5 +620,29 @@ describe("the panel's buttons do what they say (bugs 1, 5 and starting while bus
     expect(card).toMatch(/<SettingsPage working=\{isBusy\(m\)\} practiceBusy=\{workingOn\(m\)\}/);
     // and every busy the card sends the shell for a practice is workingOn, never isBusy alone
     for (const call of card.match(/invoke\("(?:restart|remove)_practice"[^)]*\)/g) ?? []) expect(call).toContain("busy: workingOn(nowModel.current)");
+  });
+});
+
+// Found in the M11 audit (A73): the setting practice is shown as free, no Claude (F17 section 13, PRIVACY.md), but its lesson
+// pointed at each step like any lesson, so each step took a picture of the screen, sent it to Claude on the person's key
+// and asked for Screen Recording. Its lesson is now words only, which keeps the promise.
+describe("the setting practice's lesson uses no Claude and never looks at the screen", () => {
+  const e = entry("setting");
+  const step = ev({ type: "walk.step", walk: "w1", lesson: SETTINGS_LESSON_ID, title: "Add the setting", index: 0, total: 3, variant: "main", say: "Make a file named .env.local.", find: "the new file button", ask: false, log: [] });
+  const inLesson = run([start(e), found(e), ev({ type: "ui.walkRequested", walk: "w1" }), ev({ type: "ui.practiceLesson", walk: "w1" }), step]);
+  const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+  test("its lesson is words only, and every other lesson still points", () => {
+    expect(inLesson.walk?.id).toBe("w1");
+    expect(lessonWordsOnly(inLesson)).toBe(true);
+    expect(lessonWordsOnly(run([ev({ type: "ui.walkRequested", walk: "w2" }), { ...step, walk: "w2" }]))).toBe(false);
+    expect(practiceOf("setting")?.costUsd).toBe(0);
+  });
+  test("Home neither looks at the screen for its steps nor offers to point, and says so", () => {
+    const aim = card.slice(card.indexOf("const wkKey = wk ?"), card.indexOf("useEffect(() => { if (wk && m.showme?.stage === \"needs_permission\")"));
+    expect(aim).toContain("if (noAim.current || lessonWordsOnly(m)) return;");
+    expect(aim.indexOf("lessonWordsOnly(m)")).toBeLessThan(aim.indexOf("showme_start"));
+    expect(card).toContain("{m.walk.stage === \"step\" && !lessonWordsOnly(m) && <button className=\"btn\" type=\"button\" onClick={() => { const w = m.walk!; staleReq.current = m.showme?.req;");
+    expect(card).toContain("{lessonWordsOnly(m) && <div className=\"line muted\">{S.practiceLessonWords}</div>}");
+    expect(S.practiceLessonWords).toMatch(/does not look at your screen/);
   });
 });

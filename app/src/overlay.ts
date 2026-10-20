@@ -22,10 +22,15 @@ const NS = "http://www.w3.org/2000/svg";
 const el = (name: string, attrs: Record<string, string | number>) => { const e = document.createElementNS(NS, name); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v)); return e; };
 
 
-function clear() { svg.replaceChildren(); cap.classList.remove("on"); clearTimeout(timer); clearTimeout(markTimer); }
+// Which draw is the current one. Every clear (Esc, Stop everything, the window changed, a new draw) makes the draw before
+// it old, and an old draw's flight and landing do nothing, so a ring cleared while its arrow flies never lands: no caption
+// and no mark come back after the clear (rule 22).
+let drawGen = 0;
+function clear() { drawGen += 1; svg.replaceChildren(); cap.classList.remove("on"); clearTimeout(timer); clearTimeout(markTimer); }
 
 function show(p: Point) {
   clear();
+  const mine = drawGen;
   // A ring that waits for the person's click stays until they click, press Do it for me, or close it. Any other goes the
   // time the shell sent after this draw was ordered, the flight included, so it never outlives the shell's watch of its
   // window (rule 22).
@@ -74,6 +79,7 @@ function show(p: Point) {
       }
     }
     markTimer = setTimeout(() => {
+      if (mine !== drawGen) return;
       ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1");
       if (reduced) { g.remove(); return; }
       g.style.transition = "opacity .5s"; g.style.opacity = "0";
@@ -81,6 +87,7 @@ function show(p: Point) {
     }, fadeMs(p.fadeMs));
   };
   const land = () => {
+    if (mine !== drawGen) return;
     if (strokes) drawMark(strokes); else { ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1"); }
     place(cx, cy - ry - 4, 0);
     const side = cx > innerWidth / 2 ? -1 : 1;
@@ -100,6 +107,7 @@ function show(p: Point) {
   const lift = bend(dist), mx = (p.from.x + cx) / 2, my = (p.from.y + cy) / 2 - lift;
   const t0 = performance.now();
   const step = (now: number) => {
+    if (mine !== drawGen) return;   // cleared or replaced while it flew
     const t = Math.min(1, (now - t0) / dur), e = ease(t);
     const x = (1 - e) ** 2 * p.from.x + 2 * (1 - e) * e * mx + e ** 2 * cx, y = (1 - e) ** 2 * p.from.y + 2 * (1 - e) * e * my + e ** 2 * (cy - ry - 4);
     const ax = 2 * (1 - e) * (mx - p.from.x) + 2 * e * (cx - mx), ay = 2 * (1 - e) * (my - p.from.y) + 2 * e * ((cy - ry - 4) - my);
@@ -122,6 +130,7 @@ void listen("overlay-clear", () => clear());
 // or with reactions turned off; the green ring and the tick show either way).
 function celebrate(rect: { x: number; y: number; w: number; h: number }) {
   const reduced = reducedMotion();
+  drawGen += 1;   // a landing still on its way would cover the tick with the old caption
   clearTimeout(timer); clearTimeout(markTimer);
   svg.querySelectorAll("path").forEach((a) => a.remove());
   svg.querySelectorAll("g.mark").forEach((g) => g.remove());
@@ -150,6 +159,8 @@ void listen("overlay-celebrate", (e) => { const p = e.payload as { rect: { x: nu
 // It draws in its own layer and never clears anything else on the overlay. None with reactions off or reduced motion.
 function party(o: { x: number; y: number }) {
   if (!playful(reactionsOn(), reducedMotion())) return;
+  // The overlay is brought to the front for the confetti: a caption with no ring under it is never shown with it.
+  if (!svg.querySelector("ellipse[data-main]")) cap.classList.remove("on");
   const layer = el("g", { class: "party" });
   svg.appendChild(layer);
   const bits = confetti(36, o.x > innerWidth / 2).map((p) => {

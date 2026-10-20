@@ -625,7 +625,7 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
     // One polite line, there before anything is added, says what a paste or a drop added.
     expect(card).toContain('<div className="sr" role="status">{attachSaid}</div>');
-    expect(card).toMatch(/setAttachSaid\(addedLine\(r\.have\.slice\(before\.length\)\)\)/);
+    expect(card).toMatch(/setAttachSaid\(addedLine\(fresh\.filter\(\(f\) => next\.includes\(f\)\)\)\)/);   // only what this drop really added (A66)
   });
   test("Copy keeps its name and says Copied, or why it could not, on a polite line that is there first", () => {
     const btn = card.slice(card.indexOf("function CopyButton("), card.indexOf("function ResearchNote("));
