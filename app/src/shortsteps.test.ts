@@ -19,6 +19,12 @@ describe("one short line", () => {
     expect(shortLine("Choose Download as zip. Big projects can take a moment.")).toBe("Choose Download as zip.");
     expect(shortLine("Then click OK. A window opens.")).toBe("Then click OK.");
   });
+  test("a second thing to do is said even when its verb is a less common one", () => {
+    for (const step of ["Click Review order. Submit the form.", "Click Share. Dismiss the banner that appears.", "Click Share. Continue to the next screen.",
+      "Select the cell. Approve the prompt.", "Click Save. Launch the app again.", "Click Open. Ignore the warning icon.", "Choose Settings. Grant access when asked."]) {
+      expect(shortLine(step), step).toBe(step);
+    }
+  });
   test("never cut inside a sentence: a long one, or one with commas, is said whole", () => {
     const long = "Set the condition to From contains, then type the sender's address in the box on the right of the window that opens";
     expect(shortLine(long)).toBe(long);

@@ -231,6 +231,9 @@ describe("settings and words", () => {
   test("the everyday path is a setting, on by default since it only acts on the key; the why has its own", () => {
     expect(defOf("point.everyday")).toMatchObject({ kind: "switch", default: true, section: "pointing", applies: ["pages"] });
     expect(defOf("point.everydayWhy")).toMatchObject({ kind: "choice", default: "reasonsAndQuestion", options: ["reasonsAndQuestion", "reasons", "off"], section: "pointing" });
+    // The walkthrough looks again after each step on its own, so the words never say it looks only when pressed.
+    expect(S.set["point.everyday"].help).toMatch(/after each step/);
+    expect(S.set["point.everyday"].help).not.toMatch(/looks again only when you press/);
     expect(S.set["point.everyday"].label.length).toBeGreaterThan(5);
     expect(S.set["point.everydayWhy"].options).toBeTruthy();
   });

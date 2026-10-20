@@ -5,7 +5,7 @@ import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
-import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, waitsForPage } from "./anywhere.ts";
+import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, settlesBeforeLook, waitsForPage } from "./anywhere.ts";
 import { EVERYDAY_ASK, checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, mainAction, nextLookMode, whyShown } from "./everyday.ts";
 import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
@@ -979,7 +979,7 @@ function Card() {
     // whether the error is gone ("recheck"), so fixed only ever comes from a look.
     const mode = nextLookMode(everydayWalk.current, nowModel.current.everyday);
     if (mode) dispatch({ type: "ui.everydayLook", mode });
-    showMe(nextQuestion(w), w.goal, w.steps, waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked")), mode, mode ? nowModel.current.everyday?.code : undefined);
+    showMe(nextQuestion(w), w.goal, w.steps, settlesBeforeLook(mode, setting("showme.waitForPage"), setting("showme.askWorked")), mode, mode ? nowModel.current.everyday?.code : undefined);
   };
   // How this answer's ring went, for asksWorked: a soft ring (a guess), or a click off the target before the hit.
   const ringLook = useRef({ req: "", soft: false, missed: false });
