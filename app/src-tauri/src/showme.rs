@@ -341,7 +341,7 @@ mod tests {
             let b = body(f);
             assert_eq!(b.matches("anchor_for(").count(), 1, "{f}: the window under the target is looked up once");
             assert!(b.contains("said_in_words(") && b.contains("under.is_some()"), "{f}: words only reads that one look");
-            assert!(b.contains("draw_pointer_with(") && b.contains(", under)"), "{f}: and the ring is drawn from it");
+            assert!(b.contains("draw_pointer_with(") && b.contains(", under, "), "{f}: and the ring is drawn from it");
         }
         let draw = body("fn draw_pointer_with(");
         assert!(!draw.contains("anchor_for("), "the ring never looks again");
@@ -701,9 +701,27 @@ mod tests {
         assert!(asked < aim.find("showme::aim(").unwrap() && aim.find("showme::aim(").unwrap() < claim && claim < aim.find("draw_pointer_with(").unwrap(), "{aim}");
         assert!(!aim.contains("POINT_GEN.fetch_add("), "{aim}");
         assert!(aim.contains("your_turn(&app, display, s.rect, &target_text, asked + 1)"), "{aim}");
+        // The pointer number claimed is handed to the drawing, never read again inside it: a Stop or a newer question in
+        // between (the window lookup, the log) would otherwise become the number checked, and the ring would be drawn
+        // after Stop. It is checked before the busy time is set and again after (Stop resets that time), and on the main
+        // thread; when it changed, nothing is set, drawn or said.
         let draw = body("fn draw_pointer_with(");
+        assert!(draw.contains("look: Look, under: Option<anchor::Anchor>, point: u64) -> Option<(anchor::Watched, u64)>"), "{draw}");
+        assert!(!draw.contains("let gen = POINT_GEN.load("), "{draw}");
+        let stale = "POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point";
+        let busy = draw.find("OVERLAY_BUSY_UNTIL.store(").expect("busy");
+        let first = draw.find(&format!("if {stale} {{ return None; }}")).expect("checked before the busy time");
+        let again = draw[busy..].find(&format!("if {stale} {{")).map(|i| i + busy).expect("checked again after it");
+        assert!(first < busy && busy < again && again < draw.find("run_on_main_thread(").unwrap(), "{draw}");
+        assert!(draw[again..].contains("OVERLAY_BUSY_UNTIL.compare_exchange(until, 0,"), "only this ring's busy time is taken back: {draw}");
         let on_main = &draw[draw.find("run_on_main_thread(").unwrap()..];
-        assert!(draw.contains("let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);") && on_main.contains("if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }"), "{draw}");
+        assert!(on_main.contains(&format!("if {stale} {{ return; }}")), "{draw}");
+        assert!(aim.contains("let Some((watched, ring)) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under, asked + 1) else {"), "{aim}");
+        let pp = body("fn point_problem(");
+        assert!(pp.contains("let Some((watched, ring)) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under, gen) else { return; };"), "{pp}");
+        for (b, at) in [(&aim, "draw_pointer_with("), (&pp, "draw_pointer_with(")] {
+            assert!(b.find(at).unwrap() < b.find("\"pointing\"").unwrap(), "pointing is said only after the ring was drawn");
+        }
         let turn = body("fn your_turn(");
         let (set, check) = (turn.find("*TURN.lock()").unwrap(), turn.find("if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { turn_cancel(); return; }").expect("a ring stopped before it waits never waits"));
         assert!(set < check && check < turn.find("std::thread::spawn(").unwrap(), "{turn}");

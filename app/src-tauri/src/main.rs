@@ -118,6 +118,8 @@ static CARD_H: AtomicU64 = AtomicU64::new(150);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
 static FS_SMOOTH: Mutex<Option<visibility::Debounce>> = Mutex::new(None);
+/// What each display was seen to keep free while no full screen app was in front (fullscreen.rs).
+static FS_SEEN: Mutex<fullscreen::Seen> = Mutex::new(fullscreen::Seen::new());
 static FS_RAW_LOGGED: AtomicU64 = AtomicU64::new(0);
 static FS_LAST_RAW: AtomicBool = AtomicBool::new(false);
 
@@ -1547,14 +1549,21 @@ struct Look { mark: Option<&'static str>, fly_ms: Option<u64>, fade_ms: Option<u
 /// waits for a click, `watch_ring` for one that does not), with how long a ring that does not wait stays (How long a ring
 /// stays, point.ringSeconds).
 #[allow(clippy::too_many_arguments)]
-fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look, under: Option<anchor::Anchor>) -> (anchor::Watched, u64) {
+fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &str, exact: bool, hold: bool, look: Look, under: Option<anchor::Anchor>, point: u64) -> Option<(anchor::Watched, u64)> {
     // The overlay takes a ring that does not wait away this long after this order (the flight included; it is sent the
     // same number); the watch and this busy time last half a second longer, so confetti never plays over it and no part
     // of it goes unwatched.
-    // Stop everything or a newer pointer after this was asked for (a caller off the main thread): nothing is drawn.
-    let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    // `point`: the pointer number the caller claimed for this ring. Stop everything or a newer pointer since then (a caller
+    // off the main thread) means nothing is set, drawn or said (None). It is checked before the busy time is set and again
+    // after, since Stop may reset that time in between; then only this ring's busy time is taken back.
+    if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { return None; }
     let ring = anchor::ring_ms(&setting_now("point.ringSeconds"));
-    OVERLAY_BUSY_UNTIL.store(if hold { u64::MAX } else { now() as u64 + anchor::watch_ms(ring) }, std::sync::atomic::Ordering::SeqCst);
+    let until = if hold { u64::MAX } else { now() as u64 + anchor::watch_ms(ring) };
+    OVERLAY_BUSY_UNTIL.store(until, std::sync::atomic::Ordering::SeqCst);
+    if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point {
+        let _ = OVERLAY_BUSY_UNTIL.compare_exchange(until, 0, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst);
+        return None;
+    }
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);   // a ring is never replaced by a new picture
     let a = app.clone();
     let caption2 = caption.to_string();
@@ -1568,7 +1577,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
     // the ring's colour, lettering and pace).
     let settings = settings_snapshot(&[]);
     let _ = app.run_on_main_thread(move || {
-        if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
+        if POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) != point { return; }
         let mtm = MainThreadMarker::new().unwrap();
         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
         // The flight starts at the last target of the same answer on this display, or else where the character is now,
@@ -1583,7 +1592,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
     });
-    (watched, ring)
+    Some((watched, ring))
 }
 
 /// What the person is told when a ring went away because its window changed (moved, closed, covered, another app in front).
@@ -1661,7 +1670,12 @@ fn showme_aim(app: AppHandle, req: String, x: f64, y: f64, ocr_id: Option<String
     if !last { showme_pending().pointed(&req, s.rect.center()); }
     log("showme_aimed", json!({ "how": format!("{:?}", s.how), "exact": s.exact, "step": step, "of": of, "screen": screen.unwrap_or(1) }));
     let look = Look { mark: showme::mark_name(mark.as_deref()), fly_ms, fade_ms, from: if step.unwrap_or(1) > 1 { from } else { None } };
-    let (watched, ring) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under);
+    let Some((watched, ring)) = draw_pointer_with(&app, display, s.rect, &caption, s.exact, hold, look, under, asked + 1) else {
+        // Stop everything or a newer question came in after the claim (while the window was looked up): nothing drawn.
+        log("showme_aim_gone", json!({}));
+        showme_pending().end_if(&req);
+        return json!({ "ok": false, "why": "gone" });
+    };
     // The ring goes away the moment its window changes (or, with no window under it, another app comes to the front): the
     // last step's while it waits for the click, the others while they are up.
     if hold { your_turn(&app, display, s.rect, &target_text, asked + 1); } else { watch_ring(&app, s.rect, watched, ring, Some(req.clone())); }
@@ -2492,7 +2506,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
             }
             (Some(f), Some(d)) => {
                 let button = kind == "button";
-                let (watched, ring) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under);
+                let Some((watched, ring)) = draw_pointer_with(&app, d, f.rect, &cap, f.exact, button, Look::default(), under, gen) else { return; };
                 say_showme(&app, if f.exact { "pointing" } else { "pointing_roughly" }, &cap, json!({ "turn": button }));
                 if button { your_turn(&app, d, f.rect, &label, gen); } else { watch_ring(&app, f.rect, watched, ring, None); }
             }
@@ -2965,8 +2979,9 @@ fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
     // Stay out of full screen apps unless the setting says otherwise.
     let front_pid = NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier()).unwrap_or(0);
-    let displays: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();
+    let areas: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();
     let wins = fullscreen::sys::on_screen_windows();
+    let displays = FS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).look(&wins, front_pid, &areas);
     let raw = fullscreen::front_app_is_full_screen(&wins, front_pid, &displays);
     // The raw reading flickered in the field, so it must agree three times in a row before it counts.
     // Raw changes are logged (a limited number) so the cause can be found from the log.
