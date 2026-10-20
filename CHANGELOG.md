@@ -522,3 +522,9 @@ None of this has been seen on a real screen or run with real Claude yet.
 - **Home shows which tools you have not tried yet,** with a one line invitation that goes away once you try them. No scores, streaks or levels. A setting hides it. The first run explains the four groups.
 - **The island names the group at work,** and the character has calm, clear and murky water states ready for the art.
 - **Second audit of the newer code:** 25 more issues confirmed and fixed. Examples: a spreadsheet error is only called fixed when the same sheet is still in view; a wrong built-in explanation can no longer override Claude's own finding; the file converter now carries on past one bad file and cleans each file's work folder as it goes; plus the small leftovers from the first audit.
+
+## Launch preparation (22 Oct 2026)
+- **First-run words made true.** The welcome no longer says everything stays on your Mac (your questions, parts of your project and screen pictures go to Anthropic through your own key). The key step now says it costs money and that a chat subscription is not a key. The folder line no longer says it never looks anywhere else. "Plan sign-in comes later" now says it is not available yet.
+- **Release checks:** a dry run of the release script that lists what each step needs from you, early checks for missing certificates, matching versions and an empty update key, a fix to the notarization check that always complained, and a founder runbook in docs/releasing.md.
+- **A smaller, cleaner app:** no developer paths or source maps inside it.
+- Drafts for a lawyer (privacy policy, terms, refunds, lawyer questions) and for the website, pricing, demo video and launch posts are in docs/launch. They are drafts: nothing is published.
