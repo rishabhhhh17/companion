@@ -1,0 +1,35 @@
+{
+  "about": "The one list of the apps Companion knows by kind, from their ids only, never anything in them. The shell reads it (app/src-tauri/src/everyday.rs front_kind: the kind of app in front for the stuck key) and so does the engine (runner/src/tutor.ts appKind: the everyday tutor). On both sides the terminals Prompt help knows (runner/src/prompthelp.ts and app/src-tauri/src/phelp.rs TERMINALS) are coding tools too. everyday: the names the model may be told, and only these.",
+  "oursPrefix": "dev.companion",
+  "editors": [
+    "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92", "com.apple.dt.Xcode", "dev.zed.Zed",
+    "dev.zed.Zed-Preview", "com.panic.Nova", "com.sublimetext.4", "com.sublimetext.3", "com.github.atom", "org.vim.MacVim",
+    "com.exafunction.windsurf", "com.visualstudio.code.oss", "com.vscodium", "io.alacritty"
+  ],
+  "editorPrefixes": ["com.jetbrains."],
+  "codingTools": [
+    "com.anthropic.claudefordesktop", "com.openai.chat", "com.openai.codex", "com.google.gemini", "com.github.GitHubClient",
+    "com.docker.docker", "com.postmanlabs.mac", "com.tinyapp.TablePlus", "com.sequel-ace.sequel-ace",
+    "com.google.android.studio", "com.apple.iphonesimulator", "com.apple.dt.Instruments", "com.apple.FileMerge", "com.barebones.bbedit",
+    "com.macromates.TextMate", "com.coteditor.CotEditor", "org.gnu.Emacs", "com.torusknot.SourceTreeNotMAS", "com.fournova.Tower3",
+    "com.fournova.Tower2", "com.DanPristupov.Fork", "com.axosoft.gitkraken", "org.tabby", "com.termius-dmg.mac", "dev.commandline.waveterm",
+    "com.raphaelamorim.rio", "dev.kdrag0n.MacVirt"
+  ],
+  "browsers": [
+    "com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.google.Chrome.canary", "com.google.Chrome.beta",
+    "com.google.Chrome.dev", "org.chromium.Chromium", "company.thebrowser.Browser", "company.thebrowser.dia", "org.mozilla.firefox",
+    "org.mozilla.firefoxdeveloperedition", "org.mozilla.nightly", "com.microsoft.edgemac", "com.microsoft.edgemac.Beta", "com.microsoft.edgemac.Dev",
+    "com.microsoft.edgemac.Canary", "com.brave.Browser", "com.brave.Browser.beta", "com.brave.Browser.nightly", "com.operasoftware.Opera",
+    "com.operasoftware.OperaGX", "com.vivaldi.Vivaldi", "com.kagi.kagimacOS", "app.zen-browser.zen", "com.duckduckgo.macos.browser",
+    "org.torproject.torbrowser", "net.waterfox.waterfox", "io.gitlab.librewolf-community"
+  ],
+  "browserPrefixes": ["com.apple.Safari.WebApp.", "com.google.Chrome.app.", "com.microsoft.edgemac.app.", "com.brave.Browser.app."],
+  "everyday": {
+    "com.apple.mail": "Mail", "com.apple.finder": "Finder", "com.apple.systempreferences": "System Settings", "com.apple.iCal": "Calendar",
+    "com.apple.iWork.Numbers": "Numbers", "com.apple.iWork.Pages": "Pages", "com.apple.iWork.Keynote": "Keynote", "com.apple.Notes": "Notes",
+    "com.apple.reminders": "Reminders", "com.apple.Preview": "Preview", "com.apple.Photos": "Photos", "com.apple.MobileSMS": "Messages",
+    "com.microsoft.Excel": "Excel", "com.microsoft.Word": "Word", "com.microsoft.Powerpoint": "PowerPoint", "com.microsoft.Outlook": "Outlook",
+    "com.figma.Desktop": "Figma", "com.adobe.Photoshop": "Photoshop", "com.adobe.illustrator": "Illustrator", "com.tinyspeck.slackmacgap": "Slack",
+    "us.zoom.xos": "Zoom", "notion.id": "Notion", "com.spotify.client": "Spotify"
+  }
+}

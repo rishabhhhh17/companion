@@ -39,17 +39,59 @@ impl Watch {
     }
 }
 
-/// Words that send, pay, delete, publish or leave, in English and the main languages of the apps people use (written
+/// Words that send, pay, delete, publish, leave, sign in or connect an account, in English and the main languages of the apps people use (written
 /// without accents: labels are folded the same way before they are compared).
 const RISKY_WORDS: &[&str] = &["delet", "remov", "pay", "buy", "purchas", "send", "submit", "sign out", "log out", "logout", "publish", "deploy", "reset", "checkout", "order", "erase", "clear", "cancel", "unsubscribe", "subscribe", "post", "confirm", "donat", "upload", "install", "transfer", "withdraw", "go live", "make live", "promote", "rollback", "roll back", "merge", "drop", "destroy", "revoke", "archive", "close account",
     "trash", "discard", "accept", "approve", "share", "reply", "commit", "push", "leave", "book", "sign up", "register", "agree", "allow", "grant", "invite", "kick", "ban", "overwrite", "replace", "apply", "continue",
-    // Signing in or connecting an account (reconnect and disconnect too): the person's own step, in any app.
-    "sign in", "log in", "login", "connect", "authoriz", "authoris",
+    // Connecting an account (reconnect and disconnect too): the person's own step, in any app. Signing in is below.
+    "connect", "authoriz", "authoris",
     // Spanish, French, German, Portuguese, Italian
     "eliminar", "borrar", "pagar", "comprar", "enviar", "publicar", "cerrar sesion", "confirmar", "desplegar", "supprimer", "effacer", "payer", "acheter", "envoyer", "publier", "deconnexion", "confirmer", "deployer",
     "loschen", "entfernen", "bezahlen", "kaufen", "senden", "veroffentlichen", "abmelden", "bestatigen", "excluir", "apagar", "sair", "elimina", "cancella", "paga", "acquista", "invia", "pubblica", "esci",
     // Japanese, Chinese, Korean
-    "\u{524a}\u{9664}", "\u{652f}\u{6255}", "\u{8cfc}\u{5165}", "\u{9001}\u{4fe1}", "\u{516c}\u{958b}", "\u{30ed}\u{30b0}\u{30a2}\u{30a6}\u{30c8}", "\u{78ba}\u{8a8d}", "\u{5220}\u{9664}", "\u{652f}\u{4ed8}", "\u{8d2d}\u{4e70}", "\u{53d1}\u{9001}", "\u{53d1}\u{5e03}", "\u{9000}\u{51fa}", "\u{786e}\u{8ba4}", "\u{c0ad}\u{c81c}", "\u{acb0}\u{c81c}", "\u{ad6c}\u{b9e4}", "\u{c804}\u{c1a1}"];
+    "\u{524a}\u{9664}", "\u{652f}\u{6255}", "\u{8cfc}\u{5165}", "\u{9001}\u{4fe1}", "\u{516c}\u{958b}", "\u{30ed}\u{30b0}\u{30a2}\u{30a6}\u{30c8}", "\u{78ba}\u{8a8d}", "\u{5220}\u{9664}", "\u{652f}\u{4ed8}", "\u{8d2d}\u{4e70}", "\u{53d1}\u{9001}", "\u{53d1}\u{5e03}", "\u{9000}\u{51fa}", "\u{786e}\u{8ba4}", "\u{c0ad}\u{c81c}", "\u{acb0}\u{c81c}", "\u{ad6c}\u{b9e4}", "\u{c804}\u{c1a1}",
+    // Signing in sends what was typed (a password); a free trial signs up to pay later (20 Oct 2026: with the everyday tutor a
+    // ring can land on a site's sign in page, the App Store or the TV app). Rent and "trial" are whole words, below.
+    "sign in", "signin", "log in", "login", "try free", "try it free", "try for free", "start free",
+    "iniciar sesion", "acceder", "se connecter", "connexion", "anmelden", "einloggen", "entrar", "iniciar sessao", "accedi",
+    "alquilar", "louer", "mieten", "leihen", "alugar", "noleggia", "prueba gratis", "essai gratuit", "kostenlos testen", "teste gratis", "prova gratis",
+    "\u{30ed}\u{30b0}\u{30a4}\u{30f3}", "\u{30b5}\u{30a4}\u{30f3}\u{30a4}\u{30f3}", "\u{767b}\u{5f55}", "\u{767b}\u{5165}", "\u{b85c}\u{adf8}\u{c778}",
+    "\u{30ec}\u{30f3}\u{30bf}\u{30eb}", "\u{79df}", "\u{b300}\u{c5ec}", "\u{7121}\u{6599}\u{4f53}\u{9a13}", "\u{8bd5}\u{7528}", "\u{8a66}\u{7528}", "\u{bb34}\u{b8cc} \u{ccb4}\u{d5d8}"];
+/// Short words that are risky only as a whole word, since other words hold the same letters ("Current", "Industrial").
+const RISKY_WHOLE_WORDS: &[&str] = &["rent", "trial"];
+/// A button whose whole label is one of these installs an app (the App Store's Get, in the main languages). "Get Info"
+/// and "Get started" stay pressable.
+const INSTALL_LABELS: &[&str] = &["get", "obtener", "obtenir", "laden", "obter", "ottieni", "\u{5165}\u{624b}", "\u{83b7}\u{53d6}", "\u{bc1b}\u{ae30}"];
+/// Currency signs, and currency codes as words: next to a number they make a price, and a price pays.
+const CURRENCY_SIGNS: &[char] = &['$', '\u{20ac}', '\u{a3}', '\u{a5}', '\u{20b9}', '\u{20a9}', '\u{20bd}', '\u{20ba}', '\u{20aa}', '\u{e3f}', '\u{20ab}', '\u{20b1}', '\u{a2}', '\u{ff04}', '\u{ffe5}', '\u{ffe1}', '\u{5186}', '\u{5143}'];
+const CURRENCY_CODES: &[&str] = &["usd", "eur", "gbp", "jpy", "inr", "cad", "aud", "nzd", "chf", "cny", "rmb", "hkd", "sgd", "sek", "nok", "dkk", "pln", "brl", "mxn", "krw", "rub", "zar", "kr", "rs"];
+
+/// A price shown on the label: a currency sign or code right next to a number ("$4.99", "4,99 \u{20ac}", "USD 9.99", "500\u{5186}").
+/// Read before the label is folded, which turns "$" into "s".
+fn priced(label: &str) -> bool {
+    let s: String = label.chars().filter(|c| !matches!(c, '\u{ad}' | '\u{200b}'..='\u{200f}' | '\u{2060}' | '\u{feff}')).flat_map(|c| c.to_lowercase()).collect();
+    let digit = |c: char| c.is_ascii_digit() || ('\u{ff10}'..='\u{ff19}').contains(&c);
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if !CURRENCY_SIGNS.contains(&c) { continue; }
+        let before = chars[..i].iter().rev().find(|c| !c.is_whitespace()).copied();
+        let after = chars[i + 1..].iter().find(|c| !c.is_whitespace()).copied();
+        if before.is_some_and(digit) || after.is_some_and(digit) { return true; }
+    }
+    // Runs of letters and runs of digits, in order: a code run next to a number run is a price.
+    let mut runs: Vec<(bool, String)> = Vec::new();
+    let mut prev: Option<bool> = None;
+    for c in chars {
+        let kind = if digit(c) { Some(true) } else if c.is_alphabetic() { Some(false) } else if matches!(c, '.' | ',') && prev == Some(true) { Some(true) } else { None };
+        match (kind, runs.last_mut()) {
+            (Some(k), Some(r)) if prev == Some(k) && r.0 == k => r.1.push(c),
+            (Some(k), _) => runs.push((k, c.to_string())),
+            (None, _) => {}
+        }
+        prev = kind;
+    }
+    runs.iter().enumerate().any(|(i, (num, w))| !num && CURRENCY_CODES.contains(&w.as_str()) && ((i > 0 && runs[i - 1].0) || runs.get(i + 1).is_some_and(|r| r.0)))
+}
 
 /// A label as a person reads it, with the tricks taken out: invisible characters, accents, capitals, and letters of
 /// another alphabet that look like Latin ones ("D\u{435}lete" with a Cyrillic e).
@@ -87,6 +129,8 @@ pub fn risky(label: &str) -> bool {
     let f = fold(label);
     let c = compact(&f);
     RISKY_WORDS.iter().any(|w| { let w = skeleton(w); f.contains(&w) || c.contains(&compact(&w)) })
+        || RISKY_WHOLE_WORDS.iter().any(|w| { let w = skeleton(w); c == w || f.split(|ch: char| !ch.is_alphanumeric()).any(|t| t == w) })
+        || priced(label)
 }
 
 /// What Do it for me may press: only a plain button, link or tab, never inside a dialog or sheet (where "OK" may mean
@@ -100,6 +144,7 @@ pub fn may_press(role: &str, texts: &[String], in_dialog: bool, ours: bool) -> R
     let words: Vec<&String> = texts.iter().filter(|t| t.chars().any(|c| c.is_alphanumeric())).collect();
     if words.is_empty() { return Err("no_label"); }
     if words.iter().any(|t| risky(t)) || words.iter().any(|t| matches!(compact(&fold(t)).as_str(), "ok" | "yes" | "y" | "oui" | "si" | "ja" | "sim" | "\u{306f}\u{3044}" | "\u{597d}" | "\u{662f}" | "\u{c608}")) { return Err("risky"); }
+    if words.iter().any(|t| { let c = compact(&fold(t)); INSTALL_LABELS.iter().any(|w| c == compact(&skeleton(w))) }) { return Err("risky"); }
     Ok(())
 }
 
@@ -180,6 +225,36 @@ mod tests {
         assert_eq!(may_press("AXButton", &t(&["", "Move to Trash"]), false, false), Err("risky"));   // the words inside count too
         assert_eq!(may_press("AXButton", &t(&["Settings"]), false, true), Err("ours"));
     }
+    #[test]
+    fn do_it_for_me_never_signs_in_rents_starts_a_trial_or_presses_a_price() {
+        // With the everyday tutor a your turn ring can land in Mail, the App Store, the TV app or any web page, where Sign In
+        // sends a typed password, Rent and a price pay, and a free trial signs up to pay later (rule 13).
+        let t = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for l in ["Sign In", "Sign in", "Log In", "Log in", "Login", "LOGIN", "Signin", "Sign in with Apple", "Log in with Google", "Rent", "Rent $3.99", "Rent HD", "R3nt",
+            "$4.99", "\u{20ac}4,99", "4,99 \u{20ac}", "\u{a3}12", "USD 9.99", "9.99 usd", "usd9.99", "\u{a5}500", "500\u{5186}", "R$ 10", "Buy for \u{20b9}499",
+            "Start Free Trial", "Free trial", "Try It Free", "Try for free", "Try free", "Start free"] {
+            assert!(risky(l), "{l:?} must count as risky");
+            assert_eq!(may_press("AXButton", &t(&[l]), false, false), Err("risky"), "{l:?}");
+        }
+        // The words inside a button with a plain title count too: a price under "Movie".
+        assert_eq!(may_press("AXButton", &t(&["Movie", "$3.99"]), false, false), Err("risky"));
+        // A bare Get installs an app (the App Store): never pressed. Get Info and Get started stay pressable.
+        for l in ["Get", "GET", "Obtener", "Laden", "\u{5165}\u{624b}", "\u{83b7}\u{53d6}", "\u{bc1b}\u{ae30}"] { assert_eq!(may_press("AXButton", &t(&[l]), false, false), Err("risky"), "{l:?}"); }
+        // Not a sign in, a rental, a trial or a price: the same letters inside other words, and numbers with no currency.
+        for l in ["Get Info", "Get started", "Current plan", "Parent folder", "Different view", "Transparent", "Industrial", "Tutorial", "Page 2", "2 items", "Version 2.5",
+            "Players 2", "Top 10", "Rentals", "Show 25 per page", "Zoom 100%"] {
+            assert!(!risky(l), "{l:?} must stay pressable");
+            assert_eq!(may_press("AXButton", &t(&[l]), false, false), Ok(()), "{l:?}");
+        }
+    }
+    #[test]
+    fn the_words_when_it_will_not_press_say_signing_in_too() {
+        let main = include_str!("main.rs");
+        let at = main.find("const SELF: &str = ").expect("the message is in main.rs");
+        let line = &main[at..at + main[at..].find('\n').unwrap()];
+        assert!(line.contains("signs in"), "{line}");
+        for w in ["sends", "pays", "deletes", "publishes", "answers a question"] { assert!(line.contains(w), "{line}"); }
+    }
 }
 
 #[cfg(test)]
@@ -196,6 +271,13 @@ mod attacks {
         "\u{524a}\u{9664}", "\u{652f}\u{6255}\u{3046}", "\u{8cfc}\u{5165}", "\u{9001}\u{4fe1}", "\u{516c}\u{958b}", "\u{30ed}\u{30b0}\u{30a2}\u{30a6}\u{30c8}", "\u{78ba}\u{8a8d}",
         "\u{5220}\u{9664}", "\u{652f}\u{4ed8}", "\u{8d2d}\u{4e70}", "\u{53d1}\u{9001}", "\u{53d1}\u{5e03}", "\u{9000}\u{51fa}", "\u{786e}\u{8ba4}",
         "\u{c0ad}\u{c81c}", "\u{acb0}\u{c81c}", "\u{ad6c}\u{b9e4}", "\u{c804}\u{c1a1}",
+        // Sign in, rent and a free trial, in the same languages.
+        "Iniciar sesi\u{f3}n", "Acceder", "Se connecter", "Connexion", "Anmelden", "Einloggen", "Entrar", "Iniciar sess\u{e3}o", "Accedi",
+        "Alquilar", "Louer", "Mieten", "Leihen", "Alugar", "Noleggia", "Prueba gratis", "Essai gratuit", "Kostenlos testen", "Teste gr\u{e1}tis", "Prova gratis",
+        "\u{30ed}\u{30b0}\u{30a4}\u{30f3}", "\u{30b5}\u{30a4}\u{30f3}\u{30a4}\u{30f3}", "\u{767b}\u{5f55}", "\u{767b}\u{5165}", "\u{b85c}\u{adf8}\u{c778}",
+        "\u{30ec}\u{30f3}\u{30bf}\u{30eb}", "\u{79df}\u{501f}", "\u{b300}\u{c5ec}", "\u{7121}\u{6599}\u{4f53}\u{9a13}", "\u{514d}\u{8d39}\u{8bd5}\u{7528}", "\u{bb34}\u{b8cc} \u{ccb4}\u{d5d8}",
+        // In disguise.
+        "S\u{456}gn in", "Log\u{200b}in", "L0g in", "\u{24}4.99",
     ];
     const SAFE: &[&str] = &["Settings", "New project", "Save changes", "Next", "Environment variables", "Privacy & Security", "Screen Recording", "Open settings", "Add to cart", "Search", "Home", "Back", "Show details", "Ajustes", "Param\u{e8}tres", "Einstellungen", "\u{8a2d}\u{5b9a}", "\u{8bbe}\u{7f6e}"];
 

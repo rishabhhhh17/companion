@@ -142,11 +142,13 @@ pub fn image_ref(req: &str, screen: usize) -> String { if screen <= 1 { req.to_s
 fn landmark_id(id: &str, screen: usize) -> String { if screen <= 1 { id.to_string() } else { format!("s{screen}{id}") } }
 
 /// The question to the engine: the first picture as `image`, and every picture with its label in `screens` only when there
-/// is more than one.
-pub fn locate_command(req: &str, question: &str, pics: &[Pic], cands: &[Cand]) -> Value {
+/// is more than one. `app`: the id of the app in front, read on the press (only its id), so the engine can answer as a
+/// tutor for an everyday app (showme.everydayTutor); left out when it is not known.
+pub fn locate_command(req: &str, question: &str, pics: &[Pic], cands: &[Cand], app: &str) -> Value {
     let first = pics.first().map(|p| (p.w, p.h)).unwrap_or((0, 0));
     let ocr: Vec<Value> = cands.iter().map(|c| json!({ "id": c.id, "text": c.text, "box": [c.rect.x, c.rect.y, c.rect.w, c.rect.h], "screen": c.screen })).collect();
     let mut v = json!({ "v": 1, "id": format!("loc-{req}"), "type": "assist.locate", "req": req, "question": question, "image": { "ref": req, "w": first.0, "h": first.1 }, "ocr": ocr });
+    if !app.is_empty() && app.len() <= 200 { v["app"] = json!(app); }
     if pics.len() > 1 {
         v["screens"] = Value::Array(pics.iter().map(|p| json!({ "ref": image_ref(req, p.screen), "w": p.w, "h": p.h, "label": p.label.clone().unwrap_or_else(|| screen_label(p.screen, pics.len())) })).collect());
     }
@@ -649,14 +651,21 @@ mod tests {
     }
     #[test]
     fn the_question_names_every_screen_only_when_there_is_more_than_one() {
-        let one = locate_command("sm_1", "q", &[Pic { screen: 1, w: 1280, h: 800, label: None }], &[Cand { id: "t1".into(), text: "Save".into(), rect: R { x: 1.0, y: 2.0, w: 3.0, h: 4.0 }, screen: 1 }]);
+        let one = locate_command("sm_1", "q", &[Pic { screen: 1, w: 1280, h: 800, label: None }], &[Cand { id: "t1".into(), text: "Save".into(), rect: R { x: 1.0, y: 2.0, w: 3.0, h: 4.0 }, screen: 1 }], "");
         assert_eq!(one["type"], "assist.locate");
         assert_eq!(one["image"], serde_json::json!({ "ref": "sm_1", "w": 1280, "h": 800 }));
         assert!(one.get("screens").is_none());
         assert_eq!(one["ocr"][0], serde_json::json!({ "id": "t1", "text": "Save", "box": [1.0, 2.0, 3.0, 4.0], "screen": 1 }));
-        let two = locate_command("sm_2", "q", &[Pic { screen: 1, w: 1280, h: 800, label: Some(crate::coords::screen_label(1, 2)) }, Pic { screen: 2, w: 1280, h: 720, label: Some(crate::coords::screen_label(2, 2)) }], &[]);
+        let two = locate_command("sm_2", "q", &[Pic { screen: 1, w: 1280, h: 800, label: Some(crate::coords::screen_label(1, 2)) }, Pic { screen: 2, w: 1280, h: 720, label: Some(crate::coords::screen_label(2, 2)) }], &[], "");
         assert_eq!(two["image"]["ref"], "sm_2");
         assert_eq!(two["screens"], serde_json::json!([{ "ref": "sm_2", "w": 1280, "h": 800, "label": "Screen 1 of 2 (the mouse pointer is on this one)" }, { "ref": "sm_2-s2", "w": 1280, "h": 720, "label": "Screen 2 of 2" }]));
+    }
+    #[test]
+    fn the_question_names_the_app_in_front_by_its_id_only_when_it_is_known() {
+        let pic = [Pic { screen: 1, w: 1280, h: 800, label: None }];
+        assert_eq!(locate_command("sm_1", "q", &pic, &[], "com.apple.mail")["app"], "com.apple.mail");
+        assert!(locate_command("sm_1", "q", &pic, &[], "").get("app").is_none());
+        assert!(locate_command("sm_1", "q", &pic, &[], &"x".repeat(201)).get("app").is_none());
     }
 
     // ---- the window the picture was taken of (rule 22) ----

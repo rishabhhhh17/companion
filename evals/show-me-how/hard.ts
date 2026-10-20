@@ -51,6 +51,20 @@ export function hardPages(): HardPage[] {
 /** Run in the page: every clickable control on screen, with its words and its label. The aim eval and the tests share it. */
 export const FIND_ELEMENTS = `() => { const sel = 'a,button,[role=button],input,select,summary'; const out = []; for (const e of document.querySelectorAll(sel)) { const r = e.getBoundingClientRect(); const t = (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().replace(/\\s+/g,' '); if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > innerHeight) continue; out.push({ t, id: e.getAttribute('data-eval-target'), x: r.x, y: r.y, w: r.width, h: r.height }); } return out; }`;
 
+// The everyday set (everyday.json, pages/everyday): nine windows that imitate everyday apps, light only, each naming the
+// app it imitates by the id the shell would send for it, so its asks go to the vision lane as a tutor for that app.
+type EverydaySpec = { page: string; app: string; asks: HardAsk[] };
+const EVERYDAY = JSON.parse(readFileSync(join(import.meta.dir, "everyday.json"), "utf8")) as EverydaySpec[];
+export const EVERYDAY_NAMES = EVERYDAY.map((s) => s.page);
+export type EverydayPage = HardPage & { app: string };
+
+/** Each everyday window with its styles inlined. */
+export function everydayPages(): EverydayPage[] {
+  const dir = join(DIR, "everyday");
+  const css = readFileSync(join(dir, "everyday.css"), "utf8");
+  return EVERYDAY.map((s) => ({ name: `everyday-${s.page}`, app: s.app, asks: s.asks, html: readFileSync(join(dir, `${s.page}.html`), "utf8").replace('<link rel="stylesheet" href="everyday.css">', `<style>${css}</style>`) }));
+}
+
 /** The hidden browser the proof ladder uses (headless: nothing is shown on the screen), or null when it is not installed.
  *  playwright-core is the runner's own package, so it is loaded from there. */
 export async function hiddenBrowser(): Promise<{ newContext: (o: object) => Promise<any>; close: () => Promise<void> } | null> {

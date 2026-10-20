@@ -1,0 +1,42 @@
+{
+  "id": "everyday-sheet-chart",
+  "title": "Make a chart from a table",
+  "app": "Numbers",
+  "goal": "Turn a small table of numbers into a column chart",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "select",
+      "say": "Drag across the cells with your labels and numbers to select them.",
+      "find": "the cells with the data",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "chart",
+      "say": "Click Chart in the toolbar.",
+      "find": "the Chart button in the toolbar",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "kind",
+      "say": "Click the first 2D column chart.",
+      "find": "the 2D column chart in the chart list",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "title",
+      "say": "Click Format at the top right, then turn on Title.",
+      "find": "the Format button at the top right",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

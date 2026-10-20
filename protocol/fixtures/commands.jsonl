@@ -9,6 +9,7 @@
 {"v":1,"id":"c7","type":"assist.prompt","req":"ph_12","app":"com.anthropic.claudefordesktop","target":"chat","text":"make a gallery thing","project":"p_9f2c","style":"full"}
 {"v":1,"id":"c8","type":"assist.locate","req":"sm_7","question":"where is the API key in Supabase?","image":{"ref":"img_3","w":1456,"h":946},"ocr":[{"id":"o1","text":"Project Settings","box":[24,610,180,632]}],"walkthrough":true}
 {"v":1,"id":"c8b","type":"assist.locate","req":"sm_8","question":"how do I save this form?","image":{"ref":"sm_8","w":1280,"h":800},"ocr":[{"id":"t2","text":"Name","box":[100,80,60,18],"screen":1},{"id":"s2t1","text":"Save","box":[610,400,70,24],"screen":2}],"screens":[{"ref":"sm_8","w":1280,"h":800,"label":"Screen 1 of 2 (the mouse pointer is on this one)"},{"ref":"sm_8-s2","w":1280,"h":720,"label":"Screen 2 of 2"}]}
+{"v":1,"id":"c8c","type":"assist.locate","req":"sm_9","question":"how do I make a rule for these emails?","image":{"ref":"sm_9","w":1280,"h":800},"app":"com.apple.mail"}
 {"v":1,"id":"c9","type":"assist.cancel","req":"sm_7"}
 {"v":1,"id":"c10","type":"tasks.list","project":"p_9f2c"}
 {"v":1,"id":"c11","type":"drive.plan","project":"p_9f2c","agent":"driver-1","goal":"A booking page for my studio","model":"claude-sonnet-5-5","budgetUsd":5}

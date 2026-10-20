@@ -1487,6 +1487,10 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
     // Stop everything (or a newer press) moves this on: a look already under way must not send its picture afterwards.
     let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
     let current = move || POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
+    // Only the id of the app in front, read on this press (as Prompt help does), so the engine can answer as a tutor for an
+    // everyday app (showme.everydayTutor). Nothing in the app is read. An everyday look (a mode) has its own instructions
+    // and carries no id: Companion's code knows the app in front of the stuck key only by its kind (everyday.rs app_for).
+    let front = everyday::app_for(mode, front_id);
     std::thread::spawn(move || {
         use showme::Platform;
         let req = format!("sm_{}", now());
@@ -1501,7 +1505,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let _ = a2.state::<runner::Runner>().send(&everyday::with_mode(showme::locate_command(&req2, q, pics, cands), mode, before));
+                let _ = a2.state::<runner::Runner>().send(&everyday::with_mode(showme::locate_command(&req2, q, pics, cands, &front), mode, before));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
@@ -1783,7 +1787,7 @@ fn do_it_for_me(app: AppHandle) {
     let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
     // Off the main thread: an app that is not answering can hold Accessibility for seconds, and Stop must still work.
     std::thread::spawn(move || {
-        const SELF: &str = "This one sends, pays, deletes, publishes, signs in, connects an account or answers a question, so please click it yourself.";
+        const SELF: &str = "This one signs in, sends, pays, deletes, publishes, connects an account or answers a question, so please click it yourself.";
         if yourturn::risky(&label) { say_showme(&app, "your_turn_miss", SELF, json!({})); return; }
         if !ax::trusted(false) {
             ax::trusted(true);
