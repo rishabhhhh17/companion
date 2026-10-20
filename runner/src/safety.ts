@@ -5,7 +5,7 @@
 import { lstatSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { commandsOf, hasDynamic, redirectTargets, unwrap } from "./shell.ts";
+import { commandsOf, hasDynamic, inputTargets, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
 import { isEnvFile } from "./diagram.ts";
 
@@ -188,14 +188,22 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
   return ask("irreversible", `unknown tool "${tool}"`);
 }
 
+// A part of an address that reads like encoded data rather than a word: code-like characters only, with both letters and
+// digits in it.
+const encodedLike = (part: string) => part.length >= 6 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part);
 /** Can data leave inside this web address? Returns the reason, "invalid", or null when it looks like an ordinary page. */
 export function carriesData(url: string): string | null {
   let u: URL;
   try { u = new URL(url); } catch { return "invalid"; }
   if (u.search.length > 1) return "this web address carries data in it";
-  // Data can ride in the path as well ("/aGVsbG8gc2VjcmV0"): an unusually long address, or a long run of code-like letters in
-  // one part of it, is not how a documentation page is named.
-  if (url.length > 300 || u.pathname.split("/").some((part) => part.length >= 40 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part))) return "this web address looks like it carries data in it";
+  // Data can ride in the path and in the host name as well ("/aGVsbG8gc2VjcmV0", "/sk-ant/api03/...", "<data>.example.com"):
+  // an unusually long address, a long code-like name before the site's own name, or code-like parts that add up to a long
+  // run anywhere in it, is not how a documentation page is named. The parts are counted together, so splitting the data
+  // into short pieces does not hide it.
+  const labels = u.hostname.split(".").slice(0, -2);
+  const parts = [...labels, ...u.pathname.split("/")];
+  const coded = parts.filter(encodedLike).reduce((n, part) => n + part.length, 0);
+  if (url.length > 300 || coded >= 40 || labels.some((l) => l.length >= 20 && /[0-9]/.test(l) && /^[A-Za-z0-9-]+$/.test(l))) return "this web address looks like it carries data in it";
   return null;
 }
 
@@ -233,7 +241,7 @@ const DANGEROUS_WORDS = new Set(["rm", "rmdir", "mv", "cp", "ln", "tee", "dd", "
 const WRITERS: Record<string, { all?: boolean; flags?: string[] }> = {
   cp: { all: true, flags: ["-t", "--target-directory"] }, mv: { all: true, flags: ["-t", "--target-directory"] }, ln: { all: true }, install: { all: true, flags: ["-t"] }, rsync: { all: true },
   touch: { all: true }, mkdir: { all: true }, chmod: { all: true }, chown: { all: true }, chgrp: { all: true }, truncate: { all: true }, tee: { all: true }, rm: { all: true }, rmdir: { all: true }, unlink: { all: true }, shred: { all: true },
-  unzip: { flags: ["-d"] }, curl: { flags: ["-o", "--output", "--output-dir"] }, wget: { flags: ["-O", "-P", "--output-document", "--directory-prefix"] }, sort: { flags: ["-o"] }, tar: { flags: ["-C", "--directory"] },
+  ditto: { all: true }, unzip: { flags: ["-d"] }, curl: { flags: ["-o", "--output", "--output-dir"] }, wget: { flags: ["-O", "-P", "--output-document", "--directory-prefix"] }, sort: { flags: ["-o"] }, tar: { flags: ["-C", "--directory"] },
 };
 
 // Does a path written in a command land outside the project (or in a place agents may not write)?
@@ -267,6 +275,12 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
     }
     out = worst(out, evaluateCommand(words, ctx, cwd));
   }
+  // Where input is read from with <: reading outside the project asks, whatever the command (the Read tool always did).
+  for (const t of inputTargets(cmd)) {
+    if (t.includes("$") || t.includes("`")) { out = worst(out, ask("outside_project", "this command reads from a place it works out while it runs")); continue; }
+    const w = whereIs(ctx.project, t, cwd);
+    if (!w.inside && w.abs !== resolveLinks(ctx.project)) out = worst(out, ask("outside_project", `${t} is outside the project`));
+  }
   // Where output is written with > and >>.
   for (const t of redirectTargets(cmd)) {
     if (t.includes("$") || t.includes("`")) { out = worst(out, ask("irreversible", "this command writes to a place it works out while it runs")); continue; }
@@ -287,6 +301,10 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
   if (name.startsWith("mkfs")) return deny("irreversible", "this would erase a disk");
   if (["kill", "killall", "pkill"].includes(name)) return ask("irreversible", "this stops programs running on your Mac", false);
   if (SYSTEM_TOOLS.has(name) || (name === "defaults" && ["write", "delete", "import", "rename"].includes(args[0] ?? ""))) return deny("irreversible", "this changes your Mac's settings or reads its secrets");
+  // Reading the Mac's settings of other apps is reading outside the project.
+  if (name === "defaults" && ["read", "export", "find", "read-type", "domains"].includes(args[0] ?? "")) return ask("outside_project", "this reads your Mac's settings, outside the project");
+  // cpio reads the files it is handed on its input, which cannot be checked here.
+  if (name === "cpio" && args.some((a) => /^-[A-Za-z]*[op]/.test(a) || a === "--create" || a === "--pass-through")) return ask("outside_project", "cpio reads whatever files it is handed, which I cannot check");
   if (SHELLS.has(name) || name === "source" || name === ".") return ask("irreversible", "a script I cannot read");
   if (words[0].endsWith(".sh") || words[0].endsWith(".bash") || words[0].endsWith(".zsh")) return ask("irreversible", "a script I cannot read");
   if (name === "xargs") {
@@ -296,7 +314,7 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
     return allow();
   }
   if (name === "find") return evaluateFind(args, ctx, cwd);
-  if (name === "git") return evaluateGit(args, ctx);
+  if (name === "git") return evaluateGit(args, ctx, cwd);
   if (name === "mv" || name === "rm" || name === "rmdir" || name === "unlink" || name === "shred") { const r = evaluateRm(args, ctx, cwd); if (r.decision !== "allow") return r; }
   // npx, bunx, pnpx, "npm exec" and "pnpm dlx" run another program: judge that program.
   if (["npx", "bunx", "pnpx"].includes(name) || (["npm", "pnpm", "yarn", "bun"].includes(name) && ["exec", "dlx", "x"].includes(args[0] ?? ""))) {
@@ -334,7 +352,7 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
     void tarReads;
   }
   // Programs that read files: any file outside the project asks first (the Read tool always did).
-  const reads = readerVerdict(name, args, ctx, cwd);
+  const reads = readerVerdict(name, args, ctx, cwd) ?? archiveReads(name, args, ctx, cwd);
   if (reads) out = worst(out, reads);
   // Archives: where the archive is written is a write, wherever its contents come from.
   const archive = archiveOutput(name, args);
@@ -365,6 +383,33 @@ function readerVerdict(name: string, args: string[], ctx: Context, cwd: string):
   return null;
 }
 
+// Archive and compression tools read the files they are given: tar's and zip's sources, the archive tar, unzip and the
+// decompressors open, dd's if=, plutil's files. Reading outside the project asks, as for the readers above.
+const COMPRESSORS = new Set(["gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "lzma", "unlzma", "zstd", "unzstd", "lz4", "compress", "uncompress", "brotli", "plutil", "7z", "7za", "rar", "unrar", "ar"]);
+const VALUE_FLAGS: Record<string, Set<string>> = { tar: new Set(["-C", "--directory", "-T", "--files-from", "-X", "--exclude-from", "--exclude"]), zip: new Set(["-x", "-i", "-b", "-n", "-t", "-tt"]), unzip: new Set(["-d", "-x"]) };
+function archiveReads(name: string, args: string[], ctx: Context, cwd: string): Verdict | null {
+  const reads: string[] = [];
+  if (name === "dd") for (const a of args) if (a.startsWith("if=")) reads.push(a.slice(3));
+  if (name === "tar" || name === "bsdtar" || name === "gtar" || name === "zip" || name === "unzip" || COMPRESSORS.has(name)) {
+    const takes = VALUE_FLAGS[name === "bsdtar" || name === "gtar" ? "tar" : name] ?? new Set<string>();
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (takes.has(a)) { i++; continue; }
+      if (a.startsWith("--") && a.includes("=")) { const v = a.slice(a.indexOf("=") + 1); if (a.startsWith("--file=")) reads.push(v); continue; }
+      if (a.startsWith("-") && a !== "-") continue;
+      reads.push(a);
+    }
+    // tar's -f names the archive: written when it makes one (archiveOutput judges that), read otherwise. Its value is a word
+    // after the flags, so it is in the list above already.
+  }
+  for (const r of reads) {
+    if (!looksOutside(r) || /^\/dev\/(null|stdin|zero|urandom)$/.test(r)) continue;
+    const w = whereIs(ctx.project, r, cwd);
+    if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${r} is outside the project`);
+  }
+  return null;
+}
+
 /** Where an archive command writes its archive (tar -f, zip's first name), when it makes one. */
 function archiveOutput(name: string, args: string[]): string | null {
   if (name === "zip") return args.find((a) => !a.startsWith("-")) ?? null;
@@ -388,12 +433,23 @@ function evaluateFind(args: string[], ctx: Context, cwd: string): Verdict {
   return ask("irreversible", "find can delete things or run commands on everything it finds");
 }
 
-function evaluateGit(args: string[], ctx: Context): Verdict {
+function evaluateGit(args: string[], ctx: Context, cwd: string = ctx.project): Verdict {
   let i = 0;
+  // git pointed at another folder (-C, --git-dir, --work-tree) reads that folder's history and files, which is reading
+  // outside the project: it asks, as any other way of reading does.
+  const elsewhere = (v: string | undefined): boolean => {
+    if (v === undefined || v === "") return false;
+    if (v.includes("$") || v.includes("`") || v.startsWith("~")) return true;
+    const w = whereIs(ctx.project, v, cwd);
+    return !w.inside && w.abs !== resolveLinks(ctx.project);
+  };
+  const OTHER_FOLDER = ask("outside_project", "this points git at a folder outside the project, so it would read another project's history and files");
   while (i < args.length) {
     const a = args[i];
     // Global options that make git run a program or behave differently for one command: -c core.fsmonitor=..., --exec-path=...
     if (a === "-c" || a.startsWith("--config-env") || a.startsWith("--exec-path")) return ask("git", "this changes how git behaves for one command, which can run a program", false);
+    if (a === "-C" || a === "--git-dir" || a === "--work-tree") { if (elsewhere(args[i + 1])) return OTHER_FOLDER; i += 2; continue; }
+    if (a.startsWith("--git-dir=") || a.startsWith("--work-tree=")) { if (elsewhere(a.slice(a.indexOf("=") + 1))) return OTHER_FOLDER; i += 1; continue; }
     if (GIT_VALUE_OPTS.has(a)) { i += 2; continue; }
     if (a.startsWith("-")) { i += 1; continue; }
     break;
@@ -403,8 +459,17 @@ function evaluateGit(args: string[], ctx: Context): Verdict {
   if (!sub) return allow();
   const flags = rest.filter((a) => a.startsWith("-"));
   // Options that write to a file or run a program, whatever the command: --output=file, --upload-pack=..., --ext-diff.
-  if (flags.some((f) => f === "--output" || f.startsWith("--output=") || f.startsWith("--upload-pack") || f.startsWith("--receive-pack") || f === "--ext-diff" || f.startsWith("--exec"))) return ask("git", "this makes git write to a file or run a program", false);
+  // git grep -O (--open-files-in-pager) runs the program it names on the files it finds.
+  if (flags.some((f) => f === "--output" || f.startsWith("--output=") || f.startsWith("--upload-pack") || f.startsWith("--receive-pack") || f === "--ext-diff" || f.startsWith("--exec") || /^-O/.test(f) || f.startsWith("--open-files-in-pager"))) return ask("git", "this makes git write to a file or run a program", false);
   const positional = rest.filter((a) => !a.startsWith("-"));
+  // A file named to a reading command (diff --no-index, blame, show, log, grep) outside the project is read like any other.
+  if (["diff", "blame", "show", "log", "grep", "whatchanged", "shortlog", "annotate"].includes(sub)) {
+    for (const p of positional) {
+      if (!looksOutside(p)) continue;
+      const w = whereIs(ctx.project, homeSpelling(p), cwd);
+      if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${p} is outside the project`);
+    }
+  }
   const mutates = (reason: string, undoable = true): Verdict => ask("git", reason, undoable);
 
   if (ctx.userAskedCommit && (sub === "add" || sub === "commit")) return allow("the user asked for a commit in this task");
@@ -454,6 +519,10 @@ function evaluatePackageManager(name: string, args: string[]): Verdict {
   if (sub === "publish" || (name === "yarn" && sub === "npm" && args.includes("publish"))) return ask("irreversible", "publishing a package cannot be undone", false);
   if (["unpublish", "login", "adduser", "logout", "token", "owner", "access", "dist-tag", "deprecate", "profile", "team", "star", "unstar", "set", "trust"].includes(sub)) return ask("irreversible", `${name} ${sub} changes your account or your published packages`, false);
   if (sub === "config" && ["set", "delete", "edit"].includes(args.filter((a) => !a.startsWith("-"))[1] ?? "")) return ask("irreversible", "changes package manager settings");
+  // A version bump makes a git commit and a tag in a git project (npm, pnpm, yarn version; bun pm version), unless it is
+  // told not to.
+  const bumps = sub === "version" || (name === "bun" && sub === "pm" && args.includes("version"));
+  if (bumps && !args.some((a) => a === "--no-git-tag-version" || a === "--git-tag-version=false" || a === "--no-commit-hooks=false")) return ask("git", `${name} version makes a git commit and a tag in your project`, false);
   return allow();
 }
 

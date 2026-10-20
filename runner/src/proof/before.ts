@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { runCommand, shq } from "./exec.ts";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
-import { detectProject, withStartScript } from "./detect.ts";
+import { changesData, detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
@@ -30,6 +30,8 @@ export async function captureBefore(o: {
     const started = withStartScript(found, dir, o.start);
     const det = started.det;
     if (!det.start) return { none: "no_page" };
+    // A start script that changes a database or puts something online is never run for a picture either (detect.ts).
+    if (det.start.kind === "server" && !det.start.python && changesData(det.start.command, dir)) return { none: "not_pictured" };
     const serve = (start: NonNullable<typeof det.start>) => {
       let scriptText = "";
       try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }

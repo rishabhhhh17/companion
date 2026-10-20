@@ -2,7 +2,7 @@
 // browser left running (A27), the Online box left busy (A28) and "Nothing went live" said when that was not known (A29).
 // Stand ins for the check, the browser and Vercel: nothing real runs and nothing goes online.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRunner, type ProofContext } from "../src/agent.ts";
@@ -136,5 +136,29 @@ describe("going live that may have happened is never called nothing (A29)", () =
     expect(back).toMatchObject({ ok: false, unclear: true });
     // A preview that took too long still says nothing went live: a preview never does.
     expect(((await cli({ code: null, timedOut: true }).preview("/p")) as any).reason).toBe("Vercel took too long, so I stopped it. Nothing went live.");
+  });
+});
+
+describe("a task that changed the project's scripts asks before the check runs them (A12)", () => {
+  const go = async (decision: "allow" | "deny") => {
+    const project = tmp("p"); writeFileSync(join(project, "index.html"), "<h1>shop</h1>");
+    const events: Event[] = [];
+    const script = JSON.stringify({ name: "x", scripts: { test: "touch ran-by-the-check.txt" } });
+    const runner: AgentRunner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([[{ tool: { name: "Write", input: { file_path: "package.json", content: script } }, costUsd: 0.01 }]]), log: new TaskLog(":memory:"), browser: async (url: string) => okPage(url) as never,
+      emit: (e) => { events.push(e); if (e.type === "approval.request") setTimeout(() => void runner.handle({ v: 1, id: "y", type: "approval.resolve", approval: (e as any).approval, decision, scope: "once" }), 0); } });
+    await runner.handle({ v: 1, id: "s", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 5 });
+    return { events, ran: () => existsSync(join(project, "ran-by-the-check.txt")) };
+  };
+  test("no yes: the changed script is not run, and the receipt does not say proven", async () => {
+    const r = await go("deny");
+    const ask = of(r.events, "approval.request")[0];
+    expect(ask).toMatchObject({ risk: "install" });
+    expect(ask.title).toMatch(/changed the project's scripts or packages/);
+    expect(r.ran()).toBe(false);
+    expect(of(r.events, "receipt")[0].proof).not.toBe("passed");
+  });
+  test("a yes runs it", async () => {
+    const r = await go("allow");
+    expect(r.ran()).toBe(true);
   });
 });

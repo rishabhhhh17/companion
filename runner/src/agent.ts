@@ -73,7 +73,8 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // noInstall: check the project as it is, without installing its packages first (Point at the problem, your turn).
 // check and limits: what the person chose in Settings for checking this project, read when the task or check started.
 // askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
-export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean> };
+// askScripts: the question for a task that changed the project's scripts or packages, on the same card and the same terms.
+export type ProofContext = { project: string; store: CheckpointStore; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: () => Promise<boolean> };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -428,6 +429,16 @@ export class AgentRunner {
    *  usual approval card. Only a yes is a yes: no answer before it runs out, a no, Stop or Stop everything is a no, and an
    *  answer after it ran out changes nothing. */
   private installAsker(s: Session | undefined, agent: string, checkpoint: string): (command: string) => Promise<boolean> {
+    return this.checkAsker(s, agent, checkpoint, (command) => `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`);
+  }
+  /** The question for a task that changed the project's scripts or packages: they run on this Mac outside the sandbox
+   *  Claude's own commands get, so the check runs them only on a yes (ladder.ts askScripts). The same card and rules as
+   *  the install question. */
+  private scriptsAsker(s: Session | undefined, agent: string, checkpoint: string): () => Promise<boolean> {
+    const ask = this.checkAsker(s, agent, checkpoint, () => "This task changed the project's scripts or packages. Run its install, build, tests and server to check the work? They run on this Mac outside the safety box Claude's own commands get. Without a yes, the work is not checked.");
+    return () => ask("");
+  }
+  private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string): (command: string) => Promise<boolean> {
     return async (command) => {
       if (!s || s.abort.signal.aborted) return false;
       // After the answer the agent goes back to what it was doing (a task or Rescue: checking). Ship's check has a stand in
@@ -436,7 +447,7 @@ export class AgentRunner {
       const approval = `ap_${randomBytes(4).toString("hex")}`;
       // It waits as long as any other question (approval.waitMinutes, usual 30), read as it is asked.
       const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes") * 60_000;
-      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`, expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
+      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
       this.state(agent, "needsYou");
       let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
       const yes = await new Promise<boolean>((res) => {
@@ -876,7 +887,7 @@ export class AgentRunner {
         return parseReview(text);
       } : undefined;
       try {
-        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id) }));
+        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id) }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: `The checker itself stopped: ${(e as Error).message}`, ms: 0 }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }

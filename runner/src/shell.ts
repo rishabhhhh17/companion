@@ -129,3 +129,36 @@ export function redirectTargets(raw: string): string[] {
   }
   return out;
 }
+
+// ---------- input redirections: where input is read from ----------
+
+// The files a command line reads with < (or <>). Here documents (<<, <<<), process substitution (<(...)) and descriptor
+// copies (<&3) name no file, so they are left out.
+export function inputTargets(raw: string): string[] {
+  const cmd = normalize(raw);
+  const out: string[] = [];
+  let q: "" | "'" | '"' = "";
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q) { if (c === q) q = ""; else if (c === "\\" && q === '"') i++; continue; }
+    if (c === "'" || c === '"') { q = c; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c !== "<") continue;
+    let j = i + 1;
+    if (cmd[j] === "<") { i = j + (cmd[j + 1] === "<" ? 1 : 0); continue; }   // a here document or here string
+    if (cmd[j] === "(" || cmd[j] === "&") { i = j; continue; }               // process substitution, or a descriptor copy
+    if (cmd[j] === ">") j++;
+    while (cmd[j] === " " || cmd[j] === "\t") j++;
+    let target = "", tq = "";
+    for (; j < cmd.length; j++) {
+      const t = cmd[j];
+      if (tq) { if (t === tq) { tq = ""; continue; } target += t; continue; }
+      if (t === "'" || t === '"') { tq = t; continue; }
+      if (/[\s;&|()<>]/.test(t)) break;
+      target += t;
+    }
+    i = j - 1;
+    if (target && !/^\/dev\/(null|stdin|zero|urandom|random|tty)$/.test(target)) out.push(target);
+  }
+  return out;
+}

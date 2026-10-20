@@ -2,7 +2,7 @@
 // A rule can only make things stricter than Companion's own safety rules, never looser.
 // The agent can never change the rules file.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveLinks, type ToolCall, type Verdict } from "./safety.ts";
 import { commandsOf, redirectTargets } from "./shell.ts";
@@ -79,23 +79,84 @@ const INSTALL = [
   /^npx\s+(?:--yes\s+|-y\s+)?create-/, /^(?:pnpm|npm)\s+(?:dlx|create|init)\b/, /^npm\s+exec\b/, /^bunx\b/, /^pnpx\b/,
 ];
 
-function editedPaths(call: ToolCall, project: string): string[] {
+// Tools that rewrite the files they are given in place, when told to (a formatter's write flag, a linter's fix flag), run
+// directly, from node_modules/.bin, or through npx, bunx, pnpx, npm exec, pnpm dlx or yarn dlx.
+const has = (a: string[], ...f: string[]) => a.some((x) => f.includes(x) || f.some((y) => y.startsWith("--") && x.startsWith(`${y}=`)));
+const FIXERS: Record<string, { writes: (a: string[]) => boolean; words?: number }> = {
+  prettier: { writes: (a) => has(a, "--write", "-w") }, eslint: { writes: (a) => has(a, "--fix") }, stylelint: { writes: (a) => has(a, "--fix") },
+  standard: { writes: (a) => has(a, "--fix") }, xo: { writes: (a) => has(a, "--fix") }, "ts-standard": { writes: (a) => has(a, "--fix") },
+  biome: { writes: (a) => has(a, "--write", "--apply", "--apply-unsafe", "--fix", "--unsafe"), words: 1 },
+  black: { writes: (a) => !has(a, "--check", "--diff") }, isort: { writes: (a) => !has(a, "--check", "--check-only", "-c", "--diff") },
+  ruff: { writes: (a) => (a[0] === "format" && !has(a, "--check", "--diff")) || has(a, "--fix"), words: 1 },
+  autopep8: { writes: (a) => has(a, "-i", "--in-place") }, gofmt: { writes: (a) => has(a, "-w") }, rustfmt: { writes: (a) => !has(a, "--check") },
+  "clang-format": { writes: (a) => has(a, "-i") }, dprint: { writes: (a) => a[0] === "fmt", words: 1 }, "sort-package-json": { writes: (a) => !has(a, "--check", "-c") },
+  markdownlint: { writes: (a) => has(a, "--fix") }, "markdownlint-cli2": { writes: (a) => has(a, "--fix") },
+};
+const LOCKFILES = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
+const PM_EDITS = new Set(["install", "i", "add", "remove", "rm", "uninstall", "un", "update", "up", "upgrade", "ci", "link", "unlink", "dedupe", "prune"]);
+// The program a runner of packages runs (npx prettier, pnpm dlx biome), as its own words.
+function programOf(w: string[]): string[] {
+  const name = basename(w[0]);
+  const rest = ["npx", "bunx", "pnpx"].includes(name) ? w.slice(1) : ["npm", "pnpm", "yarn", "bun"].includes(name) && ["exec", "dlx", "x"].includes(w[1] ?? "") ? w.slice(2) : null;
+  if (!rest) return w;
+  const out = [...rest];
+  while (out.length && out[0].startsWith("-")) { const o = out.shift()!; if (["-p", "--package", "-c", "--call"].includes(o)) out.shift(); }
+  return out;
+}
+// "@biomejs/biome@1.9" -> "biome"; "./node_modules/.bin/prettier" -> "prettier".
+const programName = (word: string) => basename(word.replace(/@[^/@]*$/, "") || word).replace(/^@[^/]+\//, "");
+// Folders a tool is pointed at (".", "src", "**/*.json"): every protected file in them may change. A name with no file
+// ending ("src", "lib") is taken as a folder too, since that is how these tools are usually pointed at one.
+const isFolder = (project: string, a: string) => a === "." || a === "./" || a.endsWith("/") || /[*?[{]/.test(a) || !/\.[^/.]+$/.test(a) || (() => { try { return statSync(resolve(project, a)).isDirectory(); } catch { return false; } })();
+
+type Edited = { files: string[]; folders: string[] };
+function editedPaths(call: ToolCall, project: string): Edited {
   if (call.tool in WRITE_TOOLS) {
     const p = call.input[WRITE_TOOLS[call.tool]] ?? call.input.file_path ?? call.input.path;
-    return typeof p === "string" && p ? relPaths(project, p) : [];
+    return { files: typeof p === "string" && p ? relPaths(project, p) : [], folders: [] };
   }
   if (call.tool === "Bash" && typeof call.input.command === "string") {
     const cmd = call.input.command;
-    const found: string[] = [...redirectTargets(cmd)];
+    const found: string[] = [...redirectTargets(cmd)], folders: string[] = [];
     for (const w of commandsOf(cmd)) {
       const name = basename(w[0]);
       const sedI = (name === "sed" || name === "perl") && w.some((a) => /^-[A-Za-z]*i/.test(a));
       const gitChange = name === "git" && w.some((a) => GIT_CHANGES.has(a));
-      if (WRITE_VERBS.has(name) || sedI || gitChange || INTERPRETERS.has(name.replace(/\.[0-9]+$/, ""))) found.push(...w.slice(1).flatMap((a) => (a.startsWith("-") ? [] : [a.replace(/^of=/, "")])));
+      // awk and gawk with the inplace extension rewrite their files (gawk -i inplace).
+      const awkI = (name === "awk" || name === "gawk") && w.some((a, i) => (a === "-i" && w[i + 1] === "inplace") || a === "-iinplace" || a === "--include=inplace");
+      if (WRITE_VERBS.has(name) || sedI || gitChange || awkI || INTERPRETERS.has(name.replace(/\.[0-9]+$/, ""))) found.push(...w.slice(1).flatMap((a) => (a.startsWith("-") || a === "inplace" ? [] : [a.replace(/^of=/, "")])));
+      // A package manager writes package.json and its lock file when it adds, removes or changes packages, sets a field
+      // (npm pkg set, delete, fix) or bumps the version.
+      if (["npm", "pnpm", "yarn", "bun"].includes(name)) {
+        const args = w.slice(1).filter((a) => !a.startsWith("-"));
+        const sub = args[0] ?? (name === "yarn" ? "install" : "");
+        if (sub === "pkg" && ["set", "delete", "fix"].includes(args[1] ?? "")) found.push("package.json");
+        else if (sub === "version" || sub === "init" || (name === "bun" && sub === "pm" && args[1] === "version")) found.push("package.json");
+        else if (PM_EDITS.has(sub)) found.push(...(args.length > 1 ? ["package.json", ...LOCKFILES] : LOCKFILES));
+      }
+      // Formatters and fixers told to write: every file they are given, and every folder.
+      const prog = programOf(w);
+      const fixer = prog.length ? FIXERS[programName(prog[0])] : undefined;
+      if (fixer && fixer.writes(prog.slice(1))) {
+        for (const a of prog.slice(1 + (fixer.words ?? 0))) {
+          if (a.startsWith("-")) continue;
+          (isFolder(project, a) ? folders : found).push(a);
+        }
+      }
     }
-    return found.flatMap((t) => relPaths(project, t));
+    return { files: found.flatMap((t) => relPaths(project, t)), folders: folders.map((f) => (f === "." || f === "./" ? "" : (relPaths(project, f.replace(/\/+$/, ""))[0] ?? f))) };
   }
-  return [];
+  return { files: [], folders: [] };
+}
+// Could a rule's pattern match something inside this folder (relative to the project, "" for the whole project)?
+function folderMayHold(folder: string, pattern: string): boolean {
+  const f = folder.replace(/^\.\//, "").replace(/\/+$/, "");
+  if (!f || /[*?[{]/.test(f)) return true;
+  const pat = pattern.replace(/^\.\//, "").replace(/\/+$/, "");
+  if (!pat.includes("/")) return true;   // a name with no folder matches inside any folder
+  const fixed = pat.replace(/[*?[{].*$/, "").replace(/\/[^/]*$/, "");
+  const a = f.toLowerCase(), b = fixed.toLowerCase();
+  return !b || a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 }
 // "never run npm publish" is the command npm with the word publish in it, however it is written: env, a full path, a shell, flags between.
 function commandMatches(pattern: string, command: string): boolean {
@@ -118,14 +179,19 @@ const ask = (rule: Rule): Verdict => ({ decision: "ask", risk: "irreversible", r
 
 // Returns a stricter verdict when a rule applies, otherwise null.
 export function applyRules(rules: Rule[], call: ToolCall, project: string): Verdict | null {
-  const edited = editedPaths(call, project);
+  const { files: edited, folders } = editedPaths(call, project);
   // Built in: the agent never changes the rules file, or anything beside it, whatever the rules say.
   if (edited.some((p) => /^\.(companion|claude)(\/|$)/i.test(p))) return { decision: "deny", risk: "irreversible", reason: "House rules can only be changed by you, never by the agent", undoable: true };
   const command = call.tool === "Bash" && typeof call.input.command === "string" ? call.input.command : "";
   let found: Verdict | null = null;
   for (const r of rules) {
     let hit = false;
-    if (r.kind === "never_edit" || r.kind === "ask_edit") hit = edited.some((p) => pathMatches(r.pattern, p));
+    if (r.kind === "never_edit" || r.kind === "ask_edit") {
+      hit = edited.some((p) => pathMatches(r.pattern, p));
+      // A tool pointed at a whole folder that may hold a protected file: which files it changes is not known in advance,
+      // so it asks (never refused outright: the folder may hold no such file).
+      if (!hit && folders.some((f) => folderMayHold(f, r.pattern))) { found = found ?? ask(r); continue; }
+    }
     else if (r.kind === "never_run" || r.kind === "ask_run") hit = !!command && commandMatches(r.pattern, command);
     else if (r.kind === "ask_install") hit = !!command && installs(command);
     if (!hit) continue;
