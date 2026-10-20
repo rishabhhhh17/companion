@@ -1161,6 +1161,8 @@ export const S = {
     made: (name: string) => `Made ${name}. The original is unchanged.`,
     madeMany: (n: number) => `Made ${n} new files. The originals are unchanged.`,
     stopped: "Stopped. Nothing half made was kept, and the original is unchanged.",
+    stoppedMade: (n: number) => n === 1 ? "Stopped after making 1 new file. Nothing half made was kept, and the originals are unchanged." : `Stopped after making ${n} new files. Nothing half made was kept, and the originals are unchanged.`,
+    skipped: (n: number) => n === 1 ? "1 file was left as it was: it was already in that format, or could not be made smaller." : `${n} files were left as they were: they were already in that format, or could not be made smaller.`,
     why: {
       toolFailed: "The Mac could not convert this file. The original is unchanged.",
       toolMissing: "The tool for this is not on this Mac.",
@@ -1170,6 +1172,8 @@ export const S = {
       noPlace: "Could not save the new file there. Pick another place in Settings, under Where new files go.",
       noWork: "Could not make room to work. Nothing was changed.",
       alreadySmall: "It is already that small, so nothing was made bigger.",
+      notSmaller: "It could not be made any smaller, so no new file was made. The original is unchanged.",
+      alreadyThat: "It is already in that format, so no new file was made.",
       busy: "Still working on the last one. Stop it first, or wait.",
       badTrim: "The end needs to come after the start.",
       notOffered: "That cannot be done with this file.",

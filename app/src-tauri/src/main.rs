@@ -2286,6 +2286,8 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool,
     // Trash now that the engine has stopped (so no task, check or lesson still works in one), and before the record itself
     // is deleted with everything else by the helper, which waits for the app to quit.
     if with_practice == Some(true) { let (moved, kept) = trash_practice_copies("", false); log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() })); }
+    // A file being converted: its tool is ended and its work folder removed before the app quits.
+    let _ = tauri::async_runtime::spawn_blocking(drop_end_for_quit).await;
     app.exit(0);
     Ok(())
 }
@@ -3103,28 +3105,48 @@ fn webp_writable() -> bool {
 }
 fn file_name(p: &std::path::Path) -> String { p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() }
 
-/// A drag over, off or dropped on one of the two windows.
-fn drop_event(app: &AppHandle, at: &'static str, ev: &tauri::DragDropEvent) {
+/// What a drag over one of the two windows does. Only files count: a drag of text, a link, or a picture from another app
+/// (Photos, Mail, a browser) comes with no file at all, so it neither lights the character nor opens anything.
+#[derive(Debug, PartialEq)]
+enum DragNews { Hover(bool), Dropped(Vec<PathBuf>), Nothing }
+fn drag_news(ev: &tauri::DragDropEvent, on: bool) -> DragNews {
     match ev {
         // Leaving always puts the window back, even if the setting was turned off during the drag.
-        tauri::DragDropEvent::Leave => { let _ = app.emit_to(at, "drop-hover", json!({ "over": false })); }
-        _ if !drop_on() => {}
-        tauri::DragDropEvent::Enter { .. } => { let _ = app.emit_to(at, "drop-hover", json!({ "over": true })); }
-        tauri::DragDropEvent::Drop { paths, .. } => {
+        tauri::DragDropEvent::Leave => DragNews::Hover(false),
+        _ if !on => DragNews::Nothing,
+        tauri::DragDropEvent::Enter { paths, .. } if !paths.is_empty() => DragNews::Hover(true),
+        tauri::DragDropEvent::Drop { paths, .. } if !paths.is_empty() => DragNews::Dropped(paths.clone()),
+        // A drop of something that is not a file only makes sure the window is put back.
+        tauri::DragDropEvent::Drop { .. } => DragNews::Hover(false),
+        _ => DragNews::Nothing,
+    }
+}
+
+/// A drag over, off or dropped on one of the two windows.
+fn drop_event(app: &AppHandle, at: &'static str, ev: &tauri::DragDropEvent) {
+    match drag_news(ev, drop_on()) {
+        DragNews::Hover(over) => { let _ = app.emit_to(at, "drop-hover", json!({ "over": over })); }
+        DragNews::Dropped(paths) => {
             let _ = app.emit_to(at, "drop-hover", json!({ "over": false }));
-            let (a, paths) = (app.clone(), paths.clone());
+            let a = app.clone();
             std::thread::spawn(move || drop_arrived(&a, at, paths));
         }
-        _ => {}
+        DragNews::Nothing => {}
     }
+}
+
+/// Puts a new drop's menu in place of the old one, unless a job is running: the running job is never let go of, so Stop
+/// everything can always reach it. Checked and done under one hold of the lock. False when a job runs.
+fn put_menu(now: &mut Option<DropNow>, new: DropNow) -> bool {
+    if now.as_ref().is_some_and(|d| d.running.is_some()) { return false; }
+    *now = Some(new);
+    true
 }
 
 /// What a drop gets. One job at a time: a drop while one runs is told so and changes nothing.
 fn drop_arrived(app: &AppHandle, at: &'static str, paths: Vec<PathBuf>) {
-    if drop_now_lock().as_ref().is_some_and(|d| d.running.is_some()) {
-        let _ = app.emit("drop-said", json!({ "why": "busy" }));
-        return;
-    }
+    let busy = |app: &AppHandle| { let _ = app.emit("drop-said", json!({ "why": "busy" })); };
+    if drop_now_lock().as_ref().is_some_and(|d| d.running.is_some()) { busy(app); return; }
     let refused = paths.iter().take(convert::MAX_FILES).find_map(|p| convert::check_input(p).err());
     let images = paths.iter().any(|p| convert::kind_of(p) == Some(convert::Kind::Image));
     let offer = match refused {
@@ -3135,8 +3157,10 @@ fn drop_arrived(app: &AppHandle, at: &'static str, paths: Vec<PathBuf>) {
     let (kind, actions, refused) = match offer { convert::Offer::Actions(k, a) => (Some(k.id()), a, None), convert::Offer::Refused(r) => (None, vec![], Some(r)) };
     let names: Vec<String> = paths.iter().take(convert::MAX_FILES).map(|p| file_name(p)).collect();
     let menu = json!({ "id": id, "names": names, "kind": kind, "actions": actions, "refused": refused, "at": at });
-    log("drop_menu", json!({ "at": at, "count": paths.len(), "kind": kind, "refused": refused }));
-    *drop_now_lock() = Some(DropNow { id, paths, actions, menu: menu.clone(), job: None, made: vec![], running: None });
+    let count = paths.len();
+    // A job may have started while the files were checked (from Home's list): then this drop changes nothing.
+    if !put_menu(&mut drop_now_lock(), DropNow { id, paths, actions, menu: menu.clone(), job: None, made: vec![], running: None }) { busy(app); return; }
+    log("drop_menu", json!({ "at": at, "count": count, "kind": kind, "refused": refused }));
     let _ = app.emit("drop-menu", menu);
     // Dropped on the island: its choices are in Home, which opens below it (never taking the keyboard).
     if at == "island" { open_card(app, "drop", false); }
@@ -3157,7 +3181,7 @@ struct TrimIn { start: f64, end: f64 }
 fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: String, trim: Option<TrimIn>) -> Result<(), String> {
     if !matches!(window.label(), "dock" | "card") { return Err("notOffered".into()); }
     let prefs = convert::Prefs::read(setting_now);
-    let work = std::env::temp_dir().join("dev.companion.app-convert").join(format!("{id}-{}", now()));
+    let work = convert::work_root().join(format!("{id}-{}", now()));
     let trim = trim.map(|t| convert::Trim { start: t.start, end: t.end });
     let (units, job) = {
         let mut g = drop_now_lock();
@@ -3187,15 +3211,11 @@ fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: Stri
         };
         let home = PathBuf::from(home_dir());
         let dest = |u: &convert::Unit| convert::dest_dir(&u.source, prefs.save_to, &home);
-        let (made, fail) = convert::run(&units, &work, &dest, &job, &tell);
-        let names: Vec<Value> = made.iter().enumerate().map(|(i, p)| json!({ "name": file_name(p), "i": i })).collect();
-        let end = match fail {
-            None => json!({ "id": id, "phase": "done", "made": names }),
-            Some(convert::Failure::Stopped) => json!({ "id": id, "phase": "stopped" }),
-            Some(convert::Failure::Failed(why)) => json!({ "id": id, "phase": "failed", "why": why, "made": names }),
-        };
-        log("drop_job_ended", json!({ "action": action, "made": made.len(), "ended": end["phase"], "why": end["why"] }));
-        if let Some(d) = drop_now_lock().as_mut().filter(|d| d.id == id) { d.running = None; d.made = made; d.job = Some(end.clone()); }
+        let ended = convert::run(&units, &work, &dest, &job, &tell);
+        // What was made is named even when the job was stopped or failed part way, so the person can find it.
+        let end = convert::end_news(id, &ended);
+        log("drop_job_ended", json!({ "action": action, "made": ended.made.len(), "skipped": ended.skipped, "ended": end["phase"], "why": end["why"] }));
+        if let Some(d) = drop_now_lock().as_mut().filter(|d| d.id == id) { d.running = None; d.made = ended.made; d.job = Some(end.clone()); }
         let _ = app.emit("drop-job", end);
     });
     Ok(())
@@ -3206,6 +3226,14 @@ fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: Stri
 fn drop_stop() { drop_stop_all(); }
 /// Stop everything ends a conversion too.
 fn drop_stop_all() { if let Some(j) = drop_now_lock().as_ref().and_then(|d| d.running.clone()) { j.stop(); } }
+/// Companion is quitting (Quit in the menu bar, Delete everything, or macOS): a running conversion is stopped and waited
+/// for, at most two seconds, so its tool is ended and its work folder removed before Companion goes.
+fn drop_end_for_quit() {
+    let Some(job) = drop_now_lock().as_ref().and_then(|d| d.running.clone()) else { return };
+    job.stop();
+    let ended = job.wait_ended(Duration::from_secs(2));
+    log("drop_job_quit", json!({ "ended": ended }));
+}
 
 /// Closes the menu (never while its job runs: Stop ends it first), in every window.
 #[tauri::command]
@@ -3240,6 +3268,9 @@ fn main() {
     let instance = instance::take_waiting(&data_dir().join("instance.lock"), Duration::from_secs(5), Duration::from_millis(100));
     if instance::should_leave(&instance) { log("second_copy_left", json!({})); return; }
     if let instance::Taken::CouldNotCheck(why) = &instance { log("instance_not_checked", json!({ "why": why })); }
+    // F19: work folders a Companion ended mid job left behind. Only when this copy surely is the one that runs, so no other
+    // copy's job is using them.
+    if matches!(instance, instance::Taken::Ours(_)) && convert::sweep(&convert::work_root()) { log("drop_work_swept", json!({})); }
     let _instance = instance;   // held until Companion quits; macOS lets the lock go when the program ends
     let app = tauri::Builder::default()
         .activate_ignoring_other_apps(false)
@@ -3428,7 +3459,7 @@ fn main() {
     let mut app = app;
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     app.run(|app, ev| match ev {
-        RunEvent::Exit => app.state::<runner::Runner>().shut_down(),
+        RunEvent::Exit => { drop_end_for_quit(); app.state::<runner::Runner>().shut_down(); }
         // Companion opened again while it runs (Finder, Spotlight, Launchpad): macOS asks this copy to reopen.
         RunEvent::Reopen { .. } => reopened(app),
         _ => {}
@@ -3455,5 +3486,47 @@ mod bundle_tests {
     #[test]
     fn the_entitlements_allow_the_microphone() {
         assert!(include_str!("../Entitlements.plist").contains("com.apple.security.device.audio-input"));
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    use super::*;
+    use tauri::{DragDropEvent, PhysicalPosition};
+
+    fn at() -> PhysicalPosition<f64> { PhysicalPosition::new(10.0, 10.0) }
+
+    #[test]
+    fn only_a_drag_of_files_lights_the_character_or_opens_the_menu() {
+        let file = vec![PathBuf::from("/Users/me/photo.png")];
+        assert_eq!(drag_news(&DragDropEvent::Enter { paths: file.clone(), position: at() }, true), DragNews::Hover(true));
+        assert_eq!(drag_news(&DragDropEvent::Drop { paths: file.clone(), position: at() }, true), DragNews::Dropped(file.clone()));
+        // Text, a link, or a picture from Photos, Mail or a browser: no file comes with it.
+        assert_eq!(drag_news(&DragDropEvent::Enter { paths: vec![], position: at() }, true), DragNews::Nothing);
+        assert_eq!(drag_news(&DragDropEvent::Drop { paths: vec![], position: at() }, true), DragNews::Hover(false));
+        assert_eq!(drag_news(&DragDropEvent::Over { position: at() }, true), DragNews::Nothing);
+        // Leaving always puts the window back; with the setting off nothing else happens.
+        assert_eq!(drag_news(&DragDropEvent::Leave, false), DragNews::Hover(false));
+        assert_eq!(drag_news(&DragDropEvent::Enter { paths: file.clone(), position: at() }, false), DragNews::Nothing);
+        assert_eq!(drag_news(&DragDropEvent::Drop { paths: file, position: at() }, false), DragNews::Nothing);
+    }
+
+    fn menu(id: u64, running: Option<std::sync::Arc<convert::Job>>) -> DropNow {
+        DropNow { id, paths: vec![], actions: vec![], menu: Value::Null, job: None, made: vec![], running }
+    }
+
+    #[test]
+    fn a_new_drop_never_lets_go_of_a_running_job() {
+        let job = std::sync::Arc::new(convert::Job::default());
+        let mut now = Some(menu(1, Some(job.clone())));
+        assert!(!put_menu(&mut now, menu(2, None)), "a drop while a job runs changes nothing");
+        assert_eq!(now.as_ref().map(|d| d.id), Some(1));
+        assert!(now.as_ref().and_then(|d| d.running.as_ref()).is_some_and(|j| std::sync::Arc::ptr_eq(j, &job)), "Stop everything can still reach it");
+        // Once it has ended, the next drop takes its place.
+        now.as_mut().unwrap().running = None;
+        assert!(put_menu(&mut now, menu(2, None)));
+        assert_eq!(now.as_ref().map(|d| d.id), Some(2));
+        let mut empty = None;
+        assert!(put_menu(&mut empty, menu(3, None)));
     }
 }

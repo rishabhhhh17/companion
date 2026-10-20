@@ -1,7 +1,7 @@
 // F19, drop a file on the companion: the menu's state, its keys, its ring and its words. The shell decides what a file
 // may get and runs the tools (convert.rs); this is only what the page shows and how a person moves through it.
 import { describe, expect, test } from "bun:test";
-import { EMPTY, actionWords, dropReduce, jobFrom, jobLine, keyMove, menuFrom, parseTime, refusedLine, ringSpots, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, parseTime, refusedLine, ringSpots, trimFrom, type DropState } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 const menu = (over: Record<string, unknown> = {}) => ({ id: 7, names: ["photo.png"], kind: "image", actions: ["toJpeg", "toHeic", "resize"], refused: null, at: "dock", ...over });
@@ -18,9 +18,23 @@ describe("what the shell sends is checked before it is shown", () => {
   });
   test("a job says how far it got, what it made, or why it stopped", () => {
     expect(jobFrom({ id: 7, phase: "running", done: 1, of: 3, percent: null })).toEqual({ id: 7, phase: "running", done: 1, of: 3, percent: null });
-    expect(jobFrom({ id: 7, phase: "done", made: [{ name: "photo (converted).jpg", i: 0 }] })).toEqual({ id: 7, phase: "done", made: [{ name: "photo (converted).jpg", i: 0 }], why: null });
+    expect(jobFrom({ id: 7, phase: "done", made: [{ name: "photo (converted).jpg", i: 0 }] })).toEqual({ id: 7, phase: "done", made: [{ name: "photo (converted).jpg", i: 0 }], why: null, skipped: 0 });
     expect(jobFrom({ id: 7, phase: "failed", why: "toolFailed", made: [] })?.phase).toBe("failed");
     expect(jobFrom({ id: 7, phase: "exploded" })).toBeNull();
+  });
+  test("a job stopped part way still names what it made, and a finished one how many it left as they were", () => {
+    const made = [{ name: "a (converted).heic", i: 0 }];
+    expect(jobFrom({ id: 7, phase: "stopped", made })).toEqual({ id: 7, phase: "stopped", made });
+    expect(jobFrom({ id: 7, phase: "stopped" })).toEqual({ id: 7, phase: "stopped", made: [] });
+    expect(jobFrom({ id: 7, phase: "done", made, skipped: 2 })).toEqual({ id: 7, phase: "done", made, why: null, skipped: 2 });
+    expect(jobFrom({ id: 7, phase: "done", made, skipped: -1 })).toMatchObject({ skipped: 0 });
+  });
+  test("Show in Finder is offered for what was made, also when the job was stopped or failed part way", () => {
+    const made = [{ name: "a (converted).heic", i: 0 }, { name: "b (converted).heic", i: 1 }];
+    expect(madeOf({ id: 7, phase: "stopped", made })).toEqual(made);
+    expect(madeOf({ id: 7, phase: "failed", why: "noPlace", made })).toEqual(made);
+    expect(madeOf({ id: 7, phase: "done", made, why: null, skipped: 0 })).toEqual(made);
+    expect(madeOf({ id: 7, phase: "running", done: 1, of: 5, percent: null })).toEqual([]);
   });
 });
 
@@ -141,10 +155,23 @@ describe("words", () => {
   test("progress, results and problems are said in plain words, never as codes", () => {
     expect(jobLine({ id: 1, phase: "running", done: 0, of: 1, percent: 40 })).toBe(S.drop.working(40));
     expect(jobLine({ id: 1, phase: "running", done: 1, of: 3, percent: null })).toBe(S.drop.workingOf(2, 3));
-    expect(jobLine({ id: 1, phase: "done", made: [{ name: "a (converted).png", i: 0 }], why: null })).toBe(S.drop.made("a (converted).png"));
-    expect(jobLine({ id: 1, phase: "stopped" })).toBe(S.drop.stopped);
+    expect(jobLine({ id: 1, phase: "done", made: [{ name: "a (converted).png", i: 0 }], why: null, skipped: 0 })).toBe(S.drop.made("a (converted).png"));
+    expect(jobLine({ id: 1, phase: "stopped", made: [] })).toBe(S.drop.stopped);
     expect(jobLine({ id: 1, phase: "failed", why: "toolFailed", made: [] })).toBe(S.drop.why.toolFailed);
     expect(jobLine({ id: 1, phase: "failed", why: "somethingNew", made: [] })).toBe(S.drop.why.other);
+    // Stopped after some were made: it says so, and does not claim nothing was kept.
+    const two = [{ name: "a (converted).heic", i: 0 }, { name: "b (converted).heic", i: 1 }];
+    expect(jobLine({ id: 1, phase: "stopped", made: two })).toBe(S.drop.stoppedMade(2));
+    expect(S.drop.stoppedMade(2)).toContain("2");
+    expect(S.drop.stoppedMade(1)).not.toBe(S.drop.stopped);
+    // Files left as they were are said, after what was made.
+    expect(jobLine({ id: 1, phase: "done", made: two, why: null, skipped: 1 })).toBe(`${S.drop.madeMany(2)} ${S.drop.skipped(1)}`);
+    expect(S.drop.skipped(3)).toContain("3");
+    // A compress that would not have been smaller, and a file already in the format asked for, have their own words.
+    expect(jobLine({ id: 1, phase: "failed", why: "notSmaller", made: [] })).toBe(S.drop.why.notSmaller);
+    expect(S.drop.why.notSmaller).not.toBe(S.drop.why.other);
+    expect(jobLine({ id: 1, phase: "failed", why: "alreadyThat", made: [] })).toBe(S.drop.why.alreadyThat);
+    expect(S.drop.why.alreadyThat).not.toBe(S.drop.why.other);
     expect(refusedLine("mixed")).toBe(S.drop.refused.mixed);
     expect(refusedLine("whatever")).toBe(S.drop.refused.unknownKind);
   });

@@ -9,9 +9,10 @@ export type Menu = { id: number; names: string[]; kind: Kind | null; actions: st
 export type Made = { name: string; i: number };
 export type Job =
   | { id: number; phase: "running"; done: number; of: number; percent: number | null }
-  | { id: number; phase: "done"; made: Made[]; why: string | null }
+  | { id: number; phase: "done"; made: Made[]; why: string | null; skipped: number }
   | { id: number; phase: "failed"; why: string; made: Made[] }
-  | { id: number; phase: "stopped" };
+  // Stopped part way: what was made before the Stop is new, replaces nothing, and stays, so it is named.
+  | { id: number; phase: "stopped"; made: Made[] };
 export type DropState = { hover: boolean; menu: Menu | null; focus: number; trim: boolean; job: Job | null };
 export type Move = "next" | "prev" | "first" | "last";
 export type DropAction =
@@ -51,12 +52,15 @@ export function jobFrom(v: unknown): Job | null {
   if (!o || typeof o !== "object" || !num(o.id)) return null;
   switch (o.phase) {
     case "running": return { id: o.id, phase: "running", done: num(o.done) ? o.done : 0, of: num(o.of) ? o.of : 1, percent: num(o.percent) ? o.percent : null };
-    case "done": return { id: o.id, phase: "done", made: madeFrom(o.made), why: str(o.why) ? o.why : null };
+    case "done": return { id: o.id, phase: "done", made: madeFrom(o.made), why: str(o.why) ? o.why : null, skipped: num(o.skipped) && o.skipped > 0 ? o.skipped : 0 };
     case "failed": return { id: o.id, phase: "failed", why: str(o.why) ? o.why : "other", made: madeFrom(o.made) };
-    case "stopped": return { id: o.id, phase: "stopped" };
+    case "stopped": return { id: o.id, phase: "stopped", made: madeFrom(o.made) };
     default: return null;
   }
 }
+
+/** The new files a job made, for Show in Finder: also those made before it was stopped or failed part way. */
+export const madeOf = (j: Job): Made[] => (j.phase === "running" ? [] : j.made);
 
 /** Whether a job is still going (the menu then cannot be closed: Stop ends it). */
 export const running = (s: DropState): boolean => s.job?.phase === "running";
@@ -127,9 +131,12 @@ export function trimFrom(start: string, end: string): { start: number; end: numb
 export function jobLine(j: Job): string {
   switch (j.phase) {
     case "running": return j.percent !== null && j.of <= 1 ? S.drop.working(Math.round(j.percent)) : S.drop.workingOf(Math.min(j.done + 1, j.of), j.of);
-    case "done": return j.made.length === 1 ? S.drop.made(j.made[0].name) : S.drop.madeMany(j.made.length);
+    case "done": {
+      const made = j.made.length === 1 ? S.drop.made(j.made[0].name) : S.drop.madeMany(j.made.length);
+      return j.skipped > 0 ? `${made} ${S.drop.skipped(j.skipped)}` : made;
+    }
     case "failed": return (S.drop.why as Record<string, string>)[j.why] ?? S.drop.why.other;
-    case "stopped": return S.drop.stopped;
+    case "stopped": return j.made.length > 0 ? S.drop.stoppedMade(j.made.length) : S.drop.stopped;
   }
 }
 

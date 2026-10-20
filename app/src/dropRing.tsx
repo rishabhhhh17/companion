@@ -4,7 +4,7 @@
 // sends the menu's number and the chosen action, and the shell does the rest (convert.rs).
 import { useEffect, useReducer, useRef, useState } from "react";
 import { invoke, listen } from "./tauri.ts";
-import { EMPTY, actionWords, dropReduce, jobFrom, jobLine, keyMove, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, actionWords, dropReduce, jobFrom, jobLine, keyMove, madeOf, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 type Dispatch = (a: Parameters<typeof dropReduce>[1]) => void;
@@ -62,12 +62,12 @@ function onKey(e: React.KeyboardEvent, drop: Drop) {
   else d({ type: "move", to: k });
 }
 
-/** After a job: the line, and Show in Finder for what was made (the shell shows only what it made itself). */
+/** After a job: the line, and Show in Finder for what was made, also before a Stop (the shell shows only what it made itself). */
 function Outcome({ s, d }: { s: DropState; d: Dispatch }) {
   const j = s.job;
   if (!j || !s.menu) return null;
   const id = s.menu.id;
-  const made = j.phase === "done" || j.phase === "failed" ? j.made : [];
+  const made = madeOf(j);
   return (
     <div className="drop-outcome">
       <div className="line" role="status" aria-live="polite">{jobLine(j)}</div>
