@@ -59,6 +59,11 @@ One setting (Reset, only when it differs from usual), a section (Reset this sect
 ## Added with the practice library (19 Oct 2026)
 - `point.fixWith` ("Fix it after Point at the problem", pointing section, pages): Look deeper first (usual, today's behaviour: Rescue, the careful model's diagnosis and a plan to approve) or One small checked fix (for a problem that is one located line, the same shipped request the practice projects use, `runner/src/fixfound.ts`, on the usual task budget and work model; anything else still looks deeper first). Read when Fix it is pressed. The founder decides whether the usual value should change (F17 section 13). Kept in `settings.json` like every page setting; no new file.
 
+## Added with everyday stuck moments (20 Oct 2026)
+- `point.everyday` ("The stuck key works in any app", pointing section, pages, switch, usual on): with no project, or with an app in front that is not a code tool, Point at the problem looks at the screen once (Show me's own look) and walks the person through the fix; after a project check finds nothing wrong it offers Look at my screen. On by default because it only acts on the person's own key press; off, the key only checks the project, exactly as before. Read when the key is pressed.
+- `point.everydayWhy` ("Why, after an everyday fix", pointing section, pages, choice, usual reasons and a quick check question): two lines of why and the check question after an everyday fix, like Explain, or the reasons only, or nothing. They come with the same look, so no choice changes the cost.
+- Both are kept in `settings.json` like every page setting; no new file.
+
 ## Not proven
 - Area 5 (pointing, talking and other apps) is built and tested with fakes only: the ring's colour, lettering and time, the pace, the words only guesses, Draw it for me kept until closed, the hold to talk cap, the extra spoken lines, the editor choice, the per app answers editor and the call apps list were not tried in the built app on a real Mac.
 - Built and tested with fakes only. The app was not built and opened in this change; carrying a real Mac's old choices over, a setting kept across a quit, Reset and Undo, and Delete everything removing settings.json are still to be tried on a real Mac. The keyboard and VoiceOver pass needs a person.

@@ -50,6 +50,9 @@ describe("the shipped list of settings", () => {
       "point.fixWith": "rescue",
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
       "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
+      // Everyday stuck moments: the key works in any app. On by default, since it only ever acts on the person's own key
+      // press; turned off, the key only checks the project, as before. The why is two reasons and a question, like Explain.
+      "point.everyday": true, "point.everydayWhy": "reasonsAndQuestion",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

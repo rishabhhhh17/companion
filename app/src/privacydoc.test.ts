@@ -38,6 +38,13 @@ describe("the privacy note names every flow that reads or sends something", () =
       for (const w of words) expect(r, `${start}: ${w}`).toContain(w);
     }
   });
+  test("the key in any app (everyday stuck moments) says it sends one picture to Claude, when, and how to turn it off", () => {
+    const r = row("You press **F** with no project");
+    expect(r).not.toBe("");
+    for (const w of ["picture", "Claude", "blacked out", S.set["point.everyday"].label, S.everydayCheck, "spreadsheet"]) expect(r, w).toContain(w);
+    // The plain F row still says nothing of the project or the screen leaves the Mac, so it must say when that changes.
+    expect(row("You press **F** (point at the problem)")).toContain("You press **F** with no project");
+  });
   test("the setting practice's lesson is said to be words only", () => {
     expect(row("You start a **practice project**")).toContain("never looks at your screen");
   });
