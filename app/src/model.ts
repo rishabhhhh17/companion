@@ -635,6 +635,10 @@ function reduceRest(m: Model, e: Ev): Model {
     // The person stopped the checks: they did not run, so they can be run again.
     case "ui.practiceStopProving": return m.practice?.stage === "proving" ? { ...m, practice: { ...m.practice, stage: "failed", checksFailed: true } } : m;
     case "ui.practiceFixing": return m.practice && practiceOf(m.practice.kind)?.fix === "task" && ["found", "failed"].includes(m.practice.stage) ? { ...m, practice: { ...m.practice, stage: "fixing", why: undefined, checkpoint: undefined, result: undefined, undone: undefined, gaps: undefined, checksFailed: undefined } } : m;
+    // A follow up the shell refused never began.
+    case "ui.followUpRefused": return { ...m, followUp: "idle" };
+    // The fix was refused (its group was switched off between the press and the engine): back to where it was pressed from.
+    case "ui.practiceFixRefused": return m.practice?.stage === "fixing" ? { ...m, practice: { ...m.practice, stage: "found" } } : m;
     case "ui.practiceClosed": return { ...m, practice: null };
     case "ui.diagramAsked": return { ...m, diagram: { stage: "asking", ask: e.ask, project: e.project } };
     case "ui.diagramFailed": return m.diagram ? { ...m, diagram: { stage: "none", reason: String(e.reason ?? "I could not show that on your screen.") } } : m;

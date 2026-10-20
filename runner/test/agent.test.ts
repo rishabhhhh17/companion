@@ -73,6 +73,29 @@ describe("a normal task", () => {
   });
 });
 
+describe("the receipt says how the task ended (so a stopped task is never counted as a try)", () => {
+  const receipt = (events: Event[]) => events.find((e) => e.type === "receipt") as any;
+  test("a task that finished says done and the mode it ran in", async () => {
+    const r = setup([write("new.txt", "hello")]);
+    await r.runner.handle(start(r.project));
+    expect(receipt(r.events).ended).toBe("done");
+    expect(receipt(r.events).mode).toBe("drive");
+  });
+  test("a task the person stopped says stopped", async () => {
+    const r = setup([{ ...bash("echo 1 > one.txt"), delayMs: 400 }, bash("echo 2 > two.txt")]);
+    const done = r.runner.handle(start(r.project));
+    await waitFor(() => types(r.events).includes("checkpoint.created"));
+    await r.runner.handle({ v: 1, id: "c5", type: "agent.interrupt", agent: "builder-1" });
+    await done;
+    expect(receipt(r.events).ended).toBe("stopped");
+  });
+  test("a task that ran out of money says failed", async () => {
+    const r = setup([{ ...write("a.txt", "x"), costUsd: 9 }]);
+    await r.runner.handle(start(r.project, { budgetUsd: 1 }));
+    expect(receipt(r.events).ended).toBe("failed");
+  });
+});
+
 describe("safety is enforced on every step", () => {
   test("a write outside the project is blocked and never happens", async () => {
     const r = setup([]);

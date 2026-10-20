@@ -16,6 +16,8 @@ export type Def = {
   maxItems?: number; item?: { maxLength: number; shape?: ItemShape }; allowedItems?: string[];
   scope: "app" | "project"; applies: Applies[]; store: Store; live: boolean;
   protective?: boolean; floor?: string; renamedFrom?: string[];
+  /** Kept like any setting (Reset and Undo cover it) but never drawn as a row or found by a search: the tools tried (groups.tried), set only by a real use. */
+  hidden?: boolean;
   from?: { pageStorage?: { name: string; map: MapName } };
 };
 export type Registry = { version: number; sections: string[]; settings: Def[] };

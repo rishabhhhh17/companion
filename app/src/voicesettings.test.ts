@@ -128,6 +128,8 @@ describe("the Settings rows", () => {
     expect(tries.length).toBe(1);
     expect(tries[0]).toContain("onClick=");
     expect(tries[0]).toContain("S.voiceSample");
+    // The sample sends no `whole`; the shell marks Spoken answers as tried only for an answer (whole), so previewing is not a try.
+    expect(tries[0]).not.toContain("whole");
   });
   test("Speak to me and Answer out loud are rows of their own in the same section, each off until turned on", () => {
     for (const k of ["talk.speak", "talk.speakReplies"]) expect(defOf(k), k).toMatchObject({ kind: "switch", default: false, section: "talking", store: "settings" });

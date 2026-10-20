@@ -153,6 +153,8 @@ export type Receipt = Envelope & {
   changedAt?: ChangeAt;   // the first changed line, for "Show me what changed"
   repeat?: { first: ChangeAt; second: ChangeAt; was: string; now: string };   // the same small change made in two places (was -> now)
   practice?: string;   // the practice id the task was started with, echoed back
+  ended?: "done" | "needs_you" | "stopped" | "failed";   // how the task ended: only done and needs_you count as a real use (groups, F20)
+  mode?: "drive" | "rescue" | "research" | "ship";   // the mode the task ran in
   said?: string;   // the agent's last words, the message it ended on: secrets hidden, clipped (runner/src/asks.ts)
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
 };
@@ -438,7 +440,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network"]), str("title"), str("expiresAt")],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],

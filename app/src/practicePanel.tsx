@@ -4,6 +4,7 @@
 // confirm step takes the keyboard to its safe choice (confirm.tsx). A plain Done, never a score or praise (rule 16).
 import { useId, useState, type ReactNode } from "react";
 import { ConfirmStep } from "./confirm.tsx";
+import { buttonShown } from "./groups.ts";
 import { keyHint, type Keys } from "./keys.ts";
 import { formatUsd, type ChangeAt, type Practice, type PracticeResult, type Problem, type UndoState } from "./model.ts";
 import { costWords, timeWords, type ListRow, type PracticeEntry } from "./practice.ts";
@@ -73,7 +74,10 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
 }) {
   const w = S.practices[entry.id];
   const task = entry.fix === "task", gate = entry.find === "gate";
-  const findButton = <button className="btn primary" type="button" disabled={checking} onClick={act.find}>{gate ? S.practiceFindGate : S.practiceFind}</button>;
+  // A practice leans on three Flow tools (its check, its fix and its drawing). With Flow off their buttons are not drawn and one
+  // plain line says so, so the panel never waits on an answer that cannot come. The check before going live is the core's.
+  const canFind = gate || buttonShown("practiceFind"), canFix = buttonShown("practiceFix"), canWhy = buttonShown("practiceWhy");
+  const findButton = canFind ? <button className="btn primary" type="button" disabled={checking} onClick={act.find}>{gate ? S.practiceFindGate : S.practiceFind}</button> : null;
   const doneWords = p.already ? S.practiceDoneAlready : p.gaps ? S.practiceDoneGaps : entry.prove === "gate" ? S.practiceDoneGate : S.practiceDone;
   // The fix stopped to ask something: it is answered in the follow up box under the result on Now, never tried again blind.
   const asks = p.stage === "failed" && !p.checksFailed && !p.result?.protectedChanged?.length ? p.result?.asks : undefined;
@@ -91,18 +95,20 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         <div className="line">{(gate ? S.practiceStartGate : S.practiceStartIn)(folder, w.start)}</div>
         {!gate && <div className="line muted">{keyHint("problem", S.practiceKeys, keys)}</div>}
         {task && <div className="line muted">{S.practiceRulesNote}</div>}
+        {!canFind && <div className="line" role="status">{S.groups.practiceNeedsFlow}</div>}
         <div className="row">{findButton}<button className="btn" type="button" onClick={act.close}>{S.practiceSkip}</button></div>
       </>}
       {p.stage === "found" && <>
         <div className="line"><b>{S.practiceFound}</b> {placeLine(p.where)}</div>
         {p.undone && <div className="line">{S.practiceUndone}</div>}
         <div className="line muted">{w.foundMore}</div>
-        {task && <div className="line muted">{S.practiceFixHelp}</div>}
+        {task && canFix && <div className="line muted">{S.practiceFixHelp}</div>}
+        {task && !canFix && <div className="line" role="status">{S.groups.practiceNeedsFlow}</div>}
         <div className="row">
           {p.problem && <button className="btn" type="button" onClick={() => act.where(p.problem!)}>{S.pointWhere}</button>}
-          {p.problem && <button className="btn" type="button" disabled={drawing} onClick={() => act.why(p.problem!)}>{S.drawWhy}</button>}
+          {p.problem && canWhy && <button className="btn" type="button" disabled={drawing} onClick={() => act.why(p.problem!)}>{S.drawWhy}</button>}
           {task
-            ? <button className="btn primary" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
+            ? canFix && <button className="btn primary" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
             : <button className="btn primary" type="button" onClick={act.lesson}>{S.practiceSettingFix}</button>}
           <button className="btn" type="button" onClick={act.close}>{S.practiceSkip}</button>
         </div>

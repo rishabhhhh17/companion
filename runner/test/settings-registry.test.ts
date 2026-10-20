@@ -22,8 +22,9 @@ describe("the shipped list of settings", () => {
     expect(checkRegistry(REGISTRY)).toEqual([]);
   });
   test("sections are in page order and every setting names one of them", () => {
-    expect(REGISTRY.sections[0]).toBe("keys");
-    expect(REGISTRY.sections).toEqual(["keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
+    // Groups of tools come first (F20, M12): the four switches are the first thing Settings shows.
+    expect(REGISTRY.sections[0]).toBe("groups");
+    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
     for (const d of REGISTRY.settings) expect(REGISTRY.sections).toContain(d.section);
   });
   test("every setting the core registers is there, with today's behaviour as its usual value", () => {
@@ -58,6 +59,9 @@ describe("the shipped list of settings", () => {
       "point.everyday": true, "point.everydayWhy": "reasonsAndQuestion",
       // Everyday apps: the tutor for everyday apps and short spoken steps are off until turned on, so every answer is as today.
       "showme.everydayTutor": false, "talk.shortSteps": false,
+      // Groups of tools (F20, M12): every group on, the island names the working group, Home invites to tools not tried yet,
+      // and nothing is tried at first (the list is set only by a real use).
+      "flow.on": true, "guide.on": true, "voice.on": true, "files.on": true, "groups.islandName": true, "groups.showUntried": true, "groups.tried": [],
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

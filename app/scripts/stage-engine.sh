@@ -17,7 +17,7 @@ rm -rf "$OUT"; mkdir -p "$OUT/bin" "$OUT/runner" "$OUT/protocol"
 cp -L "$BUN" "$OUT/bin/bun"; chmod 755 "$OUT/bin/bun"
 cp -R runner/src "$OUT/runner/src"
 cp runner/package.json runner/bun.lock "$OUT/runner/"
-cp protocol/index.ts protocol/settings.ts protocol/settings.json protocol/apps.json protocol/package.json "$OUT/protocol/"   # settings: the registry (T16); apps: the one list of apps by kind
+cp protocol/index.ts protocol/settings.ts protocol/settings.json protocol/apps.json protocol/groups.json protocol/package.json "$OUT/protocol/"   # settings: the registry (T16); apps: the one list of apps by kind; groups: which tool is in which group (F20)
 cp -R lessons "$OUT/lessons"
 # Only what the runner needs to run, exactly as locked.
 (cd "$OUT/runner" && bun install --production --frozen-lockfile --ignore-scripts >/dev/null)
