@@ -130,7 +130,7 @@ describe("How long \"Remembered\" stays, with Undo (memory.toastSeconds)", () =>
   });
 });
 
-describe("Show Where was I after a break of (recap.after)", () => {
+describe("Show Where was I after a break of (where.after)", () => {
   const now = new Date(2026, 9, 19, 9, 0).getTime();
   test("usual: after 30 minutes away, as today", () => {
     expect(recapDue(now - 30 * MIN, now)).toBe(true);
@@ -155,7 +155,7 @@ describe("Show Where was I after a break of (recap.after)", () => {
     expect(recapDue(0, now)).toBe(false);
     expect(recapDue(0, now, "nextDay")).toBe(false);
     expect(recapDue(now - 30 * MIN, now, "1h")).toBe(true);
-    snap({ "recap.after": "off" });
+    snap({ "where.after": "off" });
     expect(recapDue(now - 5 * HOUR, now)).toBe(false);
   });
   test("Home asks for Where was I only when it is due, for the folder chosen now", () => {
@@ -164,7 +164,7 @@ describe("Show Where was I after a break of (recap.after)", () => {
     const at = card.indexOf('const off = listen("opened"');
     const opened = card.slice(at, card.indexOf("}, []);", at));
     expect(opened).toContain("const here = projectRef.current;");
-    expect(opened).toContain("if (last && here && recapDue(last, Date.now())) void send(askRecap(here, new Date(last).toISOString()));");
+    expect(opened).toContain("if (last && here && recapDue(last, Date.now())) void send(toolOn(\"whereWasI\") ? whereWasI(here, new Date(last).toISOString()) : askRecap(here, new Date(last).toISOString()));");
     expect(opened).not.toMatch(/\bproject\b(?!Ref)/);
     expect(card).not.toContain("AWAY_MS");
   });

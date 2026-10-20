@@ -27,10 +27,10 @@ export function toastMs(choice: unknown = setting("memory.toastSeconds")): numbe
   return Object.hasOwn(TOAST, k) ? TOAST[k] : 10_000;
 }
 
-/** Whether Where was I is asked for when Home opens (recap.after): after a break of 30 minutes (usual), 2 hours, or when
+/** Whether Where was I is asked for when Home opens (where.after): after a break of 30 minutes (usual), 2 hours, or when
  *  the last visit was before today began on this Mac's clock; never when off, or with no last visit. Times are in
  *  milliseconds; anything else is the usual. */
-export function recapDue(last: number, now: number, choice: unknown = setting("recap.after")): boolean {
+export function recapDue(last: number, now: number, choice: unknown = setting("where.after")): boolean {
   if (!last) return false;
   switch (choice) {
     case "off": return false;

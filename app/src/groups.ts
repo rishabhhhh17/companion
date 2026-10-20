@@ -19,7 +19,7 @@ export type Tool = {
 };
 export type ToolId =
   | "askBox" | "engine" | "stop" | "projects" | "account" | "settings" | "memory" | "ship" | "research"
-  | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "whichTask"
+  | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "whichTask" | "watch" | "connections" | "whereWasI"
   | "showMe" | "lessons" | "yourTurn" | "practice"
   | "talk" | "speak" | "promptHelp" | "errorHelp" | "convert";
 
@@ -133,6 +133,10 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
     case "bisect.result": tool = ["found", "not_failing", "already_failing", "after_last_task", "outside_change", "unsure"].includes(String(ev.outcome)) ? "whichTask" : null; break;
     case "problem.found": tool = ev.verdict && ev.verdict !== "cancelled" ? "findProblem" : null; break;
     case "walk.step": tool = "lessons"; break;
+    // Watch routines (F21): a watch that really ran, Fix it's evidence, and Where was I's answer.
+    case "watch.state": tool = typeof ev.lastCheckedAt === "string" && ev.checking !== true ? "watch" : null; break;
+    case "watch.evidence": tool = "connections"; break;
+    case "where.ready": tool = "whereWasI"; break;
     case "teach.result": tool = ev.verdict === "passed" || ev.verdict === "passed_with_gaps" || ev.verdict === "failed" ? "yourTurn" : null; break;
     case "assist.point": tool = ctx.walk ? null : "showMe"; break;
     case "assist.prompt.done": tool = "promptHelp"; break;

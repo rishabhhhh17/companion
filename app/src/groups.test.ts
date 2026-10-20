@@ -72,7 +72,7 @@ describe("the catalog is complete and consistent", () => {
   test("every command the engine takes is in exactly one tool, and every mode of agent.start too", () => {
     const src = read("../../protocol/index.ts");
     const block = src.slice(src.indexOf("const COMMANDS"), src.indexOf("\n};", src.indexOf("const COMMANDS")));
-    const types = [...block.matchAll(/^ {2}"([a-z]+\.[A-Za-z]+)":/gm)].map((m) => m[1]);
+    const types = [...block.matchAll(/^ {2}"([a-z]+(?:\.[A-Za-z]+)+)":/gm)].map((m) => m[1]);
     expect(types.length).toBeGreaterThan(55);
     const listed = TOOLS.flatMap((t) => t.runner);
     expect(dup(listed)).toEqual([]);
@@ -89,7 +89,7 @@ describe("the catalog is complete and consistent", () => {
   });
   test("the runner's page list and the catalog agree about what a page may send", () => {
     const rs = read("../src-tauri/src/runner.rs");
-    const allowed = [...rs.slice(rs.indexOf("const ALLOWED"), rs.indexOf("];", rs.indexOf("const ALLOWED"))).matchAll(/"([a-z]+\.[A-Za-z]+)"/g)].map((m) => m[1]);
+    const allowed = [...rs.slice(rs.indexOf("const ALLOWED"), rs.indexOf("];", rs.indexOf("const ALLOWED"))).matchAll(/"([a-z]+(?:\.[A-Za-z]+)+)"/g)].map((m) => m[1]);
     const known = new Set(TOOLS.flatMap((t) => t.runner).concat(["agent.start"]));
     for (const a of allowed) expect(known.has(a), a).toBe(true);
   });
@@ -274,7 +274,7 @@ describe("Home's invitations", () => {
     const i = invitation(none, false)!;
     expect(i.tool).toBe("drive");
     expect(i.line).toBe(S.groups.tools.drive.invite);
-    expect(untriedIn("flow", none).map((t) => t.id)).toEqual(["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask"]);
+    expect(untriedIn("flow", none).map((t) => t.id)).toEqual(["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI"]);
   });
   test("a tool leaves the list once tried, and the invitation moves on", () => {
     const r = (k: string) => (k === "groups.tried" ? ["drive", "followUp"] : undefined);

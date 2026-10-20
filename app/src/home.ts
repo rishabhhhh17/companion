@@ -3,6 +3,7 @@
 // island's own words. Plain code, tested in home.test.ts; card.tsx and island.tsx only draw what this decides.
 import { characterWords, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
+import { nameOf } from "./watch.ts";
 
 export type Tab = "now" | "did" | "learn" | "memory" | "settings";
 export const TABS: readonly Tab[] = ["now", "did", "learn", "memory", "settings"];
@@ -16,7 +17,7 @@ export const tabPanelId = (t: Tab) => `home-panel-${t}`;
 export type Panel =
   | "folder" | "ask" | "urgent" | "notes" | "about" | "diagram" | "promptHelp" | "drive" | "ship" | "research" | "rescue"
   | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "everyday" | "bisect" | "errorHelp" | "showMe" | "recap" | "toast"
-  | "whatsNew"
+  | "whatsNew" | "watch"
   | "history"
   | "practice" | "lessons" | "walk"
   | "memory"
@@ -27,7 +28,7 @@ export const PANEL_TAB: Record<Panel, Place> = {
   notes: "every",
   folder: "now", ask: "now", urgent: "now", about: "now", diagram: "now", promptHelp: "now", drive: "now", ship: "now",
   research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now", everyday: "now",
-  bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now",
+  bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now", watch: "now",
   history: "did",
   practice: "learn", lessons: "learn", walk: "learn",
   memory: "memory",
@@ -188,8 +189,17 @@ export function islandAlert(m: Model, marked = false): boolean {
   if (!m.runnerUp) return false;
   if (waiting(m)) return true;
   if (marked && need(m)) return true;
+  if (failingWatch(m)) return true;
   const v = visualState(m);
   return v === "needsYou" || v === "listening" || v === "done";
+}
+
+/** The first watch whose failing alert is still going (F21): the island says so in one plain line and shows its mark. Nothing
+ *  pops up, and nothing takes the keyboard. null when none. */
+export function failingWatch(m: Model): { project: string; kind: string; target?: string; reason: string } | null {
+  if (!m.runnerUp) return null;
+  const id = Object.keys(m.watchAlerts).find((k) => m.watches[k]?.state === "failing" || !m.watches[k]);
+  return id ? m.watchAlerts[id] : null;
 }
 
 /** The character's state as it is drawn. With When something needs me set to only mark the tab (`markTab`) and no island
@@ -205,6 +215,7 @@ export function characterShows(m: Model, markTab: boolean, islandShown: boolean)
 export function islandWord(m: Model): string {
   if (waiting(m)) return stateLabel("needsYou");
   const v = visualState(m);
+  if (v === "idle" && failingWatch(m)) return S.watch.islandWord;
   return v === "error" ? S.islandWordError : stateLabel(v);
 }
 
@@ -230,6 +241,8 @@ function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (v === "done") return cut(own && label ? S.islandDone(label) : stateLabel("done"));
   if (v === "thinking" || v === "working" || v === "checking") return cut(own && label ? S.islandWorkingOn(label) : characterWords(m));
   if (v === "error") return cut(stateLabel("error"));
+  const fw = failingWatch(m);
+  if (fw) return cut(S.watch.islandFailing(nameOf(fw as never)));
   if (m.connected === "none") return S.islandNotConnected;
   if (o.update) return cut(S.islandUpdate(o.update));
   return S.islandReady;
