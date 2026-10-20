@@ -24,7 +24,7 @@ import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
 import { Warmer } from "./warm.ts";
 import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
-import { groupsOff, newlyOff, refusal } from "./groups.ts";
+import { groupsOff, newlyOff, refusal, stopGroupWork } from "./groups.ts";
 import { slowFactor } from "./proof/options.ts";
 
 const SDK_VERSION = "0.3.293";
@@ -80,11 +80,7 @@ process.on("uncaughtException", survive("uncaughtException"));
 /** A group that has just been switched off stops its tools here: Flow ends the tasks and checks that are running, Guide the
  *  lessons and Show me, Voice what Prompt help and the error explainer were reading. (The shell stops its own: the
  *  microphone, speech, the pointer, a conversion.) What they made stays, and Undo of it still works. */
-function stopGroups(groups: string[]) {
-  if (groups.includes("flow")) { void runner.handle({ v: 1, id: "flow-off", type: "agent.interruptAll", reason: "Flow was switched off" }); void browser.stop(); }
-  if (groups.includes("guide")) { walks.stopAll(); assist?.cancelAll(); }
-  if (groups.includes("voice")) assist?.cancelAll();
-}
+function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, browser, assist }); }
 
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.

@@ -867,6 +867,7 @@ export const S = {
     notTried: (names: string) => `Not tried yet: ${names}.`,
     allTried: "You have used every tool in this group.",
     tryTitle: "A tool to try",
+    practiceNeedsFlow: "Checking this practice and fixing it use a tool that is switched off in Settings. Turn it back on there to go on.",
     learnOff: "Lessons and practice are switched off. Turn them back on in Settings, under Groups of tools.",
     permissionsLine: (names: string) => `May ask for ${names}, the first time a tool needs it.`,
     permissionsNone: "Needs no permission.",

@@ -2016,7 +2016,7 @@ fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Opti
     log("speak", json!({ "chars": line.chars().count(), "whole": whole == Some(true) }));   // how long, never what
     let set = voice_now();
     let _ = app.run_on_main_thread(move || speak::mac::say(&line, set.voice.as_ref(), set.speed));
-    mark_tried(&app, "speak");   // a line really said out loud
+    if whole.is_some() { mark_tried(&app, "speak"); }   // an answer really said out loud; the voice sample in Settings sends no `whole`, so trying a voice is not a use
     Ok(json!({ "said": true }))
 }
 

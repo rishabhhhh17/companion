@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { REGISTRY, defOf } from "../../protocol/settings.ts";
 import {
   ASK_BUTTONS, GROUPS, SWITCHED, TOOLS, askButtons, buttonShown, groupOf, groupOn, groupLook, groupView, invitation, learnShown, offLine, permissionNeeded,
-  toolById, toolOn, triedList, untriedIn, usedBy, activeGroup, switchKey, type GroupId, type ToolId,
+  toolById, toolOn, triedList, untriedIn, usedBy, activeGroup, switchKey, followPendingAfter, refusalNotice, type GroupId, type ToolId,
 } from "./groups.ts";
 import { initial } from "./model.ts";
 import { islandLine } from "./home.ts";
@@ -19,6 +19,8 @@ const names = (...xs: string[][]) => xs.flat();
 const none = (): unknown => undefined;
 /** A reader that has these groups switched off. */
 const off = (...g: GroupId[]) => (key: string): unknown => (g.some((x) => switchKey(x) === key) ? false : undefined);
+/** A receipt of a task that really finished and changed something. */
+const RECEIPT = { type: "receipt", agent: "a", changed: [{ file: "a.txt", kind: "added" }], proof: "passed", ended: "done", mode: "drive" };
 const dup = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) !== i);
 
 describe("the catalog is complete and consistent", () => {
@@ -144,8 +146,8 @@ describe("tried: a real use only", () => {
     expect(triedList((k) => (k === "groups.tried" ? "rescue" : undefined))).toEqual([]);
   });
   test("a finished task, a diagnosis, a real check, an undo, a lesson step and a Show me answer each count once", () => {
-    expect(usedBy({ type: "receipt", agent: "a" })).toEqual(["drive"]);
-    expect(usedBy({ type: "receipt", agent: "a" }, { followUp: true })).toEqual(["followUp"]);
+    expect(usedBy(RECEIPT)).toEqual(["drive"]);
+    expect(usedBy(RECEIPT, { followUp: true })).toEqual(["followUp"]);
     expect(usedBy({ type: "rescue.report", agent: "a" })).toEqual(["rescue"]);
     expect(usedBy({ type: "proof.result", verdict: "passed" })).toEqual(["proof"]);
     expect(usedBy({ type: "proof.result", verdict: "failed" })).toEqual(["proof"]);
@@ -183,10 +185,87 @@ describe("tried: a real use only", () => {
     expect(usedBy({ type: "rescue.report" }, { read: off("guide") })).toEqual(["rescue"]);
   });
   test("every tool the page marks is one of the page's own; the shell's are never marked from a page", () => {
-    const samples: unknown[] = [{ type: "receipt" }, { type: "rescue.report" }, { type: "proof.result", verdict: "passed" }, { type: "checkpoint.restored" }, { type: "walk.step" }, { type: "assist.point" },
+    const samples: unknown[] = [RECEIPT, { type: "rescue.report" }, { type: "proof.result", verdict: "passed" }, { type: "checkpoint.restored" }, { type: "walk.step" }, { type: "assist.point" },
       { type: "assist.prompt.done" }, { type: "error.explained", ok: true }, { type: "bisect.result", outcome: "found" }, { type: "problem.found", verdict: "failed" }, { type: "diagram.ready", made: true }, { type: "explain.ready" }, { type: "teach.result", verdict: "passed" }];
     for (const e of samples) for (const t of usedBy(e)) expect(toolById(t)!.tried, t).toBe("page");
     for (const id of ["talk", "speak", "convert", "practice"]) expect(toolById(id as ToolId)!.tried).toBe("shell");
+  });
+});
+
+describe("tried: a task that did not really finish counts for nothing", () => {
+  test("a finished task, or one that stopped to ask something, counts, as Drive or as a follow up", () => {
+    expect(usedBy({ ...RECEIPT, ended: "needs_you" })).toEqual(["drive"]);
+    expect(usedBy({ ...RECEIPT, ended: "needs_you" }, { followUp: true })).toEqual(["followUp"]);
+    expect(usedBy({ ...RECEIPT, changed: [], proof: "partial" })).toEqual(["drive"]);
+  });
+  test("a task the person stopped, one that failed and one that ran out of money count for nothing", () => {
+    for (const ended of ["stopped", "failed"]) {
+      expect(usedBy({ ...RECEIPT, ended }), ended).toEqual([]);
+      expect(usedBy({ ...RECEIPT, ended }, { followUp: true }), ended).toEqual([]);
+    }
+  });
+  test("a task that changed nothing and checked nothing counts for nothing", () => {
+    expect(usedBy({ ...RECEIPT, changed: [], proof: "skipped" })).toEqual([]);
+    expect(usedBy({ ...RECEIPT, changed: [], proof: "skipped" }, { followUp: true })).toEqual([]);
+  });
+  test("a task of another mode is not a Drive try, and a receipt that does not say how it ended is not trusted", () => {
+    expect(usedBy({ ...RECEIPT, mode: "rescue" })).toEqual([]);
+    expect(usedBy({ ...RECEIPT, mode: "ship" })).toEqual([]);
+    expect(usedBy({ type: "receipt", agent: "a" })).toEqual([]);
+    expect(usedBy({ ...RECEIPT, ended: undefined })).toEqual([]);
+  });
+  test("a follow up that was refused or never began does not make the next new task a follow up", () => {
+    expect(followPendingAfter({ type: "receipt" }, true)).toBe(false);
+    expect(followPendingAfter({ type: "protocol.error", reason: "no", line: "agent.send" }, true)).toBe(false);
+    expect(followPendingAfter({ type: "protocol.error", reason: offLine() }, true)).toBe(false);
+    expect(followPendingAfter({ type: "protocol.error", reason: "something else went wrong" }, true)).toBe(true);
+    expect(followPendingAfter({ type: "agent.state", state: "working" }, true)).toBe(true);
+    expect(followPendingAfter({ type: "agent.state", state: "working" }, false)).toBe(false);
+    expect(followPendingAfter(null, true)).toBe(true);
+  });
+});
+
+describe("what the shell's off line becomes on the card", () => {
+  test("a refusal is shown as the one plain line; anything else is not turned into a notice", () => {
+    expect(refusalNotice(offLine())).toBe(offLine());
+    expect(refusalNotice(new Error(offLine()))).toBe(offLine());
+    expect(refusalNotice("something else broke")).toBeNull();
+    expect(refusalNotice(undefined)).toBeNull();
+  });
+});
+
+describe("Practice leans on Flow, so its buttons follow Flow", () => {
+  test("Find what is wrong, Fix it with me and Why did this break are not drawn with Flow off, and are with Flow on", () => {
+    for (const id of ["practiceFind", "practiceFix", "practiceWhy"]) {
+      expect(buttonShown(id, off("flow")), id).toBe(false);
+      expect(buttonShown(id, none), id).toBe(true);
+      expect(buttonShown(id, off("guide", "voice", "files")), id).toBe(true);
+    }
+  });
+  test("with Flow off a practice cannot enter a waiting state: its panel and the card never send a Flow command unasked", () => {
+    const panel = read("./practicePanel.tsx"), card = read("./card.tsx");
+    expect(panel).toContain('buttonShown("practiceFind")');
+    expect(panel).toContain('buttonShown("practiceFix")');
+    expect(panel).toContain('buttonShown("practiceWhy")');
+    expect(panel).toContain("S.groups.practiceNeedsFlow");
+    // The same three, and the one that resumes a practice by itself, are guarded where they set a waiting state.
+    expect(card).toContain('toolOn("findProblem")');
+    expect(card).toContain('toolOn("drive")');
+    expect(S.groups.practiceNeedsFlow).toMatch(/switched off in Settings/);
+    expect(S.groups.practiceNeedsFlow).not.toMatch(/Flow|Guide|Voice|Files/);
+  });
+  test("every command that puts the page in a waiting state can come back: it goes through the wrapper that closes the state", () => {
+    const card = read("./card.tsx");
+    expect(card).toContain("const sendOrExplain =");
+    for (const bare of [/void send\((findProblem|fixFound|findBreakingTask)\(/, /void send\(c\); setFollowText/, /void send\(cmd\);\n  \};/]) expect(card).not.toMatch(bare);
+    for (const closed of ["ui.pointClosed", "ui.practiceFixRefused", "ui.bisectClosed", "ui.diagramClosed", "ui.practiceStopProving"]) expect(card, closed).toContain(closed);
+  });
+  test("the ask box says it is switched off instead of bouncing silently when Flow is off", () => {
+    const card = read("./card.tsx");
+    const submit = card.slice(card.indexOf("  const submit = () => {"), card.indexOf("const submitNow"));
+    expect(submit).toContain('!toolOn("drive")');
+    expect(submit).toContain("offLine()");
+    expect(submit).toContain("explainRefusal(e)");
   });
 });
 

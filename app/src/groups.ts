@@ -62,6 +62,8 @@ export const ASK_BUTTONS: { id: string; tool: ToolId }[] = [
 ];
 const OTHER_ENTRIES: { id: string; tool: ToolId }[] = [
   { id: "whichTask", tool: "whichTask" }, { id: "findProblem", tool: "findProblem" }, { id: "autoSend", tool: "talk" }, { id: "voiceTry", tool: "speak" },
+  // A practice (Guide) leans on three Flow tools: its check (Point at the problem), its fix (a task) and its drawing (Draw it for me).
+  { id: "practiceFind", tool: "findProblem" }, { id: "practiceFix", tool: "drive" }, { id: "practiceWhy", tool: "explain" },
 ];
 const ENTRY = new Map<string, ToolId>([...ASK_BUTTONS, ...OTHER_ENTRIES].map((b) => [b.id, b.tool]));
 export const buttonShown = (id: string, read: Read = setting): boolean => { const t = ENTRY.get(id); return !t || toolOn(t, read); };
@@ -87,6 +89,31 @@ export const untriedIn = (g: GroupId, read: Read = setting): Tool[] => {
 
 type Ev = { type?: unknown; [k: string]: unknown };
 const isEv = (v: unknown): v is Ev => typeof v === "object" && v !== null && typeof (v as Ev).type === "string";
+/** A receipt is a real try only when the task finished (it is done, or stopped to ask something) in the Drive mode and
+ *  something happened (a file changed or a check ran). A task the person stopped, one that failed or ran out of money, an
+ *  empty one and one of another mode count for nothing. A receipt that does not say how it ended is not trusted. */
+const realTask = (ev: Ev): boolean => {
+  if (ev.ended !== "done" && ev.ended !== "needs_you") return false;
+  if (ev.mode !== undefined && ev.mode !== "drive") return false;
+  const changed = Array.isArray(ev.changed) && ev.changed.length > 0;
+  return changed || (typeof ev.proof === "string" && ev.proof !== "skipped");
+};
+
+/** Whether the next task is still waiting to be told apart as a follow up: it stops waiting when that task ended (its
+ *  receipt) or the follow up itself was refused. Pure, so a refused follow up never turns the next new task into one. */
+export const followPendingAfter = (ev: unknown, pending: boolean): boolean => {
+  if (!pending || !isEv(ev)) return pending;
+  if (ev.type === "receipt") return false;
+  return !(ev.type === "protocol.error" && (ev.line === "agent.send" || ev.reason === offLine()));
+};
+
+/** The plain line to show when a command was refused because its group is off (the shell says exactly offLine()), or none
+ *  for any other failure. */
+export function refusalNotice(e: unknown): string | null {
+  const text = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+  return text === offLine() ? text : null;
+}
+
 /** Which tool an engine event shows was really used. A finished task, a diagnosis, a check that ran, an undo, a lesson
  *  step, a Show me answer, an improved prompt or an explained error each count. A try that was cancelled, refused or
  *  found nothing counts for nothing, and neither does a tool that is switched off. `followUp`: that task was a follow up.
@@ -97,7 +124,7 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
   const t = ev.type as string;
   let tool: ToolId | null = null;
   switch (t) {
-    case "receipt": tool = ctx.followUp ? "followUp" : "drive"; break;
+    case "receipt": tool = realTask(ev) ? (ctx.followUp ? "followUp" : "drive") : null; break;
     case "rescue.report": tool = "rescue"; break;
     case "proof.result": tool = ev.verdict === "passed" || ev.verdict === "passed_with_gaps" || ev.verdict === "failed" ? "proof" : null; break;
     case "checkpoint.restored": tool = "undo"; break;

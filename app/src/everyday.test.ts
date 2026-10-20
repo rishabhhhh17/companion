@@ -206,7 +206,7 @@ describe("the card", () => {
   const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
   test("the key chooses with heroRoute and the setting, before anything is checked or looked at", () => {
     expect(key).toContain('heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current })');
-    expect(key.indexOf("heroRoute(")).toBeLessThan(key.indexOf("send(findProblem("));
+    expect(key.indexOf("heroRoute(")).toBeLessThan(key.indexOf("sendOrExplain(findProblem("));
     expect(key).toContain("lookEveryday()");
   });
   test("the everyday look is Show me's own look (light first, nothing kept) with its mode", () => {
@@ -223,7 +223,7 @@ describe("the card", () => {
     expect(card).toContain("S.everydayLookInstead");
     const back = card.split("\n").find((l) => l.includes("S.everydayCheckProject")) ?? "";
     expect(back).toContain('ed.stage === "none" && project');
-    expect(back).toContain("pressed(); dispatch({ type: \"ui.everydayClosed\" }); dispatch({ type: \"ui.findProblem\" }); void send(findProblem(project));");
+    expect(back).toContain("pressed(); dispatch({ type: \"ui.everydayClosed\" }); dispatch({ type: \"ui.findProblem\" }); void sendOrExplain(findProblem(project), () => dispatch({ type: \"ui.pointClosed\" }));");
   });
 });
 

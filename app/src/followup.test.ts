@@ -179,6 +179,6 @@ describe("following up by voice", () => {
     const now = card.slice(card.indexOf("sendFollowNow.current = () => {"), card.indexOf("};", card.indexOf("sendFollowNow.current = () => {")));
     expect(now).toContain("followUp(project, followText)");
     expect(now).toContain('m.followUp === "sending" || !followShown.current');
-    expect(now).toContain("followSent(true); void send(c);");
+    expect(now).toContain("followSent(true); void send(c).catch(followRefused);");
   });
 });

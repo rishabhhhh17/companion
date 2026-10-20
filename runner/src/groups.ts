@@ -39,3 +39,22 @@ export function refusal(get: Get, cmd: { type: string; mode?: unknown }): string
 
 /** The groups switched off now that were not before: they stop what they were doing. */
 export const newlyOff = (before: string[], after: string[]): string[] => after.filter((g) => !before.includes(g));
+
+/** The agent modes (what agent.start says it is doing) that belong to a group's tools, from the catalog. */
+export const agentModesOf = (group: string): Set<string> => new Set(TOOLS.filter((t) => t.group === group).flatMap((t) => t.agentModes ?? []));
+
+/** What a group that has just been switched off must end, and nothing else. The parts are the engine's own services; the
+ *  shell stops its own (microphone, speech, the pointer, a conversion). Flow ends its tasks and checks (the runner knows
+ *  which are Flow's) and the browser download; Guide the lessons and the Show me questions (the screen); Voice Prompt help
+ *  and the error explainer. A task of Research or Ship is never ended by any of them. */
+export type Parts = {
+  runner: { stopGroup(g: "flow" | "voice"): Promise<void> | void };
+  walks: { stopAll(): void };
+  browser: { stop(): unknown };
+  assist?: { cancel(g: "guide" | "voice"): void } | null;
+};
+export function stopGroupWork(groups: string[], p: Parts): void {
+  if (groups.includes("flow")) { void p.runner.stopGroup("flow"); void p.browser.stop(); }
+  if (groups.includes("guide")) { p.walks.stopAll(); p.assist?.cancel("guide"); }
+  if (groups.includes("voice")) { p.assist?.cancel("voice"); void p.runner.stopGroup("voice"); }
+}

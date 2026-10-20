@@ -338,7 +338,10 @@ mod tests {
     }
     #[test]
     fn the_shell_notes_the_uses_only_it_can_see_where_they_really_happen() {
-        assert!(body(MAIN, "fn speak(").contains(r#"mark_tried(&app, "speak")"#));
+        // Only a spoken answer (the page says `whole`) is a use of Spoken answers: the sample Settings plays to try a voice
+        // sends no `whole`, so previewing a voice never counts.
+        assert!(body(MAIN, "fn speak(").contains(r#"if whole.is_some() { mark_tried(&app, "speak"); }"#));
+        assert!(!body(MAIN, "fn speak(").contains("\n    mark_tried(&app, \"speak\")"));
         assert!(MAIN.contains(r#"say_voice(&app, "heard", "", mic); mark_tried(&app, "talk")"#));
         assert!(body(MAIN, "fn practice_mark(").contains(r#"mark_tried(&app, "practice")"#));
         let at = MAIN.find("let end = convert::end_news(id, &ended);").unwrap();
