@@ -540,8 +540,15 @@ function Card() {
     }));
   };
   // Remove my copy (asked first): to the Trash, and out of the recent folders.
+  // The copy that was open goes back to the folder used before it (else the newest folder of the person's own), so Home is not
+  // left with no folder at all.
   const removePractice = (id: string) => practiceAction(() => invoke("remove_practice", { which: id, busy: workingOn(nowModel.current) }).then((n) => {
-    if (nowModel.current.practice?.kind === id) dispatch({ type: "ui.practiceClosed" });
+    const open = nowModel.current.practice;
+    if (open?.kind === id) {
+      const to = backTo(open.previous, recent, practiceRec);
+      dispatch({ type: "ui.practiceClosed" });
+      if (to) useFolder(to);
+    }
     setPracticeNote(S.practiceRemoved(String(n)));
     loadRecent();
   }));

@@ -702,3 +702,14 @@ describe("the practice says what its fix is, and what Fix it does on your own pr
     expect(defaultOf("point.fixWith")).toBe("rescue");
   });
 });
+
+// Found in the second audit: Remove my copy on the copy that was open left Home with no folder, although the folder used
+// before it was known. It goes back there now, as Back to my project does.
+describe("removing the practice copy that is open", () => {
+  const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+  test("Home goes back to the folder from before, else the newest folder of the person's own", () => {
+    const f = card.slice(card.indexOf("const removePractice = "), card.indexOf("// A recorded copy opened again"));
+    expect(f).toContain("backTo(open.previous, recent, practiceRec)");
+    expect(f.indexOf("backTo(")).toBeLessThan(f.indexOf("useFolder(to)"));
+  });
+});
