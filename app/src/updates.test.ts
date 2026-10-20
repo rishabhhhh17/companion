@@ -54,6 +54,20 @@ describe("busy means do not restart", () => {
   });
 });
 
+describe("a task that ended on a question", () => {
+  const asked = { character: "needsYou", task: { agent: "a" }, receipt: { asks: true }, agents: { a: "needsYou" }, approvals: [] } as never;
+  test("nothing runs, so Install is allowed", () => {
+    expect(isBusy(asked)).toBe(false);
+    expect(installAllowed(asked)).toBe(true);
+  });
+  test("a waiting approval, plan or card on top of it still counts as busy", () => {
+    expect(isBusy({ ...(asked as object), approvals: [{}] } as never)).toBe(true);
+    expect(isBusy({ ...(asked as object), plan: {} } as never)).toBe(true);
+    expect(isBusy({ ...(asked as object), agents: { a: "needsYou", b: "working" } } as never)).toBe(true);
+    expect(isBusy({ ...(asked as object), receipt: { asks: true, undone: true } } as never)).toBe(true);
+  });
+});
+
 describe("the shell saying an update is ready", () => {
   test("only a plain version is taken; anything else means none", () => {
     expect(readyVersion({ version: "0.2.0" })).toBe("0.2.0");

@@ -31,20 +31,27 @@ pub fn failure_words(raw: &str) -> &'static str {
 /// waiting for the person, and approvals not answered yet. The page's own check comes first (updates.ts installAllowed,
 /// which knows more: a deploy, an install, a practice); this is the backstop in install_update, so a press that reaches
 /// the shell anyway never restarts Companion under a running task. Ids only, never what a task says or does.
-pub struct Running { agents: std::collections::BTreeSet<String>, approvals: std::collections::BTreeSet<String> }
+pub struct Running { agents: std::collections::BTreeSet<String>, approvals: std::collections::BTreeSet<String>, asked: std::collections::BTreeSet<String> }
 impl Running {
-    pub const fn new() -> Self { Running { agents: std::collections::BTreeSet::new(), approvals: std::collections::BTreeSet::new() } }
+    pub const fn new() -> Self { Running { agents: std::collections::BTreeSet::new(), approvals: std::collections::BTreeSet::new(), asked: std::collections::BTreeSet::new() } }
     pub fn note(&mut self, v: &serde_json::Value) {
         let s = |k: &str| v.get(k).and_then(serde_json::Value::as_str);
         match s("type") {
             Some("agent.state") => {
                 let (Some(agent), Some(state)) = (s("agent"), s("state")) else { return };
-                if matches!(state, "thinking" | "working" | "checking" | "needsYou") { self.agents.insert(agent.to_string()); } else { self.agents.remove(agent); }
+                // A task that ended on a question (its receipt asks) needs the person but runs nothing: a restart cuts nothing off.
+                if state == "needsYou" && self.asked.contains(agent) { self.agents.remove(agent); }
+                else if matches!(state, "thinking" | "working" | "checking" | "needsYou") { self.agents.insert(agent.to_string()); self.asked.remove(agent); }
+                else { self.agents.remove(agent); self.asked.remove(agent); }
+            }
+            Some("receipt") => {
+                let Some(agent) = s("agent") else { return };
+                if v.get("asks").and_then(serde_json::Value::as_bool) == Some(true) { self.asked.insert(agent.to_string()); self.agents.remove(agent); } else { self.asked.remove(agent); }
             }
             Some("approval.request") => { if let Some(a) = s("approval") { self.approvals.insert(a.to_string()); } }
             Some("approval.resolved") => { if let Some(a) = s("approval") { self.approvals.remove(a); } }
             // An engine that has just started, or has stopped, runs nothing.
-            Some("runner.hello") | Some("app.runner_down") => { self.agents.clear(); self.approvals.clear(); }
+            Some("runner.hello") | Some("app.runner_down") => { self.agents.clear(); self.approvals.clear(); self.asked.clear(); }
             _ => {}
         }
     }
@@ -157,6 +164,29 @@ mod tests {
         let busy = install.find("if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }").expect("a busy check");
         assert!(busy < install.find("PENDING_UPDATE").unwrap(), "asked before the update is taken, so it can be installed later");
         assert_eq!(BUSY_WORDS, "Wait until the current task is finished, then install.", "the same words as the page (S.updatesBusy)");
+    }
+    #[test]
+    fn a_task_that_ended_on_a_question_runs_nothing_but_a_new_task_does() {
+        let mut r = Running::new();
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" }));
+        r.note(&serde_json::json!({ "type": "receipt", "agent": "a", "asks": true }));
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "needsYou" }));
+        assert!(!r.busy(), "the task ended and waits for an answer");
+        // A question that is an approval still counts through its approval.
+        r.note(&serde_json::json!({ "type": "approval.request", "approval": "ap_1", "agent": "a" }));
+        assert!(r.busy());
+        r.note(&serde_json::json!({ "type": "approval.resolved", "approval": "ap_1" }));
+        assert!(!r.busy());
+        // The answer starts the agent again.
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "working" }));
+        assert!(r.busy());
+        r.note(&serde_json::json!({ "type": "agent.state", "agent": "a", "state": "needsYou" }));
+        assert!(r.busy(), "a needs you that follows work, not a question that ended a task, still counts");
+        // A receipt that does not ask changes nothing about a needs you.
+        let mut q = Running::new();
+        q.note(&serde_json::json!({ "type": "receipt", "agent": "b", "asks": false }));
+        q.note(&serde_json::json!({ "type": "agent.state", "agent": "b", "state": "needsYou" }));
+        assert!(q.busy());
     }
     #[test]
     fn a_failed_download_keeps_the_update_so_install_can_be_pressed_again_and_a_task_started_meanwhile_is_not_cut_off() {

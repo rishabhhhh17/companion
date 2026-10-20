@@ -16,6 +16,15 @@ const tasks = [
 ];
 const ids = (l: HistoryItem[]) => l.map((x) => x.id);
 
+describe("a task waiting for an answer", () => {
+  test("is not filed under Not done", () => {
+    expect(statusGroup("needs_you")).toBe("stopped");
+    expect(statusGroup("daily_limit")).toBe("stopped");
+    expect(statusGroup("error")).toBe("not_done");
+    expect(statusGroup("")).toBe("not_done");
+  });
+});
+
 describe("search in What I did", () => {
   test("nothing typed and every status: the whole list, in the same order", () => {
     expect(ids(filterHistory(tasks, { words: "", status: "all" }))).toEqual(ids(tasks));
