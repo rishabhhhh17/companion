@@ -11,6 +11,11 @@ const PATTERNS: RegExp[] = [
   /npm_[A-Za-z0-9]{30,}/g,                                 // npm tokens
   /github_pat_[A-Za-z0-9_]{30,}/g,                         // GitHub fine grained tokens
   /\bBearer\s+[A-Za-z0-9._~+\/=-]{16,}/g,                  // authorization headers
+  /whsec_[A-Za-z0-9+\/=_-]{16,}/g,                         // webhook signing secrets (Stripe, Svix)
+  /rk_(?:live|test)_[A-Za-z0-9]{10,}/g,                    // Stripe restricted keys
+  /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g,          // SendGrid keys
+  /\bsb_secret_[A-Za-z0-9_-]{16,}/g,                       // Supabase secret keys
+  /\bre_(?=[A-Za-z0-9_]*[0-9])(?=[A-Za-z0-9_]*[A-Z])[A-Za-z0-9_]{20,}/g,   // Resend keys (a digit and a capital, so names are left alone)
   /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/]+:[^\s@\/]+@/gi,         // passwords inside addresses (postgres://user:pass@host)
 ];
 // "password: hunter2", "API_KEY=abc123": the name tells us the value is a secret.

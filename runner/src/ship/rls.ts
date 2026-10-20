@@ -59,10 +59,12 @@ const SET_SCHEMA = new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:o
 const POLICY = /create\s+policy\s+(?:"[^"]+"|\w+)\s+on\s+((?:"[^"]+"|\w+)(?:\s*\.\s*(?:"[^"]+"|\w+))?)([^;]*)/gi;
 
 // made: where each table still there was last made (its file, the line of create table and that line's text).
-export function analyzeMigrations(files: Record<string, string>): { tables: string[]; withoutRls: string[]; openPolicies: string[]; dynamic: boolean; made: Record<string, { file: string; line: number; lineText: string }> } {
+// signedInOpen: tables with a rule for signed in people that says "true", so every account can read or change every row (on
+// Supabase anyone can usually sign up).
+export function analyzeMigrations(files: Record<string, string>): { tables: string[]; withoutRls: string[]; openPolicies: string[]; signedInOpen: string[]; dynamic: boolean; made: Record<string, { file: string; line: number; lineText: string }> } {
   const state = new Map<string, boolean>();
   const made: Record<string, { file: string; line: number; lineText: string }> = {};
-  const openPolicies = new Set<string>();
+  const openPolicies = new Set<string>(), signedInOpen = new Set<string>();
   let dynamic = false;
   for (const name of Object.keys(files).sort()) {
     const cleaned = cleanSql(files[name]);
@@ -73,6 +75,7 @@ export function analyzeMigrations(files: Record<string, string>): { tables: stri
       const toWho = /\bto\s+([\w\s,"]+?)(?=\s+(?:using|with)\b|$)/i.exec(rest)?.[1].toLowerCase() ?? "public";
       const wide = /\busing\s*\(\s*true\s*\)/i.test(rest) || /\bwith\s+check\s*\(\s*true\s*\)/i.test(rest);
       if (t && wide && /\b(anon|public)\b/.test(toWho)) openPolicies.add(t);
+      else if (t && wide && /\bauthenticated\b/.test(toWho)) signedInOpen.add(t);
     }
     const events: { at: number; kind: "create" | "enable" | "disable" | "drop" | "rename" | "leave"; table: string | null; to?: string }[] = [];
     for (const m of sql.matchAll(RENAME)) events.push({ at: m.index!, kind: "rename", table: publicTable(m[1]), to: m[2].replace(/^"|"$/g, "").toLowerCase() });
@@ -95,7 +98,7 @@ export function analyzeMigrations(files: Record<string, string>): { tables: stri
   }
   const tables = [...state.keys()];
   for (const t of Object.keys(made)) if (!state.has(t)) delete made[t];
-  return { tables, withoutRls: tables.filter((t) => !state.get(t)), openPolicies: [...openPolicies].filter((t) => state.has(t)), dynamic, made };
+  return { tables, withoutRls: tables.filter((t) => !state.get(t)), openPolicies: [...openPolicies].filter((t) => state.has(t)), signedInOpen: [...signedInOpen].filter((t) => state.has(t) && !openPolicies.has(t)), dynamic, made };
 }
 
 export function liveRows(rows: { table: string; rls: boolean | null }[]): { tables: string[]; withoutRls: string[] } {
@@ -122,6 +125,12 @@ export async function rlsGate(o: { project: string; query?: () => Promise<{ tabl
     return { id: ID, label: LABEL, status: "blocked", detail: open(stat.withoutRls), findings: stat.withoutRls, overridable: false, ...(places.length ? { places } : {}) };
   }
   const note = stat.dynamic ? " Some of your database code builds its tables while it runs, which I cannot read, so tables made that way are not covered." : "";
+  // A rule that lets every signed in account read or change every row: the live database's row level security being on
+  // says nothing about that, so it is named whether or not the live database is read. The person may confirm it is meant.
+  if (stat.signedInOpen.length && !stat.openPolicies.length) {
+    return { id: ID, label: LABEL, status: "could_not_check", overridable: true, findings: stat.signedInOpen,
+      detail: `Every signed in account can read or change all rows of ${stat.signedInOpen.join(", ")}, because of a rule for signed in people that says "true". On Supabase anyone can usually sign up, so make the rule check whose row it is, or confirm it is meant to be shared.${note}` };
+  }
   if (!o.query && stat.openPolicies.length) {
     return { id: ID, label: LABEL, status: "could_not_check", overridable: true, findings: stat.openPolicies,
       detail: `${stat.openPolicies.join(", ")} can be read or changed by anyone, signed in or not, because of a rule that says "true". Make the rule check who the person is, or confirm it is meant to be public.${note}` };

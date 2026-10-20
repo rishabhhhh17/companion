@@ -18,7 +18,7 @@ import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./ask
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS, usualModel } from "./models.ts";
-import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
+import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, LIMIT_REACHED, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
@@ -400,6 +400,10 @@ export class AgentRunner {
 
   // What this project may still spend today.
   private room(project: string): number { return this.dailyLimitUsd - this.ledger.spentToday(project); }
+  /** Spending outside a task (Prompt help, AssistService): what a project may still spend today, and booking it. Nothing is
+   *  booked or held back with no project: the stand in spends nothing of its own (T16). */
+  roomFor(project?: string): number { return !project || project === NO_PROJECT ? Infinity : this.room(project); }
+  bookSpend(project: string | undefined, usd: number) { if (project && project !== NO_PROJECT && Number.isFinite(usd) && usd > 0) this.ledger.add(project, usd); }
   // The Settings row: the daily limit against what this project spent today. A new limit is used only once it is kept.
   private spendingState(project: string, problem?: string) {
     const spent = project === NO_PROJECT ? 0 : Math.round(this.ledger.spentToday(project) * 1e6) / 1e6;
@@ -655,6 +659,7 @@ export class AgentRunner {
   }
   private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
   private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
+  private taskUsd = new Map<string, number>();       // agent -> what its running task has booked so far
   private touched = new Set<string>();               // agents whose task has started changing the project
 
   // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
@@ -676,7 +681,8 @@ export class AgentRunner {
       return await this.runInner(ready.cmd, ready.opts);
     } catch (e) {
       const row = this.openTasks.get(cmd.agent);
-      if (row !== undefined) { try { this.o.log.finish(row, "error", 0, this.now().toISOString()); } catch { /* the log is not worth a second failure */ } this.openTasks.delete(cmd.agent); }
+      // What the task had spent before it failed is already in the day's total, so its row says so too.
+      if (row !== undefined) { try { this.o.log.finish(row, "error", this.taskUsd.get(cmd.agent) ?? 0, this.now().toISOString()); } catch { /* the log is not worth a second failure */ } this.openTasks.delete(cmd.agent); }
       const why = clip(redact(String((e as Error).message ?? e).split("\n")[0]), 160);
       // No Git on this Mac (checkpoints.ts NEEDS_GIT) is said as the one thing to do, whole, never inside another sentence.
       this.fail(isNeedsGit(e) ? NEEDS_GIT : this.touched.has(cmd.agent) ? `The task stopped unexpectedly (${why}). Look at your project, and use Undo if something is not right.` : `The task could not start (${why}). Nothing in your project was changed.`, cmd.agent);
@@ -686,6 +692,7 @@ export class AgentRunner {
       this.sessions.delete(cmd.agent);
       this.projectBusy.delete(key);
       this.touched.delete(cmd.agent);
+      this.taskUsd.delete(cmd.agent);
       this.watchers.get(cmd.agent)?.clearTools();     // a tool that was stopped partway may never have reported back
     }
   }
@@ -755,8 +762,6 @@ export class AgentRunner {
     const store = this.store(cmd.project);
     const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(opts.label ?? cmd.prompt);
     const recalled = this.learnAndRecall(cmd.project, opts.said ?? cmd.prompt, cmd.offTheRecord);
-    // A new task replaces the last one: whatever happens to this one, a follow up never carries on an older conversation.
-    this.lastTask.delete(cmd.agent);
     const goal = opts.goal ?? cmd.prompt, first = opts.first ?? goal;
     const abort = new AbortController();
     const session = newSession(cmd.agent, abort, opts.taskAllowed);
@@ -764,6 +769,10 @@ export class AgentRunner {
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
+    // A new task replaces the last one once it has really started: whatever happens to it, a follow up never carries on an
+    // older conversation. A start that failed before this (its snapshot could not be made) changed nothing, so Try again
+    // is still there.
+    this.lastTask.delete(cmd.agent);
     // A practice's task says which practice it is, on its checkpoint and its receipt, so the page finishes the practice only
     // with its own task (the id changes nothing else here).
     const practice = cmd.practice ? { practice: cmd.practice } : {};
@@ -775,7 +784,7 @@ export class AgentRunner {
 
     let usd = prior, booked = prior, commands = 0, status = "done";   // what was spent before it started is booked already
     const tokens = { in: 0, cacheRead: 0, out: 0 };
-    const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; };
+    const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; this.taskUsd.set(cmd.agent, usd); };
     // Off the record, the engine saves no conversation, so nothing can be continued later: each round starts afresh.
     const offRecord = !!cmd.offTheRecord;
     const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
@@ -1058,7 +1067,8 @@ export class AgentRunner {
   private async readOnly(spec: { agent: string; project: string; model: string; budgetUsd: number; offTheRecord?: boolean; said?: string; allow?: Set<string>; refuse?: string; check?: (tool: ToolUse) => string | null; tools?: readonly string[] },
     body: (ask: (prompt: string, resume?: string) => Promise<string>, st: { usd: number; sessionId?: string; abort: AbortController }) => Promise<void>): Promise<void> {
     if (this.sessions.has(spec.agent)) { this.fail("That agent is already working. Wait for it to finish, or press Stop.", spec.agent); return; }
-    if (this.projectBusy.has(resolve(spec.project))) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", spec.agent); return; }
+    // A task, a check, an install the person started, a copy or a ship step: Rescue, Research and planning wait for it too.
+    if (this.projectInUse(spec.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", spec.agent); return; }
     const room = this.room(spec.project);
     if (room <= 0) { this.dailyLimit(spec.agent); return; }
     const budget = Math.min(spec.budgetUsd, room);
@@ -1415,7 +1425,8 @@ export class AgentRunner {
     // Every press ends with problem.found, so the card never stays on "Checking".
     // note: one plain line about something that could not be checked (the Vercel tool missing, say), with what to do.
     const found = (verdict: string, fl?: Pick<Step, "label" | "detail" | "problem">, needs?: "browser", note?: string) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}), ...(note ? { note } : {}) } as never);
-    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectBusy.has(resolve(cmd.project))) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
+    // An install the person started, a copy or a ship step counts too: a check on half installed packages points at nothing real.
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });
     try {
@@ -1634,6 +1645,8 @@ export class AgentRunner {
     try { where = project ? locateError(text, project) : null; } catch { where = null; }
     const at = where?.kind === "line" ? { where } : {};
     if (!this.o.explainer) { say(false, { ...at, reason: "Explaining needs Claude, which is not connected here. You can still look at where it is, or press Fix it." }); return; }
+    // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
+    if (this.roomFor(project) <= 0) { say(false, { ...at, reason: LIMIT_REACHED }); return; }
     const ac = new AbortController();
     this.picturing.add(ac);   // Stop everything ends it
     let timedOut = false;
@@ -1641,6 +1654,7 @@ export class AgentRunner {
     try {
       const gone = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
       const r = await Promise.race([this.o.explainer(errorRequest(text, where), ac.signal), gone]);
+      this.bookSpend(project, r.costUsd);
       const sentences = parseExplanation(r.text);
       if (ac.signal.aborted) { say(false, { ...at, reason: timedOut ? "That took too long. Try again." : "Stopped." }); return; }
       if (!sentences) { say(false, { ...at, reason: "I could not explain that clearly. You can still look at where it is, or press Fix it.", usdEstimate: r.costUsd }); return; }
@@ -1658,6 +1672,8 @@ export class AgentRunner {
     const done = (made: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "diagram.ready", project: cmd.project, ask: cmd.id, made, ...extra } as never);
     if (!this.o.explainer) { done(false, { reason: "Drawing is not available in this mode." }); return; }
     if (!existsSync(cmd.project)) { done(false, { reason: "That project folder is not there any more." }); return; }
+    // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
+    if (this.roomFor(cmd.project) <= 0) { done(false, { reason: LIMIT_REACHED }); return; }
     const ac = new AbortController();
     this.picturing.add(ac);
     let timedOut = false;
@@ -1666,6 +1682,7 @@ export class AgentRunner {
     try {
       const gone = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
       const r = await Promise.race([this.o.explainer(diagramRequest(diagramContext(cmd.project, { question: cmd.question, problem: cmd.problem })), ac.signal), gone]);
+      this.bookSpend(cmd.project, r.costUsd);
       if (ac.signal.aborted) { done(false, { reason: timedOut ? slow : "Stopped." }); return; }
       const d = parseDiagram(r.text);
       if (!d) { done(false, { reason: "I could not draw a clear picture of that. Try asking in different words, or press the key when the problem is on screen." }); return; }

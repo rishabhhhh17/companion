@@ -44,7 +44,8 @@ export async function captureBefore(o: {
     if (!srv.ok && srv.notAServer && started.chosen && usual && !o.signal?.aborted && !(usual.kind === "server" && det.start.kind === "server" && usual.command === det.start.command)) srv = await serve(usual);
     // A package that is not installed says nothing about whether the earlier version worked.
     const missing = /No module named|Couldn't import Django/.test(srv.ok ? "" : srv.output ?? srv.reason);
-    if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
+    // A port held by another program says nothing about the earlier version either.
+    if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : srv.portBusy === undefined && /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
     // Stop ends the earlier version's server at once, not after the browser gives up.
     const onAbort = () => { void srv.stop(); };
     o.signal?.addEventListener("abort", onAbort, { once: true });

@@ -12,6 +12,7 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { adapterFor, buildContext, grewTooMuch, handBack, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
+import { LIMIT_REACHED } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
@@ -385,7 +386,9 @@ export class AssistService {
   private active = new Map<string, AbortController>();
   private n = 0;
   // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack.
-  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings }) {}
+  // spend: Prompt help spends on the person's key, so with a project it waits at the project's daily limit and books what
+  // it cost there (the runner's ledger). Show me how names no project, so it has nothing to book against.
+  constructor(private o: { fast: FastLike; vision: VisionLike; images: ImageStore; emit: (e: Event) => void; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings; spend?: { room: (project?: string) => number; book: (project: string | undefined, usd: number) => void } }) {}
   private emit(e: Record<string, unknown>) { this.o.emit({ v: PROTOCOL_VERSION, id: `a${++this.n}`, ...e } as unknown as Event); }
 
   // Stop everything: every question in flight is dropped, and any screenshot still held is forgotten.
@@ -410,6 +413,8 @@ export class AssistService {
 
   private async prompt(cmd: Extract<Command, { type: "assist.prompt" }>) {
     if (!cmd.text.trim()) return this.emit({ type: "assist.error", req: cmd.req, reason: "There is no text to improve." });
+    if (this.o.spend && this.o.spend.room(cmd.project) <= 0) return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED });
+    const book = (usd: number) => { try { this.o.spend?.book(cmd.project, usd); } catch { /* booking never breaks Prompt help */ } };
     const ac = new AbortController();
     this.active.set(cmd.req, ac);
     try {
@@ -426,6 +431,7 @@ export class AssistService {
       const onDelta = (t: string) => { if (ac.signal.aborted) return; const shown = stream.push(t); if (shown) this.emit({ type: "assist.prompt.delta", req: cmd.req, text: shown }); };
       let r = await this.o.fast.run({ text: masked, system, extra: bits.join("\n\n") || undefined }, onDelta, ac.signal);
       let cost = r.costUsd;
+      book(r.costUsd);
       const rest = stream.flush(); if (rest && !ac.signal.aborted) this.emit({ type: "assist.prompt.delta", req: cmd.req, text: rest });
       if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
       let parsed = parseAnswer(r.text);
@@ -434,6 +440,7 @@ export class AssistService {
         const limit = Math.max(cmd.text.length * 3, 400);
         r = await this.o.fast.run({ text: masked, system, extra: [...bits, `Your last answer was too long. Make it shorter: at most ${Math.floor(limit * 0.8)} characters.`].join("\n\n") }, () => {}, ac.signal);
         cost += r.costUsd;
+        book(r.costUsd);
         if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
         parsed = parseAnswer(r.text);
         final = restore(parsed.text, spans).text;

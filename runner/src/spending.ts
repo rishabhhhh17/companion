@@ -8,6 +8,9 @@ export const DEFAULT_DAILY_LIMIT_USD = 10;
 export const MIN_DAILY_LIMIT_USD = 1;
 export const MAX_DAILY_LIMIT_USD = 500;
 export const SPENDING_FILE = "spending.json";
+/** Said by the small answers that spend on the person's key outside a task (Draw it for me, the error explainer, Prompt help)
+ *  once a project has reached its limit. */
+export const LIMIT_REACHED = "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit in Settings.";
 const OUT_OF_BOUNDS = `The daily limit must be between ${MIN_DAILY_LIMIT_USD} and ${MAX_DAILY_LIMIT_USD} dollars.`;
 
 /** A limit the person asked for: a number of dollars within the bounds, kept to cents. Anything else is refused in plain words. */

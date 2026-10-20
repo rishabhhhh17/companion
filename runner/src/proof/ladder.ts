@@ -425,6 +425,16 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       finish("browser", "skipped", "There is no page to open.", Date.now());
       return hasEvidence(steps) ? result("passed") : unchecked();
     }
+    // Its port is held by another program, perhaps the person's own copy of the site: the page could not be opened, which
+    // is a gap, never the project's failure (no ring on the listen line, no fix round).
+    if (!srv.ok && srv.portBusy !== undefined) {
+      const w = `${srv.portBusy ? `Port ${srv.portBusy}` : "The port it uses"} is in use by another program, perhaps your own copy of the site, so the page was not checked.`;
+      if (!left.includes(w)) left.push(w);
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", w, t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
     const startGap = srv.ok ? null : held(srv.output ?? srv.reason, "start")
       ?? (det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null);
     if (startGap) {
