@@ -49,6 +49,7 @@ mod talkkeys;
 mod keymap;
 mod visibility;
 mod wheel;
+mod everyday;
 mod presentation;
 mod settings;
 mod homeset;
@@ -1471,7 +1472,9 @@ fn showme_stop_rest(app: &AppHandle) {
 #[tauri::command]
 /// `settle`: a walkthrough step after a click, so the look first waits (bounded, under the light, Stop ends it) for the page
 /// to stop changing (showme::wait_to_settle). The page asks for it only when its settings say so (anywhere.ts waitsForPage).
-fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>) {
+/// `mode`: an everyday stuck moment's look (everyday.rs): "everyday" or "recheck"; anything else is an ordinary question.
+fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>, mode: Option<String>) {
+    let mode = everyday::mode(mode.as_deref());
     // Nothing of Companion can be seen (hidden, with Home closed): the light could not be seen either, so nothing is looked
     // at, not even a lesson's next step (rule 5: a walkthrough looks again only while it is visibly on).
     if light_unseen() { log("showme_hidden", json!({})); say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); return; }
@@ -1496,7 +1499,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let _ = a2.state::<runner::Runner>().send(&showme::locate_command(&req2, q, pics, cands));
+                let _ = a2.state::<runner::Runner>().send(&everyday::with_mode(showme::locate_command(&req2, q, pics, cands), mode));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
@@ -3126,9 +3129,11 @@ fn main() {
                             let _ = app.emit("showme-mode", true);
                         }
                         keymap::Action::Problem => {
-                            // Stuck? Check the project as it is, then point at where it fails. Nothing is captured until a place is known.
+                            // Stuck? Check the project as it is, then point at where it fails; with no project, or another
+                            // kind of app in front, the page looks at the screen instead (everyday.rs). Only the kind of app
+                            // in front is told, never its id. Nothing is captured until the page asks, under the light.
                             open_card(app, "hotkey", false);
-                            let _ = app.emit("find-problem", true);
+                            let _ = app.emit("find-problem", json!({ "front": everyday::front_kind(&front_id()) }));
                         }
                         keymap::Action::Card => open_card(app, "hotkey", true),
                         keymap::Action::Read => {
