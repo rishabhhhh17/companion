@@ -507,3 +507,11 @@ Eight independent readers went through everything built in M11 and found 83 dist
 - **After changing folders,** an old folder's receipt and Undo are gone, so Undo can never roll back the wrong project.
 - **No more stuck "Needs you"** after cancelling a plan or closing Rescue's report, and first run practice can be fixed straight from Learn.
 - Smaller fixes to web fetch checks, house rules with links, wording that was not true, and docs.
+
+## Everyday use, and drop a file on the companion (21 Oct 2026)
+None of this has been seen on a real screen or run with real Claude yet.
+- **The stuck key works in any app, not only code projects.** With no project, or with an everyday app in front, it looks at your screen (only when you press the key, light first, nothing kept), names the problem in two plain sentences, and walks you through the fix. Spreadsheet errors such as #REF!, #VALUE! and #DIV/0! are explained from a built in table first. It only says "fixed" when a fresh look shows the error gone; otherwise it asks you. Turn it off in Settings if you only want project checks.
+- **Show me how as a tutor for everyday apps** (Mail, Finder, System Settings, spreadsheets, documents, slides, design and photo apps): plain steps in that app's own words, never code talk. Off for now, until the paid pointing test shows it helps; one switch in Settings.
+- **Short spoken steps,** paced with the rings, when you have speaking on (off by default).
+- **Do it for me never presses sign in or connect account buttons,** on top of send, pay, delete, publish and answer.
+- **Drop a file on the companion** (the character or the notch island) to convert it: pictures between PNG, JPEG, HEIC and TIFF, resize and compress; PDFs merge, split, compress and pages to pictures; documents to PDF, text, Word, RTF or HTML; sound and video convert and trim. Everything happens on your Mac with its own tools, nothing is uploaded, the result is saved next to the original with a new name, and the original is never changed.
