@@ -34,6 +34,7 @@ import { DRAFT_KEY, askKey, draftToKeep, heardGoesTo, heardKind, putBack, sendsI
 import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
+import { DropList, useDrop } from "./dropRing.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
@@ -363,6 +364,15 @@ function Card() {
     return () => { off.then((f) => f()); };
   }, []);
   useEffect(() => { dropGen.current += 1; clearAttached(); sent.current = null; }, [project]);
+  // F19: a file dropped on the character or the island. Its choices are also here on Now, where the keyboard reaches them
+  // and a trim's times can be typed. A drop on the island, or Trim chosen on the ring, brings Home to Now.
+  const drop = useDrop();
+  const dropMenu = drop.s.menu;
+  useEffect(() => { if (dropMenu?.at === "island") homeDispatch({ type: "pick", tab: "now" }); }, [dropMenu?.id]);
+  useEffect(() => {
+    const off = listen("drop-trim", () => { drop.d({ type: "trim", open: true }); homeDispatch({ type: "pick", tab: "now" }); });
+    return () => { void off.then((f) => f()); };
+  }, []);
   // A file dropped on Home outside the drop handling must never be opened in place of Home's page, and neither may a link
   // dropped anywhere but the ask box (blocksDrop); words dragged onto the ask box land there.
   useEffect(() => {
@@ -1365,6 +1375,7 @@ function Card() {
           <div className="row"><CopyButton text={aboutCopy(m.about)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
+      {home.tab === "now" && <DropList drop={drop} />}
       {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
       <div hidden={!show("ask")}>
       {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
