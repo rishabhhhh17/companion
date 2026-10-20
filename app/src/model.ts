@@ -489,7 +489,10 @@ function reduceRest(m: Model, e: Ev): Model {
     case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
-      return { ...m, connected, notice: connected === "none" ? "Not connected. Add your API key, or sign in with your Claude plan, to start a task." : null };
+      // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
+      // for the new engine says "none" for a moment before the shell hands over the key.
+      const notice = connected === "none" ? (m.notice && m.notice !== S.notConnectedNotice ? m.notice : S.notConnectedNotice) : (m.notice === S.notConnectedNotice ? null : m.notice);
+      return { ...m, connected, notice };
     }
     case "explain.ready": {
       // A Drive step's explanation joins the plan's list, whatever is on the card by the time it arrives.

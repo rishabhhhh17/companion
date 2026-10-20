@@ -142,6 +142,7 @@ export const S = {
   stepStoppedRestart: "Stopped when the engine restarted.",
   // The engine restarted (model.ts): what is true about the files, never "as they were" (the engine puts nothing back).
   restartedStopped: "The engine restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.",
+  notConnectedNotice: "Not connected. Add your API key, or sign in with your Claude plan, to start a task.",
   restartedNothing: "The engine restarted. Nothing was running, so nothing was stopped.",
   restartedTurn: (file: string, line: number) => `The engine restarted, so what was running was stopped. ${file}, line ${line} still has the code from before my fix: Put my fix back on Now puts it back.`,
   // A task that keeps going in the folder Home showed before (model.ts away).
