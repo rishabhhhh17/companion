@@ -669,6 +669,16 @@ describe("the setting practice's lesson uses no Claude and never looks at the sc
     expect(lessonWordsOnly(run([ev({ type: "ui.walkRequested", walk: "w2" }), { ...step, walk: "w2" }]))).toBe(false);
     expect(practiceOf("setting")?.costUsd).toBe(0);
   });
+  test("skipping the practice during its lesson does not turn the lesson into one that looks at the screen", () => {
+    const skipped = run([ev({ type: "ui.practiceClosed" })], inLesson);
+    expect(skipped.practice).toBeNull();
+    expect(skipped.walk?.id).toBe("w1");
+    expect(lessonWordsOnly(skipped)).toBe(true);
+    // The next step of the same lesson is still words only; another lesson started afterwards is not.
+    const next = run([{ ...step, index: 1 } as never], skipped);
+    expect(lessonWordsOnly(next)).toBe(true);
+    expect(lessonWordsOnly(run([ev({ type: "ui.walkRequested", walk: "w2" }), { ...step, walk: "w2" } as never], skipped))).toBe(false);
+  });
   test("Home neither looks at the screen for its steps nor offers to point, and says so", () => {
     const aim = card.slice(card.indexOf("const wkKey = wk ?"), card.indexOf("useEffect(() => { if (wk && m.showme?.stage === \"needs_permission\")"));
     expect(aim).toContain("if (noAim.current || lessonWordsOnly(m)) return;");
