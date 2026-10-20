@@ -1780,7 +1780,7 @@ fn do_it_for_me(app: AppHandle) {
     let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
     // Off the main thread: an app that is not answering can hold Accessibility for seconds, and Stop must still work.
     std::thread::spawn(move || {
-        const SELF: &str = "This one sends, pays, deletes, publishes or answers a question, so please click it yourself.";
+        const SELF: &str = "This one signs in, sends, pays, deletes, publishes or answers a question, so please click it yourself.";
         if yourturn::risky(&label) { say_showme(&app, "your_turn_miss", SELF, json!({})); return; }
         if !ax::trusted(false) {
             ax::trusted(true);
