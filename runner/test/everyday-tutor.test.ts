@@ -8,6 +8,9 @@ import { AssistService, buildVisionOptions, ImageStore, VISION_SYSTEM, VisionLan
 import { buildRequest } from "../src/aim.ts";
 import { RunnerSettings } from "../src/settings.ts";
 import { appKind, NEVER_LINE, tutorFor, tutorLines } from "../src/tutor.ts";
+import { TERMINALS } from "../src/prompthelp.ts";
+import { EVERYDAY_SYSTEM } from "../src/everyday.ts";
+import apps from "../../protocol/apps.json";
 import { parseCommand, type Event } from "../../protocol/index.ts";
 import { defOf } from "../../protocol/settings.ts";
 
@@ -179,4 +182,47 @@ describe("the command carries the app in front", () => {
     expect(parseCommand(cmd({})).ok).toBe(true);
   });
   test("anything but text is refused", () => { expect(parseCommand(cmd({ app: 7 })).ok).toBe(false); });
+});
+
+describe("one list of apps, and the stuck key's look beside the tutor", () => {
+  test("the engine sorts apps from the one list the shell reads too (protocol/apps.json, everyday.rs front_kind)", () => {
+    expect(readFileSync(new URL("../src/tutor.ts", import.meta.url), "utf8")).toContain('from "../../protocol/apps.json"');
+    expect(readFileSync(new URL("../../app/src-tauri/src/everyday.rs", import.meta.url), "utf8")).toContain('include_str!("../../../protocol/apps.json")');
+    for (const id of [...apps.editors, ...apps.codingTools, ...TERMINALS]) expect(appKind(id), id).toBe("coding");
+    for (const id of apps.browsers) expect(appKind(id), id).toBe("browser");
+    for (const p of apps.browserPrefixes) expect(appKind(`${p}Example`), p).toBe("browser");
+    for (const p of apps.editorPrefixes) expect(appKind(`${p}Example`), p).toBe("coding");
+    for (const id of Object.keys(apps.everyday)) expect(appKind(id), id).toBe("everyday");
+    const all = [...apps.editors, ...apps.codingTools, ...apps.browsers, ...Object.keys(apps.everyday)];
+    expect(all.filter((id, i) => all.indexOf(id) !== i)).toEqual([]);
+    // The builder tools the stuck key already treated as code tools (VSCodium, Android Studio) are coding tools here too.
+    for (const id of ["com.vscodium", "com.google.android.studio"]) expect(appKind(id), id).toBe("coding");
+  });
+  test("assist.locate takes the app and an everyday mode together", () => {
+    const base = { v: 1, id: "c", type: "assist.locate", req: "sm_1", question: "q", image: { ref: "sm_1", w: 1, h: 1 } };
+    expect(parseCommand(JSON.stringify({ ...base, app: "com.microsoft.Excel", mode: "everyday" })).ok).toBe(true);
+    expect(parseCommand(JSON.stringify({ ...base, app: "com.microsoft.Excel", mode: "recheck", before: "#REF!" })).ok).toBe(true);
+    expect(parseCommand(JSON.stringify({ ...base, app: 7, mode: "everyday" })).ok).toBe(false);
+  });
+  test("with the tutor on, an everyday look keeps its own instructions, and Show me how in the same app gets the tutor", async () => {
+    const settings = new RunnerSettings();
+    settings.apply({ v: 1, id: "s", type: "settings.apply", values: { "showme.everydayTutor": true } });
+    const located: LocateReq[] = [], looked: { system: string; question: string }[] = [], events: Event[] = [];
+    const images = new ImageStore();
+    const vision = { locate: async (r: LocateReq) => { located.push(r); return { point: { x: 10, y: 10, targetText: "B4", confidence: 0.9, caption: "Click B4" }, costUsd: 0.01 }; } };
+    const look = async (r: { system: string; question: string }) => { looked.push(r); return { text: JSON.stringify({ found: false }), costUsd: 0.01 }; };
+    const s = new AssistService({ fast: { run: async () => ({ text: "", costUsd: 0 }) }, vision, look, images, emit: (e) => events.push(e), settings });
+    const ask = async (extra: Record<string, unknown>) => {
+      images.put("sm_1", { base64: "AAAA", mediaType: "image/jpeg", w: 1280, h: 800 });
+      await s.handle({ v: 1, id: "c", type: "assist.locate", req: "sm_1", question: "Find the problem on my screen.", image: { ref: "sm_1", w: 1280, h: 800 }, ...extra } as never);
+    };
+    await ask({ app: "com.microsoft.Excel", mode: "everyday" });
+    expect(located).toEqual([]);
+    expect(looked.map((l) => l.system)).toEqual([EVERYDAY_SYSTEM]);
+    expect(looked[0].question).not.toContain("Excel");
+    expect(events.at(-1)).toMatchObject({ type: "assist.problem", mode: "everyday", found: false });
+    await ask({ app: "com.microsoft.Excel" });
+    expect(looked.length).toBe(1);
+    expect(located.map((l) => l.tutor)).toEqual([{ kind: "everyday", app: "Excel" }]);
+  });
 });

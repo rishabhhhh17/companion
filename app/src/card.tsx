@@ -6,6 +6,7 @@ import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, waitsForPage } from "./anywhere.ts";
+import { EVERYDAY_ASK, checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, mainAction, nextLookMode, whyShown } from "./everyday.ts";
 import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
@@ -81,11 +82,12 @@ function FollowUpBox({ project, retry, sending, text, setText, listening, onSent
   );
 }
 
-function ExplainBox({ e }: { e: Explain }) {
+// title and note: the same box for an everyday fix's why (everyday.ts whyShown), open from the start there.
+function ExplainBox({ e, title = S.explainTitle, note = S.explainCost, open = false }: { e: Explain; title?: string; note?: string; open?: boolean }) {
   const [picked, setPicked] = useState<number | null>(null);
   return (
-    <details className="explain">
-      <summary>{S.explainTitle} <span className="muted">· {S.explainCost}</span></summary>
+    <details className="explain" open={open}>
+      <summary>{title} <span className="muted">· {note}</span></summary>
       <ul>{e.bullets.map((b, i) => <li className="line" key={i}>{b}</li>)}</ul>
       <div className="row"><CopyButton text={explainCopy(e)} label={S.copyAnswer} /></div>
       {e.question && (
@@ -598,6 +600,13 @@ function Card() {
   // Show me's answer as it plays (sequence.ts): its steps still to come and its one line still waiting to be said. Closing
   // the card, holding to talk, Point at the problem, Stop and a new question all hush it.
   const player = useRef(answerPlayer());
+  // The newest version of functions the listeners set up once call (their own closures would be stale).
+  const latest = useRef({ lookEveryday: () => {} });
+  // An everyday stuck moment (everyday.ts): whether the key works in any app, and the why shown after its fix.
+  const everydayOn = useSetting("point.everyday") !== false;
+  const ed = m.everyday;
+  const whySetting = useSetting("point.everydayWhy");
+  const everydayWhy = ed ? whyShown(ed, whySetting) : null;
   useEffect(() => {
     const off = listen("hush", () => player.current.hush());   // the card closed, or the hold to talk keys went down
     return () => { off.then((f) => f()); };
@@ -750,6 +759,15 @@ function Card() {
   // the last one waits for the click. A guess below the confidence line is said in words, never drawn.
   const [walk, setWalk] = useState<{ goal: string; steps: string[] } | null>(null);
   const inLesson = useRef(false); inLesson.current = !!m.walk;
+  // everydayWalk: the walkthrough on now is the everyday one (started by the key's look or a look again, showMe's mode),
+  // so only its steps are a fix to look again at; an ordinary Show me question is never one (everyday.ts nextLookMode).
+  const everydayWalk = useRef(false);
+  // The everyday walkthrough, kept after it ends, so a look again still knows the steps already tried. Only in memory, and
+  // forgotten when the everyday panel goes (closed, Stop everything, a look that failed), on a new look and when an
+  // ordinary Show me question starts.
+  const lastWalk = useRef<{ goal: string; steps: string[] } | null>(null);
+  if (walk && everydayWalk.current) lastWalk.current = walk;
+  useEffect(() => { if (!m.everyday) { lastWalk.current = null; everydayWalk.current = false; } }, [m.everyday]);
   const showmeNow = useRef(m.showme); showmeNow.current = m.showme;
   useEffect(() => {
     const off = listen("runner-event", (e) => {
@@ -799,9 +817,15 @@ function Card() {
   const pointAt = (x: { project: string; problem: Problem }) => { if (pointsOnScreen(x.problem)) pointProblem(x.project, x.problem); };
   const projectRef = useRef(project); projectRef.current = project;
   useEffect(() => {
-    const offKey = listen("find-problem", () => {
+    const offKey = listen("find-problem", (e) => {
       pressed();
-      if (!projectRef.current) { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
+      // The key works in any app (everyday.ts): with no project, or with an app in front that is not a code tool, it looks
+      // at the screen instead (point.everyday, on unless turned off; off, exactly as before). Only the kind of app in
+      // front is known, never its id.
+      const route = heroRoute({ everyday: setting("point.everyday"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current });
+      // One press, counted once: the key, and an anywhere use (the project route counts a builder use).
+      if (route === "screen") { count("hero_press"); count("anywhere_use"); latest.current.lookEveryday(); return; }
+      if (route === "noProject") { dispatch({ type: "app.showme", stage: "error", message: S.pointNoProject }); return; }
       // A check already running answers this press too. A second Find would only be refused, and its "cancelled" answer
       // would end the running check's panel (and a practice's own checks) before the real answer came.
       if (nowModel.current.point?.stage === "checking") { homeDispatch({ type: "pick", tab: "now" }); return; }
@@ -896,7 +920,42 @@ function Card() {
   }, []);
   // settle: this look follows an action (a click, an answer), so the shell may wait for the page to stop changing first
   // (waitsForPage: bounded, the light on throughout, Stop ends it).
-  const showMe = (question: string, goal: string, steps: string[], settle = false) => { if (steps.length === 0) count("anywhere_use"); if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected"); player.current.hush(); setWalk({ goal, steps }); void invoke("showme_start", { question, allScreens: allScreensOn(), settle }); };
+  // mode: an everyday look (everyday.ts), "everyday" for the first look and "recheck" to look again; otherwise a question.
+  // before: with "recheck", the spreadsheet error code the first look read, so the engine can prove it gone.
+  // An ordinary question (no mode) is not the everyday walkthrough: the everyday panel closes and what it saw is forgotten,
+  // so no look again can land on it. The everyday look counts its press on the key, so only a question counts a use here.
+  const showMe = (question: string, goal: string, steps: string[], settle = false, mode?: "everyday" | "recheck", before?: string) => {
+    if (!mode && steps.length === 0) count("anywhere_use");
+    if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected");
+    everydayWalk.current = !!mode;
+    if (!mode) { lastWalk.current = null; if (nowModel.current.everyday) dispatch({ type: "ui.everydayClosed" }); }
+    player.current.hush(); setWalk({ goal, steps });
+    void invoke("showme_start", { question, allScreens: allScreensOn(), settle, mode, before });
+  };
+  // An everyday stuck moment: Show me's own look (light first, secrets covered, nothing kept), asking what is wrong and the
+  // first steps of the fix. Its answer names the problem (assist.problem), then its steps play like any Show me answer.
+  // question: the first look's own, or Show me the steps' (the problem already named). The press was counted on the key.
+  const lookEveryday = (question = EVERYDAY_ASK) => {
+    lastWalk.current = null;
+    homeDispatch({ type: "pick", tab: "now" });
+    dispatch({ type: "ui.everydayLook", mode: "everyday" });
+    showMe(question, everydayGoal(""), [], false, "everyday");
+  };
+  // Look again (Check it is fixed): whether the error is gone, and the next step if it is not. Only the everyday
+  // walkthrough's steps count as tried. worked false: the person said the last step did not work, so it is named and never
+  // suggested again (anywhere.ts). It carries the code the first look read (ed.code), the engine's only proof of gone.
+  const checkEveryday = (worked?: boolean) => {
+    const ed = nowModel.current.everyday;
+    if (!ed) return;
+    pressed();
+    // lastWalk is only ever this problem's own walkthrough (forgotten on a new look, on Close and on Stop), so its steps
+    // still count after a look again renamed what is left to fix.
+    const base = (everydayWalk.current && walk ? walk : null) ?? lastWalk.current ?? { goal: everydayGoal(ed.problem), steps: [] };
+    const w = worked === false ? answered(base, false) : base;
+    dispatch({ type: "ui.everydayLook", mode: "recheck" });
+    showMe(checkQuestion(w), w.goal, w.steps, true, "recheck", ed.code);
+  };
+  latest.current.lookEveryday = lookEveryday;
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
   // With "Ask Did that work? after each step" set to only when unsure (showme.askWorked), a clean click on a solid ring
   // moves on by itself: the step is written down as clicked, not checked, and the next look checks it first.
@@ -906,7 +965,11 @@ function Card() {
     setAsking(false);
     const w = notChecked ? clicked(walk) : answered(walk, worked);
     if (atLimit(w)) { void invoke("showme_clear"); setWalk(null); dispatch({ type: "app.showme", stage: "error", message: S.anywhereLimit }); return; }
-    showMe(nextQuestion(w), w.goal, w.steps, waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked")));
+    // A step of the everyday fix (that walkthrough only, never an ordinary Show me question): the next look first checks
+    // whether the error is gone ("recheck"), so fixed only ever comes from a look.
+    const mode = nextLookMode(everydayWalk.current, nowModel.current.everyday);
+    if (mode) dispatch({ type: "ui.everydayLook", mode });
+    showMe(nextQuestion(w), w.goal, w.steps, waitsForPage(setting("showme.waitForPage"), setting("showme.askWorked")), mode, mode ? nowModel.current.everyday?.code : undefined);
   };
   // How this answer's ring went, for asksWorked: a soft ring (a guess), or a click off the target before the hit.
   const ringLook = useRef({ req: "", soft: false, missed: false });
@@ -933,6 +996,19 @@ function Card() {
     return () => clearTimeout(t);
   }, [stage]);
   showMeRef.current = showMe;
+  // An everyday look's answer (everyday.ts; the model keeps what it says). The walkthrough's goal names the problem, so the
+  // next look knows what it is fixing. With no step to point at (nothing wrong, gone, or only words) the look is over and
+  // what it saw is forgotten; with steps, they come next as an ordinary Show me answer.
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; req?: string; mode?: string; found?: boolean; steps?: number; problem?: string };
+      if (ev.type !== "assist.problem" || !ev.req?.startsWith("sm_")) return;
+      if (!stillWanted(showmeNow.current) || showmeNow.current?.req !== ev.req) return;
+      if (ev.mode === "everyday" && ev.found && ev.problem) { const goal = everydayGoal(ev.problem); setWalk((w) => (w ? { ...w, goal } : w)); }
+      if (!ev.steps) { void invoke("showme_clear"); setWalk(null); }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
   const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
   // What each tab shows is asked for whenever it is the one showing (picked, or shown by itself), and again for a new folder:
@@ -1660,9 +1736,40 @@ function Card() {
                 else void send(diagnose(project));
               }}>{S.pointFix}</button>}
               {m.point.stage === "found" && canBisect(m) && project && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
+              {/* The project's checks found nothing wrong: the problem may be in another app, so the screen can be looked at (point.everyday). */}
+              {["clear", "gaps", "nothing"].includes(m.point.stage) && everydayOn && <button className="btn" type="button" onClick={() => { pressed(); putAside(m.point?.agent); dispatch({ type: "ui.pointClosed" }); lookEveryday(); }}>{S.everydayLookInstead}</button>}
               <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
             </div>
           )}
+        </section>
+      )}
+
+      {show("everyday") && ed && ed.stage !== "looking" && (
+        <section className={`panel ${["found", "still", "ask"].includes(ed.stage) ? "amber" : ""}`} role="status" aria-label={S.everydayTitle}>
+          <h2>{S.everydayTitle}</h2>
+          {ed.stage === "none" && <div className="line">{S.everydayNone}</div>}
+          {ed.stage === "still" && <div className="line"><b>{S.everydayStill}</b></div>}
+          {ed.stage !== "none" && <div className="line">{ed.problem}</div>}
+          {ed.stage === "checking" && <div className="line muted">{S.everydayChecking}</div>}
+          {ed.stage === "fixed" && <div className="line"><b>{S.everydayFixed}</b></div>}
+          {ed.stage === "ask" && <div className="line"><b>{ed.ask === "looks" ? S.everydayLooksFixed : ed.ask === "stillRead" && ed.code ? S.everydayStillRead(ed.code) : S.everydayAsk}</b></div>}
+          {ed.stage === "saidWorks" && <div className="line">{ed.ask === "looks" ? S.everydaySaidWorksLooked : S.everydaySaidWorks}</div>}
+          {["found", "still"].includes(ed.stage) && ed.fixes && ed.fixes.length > 0 && (<>
+            <div className="line muted">{S.everydayFixesTitle}</div>
+            <ul>{ed.fixes.map((f, i) => <li className="line" key={i}>{f}</li>)}</ul>
+          </>)}
+          {ed.fromTable && ed.stage !== "none" && <div className="line muted" role="note">{S.everydayFromTable}</div>}
+          {["fixed", "saidWorks"].includes(ed.stage) && everydayWhy && <ExplainBox e={everydayWhy} title={S.everydayWhyTitle} note={S.everydayWhyNote} open key={`why:${ed.req ?? ""}`} />}
+          <div className="row">
+            {ed.stage === "ask" && <>
+              <button className="btn primary" type="button" onClick={() => dispatch({ type: "ui.everydaySaid", worked: true })}>{S.lessonYes}</button>
+              <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.everydaySaid", worked: false }); checkEveryday(false); }}>{S.lessonNo}</button>
+            </>}
+            {/* With no step shown yet: Show me the steps, a fresh everyday look (never a look again, so it cannot say fixed before anything was done). After that: Check it is fixed looks again, and points at the next step when it is not. */}
+            {(() => { const act = mainAction(ed, !!walk, lastWalk.current?.steps.length ?? 0); return act && <button className="btn primary" type="button" onClick={() => { if (act === "steps") { pressed(); lookEveryday(everydayStepsAsk(ed.problem)); } else checkEveryday(); }}>{act === "steps" ? S.everydaySteps : S.everydayCheck}</button>; })()}
+            {ed.stage === "none" && project && <button className="btn" type="button" onClick={() => { pressed(); dispatch({ type: "ui.everydayClosed" }); dispatch({ type: "ui.findProblem" }); void send(findProblem(project)); }}>{S.everydayCheckProject}</button>}
+            <button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); dispatch({ type: "ui.everydayClosed" }); }}>{S.pointClose}</button>
+          </div>
         </section>
       )}
 

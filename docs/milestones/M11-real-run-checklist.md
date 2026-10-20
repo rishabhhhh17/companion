@@ -118,7 +118,7 @@ Also check, once: in Cursor or Terminal the answer is the usual one (no tutor); 
 
 Also with the tutor on: start the Vercel lesson that adds a setting in Safari or Chrome and check that each ring is answered as usual, in the words on Vercel's page (Settings, Environment Variables, Redeploy), never as if it were an everyday app; and in Android Studio or Firefox Developer Edition check that the answer never says you are not building anything.
 
-**Do it for me must refuse these (20 Oct 2026):** with the tutor on, press Do it for me on a ring that lands on a Sign In button (a site's sign in page, with nothing typed), on a price button in the App Store, and on Rent in the TV app. Each must be refused with "This one signs in, sends, pays, deletes, publishes or answers a question, so please click it yourself.", and nothing is pressed.
+**Do it for me must refuse these (20 Oct 2026):** with the tutor on, press Do it for me on a ring that lands on a Sign In button (a site's sign in page, with nothing typed), on a price button in the App Store, and on Rent in the TV app. Each must be refused with "This one signs in, sends, pays, deletes, publishes, connects an account or answers a question, so please click it yourself.", and nothing is pressed.
 
 ## Known gaps: unproven, and no script covers them yet
 

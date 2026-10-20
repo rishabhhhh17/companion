@@ -109,6 +109,13 @@ pub struct Prepared { pub shots: Vec<Shot>, /// Text boxes in global points, for
     pub boxes: Vec<OcrBox>, pub covered: usize, /// The windows and the app in front when the pictures were taken.
     pub wins: Vec<Win>, pub front_pid: i32 }
 
+/// Text that shows a spreadsheet formula error or a circular reference warning (the engine's table, runner/src/everyday.ts,
+/// plus the rarer codes), so it is never cut from the list the engine reads.
+pub fn holds_sheet_error(text: &str) -> bool {
+    let up = text.to_uppercase();
+    ["#REF!", "#VALUE!", "#DIV/0!", "#DIV/O!", "#N/A", "#NAME?", "#NUM!", "#NULL!", "#SPILL!", "#CALC!"].iter().any(|c| up.contains(c)) || up.contains("CIRCULAR")
+}
+
 /// Covers secrets, shrinks, and lists the text the model may use as landmarks. Pure, so it can be tested on its own.
 pub fn prepare_frame(mut frame: Frame, boxes: &[OcrBox]) -> (Frame, usize, Vec<OcrBox>) {
     let covers = plan_blackouts(boxes);
@@ -117,9 +124,13 @@ pub fn prepare_frame(mut frame: Frame, boxes: &[OcrBox]) -> (Frame, usize, Vec<O
     let k = small.w as f64 / frame.w as f64;
     let mut keep: Vec<OcrBox> = boxes.iter().filter(|b| !is_sensitive(&b.text) && !b.text.trim().is_empty())
         .map(|b| OcrBox { id: b.id.clone(), text: b.text.trim().chars().take(80).collect(), rect: R { x: b.rect.x * k, y: b.rect.y * k, w: b.rect.w * k, h: b.rect.h * k } }).collect();
-    // Top to bottom, left to right, so the list reads like the screen; cut to a size the model can use.
-    keep.sort_by(|a, b| (a.rect.y.round() as i64, a.rect.x.round() as i64).cmp(&(b.rect.y.round() as i64, b.rect.x.round() as i64)));
+    // Cut to a size the model can use. A spreadsheet error is kept ahead of the cut, wherever it is on a busy screen (an
+    // everyday look's table and its never fixed while read rule depend on it). Then top to bottom, left to right, so the
+    // list reads like the screen.
+    let order = |a: &OcrBox, b: &OcrBox| (a.rect.y.round() as i64, a.rect.x.round() as i64).cmp(&(b.rect.y.round() as i64, b.rect.x.round() as i64));
+    keep.sort_by(|a, b| holds_sheet_error(&b.text).cmp(&holds_sheet_error(&a.text)).then_with(|| order(a, b)));
     keep.truncate(MAX_CANDIDATES);
+    keep.sort_by(order);
     for (i, b) in keep.iter_mut().enumerate() { b.id = format!("t{}", i + 1); }
     (small, covers.len(), keep)
 }
@@ -515,6 +526,25 @@ mod tests {
         assert_eq!(keep.iter().map(|b| (b.id.as_str(), b.text.as_str())).collect::<Vec<_>>(), vec![("t1", "first row left"), ("t2", "first row right"), ("t3", "second row")]);
         boxes = (0..200).map(|i| tb("n", &format!("word{i}"), (i % 20) as f64 * 40.0, (i / 20) as f64 * 40.0)).collect();
         assert_eq!(prepare_frame(frame, &boxes).2.len(), MAX_CANDIDATES);
+    }
+    #[test]
+    fn a_spreadsheet_error_low_on_a_busy_screen_is_never_cut_from_the_list() {
+        // A real Excel window: the menu bar, ribbon, formula bar and headers fill the first sixty boxes, and #REF! sits in
+        // row 15. The engine must still read it (the everyday look's table, and never fixed while it is read).
+        let frame = Frame::new(1000, 1000, vec![255; 1000 * 1000 * 4]).unwrap();
+        let mut boxes: Vec<OcrBox> = (0..200).map(|i| tb("n", &format!("word{i}"), (i % 20) as f64 * 40.0, (i / 20) as f64 * 40.0)).collect();
+        boxes.push(tb("r", "#REF!", 120.0, 900.0));
+        boxes.push(tb("c", "Circular references C7", 300.0, 950.0));
+        let keep = prepare_frame(frame, &boxes).2;
+        assert_eq!(keep.len(), MAX_CANDIDATES);
+        assert!(keep.iter().any(|b| b.text == "#REF!"), "the #REF! box is kept");
+        assert!(keep.iter().any(|b| b.text.starts_with("Circular")), "the circular warning is kept");
+        // Still in reading order, numbered from t1, so the list reads like the screen.
+        let ys: Vec<f64> = keep.iter().map(|b| b.rect.y).collect();
+        assert!(ys.windows(2).all(|w| w[0] <= w[1]));
+        assert_eq!(keep.last().unwrap().text, "Circular references C7");
+        assert_eq!(keep[0].id, "t1");
+        assert!(holds_sheet_error("=A1/B1 #DIV/0!") && holds_sheet_error("#N/A") && holds_sheet_error("#name?") && !holds_sheet_error("Revenue") && !holds_sheet_error("#REFERENCE"));
     }
     #[test]
     fn the_models_point_becomes_a_real_button_on_the_screen() {
