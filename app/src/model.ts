@@ -96,7 +96,8 @@ export type Practice = {
   agent?: string;
 };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
-export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number };
+// yours: files Undo left alone because the person changed them. putBack: the separate, confirmed "Put those back too" for them.
+export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number; yours?: string[]; putBack?: "confirm" | "working" | "done" | "failed"; putBackNote?: string };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
 // fromProject: made by the runner from this project's own setting names, not a lesson file.
 export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
@@ -442,7 +443,18 @@ function reduceRest(m: Model, e: Ev): Model {
       // Any undo in this project (from the card or the timeline) puts the files back, so the receipt's work is gone from them.
       if (m.receipt && !m.receipt.undone && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project)) m = answerGone({ ...m, receipt: { ...m.receipt, undone: true } });
       // Undo of the whole task puts every file back as it was before it, so no turn is left (the engine drops it too).
-      return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, teach: null, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0 } } : m;
+      return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, teach: null, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0, ...(Array.isArray(e.yours) && e.yours.length ? { yours: e.yours.filter((x: unknown): x is string => typeof x === "string") } : {}) } } : m;
+    }
+    // Put those back too: asked, then confirmed with a second press, then answered.
+    case "ui.putBackAsked": return m.undo?.stage === "done" && m.undo.yours?.length ? { ...m, undo: { ...m.undo, putBack: "confirm", putBackNote: undefined } } : m;
+    case "ui.putBackCancelled": return m.undo ? { ...m, undo: { ...m.undo, putBack: undefined } } : m;
+    case "ui.putBackSent": return m.undo?.putBack === "confirm" ? { ...m, undo: { ...m.undo, putBack: "working" } } : m;
+    case "checkpoint.putBackDone": {
+      if (m.undo?.putBack !== "working" || m.undo.checkpoint !== e.checkpoint) return m;
+      if (e.ok !== true) return { ...m, undo: { ...m.undo, putBack: "failed", putBackNote: String(e.reason ?? "") } };
+      const back = new Set(Array.isArray(e.putBack) ? e.putBack : []);
+      const left = (m.undo.yours ?? []).filter((f) => !back.has(f));
+      return { ...m, undo: { ...m.undo, putBack: back.size ? "done" : "failed", ...(back.size ? {} : { putBackNote: String(e.reason ?? "Nothing was put back.") }), yours: left } };
     }
     case "ui.teachAsked": return { ...m, teach: { stage: "asking", checkpoint: String(e.checkpoint) } };
     case "teach.ready": {
