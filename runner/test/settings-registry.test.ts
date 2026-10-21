@@ -55,7 +55,7 @@ describe("the shipped list of settings", () => {
       "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
       // F19, drop a file on the companion: on, since the founder asked for it; results next to the original.
       "drop.on": true, "drop.imageFormat": "png", "drop.docFormat": "pdf", "drop.audioFormat": "m4a", "drop.videoFormat": "mp4",
-      "drop.resizeTo": "1600", "drop.quality": "medium", "drop.saveTo": "nextTo",
+      "drop.resizeTo": "1600", "drop.quality": "medium", "drop.sampleRate": "44100", "drop.saveTo": "nextTo",
       // Everyday stuck moments: the key works in any app. On by default, since it only ever acts on the person's own key
       // press; turned off, the key only checks the project, as before. The why is two reasons and a question, like Explain.
       "point.everyday": true, "point.everydayWhy": "reasonsAndQuestion",
