@@ -2,6 +2,12 @@
 
 Decision: `docs/decisions/F23-three-layers-hero-guide-helper.md`. Read this and veto anything. **No UI is built here** (the look is still yours to decide); this plan is the engine and the evidence behind it.
 
+## Update after the reality check (22 Oct 2026)
+The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder: "Yeah, I like it") changes the weight of this plan:
+- The guide ships as a **free front door**. HeyClicky's waves two and three (named agents, a chat window, connections, routines) **wait for evidence**; the platforms and cheap clones are covering the general guide. Agents with no project stay minimal (commodity).
+- Second Look is a **contained feature**, leading with numbers and tables, risky code lines, any desktop app, and "I can't tell". Not a headline until people come back to it.
+- The light features (the guide, pointing, Explain, Second Look) should call the Messages API directly, so they can be company paid now (F22 update).
+
 ## Part 1: the guide, "exactly what HeyClicky does", in an order that works
 
 The full row by row table is in `M11-match-and-beat.md`. Statuses there were checked on 16 Oct and a lot has changed since (follow up by voice, microphone fallbacks, Home stepping aside were built on 17 to 19 Oct), so **re-check each row against the code before building it.** Order, by how many people hit it on day one:

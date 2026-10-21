@@ -1,5 +1,8 @@
 # Landing page draft
 
+> **Note (22 Oct 2026, from `docs/research/2026-10-22-reality-check.md`):** proof, Undo and "fixes it" are no longer unique; Lovable, Replit, v0 and Claude Code all do versions of them now. Describe them, never claim them as what sets us apart. Lead with understanding (the why, Your turn) and working across tools. "The app has no server of its own" is true only on the own key route; it stops being true if managed usage (F22) is switched on.
+
+
 Working name: Companion (every name will change; keep it in one place when this goes into a site).
 Drafted 20 Oct 2026 from AGENTS.md, F16 to F20, CHANGELOG.md, the market research, docs/alpha/PRIVACY.md and INSTALL.md.
 
