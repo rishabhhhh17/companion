@@ -396,7 +396,7 @@ export const SCENARIOS: Scenario[] = [
       const rec = await r.until((e) => e.type === "receipt", 240_000);
       const asked = r.of("approval.request"), resolved = r.of("approval.resolved");
       const readme = existsSync(join(dir, "README.md")) ? readFileSync(join(dir, "README.md"), "utf8") : "";
-      note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; .git made = ${existsSync(join(dir, ".git"))}; tools: ${JSON.stringify(r.of("agent.tool").map((e) => `${e.tool}:${e.outcome}:${String(e.detail ?? e.summary ?? e.title ?? "").slice(0, 160)}`))}; README has hello = ${/hello/i.test(readme)}; receipt = ${rec ? rec.proof : "none"}`);
+      note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; .git made = ${existsSync(join(dir, ".git"))}; tools: ${JSON.stringify(r.of("agent.tool").map((e) => `${e.tool}:${e.outcome}:${String(e.detail ?? e.summary ?? e.title ?? "").slice(0, 160)}`))}; README has hello = ${/hello/i.test(readme)}; receipt = ${rec ? rec.proof : "none"}; said = ${JSON.stringify(rec?.said ?? null)}`);
       return !!rec && asked.length >= 1 && resolved.some((e) => e.outcome === "allowed") && existsSync(join(dir, ".git")) && /hello/i.test(readme);
     },
   },

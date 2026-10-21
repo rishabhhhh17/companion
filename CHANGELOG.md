@@ -8,7 +8,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Pointing at the right button:** 100% on simple screens, 95% on busy dashboards, 93% on everyday app windows (128 tries, under 3 seconds typically).
 - **The second model review caught every risky change (5 of 5) and raised no false alarms (0 of 5).** The loop card appeared at the right time 5 of 5 and, where only the person can decide, it asked instead of guessing.
 - **Found by the run and fixed:** Rescue invented extra steps ("add your photos", "optional styling"); it now plans only what is broken. The "why" lines after a task used programming words 79% of the time; Explain now passes our check 79% of the time (it was 17%), and "Claude for quick answers" now defaults to Sonnet 5.5 for about a cent a day more. Settings now shows the three model choices.
-- **Still open:** when you say yes to a git change the agent asked for, the change may not happen (the Mac's safety box may be blocking it). It needs a decision before it is touched. Details in `docs/milestones/M11-real-run-results.md`.
+- **Fixed after the run:** when you said yes to "make this folder a git project", nothing happened, because the Mac's safety box refuses to create that folder. Now that one command (and only that one) runs outside the box, after your yes. Every other git change stays inside the box. Checked on real Claude.
 
 ## Text from the card page that becomes a file name or a path, tried hostile: 15 Oct 2026
 

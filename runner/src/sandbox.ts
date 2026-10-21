@@ -46,6 +46,10 @@ export function sandboxSettings(home: string, platform: string = process.platfor
     // run that a command the hook allows still runs with this off (real-verify.ts and real-sandbox.ts show it).
     autoAllowBashIfSandboxed: false,
     allowUnsandboxedCommands: false,
+    // The one command that must run outside the box: Claude Code's sandbox refuses to create a .git folder, so an approved
+    // `git init` did nothing (real run, 21 Oct 2026). Exactly this text, no arguments, no wildcard. It still goes through the
+    // safety hook, which asks first (git changes need a tap), so it only ever runs after a yes. Any other git change stays inside.
+    excludedCommands: ["git init"],
     network: { allowedDomains: REGISTRY_DOMAINS, strictAllowlist: true, allowLocalBinding: true },
     filesystem: { denyRead: sensitivePaths(home), allowWrite: cachePaths(home) },
   };
