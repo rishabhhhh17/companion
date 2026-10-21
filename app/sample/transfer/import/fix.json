@@ -1,0 +1,9 @@
+{
+  "practice": "import",
+  "check": { "kind": "tests" },
+  "fails": "Cannot find module './sales-tax'",
+  "protect": ["test/receipt.test.js", "package.json"],
+  "changes": [
+    { "file": "lib/receipt.js", "old": "require(\"./sales-tax\")", "new": "require(\"./tax\")" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "booking-page",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny page for booking a guitar lesson. It will not start yet.",
+  "scripts": {
+    "dev": "node server.js",
+    "test": "node --test"
+  }
+}

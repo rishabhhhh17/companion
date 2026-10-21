@@ -1,0 +1,10 @@
+{
+  "name": "contact-page",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny contact page. Pressing Send does not deliver the message.",
+  "scripts": {
+    "dev": "node server.js",
+    "test": "node --test"
+  }
+}

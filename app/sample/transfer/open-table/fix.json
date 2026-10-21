@@ -1,0 +1,9 @@
+{
+  "practice": "open-table",
+  "check": { "kind": "gate", "table": "shopping_lists", "owner": "owner_id" },
+  "fails": "open to anyone with your site address: shopping_lists",
+  "protect": [],
+  "changes": [
+    { "file": "supabase/migrations/20261007090000_protect_shopping_lists.sql", "old": null, "new": "alter table public.shopping_lists enable row level security;\n\ncreate policy \"Each person reads their own lists\" on public.shopping_lists\n  for select to authenticated using ((select auth.uid()) = owner_id);\n" }
+  ]
+}
