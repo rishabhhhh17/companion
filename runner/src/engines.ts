@@ -7,13 +7,17 @@ import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolRe
 import { DEFAULT_REF, resolveAuth, type KeychainRef } from "./keychain.ts";
 import { ComputerUseVision, withFallback } from "./aim.ts";
 import { FastLane, StubFast, VisionLane, type DescribeReq, type FastLike, type Look, type VisionLike } from "./lanes.ts";
+import { DirectFastLane, DirectVisionLane, type DirectAuth } from "./direct.ts";
 import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS, modelForChoice } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 
 export type Settings = {
-  engine: "sdk" | "scripted"; route: "api_key" | "plan"; data: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
+  engine: "sdk" | "scripted"; route: "api_key" | "plan" | "managed"; data: string;
+  // The light lanes (Prompt help, Explain, Draw it for me, Show me how, pictures, everyday looks): Claude Code (today's default)
+  // or straight on the Messages API ("direct", F22 update). Managed usage always uses direct, sent to Companion's own server.
+  lanes: "claude_code" | "direct"; managedBase?: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
   // For testing, the two small lanes' models can be switched too (the defaults are in models.ts).
   fastModel?: string; visionModel?: string;
   // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
@@ -25,13 +29,19 @@ export type Settings = {
 };
 
 const setting = (v: string | undefined): string | undefined => (v && v.trim() ? v.trim() : undefined);
+/** Companion's usage server, only over https and only as a plain origin (managed usage, F22). Anything else is no server. */
+function httpsBase(v: string | undefined): string | undefined {
+  try { const u = new URL(String(v ?? "").trim()); return u.protocol === "https:" && u.hostname ? u.origin : undefined; } catch { return undefined; }
+}
 
 export function readSettings(env: Record<string, string | undefined>): Settings {
   let script: Step[] = [];
   try { script = JSON.parse(env.COMPANION_SCRIPT ?? "[]"); } catch { /* ignore a bad script */ }
   return {
     engine: env.COMPANION_ENGINE === "scripted" ? "scripted" : "sdk",
-    route: env.COMPANION_ROUTE === "plan" ? "plan" : "api_key",
+    route: env.COMPANION_ROUTE === "plan" ? "plan" : env.COMPANION_ROUTE === "managed" ? "managed" : "api_key",
+    lanes: env.COMPANION_LANES === "direct" ? "direct" : "claude_code",
+    ...(httpsBase(env.COMPANION_MANAGED_BASE) ? { managedBase: httpsBase(env.COMPANION_MANAGED_BASE) } : {}),
     data: env.COMPANION_DATA ?? join(homedir(), "Library", "Application Support", "Companion", "runner"),
     ref: { service: env.COMPANION_KEYCHAIN_SERVICE ?? DEFAULT_REF.service, account: env.COMPANION_KEYCHAIN_ACCOUNT ?? DEFAULT_REF.account },
     claudeBin: env.COMPANION_CLAUDE_BIN,
@@ -53,6 +63,8 @@ export const pickModel = (requested: string, override?: string): string => (over
 export type Auth = { method: "api_key" | "plan" | "none"; apiKey?: string };
 export async function currentAuth(s: Settings): Promise<Auth> {
   if (s.route === "plan") return { method: "plan" };
+  // On managed usage what the app holds is a Companion sign in token, never an Anthropic key: it is not Claude Code's to use.
+  if (s.route === "managed") return { method: "none" };
   const a = await resolveAuth(s.ref);
   return a.method === "api_key" ? { method: "api_key", apiKey: a.apiKey } : { method: "none" };
 }
@@ -71,7 +83,10 @@ const NOT_CONNECTED = "Not connected: add your API key, or sign in with your Cla
 
 // How every Claude Code run starts, agent tasks and both lanes alike: the bundled binary, and the environment for the
 // current sign in. Looked up each time, so adding a key while the app is open just works.
+/** The fix engine runs Claude Code, which Companion may not pay for without Anthropic's written agreement (F22). */
+export const MANAGED_NEEDS_OWN_CLAUDE = "Fixing needs your own Claude for now: add your API key or sign in with your Claude plan. The guide and explanations keep working with your Companion sign in.";
 async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: Record<string, string> }> {
+  if (s.route === "managed") throw new Error(MANAGED_NEEDS_OWN_CLAUDE);
   const a = await currentAuth(s);
   if (a.method === "none") throw new Error(NOT_CONNECTED);
   return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: engineEnv(a, s.data) };
@@ -79,7 +94,7 @@ async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: R
 
 // Tests only: a fake SDK in place of the real one (and a plain folder in place of the in memory drive), so the wiring
 // above can be checked without starting Claude.
-export type EngineDeps = { queryFn?: typeof realQuery; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> } };
+export type EngineDeps = { queryFn?: typeof realQuery; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> }; fetchFn?: typeof fetch; keyFn?: () => Promise<string | null> };
 
 class LazySdkEngine implements Engine {
   readonly executesTools = true;
@@ -105,6 +120,7 @@ export const quickModelOf = (settings: { get(key: string): unknown }, passed?: r
 // the spreadsheet table can name one.
 export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?: () => string } = {}): { fast: FastLike; vision: VisionLike; describe: Describe; look?: Look } {
   if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) }, describe: async () => { throw new Error("pictures cannot be looked at in this mode"); } };
+  if (s.route === "managed" || s.lanes === "direct") return directLanes(s, deps, o);
   const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });
   const classic: VisionLike = { locate: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).locate(req, signal) };
   // The Computer Use lane needs the person's own API key, so it is never used on a plan sign in; any failure falls back.
@@ -117,5 +133,24 @@ export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?
     // Pictures added to a request (attach.ts): looked at on the vision lane's model, the way Show me looks at a screen picture.
     describe: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).describe(req, signal),
     look: async (req, signal) => new VisionLane({ ...(await lane()), model: s.visionModel ?? MODELS.vision, ...(deps.tmpDrive ? { tmpDrive: deps.tmpDrive } : {}) }).ask(req, signal),
+  };
+}
+
+/** The light lanes straight on the Messages API: with the person's own key to Anthropic, or on managed usage with the Companion
+ *  sign in token to Companion's own server. Looked up per request, like the others. */
+function directLanes(s: Settings, deps: EngineDeps, o: { quickModel?: () => string }): { fast: FastLike; vision: VisionLike; describe: Describe; look?: Look } {
+  const key = deps.keyFn ?? (async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; });
+  const auth = async (): Promise<DirectAuth | null> => {
+    if (s.route === "managed" && !s.managedBase) return null;
+    const k = await key();
+    return k ? { key: k, base: s.route === "managed" ? s.managedBase! : "https://api.anthropic.com" } : null;
+  };
+  const d = { auth, ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) };
+  const vision = new DirectVisionLane({ ...d, model: s.visionModel ?? MODELS.vision });
+  return {
+    fast: { run: (req, onDelta, signal) => new DirectFastLane({ ...d, model: s.fastModel ?? o.quickModel?.() ?? MODELS.fast }).run(req, onDelta, signal) },
+    vision,
+    describe: (req, signal) => vision.describe(req, signal),
+    look: (req, signal) => vision.ask(req, signal),
   };
 }

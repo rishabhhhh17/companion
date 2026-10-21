@@ -116,7 +116,9 @@ pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf,
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
 /// COMPANION_FAST_MODEL and COMPANION_VISION_MODEL switch the two small lanes' models (defaults in runner/src/models.ts);
 /// COMPANION_REVIEW=1 turns on the second model review of risky changes (proof rung 7).
-const ENV_ALLOWED: &[&str] = &["COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL", "COMPANION_FAST_MODEL", "COMPANION_VISION_MODEL", "COMPANION_REVIEW"];
+/// COMPANION_LANES=direct sends the light lanes straight to the Messages API, and COMPANION_MANAGED_BASE names Companion's
+/// usage server (https only) for managed usage (F22, switched off); neither carries a secret.
+const ENV_ALLOWED: &[&str] = &["COMPANION_LANES", "COMPANION_MANAGED_BASE", "COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL", "COMPANION_FAST_MODEL", "COMPANION_VISION_MODEL", "COMPANION_REVIEW"];
 
 pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     dev.get("env").and_then(Value::as_object).map(|o| {
@@ -567,6 +569,11 @@ mod tests {
         assert!(allowed_env(&json!({})).is_empty());
         assert!(allowed_env(&json!({"env": "x"})).is_empty());
         assert!(allowed_env(&json!({"env": {"COMPANION_ROUTE": 5}})).is_empty());
+        // The direct lanes and managed usage can be switched on from the developer file; a key never can.
+        let d = allowed_env(&json!({"env": {"COMPANION_LANES": "direct", "COMPANION_MANAGED_BASE": "https://usage.example.com", "ANTHROPIC_API_KEY": "sk-x"}}));
+        assert_eq!(d.get("COMPANION_LANES").map(String::as_str), Some("direct"));
+        assert_eq!(d.get("COMPANION_MANAGED_BASE").map(String::as_str), Some("https://usage.example.com"));
+        assert!(d.get("ANTHROPIC_API_KEY").is_none());
     }
     #[test]
     fn an_installed_app_uses_the_engine_that_came_with_it_and_the_developer_file_still_wins() {
