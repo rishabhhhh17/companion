@@ -1,0 +1,10 @@
+{
+  "name": "companion-usage-proxy",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "../runner/node_modules/.bin/tsc -p ."
+  }
+}

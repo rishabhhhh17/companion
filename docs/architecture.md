@@ -367,3 +367,9 @@ Tests come first for these, in the module that owns them:
 | Demo (the demo makes no network call to Anthropic) | runner `demo` | `cd runner && bun test` |
 | Deploy failure rescue (read only: only `vercel list` and `vercel inspect --logs`, never in a folder not linked to Vercel, a deploy's line ringed only when confirmed in this folder, a list that cannot be read never shown, setting names never values) | runner `ship/deploy`, `ship/buildlog` | `cd runner && bun test` |
 | Protocol drift between Rust and TypeScript | `protocol/` fixtures | both suites |
+
+## Managed usage (M13, F22): built, switched off
+
+| Feature | Stage | Modules | Notes |
+|---|---|---|---|
+| The company pays for the model: sign in tokens, plans and daily limits, forwarding with Companion's key, metering, Stripe events | Not launched; off until Anthropic confirms in writing | `usage-proxy/` (`tokens`, `plans`, `filter`, `usage`, `proxy`, `store`, `stripe`); reuses the runner's price table (`runner/src/models.ts`) | Never keeps a request or reply body. Not deployed. The own key route stays as the way out. Plan: `docs/milestones/M13-managed-usage-plan.md` |
