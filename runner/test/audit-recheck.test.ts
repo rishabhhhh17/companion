@@ -91,7 +91,7 @@ describe("git pointed at another folder through its own environment variables (A
   const setup = () => { const root = dir("two"); const p = join(root, "mine"), other = join(root, "other"); mkdirSync(p); mkdirSync(other); return { p, other }; };
   test("GIT_DIR, GIT_WORK_TREE and the like outside the project ask", () => {
     const { p, other } = setup();
-    for (const c of ["GIT_DIR=../other/.git git show HEAD:.env", `GIT_DIR=${other}/.git git log -p`, "GIT_WORK_TREE=../other GIT_DIR=../other/.git git diff", "env GIT_DIR=../other/.git git log -p", "GIT_COMMON_DIR=../other/.git git log", "GIT_INDEX_FILE=../other/.git/index git diff --cached", "GIT_OBJECT_DIRECTORY=../other/.git/objects git log", "export GIT_DIR=../other/.git; git log -p", "sh -c 'GIT_DIR=../other/.git git log -p'", "GIT_DIR=$HOME/x/.git git log"]) {
+    for (const c of ["GIT_DIR=../other/.git git show HEAD:notes.txt", `GIT_DIR=${other}/.git git log -p`, "GIT_WORK_TREE=../other GIT_DIR=../other/.git git diff", "env GIT_DIR=../other/.git git log -p", "GIT_COMMON_DIR=../other/.git git log", "GIT_INDEX_FILE=../other/.git/index git diff --cached", "GIT_OBJECT_DIRECTORY=../other/.git/objects git log", "export GIT_DIR=../other/.git; git log -p", "sh -c 'GIT_DIR=../other/.git git log -p'", "GIT_DIR=$HOME/x/.git git log"]) {
       expect(bash(p, c).decision, c).toBe("ask");
     }
   });

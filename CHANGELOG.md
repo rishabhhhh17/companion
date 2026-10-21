@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Settings files: no longer read, and attacked 131 ways: 22 Oct 2026
+
+- **A task can no longer read your private settings file** (`.env` and its family), however it asks. It still sees which settings a project needs from the shared example file. Changing one still asks first, and a line can be renamed in place without ever being read.
+- **We attacked the guard with 131 disguised commands, offline, and closed every gap.** The worst was older than the guard: a command hidden inside `sh -c "..."` had its file writes skipped by the safety check. That is fixed for every file, not just settings files.
+- **The "why" lines after a task are also kept short:** one more rewrite if a line is too long or runs on.
+- **A short script for your first hour with the real app** is in `docs/launch/mac-session-script.md`.
+
 ## Your private settings file now asks before it is changed: 22 Oct 2026
 
 - **A real task found a gap: Companion could change your `.env` file without asking.** Now every change to a private settings file (`.env`, `.env.local`, `.env.production` and the like) asks first. The card names the setting (`SITE_NAME`) and **never shows its value**. The example files people share (`.env.example`) are not affected.

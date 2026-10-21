@@ -35,7 +35,7 @@ export function parseShell(raw: string): string[][] {
 }
 
 // The command builds part of itself while it runs ($VAR, $(...), backticks), so it cannot be fully checked in advance.
-export const hasDynamic = (cmd: string): boolean => /\$\(|`|\$\{|\$[A-Za-z_]/.test(normalize(cmd));
+export const hasDynamic = (cmd: string): boolean => /\$\(|`|\$\{|\$[A-Za-z_]|[<>]\(/.test(normalize(cmd));   // [<>]( is a process substitution: a pipeline built while it runs
 
 // ---------- wrappers: programs that just run another program ----------
 
@@ -94,6 +94,27 @@ export function commandsOf(cmd: string, depth = 0): string[][] {
     }
     if (name === "eval") { out.push(...commandsOf(words.slice(1).join(" "), depth + 1)); continue; }
     out.push(words);
+  }
+  return out;
+}
+
+/** The text inside every nested shell string, however deep: `sh -c "..."`, `eval "..."`, `env -S "..."`. commandsOf judges the commands in
+ *  them; this lets a caller read what else such a string does (above all where it redirects output, which sits inside the quotes
+ *  and is invisible to a scan of the outer line). */
+export function nestedStrings(cmd: string, depth = 0): string[] {
+  if (depth > 4) return [];
+  const out: string[] = [];
+  for (const raw of parseShell(cmd)) {
+    const { words, nested } = unwrap(raw);
+    for (const n of nested) out.push(n, ...nestedStrings(n, depth + 1));
+    if (!words.length) continue;
+    const name = basename(words[0]);
+    let inner: string | undefined;
+    if (SHELLS.has(name)) {
+      const i = words.findIndex((a, k) => k > 0 && /^-[a-z]*c[a-z]*$/.test(a));
+      if (i > 0) inner = words[i + 1];
+    } else if (name === "eval") inner = words.slice(1).join(" ");
+    if (inner !== undefined) out.push(inner, ...nestedStrings(inner, depth + 1));
   }
   return out;
 }

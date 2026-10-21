@@ -69,8 +69,17 @@ export async function runExplainCase(c: LoadedExplainCase, ctx: ExplainContext):
     // what is shown could never fail them). Plain words and the grader look at what the person is shown, after the retry.
     const first = ruleChecks(said[0] ?? "");
     const shown = ready ? ruleChecks(JSON.stringify({ why: ready.bullets, ...(ready.question ? { question: ready.question } : {}) })) : first;
+    const lineProblem = (x: string) => /^(It has \d+ lines|A line is too long)/.test(x);
     const rules: Rules = ready && first.parsed && shown.parsed
-      ? { ...first, plain: shown.plain, problems: [...first.problems.filter((p) => !p.startsWith("Not plain:")), ...shown.problems.filter((p) => p.startsWith("Not plain:"))] }
+      ? {
+          ...first,
+          plain: shown.plain,
+          // The count of lines is the model's own reply (the app keeps two); how long they are, and the plain words, are what is shown.
+          twoLines: first.lines.length === 2 && shown.twoLines,
+          problems: [...first.problems.filter((x) => !x.startsWith("Not plain:") && !lineProblem(x)),
+            ...(first.lines.length !== 2 ? [`It has ${first.lines.length} lines, not two.`] : []),
+            ...shown.problems.filter((x) => x.startsWith("Not plain:") || (first.lines.length === 2 && lineProblem(x)))],
+        }
       : first;
     let grade = null;
     if (rules.parsed) {

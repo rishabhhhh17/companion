@@ -85,7 +85,11 @@ export function plainProblems(text: string): string[] {
 /** Every way an explanation is not plain, once each: its two lines, and its question and options when a question is wanted. */
 export function explanationProblems(e: Explanation, withQuestion: boolean): string[] {
   const words = [...e.bullets, ...(withQuestion && e.question ? [e.question.text, ...e.question.options] : [])];
-  return [...new Set(words.flatMap(plainProblems))];
+  const p = [...new Set(words.flatMap(plainProblems))];
+  // Two short lines: one sentence each is the aim, two the most, and at most 150 characters (the real eval's last misses were longer).
+  if (e.bullets.some((b) => b.length > 150)) p.push("a line is longer than 150 characters");
+  if (e.bullets.some((b) => b.split(/[.!?]+\s/).filter((x) => x.trim()).length > 2)) p.push("a line has more than two sentences");
+  return p;
 }
 
 export type ExplainAsk = (req: { text: string; system: string }) => Promise<{ text: string; costUsd: number }>;
@@ -101,7 +105,7 @@ export async function explainPlain(ask: ExplainAsk, req: { text: string; system:
   const p1 = explanationProblems(e1, o.question);
   if (p1.length === 0) return { explanation: e1, costUsd: cost };
   try {
-    const second = await ask({ system: req.system, text: `${req.text}\n\nYour first answer was not plain enough: ${p1.join("; ")}. Write it again in plain words for someone who has never coded, with the same meaning, and without any of those. Reply with ONLY the JSON.` });
+    const second = await ask({ system: req.system, text: `${req.text}\n\nYour first answer was not plain enough: ${p1.join("; ")}. Write it again in plain words for someone who has never coded, with the same meaning, without any of those, each line one sentence of at most 150 characters. Reply with ONLY the JSON.` });
     if (Number.isFinite(second.costUsd) && second.costUsd > 0) cost += second.costUsd;
     const e2 = parseExplain(second.text);
     if (e2 && explanationProblems(e2, o.question).length < p1.length) return { explanation: e2, costUsd: cost };
