@@ -448,3 +448,103 @@ describe("a project that cannot be built here", () => {
     expect(r.result.gaps?.join(" ")).toMatch(/Android/);
   });
 });
+
+// ---- review round: what a yes covers, tests that ran nothing, and servers that would download
+
+describe("a yes to running the changed scripts is not a yes to downloading packages", () => {
+  test("ask: the scripts card is answered yes, the download card is answered no, so the online command never runs", async () => {
+    const asked: boolean[] = [];
+    const r = await check(GO, {
+      after: { "go.mod": GO_MOD + "\nrequire example.com/other v1.0.0\n" }, approvals: memoryApprovals(), check: { install: "ask" } as never,
+      askScripts: async (byTask) => { asked.push(byTask); return true; }, run: (c) => (c.includes("GOPROXY=off") ? failing(NEEDS_NET) : res()),
+    });
+    expect(asked).toEqual([true]);
+    expect(r.asks).toHaveLength(1);
+    expect(r.asks[0].startsWith(DOWNLOAD_ASK)).toBe(true);
+    expect(r.commands.length).toBeGreaterThan(0);
+    expect(r.commands.every((c) => c.includes("GOPROXY=off"))).toBe(true);
+    expect(r.result.verdict).not.toBe("passed");
+  });
+  test("ask: a yes to both downloads", async () => {
+    const r = await check(GO, {
+      after: { "go.mod": GO_MOD + "\nrequire example.com/other v1.0.0\n" }, approvals: memoryApprovals(), check: { install: "ask" } as never,
+      askScripts: async () => true, askInstall: async () => true, run: (c) => (c.includes("GOPROXY=off") && c.includes("go build") ? failing(NEEDS_NET) : res()),
+    });
+    expect(r.commands.some((c) => !c.includes("GOPROXY=off"))).toBe(true);
+  });
+});
+
+describe("a test run that ran no tests is not a pass", () => {
+  test("Swift: 'Executed 0 tests' is a gap, not 'The tests passed'", async () => {
+    const files = { "Package.swift": "// swift-tools-version:5.9\n", "Tests/xTests/A.swift": "import XCTest\nfinal class A: XCTestCase { func testA() {} }\n" };
+    const zero = await check(files, { run: (c) => (c.startsWith("swift test") ? res({ stdout: "Test Suite 'All tests' passed at 2026-10-21.\n\t Executed 0 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds\n" }) : res()) });
+    expect(zero.result.steps.find((x) => x.rung === "tests")?.status).toBe("skipped");
+    expect(zero.result.verdict).toBe("passed_with_gaps");
+    expect(zero.result.gaps?.join(" ")).toMatch(/no tests/i);
+    const some = await check(files, { run: (c) => (c.startsWith("swift test") ? res({ stdout: "\t Executed 3 tests, with 0 failures (0 unexpected) in 0.1 (0.1) seconds\n" }) : res()) });
+    expect(some.result.steps.find((x) => x.rung === "tests")?.status).toBe("passed");
+  });
+  test("Xcode's own wording, and Swift Testing's, count the same", async () => {
+    const files = { "Package.swift": "// swift-tools-version:5.9\n", "Tests/xTests/A.swift": "import Testing\n" };
+    const out = "Test run with 0 tests in 0 suites passed after 0.001 seconds.\n";
+    const r = await check(files, { run: (c) => (c.startsWith("swift test") ? res({ stdout: out }) : res()) });
+    expect(r.result.steps.find((x) => x.rung === "tests")?.status).toBe("skipped");
+    // XCTest ran 2 tests while Swift Testing found none: that is a pass.
+    const mixed = await check(files, { run: (c) => (c.startsWith("swift test") ? res({ stdout: "\t Executed 2 tests, with 0 failures\n" + out }) : res()) });
+    expect(mixed.result.steps.find((x) => x.rung === "tests")?.status).toBe("passed");
+  });
+  test("Rust: every 'running 0 tests' is a gap, one 'running 2 tests' is a pass", async () => {
+    const files = { "Cargo.toml": '[package]\nname = "x"\nversion = "0.1.0"\n', "src/lib.rs": "#[test]\nfn a() {}\n" };
+    const zero = await check(files, { run: (c) => (c.includes("cargo test") ? res({ stdout: "running 0 tests\n\ntest result: ok. 0 passed\n" }) : res()) });
+    expect(zero.result.steps.find((x) => x.rung === "tests")?.status).toBe("skipped");
+    const some = await check(files, { run: (c) => (c.includes("cargo test") ? res({ stdout: "running 2 tests\ntest a ... ok\n\nrunning 0 tests\n" }) : res()) });
+    expect(some.result.steps.find((x) => x.rung === "tests")?.status).toBe("passed");
+  });
+});
+
+describe("a server named in .claude/launch.json follows the same download rules as a build", () => {
+  const launch = (exe: string, args: string[]) => ({ ".claude/launch.json": JSON.stringify({ configurations: [{ runtimeExecutable: exe, runtimeArgs: args, port: 8080 }] }) });
+  const WRAP = { "build.gradle": "plugins { id 'java' }\n", gradlew: "#!/bin/sh\n", "gradle/wrapper/gradle-wrapper.properties": "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.5-bin.zip\n" };
+  const serverSpy = (seen: string[]) => (async (start: { command: string }) => { seen.push(start.command); return { ok: true, url: "http://127.0.0.1:9/", port: 9, stop: async () => {} }; }) as never;
+  test("a gradlew whose Gradle is not on this Mac would download it first: not started when downloads are not allowed, and said as a gap", async () => {
+    const seen: string[] = [];
+    const env: NativeEnv = { has: (t) => t === "java", home: tmp() };
+    const r = await check({ ...WRAP, ...launch("./gradlew", ["bootRun"]) }, { env, check: { install: "never" } as never, server: serverSpy(seen) });
+    expect(seen).toEqual([]);
+    expect(r.result.verdict).not.toBe("failed");
+    expect(r.result.gaps?.join(" ")).toMatch(/download/);
+  });
+  test("a wrapper start with 'ask' asks once, and a no keeps the server down", async () => {
+    const seen: string[] = [];
+    const env: NativeEnv = { has: (t) => t === "java", home: tmp() };
+    const r = await check({ ...WRAP, ...launch("./gradlew", ["bootRun"]) }, { env, check: { install: "ask" } as never, server: serverSpy(seen) });
+    expect(seen).toEqual([]);
+    expect(r.asks.filter((a) => a.startsWith(DOWNLOAD_ASK))).toHaveLength(1);
+  });
+  test("a cached wrapper or a Maven on this Mac is started with its offline switch", async () => {
+    const seen: string[] = [];
+    await check({ "pom.xml": POM, ...launch("mvn", ["spring-boot:run"]) }, { check: { install: "never" } as never, server: serverSpy(seen) });
+    expect(seen).toEqual(["mvn -o spring-boot:run"]);
+    const gseen: string[] = [];
+    await check({ "build.gradle": "plugins { id 'java' }\n", ...launch("gradle", ["bootRun"]) }, { check: { install: "never" } as never, server: serverSpy(gseen) });
+    expect(gseen).toEqual(["gradle --offline bootRun"]);
+  });
+  test("swift run and xcodebuild have no offline switch: a project with remote packages is not started when downloads are not allowed", async () => {
+    const seen: string[] = [];
+    const pkg = 'let p = Package(name: "x", dependencies: [.package(url: "https://github.com/vapor/vapor.git", from: "4.0.0")])\n';
+    const r = await check({ "Package.swift": pkg, ...launch("swift", ["run"]) }, { check: { install: "never" } as never, server: serverSpy(seen) });
+    expect(seen).toEqual([]);
+    expect(r.result.verdict).not.toBe("failed");
+    expect(r.result.gaps?.join(" ")).toMatch(/download/);
+    // With no packages to fetch there is nothing to hold back.
+    const none: string[] = [];
+    await check({ "Package.swift": "// swift-tools-version:5.9\n", ...launch("swift", ["run"]) }, { check: { install: "never" } as never, server: serverSpy(none) });
+    expect(none).toEqual(["swift run"]);
+  });
+  test("with downloads allowed, the wrapper is started as written", async () => {
+    const seen: string[] = [];
+    const env: NativeEnv = { has: (t) => t === "java", home: tmp() };
+    await check({ ...WRAP, ...launch("./gradlew", ["bootRun"]) }, { env, server: serverSpy(seen) });
+    expect(seen).toEqual(["./gradlew bootRun"]);
+  });
+});

@@ -239,8 +239,8 @@ describe("Swift packages", () => {
 });
 
 // The smallest project.pbxproj that has what the reading needs, in the form Xcode writes it.
-const pbx = (targets: { id: string; name: string; type: string; sdk?: string; platforms?: string; testHost?: boolean }[], extra = "") => {
-  const cfgs = targets.map((t) => `\t\t${t.id.slice(0, 22)}C0 /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n${t.sdk ? `\t\t\t\tSDKROOT = ${t.sdk};\n` : ""}${t.platforms ? `\t\t\t\tSUPPORTED_PLATFORMS = "${t.platforms}";\n` : ""}${t.testHost ? '\t\t\t\tTEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/Contents/MacOS/App";\n' : ""}\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";\n\t\t\t};\n\t\t\tname = Debug;\n\t\t};`).join("\n");
+const pbx = (targets: { id: string; name: string; type: string; sdk?: string; platforms?: string; testHost?: boolean; xcconfig?: boolean }[], extra = "") => {
+  const cfgs = targets.map((t) => `\t\t${t.id.slice(0, 22)}C0 /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n${t.xcconfig ? "\t\t\tbaseConfigurationReference = DDDDDDDDDDDDDDDDDDDDDDDD /* Tests.xcconfig */;\n" : ""}\t\t\tbuildSettings = {\n${t.sdk ? `\t\t\t\tSDKROOT = ${t.sdk};\n` : ""}${t.platforms ? `\t\t\t\tSUPPORTED_PLATFORMS = "${t.platforms}";\n` : ""}${t.testHost ? '\t\t\t\tTEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/Contents/MacOS/App";\n' : ""}\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";\n\t\t\t};\n\t\t\tname = Debug;\n\t\t};`).join("\n");
   const lists = targets.map((t) => `\t\t${t.id.slice(0, 22)}L0 /* Build configuration list for PBXNativeTarget "${t.name}" */ = {\n\t\t\tisa = XCConfigurationList;\n\t\t\tbuildConfigurations = (\n\t\t\t\t${t.id.slice(0, 22)}C0 /* Debug */,\n\t\t\t);\n\t\t};`).join("\n");
   const objs = targets.map((t) => `\t\t${t.id} /* ${t.name} */ = {\n\t\t\tisa = PBXNativeTarget;\n\t\t\tbuildConfigurationList = ${t.id.slice(0, 22)}L0 /* Build configuration list for PBXNativeTarget "${t.name}" */;\n\t\t\tbuildPhases = (\n\t\t\t);\n\t\t\tname = ${t.name};\n\t\t\tproductName = ${t.name};\n\t\t\tproductType = "${t.type}";\n\t\t};`).join("\n");
   return `// !$*UTF8*$!\n{\n\tarchiveVersion = 1;\n\tobjects = {\n\n/* Begin PBXNativeTarget section */\n${objs}\n/* End PBXNativeTarget section */\n\n/* Begin XCBuildConfiguration section */\n${cfgs}\n/* End XCBuildConfiguration section */\n\n/* Begin XCConfigurationList section */\n${lists}\n/* End XCConfigurationList section */\n${extra}\n\t};\n\trootObject = ABCDEF012345678901234567 /* Project object */;\n}\n`;
@@ -250,6 +250,19 @@ const scheme = (name: string, build: string, tests: string[] = []) => `<?xml ver
 
 describe("Xcode projects", () => {
   const mac = { id: "AAAAAAAAAAAAAAAAAAAAAAA1", name: "Shop", type: APP, sdk: "macosx" };
+  test("a scheme whose only test target is a UI test target has no tests to run: a plain gap, never a pass over zero tests", () => {
+    const targets = [mac, { id: "CCCCCCCCCCCCCCCCCCCCCCC3", name: "ShopUITests", type: UI, sdk: "macosx" }];
+    const d = detectNative(project({ "Shop.xcodeproj/project.pbxproj": pbx(targets), "Shop.xcodeproj/xcshareddata/xcschemes/Shop.xcscheme": scheme("Shop", "Shop", ["ShopUITests"]) }), ALL)!;
+    expect(d.tests).toBeNull();
+    expect(d.checks).toHaveLength(1);
+    expect(d.setup.gaps.join(" ")).toMatch(/UI tests/);
+  });
+  test("a test target whose settings come from an .xcconfig may name the app as its host, so it is not run", () => {
+    const targets = [mac, { id: "BBBBBBBBBBBBBBBBBBBBBBB2", name: "ShopTests", type: UNIT, sdk: "macosx", xcconfig: true }];
+    const d = detectNative(project({ "Shop.xcodeproj/project.pbxproj": pbx(targets), "Shop.xcodeproj/xcshareddata/xcschemes/Shop.xcscheme": scheme("Shop", "Shop", ["ShopTests"]) }), ALL)!;
+    expect(d.tests).toBeNull();
+    expect(d.setup.gaps.join(" ")).toMatch(/inside the app|open it|\.xcconfig/);
+  });
   test("a macOS scheme is built for the Mac only, signing off, with no archive, export or install", () => {
     const d = detectNative(project({ "Shop.xcodeproj/project.pbxproj": pbx([mac]), "Shop.xcodeproj/xcshareddata/xcschemes/Shop.xcscheme": scheme("Shop", "Shop") }), ALL)!;
     expect(d.setup.ecosystem).toBe("xcode");

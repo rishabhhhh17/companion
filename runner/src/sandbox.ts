@@ -26,11 +26,13 @@ const SENSITIVE = [
 // The only places in the home folder a command may write: the download caches of package managers. Go, Maven, Gradle, Swift
 // and Xcode keep theirs in folders of their own, listed one by one: never the tool's whole folder, because Maven's
 // settings.xml, Gradle's gradle.properties and init scripts, and Cargo's config and credentials sit beside them. (Go's build
-// cache, SwiftPM's cache and Xcode's other caches are under Library/Caches already.)
+// cache, SwiftPM's cache and Xcode's other caches are under Library/Caches already.) Not here on purpose: SwiftPM's own folder
+// (its mirrors.json and registries.json redirect later package fetches), and the Gradle and Maven wrapper folders (the build
+// tools a check later runs outside this sandbox without asking; a check fetches those itself).
 const CACHES = [
   ".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm", "Library/pnpm", ".yarn", ".cargo/registry", ".cargo/git", ".gem", ".pnpm-store",
   ".cargo/.package-cache", ".cargo/.package-cache-mutate", ".cargo/.global-cache",   // cargo's lock and usage files, which it writes beside the registry
-  "go/pkg/mod", ".m2/repository", ".m2/wrapper", ".gradle/caches", ".gradle/wrapper", ".gradle/native", ".gradle/daemon", "Library/org.swift.swiftpm", "Library/Developer/Xcode/DerivedData",
+  "go/pkg/mod", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Developer/Xcode/DerivedData",
 ];
 export const cachePaths = (home: string): string[] => CACHES.map((p) => `${home}/${p}`);
 export const sensitivePaths = (home: string): string[] => SENSITIVE.map((p) => `${home}/${p}`);

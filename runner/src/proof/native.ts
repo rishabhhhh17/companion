@@ -15,7 +15,8 @@ export type Ecosystem = "go" | "rust" | "maven" | "gradle" | "swift" | "xcode";
 export type NativeCheck = { name: "typecheck" | "lint" | "build"; command: string; offline: string | null; tool: string };
 export type NativeTests = { command: string; offline: string | null; tool: string };
 export type Plan = { checks: NativeCheck[]; tests: NativeTests | null };
-export type Scheme = { name: string; macos: boolean; tests: boolean; hosted: boolean; skipTesting: string[] };
+// tests: the scheme has a test target that is not a UI test target. uiOnly: its only test targets are UI tests (set only then).
+export type Scheme = { name: string; macos: boolean; tests: boolean; hosted: boolean; skipTesting: string[]; uiOnly?: true };
 // missing: plain words (with the command to run) when a tool this project needs is not on this Mac, else null.
 // gaps: things that cannot be checked here whatever is installed (an iPhone only project, tests that open the app); they
 //   leave the result at best "passed with gaps" and are not something to install.
@@ -24,6 +25,8 @@ export type Scheme = { name: string; macos: boolean; tests: boolean; hosted: boo
 export type NativeSetup = {
   ecosystem: Ecosystem; label: string; missing: string | null; note: string; gaps: string[]; hints: string[];
   downloads: boolean; run: string | null; fetch: string; schemes: Scheme[]; stackNote: string | null;
+  // Set only when the project has a mvnw or gradlew: whether the build tool it names is already on this Mac.
+  wrapperCached?: boolean;
 };
 export type NativeDetected = { setup: NativeSetup; checks: NativeCheck[]; tests: NativeTests | null };
 // has: whether a tool is on this Mac (tests give their own). home: where package caches live. xcodeApp: an Xcode that is
@@ -36,21 +39,51 @@ const names = (dir: string): string[] => { try { return readdirSync(dir); } catc
 
 // Folders that are never the person's own code when looking for tests and source.
 const SKIP = new Set(["node_modules", ".git", "target", "build", ".gradle", ".build", "vendor", "Pods", "DerivedData", ".idea", ".venv", "venv", "dist", "out", "Carthage"]);
-/** A file in the project (not in a folder the person did not write) that `match` accepts, a few folders deep. Bounded. */
-function findFile(dir: string, match: (rel: string, name: string) => boolean, maxDepth = 6, maxSeen = 6000): string | null {
+const subdirs = (dir: string): string[] => { try { return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(); } catch { return []; } };
+/** A file under `dir`, at any depth, that `match` accepts. Folders `skip` refuses are not entered, and links are not followed.
+ *  The room (`budget` entries) is for this one search, so a search in one folder never uses up the room of another. */
+function walkFind(dir: string, match: (rel: string, name: string) => boolean, skip: (name: string) => boolean, budget = 100_000): string | null {
   let seen = 0;
-  const walk = (rel: string, depth: number): string | null => {
-    for (const n of names(rel ? join(dir, rel) : dir).sort()) {
-      if (++seen > maxSeen) return null;
-      if (SKIP.has(n) || n.startsWith(".")) continue;
-      const r = rel ? `${rel}/${n}` : n;
-      let st; try { st = statSync(join(dir, r)); } catch { continue; }
-      if (st.isDirectory()) { if (depth < maxDepth) { const hit = walk(r, depth + 1); if (hit) return hit; } }
-      else if (match(r, n)) return r;
+  const walk = (rel: string): string | null => {
+    let entries;
+    try { entries = readdirSync(rel ? join(dir, rel) : dir, { withFileTypes: true }); } catch { return null; }
+    entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+    for (const e of entries) {
+      if (++seen > budget) return null;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { if (!skip(e.name)) { const hit = walk(r); if (hit) return hit; } }
+      else if (e.isFile() && match(r, e.name)) return r;
     }
     return null;
   };
-  return walk("", 0);
+  return walk("");
+}
+const hidden = (n: string) => n.startsWith(".");
+const JVM_CODE = /\.(?:java|kt|scala|groovy)$/;
+/** Every `src` folder in the project (a module has its own), whatever the depth: only folders are looked at, and `src` is not entered. */
+function srcDirs(dir: string): string[] {
+  const out: string[] = [];
+  let seen = 0;
+  const walk = (rel: string) => {
+    for (const n of subdirs(rel ? join(dir, rel) : dir)) {
+      if (++seen > 50_000) return;
+      const r = rel ? `${rel}/${n}` : n;
+      if (n === "src") out.push(r);
+      else if (!SKIP.has(n) && !hidden(n)) walk(r);
+    }
+  };
+  walk("");
+  return out;
+}
+/** Does a Java, Kotlin or Scala project have test code? It lives in src/test, in another test source set (src/integrationTest,
+ *  src/jvmTest) or in src/<set>/test, of the project or of any module, and is searched there without a depth limit. Folders
+ *  named build or out below a test folder are the person's package names, so they are entered. */
+function hasJvmTests(dir: string): boolean {
+  for (const src of srcDirs(dir)) {
+    const roots = subdirs(join(dir, src)).flatMap((n) => (/^test$|Tests?$/.test(n) ? [`${src}/${n}`] : subdirs(join(dir, src, n)).includes("test") ? [`${src}/${n}/test`] : []));
+    for (const root of roots) if (walkFind(join(dir, root), (_r, n) => JVM_CODE.test(n), (n) => hidden(n) || n === "node_modules")) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------- tools on this Mac, and what to say when one is not
@@ -184,14 +217,24 @@ export function xcodePlan(f: XcodeFacts): Plan {
 
 // ---------------------------------------------------------------- wrappers (mvnw, gradlew)
 
-// The build tool a wrapper downloads is kept at a known place; when it is there, the wrapper does not need the internet.
+// The build tool a wrapper downloads is kept at a known place; when it is all there, the wrapper does not need the internet.
+// Not all there: a folder a download began and never finished (Gradle writes a .ok marker when it is done; an unpacked Maven or
+// Gradle has its bin folder), and, for Maven Wrapper 3.1 and older, the wrapper jar the script fetches itself when it is missing.
 function wrapperCached(dir: string, kind: "maven" | "gradle", home: string, exists: (p: string) => boolean): boolean {
   const props = kind === "maven" ? ".mvn/wrapper/maven-wrapper.properties" : "gradle/wrapper/gradle-wrapper.properties";
-  const url = /^\s*distributionUrl\s*=\s*(\S+)\s*$/m.exec(readText(join(dir, props), 20_000))?.[1]?.replace(/\\:/g, ":") ?? "";
+  const text = readText(join(dir, props), 20_000);
+  const url = /^\s*distributionUrl\s*=\s*(\S+)\s*$/m.exec(text)?.[1]?.replace(/\\:/g, ":") ?? "";
   const dist = /([^/]+?)\.zip$/.exec(url)?.[1];
   if (!dist || !/^[\w.-]+$/.test(dist)) return false;
   const root = join(home, kind === "maven" ? ".m2/wrapper/dists" : ".gradle/wrapper/dists", dist);
-  return exists(root) && names(root).some((n) => !n.startsWith("."));
+  if (!exists(root)) return false;
+  const complete = names(root).filter((h) => !h.startsWith(".")).some((h) => {
+    const folder = join(root, h), inside = names(folder);
+    return (kind === "gradle" && inside.some((f) => f.endsWith(".ok"))) || inside.some((c) => exists(join(folder, c, "bin", kind === "maven" ? "mvn" : "gradle")));
+  });
+  if (!complete) return false;
+  if (kind === "maven" && /^\s*wrapperUrl\s*=/m.test(text) && !has(dir, ".mvn/wrapper/maven-wrapper.jar")) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------- Xcode projects (read from their files)
@@ -216,6 +259,9 @@ function pbxObjects(text: string): Map<string, PbxObject> {
 const field = (text: string, name: string): string | null => { const m = new RegExp(`^\\s*${name} = ("[^"]*"|[^;\\n]+);`, "m").exec(text); return m ? m[1].replace(/\s*\/\*.*?\*\/\s*$/, "").replace(/^"|"$/g, "") : null; };
 const refs = (text: string, name: string): string[] => { const m = new RegExp(`${name} = \\(([^)]*)\\);`).exec(text); return m ? [...m[1].matchAll(/\b([0-9A-Fa-f]{24})\b/g)].map((x) => x[1]) : []; };
 type Target = { name: string; type: string; macos: boolean; hosted: boolean };
+// A test target takes its settings from an .xcconfig file when its build configuration names one. Companion does not read those,
+// and TEST_HOST (the app the tests run inside) is a setting they often hold, so such a target may be hosted.
+const fromXcconfig = (settings: string) => /\bbaseConfigurationReference = /.test(settings);
 
 function settingsOf(objects: Map<string, PbxObject>, listId: string | null): string {
   const list = listId ? objects.get(listId) : undefined;
@@ -237,7 +283,7 @@ function pbxTargets(text: string): Target[] {
     if (o.isa !== "PBXNativeTarget") continue;
     const settings = settingsOf(objects, field(o.text, "buildConfigurationList"));
     const p = platforms(settings) ?? inherited;
-    out.push({ name: field(o.text, "name") ?? "", type: field(o.text, "productType") ?? "", macos: !!p && (p.has("macosx")), hosted: /\bTEST_HOST = /.test(settings) });
+    out.push({ name: field(o.text, "name") ?? "", type: field(o.text, "productType") ?? "", macos: !!p && (p.has("macosx")), hosted: /\bTEST_HOST = /.test(settings) || fromXcconfig(settings) });
   }
   return out.filter((t) => t.name);
 }
@@ -262,7 +308,9 @@ function xcodeSchemes(dir: string, container: string, projects: string[]): Schem
     const testRefs = [...(/<TestAction\b[\s\S]*?<\/TestAction>/.exec(f.text)?.[0] ?? "").matchAll(/<TestableReference\b[\s\S]*?BlueprintName\s*=\s*"([^"]+)"[\s\S]*?<\/TestableReference>/g)].map((m) => m[1]);
     const testTargets = testRefs.map((n) => targets.get(n)).filter((t): t is Target => !!t);
     const ui = testRefs.filter((n) => /ui-testing/.test(targets.get(n)?.type ?? ""));
-    out.set(f.name, { name: f.name, macos: !!build && !!targets.get(build)?.macos, tests: testRefs.length > 0, hosted: testTargets.some((t) => t.hosted), skipTesting: ui });
+    const unit = testRefs.filter((n) => !ui.includes(n));
+    const hosted = testTargets.some((t) => !/ui-testing/.test(t.type) && t.hosted);
+    out.set(f.name, { name: f.name, macos: !!build && !!targets.get(build)?.macos, tests: unit.length > 0, hosted, skipTesting: ui, ...(testRefs.length > 0 && unit.length === 0 ? { uiOnly: true as const } : {}) });
   }
   // Without saved schemes Xcode makes one for each target that builds something.
   if (!out.size) for (const t of targets.values()) if (SCHEME_TYPES.test(t.type) && !out.has(t.name)) out.set(t.name, { name: t.name, macos: t.macos, tests: false, hosted: false, skipTesting: [] });
@@ -297,7 +345,7 @@ const NOTE = (what: string, how: string, downloads: boolean) => `${what} Compani
 function goFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDetected {
   const mod = readText(join(dir, "go.mod"));
   const downloads = /^\s*require\b/m.test(mod);
-  const hasTests = !!findFile(dir, (_r, n) => n.endsWith("_test.go"));
+  const hasTests = !!walkFind(dir, (_r, n) => n.endsWith("_test.go"), (n) => hidden(n) || n.startsWith("_") || n === "vendor" || n === "node_modules" || n === "testdata");
   const plan = goPlan({ hasTests });
   const missing = tools.has("go") ? null : missingTool("go", "Go");
   const web = /gin-gonic\/gin/.test(mod) ? "Gin" : /labstack\/echo/.test(mod) ? "Echo" : /gofiber\/fiber/.test(mod) ? "Fiber" : /go-chi\/chi/.test(mod) ? "chi" : /gorilla\/mux/.test(mod) ? "Gorilla mux" : /"net\/http"/.test(readText(join(dir, "main.go"))) ? "Go's own web server" : null;
@@ -323,7 +371,8 @@ function cargoHasDependencies(text: string): boolean {
 function rustFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDetected {
   const toml = readText(join(dir, "Cargo.toml"));
   const downloads = cargoHasDependencies(toml);
-  const hasTests = names(join(dir, "tests")).some((n) => n.endsWith(".rs")) || !!findFile(dir, (_r, n) => n.endsWith(".rs") && /#\[(?:test|tokio::test)\]|#\[cfg\(test\)\]/.test(readText(join(dir, _r), 400_000)));
+  let reads = 0;   // source files opened looking for a test: bounded
+  const hasTests = names(join(dir, "tests")).some((n) => n.endsWith(".rs")) || !!walkFind(dir, (r, n) => n.endsWith(".rs") && ++reads <= 5000 && /#\[(?:test|tokio::test)\]|#\[cfg\(test\)\]/.test(readText(join(dir, r), 400_000)), (n) => hidden(n) || n === "target" || n === "vendor" || n === "node_modules");
   const clippy = tools.has("clippy");
   const plan = rustPlan({ hasTests, clippy });
   const missing = tools.has("cargo") ? null : missingTool("cargo", "Rust");
@@ -340,7 +389,7 @@ function rustFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDete
 function jvmLabel(dir: string, gradle: boolean): string {
   if (!gradle) return "Java (Maven)";
   const text = gradleFiles(dir).map((f) => readText(join(dir, f), 100_000)).join("\n");
-  return /kotlin/i.test(text) || !!findFile(dir, (_r, n) => n.endsWith(".kt") || n.endsWith(".kts") && n !== "build.gradle.kts" && n !== "settings.gradle.kts", 4, 1500) ? "Kotlin (Gradle)" : "Java (Gradle)";
+  return /kotlin/i.test(text) || !!walkFind(dir, (_r, n) => n.endsWith(".kt") || n.endsWith(".kts") && n !== "build.gradle.kts" && n !== "settings.gradle.kts", (n) => hidden(n) || SKIP.has(n), 5000) ? "Kotlin (Gradle)" : "Java (Gradle)";
 }
 function isAndroid(dir: string): boolean {
   const files = [...gradleFiles(dir).map((f) => join(dir, f)), ...names(dir).filter((n) => { try { return statSync(join(dir, n)).isDirectory() && !SKIP.has(n) && !n.startsWith("."); } catch { return false; } }).flatMap((n) => ["build.gradle", "build.gradle.kts"].map((f) => join(dir, n, f)))];
@@ -351,7 +400,7 @@ function jvmFacts(dir: string, tools: ReturnType<typeof toolCheck>, gradle: bool
   const wrapperName = gradle ? "gradlew" : "mvnw";
   const wrapper: Wrapper = has(dir, wrapperName) ? { cached: wrapperCached(dir, gradle ? "gradle" : "maven", m.home, m.exists) } : null;
   const system = tools.has(gradle ? "gradle" : "mvn");
-  const hasTests = !!findFile(dir, (r, n) => /(?:^|\/)src\/test\//.test(r) && /\.(?:java|kt|scala|groovy)$/.test(n));
+  const hasTests = hasJvmTests(dir);
   const plan = (gradle ? gradlePlan : mavenPlan)({ wrapper, hasTests, system });
   const label = jvmLabel(dir, gradle);
   const text = gradle ? gradleFiles(dir).map((f) => readText(join(dir, f), 200_000)).join("\n") : readText(join(dir, "pom.xml"));
@@ -363,7 +412,7 @@ function jvmFacts(dir: string, tools: ReturnType<typeof toolCheck>, gradle: bool
   const gaps = android ? ["This is an Android project. Building it needs the Android SDK, which Companion does not use, so it was not built."] : [];
   const stop = !!missing || android;
   const setup: NativeSetup = {
-    ecosystem: gradle ? "gradle" : "maven", label, missing, downloads: true, schemes: [], gaps, hints: [], stackNote: spring ? "Spring Boot" : null,
+    ecosystem: gradle ? "gradle" : "maven", label, missing, downloads: true, schemes: [], gaps, hints: [], stackNote: spring ? "Spring Boot" : null, ...(wrapper ? { wrapperCached: wrapper.cached } : {}),
     run: spring ? (gradle ? `${wrapper ? "./gradlew" : "gradle"} bootRun` : `${wrapper ? "./mvnw" : "mvn"} spring-boot:run`) : null,
     fetch: gradle ? `${wrapper ? "./gradlew" : "gradle"} build` : `${wrapper ? "./mvnw" : "mvn"} -q compile`,
     note: NOTE(`This is a ${label} project.`, gradle ? `${wrapper ? "its own gradlew" : "gradle"} build and test` : `${wrapper ? "its own mvnw" : "mvn"} compile and test`, true),
@@ -374,7 +423,7 @@ function jvmFacts(dir: string, tools: ReturnType<typeof toolCheck>, gradle: bool
 function swiftFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDetected {
   const text = readText(join(dir, "Package.swift"));
   const downloads = /\.package\s*\(/.test(text);
-  const hasTests = /\.testTarget\s*\(/.test(text) || names(join(dir, "Tests")).length > 0 && !!findFile(join(dir, "Tests"), (_r, n) => n.endsWith(".swift"));
+  const hasTests = /\.testTarget\s*\(/.test(text) || names(join(dir, "Tests")).length > 0 && !!walkFind(join(dir, "Tests"), (_r, n) => n.endsWith(".swift"), (n) => hidden(n));
   const plan = swiftPlan({ hasTests });
   const missing = tools.has("swift") ? null : missingTool("swift", "Swift");
   const setup: NativeSetup = {
@@ -399,7 +448,9 @@ function xcodeFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDet
   if (!schemes.length) gaps.push("No scheme was found in this Xcode project, so there is nothing for Companion to build. Open it in Xcode once so it makes one.");
   else if (!buildScheme) gaps.push("This Xcode project builds for iPhone or iPad only. Companion builds only for the Mac and never installs on a simulator or a device, so it was not built.");
   const hostedOnly = macs.find((s) => s.tests && s.hosted);
-  if (buildScheme && !testScheme && hostedOnly) gaps.push(`The tests of the scheme ${hostedOnly.name} run inside the app, which would open it on this Mac, so Companion did not run them.`);
+  if (buildScheme && !testScheme && hostedOnly) gaps.push(`The tests of the scheme ${hostedOnly.name} run inside the app (or take their settings from an .xcconfig file, which may say so), which would open it on this Mac, so Companion did not run them.`);
+  const uiOnly = macs.find((s) => s.uiOnly);
+  if (buildScheme && !testScheme && !hostedOnly && uiOnly) gaps.push(`The only tests of the scheme ${uiOnly.name} are UI tests, which drive the app on screen, so Companion did not run them.`);
   const xcodeOk = tools.has("xcodebuild"), alt = !xcodeOk ? tools.xcodeApp : null;
   const missing = !buildScheme || xcodeOk || alt ? null : missingTool("xcodebuild", "Xcode");
   const plan = xcodePlan({ container: { kind: c.kind, name: c.container }, scheme: buildScheme?.name ?? null, testScheme: testScheme?.name ?? null, skipTesting: (testScheme ?? buildScheme)?.skipTesting ?? [], developerDir: alt });
@@ -486,6 +537,40 @@ export function nativeGap(output: string, o: { setup: NativeSetup; allowed: bool
   if (UNREACHABLE.test(output)) return `${o.what[0].toUpperCase()}${o.what.slice(1)} needed to download packages, but this Mac could not reach the internet, so it could not run. Try again when you are online.`;
   return null;
 }
+
+/** A test run that exited with success but ran no test at all: XCTest's "Executed 0 tests" (with Swift Testing's "Test run with 0
+ *  tests", when it counts none either) and cargo's "running 0 tests" in every test program. Nothing was checked, so it is never
+ *  called a pass. False when the output says nothing about how many tests ran. */
+export function ranNoTests(output: string, eco: Ecosystem): boolean {
+  const nums = (re: RegExp) => [...output.matchAll(re)].map((m) => Number(m[1]));
+  if (eco === "swift" || eco === "xcode") {
+    const xc = nums(/Executed (\d+) tests?\b/g), st = nums(/Test run with (\d+) tests?\b/g);
+    return xc.length + st.length > 0 && Math.max(0, ...xc) + Math.max(0, ...st) === 0;
+  }
+  if (eco === "rust") { const n = nums(/\brunning (\d+) tests?\b/g); return n.length > 0 && Math.max(...n) === 0; }
+  return false;
+}
+
+/** A command from .claude/launch.json that starts a project's server, made to run without downloading when it can be:
+ *  Maven and Gradle get their offline switch (MAVEN_ARGS is only read by Maven 3.9 and newer, so the switch goes in the
+ *  command), Go and Cargo are told by the environment (serverEnv). `download` is set when it cannot be made to run without
+ *  one: a wrapper whose build tool is not on this Mac yet downloads it first, and swift run and xcodebuild have no offline
+ *  switch for a project that has remote packages. The caller then asks, as for a build, or does not start it. */
+export function serverOffline(command: string, setup: NativeSetup): { command: string; download: boolean } {
+  const tool = /(^|[\s;&|])((?:\.\/)?(?:mvnw|gradlew|mvn|gradle))(?=\s|$)/.exec(command);
+  if (tool) {
+    const name = tool[2].replace(/^\.\//, "");
+    if ((name === "mvnw" || name === "gradlew") && setup.wrapperCached !== true) return { command, download: true };
+    const flag = name.startsWith("mvn") ? "-o" : "--offline";
+    if (new RegExp(`(?:^|\\s)(?:${flag}|--offline)(?=\\s|$)`).test(command)) return { command, download: false };
+    const at = tool.index + tool[1].length + tool[2].length;
+    return { command: `${command.slice(0, at)} ${flag}${command.slice(at)}`, download: false };
+  }
+  if (setup.downloads && /(^|[\s;&|])(?:swift|xcodebuild)(?=\s|$)/.test(command)) return { command, download: true };
+  return { command, download: false };
+}
+/** Plain words for a server that was not started because starting it would download packages or a build tool. */
+export const serverHeldBack = (command: string, why: NetWhy): string => `The project's server (${command.length > 60 ? `${command.slice(0, 57)}...` : command}) was not started: starting it would download packages or its build tool from the internet, and this check was not allowed to (${WHY[why]}). So the page was not checked.`;
 
 /** The environment a project's own server is started with. A toolchain is never downloaded; packages are fetched only when the
  *  check was allowed to. */

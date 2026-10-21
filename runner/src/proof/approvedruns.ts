@@ -52,18 +52,38 @@ export function runsOf(text: string | undefined): string {
   } catch { return `unreadable:${text}`; }
 }
 
+/** Folders whose build files are never the person's own: downloaded or generated code, which a version leaves out or which a
+ *  tool puts back. One list, used by the saved version reader and by the watch, so both print the same files. */
+export const NATIVE_SKIP_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", "vendor", "Pods", "Carthage", "DerivedData", "build", "target", ".gradle", ".build", "dist", ".next", ".turbo", ".cache", "venv", ".venv", "__pycache__", "coverage"]);
+
 /** The files a Go, Rust, Java, Kotlin, Swift or Xcode build runs code from, at any depth: build.rs, Cargo's config, go.mod, a
- *  Maven or Gradle build file, their wrapper scripts and settings, buildSrc, Package.swift, and an Xcode project (its run
- *  script phases live in project.pbxproj). A task that changes one is asked about exactly like a changed package.json. */
-export const NATIVE_RUN_FILE = /(?:^|\/)(?:go\.(?:mod|sum|work)|Cargo\.(?:toml|lock)|build\.rs|rust-toolchain(?:\.toml)?|pom\.xml|mvnw|gradlew|gradle\.properties|(?:build|settings)\.gradle(?:\.kts)?|Package\.(?:swift|resolved)|project\.pbxproj|contents\.xcworkspacedata|maven-wrapper\.properties|gradle-wrapper\.properties|libs\.versions\.toml)$|(?:^|\/)\.cargo\/config(?:\.toml)?$|(?:^|\/)buildSrc\/|(?:^|\/)\.mvn\/(?:jvm|maven)\.config$/;
+ *  Maven or Gradle build file, every other Gradle script (script plugins and init scripts are applied by the build), their
+ *  wrapper scripts and settings, Maven's extensions and downloader, buildSrc, Package.swift and SwiftPM plugins, and an Xcode
+ *  project (its run script phases live in project.pbxproj, its build pre and post actions in the schemes, its settings in
+ *  .xcconfig files). A task that changes one is asked about exactly like a changed package.json. */
+export const NATIVE_RUN_FILE = /(?:^|\/)(?:go\.(?:mod|sum|work)|Cargo\.(?:toml|lock)|build\.rs|rust-toolchain(?:\.toml)?|pom\.xml|mvnw|gradlew|gradle\.properties|Package\.(?:swift|resolved)|Package@swift-[\w.]+\.swift|project\.pbxproj|contents\.xcworkspacedata|maven-wrapper\.properties|gradle-wrapper\.properties|libs\.versions\.toml|extensions\.xml|MavenWrapperDownloader\.java)$|\.gradle(?:\.kts)?$|\.xc(?:scheme|config)$|(?:^|\/)\.cargo\/config(?:\.toml)?$|(?:^|\/)buildSrc\/|(?:^|\/)Plugins\/|(?:^|\/)\.mvn\/(?:jvm|maven)\.config$/;
+/** Binary files a build runs code from: the wrapper jars. They are fingerprinted by their bytes, never read as text. */
+export const NATIVE_BINARY_RUN_FILE = /(?:^|\/)(?:gradle-wrapper|maven-wrapper)\.jar$/;
 export const isRunFile = (p: string): boolean => (RUN_FILES as readonly string[]).includes(p);
-export const isNativeRunFile = (p: string): boolean => NATIVE_RUN_FILE.test(p) && !p.split("/").some((part) => part === "node_modules" || part === ".git");
+const inSkipped = (p: string) => p.split("/").slice(0, -1).some((part) => NATIVE_SKIP_DIRS.has(part));
+export const isNativeRunFile = (p: string): boolean => NATIVE_RUN_FILE.test(p) && !inSkipped(p);
+export const isNativeBinaryRunFile = (p: string): boolean => NATIVE_BINARY_RUN_FILE.test(p) && !inSkipped(p);
 const NATIVE_MAX = 2_000_000;
 
+type RunFileStore = { readFiles(id: string, keep: (path: string) => boolean, maxBytes?: number): Promise<Record<string, string>>; fileIds?(id: string, keep: (path: string) => boolean): Promise<Record<string, string>> };
+/** What stands for a binary file in a fingerprint: a saved version's id of its content (git's blob id), which the watch works
+ *  out the same way from the bytes. */
+export const BINARY_MARK = "blob:";
+/** The git id of some content: what a saved version calls a file, so a live folder and a saved version print alike. */
+export const blobId = (bytes: Uint8Array): string => createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+
 /** The files a check would run from, as saved in a version: the usual ones (package.json, lock files, .replit, .claude/launch.json)
- *  and a native project's build files. Those can be big (an Xcode project), so they are read up to 2 MB. */
-export async function readRunFiles(store: { readFiles(id: string, keep: (path: string) => boolean, maxBytes?: number): Promise<Record<string, string>> }, id: string): Promise<Record<string, string>> {
-  return { ...(await store.readFiles(id, isRunFile)), ...(await store.readFiles(id, isNativeRunFile, NATIVE_MAX)) };
+ *  and a native project's build files. Those can be big (an Xcode project), so they are read up to 2 MB. The wrapper jars are
+ *  stood for by the id of their content. */
+export async function readRunFiles(store: RunFileStore, id: string): Promise<Record<string, string>> {
+  const out = { ...(await store.readFiles(id, isRunFile)), ...(await store.readFiles(id, isNativeRunFile, NATIVE_MAX)) };
+  if (store.fileIds) for (const [path, oid] of Object.entries(await store.fileIds(id, isNativeBinaryRunFile))) out[path] = `${BINARY_MARK}${oid}`;
+  return out;
 }
 
 /** One fingerprint of everything in RUN_FILES that a check would run, and of a native project's build files. A project with
@@ -74,6 +94,6 @@ export function runPrint(files: Record<string, string | undefined>): string {
     const v = f === "package.json" ? runsOf(files[f]) : files[f];
     h.update(`${f}\0${v === undefined ? "\u0001none" : v}\0`);
   }
-  for (const f of Object.keys(files).filter((k) => !(RUN_FILES as readonly string[]).includes(k) && isNativeRunFile(k)).sort()) h.update(`${f}\0${files[f] ?? "\u0001none"}\0`);
+  for (const f of Object.keys(files).filter((k) => !(RUN_FILES as readonly string[]).includes(k) && (isNativeRunFile(k) || isNativeBinaryRunFile(k))).sort()) h.update(`${f}\0${files[f] ?? "\u0001none"}\0`);
   return h.digest("hex");
 }

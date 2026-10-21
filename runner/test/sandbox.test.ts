@@ -53,8 +53,8 @@ describe("the sandbox settings", () => {
   // Cargo's credentials sit next to them and can hold logins).
   test("the package caches of Go, Rust, Maven, Gradle, Swift and Xcode are writable, and only those", () => {
     const w = s.filesystem.allowWrite as string[];
-    for (const c of ["go/pkg/mod", ".cargo/registry", ".cargo/git", ".cargo/.package-cache", ".cargo/.global-cache", ".m2/repository", ".m2/wrapper", ".gradle/caches", ".gradle/wrapper", ".gradle/native", ".gradle/daemon", "Library/org.swift.swiftpm", "Library/Developer/Xcode/DerivedData"]) expect(w, c).toContain(`${HOME}/${c}`);
-    for (const bad of ["go", ".cargo", ".rustup", ".m2", ".gradle", ".swiftpm", "Library/Developer", "Library/Developer/Xcode", ".cargo/credentials.toml", ".cargo/config.toml", ".m2/settings.xml", ".gradle/gradle.properties", ".gradle/init.d"]) expect(w, bad).not.toContain(`${HOME}/${bad}`);
+    for (const c of ["go/pkg/mod", ".cargo/registry", ".cargo/git", ".cargo/.package-cache", ".cargo/.global-cache", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Caches", "Library/Developer/Xcode/DerivedData"]) expect(w, c).toContain(`${HOME}/${c}`);
+    for (const bad of ["go", ".cargo", ".rustup", ".m2", ".gradle", ".swiftpm", "Library/Developer", "Library/Developer/Xcode", ".cargo/credentials.toml", ".cargo/config.toml", ".m2/settings.xml", ".gradle/gradle.properties", ".gradle/init.d", "Library/org.swift.swiftpm", "Library/org.swift.swiftpm/configuration", "Library/org.swift.swiftpm/security", ".gradle/wrapper", ".gradle/wrapper/dists", ".m2/wrapper", ".m2/wrapper/dists", ".m2/settings-security.xml"]) expect(w, bad).not.toContain(`${HOME}/${bad}`);
     expect(w.every((x) => x.startsWith(HOME + "/") && !x.includes(".."))).toBe(true);
   });
   test("the places those tools download from are open, and not a whole code host", () => {

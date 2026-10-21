@@ -13,7 +13,7 @@ import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
-import { DOWNLOAD_ASK, needsDownload, nativeGap, serverEnv, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
+import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 import { readRunFiles, runPrint, type RunApprovals } from "./approvedruns.ts";
@@ -324,7 +324,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // is the project's, whatever it is written in.
   const screened = (command: string, install = false, own = !!py || !!nat) => !own && changesData(command, o.project, install);
   // May a build download packages? Decided once. Point at the problem and earlier versions never do; "never" never does;
-  // "ask" asks (a yes to running the changed scripts counts); "auto" does. Whatever the answer, the offline try comes first.
+  // "ask" asks, always on its own card (a yes to running the changed scripts does not count); "auto" does. Whatever the answer, the offline try comes first.
   const mayDownload = async (command: string): Promise<boolean> => {
     if (download !== null) return download;
     if (o.noInstall) { netWhy = "noInstall"; return (download = false); }
@@ -332,7 +332,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     const mode = installMode(o.check?.install, rules.rules, rules.broken === true);
     if (mode === "never") { netWhy = "never"; return (download = false); }
     if (mode === "auto") return (download = true);
-    const yes = runYes || (!!o.askInstall && await o.askInstall(`${DOWNLOAD_ASK}${command.replace(/^(?:[A-Z_]+=\S+\s+)+/, "")}`).then((x) => x === true, () => false));
+    // A yes to the changed scripts card is not this answer: that card never says a build may download packages.
+    const yes = !!o.askInstall && await o.askInstall(`${DOWNLOAD_ASK}${command.replace(/^(?:[A-Z_]+=\S+\s+)+/, "")}`).then((x) => x === true, () => false);
     netWhy = "no";
     return (download = yes);
   };
@@ -434,6 +435,14 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       else finish("tests", "skipped", "pytest found no tests to run.", t0);
     }
     else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
+    // Exit code 0 with no test run at all (XCTest's "Executed 0 tests", cargo's "running 0 tests"): nothing was checked, so it is
+    // a gap, never a pass, and not a failure either.
+    else if (nat && r.code === 0 && !r.timedOut && ranNoTests(r.stdout + "\n" + r.stderr, nat.ecosystem)) {
+      cannotTell(false, "tests");
+      const w = "The test command ran, but it found no tests to run, so the tests were not checked.";
+      if (!left.includes(w)) left.push(w);
+      finish("tests", "skipped", w, t0);
+    }
     else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
   } else finish("tests", "skipped", (nat && nat.missing) || "This project has no tests to run.", t0);
@@ -469,7 +478,21 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // once the server has stopped, however the rung ends.
   const dbBefore = py ? databaseFiles(o.project) : null;
   // A Go, Rust, Java, Kotlin or Swift project's server is told whether it may fetch packages, and never a toolchain.
-  const serve = (start: NonNullable<Detected["start"]>, allow = online) => (o.server ?? startServer)(nat && start.kind === "server" ? { ...start, env: { ...(start.env ?? {}), ...serverEnv(allow) } } : start, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal });
+  // Maven and Gradle get their offline switch in the command itself, when no download is allowed (serverOffline).
+  const serve = (start: NonNullable<Detected["start"]>, allow = online) => (o.server ?? startServer)(nat && start.kind === "server" ? { ...start, ...(allow ? {} : { command: serverOffline(start.command, nat).command }), env: { ...(start.env ?? {}), ...serverEnv(allow) } } : start, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal });
+  // A start that cannot run without downloading (a wrapper whose build tool is not here yet, swift run on a project with remote
+  // packages) is a download like a build's: the same question, once, and without a yes it is not started and is said as a gap.
+  if (nat && det.start.kind === "server" && !online && serverOffline(det.start.command, nat).download) {
+    if (await mayDownload(det.start.command) && !cancelled()) online = true;
+    else if (!cancelled()) {
+      const w = serverHeldBack(det.start.command, netWhy);
+      if (!left.includes(w)) left.push(w);
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", w, t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
+  }
   let srv = await serve(det.start);
   // It stopped for want of packages this check had not been allowed to fetch: the same question as for a build, once.
   if (nat && !srv.ok && !online && !cancelled() && needsDownload(srv.output ?? srv.reason, nat.ecosystem) && det.start.kind === "server" && await mayDownload(det.start.command) && !cancelled()) { online = true; srv = await serve(det.start, true); }
