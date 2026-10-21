@@ -9,7 +9,7 @@ Every run used the SDK's bundled Claude binary, a throwaway folder for Claude Co
 | Check | Result | Spent |
 |---|---|---|
 | Smoke test (13 cases: both agent models, Rescue on both models, the three fast models, Show me how on two models, pointing, resume, follow up, off the record) | 13 of 13 passed | about $0.30 over four runs |
-| Real verify (21 cases: house rules and Undo, Drive, visual receipt, the five practice projects, take the wheel, Rescue, memory, Explain, Research, daily limit, second model review, error explainer, approvals, Stop everything, loop breaker, ship gates) | 20 of 21 passed; one open (below) | about $1.4 with reruns |
+| Real verify (21 cases: house rules and Undo, Drive, visual receipt, the five practice projects, take the wheel, Rescue, memory, Explain, Research, daily limit, second model review, error explainer, approvals, Stop everything, loop breaker, ship gates) | 21 of 21 passed after the fixes below | about $1.4 with reruns |
 | Fix eval, 25 projects, Sonnet 5.5 | 23 fixed, 1 asked (correct: a missing setting only the person can supply), 1 could not run (this Mac has no Flask). Broke something: 0. Invented something: 0. The problem found in the right place: 24 of 24. Median fix 2 lines | $0.82 ($0.04 a fixed case) |
 | Pointing eval, 128 asks | Basic 100%, hard 95%, everyday 93%. Median 2.7 s, slowest 5.9 s | $0.67 |
 | Second model review, 10 diffs | Caught 100% of the 5 risky ones (all 5 named the real problem). False alarms on the 5 harmless ones: 0 | $0.14 |
@@ -27,9 +27,9 @@ Real cost came in at 15% to 35% of the estimates: a fixed project is $0.04, not 
 5. **`stop-everything` costs more than the runner books.** A task cut short by Stop everything counts its whole budget as spent, $0.40 more than the runner booked. That is the safe side. Noted, not changed.
 6. **Fixed test script, not product:** `approve-after-wait` let Claude run `git init && echo hello > README.md` as one command; Companion correctly denied it. The prompt now asks for `git init` on its own.
 
-## Still open (needs the founder)
+## Still open
 
-- **An approved `git init` does not create `.git`.** The card appears, it is answered yes after the wait, the tool is marked as run, the README is written, yet no `.git` folder exists. The likely cause is Claude Code's macOS sandbox refusing writes inside `.git` (approved commands still run in the sandbox: `allowUnsandboxedCommands: false`), but this is not yet proven; a plain local reproduction did not show it. If it is the sandbox, a yes the person gives does nothing, which is a bad dead end. Fixing it means deciding whether approved git commands may run outside the sandbox, which touches rules 10 and 12 in `AGENTS.md`. Left for a decision. `real-verify.ts approve-after-wait` stays red until then, and now prints the tools the agent ran.
+- **Closed (22 Oct 2026): an approved `git init` did not create `.git`.** Proven cause: Claude Code's sandbox refuses to create a `.git` folder (git printed `.git: Operation not permitted`), so a yes did nothing, though Claude said so honestly. Fix: `sandboxSettings` now lists exactly one excluded command, the bare text `git init` (no arguments, no wildcard), which runs outside the sandbox. It still goes through the safety hook first, so the card still appears and it runs only after a yes. Every other git change, and `git init` with arguments, stays inside the sandbox. Real result: card, yes after the wait, `.git` made, nothing staged or committed, `approve-after-wait` green. Rules 10 and 12 hold (Companion itself still never runs git on the person's project; the safety stays in the hook). Not checked: whether `git add` and `git commit` work inside an existing repo under the sandbox.
 - Explain is at 79%, not 100%. The misses are mostly code style names and the word "function". A code check with one retry would likely close most of it.
 - Flask based case `flask-wrong-status` and Go, Rust and Swift cases need those tools installed.
 - Everything here is proven with a key and in headless runs. The app itself, on screen, with the Keychain prompt, signed and installed, is still unproven.

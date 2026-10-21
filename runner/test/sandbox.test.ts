@@ -66,6 +66,15 @@ describe("the sandbox settings", () => {
     for (const c of cachePaths(HOME)) expect(denied.has(c), c).toBe(false);
   });
   test("reading the sensitive places is refused", () => expect(s.filesystem.denyRead).toEqual(sensitivePaths(HOME)));
+  // Real run, 21 Oct 2026: an approved `git init` printed ".git: Operation not permitted" because Claude Code's sandbox refuses to
+  // create a .git folder, so a yes did nothing. Exactly that one command, with no arguments and no wildcard, runs outside the
+  // sandbox once the person has said yes (an excluded command still goes through the safety hook and the approval card first).
+  test("only the bare command git init runs outside the sandbox", () => {
+    const s: any = sandboxSettings(HOME, "darwin");
+    expect(s.excludedCommands).toEqual(["git init"]);
+    expect(s.allowUnsandboxedCommands).toBe(false);
+    for (const c of s.excludedCommands) expect(c).not.toMatch(/[*:]/);
+  });
   test("off on a system without this sandbox, never silently half on", () => expect((sandboxSettings(HOME, "linux") as any).enabled).toBe(false));
   // Claude Code's own default lets a shell command run inside the sandbox without asking. Companion's safety hook says yes
   // or no to every command itself, so this is turned off: a command the hook gave no answer for (if Claude Code ever gave
