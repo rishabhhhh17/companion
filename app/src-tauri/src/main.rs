@@ -3217,16 +3217,14 @@ fn start_runner(app: &AppHandle) {
 struct DropNow { id: u64, paths: Vec<PathBuf>, actions: Vec<&'static str>, menu: Value, job: Option<Value>, made: Vec<PathBuf>, running: Option<std::sync::Arc<convert::Job>> }
 static DROP: Mutex<Option<DropNow>> = Mutex::new(None);
 static DROP_SEQ: AtomicU64 = AtomicU64::new(0);
-static WEBP: OnceLock<bool> = OnceLock::new();
+static CAPS: OnceLock<convert::Caps> = OnceLock::new();
 fn drop_now_lock() -> std::sync::MutexGuard<'static, Option<DropNow>> { DROP.lock().unwrap_or_else(|e| e.into_inner()) }
 
 /// Drop a file on the character to convert it (drop.on, usual on).
 fn drop_on() -> bool { setting_now("drop.on") != json!(false) && !group_off("files.on") }
-/// Whether sips on this Mac can write WebP (asked once, the first time a picture is dropped).
-fn webp_writable() -> bool {
-    *WEBP.get_or_init(|| std::process::Command::new("/usr/bin/sips").arg("--formats").env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output()
-        .map(|o| convert::writable(&String::from_utf8_lossy(&o.stdout), "webp")).unwrap_or(false))
-}
+/// What this Mac's own tools can write (WebP, GIF, FLAC, the other Word formats, the video sizes, ...): asked once, the first
+/// time anything is dropped, by running the tools' own help and format lists. Nothing is converted to find out.
+fn mac_can() -> &'static convert::Caps { CAPS.get_or_init(convert::probe_tools) }
 fn file_name(p: &std::path::Path) -> String { p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() }
 
 /// What a drag over one of the two windows does. Only files count: a drag of text, a link, or a picture from another app
@@ -3272,10 +3270,9 @@ fn drop_arrived(app: &AppHandle, at: &'static str, paths: Vec<PathBuf>) {
     let busy = |app: &AppHandle| { let _ = app.emit("drop-said", json!({ "why": "busy" })); };
     if drop_now_lock().as_ref().is_some_and(|d| d.running.is_some()) { busy(app); return; }
     let refused = paths.iter().take(convert::MAX_FILES).find_map(|p| convert::check_input(p).err());
-    let images = paths.iter().any(|p| convert::kind_of(p) == Some(convert::Kind::Image));
     let offer = match refused {
         Some(code) => convert::Offer::Refused(code),
-        None => convert::offer(&paths, images && webp_writable(), &convert::Prefs::read(setting_now)),
+        None => convert::offer(&paths, mac_can(), &convert::Prefs::read(setting_now)),
     };
     let id = DROP_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
     let (kind, actions, refused) = match offer { convert::Offer::Actions(k, a) => (Some(k.id()), a, None), convert::Offer::Refused(r) => (None, vec![], Some(r)) };
