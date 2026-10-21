@@ -2,7 +2,9 @@
 
 **Status:** DRAFT. Not sent. You send it by hand.
 **Why:** on 22 Oct 2026 you said you want people to use Companion the way HeyClicky works, with no key of their own and the model cost inside a plan you charge for. Decision F10 says that is blocked for the Claude Code engine and "needs Anthropic's written terms". This is the question that asks for them.
-**Send it the same way as the plan question** (see `anthropic-subscription-question.md`: contact sales, plus a written Console support ticket, plus the Partner Network for a named person). A chatbot reply is not approval. Keep going until a named person answers in writing.
+**Sent on 22 Oct 2026.** Where it went: the sales chat (could not escalate), sales@anthropic.com (automatic reply: the inbox is no longer monitored), the partner portal (server error, retry), and **support.claude.com, where the assistant handed it to a person who handles commercial terms**. Follow up in that same support chat after a week with no reply.
+
+**Originally: send it the same way as the plan question** (see `anthropic-subscription-question.md`: contact sales, plus a written Console support ticket, plus the Partner Network for a named person). A chatbot reply is not approval. Keep going until a named person answers in writing.
 
 ## Before you send
 

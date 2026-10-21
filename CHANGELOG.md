@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The light features can run without Claude Code: 22 Oct 2026
+
+- **Prompt help, Explain, Draw it for me, the error explainer, Show me how and pictures you add can now go straight to Claude's plain API**, without starting Claude Code. That matters because Anthropic's terms let a company pay for the plain API for its users, but not for Claude Code. So a free version of the guide with no key of your own is now possible, once the usage server is live.
+- **It is switched off for now.** Nothing changes for anyone until each feature has been tried once on real Claude.
+- **A picture of your screen is never written to disk on this path,** not even for a moment.
+- **Fixing still needs your own Claude,** until Anthropic agrees otherwise. If you only have a Companion sign in, Companion says so in plain words.
+- We asked Anthropic in writing; their support team passed the question to a person who handles commercial terms.
+
 ## Learning is built into the fix, and the product has three layers: 22 Oct 2026
 
 - **"Your turn" is now on by default.** After a fix that made the same change in two places, Companion offers to leave the second one for you, so you learn it by doing. It is only an offer on the receipt: ignore it if you like, and there is a switch in Settings. Our research says teaching offered as a separate lesson fails (17% understood) and teaching built into the work works (98%).
