@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Learning is built into the fix, and the product has three layers: 22 Oct 2026
+
+- **"Your turn" is now on by default.** After a fix that made the same change in two places, Companion offers to leave the second one for you, so you learn it by doing. It is only an offer on the receipt: ignore it if you like, and there is a switch in Settings. Our research says teaching offered as a separate lesson fails (17% understood) and teaching built into the work works (98%).
+- **The structure is now written down (F23):** the hero for people who build with AI and get stuck; the guide for everyone, doing what HeyClicky does today where our privacy rules allow it, with basic agents from day one; and an AI helper for everyone who uses an LLM. The plan and the build order are in `docs/milestones/M14-guide-agents-and-second-look-plan.md`.
+- **The new helper is "Second Look": press a key on any AI answer and it says what is solid, what to check, and what it cannot tell, with sources.** Planned, not built. It will be tested on 100 answers with seeded mistakes before anyone sees it.
+- **A small test to find out whether people really learn** is written in `docs/launch/did-they-learn-test.md`.
+
 ## "The company pays" is built, and switched off: 22 Oct 2026
 
 - **You asked for the HeyClicky way: people sign up and use it, with no key of their own, and Companion pays Anthropic.** The core of that server is built and tested (46 tests): sign in tokens, Free, Pro and Max plans with daily and monthly limits, forwarding with Companion's key, counting what each reply cost (also when a reply is cut short), and Stripe subscription events.

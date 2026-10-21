@@ -1129,10 +1129,10 @@ mod tests {
         assert_eq!(l["values"], json!({ "work.maxTurns": 150 }));
         // Memory, Explain and teaching (area 3): what the engine reads reaches it, Your turn included; the pages' own do not.
         let mut h = File::default();
-        let area = [("explain.after", json!("plansOnly")), ("memory.learnFromFiles", json!(false)), ("memory.learnFromWords", json!(false)), ("memory.rememberGoals", json!(false)), ("memory.tellClaude", json!(false)), ("memory.recallLength", json!("long")), ("teach.yourTurn", json!(true)), ("task.offRecordByDefault", json!(true)), ("memory.toastSeconds", json!("60")), ("where.after", json!("off"))];
+        let area = [("explain.after", json!("plansOnly")), ("memory.learnFromFiles", json!(false)), ("memory.learnFromWords", json!(false)), ("memory.rememberGoals", json!(false)), ("memory.tellClaude", json!(false)), ("memory.recallLength", json!("long")), ("teach.yourTurn", json!(false)), ("task.offRecordByDefault", json!(true)), ("memory.toastSeconds", json!("60")), ("where.after", json!("off"))];
         for (k, v) in area.iter() { assert!(set(registry(), &mut h, k, v, None).unwrap(), "{k}"); }
         let l: Value = serde_json::from_str(&apply_line(registry(), &h, None, "s5")).unwrap();
-        assert_eq!(l["values"], json!({ "explain.after": "plansOnly", "memory.learnFromFiles": false, "memory.learnFromWords": false, "memory.rememberGoals": false, "memory.tellClaude": false, "memory.recallLength": "long", "teach.yourTurn": true }));
+        assert_eq!(l["values"], json!({ "explain.after": "plansOnly", "memory.learnFromFiles": false, "memory.learnFromWords": false, "memory.rememberGoals": false, "memory.tellClaude": false, "memory.recallLength": "long", "teach.yourTurn": false }));
         // Explain after a task is the engine's own (memory-settings.json), so it is never kept here.
         assert!(set(registry(), &mut h, "explain.mode", &json!("off"), None).is_err());
     }

@@ -75,7 +75,7 @@ describe("the settings of this area, as the registry lists them", () => {
     "memory.toastSeconds": { kind: "choice", default: "10", options: ["5", "10", "20", "60", "untilClosed"], applies: ["pages"], store: "settings", live: true },
     "where.after": { kind: "choice", default: "30min", options: ["off", "30min", "2h", "nextDay"], applies: ["pages"], store: "settings", live: true },
     // The engine works out an offer as a task ends, so turning it on reaches the next fix ("From the next task").
-    "teach.yourTurn": { kind: "switch", default: false, applies: ["pages", "runner"], store: "settings", live: false },
+    "teach.yourTurn": { kind: "switch", default: true, applies: ["pages", "runner"], store: "settings", live: false },
   };
   test("each one is for every project, in Memory, Explain and teaching, with today's behaviour as its usual value", () => {
     for (const [k, w] of Object.entries(want)) expect(defOf(k), k).toMatchObject({ ...w, scope: "app", section: "memory" });
@@ -348,8 +348,15 @@ describe("how much Claude is told from memory (memory.recallLength)", () => {
 });
 
 describe("Your turn after a fix (teach.yourTurn)", () => {
-  test("usual (off): the engine does not work out an offer, so there is nothing to try", async () => {
+  // On by default since 22 Oct 2026: the product's point is that people understand, and teaching that is offered as a separate
+  // lesson fails (17% against 98% when built into the fix, F16). It is only an offer on the receipt (a button the person can ignore), and a switch in Settings.
+  test("usual (on): a proven fix that made the same change twice offers it, with no setting touched", async () => {
     const t = rig({ rounds: [bothPlaces] });
+    await t.start();
+    expect(of(t.events, "receipt")[0].repeat).toBeDefined();
+  });
+  test("turned off: the engine does not work out an offer, so there is nothing to try", async () => {
+    const t = rig({ rounds: [bothPlaces], values: { "teach.yourTurn": false } });
     await t.start();
     const r = of(t.events, "receipt")[0];
     expect(r.repeat).toBeUndefined();

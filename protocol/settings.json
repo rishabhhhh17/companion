@@ -113,7 +113,7 @@
     { "key": "task.offRecordByDefault", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "where.after", "section": "memory", "kind": "choice", "default": "30min", "options": ["off", "30min", "2h", "nextDay"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "renamedFrom": ["recap.after"] },
     { "key": "teach.startWhereYouAre", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
-    { "key": "teach.yourTurn", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false,
+    { "key": "teach.yourTurn", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false,
       "from": { "pageStorage": { "name": "companion.yourTurn", "map": "isOn" } } },
 
     { "key": "ph.style", "section": "otherApps", "kind": "choice", "default": "full", "options": ["full", "light"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },

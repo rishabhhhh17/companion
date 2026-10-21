@@ -644,7 +644,7 @@ export const S = {
   teachStillOpen: (file: string, line: number) => `Your turn was not finished, so ${file}, line ${line} still has the code from before my fix.`,
   teachOrphan: (file: string, line: number) => `The engine restarted, so Check my change cannot run for this turn. ${file}, line ${line} still has the code from before my fix. Put my fix back puts the whole fix back.`,
   yourTurnSetting: "Your turn after a fix",
-  yourTurnHelp: "When a fix makes the same change in two places, offer to leave the second one for you.",
+  yourTurnHelp: "When a fix makes the same change in two places, offer to leave the second one for you, so you learn it by doing. It is only an offer: ignore it if you like.",
   recapTitle: "Where you left off",
   recapSource: "From your tasks with Companion, your watches and what is waiting. Nothing is sent anywhere.",
   // The one next step Where was I suggests. A button; nothing starts until it is pressed.
