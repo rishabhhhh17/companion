@@ -1786,7 +1786,7 @@ function Card() {
               switch (a) {
                 case "where": return <button key={a} className="btn" type="button" onClick={() => pointAt(pointChange(project, t.target!, S.teachHere))}>{S.pointWhere}</button>;
                 case "check": return <button key={a} className="btn primary" type="button" onClick={() => { dispatch({ type: "ui.teachChecking", agent: AGENT }); void send(checkMyChange(project, t.checkpoint)); }}>{S.teachCheck}</button>;
-                case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!)); }}>{S.teachPutBack}</button>;
+                case "putBack": return <button key={a} className="btn" type="button" onClick={() => { dispatch({ type: "ui.teachRestore" }); void send(undo(project, t.restore!, true)); }}>{S.teachPutBack}</button>;
                 case "leave": return <button key={a} className="btn" type="button" onClick={() => { putAside(t.agent); void invoke("showme_clear"); dispatch({ type: "ui.teachLeft" }); }}>{S.teachLeave}</button>;
                 case "close": return <button key={a} className="btn" type="button" onClick={() => { putAside(t.agent); void invoke("showme_clear"); dispatch({ type: "ui.teachClosed" }); }}>{S.pointClose}</button>;
               }

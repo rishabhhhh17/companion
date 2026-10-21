@@ -24,7 +24,9 @@ describe("the words", () => {
   test("the confirm lines say what is true for each setting, in plain words", () => {
     for (const t of [S.undoSure, S.undoKeeps, S.undoReplaces, S.undoPutBackSure]) { expect(t).not.toMatch(/—|–/); }
     expect(S.undoKeeps).toMatch(/left as you have them/);
-    expect(S.undoReplaces).toMatch(/recovery folder/);
+    expect(S.undoReplaces).toMatch(/safety copy/);
+    expect(S.undoReplaces).not.toMatch(/recovery folder/);
+    expect(JSON.stringify(S)).not.toMatch(/saved to a recovery folder first\. Files/);
     expect(S.undoReplaces).toMatch(/plan was paused/);
   });
 });
@@ -61,5 +63,13 @@ describe("Put those back too", () => {
   test("an answer for another undo point is ignored", () => {
     const working = reduce(reduce(undone(["a.js"]), { type: "ui.putBackAsked" } as never), { type: "ui.putBackSent" } as never);
     expect(reduce(working, ev({ type: "checkpoint.putBackDone", project: "p", checkpoint: "cp_other", ok: true, putBack: ["a.js"], skipped: [] }) as never).undo?.putBack).toBe("working");
+  });
+});
+
+describe("Put my fix back (Your turn) replaces the person's attempt on purpose", () => {
+  test("the teach button sends a forced restore; an ordinary Undo does not", async () => {
+    const { undo } = await import("./commands.ts");
+    expect((undo("/p", "cp_1") as { force?: boolean }).force).toBeUndefined();
+    expect((undo("/p", "cp_1", true) as { force?: boolean }).force).toBe(true);
   });
 });

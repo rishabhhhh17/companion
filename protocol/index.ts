@@ -25,7 +25,7 @@ export type AgentSend = Envelope & { type: "agent.send"; agent: string; project:
 export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string; release?: boolean };
 export type AgentInterruptAll = Envelope & { type: "agent.interruptAll"; reason: string };
 export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" };
-export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string };
+export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string; force?: boolean };
 // "Put those back too": after an Undo left some of the person's own files alone, a second, confirmed press puts the old versions
 // back over them (their versions are saved aside first). `files` may only name files that Undo left alone; without it, all of them.
 export type CheckpointPutBack = Envelope & { type: "checkpoint.putBack"; project: string; checkpoint: string; confirm: true; files?: string[] };
@@ -419,7 +419,7 @@ const COMMANDS: Record<string, Check[]> = {
   "agent.interrupt": [str("agent"), opt("release", bool("release"))],
   "agent.interruptAll": [str("reason")],
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
-  "checkpoint.restore": [str("project"), str("checkpoint")],
+  "checkpoint.restore": [str("project"), str("checkpoint"), opt("force", bool("force"))],
   "checkpoint.putBack": [str("project"), str("checkpoint"), (m) => (m.confirm === true ? null : 'putting your files back needs "confirm": true'), opt("files", list("files"))],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
   "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("app", str("app")), opt("mode", oneOf("mode", ["everyday", "recheck"])), opt("before", oneOf("before", [...SHEET_CODES]))],

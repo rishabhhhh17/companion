@@ -380,3 +380,98 @@ describe("more of what you might have changed", () => {
     expect(res.yours).toEqual([]);
   });
 });
+
+describe("review fixes", () => {
+  test("force: the person's attempt is replaced on purpose and kept in the safety copy (Your turn: Put my fix back)", async () => {
+    const r = rig();
+    const t = await task(r, "fix", () => put(r.project, "a.js", "a1 agent"));
+    put(r.project, "a.js", "person attempt");
+    const kept = await r.store.restore(t.before.id);                         // an ordinary Undo keeps it
+    expect(kept.yours).toEqual(["a.js"]);
+    const r2 = rig();
+    const t2 = await task(r2, "fix", () => put(r2.project, "a.js", "a1 agent"));
+    put(r2.project, "a.js", "person attempt");
+    const res = await r2.store.restore(t2.before.id, { force: true });
+    expect(res.yours).toEqual([]);
+    expect(text(r2.project, "a.js")).toBe("a0");
+    await r2.store.restore(res.safetyCheckpoint);
+    expect(text(r2.project, "a.js")).toBe("person attempt");
+  });
+
+  test("a task that ends without the usual end note: the end note given anyway keeps the task's own work as ours", async () => {
+    const r = rig();
+    const before = await r.store.snapshot("Before: x");
+    await r.store.noteTaskStart(before.id);
+    put(r.project, "a.js", "a1 agent");
+    await r.store.noteAgentEnd();                                             // what the runner's finally block does
+    const res = await r.store.restore(before.id);
+    expect(res.yours).toEqual([]);
+    expect(text(r.project, "a.js")).toBe("a0");
+  });
+
+  test("writes of ours that are not a task (an install) count as ours, your earlier edit still counts as yours", async () => {
+    const r = rig({ "a.js": "a0", "package-lock.json": "{}" });
+    const t = await task(r, "one", () => put(r.project, "b.css", "b1"));
+    put(r.project, "a.js", "a2 mine");                                        // yours, before the install
+    const from = await r.store.writesStart();
+    put(r.project, "package-lock.json", "{\"lock\":1}");                      // the install
+    await r.store.noteAgentWrites(from);
+    const next = await r.store.snapshot("Before: two");
+    await r.store.noteTaskStart(next.id);
+    const res = await r.store.restore(t.before.id);
+    expect(res.yours).toEqual(["a.js"]);
+    expect(text(r.project, "package-lock.json")).toBe("{}");
+    void next;
+  });
+
+  test("a note from the watcher that lands while a task starts is not lost", async () => {
+    const r = rig();
+    const t = await task(r, "one", () => put(r.project, "a.js", "a1 agent"));
+    put(r.project, "a.js", "a2 mine");
+    const next = await r.store.snapshot("Before: two");
+    const starting = r.store.noteTaskStart(next.id);
+    await new Promise((res) => setTimeout(res, 2));
+    r.store.notePersonEdit("b.css");
+    await starting;
+    const own = JSON.parse(readFileSync(join(r.shadow, "own.json"), "utf8"));
+    expect(Object.keys(own.watched)).toEqual(["b.css"]);
+    void t;
+  });
+
+  test("a big file you changed after the task is left alone and named; the task's own big file still goes back", async () => {
+    const big = Buffer.alloc(3 * 1024 * 1024, 7);
+    const r = rig();
+    const t = await task(r, "one", () => put(r.project, "a.js", "a1 agent"));
+    put(r.project, "a.js", big);                                              // you made it big
+    const res = await r.store.restore(t.before.id);
+    expect(res.yours).toEqual(["a.js"]);
+    expect(readFileSync(join(r.project, "a.js")).length).toBe(big.length);
+    const r2 = rig();
+    const t2 = await task(r2, "one", () => put(r2.project, "a.js", big));    // the task made it big
+    const res2 = await r2.store.restore(t2.before.id);
+    expect(res2.yours).toEqual([]);
+    expect(text(r2.project, "a.js")).toBe("a0");
+    expect(res2.recovered).toEqual(["a.js"]);
+  });
+
+  test("a new task after an Undo that left files alone drops the offer; putting back refreshes the baseline", async () => {
+    const r = rig();
+    const t = await task(r, "one", () => put(r.project, "a.js", "a1 agent"));
+    put(r.project, "a.js", "a2 mine");
+    await r.store.restore(t.before.id);
+    const t2 = await task(r, "two", () => put(r.project, "b.css", "b1"));     // later work
+    const late = await r.store.putBack(t.before.id);
+    expect(late.putBack).toEqual([]);
+    expect(text(r.project, "a.js")).toBe("a2 mine");
+    // and a put back that is made at once is ours afterwards, not yours
+    const r2 = rig();
+    const u = await task(r2, "one", () => put(r2.project, "a.js", "a1 agent"));
+    put(r2.project, "a.js", "a2 mine");
+    await r2.store.restore(u.before.id);
+    const back = await r2.store.putBack(u.before.id);
+    expect(back.putBack).toEqual(["a.js"]);
+    const again = await r2.store.restore(u.before.id);
+    expect(again.yours).toEqual([]);
+    void t2;
+  });
+});

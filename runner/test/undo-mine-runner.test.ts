@@ -103,7 +103,7 @@ describe("after a task", () => {
 });
 
 describe("the switch (undo.protectMyEdits)", () => {
-  test("off: your later edit is replaced, and saved to the recovery folder first", async () => {
+  test("off: your later edit is replaced, and kept in the safety copy so the Undo can be undone", async () => {
     const r = setup([[write("a.txt", "a1 agent")]], { "undo.protectMyEdits": false });
     const cp = await r.task();
     writeFileSync(join(r.project, "a.txt"), "a2 mine");
@@ -169,5 +169,47 @@ describe("between two tasks", () => {
     expect(of(r.events, "checkpoint.restored")[0].yours).toEqual(["a.txt"]);
     expect(text(r.project, "a.txt")).toBe("a2 mine");
     expect(text(r.project, "b.txt")).toBe("b0");
+  });
+});
+
+describe("review fixes", () => {
+  test("Put my fix back (force) replaces your attempt, and the Undo of it brings your attempt back", async () => {
+    const r = setup([[write("a.txt", "a1 agent")]]);
+    const cp = await r.task();
+    writeFileSync(join(r.project, "a.txt"), "person attempt");
+    await r.cmd({ type: "checkpoint.restore", project: r.project, checkpoint: cp, force: true });
+    const done = of(r.events, "checkpoint.restored")[0];
+    expect(done.yours).toEqual([]);
+    expect(text(r.project, "a.txt")).toBe("a0");
+    await r.undo(done.safety);
+    expect(text(r.project, "a.txt")).toBe("person attempt");
+  });
+
+  test("a task that throws part way still moves the baseline: Undo still undoes the task and does not blame you", async () => {
+    const r = setup([[write("b.txt", "b1 agent")], [write("a.txt", "a1 agent")]]);
+    await r.task();                                                          // a first task, so there is a baseline
+    const store = (r.runner as any).store(r.project);
+    store.diff = async () => { throw new Error("boom"); };
+    await r.task().catch(() => undefined);
+    const cp = of(r.events, "checkpoint.created").at(-1).checkpoint as string;
+    delete store.diff;
+    await r.undo(cp);
+    const done = of(r.events, "checkpoint.restored")[0];
+    expect(done?.yours).toEqual([]);
+    expect(text(r.project, "a.txt")).toBe("a0");
+  });
+
+  test("an install that changes the lock file does not make the lock file look like your edit", async () => {
+    const r = setup([[write("a.txt", "a1 agent")], [write("b.txt", "b1 agent")]]);
+    writeFileSync(join(r.project, "package.json"), "{\"name\":\"x\"}");
+    writeFileSync(join(r.project, "package-lock.json"), "{}");
+    (r.runner as any).o.commands = async (_c: string, o: { cwd: string }) => { writeFileSync(join(o.cwd, "package-lock.json"), "{\"lock\":1}"); return { code: 0, stdout: "", stderr: "", timedOut: false, aborted: false }; };
+    const cp1 = await r.task();
+    await r.cmd({ type: "project.install", project: r.project });
+    expect(text(r.project, "package-lock.json")).toBe("{\"lock\":1}");
+    await r.task();
+    await r.undo(cp1);
+    expect(of(r.events, "checkpoint.restored")[0].yours).toEqual([]);
+    expect(text(r.project, "a.txt")).toBe("a0");
   });
 });

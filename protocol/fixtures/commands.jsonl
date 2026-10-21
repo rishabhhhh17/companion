@@ -84,3 +84,4 @@
 {"v":1,"id":"w7b","type":"where.was.i","project":"/Users/sam/shop"}
 {"v":1,"id":"u1","type":"checkpoint.putBack","project":"p_9f2c","checkpoint":"cp_0042","confirm":true}
 {"v":1,"id":"u2","type":"checkpoint.putBack","project":"p_9f2c","checkpoint":"cp_0042","confirm":true,"files":["a.js","b.css"]}
+{"v":1,"id":"c5f","type":"checkpoint.restore","project":"p_9f2c","checkpoint":"cp_0042","force":true}

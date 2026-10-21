@@ -23,7 +23,8 @@ export type PutBackResult = { restored: string; safetyCheckpoint: string; putBac
 // a hash of each .env file). watched: files the person changed while a plan was running and no tool of ours was (the watcher saw it),
 // with the number of the newest undo point then. found: files found changed since our last step, when the next task began.
 // left: the files the last Undo left alone, so "Put those back too" can only name those.
-type Own = { baseline: { tree: string; env: Record<string, string> } | null; watched: Record<string, number>; found: Record<string, number>; left: { checkpoint: string; files: string[] } | null };
+// big (in the baseline): files over 2 MiB our last step left, by size and time, since a checkpoint cannot hold them.
+type Own = { baseline: { tree: string; env: Record<string, string>; big?: Record<string, string> } | null; watched: Record<string, number>; found: Record<string, number>; left: { checkpoint: string; files: string[] } | null };
 const MAX_OWN_ENTRIES = 5000;
 // Undoing one task in the middle (from the version before it to the version after it), against the project as it is now.
 // conflicts: files that one task changed and later work changed again, or that cannot be written safely; any conflict means
@@ -96,8 +97,10 @@ export class CheckpointStore {
 
   snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)).catch((e) => { throw friendly(e); }); }
   /** Put the project back to a saved version. Files the person changed themselves are left as they are (the default, `protect`),
-   *  and listed in `yours`; with `protect: false` only those the watcher saw changed while a plan was paused are kept. */
-  restore(id: string, opts: { protect?: boolean } = {}): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id, opts.protect !== false)).catch((e) => { throw friendly(e); }); }
+   *  and listed in `yours`; with `protect: false` only those the watcher saw changed while a plan was paused are kept. `force` is for
+   *  the one place where the person's own version is meant to go: "Put my fix back" in Your turn. Nothing is kept; their version is
+   *  still saved in the safety copy. */
+  restore(id: string, opts: { protect?: boolean; force?: boolean } = {}): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id, opts.protect !== false, opts.force === true)).catch((e) => { throw friendly(e); }); }
   /** "Put those back too": the files the last Undo left alone because they were the person's. Each one is saved aside first. Only
    *  files that Undo left alone can be named. */
   putBack(id: string, files?: string[]): Promise<PutBackResult> { return this.serial(() => this.putBackNow(id, files)).catch((e) => { throw friendly(e); }); }
@@ -105,13 +108,16 @@ export class CheckpointStore {
   noteAgentEnd(_afterId?: string): Promise<void> { return this.serial(() => this.agentEndNow()); }
   /** A task is starting from `beforeId`: files that differ from what our last step left were changed by the person since. */
   noteTaskStart(beforeId: string): Promise<void> { return this.serial(() => this.taskStartNow(beforeId)); }
+  /** Something of ours (an install) is about to write files that are not a task: remember the project as it is now. */
+  async writesStart(): Promise<string> { return this.serial(async () => { this.prepare(); const idx = this.tmpIndex(); try { return (await this.stage(idx)).tree; } finally { rmSync(idx, { force: true }); } }); }
+  /** Those writes are done: only the files they changed count as ours; edits the person made before stay theirs. */
+  noteAgentWrites(startTree: string): Promise<void> { return this.serial(() => this.agentWritesNow(startTree)); }
   /** The watcher saw the person change this file while a plan ran and no tool of ours was running. Synchronous, no git. */
   notePersonEdit(rel: string): void {
     try {
       if (!rel || isAbsolute(rel) || rel.split("/").includes("..") || rel.split("/")[0] === ".git") return;
-      const own = this.readOwn(), n = this.refs().at(-1)?.n ?? 0;
-      own.watched[rel] = Math.max(own.watched[rel] ?? 0, n);
-      this.writeOwn(own);
+      const n = this.refs().at(-1)?.n ?? 0;
+      this.updateOwn((own) => { own.watched[rel] = Math.max(own.watched[rel] ?? 0, n); });
     } catch { /* a note that could not be kept: the hash check still catches edits made after a task */ }
   }
   readFiles(id: string, keep: (path: string) => boolean, maxBytes = 200_000): Promise<Record<string, string>> { return this.serial(() => this.readFilesNow(id, keep, maxBytes)); }
@@ -443,7 +449,7 @@ export class CheckpointStore {
   private readOwn(): Own {
     try {
       const o = JSON.parse(readFileSync(this.ownPath(), "utf8"));
-      return { baseline: o.baseline && typeof o.baseline.tree === "string" ? { tree: o.baseline.tree, env: o.baseline.env ?? {} } : null, watched: o.watched ?? {}, found: o.found ?? {}, left: o.left ?? null };
+      return { baseline: o.baseline && typeof o.baseline.tree === "string" ? { tree: o.baseline.tree, env: o.baseline.env ?? {}, big: o.baseline.big ?? {} } : null, watched: o.watched ?? {}, found: o.found ?? {}, left: o.left ?? null };
     } catch { return { baseline: null, watched: {}, found: {}, left: null }; }
   }
   private writeOwn(o: Own) {
@@ -465,26 +471,58 @@ export class CheckpointStore {
     return (await this.git(["diff-tree", "-r", "--name-only", "--no-renames", "-z", a, b])).split("\0").filter(Boolean);
   }
 
+  /** Read, change and write own.json in one go with nothing awaited in between, so a note from the watcher is never lost. */
+  private updateOwn(fn: (own: Own) => void) { const own = this.readOwn(); fn(own); this.writeOwn(own); }
+  private bigNow(skipped: Skipped[]): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const x of skipped) if (!x.path.endsWith("/") && String(x.reason ?? "").startsWith("over 2 MiB")) { try { const st = lstatSync(join(this.projectDir, x.path)); if (st.isFile()) out[x.path] = `${st.size}:${Math.floor(st.mtimeMs)}`; } catch { /* gone */ } }
+    return out;
+  }
+
   private async agentEndNow(): Promise<void> {
     this.prepare();
     const idx = this.tmpIndex();
     try {
-      const { tree } = await this.stage(idx);
+      const { tree, skipped } = await this.stage(idx);
       const env: Record<string, string> = {};
       for (const rel of this.findEnvFiles()) { try { env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
-      const own = this.readOwn();
-      this.writeOwn({ ...own, baseline: { tree, env } });
+      const big = this.bigNow(skipped);
+      this.updateOwn((own) => { own.baseline = { tree, env, big }; });
+    } finally { rmSync(idx, { force: true }); }
+  }
+
+  private async agentWritesNow(startTree: string): Promise<void> {
+    this.prepare();
+    const idx = this.tmpIndex();
+    try {
+      const { tree } = await this.stage(idx);
+      const names = (await this.changedNames(startTree, tree)).filter((r) => !KEPT_ON_UNDO.includes(r));
+      const base = this.readOwn().baseline;
+      if (!base || names.length === 0) return;
+      const newTree = await this.retree(base.tree, names);
+      const env: Record<string, string> = {};
+      for (const rel of names) if (rel in base.env || this.findEnvFiles().includes(rel)) { try { env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
+      this.updateOwn((own) => {
+        if (!own.baseline) return;
+        const e = { ...own.baseline.env };
+        for (const rel of names) if (rel in e || rel in env) { if (env[rel]) e[rel] = env[rel]; else delete e[rel]; }
+        own.baseline = { tree: newTree, env: e, big: own.baseline.big };
+      });
     } finally { rmSync(idx, { force: true }); }
   }
 
   private async taskStartNow(beforeId: string): Promise<void> {
-    const m = this.readMeta(beforeId), own = this.readOwn();
-    if (!m || !own.baseline) return;
+    const m = this.readMeta(beforeId), base = this.readOwn().baseline;
+    // A new task builds on the files: the ones the last Undo left alone can no longer be put back as they were.
+    if (!m || !base) { this.updateOwn((own) => { own.left = null; }); return; }
     const since = Math.max(0, CheckpointStore.num(beforeId) - 1);
-    for (const rel of await this.changedNames(own.baseline.tree, m.commit)) if (!KEPT_ON_UNDO.includes(rel)) own.found[rel] = Math.max(own.found[rel] ?? 0, since);
+    const found = (await this.changedNames(base.tree, m.commit)).filter((rel) => !KEPT_ON_UNDO.includes(rel));
     const now = this.envHashes(beforeId);
-    for (const rel of new Set([...Object.keys(own.baseline.env), ...Object.keys(now)])) if (own.baseline.env[rel] !== now[rel]) own.found[rel] = Math.max(own.found[rel] ?? 0, since);
-    this.writeOwn(own);
+    const envFound = [...new Set([...Object.keys(base.env), ...Object.keys(now)])].filter((rel) => base.env[rel] !== now[rel]);
+    this.updateOwn((own) => {
+      for (const rel of [...found, ...envFound]) own.found[rel] = Math.max(own.found[rel] ?? 0, since);
+      own.left = null;
+    });
   }
 
   /** Files an Undo to `targetId` would change that the person changed themselves. `current` is the project as it is now (a version
@@ -545,7 +583,7 @@ export class CheckpointStore {
     return abs;
   }
 
-  private async restoreNow(id: string, protect: boolean): Promise<RestoreResult> {
+  private async restoreNow(id: string, protect: boolean, force = false): Promise<RestoreResult> {
     const target = this.refs().find((r) => r.id === id);
     const targetMeta = target ? this.readMeta(id) : null;
     if (!target || !targetMeta) throw new Error(`Unknown checkpoint: ${id}`);
@@ -554,7 +592,8 @@ export class CheckpointStore {
     const safety = await this.snapshotNow(`Before undo to ${id}`);
 
     // Files the person changed themselves are left exactly as they are: not put back, not removed, not recreated.
-    const yours = await this.personsFilesNow(id, safety, protect);
+    const yours = force ? new Set<string>() : await this.personsFilesNow(id, safety, protect);
+    const ownBefore = this.readOwn(), nTarget = CheckpointStore.num(id);
 
     // A file too big for a checkpoint is never destroyed by undo. Where the checkpoint only holds an older small copy of a file
     // that was already too big when it was taken, the live file is left exactly as it is. Where undo really does mean to put
@@ -569,6 +608,8 @@ export class CheckpointStore {
       if (!st.isFile()) continue;
       if (stale.has(rel)) { keep.push(rel); largeLeftAlone.push(rel); continue; }
       if (st.size <= MAX_NEW_FILE_BYTES || this.hasLinkOnTheWay(abs)) continue;
+      // A big file is in no snapshot, so it is judged by size and time: if it is not what our last step left, it is the person's.
+      if (!force && (ownBefore.watched[rel] >= nTarget || (protect && ownBefore.baseline && ownBefore.baseline.big?.[rel] !== `${st.size}:${Math.floor(st.mtimeMs)}`))) { yours.add(rel); keep.push(rel); continue; }
       if (st.size <= budget) {
         const copy = join(this.shadowDir, "recovered", safety.id, rel);
         mkdirSync(dirname(copy), { recursive: true });
@@ -622,12 +663,16 @@ export class CheckpointStore {
       rmSync(abs, { force: true });
     }
     // From here on, what our work left is the version we went back to. A file the person kept is not that, so it stays theirs.
-    const own = this.readOwn(), n = CheckpointStore.num(id), now = CheckpointStore.num(safety.id);
-    for (const m of [own.watched, own.found]) for (const rel of Object.keys(m)) if (m[rel] >= n && !yours.has(rel)) delete m[rel];
-    for (const rel of yours) own.found[rel] = Math.max(own.found[rel] ?? 0, now);
-    own.baseline = { tree: (await this.git(["rev-parse", `${targetMeta.commit}^{tree}`])).trim(), env: this.envHashes(id) };
-    own.left = yours.size ? { checkpoint: id, files: [...yours].sort() } : null;
-    this.writeOwn(own);
+    const n = CheckpointStore.num(id), now = CheckpointStore.num(safety.id);
+    const tree = (await this.git(["rev-parse", `${targetMeta.commit}^{tree}`])).trim(), envNow = this.envHashes(id);
+    this.updateOwn((own) => {
+      for (const m of [own.watched, own.found]) for (const rel of Object.keys(m)) if (m[rel] >= n && !yours.has(rel)) delete m[rel];
+      for (const rel of yours) own.found[rel] = Math.max(own.found[rel] ?? 0, now);
+      const big = { ...(own.baseline?.big ?? {}) };
+      for (const rel of recovered) delete big[rel];
+      own.baseline = { tree, env: envNow, big };
+      own.left = yours.size ? { checkpoint: id, files: [...yours].sort() } : null;
+    });
     return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone, recovered, largeLeftAlone, yours: [...yours].sort() };
   }
 
@@ -681,11 +726,21 @@ export class CheckpointStore {
       if (targetMeta.envFiles.includes(rel) && existsSync(src)) { mkdirSync(dirname(abs), { recursive: true }); copyFileSync(src, abs); chmodSync(abs, 0o600); }
       else if (!inTree.has(rel)) this.removeWithEmptyDirs(abs);          // a file the person made: not in that version at all
     }
-    const o = this.readOwn();
-    for (const m of [o.watched, o.found]) for (const rel of back) delete m[rel];
-    o.left = o.left ? { checkpoint: o.left.checkpoint, files: o.left.files.filter((f) => !back.includes(f)) } : null;
-    if (o.left && o.left.files.length === 0) o.left = null;
-    this.writeOwn(o);
+    // The files put back are what our work left now, not the person's: the next Undo may treat them as ordinary files again.
+    const baseTree = this.readOwn().baseline?.tree;
+    const newTree = baseTree && back.length ? await this.retree(baseTree, back) : baseTree;
+    const envHere: Record<string, string> = {};
+    for (const rel of back) { try { envHere[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { /* removed */ } }
+    this.updateOwn((o) => {
+      for (const m of [o.watched, o.found]) for (const rel of back) delete m[rel];
+      if (o.baseline && newTree) {
+        const env = { ...o.baseline.env }, big = { ...(o.baseline.big ?? {}) };
+        for (const rel of back) { delete big[rel]; if (rel in env || targetMeta.envFiles.includes(rel)) { if (envHere[rel]) env[rel] = envHere[rel]; else delete env[rel]; } }
+        o.baseline = { tree: newTree, env, big };
+      }
+      o.left = o.left ? { checkpoint: o.left.checkpoint, files: o.left.files.filter((f) => !back.includes(f)) } : null;
+      if (o.left && o.left.files.length === 0) o.left = null;
+    });
     return { restored: id, safetyCheckpoint: safety.id, putBack: back.sort(), skipped, savedTo: aside };
   }
 
@@ -803,11 +858,11 @@ export class CheckpointStore {
     }
     // What our work left now includes this change, so the files it put back are not mistaken for the person's.
     try {
-      const own = this.readOwn();
-      if (own.baseline) {
-        own.baseline = { tree: await this.retree(own.baseline.tree, plan.changed.map((x) => x.file)), env: { ...own.baseline.env } };
-        for (const rel of plan.env) { try { own.baseline.env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { delete own.baseline.env[rel]; } }
-        this.writeOwn(own);
+      const base = this.readOwn().baseline;
+      if (base) {
+        const tree = await this.retree(base.tree, plan.changed.map((x) => x.file)), env = { ...base.env };
+        for (const rel of plan.env) { try { env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { delete env[rel]; } }
+        this.updateOwn((own) => { if (own.baseline) own.baseline = { tree, env, big: own.baseline.big }; });
       }
     } catch { /* the next task's end saves it again */ }
     return { safetyCheckpoint: safety.id, reverted: plan.changed.map((x) => x.file), env: plan.env };
