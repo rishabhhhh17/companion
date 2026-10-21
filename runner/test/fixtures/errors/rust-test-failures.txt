@@ -1,0 +1,31 @@
+   Compiling shop v0.1.0 ({{ROOT}})
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running unittests src/main.rs (target/debug/deps/shop-fd5f71e531b31105)
+
+running 2 tests
+test tests::adds ... FAILED
+test tests::boom ... FAILED
+
+failures:
+
+---- tests::adds stdout ----
+
+thread 'tests::adds' (19112224) panicked at src/main.rs:14:9:
+assertion `left == right` failed
+  left: 4
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::boom stdout ----
+
+thread 'tests::boom' (19112225) panicked at src/main.rs:19:18:
+index out of bounds: the len is 0 but the index is 3
+
+
+failures:
+    tests::adds
+    tests::boom
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--bin shop`

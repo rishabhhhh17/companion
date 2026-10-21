@@ -13,9 +13,10 @@ import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 import { startServer } from "./server.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
+import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
-import { RUN_FILES, runPrint, type RunApprovals } from "./approvedruns.ts";
+import { readRunFiles, runPrint, type RunApprovals } from "./approvedruns.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
 // needs: "browser" when the browser rung was skipped only because the hidden browser is not installed (the page offers it).
@@ -122,8 +123,10 @@ const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((done) => 
   signal?.addEventListener("abort", () => { clearTimeout(t); done(); }, { once: true });
 });
 
-const gist = (r: RunResult, limitMs: number) =>
-  r.timedOut ? `It took too long (over ${Math.round(limitMs / 1000)} seconds) and was stopped.` : withoutRuntimeFrames(r.stderr + "\n" + r.stdout).trim().split("\n").slice(-14).join("\n").slice(-900) || `It stopped with exit code ${r.code}.`;
+// tidy: a Go, Rust, Java, Kotlin, Swift or Xcode tool's own noise (progress counters, the command line it prints after an
+// error, Gradle's advice) is left out of the words.
+const gist = (r: RunResult, limitMs: number, tidy: (s: string) => string = (s) => s) =>
+  r.timedOut ? `It took too long (over ${Math.round(limitMs / 1000)} seconds) and was stopped.` : tidy(withoutRuntimeFrames(r.stderr + "\n" + r.stdout)).trim().split("\n").slice(-14).join("\n").slice(-900) || `It stopped with exit code ${r.code}.`;
 
 const SKIP_WORDS: Record<SkipName, string> = { typecheck: "The type check", lint: "The lint check", build: "The build", test: "The tests" };
 const leftOut = (n: SkipName) => `${SKIP_WORDS[n]} ${n === "test" ? "were" : "was"} left out (turned off in Settings), so ${n === "test" ? "they were" : "it was"} not run.`;
@@ -231,6 +234,10 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // Python: commands never write bytecode or caches into the project. A gap is a check that exists but could not run
   // because a package is not installed: never a failure blamed on the code, never a pass either.
   const py = det.python;
+  // Go, Rust, Java, Kotlin, Swift and Xcode: every command runs without any download first; the way that may download runs
+  // only when the install setting allows it (mayDownload below). A missing tool or package is a gap, never the code's failure.
+  const nat = det.native;
+  if (nat) for (const g of nat.gaps) if (!left.includes(g)) left.push(g);
   const pyEnv: Record<string, string> = py ? { PYTHONDONTWRITEBYTECODE: "1", PY_COLORS: "0", PYTHONUNBUFFERED: "1" } : {};
   const gaps: string[] = [];
   let packageGaps = 0;
@@ -239,12 +246,21 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // failure blamed on the code, so a task's fix loop is never started over it.
   let heldBack = false;
   const held = (output: string, step: keyof typeof WITHOUT_PACKAGES): string | null => {
-    if (!heldBack || py || !needsPackages(output)) return null;
+    if (!heldBack || py || nat || !needsPackages(output)) return null;
     const words = WITHOUT_PACKAGES[step];
     if (!left.includes(words)) left.push(words);
     return words;
   };
+  let online = false;                       // the way that may download has been used
+  let download: boolean | null = null;      // whether a build may download: decided once, the first time one needs to
+  let netWhy: NetWhy = "no";
   const gap = (output: string, tool: string | undefined, what: string): string | null => {
+    if (nat) {
+      const words = nativeGap(output, { setup: nat, allowed: online, why: netWhy, what });
+      if (!words) return null;
+      if (!gaps.includes(words)) gaps.push(words);
+      return words;
+    }
     const miss = py ? missingModule(output, tool, py.declared) : null;
     if (!miss || !py) return null;
     const words = missingWords(miss, py, what);
@@ -268,7 +284,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // checked, that is what it found (as for a Node project whose packages are missing), said with the command to run. No
   // place goes with it: these are Companion's own words, not something on the screen to circle.
   const unchecked = (): LadderResult => {
-    if (!o.noInstall || !py || !gaps.length) return result("nothing_to_check");
+    if (!o.noInstall || !(py || nat) || !gaps.length) return result("nothing_to_check");
     const s: Step = { rung: "install", label: LABELS.install, status: "failed", detail: redact(gaps[0]), ms: 0 };
     const at = steps.findIndex((x) => x.rung === "install");
     if (at >= 0) steps[at] = s; else steps.push(s);
@@ -279,8 +295,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // --- 1. install
   if (cancelled()) return result("cancelled");
   let t0 = Date.now(); emit("install", "running");
-  const isRunFile = (p: string) => (RUN_FILES as readonly string[]).includes(p);
-  const [bf, af] = [await o.store.readFiles(o.beforeId, isRunFile), await o.store.readFiles(o.afterId, isRunFile)];
+  const [bf, af] = [await readRunFiles(o.store, o.beforeId), await readRunFiles(o.store, o.afterId)];
   // What the check would run differs from what the person said yes to (or, with no record, the task changed it): none of
   // it runs without a yes, since it runs outside the sandbox (rule 13). A yes covers installing the packages too, so the
   // person answers one card, and it is remembered. [verify] Running the checks under the same sandbox as Claude's own
@@ -307,12 +322,43 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // Scripts that change a database or put something online are never run by a check.
   // A Python check is the checker's own command, not a script of the project's; a start from .claude/launch.json or .replit
   // is the project's, whatever it is written in.
-  const screened = (command: string, install = false, own = !!py) => !own && changesData(command, o.project, install);
+  const screened = (command: string, install = false, own = !!py || !!nat) => !own && changesData(command, o.project, install);
+  // May a build download packages? Decided once. Point at the problem and earlier versions never do; "never" never does;
+  // "ask" asks, always on its own card (a yes to running the changed scripts does not count); "auto" does. Whatever the answer, the offline try comes first.
+  const mayDownload = async (command: string): Promise<boolean> => {
+    if (download !== null) return download;
+    if (o.noInstall) { netWhy = "noInstall"; return (download = false); }
+    const rules = loadRules(o.project);
+    const mode = installMode(o.check?.install, rules.rules, rules.broken === true);
+    if (mode === "never") { netWhy = "never"; return (download = false); }
+    if (mode === "auto") return (download = true);
+    // A yes to the changed scripts card is not this answer: that card never says a build may download packages.
+    const yes = !!o.askInstall && await o.askInstall(`${DOWNLOAD_ASK}${command.replace(/^(?:[A-Z_]+=\S+\s+)+/, "")}`).then((x) => x === true, () => false);
+    netWhy = "no";
+    return (download = yes);
+  };
+  // One command of a Go, Rust, Java, Kotlin, Swift or Xcode project. The offline way first; only when it says a package is
+  // not on this Mac yet (and a download is allowed) the command that may download. A wrapper whose build tool is not here
+  // yet has no offline way, so it counts as having asked for a download.
+  const nativeRun = async (c: { command: string; offline?: string | null }, limitMs: number, env: Record<string, string>): Promise<RunResult> => {
+    const go = (command: string) => run(command, { cwd: o.project, timeoutMs: limitMs, signal: o.signal, env });
+    if (online) return go(c.command);
+    let r: RunResult;
+    if (c.offline) {
+      r = await go(c.offline);
+      if (r.code === 0 || r.timedOut || r.aborted || cancelled() || couldNotStart(r) || !needsDownload(r.stdout + "\n" + r.stderr, nat!.ecosystem)) return r;
+    } else r = { code: 1, signal: null, stdout: "", stderr: WRAPPER_NOT_CACHED, timedOut: false, ms: 0 };
+    if (await mayDownload(c.command) && !cancelled()) { online = true; return go(c.command); }
+    return r;
+  };
   // Python packages are never installed by Companion; the note says what it uses. With no Python to use (none on this
   // Mac, or a virtual environment whose Python is gone), nothing can be checked, and Point at the problem says so.
   if (py && !py.command && o.noInstall) return result("failed", finish("install", "failed", py.note, t0));
+  if (nat?.missing && o.noInstall) return result("failed", finish("install", "failed", nat.missing, t0));
   if (py) finish("install", "skipped", py.note, t0);
+  else if (nat?.missing) { gaps.push(nat.missing); finish("install", "skipped", nat.missing, t0); }
   else if (noRun) { heldBack = true; finish("install", "skipped", runShort, t0); }
+  else if (nat) finish("install", "skipped", nat.note, t0);
   else if (det.packageManager && needsInstall(bf, af, det.lockfile, existsSync(join(o.project, "node_modules")))) {
     if (o.noInstall) {
       const why = `This project's packages are not installed, so it cannot be checked yet. Run ${det.packageManager} install in the project folder, or press Fix it with me.`;
@@ -350,21 +396,21 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     for (const c of det.checks) {
       if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       if (screened(c.command)) { const w = changesDataGap(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
-      const r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
+      const r = nat ? await nativeRun(c, limits.checkMs, {}) : await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
       if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
-        const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : `the ${c.name} check`);
+        const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`);
         if (why) { missed.push(why); tried.push({ name: c.name, status: "missing" }); continue; }
         tried.push({ name: c.name, status: "failed" });
-        return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks")));
+        return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks")));
       }
       tried.push({ name: c.name, status: "passed" });
       ran.push(c.name);
     }
     if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}${skipped.length ? ` ${skipped.join(" ")}` : ""}`, t0);
     else finish("checks", "skipped", [...missed, ...skipped].join(" "), t0);
-  } else finish("checks", "skipped", "This project has no build or lint steps to run.", t0);
+  } else finish("checks", "skipped", (nat && (nat.missing ?? nat.gaps[0])) || "This project has no build or lint steps to run.", t0);
 
   // --- 3. tests, and were they weakened?
   if (cancelled()) return result("cancelled");
@@ -376,7 +422,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   else if (det.tests && noRun) finish("tests", "skipped", runShort, t0);
   else if (det.tests && screened(det.tests.command)) { const w = changesDataGap("test"); left.push(w); finish("tests", "skipped", w, t0); }
   else if (det.tests) {
-    const r = await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
+    const r = nat ? await nativeRun(det.tests, limits.testMs, { CI: "1" }) : await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
     if (r.aborted || cancelled()) return result("cancelled");
     if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
@@ -389,9 +435,17 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       else finish("tests", "skipped", "pytest found no tests to run.", t0);
     }
     else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
-    else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
+    // Exit code 0 with no test run at all (XCTest's "Executed 0 tests", cargo's "running 0 tests"): nothing was checked, so it is
+    // a gap, never a pass, and not a failure either.
+    else if (nat && r.code === 0 && !r.timedOut && ranNoTests(r.stdout + "\n" + r.stderr, nat.ecosystem)) {
+      cannotTell(false, "tests");
+      const w = "The test command ran, but it found no tests to run, so the tests were not checked.";
+      if (!left.includes(w)) left.push(w);
+      finish("tests", "skipped", w, t0);
+    }
+    else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests")));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
-  } else finish("tests", "skipped", "This project has no tests to run.", t0);
+  } else finish("tests", "skipped", (nat && nat.missing) || "This project has no tests to run.", t0);
 
   // --- 4 and 5. start it, open it
   if (cancelled()) return result("cancelled");
@@ -423,8 +477,25 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // A Python dev server may make an empty SQLite file on its way up (Django's runserver does): it is taken away again
   // once the server has stopped, however the rung ends.
   const dbBefore = py ? databaseFiles(o.project) : null;
-  const serve = (start: NonNullable<Detected["start"]>) => (o.server ?? startServer)(start, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal });
+  // A Go, Rust, Java, Kotlin or Swift project's server is told whether it may fetch packages, and never a toolchain.
+  // Maven and Gradle get their offline switch in the command itself, when no download is allowed (serverOffline).
+  const serve = (start: NonNullable<Detected["start"]>, allow = online) => (o.server ?? startServer)(nat && start.kind === "server" ? { ...start, ...(allow ? {} : { command: serverOffline(start.command, nat).command }), env: { ...(start.env ?? {}), ...serverEnv(allow) } } : start, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal });
+  // A start that cannot run without downloading (a wrapper whose build tool is not here yet, swift run on a project with remote
+  // packages) is a download like a build's: the same question, once, and without a yes it is not started and is said as a gap.
+  if (nat && det.start.kind === "server" && !online && serverOffline(det.start.command, nat).download) {
+    if (await mayDownload(det.start.command) && !cancelled()) online = true;
+    else if (!cancelled()) {
+      const w = serverHeldBack(det.start.command, netWhy);
+      if (!left.includes(w)) left.push(w);
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", w, t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
+  }
   let srv = await serve(det.start);
+  // It stopped for want of packages this check had not been allowed to fetch: the same question as for a build, once.
+  if (nat && !srv.ok && !online && !cancelled() && needsDownload(srv.output ?? srv.reason, nat.ecosystem) && det.start.kind === "server" && await mayDownload(det.start.command) && !cancelled()) { online = true; srv = await serve(det.start, true); }
   // The start script chosen in Settings finished on its own, so it does not open the page. The page is still checked
   // (F14): the project is started the usual way when that is another way, and either way it is a gap, never a pass.
   let startNote = started.gap, chosen = started.chosen;
@@ -463,6 +534,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       return hasEvidence(steps) ? result("passed") : unchecked();
     }
     const startGap = srv.ok ? null : held(srv.output ?? srv.reason, "start")
+      ?? (nat ? gap(srv.output ?? srv.reason, undefined, "the server") : null)
       ?? (det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null);
     if (startGap) {
       cannotTell(true, "start", "browser");

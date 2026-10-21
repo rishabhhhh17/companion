@@ -48,6 +48,19 @@ describe("the sandbox settings", () => {
     for (const c of [".npm", ".cache", "Library/Caches"]) expect(s.filesystem.allowWrite).toContain(`${HOME}/${c}`);
     for (const bad of [HOME, `${HOME}/Documents`, `${HOME}/.ssh`, `${HOME}/.zshrc`, `${HOME}/Library`, `${HOME}/Desktop`]) expect(s.filesystem.allowWrite).not.toContain(bad);
   });
+  // Go, Rust, Java, Kotlin, Swift and Xcode builds (the agent's own commands, as well as a check) keep downloaded packages in
+  // their own folders. Only those folders, never the tool's whole folder (Maven's settings.xml, Gradle's gradle.properties and
+  // Cargo's credentials sit next to them and can hold logins).
+  test("the package caches of Go, Rust, Maven, Gradle, Swift and Xcode are writable, and only those", () => {
+    const w = s.filesystem.allowWrite as string[];
+    for (const c of ["go/pkg/mod", ".cargo/registry", ".cargo/git", ".cargo/.package-cache", ".cargo/.global-cache", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Caches", "Library/Developer/Xcode/DerivedData"]) expect(w, c).toContain(`${HOME}/${c}`);
+    for (const bad of ["go", ".cargo", ".rustup", ".m2", ".gradle", ".swiftpm", "Library/Developer", "Library/Developer/Xcode", ".cargo/credentials.toml", ".cargo/config.toml", ".m2/settings.xml", ".gradle/gradle.properties", ".gradle/init.d", "Library/org.swift.swiftpm", "Library/org.swift.swiftpm/configuration", "Library/org.swift.swiftpm/security", ".gradle/wrapper", ".gradle/wrapper/dists", ".m2/wrapper", ".m2/wrapper/dists", ".m2/settings-security.xml"]) expect(w, bad).not.toContain(`${HOME}/${bad}`);
+    expect(w.every((x) => x.startsWith(HOME + "/") && !x.includes(".."))).toBe(true);
+  });
+  test("the places those tools download from are open, and not a whole code host", () => {
+    for (const d of ["proxy.golang.org", "sum.golang.org", "crates.io", "static.crates.io", "index.crates.io", "repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org", "services.gradle.org", "downloads.gradle.org"]) expect(s.network.allowedDomains, d).toContain(d);
+    for (const bad of ["github.com", "gitlab.com", "*.gradle.org", "*.golang.org", "maven.org"]) expect(s.network.allowedDomains).not.toContain(bad);
+  });
   test("a cache folder is never also a place that is refused for reading", () => {
     const denied = new Set(sensitivePaths(HOME));
     for (const c of cachePaths(HOME)) expect(denied.has(c), c).toBe(false);

@@ -6,6 +6,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { label, redact } from "../redact.ts";
 import { readPytest } from "./pytest.ts";
+import { readToolOutput } from "./toolout.ts";
 import type { Problem } from "../../../protocol/index.ts";
 
 export type { Problem };
@@ -13,6 +14,9 @@ export type { Problem };
 const ANSI = /\u001b\[[0-9;?]*[ -\/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
 // Folders the person did not write: tools, build output, Companion's own notes.
 const NOT_THEIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".nuxt", ".svelte-kit", ".output", "coverage", ".companion", ".vercel", ".turbo", ".cache", "__pycache__", ".venv", "venv", "site-packages", "dist-packages"]);
+// Build output and fetched code of Rust, Go, Gradle, SwiftPM and CocoaPods projects. Only as the project's top folder: a
+// folder called target or vendor deeper down can be the person's own.
+const NOT_THEIRS_TOP = new Set(["target", "vendor", ".gradle", ".build", "Pods", "DerivedData"]);
 const MAX_FILE = 2_000_000;
 const LINE_MAX = 200;
 const MESSAGE_MAX = 200;
@@ -85,7 +89,7 @@ function projectFiles(root: string): string[] {
     try { names = readdirSync(dir); } catch { return; }
     for (const n of names) {
       if (++seen > 20_000) return;
-      if (NEVER_LOOSE.has(n)) continue;
+      if (NEVER_LOOSE.has(n) || (depth === 0 && NOT_THEIRS_TOP.has(n))) continue;
       const p = join(dir, n);
       let st; try { st = lstatSync(p); } catch { continue; }   // a link is never followed
       if (st.isDirectory()) walk(p, depth + 1);
@@ -104,7 +108,7 @@ function projectFiles(root: string): string[] {
 function looseFile(root: string, path: string, files: () => string[]): string | null {
   if (isAbsolute(path) && existsSync(path)) return null;
   const parts = path.split(/[\\/]+/).filter((x) => x && x !== "." && x !== "..");
-  if (parts.length === 0 || parts.some((x) => NEVER_LOOSE.has(x))) return null;
+  if (parts.length === 0 || parts.some((x) => NEVER_LOOSE.has(x)) || NOT_THEIRS_TOP.has(parts[0])) return null;
   const isFile = (rel: string) => { try { return statSync(join(root, rel)).isFile(); } catch { return false; } };
   if (isAbsolute(path)) for (let k = parts.length - 1; k >= Math.min(2, parts.length); k--) { const rel = parts.slice(-k).join("/"); if (isFile(rel)) return join(root, rel); }
   const tail = parts.join("/");
@@ -132,7 +136,7 @@ function theirFile(project: string, root: string, path: string, loose?: () => st
   try { real = realpathSync(abs); } catch { return null; }
   if (!real.startsWith(root + sep)) return null;
   const rel = relative(root, real);
-  if (rel.split(sep).some((part) => NOT_THEIRS.has(part))) return null;
+  if (rel.split(sep).some((part) => NOT_THEIRS.has(part)) || NOT_THEIRS_TOP.has(rel.split(sep)[0])) return null;
   try { const st = statSync(real); if (!st.isFile() || st.size > MAX_FILE) return null; } catch { return null; }
   try { return { file: rel.split(sep).join("/"), rows: readFileSync(real, "utf8").split("\n") }; } catch { return null; }
 }
@@ -222,6 +226,16 @@ export function locateProblem(output: string, project: string, from: string, opt
     }
     return said ? { kind: "message", message: tidy(said), from } : null;
   }
+  // Go, Rust, Java, Kotlin and Swift tools: their own shapes, their places looked up the way a bare file name or a package
+  // path is (Go names a test file without its folder, a JVM stack frame names only a file and a package).
+  const tool = readToolOutput(text);
+  if (tool) {
+    const toolFiles = () => (files ??= projectFiles(root));
+    for (const p of tool.places) {
+      const hit = lineIn(project, root, { path: p.path, line: p.line, at: 0 }, toolFiles);
+      if (hit) return { kind: "line", file: hit.file, line: p.line, ...(p.column !== undefined ? { column: p.column } : {}), lineText: hit.lineText, message: tidy(p.message ?? tool.message ?? ""), from };
+    }
+  }
   const { list, python } = places(text);
   const ordered = (python ? [...list].reverse() : list).sort((a, b) => Number(!!a.declared) - Number(!!b.declared));   // Python prints the deepest frame last; a test's declaration only if nothing better
   const general = sentence(text, python);
@@ -239,7 +253,9 @@ export function locateProblem(output: string, project: string, from: string, opt
     const message = p.message ?? general ?? "";
     return { kind: "line", file: hit.file, line: p.line, ...(p.column !== undefined ? { column: p.column } : {}), lineText: hit.lineText, message: tidy(message), from };
   }
-  return general ? { kind: "message", message: tidy(general), from } : null;
+  // The tool's own words beat a guess from the first line that sounds like an error.
+  const said = tool?.message ?? general;
+  return said ? { kind: "message", message: tidy(said), from } : null;
 }
 
 const PRESSED = /^The page (?:crashed with|logged an error): (.+) \(after pressing "(.+)"\)$/;

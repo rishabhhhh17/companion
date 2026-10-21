@@ -1,0 +1,14 @@
+{
+  "cmd": [
+    "swift",
+    "build",
+    "--disable-automatic-resolution"
+  ],
+  "probe": [
+    "swift",
+    "--version"
+  ],
+  "file": "Sources/shop/main.swift",
+  "line": 5,
+  "about": "cannot convert"
+}

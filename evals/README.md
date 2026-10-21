@@ -14,7 +14,7 @@ Built in M11 wave 3 (`docs/milestones/M11-wave3-plan.md`, part A.5), so that whe
 | `review-catch` | The second model review (`COMPANION_REVIEW`): catches and false alarms | 10 seeded diffs: 5 risky, 5 harmless | `bun run evals/review-catch/run.ts` |
 | `explain` | Explain on real changes: correct, plain words, two lines, a fair check question (`explain/RUBRIC.md`) | 24 (the fix cases' known good changes) | `bun run evals/explain/run.ts` |
 | `show-me-how` | The aim eval's hard set (four synthetic busy dashboards in light and dark) and everyday set (nine synthetic everyday app windows, asked as a tutor for each app), labelled targets, rendered in the hidden browser | 40 hard asks and 40 everyday asks (plus the aim eval's 48 basic ones) | `cd runner && bun run scripts/eval-aim.ts --set hard` (or `--set everyday`) |
-| `rescue-projects` | The locator alone, no model (older, free, part of `test-all.sh`) | 15 plus the 5 practice projects | `cd evals/rescue-projects && bun test` |
+| `rescue-projects` | The locator alone, no model (older, free, part of `test-all.sh`) | 15 plus the 5 practice projects, plus 8 Go, Rust, Java, Swift and Xcode cases (`native-cases`, each skipped when its tool is not on the Mac) | `cd evals/rescue-projects && bun test` |
 | `prompt-help` | Prompt help rewrites (older) | 30 | `cd evals/prompt-help && bun test` |
 
 All commands run from the repo root unless they say otherwise.

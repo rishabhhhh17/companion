@@ -97,7 +97,12 @@ export type SearchOptions = {
 // lists, so a change to its scripts or name does not stop an earlier version being checked. A Python project's requirement
 // files, Pipfile, setup.py and lockfiles are compared whole too; its pyproject.toml and setup.cfg without the parts that only
 // set up tools or describe the project (pythonPackageText).
-const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "pnpm-workspace.yaml", "bun.lock", "bun.lockb", "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "setup.py"]);
+// A Go, Rust, Java, Kotlin or Swift project's build files are compared whole too (go.mod and go.sum, Cargo.toml and Cargo.lock,
+// pom.xml, Gradle's build, settings and properties files and version catalog, Package.swift and Package.resolved, the
+// wrappers' properties): they name the packages and the build tool a version needs. Source files are not in this list.
+const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "pnpm-workspace.yaml", "bun.lock", "bun.lockb", "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", "pdm.lock", "setup.py",
+  "go.mod", "go.sum", "go.work", "Cargo.toml", "Cargo.lock", "rust-toolchain", "rust-toolchain.toml", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "libs.versions.toml",
+  "gradle-wrapper.properties", "maven-wrapper.properties", "Package.swift", "Package.resolved"]);
 const PACKAGE_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "bundleDependencies", "bundledDependencies", "overrides", "resolutions", "workspaces", "pnpm", "packageManager"];
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 /** requirements.txt and its kin (requirements-dev.txt, dev-requirements.txt, constraints.txt, requirements/base.txt), and

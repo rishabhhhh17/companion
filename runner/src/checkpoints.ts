@@ -40,13 +40,14 @@ const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 5 * 60_000;   // a snapshot that has not finished in five minutes is stuck, not slow
 const DEFAULT_EXCLUDES = [
   "node_modules/", ".next/", "dist/", "build/", ".turbo/", ".cache/", "__pycache__/", ".venv/", "venv/", "target/", "coverage/", ".DS_Store",
+  ".gradle/", ".build/",   // Gradle's and Swift's own working folders, which the checks of Java, Kotlin and Swift projects make
   ".claude/.cc-writes",   // Claude Code's own write tracking, not the user's work
 ];
 // The person's own house rules (rules.ts RULES_FILE), changed only from Settings. They are not a task's work, so no Undo
 // ever changes them: putting a version back, or undoing one task, leaves the file exactly as it is now, there or not (T16).
 // They stay in every snapshot, so a copy of an earlier version (a before picture, which task broke it) still has them.
 const KEPT_ON_UNDO: readonly string[] = [RULES_FILE];
-const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage"]);
+const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache", "target", "venv", ".venv", "__pycache__", "coverage", ".gradle", ".build"]);
 
 const stores = new Map<string, CheckpointStore>();
 

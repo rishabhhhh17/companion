@@ -15,6 +15,7 @@ import { RunnerSettings } from "../src/settings.ts";
 import { CheckpointStore } from "../src/checkpoints.ts";
 import { DEFAULT_LIMITS, scaleLimits, type LadderResult } from "../src/proof/ladder.ts";
 import { USUAL_CHECK, VIEWPORTS } from "../src/proof/options.ts";
+import { DOWNLOAD_ASK } from "../src/proof/native.ts";
 import { VercelCli, type DeployLogReader } from "../src/ship/deploy.ts";
 import { installBrowser } from "../src/proof/browser.ts";
 import { BrowserSetup } from "../src/proof/browsersetup.ts";
@@ -99,9 +100,9 @@ describe("what a task's check is given", () => {
 });
 
 describe("the install question (check.install ask, or the house rule)", () => {
-  const asking = (answer: (r: ReturnType<typeof rig>, req: any) => Promise<void>, o: { approvalTimeoutMs?: number } = {}) => {
+  const asking = (answer: (r: ReturnType<typeof rig>, req: any) => Promise<void>, o: { approvalTimeoutMs?: number; command?: string } = {}) => {
     let got = null as boolean | null;
-    const r = rig({ ...o, proof: async (ctx) => { got = await ctx.askInstall!("npm install"); return passed; } });
+    const r = rig({ ...o, proof: async (ctx) => { got = await ctx.askInstall!(o.command ?? "npm install"); return passed; } });
     const run = async () => {
       const done = r.task();
       await waitFor(() => of(r.events, "approval.request").length > 0);
@@ -118,6 +119,16 @@ describe("the install question (check.install ask, or the house rule)", () => {
     expect(req).toMatchObject({ agent: "a1", risk: "install" });
     expect(req.title).toContain("npm install");
     expect(of(t.r.events, "approval.resolved")[0]).toMatchObject({ approval: req.approval, outcome: "allowed" });
+  });
+  test("for a Go, Rust, Java, Kotlin or Swift build the card says plainly that the build may download packages from the internet", async () => {
+    const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "n", type: "approval.resolve", approval: req.approval, decision: "deny", scope: "once" }); }, { command: `${DOWNLOAD_ASK}go build -buildvcs=false ./...` });
+    expect(await t.run()).toBe(false);
+    const req = of(t.r.events, "approval.request")[0];
+    expect(req).toMatchObject({ risk: "install" });
+    expect(req.title).toMatch(/may download the packages it needs from the internet/);
+    expect(req.title).toContain("go build -buildvcs=false ./...");
+    expect(req.title).not.toContain(DOWNLOAD_ASK);
+    expect(req.title).toMatch(/Without them, the check runs on the project as it is/);
   });
   test("a no is a no", async () => {
     const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "n", type: "approval.resolve", approval: req.approval, decision: "deny", scope: "once" }); });

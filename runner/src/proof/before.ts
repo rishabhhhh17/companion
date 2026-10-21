@@ -7,6 +7,7 @@ import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
 import { changesData, detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
+import { needsDownload, serverEnv } from "./native.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
 // not be photographed for some other reason (too slow, a port in use), which says nothing about whether it worked.
@@ -32,7 +33,10 @@ export async function captureBefore(o: {
     if (!det.start) return { none: "no_page" };
     // A start script that changes a database or puts something online is never run for a picture either (detect.ts).
     if (det.start.kind === "server" && !det.start.python && changesData(det.start.command, dir)) return { none: "not_pictured" };
+    // A Go, Rust, Java, Kotlin or Swift project's earlier version is started the offline way: it never downloads a package.
+    const nat = det.native;
     const serve = (start: NonNullable<typeof det.start>) => {
+      if (nat && start.kind === "server") start = { ...start, env: { ...(start.env ?? {}), ...serverEnv(false) } };
       let scriptText = "";
       try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
       return (o.server ?? startServer)(start, { cwd: dir, timeoutMs: o.startMs ?? 60_000, scriptText, signal: o.signal });
@@ -43,7 +47,7 @@ export async function captureBefore(o: {
     const usual = found.start;
     if (!srv.ok && srv.notAServer && started.chosen && usual && !o.signal?.aborted && !(usual.kind === "server" && det.start.kind === "server" && usual.command === det.start.command)) srv = await serve(usual);
     // A package that is not installed says nothing about whether the earlier version worked.
-    const missing = /No module named|Couldn't import Django/.test(srv.ok ? "" : srv.output ?? srv.reason);
+    const missing = /No module named|Couldn't import Django/.test(srv.ok ? "" : srv.output ?? srv.reason) || (!!nat && !srv.ok && needsDownload(srv.output ?? srv.reason, nat.ecosystem));
     // A port held by another program says nothing about the earlier version either.
     if (!srv.ok) return { none: srv.aborted ? "cancelled" : srv.notAServer ? "no_page" : srv.portBusy === undefined && /^The server stopped on its own/.test(srv.reason) && !missing ? "crashed" : "not_pictured" };
     // Stop ends the earlier version's server at once, not after the browser gives up.

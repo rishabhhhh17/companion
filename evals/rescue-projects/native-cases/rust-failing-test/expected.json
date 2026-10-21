@@ -1,0 +1,20 @@
+{
+  "cmd": [
+    "cargo",
+    "test",
+    "--offline",
+    "--color",
+    "never"
+  ],
+  "probe": [
+    "cargo",
+    "--version"
+  ],
+  "env": {
+    "RUSTUP_HOME": "$REAL_HOME/.rustup",
+    "CARGO_HOME": "$REAL_HOME/.cargo"
+  },
+  "file": "src/lib.rs",
+  "line": 11,
+  "about": "left: 5"
+}

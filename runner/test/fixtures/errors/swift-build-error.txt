@@ -1,0 +1,14 @@
+Building for debugging...
+[Planning deferred tasks]
+error: SwiftCompile normal arm64 failed with a nonzero exit code. Command line:     cd /private/tmp/claude-501/scratch
+    
+{{ROOT}}/Sources/shop/main.swift:5:23: error: cannot convert value of type 'String' to expected argument type 'Int'
+3 | }
+4 | 
+5 | let t: Int = total(1, "two")
+  |                       `- error: cannot convert value of type 'String' to expected argument type 'Int'
+6 | print(t)
+7 | 
+Failed frontend command:
+/Library/Developer/CommandLineTools/usr/bin/swift-frontend -frontend -emit-module -experimental-skip-non-inlinable-function-bodies-without-types {{ROOT}}/Sources/shop/main.sw
+error: Build failed

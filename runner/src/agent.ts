@@ -42,7 +42,7 @@ import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
-import { fileApprovals, RUN_FILES, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
+import { fileApprovals, readRunFiles, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
 import { liveFiles } from "./proof/livefiles.ts";
 import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
@@ -55,6 +55,7 @@ import { cloneTarget } from "./proof/clone.ts";
 import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
 import { detectProject, type Detected } from "./proof/detect.ts";
 import { editableInside, pythonPaths, type PythonPaths } from "./proof/python.ts";
+import { DOWNLOAD_ASK } from "./proof/native.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import { attachmentsBlock, checkAttachments, type Picture, type TextFile } from "./attach.ts";
 import type { PageShot } from "./proof/browser.ts";
@@ -392,7 +393,7 @@ export class AgentRunner {
     try {
       const store = liveFiles(project);
       const approvals = this.approvals(project);
-      const print = runPrint(await store.readFiles("live", (f) => (RUN_FILES as readonly string[]).includes(f)));
+      const print = runPrint(await readRunFiles(store, "live"));
       if (approvals.empty() || !approvals.has(print)) return { outcome: "unknown", reason: "Companion has not been allowed to run this project's scripts yet. Run Point at the problem or a task here once, and this watch will start checking." };
       let res: LadderResult;
       try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: true, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals }); }
@@ -497,7 +498,10 @@ export class AgentRunner {
    *  usual approval card. Only a yes is a yes: no answer before it runs out, a no, Stop or Stop everything is a no, and an
    *  answer after it ran out changes nothing. */
   private installAsker(s: Session | undefined, agent: string, checkpoint: string): (command: string) => Promise<boolean> {
-    return this.checkAsker(s, agent, checkpoint, (command) => `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`);
+    // A Go, Rust, Java, Kotlin, Swift or Xcode build fetches its packages itself; the ladder marks that question (DOWNLOAD_ASK).
+    return this.checkAsker(s, agent, checkpoint, (command) => command.startsWith(DOWNLOAD_ASK)
+      ? `Building this project may download the packages it needs from the internet (${clip(command.slice(DOWNLOAD_ASK.length), 60)}). Download them so it can be checked? Without them, the check runs on the project as it is.`
+      : `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`);
   }
   /** The question for a task that changed the project's scripts or packages: they run on this Mac outside the sandbox
    *  Claude's own commands get, so the check runs them only on a yes (ladder.ts askScripts). The same card and rules as
@@ -1870,7 +1874,12 @@ export class AgentRunner {
     const busy = this.installing.has(key) || this.finding.size > 0 || this.shipping.size > 0 || this.sessions.size > 0 || this.driving.size > 0;
     if (busy) { say("failed", "Companion is already working on this project. Wait for it to finish, or press Stop."); return; }
     const det = detectProject(project);
-    if (!det.packageManager) { say("failed", "This project has no package list (package.json), so there is nothing to install."); return; }
+    if (!det.packageManager) {
+      say("failed", det.native
+        ? `${det.native.label.replace(/ \(.*\)$/, "")} projects fetch their packages when they are built, so there is nothing for Companion to install here. To fetch them yourself, in Terminal in the project folder, run: ${det.native.fetch}`
+        : "This project has no package list (package.json), so there is nothing to install.");
+      return;
+    }
     const ac = new AbortController();
     this.installing.set(key, ac);
     // What the install writes (a lock file, say) is ours, not the person's: Undo must not mistake it for their edit.
