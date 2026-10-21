@@ -159,7 +159,7 @@ export type AgentState = Envelope & { type: "agent.state"; agent: string; state:
 export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: string; summary: string; toolUseId: string; undoable: boolean; outcome?: "ran" | "blocked" | "needs_approval" | "denied" };
 export type ApprovalRequest = Envelope & {
   type: "approval.request"; approval: string; agent: string; checkpoint: string; toolUseId: string;
-  risk: "irreversible" | "git" | "outside_project" | "install" | "network"; title: string; expiresAt: string;
+  risk: "irreversible" | "git" | "outside_project" | "install" | "network" | "settings"; title: string; expiresAt: string;
 };
 export type CostUpdate = Envelope & {
   type: "cost.update"; agent: string; usdEstimate: number; basis: string; tokens: { in: number; cacheRead: number; out: number };
@@ -489,7 +489,7 @@ const EVENTS: Record<string, Check[]> = {
   "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped"), practiceOk],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
-  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network"]), str("title"), str("expiresAt")],
+  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings"]), str("title"), str("expiresAt")],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
   "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
   "protocol.error": [str("reason")],

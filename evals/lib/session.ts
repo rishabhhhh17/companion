@@ -23,8 +23,9 @@ export type SessionOptions = {
   explainer?: TextAsk;
   /** The proof ladder; the real one unless a set says otherwise (Explain does not need it). */
   proof?: ProofRunner;
-  /** What the eval answers when Companion asks for approval. A real person might say yes; the eval says no unless told. */
-  approvals?: "deny" | "allow";
+  /** What the eval answers when Companion asks for approval. A real person might say yes; the eval says yes only to a settings card (the default) unless told. "settings" says yes to a card
+   *  about adding a harmless setting to a private settings file (the person would tap that) and no to every other. */
+  approvals?: "deny" | "allow" | "settings";
   /** What the eval presses on the loop card: "Try a different approach" (what the card is for) or "Stop here". */
   onStuck?: "different" | "stop";
   /** The case's signal (runSet): aborted at a refusal or a spending stop, which stops everything at once, as Stop does. */
@@ -53,7 +54,7 @@ export class EvalSession {
     // Answered on the next tick, the way the app's card answers: never inside the event itself.
     if (e.type === "approval.request") {
       this.approvalsAsked.push(String(e.title));
-      setTimeout(() => void this.send({ type: "approval.resolve", approval: e.approval, decision: this.o.approvals === "allow" ? "allow" : "deny", scope: "once" }), 0);
+      setTimeout(() => void this.send({ type: "approval.resolve", approval: e.approval, decision: this.o.approvals === "allow" || ((this.o.approvals ?? "settings") === "settings" && e.risk === "settings") ? "allow" : "deny", scope: "once" }), 0);
     }
     if (e.type === "loop.stuck") setTimeout(() => void this.send({ type: "loop.choose", agent: AGENT, choice: this.o.onStuck ?? "different" }), 0);
   }

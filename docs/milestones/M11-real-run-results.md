@@ -40,8 +40,14 @@ Real cost came in at 15% to 35% of the estimates: a fixed project is $0.04, not 
 
 The app's own path fixed 20 of 24 runnable projects, against 23 on the direct path. The three "not fixed" are the safety design, not bugs, and each told the person plainly what to do:
 - `rescue-ts-missing-property`: the fix needs Sam's real email address, which only the person has. It asked instead of inventing one.
-- `missing-setting-name` and `vite-env-prefix`: both need a line in `.env`, which Companion deliberately never opens (secrets). Each said which line to change and where. [decision for the founder] A card that asks "May I add this one line to your `.env`?" would close both, but it is a change to what Companion may touch, so it is not built.
+- `missing-setting-name` and `vite-env-prefix`: both need a line in `.env`, which Companion deliberately never opens (secrets). Each said which line to change and where. **Closed the next day** with the settings card below.
 
 ## The plain words retry (Explain)
 
 An Explain answer that fails the same plain words check the eval uses (`explainPlain` in `runner/src/explain.ts`, shared with `evals/explain/score.ts`) is asked for once more, naming what was wrong. The answer with fewer problems is kept; a failed or unreadable retry changes nothing; both asks are paid and counted in the day's spending. The eval now scores plain words and the grader on what the person is shown, and keeps "two lines" on the model's own reply (the app trims, so what is shown could never fail it).
+
+## The settings card (22 Oct 2026)
+
+Found while building it: the safety hook never guarded `.env` at all (T05 said it should). A normal task could read it and edit it with no card. Now every write to a private settings file asks, showing the setting's name and never its value, and a key, token or password is refused (see T05). Real checks: `approve-env-line` (card shows `SITE_NAME` only; after a yes the line is added and the old line is kept) and `env-secret-refused` both pass. The three cases that were handed back (`rescue-ts-missing-property`, `missing-setting-name`, `vite-env-prefix`) now all fix, on both paths; `vite-env-prefix` after one card for `VITE_API_URL`. The Fix it path is at 23 of 24. Cost of the re-check $0.28.
+
+**Open for the founder: reading `.env`.** Plan, Rescue and Research refuse to read it; a normal task does not. So a secret value can reach the model if the agent reads the file. Refusing reads closes that but stops the tasks that need to see an existing value. Not changed.

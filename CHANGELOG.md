@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Your private settings file now asks before it is changed: 22 Oct 2026
+
+- **A real task found a gap: Companion could change your `.env` file without asking.** Now every change to a private settings file (`.env`, `.env.local`, `.env.production` and the like) asks first. The card names the setting (`SITE_NAME`) and **never shows its value**. The example files people share (`.env.example`) are not affected.
+- **A key, token or password is never written for you.** If a task tries, it is refused and told to say which line you should add yourself.
+- **It fixed the three projects that had been handed back**, each after at most one card, on real Claude (23 of 24 now).
+- One thing is still your call: a normal task can still read that file (planning and research cannot). Closing that stops it from seeing existing values, so it is not changed yet.
+
 ## Plainer "why" lines, and the Fix it path tried on 25 projects: 22 Oct 2026
 
 - **The two "why" lines after a task are now checked for plain words, and rewritten once if they are not.** On our 24 real changes the lines passed 92% of the time (they were 17% two days ago), and 100% were true to the change with a fair check question.
