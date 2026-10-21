@@ -30,3 +30,33 @@
 - Whether a real Word file with pictures inside kept them in its PDF before the move to plain RTF (if it did, Document to PDF now leaves them out, and a way to keep a document's own pictures and nothing else would be needed).
 - A file on another disk: the copy, and reading a file over 512 MB where it is, ran in the tests only by forcing that path on the same disk.
 - Quitting from the menu bar, and Delete everything, while a long video converts: waiting for the job was tested in the shell's tests, not in the built app.
+
+## More formats with the Mac's own tools (M13, 21 Oct 2026)
+Still no ffmpeg and nothing bundled or downloaded: only tools already on every Mac. Every format is offered only after a runtime check that this Mac can write it (`Caps::probe` reads the tools' own lists once, the first time anything is dropped; `Caps::core` is the few every Mac has, which is also what is assumed when a tool says nothing). Nothing is converted to find out.
+
+**Probe, run on macOS 27.0.1 (the app minimum is macOS 14, so every extra format below is checked at run time):**
+
+| Tool | Reads | Writes (this Mac) | Offered |
+|---|---|---|---|
+| `sips` | PNG, JPEG, HEIC, TIFF, GIF, BMP, JPEG 2000, TGA, AVIF, ICNS, ICO, WebP, JPEG XL, camera RAW and more | PNG, JPEG, HEIC, TIFF, GIF, BMP, JPEG 2000, TGA, AVIF, ICNS, ICO, PDF, PSD, EXR, DDS and more; not WebP, not JPEG XL | PNG, JPEG, HEIC, TIFF, WebP (if writable), GIF, BMP, JPEG 2000, TGA, AVIF, ICNS and ICO (square pictures only), turn, flip, grey (Generic Gray profile), resize, compress |
+| ImageIO and PDFKit (fixed JavaScript for Automation scripts through `osascript`) | pictures, PDFs | PNG thumbnails, a picture saved again without place and camera details, PDFs from pictures, rotated PDFs, PDFs with pages taken out, the words of a PDF as text | strip details (PNG, JPEG, HEIC, TIFF), set of small sizes (64, 128, 256, 512, only those smaller than the picture), pictures to one PDF or one each, rotate, take out first or last page, keep first page, PDF words to text |
+| `afconvert` | AIFF, WAV, CAF, M4A, MP3, AAC, FLAC, AU and more | M4A (AAC), M4A (ALAC), WAV, AIFF, CAF, FLAC, AAC (ADTS) | all of these as formats, mono, stereo, a sample rate (setting `drop.sampleRate`), trim (existing). A data format counts only inside the file format that lists it (`audio_ok`) |
+| `textutil` | txt, rtf, rtfd, html, doc, docx, odt, wordml, webarchive | txt, rtf, html, doc, docx, odt, wordml (as .xml) | all of these between each other; markdown (.md) is read as plain text with `-format txt` and nothing is rendered; PDF from any of them through plain RTF as before. RTFD and web archive are never written: they carry pictures from elsewhere on the Mac |
+| `avconvert` | MOV, MP4, M4V | presets on this Mac include 640x480, 1280x720, 1920x1080, HEVC, ProRes, M4A | MP4, MOV, M4V, HEVC, 480p, 720p, 1080p (a size that does not make the file smaller makes nothing), keep only the sound, trim |
+| AVFoundation (the picture script) | video | a still PNG at the start or the middle | still frame |
+| `ditto` | zip | zip | zip a file or folder (no links followed, no resource forks or extended attributes), several into one zip, unzip into a new folder |
+
+**Zip safety.** A zip is read before anything is extracted (`zip_vet`): its list of files and each file's own header must agree; it is refused for a path that climbs out (`..`, absolute, backslash or drive letter), a link or any non file and folder entry, a password, more than 10,000 files or 4 GiB once opened by what it says, and zip64 sizes (not read at all). While ditto runs, the folder it writes is looked at five times a second (`Guard`) and the tool is ended the moment the caps are passed or a link appears. What is unzipped keeps the zip's "downloaded from the internet" mark, so macOS still checks it. A folder to zip is copied first without following any link, capped at 100,000 things and 16 GiB, and nested no deeper than 64.
+
+**Not possible without ffmpeg (the exact gap, for the founder and the lawyer):**
+- MP3 output. `afconvert` lists MP3 but this Mac has no encoder: `afconvert -f MPG3 -d .mp3` fails with "fmt?" (checked).
+- Ogg Vorbis and Opus output. Listed, and also fail the same way (checked).
+- WebP output (sips reads, does not write), JPEG XL output.
+- WebM, MKV, AVI, WMV, FLV video and WMA, OGG audio, in either direction.
+- ProRes is a preset on this Mac, but it makes very large files and was left out on purpose, not for lack of a tool.
+- Subtitles, GIF from video, extracting only a time range of frames: no built in tool.
+- Markdown rendered as a formatted page: the Mac has no renderer, so Markdown is treated as plain text and the PDF shows its marks as typed. PDF page choices are first page, last page and keep first page; other ranges need a way to type them (not built).
+
+**Settings.** New: `drop.sampleRate`. New choices on existing ones: picture format GIF, BMP, JPEG 2000; document format old Word and OpenDocument; sound format ALAC, CAF, FLAC; video format M4V. A first choice the Mac cannot write is simply not first. The Files group switch (`files.on`) and `drop.on` still turn everything off.
+
+**Not proven (needs a real Mac).** The ring with up to about 25 round choices in the 160 point window (a layout and styling job, not done here), VoiceOver reading the longer list, older macOS versions where fewer formats exist (the runtime check covers them in logic; only macOS 27 ran), HEIC details stripping and HEVC output on a real long video, zip of a folder on another disk or over 512 MB, dropping a real folder from Finder on the character.
