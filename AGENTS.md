@@ -21,9 +21,9 @@ The shared core is four parts: **characters**, **agent engine**, **memory**, **t
 ## Rules that never bend
 
 **Claude usage**
-1. Never pay for, resell or route anyone's Claude usage.
+1. Never pay for, resell or route anyone's Claude usage, **unless managed usage is switched on** (F22). It is built but off for everyone until Anthropic confirms in writing that it is allowed for the Claude Code engine. A chatbot reply is not approval.
 2. Never show a Claude login form. Never read, store or pass claude.ai tokens or credential files. Plan login happens only in Anthropic's own `claude auth login`. We detect the login from the SDK's account info; `claude auth status` runs only while the user is signing in or presses "Check again", never at launch or on a timer (it can sign users out). The API key stays in the Keychain and reaches only the runner and Claude Code; agent commands, hooks and MCP servers never see it (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`).
-3. The API key route is the polished default. The subscription route sits behind a remote switch, off until Anthropic confirms in writing. Keep the switch even after a yes.
+3. The API key route is the polished default. The subscription route and managed usage (F22) each sit behind a remote switch, off until Anthropic confirms in writing. Keep the switches even after a yes.
 4. Ship Anthropic's Claude binary unmodified and never re-sign it: it is staged in `vendor/` (never committed) and goes into the app through `bundle.macOS.files`, never as an `externalBin` (Tauri re-signs those). "Powered by Claude" is fine; never call or style anything as Claude Code.
 
 **Never watch passively**
@@ -125,6 +125,7 @@ app/vendor/          Anthropic's Claude binary and the engine, staged at build t
 app/sample/          practice stuck moments, each broken one way on purpose, and their one catalog (practices.json: order, the failure Find must show, how each is fixed and proven, the files its house rule protects)
 evals/               quality suites (evals/README.md): rescue-projects, prompt-help, and the M11 sets, dry by default and spending only with --spend through one harness (evals/lib): fix-projects, loop-breaker, review-catch, explain, show-me-how (the aim eval's hard set); voice latency still to come
 relay/               (planned, Beta) Cloudflare Worker relay and the phone web app
+usage-proxy/         (M13, switched off) the server that holds Companion's Anthropic key for managed usage: sign in tokens, plans, daily limits, metering, Stripe events. Never logs a request or reply body
 ```
 
 ## Running tests
@@ -132,6 +133,7 @@ relay/               (planned, Beta) Cloudflare Worker relay and the phone web a
 | Suite | Command | Covers |
 |---|---|---|
 | Everything | `sh scripts/test-all.sh` (needs `cmake` on PATH for the Rust build; on this Mac it is in `~/Library/Python/3.9/bin`) | All of the below. Run before every merge; a merge is gated on its exit code being 0, not on reading the output |
+| Usage proxy | `cd usage-proxy && bun test` | Sign in tokens, plan limits, metering, streaming usage, Stripe signatures, no body logging |
 | Runner (headless) | `cd runner && bun test` | Protocol and fixtures, snapshots and undo, safety hooks, key scrub, budgets, memory scope, task log, proof, Draw it for me, walkthroughs, beta numbers, every practice start to finish with a stand in agent (`test/practice-e2e.test.ts`) |
 | Rust shell | `cd app/src-tauri && cargo test` | Paste back, redaction, image resize and coordinate mapping, permissions state, rings and windows (anchor), delete everything, updates |
 | Pages | `cd app && bun run typecheck && bun test ./src` | Character state mapping, cards, lessons, settings, command shapes (`./src` keeps the practice project's deliberately failing test out) |

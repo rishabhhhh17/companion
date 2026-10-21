@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## "The company pays" is built, and switched off: 22 Oct 2026
+
+- **You asked for the HeyClicky way: people sign up and use it, with no key of their own, and Companion pays Anthropic.** The core of that server is built and tested (46 tests): sign in tokens, Free, Pro and Max plans with daily and monthly limits, forwarding with Companion's key, counting what each reply cost (also when a reply is cut short), and Stripe subscription events.
+- **It is off, and not deployed.** Anthropic's rules for products built on Claude Code forbid it unless they say yes in writing, so it is kept behind a switch, like the plan sign in route. The question to send them is drafted. If they say no, only the weeks of build are lost, and the own key route stays.
+- **The server never keeps what people write or what Claude answers.** Tests check that no prompt, reply, token or key ever appears in a log, a record or an error.
+- Not built yet: the real database, the deployment, Stripe and sign up, the app's own sign up screen, and the rewritten privacy policy.
+
 ## Settings files: no longer read, and attacked 131 ways: 22 Oct 2026
 
 - **A task can no longer read your private settings file** (`.env` and its family), however it asks. It still sees which settings a project needs from the shared example file. Changing one still asks first, and a line can be renamed in place without ever being read.
