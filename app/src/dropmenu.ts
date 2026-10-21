@@ -4,7 +4,7 @@
 // state (one reducer for the ring by the character and the list in Home), its keys, the ring's places and its words.
 import { S } from "./strings.ts";
 
-export type Kind = "image" | "pdf" | "document" | "audio" | "video";
+export type Kind = "image" | "pdf" | "document" | "audio" | "video" | "archive" | "folder" | "other";
 export type Menu = { id: number; names: string[]; kind: Kind | null; actions: string[]; refused: string | null; at: "dock" | "island" };
 export type Made = { name: string; i: number };
 export type Job =
@@ -27,7 +27,7 @@ export type DropAction =
 
 export const EMPTY: DropState = { hover: false, menu: null, focus: 0, trim: false, job: null };
 
-const KINDS: readonly Kind[] = ["image", "pdf", "document", "audio", "video"];
+const KINDS: readonly Kind[] = ["image", "pdf", "document", "audio", "video", "archive", "folder", "other"];
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const str = (v: unknown): v is string => typeof v === "string";
 
@@ -156,4 +156,4 @@ export const refusedLine = (code: string): string => (S.drop.refused as Record<s
 export const namesLine = (m: Menu): string => (m.names.length === 1 ? m.names[0] : S.drop.files(m.names.length));
 
 /** A true word of warning for a kind of file, said before an action is chosen: what the Mac's own tools leave out. */
-export const kindNote = (kind: Kind | null): string | null => (kind === "document" ? S.drop.noPictures : kind === "image" ? S.drop.imageNote : null);
+export const kindNote = (kind: Kind | null): string | null => (kind === "document" ? S.drop.noPictures : kind === "image" ? S.drop.imageNote : kind === "archive" ? S.drop.zipNote : null);

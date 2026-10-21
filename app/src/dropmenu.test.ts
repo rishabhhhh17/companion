@@ -211,6 +211,7 @@ test("the menu says what a conversion leaves out before it is chosen", () => {
   expect(kindNote("document")).toBe(S.drop.noPictures);
   expect(S.drop.noPictures).toMatch(/pictures/i);
   expect(kindNote("image")).toBe(S.drop.imageNote);
+  expect(kindNote("archive")).toBe(S.drop.zipNote);
   expect(kindNote("pdf")).toBeNull();
   expect(kindNote(null)).toBeNull();
 });
