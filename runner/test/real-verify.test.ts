@@ -57,6 +57,7 @@ describe("every command it sends is one today's runner accepts", () => {
     "daily-limit": ["drive.plan", "agent.start"],
     "error-explainer": ["error.explain"],
     "approve-after-wait": ["agent.start"],
+    "approve-git-save": ["agent.start"],
     "stop-everything": ["agent.start", "agent.interruptAll"],
     "loop-breaker": ["agent.start"],
     "ship-gates": ["ship.check", "ship.check", "ship.check", "ship.check", "ship.check", "ship.check"],

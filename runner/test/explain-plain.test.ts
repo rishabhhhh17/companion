@@ -23,3 +23,62 @@ describe("Explain is told the plain words rules, not left to guess", () => {
     expect(EXPLAIN_SYSTEM).toMatch(/only what the change shows|only what the change above shows/i);
   });
 });
+
+// A second, in code guard: the eval showed the model still slips jargon in now and then, so an answer that fails the same plain
+// words check as the eval is asked for once more, naming what was wrong. Never blocks the explanation.
+import { explainPlain, explanationProblems, plainProblems } from "../src/explain.ts";
+
+const GOOD = JSON.stringify({ why: ["The page asked for the name before anyone had signed in.", "Now it waits until someone has."], question: { text: "Why did the page break?", options: ["It asked too early", "The page was too slow"], correct: 0 } });
+const BAD = JSON.stringify({ why: ["The variable was undefined when the function ran.", "Now it checks first."], question: { text: "What was wrong?", options: ["A missing value", "A slow page"], correct: 0 } });
+const BAD2 = JSON.stringify({ why: ["The variable was undefined, the string was null and the array failed.", "Now the function checks the variable."] });
+const req = { system: "s", text: "the change" };
+const asker = (answers: string[]) => { const calls: { text: string }[] = []; const ask = async (r: { text: string; system: string }) => { calls.push(r); return { text: answers[Math.min(calls.length - 1, answers.length - 1)], costUsd: 0.003 }; }; return { ask, calls }; };
+
+describe("plain words guard: one retry when the answer is not plain", () => {
+  test("plainProblems is the one definition the eval and the app share", () => {
+    expect(plainProblems("The variable was undefined.").length).toBeGreaterThan(0);
+    expect(plainProblems("The page asked too early.")).toEqual([]);
+  });
+  test("a plain answer is asked for once and costs once", async () => {
+    const a = asker([GOOD]);
+    const r = await explainPlain(a.ask, req, { question: true });
+    expect(a.calls.length).toBe(1);
+    expect(r.explanation?.bullets[0]).toMatch(/asked for the name/);
+    expect(r.costUsd).toBeCloseTo(0.003);
+  });
+  test("an answer with jargon is asked for again, naming what was wrong, and the plain second answer is used; both calls are paid", async () => {
+    const a = asker([BAD, GOOD]);
+    const r = await explainPlain(a.ask, req, { question: true });
+    expect(a.calls.length).toBe(2);
+    expect(a.calls[1].text).toContain("the change");
+    expect(a.calls[1].text).toMatch(/not plain enough/);
+    expect(a.calls[1].text).toMatch(/variable/);
+    expect(r.explanation?.bullets[0]).toMatch(/asked for the name/);
+    expect(r.costUsd).toBeCloseTo(0.006);
+  });
+  test("never more than one retry, and the answer with fewer problems wins even if neither is clean", async () => {
+    const a = asker([BAD2, BAD]);
+    const r = await explainPlain(a.ask, req, { question: true });
+    expect(a.calls.length).toBe(2);
+    expect(r.explanation?.bullets[0]).toMatch(/variable was undefined when the function ran/);   // BAD has three problems, BAD2 has six
+    const b = asker([BAD, BAD2]);
+    expect((await explainPlain(b.ask, req, { question: true })).explanation?.bullets[0]).toMatch(/when the function ran/);   // the first stays: the second is worse
+  });
+  test("a retry that fails or gives nothing keeps the first answer and what was spent", async () => {
+    let n = 0;
+    const ask = async () => { if (++n === 2) throw new Error("network"); return { text: BAD, costUsd: 0.003 }; };
+    const r = await explainPlain(ask, req, { question: true });
+    expect(r.explanation?.bullets[0]).toMatch(/variable/);
+    expect(r.costUsd).toBeCloseTo(0.003);
+    const a = asker([BAD, "not json"]);
+    expect((await explainPlain(a.ask, req, { question: true })).explanation?.bullets[0]).toMatch(/variable/);
+  });
+  test("an answer that cannot be read is not retried (nothing to compare), and short reasons never look at a question", async () => {
+    const a = asker(["not json"]);
+    const r = await explainPlain(a.ask, req, { question: true });
+    expect(r.explanation).toBeNull(); expect(a.calls.length).toBe(1);
+    const e = { bullets: ["Fine words here."], question: { text: "The variable?", options: ["a", "b"], correct: 0 } };
+    expect(explanationProblems(e, false)).toEqual([]);
+    expect(explanationProblems(e, true).length).toBeGreaterThan(0);
+  });
+});

@@ -28,7 +28,7 @@ import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { recallWords } from "./memory/recall.ts";
 import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
-import { explainRequest, parseExplain } from "./explain.ts";
+import { explainPlain, explainRequest } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
@@ -424,10 +424,9 @@ export class AgentRunner {
       signal.addEventListener("abort", stop, { once: true });
       const timer = setTimeout(stop, 45_000);
       try {
-        const r = await this.o.explainer(explainRequest(input, { question }), ac.signal);
-        if (Number.isFinite(r.costUsd) && r.costUsd > 0) this.ledger.add(cmd.project, r.costUsd);
-        const e = parseExplain(r.text);
-        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(question && e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: r.costUsd } as never);
+        const { explanation: e, costUsd } = await explainPlain((req) => this.o.explainer!(req, ac.signal), explainRequest(input, { question }), { question });
+        if (costUsd > 0) this.ledger.add(cmd.project, costUsd);
+        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(question && e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: costUsd } as never);
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }

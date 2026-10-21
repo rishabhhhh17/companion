@@ -1,6 +1,6 @@
 # The first real run: results (21 Oct 2026)
 
-First time Companion's own checks ran against real Claude, on a separate key in its own workspace (cap $30; credits $100). Companion's own count of the spend is about **$4.1**. The Anthropic Console is the true figure; compare it.
+First time Companion's own checks ran against real Claude, on a separate key in its own workspace (cap $30; credits $100). Companion's own count of the spend is about **$6.9**. The Anthropic Console is the true figure; compare it.
 
 Every run used the SDK's bundled Claude binary, a throwaway folder for Claude Code's files, no settings files, no MCP servers, never `bypassPermissions`, and the key read from the Keychain item `companion-dev` in code (never printed, never in chat). Runs were started from a clean environment (`env -i HOME PATH TMPDIR`), because a shell inside the Claude desktop app carries sign in variables that sent one call down the wrong billing route (see finding 2).
 
@@ -14,7 +14,9 @@ Every run used the SDK's bundled Claude binary, a throwaway folder for Claude Co
 | Pointing eval, 128 asks | Basic 100%, hard 95%, everyday 93%. Median 2.7 s, slowest 5.9 s | $0.67 |
 | Second model review, 10 diffs | Caught 100% of the 5 risky ones (all 5 named the real problem). False alarms on the 5 harmless ones: 0 | $0.14 |
 | Loop breaker, 5 cases | Card at the right time 5 of 5. Where only the person can decide, it asked instead of guessing: 100%. Thrashed 0, gamed 0, invented 0 | $0.19 |
-| Explain, 24 cases | 17% at first, 79% after the changes below (correct 100%, plain 83%, fair question 100%) | about $0.6 over eight runs |
+| Explain, 24 cases | 17% at first, 79% after the prompt and model changes, **92% with the plain words retry** (correct 100%, plain 100%, fair question 100%, two lines 92%) | about $0.75 over ten runs |
+| Fix eval through the app's own Fix it with me path (Rescue diagnosis, then every step of its plan), 25 projects | 20 fixed, 1 asked, 3 handed back, broke something 0, invented 0, found in the right place 24 of 24. $0.12 a fixed case (the direct path is $0.04) | $2.44 |
+| `git add` and `git commit` in an existing repo under the sandbox | Both ask first, both run after a yes, the commit exists | $0.04 |
 
 Real cost came in at 15% to 35% of the estimates: a fixed project is $0.04, not $0.22.
 
@@ -29,7 +31,17 @@ Real cost came in at 15% to 35% of the estimates: a fixed project is $0.04, not 
 
 ## Still open
 
-- **Closed (22 Oct 2026): an approved `git init` did not create `.git`.** Proven cause: Claude Code's sandbox refuses to create a `.git` folder (git printed `.git: Operation not permitted`), so a yes did nothing, though Claude said so honestly. Fix: `sandboxSettings` now lists exactly one excluded command, the bare text `git init` (no arguments, no wildcard), which runs outside the sandbox. It still goes through the safety hook first, so the card still appears and it runs only after a yes. Every other git change, and `git init` with arguments, stays inside the sandbox. Real result: card, yes after the wait, `.git` made, nothing staged or committed, `approve-after-wait` green. Rules 10 and 12 hold (Companion itself still never runs git on the person's project; the safety stays in the hook). Not checked: whether `git add` and `git commit` work inside an existing repo under the sandbox.
-- Explain is at 79%, not 100%. The misses are mostly code style names and the word "function". A code check with one retry would likely close most of it.
+- **Closed (22 Oct 2026): an approved `git init` did not create `.git`.** Proven cause: Claude Code's sandbox refuses to create a `.git` folder (git printed `.git: Operation not permitted`), so a yes did nothing, though Claude said so honestly. Fix: `sandboxSettings` now lists exactly one excluded command, the bare text `git init` (no arguments, no wildcard), which runs outside the sandbox. It still goes through the safety hook first, so the card still appears and it runs only after a yes. Every other git change, and `git init` with arguments, stays inside the sandbox. Real result: card, yes after the wait, `.git` made, nothing staged or committed, `approve-after-wait` green. Rules 10 and 12 hold (Companion itself still never runs git on the person's project; the safety stays in the hook). Checked later the same day: `git add hello.txt` and `git commit -m "add hello"` in a repo that already exists both ask, run after a yes, and make the commit (case `approve-git-save`). Only `git init` needed the exemption.
+- Explain is at 92%. The two misses are lines slightly too long.
 - Flask based case `flask-wrong-status` and Go, Rust and Swift cases need those tools installed.
 - Everything here is proven with a key and in headless runs. The app itself, on screen, with the Keychain prompt, signed and installed, is still unproven.
+
+## The Fix it with me path: what the three handed back cases are (22 Oct 2026)
+
+The app's own path fixed 20 of 24 runnable projects, against 23 on the direct path. The three "not fixed" are the safety design, not bugs, and each told the person plainly what to do:
+- `rescue-ts-missing-property`: the fix needs Sam's real email address, which only the person has. It asked instead of inventing one.
+- `missing-setting-name` and `vite-env-prefix`: both need a line in `.env`, which Companion deliberately never opens (secrets). Each said which line to change and where. [decision for the founder] A card that asks "May I add this one line to your `.env`?" would close both, but it is a change to what Companion may touch, so it is not built.
+
+## The plain words retry (Explain)
+
+An Explain answer that fails the same plain words check the eval uses (`explainPlain` in `runner/src/explain.ts`, shared with `evals/explain/score.ts`) is asked for once more, naming what was wrong. The answer with fewer problems is kept; a failed or unreadable retry changes nothing; both asks are paid and counted in the day's spending. The eval now scores plain words and the grader on what the person is shown, and keeps "two lines" on the model's own reply (the app trims, so what is shown could never fail it).
