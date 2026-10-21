@@ -394,11 +394,32 @@ const COPY_MAX: u64 = 512 * 1024 * 1024;
 /// they read, and a web page's relative links point into the work folder, where nothing else is. A file too big to copy
 /// from another disk is read where it is, after the same check made by its path (`copy` is then a link to it).
 /// The copy is made in pieces and stops when the job is stopped ("stopped"), taking away the half made copy.
-pub fn take_input(from: &Path, copy: &Path, job: &Job) -> Result<(), &'static str> {
+pub fn take_input(from: &Path, copy: &Path, real_max: Option<u64>, job: &Job) -> Result<(), &'static str> {
+    let free = copy.parent().and_then(free_space);
     match std::fs::symlink_metadata(from) {
-        Ok(m) if m.is_dir() => take_folder(from, copy, true, FOLDER_LIMITS, job),
-        _ => take(from, copy, true, COPY_MAX, job),
+        Ok(m) if m.is_dir() => take_folder(from, copy, true, FOLDER_LIMITS, free, job),
+        _ => take(from, copy, Terms { clone: true, copy_max: COPY_MAX, real_max, free }, job),
     }
+}
+
+/// How a file is taken. `clone`: an instant clone may be tried first. `copy_max`: a file bigger than this that cannot be
+/// cloned is read where it is (a link) rather than copied. `real_max`: when set, the file must be Companion's own real
+/// copy, never a link (a zip stores a link as a link, and an unzip must vet the very bytes it extracts): a file bigger
+/// than this is refused ("tooBig"). `free`: the room on the work folder's disk, when known.
+#[derive(Clone, Copy, Debug)]
+struct Terms { clone: bool, copy_max: u64, real_max: Option<u64>, free: Option<u64> }
+
+/// Room kept free on the work folder's disk, beyond what a copy takes.
+const SPARE: u64 = 256 << 20;
+/// Whether `need` bytes fit in `free` (when the room is not known, it is taken as there).
+pub fn room_ok(free: Option<u64>, need: u64) -> bool { free.is_none_or(|f| f >= need) }
+/// The bytes free for a new file on the disk `dir` is on.
+pub fn free_space(dir: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut v: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut v) } != 0 { return None; }
+    Some((v.f_bavail as u64).saturating_mul(v.f_frsize as u64))
 }
 
 /// Caps on what is walked, copied or written: how many things (files, folders and links) and how many bytes in all.
@@ -414,7 +435,8 @@ const MAX_DEPTH: usize = 64;
 /// Counts everything under `dir` (not `dir` itself) without following a link: how many things and how many bytes of
 /// files. A link counts as one thing and is never entered. Refused when over the caps ("tooBig"), when nested absurdly
 /// deep ("tooBig"), when it cannot be read ("unreadable"), and, unless links are allowed, when there is a link or
-/// anything that is not a file or a folder ("unsafeZip").
+/// anything that is not a file or a folder ("unsafeZip"). With links allowed, a pipe, a socket or a device is refused
+/// ("special").
 pub fn tree_stats(dir: &Path, lim: Limits, allow_links: bool) -> Result<(u64, u64), &'static str> {
     let (mut count, mut bytes) = (0u64, 0u64);
     let mut todo = vec![(dir.to_path_buf(), 1usize)];
@@ -428,6 +450,8 @@ pub fn tree_stats(dir: &Path, lim: Limits, allow_links: bool) -> Result<(u64, u6
             if t.is_dir() { todo.push((path, depth + 1)); }
             else if t.is_file() { bytes += m.len(); }
             else if !allow_links { return Err("unsafeZip"); }
+            // A link is allowed (it is copied as a link); a pipe, a socket or a device is not: it would be waited on.
+            else if !t.is_symlink() { return Err("special"); }
             if count > lim.files || bytes > lim.bytes { return Err("tooBig"); }
         }
     }
@@ -443,7 +467,7 @@ fn copy_quarantine(from: std::os::fd::RawFd, to: std::os::fd::RawFd) {
     if n > 0 { unsafe { libc::fsetxattr(to, name.as_ptr(), buf.as_ptr().cast(), n as usize, 0, 0); } }
 }
 
-fn take(from: &Path, copy: &Path, may_clone: bool, copy_max: u64, job: &Job) -> Result<(), &'static str> {
+fn take(from: &Path, copy: &Path, t: Terms, job: &Job) -> Result<(), &'static str> {
     use std::os::fd::AsRawFd;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::OpenOptionsExt;
@@ -453,9 +477,16 @@ fn take(from: &Path, copy: &Path, may_clone: bool, copy_max: u64, job: &Job) -> 
         .map_err(|e| if e.kind() == std::io::ErrorKind::PermissionDenied { "unreadable" } else { "gone" })?;
     let m = f.metadata().map_err(|_| "gone")?;
     if !m.is_file() { return Err("gone"); }
+    let real = t.real_max.is_some();
+    if t.real_max.is_some_and(|max| m.len() > max) { return Err("tooBig"); }
+    // A file that is zipped makes a zip about as big as itself, even when the file itself is only cloned.
+    if real && !room_ok(t.free, m.len().saturating_add(SPARE)) { return Err("noRoom"); }
     let to = std::ffi::CString::new(copy.as_os_str().as_bytes()).map_err(|_| "noWork")?;
-    if may_clone && unsafe { libc::fclonefileat(f.as_raw_fd(), libc::AT_FDCWD, to.as_ptr(), 0) } == 0 { return Ok(()); }
-    if m.len() <= copy_max {
+    if t.clone && unsafe { libc::fclonefileat(f.as_raw_fd(), libc::AT_FDCWD, to.as_ptr(), 0) } == 0 { return Ok(()); }
+    if real || m.len() <= t.copy_max {
+        // A copy that will be zipped is a second copy of it, besides the zip.
+        let need = m.len().saturating_mul(if real { 2 } else { 1 }).saturating_add(SPARE);
+        if !room_ok(t.free, need) { return Err("noRoom"); }
         let mut out = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(copy).map_err(|_| "noWork")?;
         let mut buf = vec![0u8; 1 << 20];
         copy_quarantine(f.as_raw_fd(), out.as_raw_fd());
@@ -479,23 +510,26 @@ fn take(from: &Path, copy: &Path, may_clone: bool, copy_max: u64, job: &Job) -> 
 /// bigger than the caps ("tooBig"), and copied without ever following a link (a link inside is copied as a link). An
 /// instant clone on the same disk (`may_clone`), else a copy made piece by piece that stops when the job is stopped
 /// ("stopped"), taking away what was half made. `copy` must not be there yet.
-fn take_folder(from: &Path, copy: &Path, may_clone: bool, lim: Limits, job: &Job) -> Result<(), &'static str> {
+fn take_folder(from: &Path, copy: &Path, may_clone: bool, lim: Limits, free: Option<u64>, job: &Job) -> Result<(), &'static str> {
     use std::os::unix::ffi::OsStrExt;
     if !from.is_absolute() { return Err("gone"); }
     if !std::fs::symlink_metadata(from).is_ok_and(|m| m.is_dir()) { return Err("gone"); }
-    tree_stats(from, lim, true)?;
-    let cleanup = |why: &'static str| { let _ = std::fs::remove_dir_all(copy); why };
+    let (_, bytes) = tree_stats(from, lim, true)?;
+    // A folder is always zipped: the zip is about as big as the folder, and a copy that is not a clone is another one.
+    if !room_ok(free, bytes.saturating_add(SPARE)) { return Err("noRoom"); }
+    let cleanup = |why: &'static str| { let _ = remove_tree(copy); why };
     if may_clone {
         let (a, b) = (std::ffi::CString::new(from.as_os_str().as_bytes()).map_err(|_| "gone")?, std::ffi::CString::new(copy.as_os_str().as_bytes()).map_err(|_| "noWork")?);
         // CLONE_NOFOLLOW (1): the folder itself is never followed if it was swapped for a link meanwhile.
         if unsafe { libc::clonefile(a.as_ptr(), b.as_ptr(), 1) } == 0 {
             // What was cloned is Companion's own and cannot change: it is counted again, in case the folder grew meanwhile.
-            return tree_stats(copy, lim, true).map(|_| ()).map_err(cleanup);
+            return tree_stats(copy, lim, true).and_then(|_| own_folders(copy).map_err(|_| "noWork")).map_err(cleanup);
         }
     }
+    if !room_ok(free, bytes.saturating_mul(2).saturating_add(SPARE)) { return Err("noRoom"); }
     let mut seen = (0u64, 0u64);
     std::fs::create_dir(copy).map_err(|_| "noWork")?;
-    copy_tree(from, copy, lim, &mut seen, 1, job).map_err(cleanup)
+    copy_tree(from, copy, lim, &mut seen, 1, job).and_then(|_| own_folders(copy).map_err(|_| "noWork")).map_err(cleanup)
 }
 
 fn copy_tree(from: &Path, to: &Path, lim: Limits, seen: &mut (u64, u64), depth: usize, job: &Job) -> Result<(), &'static str> {
@@ -531,8 +565,52 @@ fn copy_tree(from: &Path, to: &Path, lim: Limits, seen: &mut (u64, u64), depth: 
                     Err(_) => return Err("unreadable"),
                 }
             }
+        } else {
+            // A pipe, a socket or a device: never copied, and never left out without a word (the zip would be missing it).
+            return Err("special");
         }
         if seen.0 > lim.files || seen.1 > lim.bytes { return Err("tooBig"); }
+    }
+    Ok(())
+}
+
+/// Whether an unzip that says it holds `total` bytes has room to be written.
+pub fn unzip_room(total: u64, free: Option<u64>) -> Result<(), &'static str> {
+    if room_ok(free, total.saturating_add(SPARE)) { Ok(()) } else { Err("noRoom") }
+}
+/// A flip's two directions swapped, for a picture stored on its side: sips flips the stored pixels, and the Orientation tag
+/// it keeps then turns them, so the flip is seen across the other way.
+fn swap_flip(c: &Cmd) -> Cmd {
+    let mut c = c.clone();
+    for a in c.args.iter_mut() {
+        if a == "horizontal" { *a = os("vertical"); } else if a == "vertical" { *a = os("horizontal"); }
+    }
+    c
+}
+/// The Orientation tag a picture is stored with, as the picture script prints it (sips cannot say: it has no such property).
+fn orientation_of(text: &str) -> Option<u32> { text.trim().parse().ok() }
+/// The tags that store a picture on its side (a quarter turn, with or without a mirror).
+fn on_its_side(tag: u32) -> bool { (5..=8).contains(&tag) }
+
+/// Removes a folder Companion made, whatever modes its folders came with (a read only folder in a zip, or in a folder that
+/// was cloned): every folder under it is made ours to change first, without following a link, then it is all removed.
+pub fn remove_tree(p: &Path) -> std::io::Result<()> {
+    if !std::fs::symlink_metadata(p)?.is_dir() { return std::fs::remove_file(p); }
+    own_folders(p)?;
+    std::fs::remove_dir_all(p)
+}
+
+/// Makes every folder at and under `dir` readable, writable and enterable by us, without following a link, so that it can
+/// be changed or removed. Only ever run on what Companion itself made (a copy, a work folder, an unzip).
+fn own_folders(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        let m = std::fs::symlink_metadata(&d)?;
+        if !m.is_dir() { continue; }
+        let mode = m.permissions().mode();
+        if mode & 0o700 != 0o700 { std::fs::set_permissions(&d, std::fs::Permissions::from_mode(mode | 0o700))?; }
+        for e in std::fs::read_dir(&d)? { todo.push(e?.path()); }
     }
     Ok(())
 }
@@ -545,7 +623,7 @@ pub fn work_root() -> PathBuf { std::env::temp_dir().join("dev.companion.app-con
 /// is removed, never through a link. True when something was removed.
 pub fn sweep(root: &Path) -> bool {
     match std::fs::symlink_metadata(root) {
-        Ok(m) if m.is_dir() => std::fs::remove_dir_all(root).is_ok(),
+        Ok(m) if m.is_dir() => remove_tree(root).is_ok(),
         _ => false,
     }
 }
@@ -666,7 +744,7 @@ fn jxa(job: &str, rest: Vec<OsString>) -> Cmd {
 
 /// The picture and video jobs, through ImageIO and AVFoundation. One fixed script, like the PDF one: what it works on comes
 /// as its arguments (`run(argv)`: the job, where to write, then the file). Details taken off a picture are the place, the
-/// camera and its settings; the way it is turned is kept, so it still looks the same. Keys are written out as their words
+/// camera and its settings, the text a PNG carries (author, description) and any XMP; the way it is turned is kept, so it still looks the same. Keys are written out as their words
 /// because JavaScript for Automation does not hand out ImageIO's constants.
 const PIC_SCRIPT: &str = r#"ObjC.import('ImageIO'); ObjC.import('Foundation'); ObjC.import('AVFoundation'); ObjC.import('CoreMedia'); ObjC.import('CoreGraphics');
 function source(p) { var s = $.CGImageSourceCreateWithURL($.NSURL.fileURLWithPath(p), $()); if (!s || $.CGImageSourceGetCount(s) < 1) throw new Error('unreadable'); return s; }
@@ -684,10 +762,14 @@ function run(argv) {
     var o = $.NSMutableDictionary.alloc.init;
     o.setObjectForKey($(true), 'kCGImageMetadataShouldExcludeGPS');
     o.setObjectForKey($(true), 'kCGImageMetadataShouldExcludeXMP');
-    ['{GPS}', '{TIFF}', '{Exif}', '{ExifAux}', '{IPTC}', '{MakerApple}', '{MakerCanon}', '{MakerNikon}'].forEach(function (k) { o.setObjectForKey($.NSNull.null, k); });
+    ['{GPS}', '{TIFF}', '{Exif}', '{ExifAux}', '{IPTC}', '{PNG}', '{MakerApple}', '{MakerCanon}', '{MakerNikon}'].forEach(function (k) { o.setObjectForKey($.NSNull.null, k); });
     $.CGImageDestinationAddImageFromSource(d, s, 0, o);
     if (!$.CGImageDestinationFinalize(d)) throw new Error('write');
     return 'ok';
+  }
+  if (job === 'orientation') {
+    var pr = ObjC.deepUnwrap(ObjC.castRefToObject($.CGImageSourceCopyPropertiesAtIndex(source(inp), 0, $())));
+    return String(pr.Orientation || 1);
   }
   if (job === 'thumbs') {
     var s = source(inp), pr = ObjC.deepUnwrap(ObjC.castRefToObject($.CGImageSourceCopyPropertiesAtIndex(s, 0, $())));
@@ -732,7 +814,7 @@ pub enum Out { File { tmp: PathBuf, ext: String }, Folder { tmp: PathBuf } }
 /// A dropped file a tool reads: where it is, and where Companion's own copy of it goes in the work folder, which is what
 /// the tool is given (`take_input`).
 #[derive(Clone, Debug, PartialEq)]
-pub struct Input { pub from: PathBuf, pub copy: PathBuf }
+pub struct Input { pub from: PathBuf, pub copy: PathBuf, pub real: bool }
 /// One result to make: from which original (its name, and the folder it goes next to), every dropped file its tools read
 /// (several for a merge), the words in its new name, the commands, and where the result is.
 /// `max_side`: a resize, which is skipped for a picture already that small (never made bigger).
@@ -741,11 +823,13 @@ pub struct Input { pub from: PathBuf, pub copy: PathBuf }
 /// `square`: an icon, which is made only from a square picture (nothing is stretched).
 /// `stem`: the name the result is built on, when it is not the original's (a zip is "report.txt (zipped).zip").
 /// `unzip`: the copy of the zip is read and vetted first, and nothing is extracted from one that could do harm.
+/// `flip`: a left to right or top to bottom flip, which is made on the picture as it is seen: for one stored on its side
+/// (its Orientation tag) the two are swapped, since sips flips the stored pixels.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Unit { pub source: PathBuf, pub inputs: Vec<Input>, pub label: &'static str, pub cmds: Vec<Cmd>, pub out: Out, pub max_side: Option<u32>, pub shrink: bool, pub already: bool, pub square: bool, pub stem: Option<String>, pub unzip: bool }
+pub struct Unit { pub source: PathBuf, pub inputs: Vec<Input>, pub label: &'static str, pub cmds: Vec<Cmd>, pub out: Out, pub max_side: Option<u32>, pub shrink: bool, pub already: bool, pub square: bool, pub stem: Option<String>, pub unzip: bool, pub flip: bool }
 impl Unit {
     fn new(source: PathBuf, inputs: Vec<Input>, label: &'static str, cmds: Vec<Cmd>, out: Out) -> Unit {
-        Unit { source, inputs, label, cmds, out, max_side: None, shrink: false, already: false, square: false, stem: None, unzip: false }
+        Unit { source, inputs, label, cmds, out, max_side: None, shrink: false, already: false, square: false, stem: None, unzip: false, flip: false }
     }
 }
 
@@ -777,7 +861,7 @@ pub fn plan(action: &str, inputs: &[PathBuf], work: &Path, prefs: &Prefs, trim: 
     if !offered.contains(&action) { return Err("notOffered"); }
     if action == "trim" && !trim.is_some_and(trim_ok) { return Err("badTrim"); }
     // The copy keeps the file's own extension, which is how the tools tell what kind of file it is.
-    let copy_of = |dir: &Path, name: &str, p: &Path| Input { from: p.to_path_buf(), copy: dir.join(format!("{name}.{}", real_ext(p))) };
+    let copy_of = |dir: &Path, name: &str, p: &Path| Input { from: p.to_path_buf(), copy: dir.join(format!("{name}.{}", real_ext(p))), real: false };
     if action == "merge" || action == "imagesToPdf" {
         let dir = work.join("0");
         let out = dir.join("out.pdf");
@@ -791,7 +875,7 @@ pub fn plan(action: &str, inputs: &[PathBuf], work: &Path, prefs: &Prefs, trim: 
     let zip_unit = |paths: &[PathBuf], dir: &Path| {
         let (stage, out) = (dir.join("stage"), dir.join("out.zip"));
         let names = stage_names(paths);
-        let ins: Vec<Input> = paths.iter().zip(&names).map(|(p, n)| Input { from: p.clone(), copy: stage.join(n) }).collect();
+        let ins: Vec<Input> = paths.iter().zip(&names).map(|(p, n)| Input { from: p.clone(), copy: stage.join(n), real: true }).collect();
         let c = cmd(DITTO, vec![os("-c"), os("-k"), os("--norsrc"), os("--noextattr"), os("--noacl"), pth(&stage), pth(&out)]);
         let stem = if paths.len() == 1 { names[0].clone() } else { format!("{} and {} more", names[0], paths.len() - 1) };
         Unit { stem: Some(stem), ..Unit::new(paths[0].clone(), ins, "zipped", vec![c], Out::File { tmp: out, ext: "zip".into() }) }
@@ -857,7 +941,7 @@ pub fn plan(action: &str, inputs: &[PathBuf], work: &Path, prefs: &Prefs, trim: 
                 let deg = match a { "turnRight" => "90", "turnLeft" => "270", _ => "180" };
                 sips_edit("turned", vec![os("-r"), os(deg)], SIPS_KEEPS)
             }
-            (Kind::Image, a @ ("flipHorizontal" | "flipVertical")) => sips_edit("flipped", vec![os("-f"), os(if a == "flipHorizontal" { "horizontal" } else { "vertical" })], SIPS_KEEPS),
+            (Kind::Image, a @ ("flipHorizontal" | "flipVertical")) => Unit { flip: true, ..sips_edit("flipped", vec![os("-f"), os(if a == "flipHorizontal" { "horizontal" } else { "vertical" })], SIPS_KEEPS) },
             (Kind::Image, "grayscale") => sips_edit("gray", vec![os("-m"), os(GRAY_PROFILE)], GRAY_KEEPS),
             (Kind::Image, "compress") => {
                 let fmt = if ext == "heic" { "heic" } else { "jpeg" };
@@ -928,7 +1012,12 @@ pub fn plan(action: &str, inputs: &[PathBuf], work: &Path, prefs: &Prefs, trim: 
                 let out = file(fmt);
                 convert(fmt, vec![avconvert(&src, &out, "PresetHighestQuality", None)], out)
             }
-            (Kind::Video, "toHevc") => { let out = file("mp4"); unit("converted", vec![avconvert(&src, &out, "PresetHEVCHighestQuality", None)], out) }
+            (Kind::Video, "toHevc") => {
+                // Its label promises a smaller video, and the best quality HEVC of a video that is already small can come out
+                // bigger: then nothing is made.
+                let out = file("mp4");
+                Unit { shrink: true, ..unit("converted", vec![avconvert(&src, &out, "PresetHEVCHighestQuality", None)], out) }
+            }
             (Kind::Video, a @ ("video480" | "video720" | "video1080")) => {
                 // A size choice that does not make the file smaller makes nothing.
                 let preset = match a { "video480" => "Preset640x480", "video720" => "Preset1280x720", _ => "Preset1920x1080" };
@@ -946,7 +1035,7 @@ pub fn plan(action: &str, inputs: &[PathBuf], work: &Path, prefs: &Prefs, trim: 
                 // writes is watched while it runs; the zip was read first (`zip_vet`).
                 let out = dir.join("out");
                 let c = Cmd { guard: Some(Guard { dir: out.clone(), limits: UNZIP_LIMITS }), ..cmd(DITTO, vec![os("-x"), os("-k"), os("--qtn"), os("--norsrc"), os("--noacl"), pth(&src), pth(&out)]) };
-                Unit { unzip: true, ..folder("unzipped", vec![c]) }
+                Unit { unzip: true, inputs: vec![Input { real: true, ..take.clone() }], ..folder("unzipped", vec![c]) }
             }
             _ => return Err("notOffered"),
         };
@@ -976,12 +1065,17 @@ fn zip_name_ok(name: &[u8]) -> bool {
     !name.split(|c| *c == b'/' || *c == b'\\').any(|part| part == b"..")
 }
 
-/// A zip's list of files (its central directory) as (name, where its own header is). Everything here is read from the list
+/// One file of a zip as its list says: its name, where its own header is, how many bytes it takes and its flags.
+struct ZipEntry { name: Vec<u8>, local: u32, csize: u32, size: u32 }
+/// A zip's files, and where its list starts.
+struct ZipList { entries: Vec<ZipEntry>, cd_at: u64 }
+
+/// A zip's list of files (its central directory), each as a `ZipEntry`. Everything here is read from the list
 /// alone, so nothing has been extracted: refused as not a zip ("notZip", also an empty one), too big by what it says
 /// ("tooBig": too many files, too many bytes once opened, or sizes in the zip64 form, which are not read at all), with a
 /// password ("zipLocked"), or holding a link, any other kind of thing than a file or a folder, or a name that leads out of
 /// the folder it is extracted into ("unsafeZip").
-fn zip_read<R: Read + std::io::Seek>(r: &mut R, lim: Limits) -> Result<Vec<(Vec<u8>, u32)>, &'static str> {
+fn zip_read<R: Read + std::io::Seek>(r: &mut R, lim: Limits) -> Result<ZipList, &'static str> {
     use std::io::SeekFrom;
     let bad = |_| "notZip";
     let len = r.seek(SeekFrom::End(0)).map_err(bad)?;
@@ -999,7 +1093,8 @@ fn zip_read<R: Read + std::io::Seek>(r: &mut R, lim: Limits) -> Result<Vec<(Vec<
     if count > lim.files || cd_size as u64 > CD_MAX { return Err("tooBig"); }
     if count == 0 { return Err("notZip"); }
     let end_at = len - tail_len + at as u64;
-    if cd_off as u64 + cd_size as u64 > end_at { return Err("notZip"); }
+    // The list has to end exactly where the end record starts, with nothing between: the end record is how it is found.
+    if cd_off as u64 + cd_size as u64 != end_at { return Err("notZip"); }
     r.seek(SeekFrom::Start(cd_off as u64)).map_err(bad)?;
     let mut cd = vec![0u8; cd_size as usize];
     r.read_exact(&mut cd).map_err(bad)?;
@@ -1007,44 +1102,67 @@ fn zip_read<R: Read + std::io::Seek>(r: &mut R, lim: Limits) -> Result<Vec<(Vec<
     for _ in 0..count {
         if pos + 46 > cd.len() || le32(&cd[pos..]) != 0x0201_4b50 { return Err("notZip"); }
         let e = &cd[pos..];
-        let (made_by, flags, csize, usize_, nlen, xlen, clen, attrs, local) = (le16(&e[4..]), le16(&e[8..]), le32(&e[20..]), le32(&e[24..]), le16(&e[28..]) as usize, le16(&e[30..]) as usize, le16(&e[32..]) as usize, le32(&e[38..]), le32(&e[42..]));
+        let (flags, csize, usize_, nlen, xlen, clen, attrs, local) = (le16(&e[8..]), le32(&e[20..]), le32(&e[24..]), le16(&e[28..]) as usize, le16(&e[30..]) as usize, le16(&e[32..]) as usize, le32(&e[38..]), le32(&e[42..]));
         if pos + 46 + nlen + xlen + clen > cd.len() { return Err("notZip"); }
         let name = cd[pos + 46..pos + 46 + nlen].to_vec();
         if flags & 0x41 != 0 { return Err("zipLocked"); }
         if csize == u32::MAX || usize_ == u32::MAX { return Err("tooBig"); }
         if !zip_name_ok(&name) { return Err("unsafeZip"); }
-        // Made on a Unix or a Mac, the top of the attributes is the file's mode: only files and folders are allowed.
-        if matches!(made_by >> 8, 3 | 19) {
-            let kind = (attrs >> 16) & 0o170000;
-            if kind != 0 && kind != 0o100000 && kind != 0o040000 { return Err("unsafeZip"); }
-        }
+        // The top of the attributes is the file's mode, and ditto reads it whatever system the zip says it was made on
+        // (a link in a zip said to be made on Windows is still made as a link): only files and folders are allowed.
+        let kind = (attrs >> 16) & 0o170000;
+        if kind != 0 && kind != 0o100000 && kind != 0o040000 { return Err("unsafeZip"); }
         total += usize_ as u64;
         if total > lim.bytes { return Err("tooBig"); }
-        out.push((name, local));
+        out.push(ZipEntry { name, local, csize, size: usize_ });
         pos += 46 + nlen + xlen + clen;
     }
-    Ok(out)
+    Ok(ZipList { entries: out, cd_at: cd_off as u64 })
 }
 
 /// `zip_read`, for anything that can be read and sought in. Nothing but the zip's list is read.
 pub fn zip_vet_reader<R: Read + std::io::Seek>(r: &mut R, lim: Limits) -> Result<(), &'static str> { zip_read(r, lim).map(|_| ()) }
 
-/// A zip on disk, vetted: its list as above, and also each file's own header, which has to carry the same name. The list is
-/// what was checked, so a zip whose headers say otherwise (and could be extracted by those) is refused.
-pub fn zip_vet(path: &Path, lim: Limits) -> Result<(), &'static str> {
+/// A zip on disk, vetted: its list as above, and also the file itself. ditto does not use the list: it reads each file's
+/// own header one after another. So the pieces have to follow each other exactly, from the first byte to the start of the
+/// list, each with the name the list gives it and the size the list gives it, with nothing in between and nothing the list
+/// does not name. Gives what the zip says it holds, in bytes.
+pub fn zip_vet(path: &Path, lim: Limits) -> Result<u64, &'static str> {
     use std::io::{Seek, SeekFrom};
     let mut f = std::fs::File::open(path).map_err(|_| "unreadable")?;
-    let entries = zip_read(&mut f, lim)?;
-    for (name, at) in entries {
-        f.seek(SeekFrom::Start(at as u64)).map_err(|_| "notZip")?;
+    let ZipList { mut entries, cd_at } = zip_read(&mut f, lim)?;
+    entries.sort_by_key(|e| e.local);
+    let mut at = 0u64;
+    let mut total = 0u64;
+    for e in &entries {
+        if e.local as u64 != at { return Err("notZip"); }
+        f.seek(SeekFrom::Start(at)).map_err(|_| "notZip")?;
         let mut head = [0u8; 30];
         f.read_exact(&mut head).map_err(|_| "notZip")?;
         if le32(&head) != 0x0403_4b50 { return Err("notZip"); }
-        let mut own = vec![0u8; le16(&head[26..]) as usize];
+        let (flags, csize, nlen, xlen) = (le16(&head[6..]), le32(&head[18..]), le16(&head[26..]) as usize, le16(&head[28..]) as u64);
+        let mut own = vec![0u8; nlen];
         f.read_exact(&mut own).map_err(|_| "notZip")?;
-        if own != name { return Err("unsafeZip"); }
+        if own != e.name { return Err("unsafeZip"); }
+        let mut end = at + 30 + nlen as u64 + xlen + e.csize as u64;
+        if flags & 8 == 0 {
+            // The sizes are in the header itself: they have to be the list's.
+            if csize != e.csize { return Err("notZip"); }
+        } else {
+            // The sizes follow the data, with or without the mark that says so: the size in it has to be the list's.
+            f.seek(SeekFrom::Start(end)).map_err(|_| "notZip")?;
+            let mut d = [0u8; 16];
+            let got = f.read(&mut d).map_err(|_| "notZip")?;
+            let (skip, size_at) = if got >= 4 && le32(&d) == 0x0807_4b50 { (16, 8) } else { (12, 4) };
+            if got < skip || le32(&d[size_at..]) != e.csize { return Err("notZip"); }
+            end += skip as u64;
+        }
+        if end > cd_at { return Err("notZip"); }
+        total += e.size as u64;
+        at = end;
     }
-    Ok(())
+    if at != cd_at { return Err("notZip"); }
+    Ok(total)
 }
 
 // ---------- progress ----------
@@ -1206,7 +1324,7 @@ pub fn place(out: &Out, dir: &Path, stem: &str, label: &str, job: &Job) -> std::
                     Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
                     Err(e) => return Err(e),
                 }
-                if let Err(e) = put_tree(tmp, &dest, job) { let _ = std::fs::remove_dir_all(&dest); return Err(e); }
+                if let Err(e) = put_tree(tmp, &dest, job) { let _ = remove_tree(&dest); return Err(e); }
                 return Ok(dest);
             }
         }
@@ -1263,7 +1381,7 @@ pub fn run(units: &[Unit], work: &Path, dest: &dyn Fn(&Unit) -> Option<PathBuf>,
     let mut e = Ended::default();
     let mut why = "alreadySmall";
     let fail = run_units(units, work, dest, job, tell, &mut e, &mut why);
-    let _ = std::fs::remove_dir_all(work);
+    let _ = remove_tree(work);
     e.fail = fail.or_else(|| {
         if !e.made.is_empty() { return None; }
         if let Some((_, w)) = e.first_failed { return Some(Failure::Failed(w)); }
@@ -1288,7 +1406,7 @@ fn run_units(units: &[Unit], work: &Path, dest: &dyn Fn(&Unit) -> Option<PathBuf
         let flow = one_unit(u, i, of, dest, job, tell, e, why);
         // This unit's copy of the input and its output are not needed any more.
         let dir = match &u.out { Out::File { tmp, .. } | Out::Folder { tmp } => tmp.parent() };
-        if let Some(d) = dir { if d != work && d.starts_with(work) { let _ = std::fs::remove_dir_all(d); } }
+        if let Some(d) = dir { if d != work && d.starts_with(work) { let _ = remove_tree(d); } }
         match flow {
             Flow::Next => tell(i + 1, of, None),
             Flow::Bad(w) => {
@@ -1315,7 +1433,8 @@ fn one_unit(u: &Unit, i: usize, of: usize, dest: &dyn Fn(&Unit) -> Option<PathBu
     // for a link, since the drop. The tools read the copy taken here.
     for input in &u.inputs {
         if let Some(d) = input.copy.parent() { if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(d).is_err() { return Flow::End(Failure::Failed("noWork")); } }
-        match take_input(&input.from, &input.copy, job) {
+        let real_max = input.real.then(|| if u.unzip { UNZIP_LIMITS.bytes } else { FOLDER_LIMITS.bytes });
+        match take_input(&input.from, &input.copy, real_max, job) {
             Ok(()) => {}
             Err("stopped") => return Flow::End(Failure::Stopped),
             Err(w) => return per_file(Failure::Failed(w)),
@@ -1323,7 +1442,10 @@ fn one_unit(u: &Unit, i: usize, of: usize, dest: &dyn Fn(&Unit) -> Option<PathBu
     }
     let read = u.inputs.first().map(|i| i.copy.clone()).unwrap_or_else(|| u.source.clone());
     // A zip is read before anything is extracted from it: one that could do harm is refused, and nothing is written.
-    if u.unzip { if let Err(why) = zip_vet(&read, UNZIP_LIMITS) { return per_file(Failure::Failed(why)); } }
+    if u.unzip {
+        let said = match zip_vet(&read, UNZIP_LIMITS) { Ok(n) => n, Err(why) => return per_file(Failure::Failed(why)) };
+        if let Err(why) = unzip_room(said, read.parent().and_then(free_space)) { return per_file(Failure::Failed(why)); }
+    }
     if u.max_side.is_some() || u.square {
         let size = cmd(SIPS, vec![os("-g"), os("pixelWidth"), os("-g"), os("pixelHeight"), pth(&read)]);
         match exec(&size, job, &|_| {}) {
@@ -1341,7 +1463,15 @@ fn one_unit(u: &Unit, i: usize, of: usize, dest: &dyn Fn(&Unit) -> Option<PathBu
             else if let Some(p) = avconvert_percent(piece) { tell(i, of, Some(p)); }
         }
     };
-    for c in &u.cmds { if let Err(f) = exec(c, job, &progress) { return per_file(f); } }
+    // A flip is made on the picture as it is seen: one stored on its side (its Orientation tag) has its two directions swapped.
+    let swapped = u.flip && {
+        let ask = jxa_pic("orientation", vec![os("-"), pth(&read)]);
+        match exec(&ask, job, &|_| {}) { Ok(text) => orientation_of(&text).is_some_and(on_its_side), Err(f) => return per_file(f) }
+    };
+    for c in &u.cmds {
+        let c = if swapped { swap_flip(c) } else { c.clone() };
+        if let Err(f) = exec(&c, job, &progress) { return per_file(f); }
+    }
     if job.stopped() { return Flow::End(Failure::Stopped); }
     if !made_something(&u.out) { return Flow::Bad("toolFailed"); }
     if u.shrink && !smaller(&u.out, &read) { return skip(e, "notSmaller"); }
@@ -1380,6 +1510,7 @@ mod tests {
     use serde_json::json;
 
     fn p(s: &str) -> PathBuf { PathBuf::from(s) }
+    fn terms(clone: bool, copy_max: u64) -> Terms { Terms { clone, copy_max, real_max: None, free: None } }
     fn ps(v: &[&str]) -> Vec<PathBuf> { v.iter().map(|s| p(s)).collect() }
     fn args(c: &Cmd) -> Vec<String> { c.args.iter().map(|a| a.to_string_lossy().into_owned()).collect() }
     fn acts(o: Offer) -> Vec<&'static str> { match o { Offer::Actions(_, a) => a, Offer::Refused(r) => panic!("refused {r}") } }
@@ -1770,7 +1901,7 @@ mod tests {
         let src = d.join("a.png");
         std::fs::write(&src, b"x").unwrap();
         let work = d.join("work");
-        let unit = Unit { source: src.clone(), inputs: vec![Input { from: src.clone(), copy: work.join("0/in.png") }], label: "converted", cmds: vec![Cmd { program: "/bin/sleep", args: vec![os("5")], guard: None }], out: Out::File { tmp: work.join("0/out.png"), ext: "png".into() }, max_side: None, shrink: false, already: false, square: false, stem: None, unzip: false };
+        let unit = Unit { source: src.clone(), inputs: vec![Input { from: src.clone(), copy: work.join("0/in.png"), real: false }], label: "converted", cmds: vec![Cmd { program: "/bin/sleep", args: vec![os("5")], guard: None }], out: Out::File { tmp: work.join("0/out.png"), ext: "png".into() }, max_side: None, shrink: false, already: false, square: false, stem: None, unzip: false, flip: false };
         let job = std::sync::Arc::new(Job::default());
         let j = job.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(200)); j.stop(); });
@@ -2028,7 +2159,7 @@ mod tests {
         // A clone (same disk), a copy (another disk, small enough), and a big file on another disk, read where it is.
         for (n, may_clone, max) in [(1, true, COPY_MAX), (2, false, COPY_MAX), (3, false, 0)] {
             let copy = d.join(format!("copy {n}.png"));
-            assert_eq!(take(&f, &copy, may_clone, max, &Job::default()), Ok(()), "{n}");
+            assert_eq!(take(&f, &copy, terms(may_clone, max), &Job::default()), Ok(()), "{n}");
             assert_eq!(std::fs::read(&copy).unwrap(), b"the dropped picture", "{n}");
             assert_eq!(std::fs::symlink_metadata(&copy).unwrap().file_type().is_symlink(), n == 3, "{n}");
         }
@@ -2038,15 +2169,15 @@ mod tests {
         assert_eq!(std::fs::read(d.join("copy 2.png")).unwrap(), b"the dropped picture");
         let link = d.join("link.png");
         std::os::unix::fs::symlink(&f, &link).unwrap();
-        assert_eq!(take_input(&link, &d.join("from link.png"), &Job::default()), Err("gone"));
+        assert_eq!(take_input(&link, &d.join("from link.png"), None, &Job::default()), Err("gone"));
         assert!(!d.join("from link.png").exists());
         let pipe = d.join("pipe.png");
         let c = std::ffi::CString::new(pipe.to_str().unwrap()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
-        assert_eq!(take_input(&pipe, &d.join("from pipe.png"), &Job::default()), Err("gone"), "refused at once, never waiting on the pipe");
+        assert_eq!(take_input(&pipe, &d.join("from pipe.png"), None, &Job::default()), Err("gone"), "refused at once, never waiting on the pipe");
         // A folder is taken as a folder (it can be zipped); that is tested with `take_folder`. A path that is nothing is gone.
-        assert_eq!(take_input(&d.join("nothing"), &d.join("from nothing"), &Job::default()), Err("gone"));
-        assert_eq!(take_input(&d.join("missing.png"), &d.join("from missing.png"), &Job::default()), Err("gone"));
+        assert_eq!(take_input(&d.join("nothing"), &d.join("from nothing"), None, &Job::default()), Err("gone"));
+        assert_eq!(take_input(&d.join("missing.png"), &d.join("from missing.png"), None, &Job::default()), Err("gone"));
         std::fs::remove_dir_all(&d).unwrap();
     }
 
@@ -2100,7 +2231,7 @@ mod tests {
         let job = Job::default();
         job.stop();
         let copy = d.join("copy.mov");
-        assert_eq!(take(&f, &copy, false, COPY_MAX, &job), Err("stopped"));
+        assert_eq!(take(&f, &copy, terms(false, COPY_MAX), &job), Err("stopped"));
         assert!(!copy.exists(), "no half made copy is left");
         std::fs::remove_dir_all(&d).unwrap();
     }
@@ -2395,7 +2526,7 @@ mod tests {
         assert_eq!(args(&one("toM4v", "/a/x.mov").cmds[0]), vec!["--source", "/w/0/in.mov", "--output", "/w/0/out.m4v", "--preset", "PresetHighestQuality", "--progress"]);
         let h = one("toHevc", "/a/x.mov");
         assert_eq!(args(&h.cmds[0]), vec!["--source", "/w/0/in.mov", "--output", "/w/0/out.mp4", "--preset", "PresetHEVCHighestQuality", "--progress"]);
-        assert!(!h.shrink, "HEVC is asked for by name, not for size");
+        assert!(h.shrink, "its label promises a smaller video, so one that is not smaller is not kept");
         for (a, preset) in [("video480", "Preset640x480"), ("video720", "Preset1280x720"), ("video1080", "Preset1920x1080")] {
             let u = one(a, "/a/x.mov");
             assert_eq!(args(&u.cmds[0]), vec!["--source".to_string(), "/w/0/in.mov".into(), "--output".into(), "/w/0/out.mp4".into(), "--preset".into(), preset.into(), "--progress".into()], "{a}");
@@ -2477,8 +2608,8 @@ mod tests {
         // A link could point anywhere, and a later entry could then be written through it: no link is ever made.
         assert_eq!(vet(&[Ze { mode: 0o120777, ..ze("link") }], LIM), Err("unsafeZip"));
         assert_eq!(vet(&[ze("a.txt"), Ze { mode: 0o120777, ..ze("d/link") }], LIM), Err("unsafeZip"));
-        // Made on Windows, the mode bits mean nothing: not a link.
-        assert_eq!(vet(&[Ze { host: 0, mode: 0o120000, ..ze("a.txt") }], LIM), Ok(()));
+        // Made on Windows, the mode bits still count: ditto reads them whatever the host says (checked in its own test).
+        assert_eq!(vet(&[Ze { host: 0, mode: 0o120000, ..ze("a.txt") }], LIM), Err("unsafeZip"));
         // A password.
         assert_eq!(vet(&[Ze { flags: 1, ..ze("a.txt") }], LIM), Err("zipLocked"));
         // Too many files, or too much once opened (a zip bomb), by what the zip says.
@@ -2575,13 +2706,13 @@ mod tests {
         set_quarantine(&f);
         for (n, may_clone) in [(1, true), (2, false)] {
             let copy = d.join(format!("copy {n}.zip"));
-            assert_eq!(take(&f, &copy, may_clone, COPY_MAX, &Job::default()), Ok(()));
+            assert_eq!(take(&f, &copy, terms(may_clone, COPY_MAX), &Job::default()), Ok(()));
             assert!(quarantine(&copy).is_some(), "copy {n} keeps the mark, so what is unzipped from it keeps it too");
         }
         let plain = d.join("plain.zip");
         std::fs::write(&plain, b"PK").unwrap();
         let copy = d.join("plain copy.zip");
-        assert_eq!(take(&plain, &copy, false, COPY_MAX, &Job::default()), Ok(()));
+        assert_eq!(take(&plain, &copy, terms(false, COPY_MAX), &Job::default()), Ok(()));
         assert!(quarantine(&copy).is_none(), "no mark is made up");
         std::fs::remove_dir_all(&d).unwrap();
     }
@@ -2597,7 +2728,7 @@ mod tests {
         for (n, may_clone) in [(1, true), (2, false)] {
             let copy = d.join(format!("stage {n}")).join("Photos");
             std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
-            assert_eq!(take_folder(&src, &copy, may_clone, FOLDER_LIMITS, &Job::default()), Ok(()), "{n}");
+            assert_eq!(take_folder(&src, &copy, may_clone, FOLDER_LIMITS, None, &Job::default()), Ok(()), "{n}");
             assert_eq!(std::fs::read(copy.join("sub/b.txt")).unwrap(), b"beta", "{n}");
             assert_eq!(std::fs::read_link(copy.join("link")).unwrap(), Path::new("/etc/hosts"), "{n}: a link is copied as a link, never followed");
         }
@@ -2608,18 +2739,18 @@ mod tests {
         for lim in [Limits { files: 2, bytes: 1 << 20 }, Limits { files: 100, bytes: 3 }] {
             let copy = d.join("big stage").join("Photos");
             std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
-            assert_eq!(take_folder(&src, &copy, false, lim, &Job::default()), Err("tooBig"));
+            assert_eq!(take_folder(&src, &copy, false, lim, None, &Job::default()), Err("tooBig"));
             assert!(!copy.exists());
         }
         // A link in the folder's place is refused, and a stopped copy leaves nothing half made.
         let link = d.join("PhotosLink");
         std::os::unix::fs::symlink(&src, &link).unwrap();
-        assert_eq!(take_folder(&link, &d.join("from link"), false, FOLDER_LIMITS, &Job::default()), Err("gone"));
+        assert_eq!(take_folder(&link, &d.join("from link"), false, FOLDER_LIMITS, None, &Job::default()), Err("gone"));
         let stopped = Job::default();
         stopped.stop();
         let copy = d.join("stopped").join("Photos");
         std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
-        assert_eq!(take_folder(&src, &copy, false, FOLDER_LIMITS, &stopped), Err("stopped"));
+        assert_eq!(take_folder(&src, &copy, false, FOLDER_LIMITS, None, &stopped), Err("stopped"));
         assert!(!copy.exists());
         std::fs::remove_dir_all(&d).unwrap();
     }
@@ -2655,7 +2786,7 @@ mod tests {
         for s in sets { ids.extend(acts(offer(&ps(s), &all, &Prefs::usual()))); }
         assert!(ids.len() > 55, "{}", ids.len());
         for id in &ids { assert!(strings.contains(&format!("      {id}: {{ short: \"")), "{id} has no words in strings.ts"); }
-        for why in ["noText", "onePage", "noFrame", "tooSmall", "notSquare", "unsafeZip", "zipLocked", "notZip", "tooBig"] {
+        for why in ["noText", "onePage", "noFrame", "tooSmall", "notSquare", "unsafeZip", "zipLocked", "notZip", "tooBig", "special", "noRoom"] {
             assert!(strings.contains(&format!("      {why}: \"")), "{why} has no line in strings.ts");
         }
     }
@@ -2664,10 +2795,29 @@ mod tests {
 
     /// Reads a PDF's pages and turns, and a picture's properties, and makes a picture with a place and a camera in it. Test
     /// helpers only; they run on the test's own temporary files.
-    const READ_SCRIPT: &str = r#"ObjC.import('Quartz'); ObjC.import('ImageIO'); ObjC.import('Foundation');
+    const READ_SCRIPT: &str = r#"ObjC.import('Quartz'); ObjC.import('ImageIO'); ObjC.import('Foundation'); ObjC.import('AppKit');
 function run(a) {
   if (a[0] === 'pdf') { var d = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(a[1])); var r = []; for (var i = 0; i < d.pageCount; i++) r.push(d.pageAtIndex(i).rotation); return d.pageCount + ' ' + r.join(','); }
   if (a[0] === 'props') { var s = $.CGImageSourceCreateWithURL($.NSURL.fileURLWithPath(a[1]), $({})); return JSON.stringify(ObjC.deepUnwrap(ObjC.castRefToObject($.CGImageSourceCopyPropertiesAtIndex(s, 0, $({}))))); }
+  if (a[0] === 'corner') {
+    var s = $.CGImageSourceCreateWithURL($.NSURL.fileURLWithPath(a[1]), $({}));
+    var o = $.NSMutableDictionary.alloc.init;
+    o.setObjectForKey($(true), 'kCGImageSourceCreateThumbnailFromImageAlways');
+    o.setObjectForKey($(true), 'kCGImageSourceCreateThumbnailWithTransform');
+    o.setObjectForKey($(2000), 'kCGImageSourceThumbnailMaxPixelSize');
+    var rep = $.NSBitmapImageRep.alloc.initWithCGImage($.CGImageSourceCreateThumbnailAtIndex(s, 0, o)), w = rep.pixelsWide, h = rep.pixelsHigh, hit = [];
+    [[0.1, 0.1, 'TL'], [0.9, 0.1, 'TR'], [0.1, 0.9, 'BL'], [0.9, 0.9, 'BR']].forEach(function (q) {
+      var c = rep.colorAtXY(Math.floor(q[0] * w), Math.floor(q[1] * h)).colorUsingColorSpace($.NSColorSpace.sRGBColorSpace);
+      if (c.redComponent > 0.6 && c.greenComponent < 0.4) hit.push(q[2]);
+    });
+    return w + 'x' + h + ' ' + hit.join(',');
+  }
+  if (a[0] === 'pngmeta') {
+    var s = $.CGImageSourceCreateWithURL($.NSURL.fileURLWithPath(a[1]), $({}));
+    var d = $.CGImageDestinationCreateWithURL($.NSURL.fileURLWithPath(a[2]), $('public.png'), 1, $({}));
+    $.CGImageDestinationAddImageFromSource(d, s, 0, $({ '{PNG}': $({ Author: 'Alice Smith', Description: 'secret comment', Software: 'Foo' }), '{TIFF}': $({ Make: 'AcmeCam' }) }));
+    return String($.CGImageDestinationFinalize(d));
+  }
   if (a[0] === 'gps') {
     var s = $.CGImageSourceCreateWithURL($.NSURL.fileURLWithPath(a[1]), $({}));
     var d = $.CGImageDestinationCreateWithURL($.NSURL.fileURLWithPath(a[2]), $('public.jpeg'), 1, $({}));
@@ -2907,7 +3057,7 @@ function run(a) {
         let d = tmp("morevideo");
         let src = d.join("clip.mov");
         std::fs::copy(sample, &src).unwrap();
-        for (action, ext) in [("toM4v", "m4v"), ("toHevc", "mp4"), ("toMp4", "mp4")] {
+        for (action, ext) in [("toM4v", "m4v"), ("toMp4", "mp4")] {
             if !offered(&caps, std::slice::from_ref(&src), action) { continue; }
             // Each in a folder of its own, so every name is the first free one.
             let sub = d.join(format!("in-{action}"));
@@ -3035,6 +3185,381 @@ function run(a) {
         let units = plan("unzip", &[d.join("climb.zip"), good[0].clone()], &work, &Prefs::usual(), None).unwrap();
         let e = run(&units, &work, &|u| u.source.parent().map(Path::to_path_buf), &Job::default(), &|_, _, _| {});
         assert_eq!((e.made.len(), e.failed, e.first_failed.map(|f| f.1)), (1, 1, Some("unsafeZip")));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    // ---- review fixes: real copies for zips, room, odd files, read only folders, the zip's whole shape, flips, details ----
+
+    fn crc32(b: &[u8]) -> u32 {
+        let mut c = !0u32;
+        for &x in b { c ^= x as u32; for _ in 0..8 { c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 }; } }
+        !c
+    }
+    struct Rz<'a> { name: &'a str, data: &'a [u8], mode: u32, host: u8, listed: bool }
+    fn rz<'a>(name: &'a str, data: &'a [u8]) -> Rz<'a> { Rz { name, data, mode: 0o100644, host: 3, listed: true } }
+    /// A whole zip (stored, not squeezed): each entry with its own header and bytes, then the list of the listed ones.
+    /// `gap`: junk bytes put after the first entry.
+    fn real_zip(entries: &[Rz], gap: usize) -> Vec<u8> {
+        let (mut z, mut cd, mut listed) = (vec![], vec![], 0u16);
+        for (k, e) in entries.iter().enumerate() {
+            let at = z.len() as u32;
+            let (crc, n) = (crc32(e.data), e.data.len() as u32);
+            z.extend(0x0403_4b50u32.to_le_bytes());
+            z.extend(20u16.to_le_bytes());
+            z.extend([0u8; 2 + 2 + 2 + 2]);
+            z.extend(crc.to_le_bytes());
+            z.extend(n.to_le_bytes());
+            z.extend(n.to_le_bytes());
+            z.extend((e.name.len() as u16).to_le_bytes());
+            z.extend(0u16.to_le_bytes());
+            z.extend(e.name.as_bytes());
+            z.extend(e.data);
+            if k == 0 { z.extend(vec![0u8; gap]); }
+            if !e.listed { continue; }
+            listed += 1;
+            cd.extend(0x0201_4b50u32.to_le_bytes());
+            cd.extend(((e.host as u16) << 8 | 20).to_le_bytes());
+            cd.extend(20u16.to_le_bytes());
+            cd.extend([0u8; 2 + 2 + 2 + 2]);
+            cd.extend(crc.to_le_bytes());
+            cd.extend(n.to_le_bytes());
+            cd.extend(n.to_le_bytes());
+            cd.extend((e.name.len() as u16).to_le_bytes());
+            cd.extend([0u8; 2 + 2 + 2 + 2]);
+            cd.extend((e.mode << 16).to_le_bytes());
+            cd.extend(at.to_le_bytes());
+            cd.extend(e.name.as_bytes());
+        }
+        let cd_at = z.len() as u32;
+        z.extend(&cd);
+        z.extend(0x0605_4b50u32.to_le_bytes());
+        z.extend([0u8; 4]);
+        z.extend(listed.to_le_bytes());
+        z.extend(listed.to_le_bytes());
+        z.extend((cd.len() as u32).to_le_bytes());
+        z.extend(cd_at.to_le_bytes());
+        z.extend(0u16.to_le_bytes());
+        z
+    }
+    const ZLIM: Limits = Limits { files: 100, bytes: 1 << 20 };
+
+    #[test]
+    fn a_file_that_goes_into_a_zip_is_always_copied_never_left_as_a_link() {
+        let d = tmp("realcopy");
+        let f = d.join("big.bin");
+        let bytes: Vec<u8> = (0..4000u32).map(|i| (i * 7 % 251) as u8).collect();
+        std::fs::write(&f, &bytes).unwrap();
+        let t = |real_max| Terms { clone: false, copy_max: 10, real_max, free: None };
+        // Read where it is, for the tools that only look (a long video on another disk): a link, as it always was.
+        let link = d.join("looked at.bin");
+        assert_eq!(take(&f, &link, t(None), &Job::default()), Ok(()));
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        // A zip stores a link as a link, so a file that is zipped is always a real copy of its bytes, however big.
+        let stage = d.join("stage");
+        std::fs::create_dir(&stage).unwrap();
+        let copy = stage.join("big.bin");
+        assert_eq!(take(&f, &copy, t(Some(1 << 20)), &Job::default()), Ok(()));
+        assert!(std::fs::symlink_metadata(&copy).unwrap().file_type().is_file());
+        assert_eq!(std::fs::read(&copy).unwrap(), bytes);
+        if Path::new(DITTO).is_file() && Path::new("/usr/bin/unzip").is_file() {
+            let out = d.join("out.zip");
+            let c = cmd(DITTO, vec![os("-c"), os("-k"), os("--norsrc"), os("--noextattr"), os("--noacl"), pth(&stage), pth(&out)]);
+            assert_eq!(exec(&c, &Job::default(), &|_| {}).map(|_| ()), Ok(()));
+            let inside = std::process::Command::new("/usr/bin/unzip").arg("-p").arg(&out).arg("big.bin").output().unwrap().stdout;
+            assert_eq!(inside, bytes, "the zip holds the file's bytes, not a link to where it was");
+        }
+        // Too big even to copy for a zip: refused, and nothing is left.
+        let big = d.join("too big.bin");
+        assert_eq!(take(&f, &big, t(Some(3999)), &Job::default()), Err("tooBig"));
+        assert!(!big.exists());
+        // The units say which inputs must be real copies: what is zipped, and the zip that is opened.
+        let z = one("zip", "/a/My Notes.txt");
+        assert!(z.inputs.iter().all(|i| i.real));
+        let t2 = plan("zipTogether", &ps(&["/a/one.txt", "/b/two.txt"]), &p("/w"), &Prefs::usual(), None).unwrap();
+        assert!(t2[0].inputs.iter().all(|i| i.real));
+        assert!(one("unzip", "/a/x.zip").inputs.iter().all(|i| i.real), "a zip is vetted from the very bytes that are extracted");
+        assert!(one("toPng", "/a/x.jpg").inputs.iter().all(|i| !i.real));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn nothing_is_copied_or_opened_without_room_for_it_on_the_work_disk() {
+        assert!(room_ok(None, u64::MAX) && room_ok(Some(10), 10) && !room_ok(Some(9), 10));
+        assert!(free_space(&std::env::temp_dir()).is_some_and(|f| f > 0));
+        assert_eq!(free_space(Path::new("/no/such/place")), None);
+        let d = tmp("room");
+        let f = d.join("a.bin");
+        std::fs::write(&f, vec![1u8; 100]).unwrap();
+        let t = |clone, real_max, free| Terms { clone, copy_max: COPY_MAX, real_max, free: Some(free) };
+        // A copy takes its size and a margin; a copy that will be zipped takes it twice (the zip is another copy).
+        let copy = d.join("c1.bin");
+        assert_eq!(take(&f, &copy, t(false, None, 10), &Job::default()), Err("noRoom"));
+        assert!(!copy.exists());
+        assert_eq!(take(&f, &copy, t(false, None, SPARE + 100), &Job::default()), Ok(()));
+        let zipped = d.join("c2.bin");
+        assert_eq!(take(&f, &zipped, t(false, Some(1 << 20), SPARE + 150), &Job::default()), Err("noRoom"));
+        assert!(!zipped.exists());
+        assert_eq!(take(&f, &zipped, t(false, Some(1 << 20), SPARE + 250), &Job::default()), Ok(()));
+        // A clone that is only read costs nothing; one that is zipped needs the room for the zip.
+        assert_eq!(take(&f, &d.join("c3.bin"), t(true, None, 10), &Job::default()), Ok(()));
+        assert_eq!(take(&f, &d.join("c4.bin"), t(true, Some(1 << 20), 10), &Job::default()), Err("noRoom"));
+        assert!(!d.join("c4.bin").exists());
+        // A folder is always zipped: room for the zip first, and for the copy too when it cannot be cloned.
+        let src = d.join("Folder");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::write(src.join("a.txt"), vec![2u8; 100]).unwrap();
+        for (n, clone) in [(1, true), (2, false)] {
+            let into = d.join(format!("stage {n}"));
+            assert_eq!(take_folder(&src, &into, clone, FOLDER_LIMITS, Some(10), &Job::default()), Err("noRoom"), "{n}");
+            assert!(!into.exists(), "{n}");
+        }
+        assert_eq!(take_folder(&src, &d.join("stage 3"), false, FOLDER_LIMITS, Some(SPARE + 150), &Job::default()), Err("noRoom"));
+        assert_eq!(take_folder(&src, &d.join("stage 4"), false, FOLDER_LIMITS, Some(SPARE + 250), &Job::default()), Ok(()));
+        assert_eq!(take_folder(&src, &d.join("stage 5"), true, FOLDER_LIMITS, Some(SPARE + 150), &Job::default()), Ok(()), "a clone needs only the room for the zip");
+        // An unzip writes what the zip says it holds.
+        assert_eq!(unzip_room(1000, Some(10)), Err("noRoom"));
+        assert_eq!(unzip_room(1000, Some(SPARE + 999)), Err("noRoom"));
+        assert_eq!(unzip_room(1000, Some(SPARE + 1000)), Ok(()));
+        assert_eq!(unzip_room(1000, None), Ok(()));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn a_folder_with_a_pipe_in_it_is_refused_not_zipped_halfway_or_left_waiting() {
+        use std::os::unix::ffi::OsStrExt;
+        let d = tmp("fifo");
+        let folder = d.join("Project");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join("a.txt"), b"alpha").unwrap();
+        let pipe = std::ffi::CString::new(folder.join("a pipe").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(pipe.as_ptr(), 0o600) }, 0);
+        assert_eq!(tree_stats(&folder, FOLDER_LIMITS, true), Err("special"));
+        assert_eq!(tree_stats(&folder, FOLDER_LIMITS, false), Err("unsafeZip"), "as before when links are not allowed");
+        for (n, clone) in [(1, true), (2, false)] {
+            let copy = d.join(format!("stage {n}"));
+            assert_eq!(take_folder(&folder, &copy, clone, FOLDER_LIMITS, None, &Job::default()), Err("special"), "{n}");
+            assert!(!copy.exists(), "{n}");
+        }
+        // The whole job ends at once with the reason; a stop timer only keeps a wrong result from hanging the test.
+        let work = d.join("w");
+        let units = plan("zip", std::slice::from_ref(&folder), &work, &Prefs::usual(), None).unwrap();
+        let job = std::sync::Arc::new(Job::default());
+        let j = job.clone();
+        std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(4)); j.stop(); });
+        let t0 = std::time::Instant::now();
+        let e = run(&units, &work, &|u| u.source.parent().map(Path::to_path_buf), &job, &|_, _, _| {});
+        assert_eq!((e.made.len(), e.fail), (0, Some(Failure::Failed("special"))));
+        assert!(t0.elapsed() < Duration::from_secs(3), "not waiting on the pipe");
+        assert!(!work.exists());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    /// A tree with folders nobody can write in, a file in each, and a link out.
+    fn locked_tree(root: &Path, theirs: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::create_dir_all(root.join("a/b")).unwrap();
+        std::fs::write(root.join("a/b/f.txt"), b"in a locked folder").unwrap();
+        std::fs::write(root.join("a/g.txt"), b"in another").unwrap();
+        std::os::unix::fs::symlink(theirs, root.join("a/link out")).unwrap();
+        for sub in ["a/b", "a"] { std::fs::set_permissions(root.join(sub), std::fs::Permissions::from_mode(0o555)).unwrap(); }
+    }
+
+    #[test]
+    fn folders_nobody_can_write_in_are_still_removed_so_no_space_is_lost_for_good() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("locked");
+        let theirs = d.join("theirs");
+        std::fs::create_dir(&theirs).unwrap();
+        std::fs::write(theirs.join("keep.txt"), b"keep").unwrap();
+        // The helper itself: everything goes, a link is taken away and never followed.
+        locked_tree(&d.join("t1"), &theirs);
+        assert!(remove_tree(&d.join("t1")).is_ok());
+        assert!(!d.join("t1").exists());
+        assert_eq!(std::fs::read(theirs.join("keep.txt")).unwrap(), b"keep");
+        assert_eq!(std::fs::metadata(&theirs).unwrap().permissions().mode() & 0o700, 0o700, "what a link points at is not touched");
+        assert!(remove_tree(&d.join("not there")).is_err(), "nothing there is not a success");
+        // The launch sweep.
+        let root = d.join("dev.companion.app-convert");
+        locked_tree(&root.join("7-123/0"), &theirs);
+        assert!(sweep(&root));
+        assert!(!root.exists(), "a work folder with read only folders in it is swept too");
+        assert_eq!(std::fs::read(theirs.join("keep.txt")).unwrap(), b"keep");
+        // A folder with a read only subfolder, zipped: the copy made for the zip is ours, so it is writable, and the work
+        // folder is gone when the job ends. Cloned and copied alike.
+        let folder = d.join("Locked");
+        locked_tree(&folder, &theirs);
+        for (n, clone) in [(1, true), (2, false)] {
+            let copy = d.join(format!("copy {n}"));
+            assert_eq!(take_folder(&folder, &copy, clone, FOLDER_LIMITS, None, &Job::default()), Ok(()), "{n}");
+            assert!(std::fs::metadata(copy.join("a/b")).unwrap().permissions().mode() & 0o200 != 0, "{n}: made ours to change");
+            assert!(remove_tree(&copy).is_ok() && !copy.exists(), "{n}");
+        }
+        let (made, fail) = ran("zip", std::slice::from_ref(&folder), &d.join("w1"), None);
+        assert_eq!((made.len(), fail), (1, None));
+        assert!(!d.join("w1").exists(), "the work folder is gone");
+        // An unzip whose zip says a folder is read only: the work folder is gone either way.
+        if Path::new(DITTO).is_file() {
+            let z = d.join("ro.zip");
+            std::fs::write(&z, real_zip(&[Rz { mode: 0o040555, ..rz("d/", b"") }, rz("d/a.txt", b"alpha")], 0)).unwrap();
+            let (_, fail) = ran("unzip", std::slice::from_ref(&z), &d.join("w2"), None);
+            eprintln!("read only folder unzip: {fail:?}");
+            assert!(!d.join("w2").exists(), "the work folder is gone");
+        }
+        remove_tree(&d).unwrap();
+    }
+
+    #[test]
+    fn a_zip_is_refused_unless_its_pieces_fill_the_space_up_to_its_list_with_nothing_unlisted() {
+        let d = tmp("zipwalk");
+        let write = |name: &str, bytes: Vec<u8>| { let f = d.join(name); std::fs::write(&f, bytes).unwrap(); f };
+        let dir = |n| Rz { mode: 0o040755, ..rz(n, b"") };
+        let good = real_zip(&[rz("a.txt", b"alpha"), dir("d/"), rz("d/b.txt", b"beta"), rz("empty.txt", b"")], 0);
+        assert_eq!(zip_vet(&write("good.zip", good.clone()), ZLIM).map(|_| ()), Ok(()));
+        // Something in the pieces that the list does not name: ditto reads the pieces one after another, not the list.
+        let hidden = real_zip(&[rz("a.txt", b"alpha"), Rz { listed: false, ..rz("evil.txt", b"x") }, rz("b.txt", b"beta")], 0);
+        assert_eq!(zip_vet(&write("hidden.zip", hidden), ZLIM), Err("notZip"));
+        // Junk between pieces, and junk between the list and the end record the list is found by.
+        assert_eq!(zip_vet(&write("gap.zip", real_zip(&[rz("a.txt", b"alpha"), rz("b.txt", b"beta")], 7)), ZLIM), Err("notZip"));
+        let mut apart = good.clone();
+        let at = apart.len() - 22;
+        apart.splice(at..at, [9u8; 5]);
+        assert_eq!(zip_vet(&write("apart.zip", apart.clone()), ZLIM), Err("notZip"));
+        assert_eq!(zip_vet_reader(&mut std::io::Cursor::new(apart), ZLIM), Err("notZip"), "also from the list alone");
+        // A header that names something else than the list does, as before.
+        let mut renamed = good.clone();
+        let pos = renamed.windows(5).position(|w| w == b"a.txt").unwrap();
+        renamed[pos] = b'z';
+        assert_eq!(zip_vet(&write("renamed.zip", renamed), ZLIM), Err("unsafeZip"));
+        // Zips the Mac itself and the usual zip tool make are not refused: squeezed, with sizes after the data.
+        if Path::new(DITTO).is_file() {
+            let src = d.join("Made");
+            std::fs::create_dir_all(src.join("sub/deeper")).unwrap();
+            std::fs::write(src.join("text.txt"), "all the same words ".repeat(500)).unwrap();
+            std::fs::write(src.join("sub/deeper/small.txt"), b"x").unwrap();
+            std::fs::write(src.join("sub/empty.txt"), b"").unwrap();
+            let out = d.join("made.zip");
+            let c = cmd(DITTO, vec![os("-c"), os("-k"), os("--norsrc"), os("--noextattr"), os("--noacl"), pth(&src), pth(&out)]);
+            assert_eq!(exec(&c, &Job::default(), &|_| {}).map(|_| ()), Ok(()));
+            assert_eq!(zip_vet(&out, UNZIP_LIMITS).map(|_| ()), Ok(()), "a zip made by ditto");
+        }
+        if Path::new("/usr/bin/zip").is_file() {
+            let out = d.join("tool.zip");
+            let ok = std::process::Command::new("/usr/bin/zip").current_dir(&d).args(["-q", "-r"]).arg(&out).arg("Made").status().map(|s| s.success()).unwrap_or(false);
+            if ok { assert_eq!(zip_vet(&out, UNZIP_LIMITS).map(|_| ()), Ok(()), "a zip made by the usual zip tool"); }
+        }
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn the_mode_of_an_entry_counts_whatever_system_the_zip_says_it_was_made_on() {
+        // ditto uses the mode bits for any host, so a link is a link whatever the zip claims.
+        for host in [0u8, 3, 10, 11, 19] {
+            assert_eq!(vet(&[Ze { host, mode: 0o120000, ..ze("a.txt") }], LIM), Err("unsafeZip"), "link, host {host}");
+            assert_eq!(vet(&[Ze { host, mode: 0o010644, ..ze("a.txt") }], LIM), Err("unsafeZip"), "pipe, host {host}");
+            assert_eq!(vet(&[Ze { host, mode: 0o060644, ..ze("a.txt") }], LIM), Err("unsafeZip"), "device, host {host}");
+            assert_eq!(vet(&[Ze { host, mode: 0o100644, ..ze("a.txt") }], LIM), Ok(()), "file, host {host}");
+            assert_eq!(vet(&[Ze { host, mode: 0o040755, size: 0, ..ze("d/") }], LIM), Ok(()), "folder, host {host}");
+            assert_eq!(vet(&[Ze { host, mode: 0, ..ze("a.txt") }], LIM), Ok(()), "no mode, host {host}");
+        }
+    }
+
+    // ---- flips follow what is seen ----
+
+    /// A picture 304 by 200 that is white with a red square in the top right corner as stored, with the Orientation tag
+    /// given (1 is no tag).
+    fn corner_jpeg(at: &Path, orientation: u8) {
+        let (w, h) = (304usize, 200usize);
+        let px: Vec<u8> = (0..w * h).flat_map(|i| if i % w >= 208 && i / w < 96 { [255u8, 0, 0] } else { [255, 255, 255] }).collect();
+        jpeg_encoder::Encoder::new_file(at, 95).unwrap().encode(&px, w as u16, h as u16, jpeg_encoder::ColorType::Rgb).unwrap();
+        if orientation == 1 { return; }
+        let mut app1 = vec![0xFF, 0xE1, 0, 34];
+        app1.extend(b"Exif\0\0");
+        app1.extend([b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0]);
+        app1.extend([0x12, 0x01, 3, 0, 1, 0, 0, 0, orientation, 0, 0, 0]);
+        app1.extend([0, 0, 0, 0]);
+        let jpg = std::fs::read(at).unwrap();
+        let mut out = jpg[..2].to_vec();
+        out.extend(app1);
+        out.extend(&jpg[2..]);
+        std::fs::write(at, out).unwrap();
+    }
+    /// Where the red square is as the picture is seen (the tag applied): the corner's name.
+    fn seen_corner(f: &Path) -> String { osa_word("corner", f).split(' ').nth(1).unwrap_or("").to_string() }
+
+    #[test]
+    fn a_flip_swaps_its_two_directions_for_a_picture_stored_on_its_side() {
+        let c = cmd(SIPS, vec![os("-f"), os("horizontal"), os("/w/0/in.jpg"), os("--out"), os("/w/0/out.jpg")]);
+        let s = swap_flip(&c);
+        assert_eq!(args(&s), vec!["-f", "vertical", "/w/0/in.jpg", "--out", "/w/0/out.jpg"]);
+        assert_eq!(args(&swap_flip(&s)), args(&c));
+        assert_eq!(args(&swap_flip(&cmd(SIPS, vec![os("-r"), os("90")]))), vec!["-r", "90"], "anything else is left alone");
+        assert_eq!(orientation_of("6\n"), Some(6));
+        assert_eq!(orientation_of("\n"), None);
+        assert!(on_its_side(5) && on_its_side(8) && !on_its_side(1) && !on_its_side(3) && !on_its_side(4));
+        assert!(one("flipHorizontal", "/a/x.jpg").flip && one("flipVertical", "/a/x.png").flip);
+        assert!(!one("turnRight", "/a/x.jpg").flip && !one("resize", "/a/x.jpg").flip);
+    }
+
+    #[test]
+    fn the_real_sips_flips_a_picture_the_way_it_is_seen_even_when_it_is_stored_turned() {
+        if !Path::new(SIPS).is_file() || !Path::new(OSASCRIPT).is_file() { return; }
+        let d = tmp("flipseen");
+        let mirror_h = |c: &str| match c { "TL" => "TR", "TR" => "TL", "BL" => "BR", _ => "BL" };
+        let mirror_v = |c: &str| match c { "TL" => "BL", "BL" => "TL", "TR" => "BR", _ => "TR" };
+        for o in [1u8, 3, 5, 6, 7, 8] {
+            let src = d.join(format!("o{o}.jpg"));
+            corner_jpeg(&src, o);
+            let seen = seen_corner(&src);
+            assert!(["TL", "TR", "BL", "BR"].contains(&seen.as_str()), "o{o}: the test picture shows one red corner: {seen:?}");
+            for (action, want) in [("flipHorizontal", mirror_h(&seen)), ("flipVertical", mirror_v(&seen))] {
+                let (made, fail) = ran(action, std::slice::from_ref(&src), &d.join(format!("w{o}{action}")), None);
+                assert_eq!(fail, None, "o{o} {action}");
+                assert_eq!(seen_corner(&made[0]), want, "o{o} {action}: seen at {seen}, expected to be seen at {want}");
+            }
+        }
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    // ---- details taken off ----
+
+    #[test]
+    fn taking_off_details_also_clears_the_text_and_author_a_png_carries() {
+        if !Path::new(SIPS).is_file() || !Path::new(OSASCRIPT).is_file() { return; }
+        let d = tmp("pngtext");
+        let plain = d.join("plain.jpg");
+        jpeg(&plain);
+        let base = d.join("base.png");
+        let o = std::process::Command::new(SIPS).args(["-s", "format", "png"]).arg(&plain).arg("--out").arg(&base).output().unwrap();
+        assert!(o.status.success());
+        let tagged = d.join("notes.png");
+        assert_eq!(osa(&[Path::new("pngmeta"), &base, &tagged]), "true");
+        let has = |f: &Path, s: &str| std::fs::read(f).unwrap().windows(s.len()).any(|w| w == s.as_bytes());
+        for s in ["Alice Smith", "secret comment", "AcmeCam"] { assert!(has(&tagged, s), "the test picture carries {s:?}"); }
+        let (clean, fail) = ran("stripInfo", std::slice::from_ref(&tagged), &d.join("w"), None);
+        assert_eq!((clean.clone(), fail), (vec![d.join("notes (cleaned).png")], None));
+        for s in ["Alice Smith", "secret comment", "AcmeCam", "tEXt", "iTXt", "zTXt", "xmpmeta"] { assert!(!has(&clean[0], s), "{s:?} is still in the new picture"); }
+        assert_eq!(sips_get(&clean[0], "pixelWidth"), "40", "the picture itself is still there");
+        assert!(has(&tagged, "Alice Smith"), "the original is unchanged");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    // ---- HEVC ----
+
+    #[test]
+    fn a_hevc_conversion_is_kept_only_when_it_is_smaller_as_its_words_say() {
+        assert!(one("toHevc", "/a/x.mov").shrink, "the label promises a smaller video");
+        assert!(!one("toMp4", "/a/x.mov").shrink, "a plain format change is not held to that");
+        let sample = Path::new("/Applications/Numbers.app/Contents/Resources/PlaceholderMovie.mov");
+        if !sample.is_file() || !Path::new(AVCONVERT).is_file() || !offered(&probe_tools(), &[sample.to_path_buf()], "toHevc") { return; }
+        let d = tmp("hevc");
+        let src = d.join("clip.mov");
+        std::fs::copy(sample, &src).unwrap();
+        let (made, fail) = ran("toHevc", std::slice::from_ref(&src), &d.join("w"), None);
+        match (made.first(), fail) {
+            (Some(m), None) => assert!(std::fs::metadata(m).unwrap().len() < std::fs::metadata(&src).unwrap().len(), "kept only because it is smaller"),
+            (None, Some(Failure::Failed("notSmaller"))) => {}
+            other => panic!("{other:?}"),
+        }
         std::fs::remove_dir_all(&d).unwrap();
     }
 }

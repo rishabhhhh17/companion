@@ -1240,7 +1240,7 @@ export const S = {
       flipHorizontal: { short: "Flip", label: "Flip left to right" },
       flipVertical: { short: "Flip up", label: "Flip top to bottom" },
       grayscale: { short: "Gray", label: "Make it black and white (gray)" },
-      stripInfo: { short: "Clean", label: "Take off place and camera details" },
+      stripInfo: { short: "Clean", label: "Take off place, camera and author details" },
       thumbnails: { short: "Sizes", label: "Make a set of small sizes" },
       imageToPdf: { short: "PDF", label: "Make a PDF from this picture" },
       imagesToPdf: { short: "One PDF", label: "Put all the pictures in one PDF" },
@@ -1320,6 +1320,8 @@ export const S = {
       zipLocked: "This zip has a password, so it cannot be opened here.",
       notZip: "This is not a zip Companion can read.",
       tooBig: "This is too big to handle safely here (too many files or too much once opened).",
+      noRoom: "There is not enough free space on this Mac to do this safely. Nothing was changed.",
+      special: "This folder holds something that is not a file or a folder (a pipe or a socket), so it was not zipped.",
       other: "Something went wrong. The original is unchanged.",
     },
     refused: {
