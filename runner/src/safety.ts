@@ -2,10 +2,10 @@
 // makes is judged before it runs: allow, ask the user (an approval card), or deny.
 // Conservative on purpose: when unsure, ask.
 
-import { lstatSync, readlinkSync } from "node:fs";
+import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { commandsOf, hasDynamic, inputTargets, parseShell, redirectTargets, unwrap } from "./shell.ts";
+import { commandsOf, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
 import { isEnvFile } from "./diagram.ts";
 
@@ -76,7 +76,7 @@ const SETTINGS_TEMPLATE = /\.(example|sample|template|dist|defaults)$/i;
 /** A private settings file: .env, .env.local, .env.production, .env.<anything>, name.env. Not the shared templates. */
 export const isSettingsFile = (p: string): boolean => {
   const b = basename(p).toLowerCase();
-  return (/^\.env(\.[^/]*)?$/.test(b) || /^[^/]+\.env$/.test(b)) && !SETTINGS_TEMPLATE.test(b);
+  return (/^\.env(\.[^/]*)?$/.test(b) || b === ".envrc" || /^[^/]+\.env$/.test(b)) && !SETTINGS_TEMPLATE.test(b);
 };
 const SECRET_NAME = /(SECRET|TOKEN|PASSW|PRIVATE|CREDENTIAL|AUTH|CERT|API_?KEY|ACCESS_?KEY|(^|_)KEY($|_))/i;
 /** Setting names written in some text ("SITE_NAME=Demo" gives SITE_NAME). Names only, at most six; never a value. */
@@ -90,6 +90,58 @@ function settingsVerdict(file: string, names: string[]): Verdict {
   const secret = names.find((n) => SECRET_NAME.test(n));
   if (secret) return deny("settings", `Companion does not write a key, token or password for you. Add the ${secret} line to ${base} yourself`);
   return ask("settings", `changes your private settings file (${base})${names.length ? `: ${names.join(", ")}` : ""}`, true);
+}
+const SETTINGS_NOT_READ = "your private settings file can hold keys, so it is not read here. Which settings a project needs is in its .env.example or its README; to add or change one, Companion asks you first";
+// Commands that only change a file (a settings file named to them is a write, which asks) and so are not "reading" it.
+const WRITE_ONLY = new Set(["rm", "unlink", "shred", "truncate", "touch", "chmod", "chown", "chgrp", "ln", "tee", "sponge", "ed", "ex", "vi", "vim", "nvim", "nano", "emacs", "patch", "mv", "mkdir", "split", "csplit", "dd", "echo", "printf"]);
+// Commands that only look for a file or count it, which shows nothing of what is inside (wc -l, not wc's words).
+const LOOKS_ONLY = new Set(["ls", "stat", "test", "[", "[[", "wc", "du"]);
+const COPIERS = new Set(["cp", "rsync", "ditto", "install", "scp"]);
+const GIT_LOOKS = new Set(["check-ignore", "ls-files", "status", "check-attr"]);
+// What a word on a command line may name: the word itself, a value after =, a file after @ (curl -d @file), or after a one letter flag (-T file).
+const namedPaths = (a: string): string[] => [a, a.slice(a.indexOf("=") + 1), a.replace(/^@/, ""), a.replace(/^-[A-Za-z]@?/, ""), a.slice(a.indexOf("=") + 1).replace(/^@/, ""), a.replace(/^[^=]*=@?/, "")];
+function namesSettingsFile(a: string, ctx: Context, cwd: string): boolean {
+  for (const c of namedPaths(a)) {
+    if (!c || c.startsWith("-") && c.length < 2) continue;
+    if (/[*?[]/.test(c)) { if (globMayMatchSettings(c)) return true; continue; }
+    const w = whereIs(ctx.project, c, cwd);
+    if (w.inside && isSettingsFile(w.abs)) return true;
+  }
+  return false;
+}
+// Does this folder, or any folder under it, hold a private settings file? A bounded look that skips installed packages and git.
+function holdsSettingsFile(dir: string): boolean {
+  const todo = [dir]; let seen = 0;
+  while (todo.length && seen < 5000) {
+    const d = todo.pop()!;
+    let entries: import("node:fs").Dirent[];
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      seen++;
+      if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== ".git") todo.push(join(d, e.name)); }
+      else if (isSettingsFile(e.name)) return true;
+    }
+  }
+  return false;
+}
+/** A command that would read a private settings file: refused. (Writing one is a tap, see pathVerdict.) */
+function settingsReadVerdict(name: string, args: string[], ctx: Context, cwd: string): Verdict | null {
+  if (WRITE_ONLY.has(name) || LOOKS_ONLY.has(name)) return null;
+  if ((name === "sed" || name === "yq" || name === "awk" || name === "gawk" || name === "perl") && args.some((a) => /^-[A-Za-z]*i/.test(a) || /^--in-?place/.test(a))) return null;   // an in place edit is a write
+  const refuse = deny("settings", SETTINGS_NOT_READ);
+  if (name === "git") { const sub = args.find((a) => !a.startsWith("-")) ?? ""; if (GIT_LOOKS.has(sub)) return null; }
+  // A recursive search of the whole project reaches a settings file that no pattern names (grep does not skip hidden files).
+  if (["grep", "egrep", "fgrep"].includes(name) && args.some((a) => /^-[A-Za-z]*[rR]/.test(a) || a === "--recursive" || a === "--dereference-recursive" || /^(-d|--directories)(=|$)/.test(a) && /recurse/.test(args.join(" ")))
+      && !args.some((a, i) => /^--exclude(=|$)/.test(a) && /env/i.test(a.includes("=") ? a : args[i + 1] ?? ""))) {
+    // Only where it would really reach one: the folders it searches (the current folder when none is named) hold a settings file.
+    const dirs = args.filter((a) => !a.startsWith("-")).map((a) => whereIs(ctx.project, a, cwd)).filter((w) => w.inside || w.abs === resolveLinks(ctx.project)).map((w) => w.abs).filter((d) => { try { return statSync(d).isDirectory(); } catch { return false; } });
+    if ((dirs.length ? dirs : [resolveLinks(cwd)]).some((d) => holdsSettingsFile(d))) return refuse;
+  }
+  if (["rg", "ag"].includes(name) && args.some((a) => a === "--hidden" || /^-u{2,}$/.test(a) || /^-[A-Za-z]*uu/.test(a) || a === "-H" && name === "ag")) return refuse;
+  // --exclude=.env* names a pattern to skip, not a file to read.
+  const named = args.filter((a) => !/^--(exclude|include|exclude-dir)(=|$)/.test(a));
+  const rest = COPIERS.has(name) ? named.filter((a) => !a.startsWith("-")).slice(0, -1) : named;   // a copy's last word is where it goes, judged as a write
+  return rest.some((a) => namesSettingsFile(a, ctx, cwd)) ? refuse : null;
 }
 /** The text a file tool puts in a file, for its setting names only. */
 const writtenText = (input: Record<string, unknown>): string => [input.new_string, input.content, ...(Array.isArray(input.edits) ? input.edits.map((e: any) => e?.new_string) : [])].filter((x): x is string => typeof x === "string").join("\n");
@@ -195,6 +247,8 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
       if (isAbsolute(prefix) || prefix.startsWith("~") || /(^|\/)\.\.(\/|$)/.test(prefix)) candidates.push(isAbsolute(prefix) || prefix.startsWith("~") ? (prefix || "/") : join(typeof p === "string" && p ? p : ".", prefix));
     }
     for (const q of candidates) { const w = whereIs(ctx.project, q); if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", "reading outside the project"); }
+    // A private settings file can hold keys, so no task reads one (which names exist is not what is in them: Glob and LS are fine).
+    if (tool !== "Glob" && tool !== "LS" && typeof p === "string" && p && isSettingsFile(whereIs(ctx.project, p).abs)) return deny("settings", SETTINGS_NOT_READ);
     return allow();
   }
   if (tool === "WebFetch") {
@@ -268,7 +322,7 @@ const DANGEROUS_WORDS = new Set(["rm", "rmdir", "mv", "cp", "ln", "tee", "dd", "
 // Commands that write to the files named in their arguments.
 const WRITERS: Record<string, { all?: boolean; flags?: string[] }> = {
   cp: { all: true, flags: ["-t", "--target-directory"] }, mv: { all: true, flags: ["-t", "--target-directory"] }, ln: { all: true }, install: { all: true, flags: ["-t"] }, rsync: { all: true },
-  touch: { all: true }, mkdir: { all: true }, chmod: { all: true }, chown: { all: true }, chgrp: { all: true }, truncate: { all: true }, tee: { all: true }, rm: { all: true }, rmdir: { all: true }, unlink: { all: true }, shred: { all: true },
+  sponge: { all: true }, ex: { all: true }, vi: { all: true }, vim: { all: true }, nvim: { all: true }, ed: { all: true }, nano: { all: true }, emacs: { all: true }, patch: { all: true }, touch: { all: true }, mkdir: { all: true }, chmod: { all: true }, chown: { all: true }, chgrp: { all: true }, truncate: { all: true }, tee: { all: true }, rm: { all: true }, rmdir: { all: true }, unlink: { all: true }, shred: { all: true },
   ditto: { all: true }, unzip: { flags: ["-d"] }, curl: { flags: ["-o", "--output", "--output-dir"] }, wget: { flags: ["-O", "-P", "--output-document", "--directory-prefix"] }, sort: { flags: ["-o"] }, tar: { flags: ["-C", "--directory"] },
 };
 
@@ -280,8 +334,37 @@ function pathVerdict(arg: string, ctx: Context, cwd: string): Verdict | null {
   const w = whereIs(ctx.project, arg, cwd);
   if (w.protectedPart) return deny(w.protectedPart.startsWith(".git") ? "git" : "outside_project", protectedWhy(w.protectedPart));
   if (!w.inside) return deny("outside_project", `${arg} is outside the project`);
-  if (isSettingsFile(w.abs)) return ask("settings", `changes your private settings file (${basename(w.abs)})`, true);
+  if (isSettingsFile(w.abs) || globMayMatchSettings(arg)) return ask("settings", `changes your private settings file (${isSettingsFile(w.abs) ? basename(w.abs) : ".env"})`, true);
   return null;
+}
+
+// sed can write files itself: `w file` and `W file` as commands, and the w flag of s///. They name files the command line does not.
+function sedWriteTargets(args: string[]): string[] {
+  const programs: string[] = [];
+  let usedE = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if ((a === "-e" || a === "--expression") && args[i + 1] !== undefined) { programs.push(args[++i]); usedE = true; }
+    else if (a.startsWith("--expression=")) { programs.push(a.slice(13)); usedE = true; }
+    else if (a.startsWith("-") && a !== "-") continue;
+    else if (!usedE && programs.length === 0) programs.push(a);
+  }
+  const out: string[] = [];
+  for (const p of programs) {
+    for (const m of p.matchAll(/\/[gpiIme0-9]*w\s*([^\s;}]+)/g)) out.push(m[1]);
+    for (const m of p.matchAll(/(?:^|[;{}\n])\s*(?:[0-9$]+|\/[^/]*\/)?\s*[wW]\s*([^\s;}]+)/g)) out.push(m[1]);
+  }
+  return out.filter((t) => !/^\/dev\/(stdout|stderr|null)$/.test(t));
+}
+// Could a pattern like .e* or .env? name a private settings file? (A leading * or ? never matches a leading dot, as in a shell.)
+function globMayMatchSettings(arg: string): boolean {
+  const b = basename(arg);
+  if (!/[*?[]/.test(b)) return false;
+  let re: RegExp;
+  try { re = new RegExp(`^${b.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")}$`); } catch { return true; }
+  const dotted = [".env", ".env.local", ".env.production", ".env.development.local"];
+  const names = /^[*?[]/.test(b) ? (/env/i.test(b) ? ["x.env", "prod.env"] : []) : dotted;
+  return names.some((n) => re.test(n));
 }
 
 function evaluateBash(cmd: string, ctx: Context): Verdict {
@@ -311,9 +394,11 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
     if (t.includes("$") || t.includes("`")) { out = worst(out, ask("outside_project", "this command reads from a place it works out while it runs")); continue; }
     const w = whereIs(ctx.project, t, cwd);
     if (!w.inside && w.abs !== resolveLinks(ctx.project)) out = worst(out, ask("outside_project", `${t} is outside the project`));
+    else if (isSettingsFile(w.abs)) out = worst(out, deny("settings", SETTINGS_NOT_READ));
   }
   // Where output is written with > and >>.
-  for (const t of redirectTargets(cmd)) {
+  // Also the redirects written inside nested shells (`sh -c "echo x >> .env"`), whose quotes hide them from a scan of the outer line.
+  for (const t of [...redirectTargets(cmd), ...nestedStrings(cmd).flatMap((n) => redirectTargets(n))]) {
     if (t.includes("$") || t.includes("`")) { out = worst(out, ask("irreversible", "this command writes to a place it works out while it runs")); continue; }
     const v = pathVerdict(t, ctx, cwd);
     if (v) out = worst(out, v);
@@ -330,6 +415,12 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
 }
 
 function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
+  // Reading a private settings file is judged first, whatever else the command is: some command families return early below.
+  const secretRead = words.length ? settingsReadVerdict(basename(words[0]), words.slice(1), ctx, cwd) : null;
+  const v = evaluateCommandBody(words, ctx, cwd);
+  return secretRead ? worst(v, secretRead) : v;
+}
+function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdict {
   const name = basename(words[0]);
   const args = words.slice(1);
   if (words[0].includes("$") || words[0].startsWith("`")) return ask("irreversible", "the command is worked out while it runs, so I cannot check it");
@@ -360,6 +451,9 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
     if (i >= 0) return evaluateCommand(unwrap(rest.slice(i)).words.length ? unwrap(rest.slice(i)).words : rest.slice(i), ctx, cwd);
     return allow();
   }
+  if (name === "bun" && args.some((a) => /^(-e|--eval|-p|--print)$/.test(a))) return ask("irreversible", "bun would run code I cannot check");
+  // node with no file to run reads its code from the input (a here document, a pipe): code nobody can check here. node --test and --version are fine.
+  if ((name === "node" || name === "nodejs") && !args.some((a) => !a.startsWith("-") && !a.startsWith("<") && !a.startsWith(">")) && !args.some((a) => /^(-v|--version|-h|--help|-c|--check|--test.*)$/.test(a))) return ask("irreversible", "node would run code I cannot check");
   if (["npm", "pnpm", "yarn", "bun"].includes(name)) return evaluatePackageManager(name, args);
   if (["brew", "port", "apt", "apt-get", "gem", "pip", "pip3", "cargo"].includes(name)) {
     // Outside the project, so Undo cannot take these back (technical_research section 6).
@@ -373,7 +467,7 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
   let out: Verdict = allow();
   if (name === "curl" || name === "wget") out = evaluateCurl(args);
   // Commands that write: every path they name must stay in the project.
-  const writer = WRITERS[name] ?? (name === "sed" && args.some((a) => /^-[A-Za-z]*i/.test(a)) ? { all: true } : name === "perl" && args.some((a) => /^-[A-Za-z]*i/.test(a)) ? { all: true } : name === "dd" ? {} : undefined);
+  const writer = WRITERS[name] ?? ((name === "sed" && args.some((a) => /^-[A-Za-z]*i/.test(a) || /^--in-place/.test(a))) || (name === "yq" && args.some((a) => /^-[A-Za-z]*i/.test(a) || /^--inplace/.test(a))) || ((name === "awk" || name === "gawk") && args.some((a, k) => /^--inplace|^-i(nplace)?$/.test(a) && (a !== "-i" || args[k + 1] === "inplace"))) ? { all: true } : name === "perl" && args.some((a) => /^-[A-Za-z]*i/.test(a)) ? { all: true } : name === "dd" ? {} : undefined);
   if (writer) {
     const paths: string[] = [];
     for (let i = 0; i < args.length; i++) {
@@ -388,6 +482,9 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
     for (const p of paths) { const v = pathVerdict(p, ctx, cwd); if (v) out = worst(out, v); }
     void tarReads;
   }
+  // split and csplit write files named after their last argument (the prefix); what they read is judged as a read.
+  if (name === "split" || name === "csplit") { const pos = args.filter((a) => !a.startsWith("-")); if (pos.length >= 2) { const v = pathVerdict(pos[pos.length - 1], ctx, cwd); if (v) out = worst(out, v); } }
+  if (name === "sed") for (const t of sedWriteTargets(args)) { const v = pathVerdict(t, ctx, cwd); if (v) out = worst(out, v); }
   // Programs that read files: any file outside the project asks first (the Read tool always did).
   const reads = readerVerdict(name, args, ctx, cwd) ?? archiveReads(name, args, ctx, cwd);
   if (reads) out = worst(out, reads);
@@ -546,7 +643,7 @@ function evaluateGit(args: string[], ctx: Context, cwd: string = ctx.project): V
   switch (sub) {
     case "push": return mutates("git push sends your work to a remote", false);
     case "status": case "diff": case "log": case "show": case "blame": case "grep": case "ls-files": case "ls-tree": case "rev-parse":
-    case "describe": case "shortlog": case "cat-file": case "fetch": case "whatchanged": case "show-ref": case "diff-tree": case "rev-list":
+    case "describe": case "shortlog": case "check-ignore": case "check-attr": case "cat-file": case "fetch": case "whatchanged": case "show-ref": case "diff-tree": case "rev-list":
       return allow();
     case "reflog": return rest.some((a) => ["expire", "delete"].includes(a)) ? mutates("deletes saved history", false) : allow();
     case "remote": return rest.some((a) => ["add", "remove", "rm", "rename", "set-url", "prune", "set-head"].includes(a)) ? mutates("changes remotes") : allow();

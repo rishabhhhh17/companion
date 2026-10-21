@@ -56,7 +56,7 @@ describe("git pointed at another folder (A15)", () => {
   const setup = () => { const root = dir("two"); const p = join(root, "mine"), other = join(root, "other"); mkdirSync(p); mkdirSync(other); writeFileSync(join(root, "secret.txt"), "x"); return { p, other, root }; };
   test("-C, --git-dir and --work-tree outside the project ask, in both spellings", () => {
     const { p, other } = setup();
-    for (const c of [`git -C ${other} show HEAD:.env`, `git -C ../other log -p`, `git --git-dir=${other}/.git show HEAD:x`, `git --git-dir ${other}/.git log`, `git --work-tree=${other} status`, `git --work-tree ../other diff`]) expect(bash(p, c).decision, c).toBe("ask");
+    for (const c of [`git -C ${other} show HEAD:notes.txt`, `git -C ../other log -p`, `git --git-dir=${other}/.git show HEAD:x`, `git --git-dir ${other}/.git log`, `git --work-tree=${other} status`, `git --work-tree ../other diff`]) expect(bash(p, c).decision, c).toBe("ask");
   });
   test("diff --no-index and blame on files outside the project ask", () => {
     const { p, root } = setup();

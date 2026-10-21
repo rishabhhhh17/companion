@@ -82,3 +82,26 @@ describe("plain words guard: one retry when the answer is not plain", () => {
     expect(explanationProblems(e, true).length).toBeGreaterThan(0);
   });
 });
+
+// The last misses of the real eval (22 Oct 2026) were lines a little too long: the same retry now covers length and sentence count.
+describe("the retry also covers lines that are too long or run on", () => {
+  const LONG = JSON.stringify({ why: ["The page asked for the name before anyone had signed in, so it showed nothing at all on the screen until the next time the whole page was loaded again.", "Now it waits."], question: { text: "Why?", options: ["Too early", "Too slow"], correct: 0 } });
+  const TWO_SENTENCES_PLUS = JSON.stringify({ why: ["The page asked early. It showed nothing. It stayed blank.", "Now it waits."], question: { text: "Why?", options: ["Too early", "Too slow"], correct: 0 } });
+  test("explanationProblems names a line over 150 characters and one with more than two sentences", () => {
+    const e1 = { bullets: [JSON.parse(LONG).why[0], "Now it waits."] };
+    expect(explanationProblems(e1, false).join(" ")).toMatch(/150 characters/);
+    const e2 = { bullets: ["The page asked early. It showed nothing. It stayed blank.", "Now it waits."] };
+    expect(explanationProblems(e2, false).join(" ")).toMatch(/two sentences/);
+    expect(explanationProblems({ bullets: ["The page asked early.", "Now it waits."] }, false)).toEqual([]);
+  });
+  test("a long line is asked for again, saying how short it must be", async () => {
+    const a = asker([LONG, GOOD]);
+    const r = await explainPlain(a.ask, req, { question: true });
+    expect(a.calls.length).toBe(2);
+    expect(a.calls[1].text).toMatch(/150 characters/);
+    expect(r.explanation?.bullets[0]).toMatch(/asked for the name before anyone had signed in\.$/);
+    const b = asker([TWO_SENTENCES_PLUS, GOOD]);
+    await explainPlain(b.ask, req, { question: true });
+    expect(b.calls.length).toBe(2);
+  });
+});
