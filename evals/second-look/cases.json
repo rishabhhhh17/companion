@@ -1,0 +1,589 @@
+[
+ {
+  "id": "budget-product",
+  "label": "seeded",
+  "kind": "number",
+  "asked": "How much will 4 months of the tool cost?",
+  "answer": "The plan is $120 a month, so for your 4-month pilot: 120 × 4 = 460 dollars in total. Add tax on top.",
+  "about": [
+   "460",
+   "480"
+  ],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The main claims and steps"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "hours-sum",
+  "label": "seeded",
+  "kind": "number",
+  "asked": "Total hours this week?",
+  "answer": "Monday to Friday you logged 6, 7 and 8 hours on the big days, so 6 + 7 + 8 = 22 hours, plus the short days.",
+  "about": [
+   "22",
+   "21"
+  ],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The main claims and steps"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "growth-percent",
+  "label": "seeded",
+  "kind": "number",
+  "asked": "How much did signups grow?",
+  "answer": "Signups went from 1,200 to 1,500, a 30% increase. That is strong month on month growth.",
+  "about": [
+   "30%",
+   "25%"
+  ],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The main claims and steps"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "expense-table",
+  "label": "seeded",
+  "kind": "number",
+  "asked": "Summarise my monthly costs.",
+  "answer": "| Cost | Amount |\n|---|---|\n| Hosting | 45 |\n| Email tool | 30 |\n| Domain | 5 |\n| **Total** | **90** |\n\nSo you spend about $90 a month on tools.",
+  "about": [
+   "Total",
+   "80"
+  ],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The main claims and steps"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "revenue-yearly",
+  "label": "seeded",
+  "kind": "number",
+  "asked": "Yearly revenue from 85 customers at $40?",
+  "answer": "85 customers paying $40 a month: 85 x 40 = 3,600 a month, so about $43,200 a year.",
+  "about": [
+   "3,600",
+   "3,400"
+  ],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The main claims and steps"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "sql-injection",
+  "label": "seeded",
+  "kind": "code",
+  "asked": "Write a login check.",
+  "answer": "Here is the login check:\n\n```js\nconst user = await db.query(\"SELECT * FROM users WHERE email = '\" + email + \"' AND password = '\" + password + \"'\");\n```\nThis returns the user if the details match.",
+  "about": [
+   "inject",
+   "SQL",
+   "password"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "code",
+     "claim": "\"SELECT * FROM users WHERE email = '\" + email",
+     "issue": "The email and password are pasted straight into the query, so anyone can type SQL into the form and get in; the password is also compared in plain text.",
+     "verify": "Use a parameterised query and compare a hashed password."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "off-by-one-loop",
+  "label": "seeded",
+  "kind": "code",
+  "asked": "Print every item in the list.",
+  "answer": "```python\nitems = ['a', 'b', 'c']\nfor i in range(1, len(items)):\n    print(items[i])\n```\nThis prints all three items.",
+  "about": [
+   "range(1",
+   "first",
+   "skip"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "code",
+     "claim": "for i in range(1, len(items))",
+     "issue": "It starts at 1, so the first item is skipped: it prints two items, not three.",
+     "verify": "Run it, or use for item in items."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "env-in-frontend",
+  "label": "seeded",
+  "kind": "code",
+  "asked": "Connect my React app to Stripe.",
+  "answer": "Put your secret key in the frontend so the button can charge cards:\n\n```js\nconst stripe = Stripe(process.env.REACT_APP_STRIPE_SECRET_KEY);\n```",
+  "about": [
+   "secret",
+   "frontend",
+   "browser"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "code",
+     "claim": "REACT_APP_STRIPE_SECRET_KEY",
+     "issue": "A secret key in frontend code is sent to every visitor's browser, so anyone can read it and charge cards.",
+     "verify": "Keep the secret key on a server; the browser only gets the publishable key."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "fake-case",
+  "label": "seeded",
+  "kind": "citation",
+  "asked": "Is there a case about this?",
+  "answer": "Yes. In Henderson v. Pacific Data Corp., 512 U.S. 401 (1994), the Supreme Court held that employers must disclose all monitoring software.",
+  "about": [
+   "Henderson",
+   "case",
+   "exist"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "citation",
+     "claim": "Henderson v. Pacific Data Corp., 512 U.S. 401 (1994)",
+     "issue": "I could not confirm this case exists, and the holding sounds broader than Supreme Court rulings usually are.",
+     "verify": "Search the case name and citation in a court database before relying on it."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "fake-quote",
+  "label": "seeded",
+  "kind": "citation",
+  "asked": "Give me a quote for my slide.",
+  "answer": "As Steve Jobs said in his 2005 Stanford speech: \"Innovation is saying no to a thousand AI tools.\"",
+  "about": [
+   "quote",
+   "Jobs",
+   "AI"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "citation",
+     "claim": "\"Innovation is saying no to a thousand AI tools.\"",
+     "issue": "This quote mentions AI tools in 2005, which does not fit; it looks invented or changed.",
+     "verify": "Check the speech transcript before using it."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "fake-study",
+  "label": "seeded",
+  "kind": "citation",
+  "asked": "Any research on remote work productivity?",
+  "answer": "A 2023 Harvard study of 50,000 workers found remote employees are exactly 47.3% more productive (Harvard Business School, Working Paper 23-911).",
+  "about": [
+   "study",
+   "47.3",
+   "Working Paper"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "citation",
+     "claim": "Harvard Business School, Working Paper 23-911",
+     "issue": "I cannot confirm this paper or the exact 47.3% figure, and such a precise single number is unusual for this kind of research.",
+     "verify": "Look the paper up by its number on the school's site."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "stale-price",
+  "label": "seeded",
+  "kind": "fact",
+  "asked": "How much is ChatGPT Plus?",
+  "answer": "ChatGPT Plus costs $10 a month and includes unlimited GPT-4 use.",
+  "about": [
+   "price",
+   "$10",
+   "20"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "fact",
+     "claim": "ChatGPT Plus costs $10 a month",
+     "issue": "Prices change; this looks lower than the usual published price, and 'unlimited' is rarely true.",
+     "verify": "Check the current price on the official pricing page."
+    }
+   ],
+   "checked": [],
+   "cantTell": [
+    "The price today"
+   ]
+  }
+ },
+ {
+  "id": "stale-law",
+  "label": "seeded",
+  "kind": "fact",
+  "asked": "What is the minimum wage in California?",
+  "answer": "California's minimum wage is $10.50 an hour for all employers.",
+  "about": [
+   "minimum wage",
+   "10.50",
+   "out of date"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "fact",
+     "claim": "$10.50 an hour",
+     "issue": "This looks out of date: California's rate has risen several times since that level.",
+     "verify": "Check the state labour department's current rate."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "correlation-cause",
+  "label": "seeded",
+  "kind": "logic",
+  "asked": "Should we add more pop-ups?",
+  "answer": "Our pages with more pop-ups also have more sales, so adding pop-ups causes more sales. Add three more to every page.",
+  "about": [
+   "cause",
+   "correlation",
+   "pop-up"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "logic",
+     "claim": "adding pop-ups causes more sales",
+     "issue": "Pages with more pop-ups may simply be the busiest pages; that does not show pop-ups cause sales.",
+     "verify": "Test it: add pop-ups to some pages only and compare."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "wrong-conclusion",
+  "label": "seeded",
+  "kind": "logic",
+  "asked": "Can we launch on Friday?",
+  "answer": "Testing found 3 serious bugs and fixing each takes about two days. We have one day left, so we can launch on Friday with everything fixed.",
+  "about": [
+   "two days",
+   "one day",
+   "Friday"
+  ],
+  "dry": {
+   "verdict": "check",
+   "items": [
+    {
+     "kind": "logic",
+     "claim": "we can launch on Friday with everything fixed",
+     "issue": "Three fixes at about two days each do not fit in one day.",
+     "verify": "Count the days again, or launch with known issues listed."
+    }
+   ],
+   "checked": [],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-product",
+  "label": "clean",
+  "kind": "number",
+  "asked": "Cost of 3 seats?",
+  "answer": "Each seat is $25 a month, so 3 seats: 25 × 3 = 75 dollars a month.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The multiplication"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-percent",
+  "label": "clean",
+  "kind": "number",
+  "asked": "Growth?",
+  "answer": "Visitors went from 2,000 to 2,500, a 25% increase.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The percentage"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-table",
+  "label": "clean",
+  "kind": "number",
+  "asked": "Costs?",
+  "answer": "| Cost | Amount |\n|---|---|\n| Hosting | 45 |\n| Email tool | 30 |\n| Domain | 5 |\n| **Total** | **80** |",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The table total"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-loop",
+  "label": "clean",
+  "kind": "code",
+  "asked": "Print every item.",
+  "answer": "```python\nitems = ['a', 'b', 'c']\nfor item in items:\n    print(item)\n```\nThis prints all three items.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The loop prints each item once"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-param-query",
+  "label": "clean",
+  "kind": "code",
+  "asked": "Find a user by email.",
+  "answer": "```js\nconst user = await db.query('SELECT id, name FROM users WHERE email = $1', [email]);\n```\nThe email is passed as a parameter, so it cannot change the query.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The query uses a parameter"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-publishable",
+  "label": "clean",
+  "kind": "code",
+  "asked": "Stripe in React?",
+  "answer": "In the browser use only your publishable key: `Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY)`. Keep the secret key on your server.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "Only the publishable key is in the browser"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-definition",
+  "label": "clean",
+  "kind": "fact",
+  "asked": "What is a CSV file?",
+  "answer": "A CSV file is plain text where each line is a row and commas separate the values. Spreadsheets like Excel and Google Sheets can open it.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The definition"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-steps",
+  "label": "clean",
+  "kind": "logic",
+  "asked": "How do I make a Gmail filter?",
+  "answer": "In Gmail, click the search options, enter who the email is from, click Create filter, choose what should happen (for example Skip the Inbox), and click Create filter again.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The steps are in a sensible order"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-hedged",
+  "label": "clean",
+  "kind": "fact",
+  "asked": "Will interest rates fall next year?",
+  "answer": "Nobody can know for sure. Some forecasters expect cuts, others do not; it depends on inflation data. Treat any single forecast with caution.",
+  "about": [],
+  "dry": {
+   "verdict": "cant_tell",
+   "items": [],
+   "checked": [],
+   "cantTell": [
+    "Future interest rates"
+   ]
+  }
+ },
+ {
+  "id": "clean-division",
+  "label": "clean",
+  "kind": "number",
+  "asked": "Split $900 between 4?",
+  "answer": "$900 / 4 = $225 each.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The division"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-email",
+  "label": "clean",
+  "kind": "other",
+  "asked": "Write a polite reminder.",
+  "answer": "Hi Sam, just a quick reminder that the invoice from 3 October is still open. Could you let me know when it will be paid? Thanks, Priya",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The tone and content"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-git-advice",
+  "label": "clean",
+  "kind": "code",
+  "asked": "Undo my last commit but keep changes?",
+  "answer": "Run `git reset --soft HEAD~1`. Your changes stay staged, and the commit is removed.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The command does what it says"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-average",
+  "label": "clean",
+  "kind": "number",
+  "asked": "Average order?",
+  "answer": "Three orders of $30, $45 and $75 add up to $150, so 150 / 3 = 50 dollars on average.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The sum and average"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-convert",
+  "label": "clean",
+  "kind": "number",
+  "asked": "Minutes in 3 hours?",
+  "answer": "3 × 60 = 180 minutes.",
+  "about": [],
+  "dry": {
+   "verdict": "solid",
+   "items": [],
+   "checked": [
+    "The conversion"
+   ],
+   "cantTell": []
+  }
+ },
+ {
+  "id": "clean-caveat",
+  "label": "clean",
+  "kind": "fact",
+  "asked": "Is it legal to record a call?",
+  "answer": "It depends on where you and the other person are: some places need everyone's consent, others only one person's. Check the rules for your location, and when in doubt ask everyone.",
+  "about": [],
+  "dry": {
+   "verdict": "cant_tell",
+   "items": [],
+   "checked": [],
+   "cantTell": [
+    "Which rule applies where you are"
+   ]
+  }
+ }
+]
