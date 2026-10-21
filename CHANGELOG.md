@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Second Look's engine: 22 Oct 2026
+
+- **The engine behind "check any AI answer" is built.** It redoes the maths itself (sums, percentages, table totals), so a wrong number is caught for certain, not guessed. Then one short look by Claude covers code, citations, out of date facts and steps that do not follow.
+- **It is honest by design:** it never says "solid" when the maths found a slip, never claims to have checked a source (it cannot search yet), and says "I can't tell" when it cannot. Secrets are hidden before anything is sent.
+- **Tested on 30 AI answers, 15 with a planted mistake.** The real score with Claude is still to come; the button and the card come with the screens.
+
 ## The light features can run without Claude Code: 22 Oct 2026
 
 - **Prompt help, Explain, Draw it for me, the error explainer, Show me how and pictures you add can now go straight to Claude's plain API**, without starting Claude Code. That matters because Anthropic's terms let a company pay for the plain API for its users, but not for Claude Code. So a free version of the guide with no key of your own is now possible, once the usage server is live.

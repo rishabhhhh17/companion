@@ -8,6 +8,10 @@ The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder
 - Second Look is a **contained feature**, leading with numbers and tables, risky code lines, any desktop app, and "I can't tell". Not a headline until people come back to it.
 - The light features (the guide, pointing, Explain, Second Look) should call the Messages API directly, so they can be company paid now (F22 update).
 
+## Built so far (22 Oct 2026)
+- The light lanes straight on the Messages API, off by default (`runner/src/direct.ts`, PR 155).
+- Second Look's engine (`runner/src/secondlook.ts`) and its eval (`evals/second-look/`, 30 cases). This first eval has 30 answers, not the planned 100; it grows once the first real run shows where it is weak. **Not yet built:** searching for sources (the fast lane has no tools; a web search on the plain API is the next step), the hotkey, reading the selection, and the card.
+
 ## Part 1: the guide, "exactly what HeyClicky does", in an order that works
 
 The full row by row table is in `M11-match-and-beat.md`. Statuses there were checked on 16 Oct and a lot has changed since (follow up by voice, microphone fallbacks, Home stepping aside were built on 17 to 19 Oct), so **re-check each row against the code before building it.** Order, by how many people hit it on day one:
