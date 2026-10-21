@@ -14,7 +14,7 @@ pub const PROTOCOL_VERSION: i64 = 1;
 
 /// The commands a web page may send. Everything else is refused here, in Rust.
 const ALLOWED: &[&str] = &[
-    "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore",
+    "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "checkpoint.putBack",
     // Not here: assist.prompt, assist.locate, assist.image and assist.cancel. Only the shell sends them (Prompt help after its
     // hotkey, Show me after its light), straight to the engine: from a page, assist.prompt could name any folder and
     // assist.image could hand in any picture outside a Show me press (rule 5).
@@ -73,7 +73,7 @@ pub const NO_PROJECT: &str = "no-project";
 pub const PROJECT_BOUND: &[&str] = &[
     "project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start",
     "agent.start", "agent.send", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
-    "checkpoint.restore", "tasks.list", "recap.ask", "explain.set",
+    "checkpoint.restore", "checkpoint.putBack", "tasks.list", "recap.ask", "explain.set",
     "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
     "spending.show", "spending.set", "teach.try", "teach.check",
     "bisect.start", "bisect.undo",
@@ -372,7 +372,7 @@ mod tests {
         assert!(check_project(&c("problem.find", "/"), "/Users/me/site").is_err());
         assert!(check_project(&c("project.inspect", "/Users/me/site"), "").is_err());
         // Every command that works on a project is held to the chosen folder (found by the 15 Oct 2026 review).
-        for t in ["agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback", "checkpoint.restore", "tasks.list", "recap.ask", "explain.set", "memory.list", "memory.erase", "memory.add", "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i"] {
+        for t in ["agent.start", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback", "checkpoint.restore", "checkpoint.putBack", "tasks.list", "recap.ask", "explain.set", "memory.list", "memory.erase", "memory.add", "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i"] {
             assert!(check_project(&c(t, "/Users/me/other"), "/Users/me/site").is_err(), "{t} must not accept another folder");
             assert!(check_project(&c(t, "/Users/me/site"), "/Users/me/site").is_ok(), "{t} must accept the chosen folder");
             assert!(check_project(&c(t, "/Users/me/site"), "").is_err(), "{t} must not work before a folder is chosen");

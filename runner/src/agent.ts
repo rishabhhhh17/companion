@@ -648,15 +648,30 @@ export class AgentRunner {
         // Undo while something is writing to the project would fight with it: wait, or stop it first.
         if (this.projectInUse(cmd.project)) { this.fail("Something is still working on this project. Wait for it to finish, or press Stop, then undo."); return; }
         try {
-          const r = await this.store(cmd.project).restore(cmd.checkpoint);
+          const r = await this.store(cmd.project).restore(cmd.checkpoint, { protect: this.setting<boolean>("undo.protectMyEdits", cmd.project) !== false, force: (cmd as { force?: boolean }).force === true });
           // The files are not what any offer or turn was made for any more.
           this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
           // The files went back, so no conversation in this project matches them any more: nothing there can be followed up.
           for (const [a, t] of this.lastTask) if (resolve(t.project) === resolve(cmd.project)) this.lastTask.set(a, { ...t, undone: true });
-          this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone } as never);
+          this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone, yours: r.yours } as never);
         } catch (e) {
           const m = String((e as Error).message ?? e);
           this.fail(/^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : /^(That|This|Companion needs|Something)/.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`);
+        }
+        return;
+      }
+      case "checkpoint.putBack": {
+        // The second, confirmed press after an Undo left some of the person's own files alone. Same rules as Undo: not while work runs.
+        const said = (ok: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "checkpoint.putBackDone", project: cmd.project, checkpoint: cmd.checkpoint, ok, putBack: [], skipped: [], ...extra } as never);
+        if (cmd.confirm !== true) { said(false, { reason: "Putting your files back needs your yes." }); return; }
+        if (this.projectInUse(cmd.project)) { said(false, { reason: "Something is still working on this project. Wait for it to finish, or press Stop, then try again." }); return; }
+        try {
+          const r = await this.store(cmd.project).putBack(cmd.checkpoint, cmd.files);
+          this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
+          said(true, { putBack: r.putBack, skipped: r.skipped.map((x) => x.path), ...(r.putBack.length ? { savedTo: r.savedTo, safety: r.safetyCheckpoint } : {}), ...(r.putBack.length === 0 ? { reason: "There was nothing left to put back." } : {}) });
+        } catch (e) {
+          const m = String((e as Error).message ?? e);
+          said(false, { reason: /^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : /^(That|This|Companion needs|Something)/.test(m) ? m : `Companion could not put them back (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.` });
         }
         return;
       }
@@ -855,6 +870,13 @@ export class AgentRunner {
   }
 
   private async runInner(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
+    // Our work ends however the task ends: if anything threw before the usual place, the baseline must still move on, or Undo would
+    // take the task's own changes for the person's.
+    const started: { store: CheckpointStore | null; ended: boolean } = { store: null, ended: false };
+    try { return await this.runInnerBody(cmd, opts, started); }
+    finally { if (started.store && !started.ended) await started.store.noteAgentEnd().catch(() => undefined); }
+  }
+  private async runInnerBody(cmd: StartCmd, opts: RunOpts, started: { store: CheckpointStore | null; ended: boolean }): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const prior = opts.priorUsd ?? 0;
     // Read once, as the task starts: a change in Settings reaches the next task, never this one. Checks before Companion
     // asks you what to do (work.tries, usual 3), and whether it asks when the tries run out even if each failure was
@@ -886,6 +908,9 @@ export class AgentRunner {
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
+    // Anything that differs from what our last step left was changed by the person since (Undo keeps those files as they are).
+    await store.noteTaskStart(before.id).catch(() => undefined);
+    started.store = store;
     // A new task replaces the last one once it has really started: whatever happens to it, a follow up never carries on an
     // older conversation. A start that failed before this (its snapshot could not be made) changed nothing, so Try again
     // is still there.
@@ -1074,6 +1099,9 @@ export class AgentRunner {
     book();
     this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
     this.openTasks.delete(cmd.agent);
+    // Our work ends here: the project as it is now is what this step left. Later differences are the person's own.
+    started.ended = true;
+    await store.noteAgentEnd(lastAfter).catch(() => undefined);
     // The change itself, place by place: the first changed line for "Show me what changed", the diff for Explain, and the
     // same small change made twice for "your turn" (only when it is on, after a proven fix, outside a plan, and never off
     // the record).
@@ -1507,6 +1535,7 @@ export class AgentRunner {
       const restore = await store.snapshot("Before your turn: the whole fix");
       this.ownWrite(() => writeFileSync(abs, back));
       const start = await store.snapshot(`Your turn: ${second.file}`);
+      await store.noteAgentEnd(start.id).catch(() => undefined);   // the change put back is ours; what the person does next is theirs
       this.teachOffers.delete(key);
       this.teaching.set(key, { checkpoint: cmd.checkpoint, start: start.id, restore: restore.id, hunk: second });
       say(true, { target: placeOf(second, "before"), example: { file: first.file, line: placeOf(first, "after").line, was: shown(first.before), now: shown(first.after) }, change: { was: offer.repeat.was, now: offer.repeat.now }, restore: restore.id });
@@ -1853,6 +1882,8 @@ export class AgentRunner {
     }
     const ac = new AbortController();
     this.installing.set(key, ac);
+    // What the install writes (a lock file, say) is ours, not the person's: Undo must not mistake it for their edit.
+    const writesFrom = await this.store(project).writesStart().catch(() => null);
     try {
       say("installing", `Installing what the project needs with ${det.packageManager}. This can take a few minutes the first time.`);
       // Not in CI mode: pnpm then refuses a lock file that an export left out of date, and a person installing wants it to work.
@@ -1861,7 +1892,10 @@ export class AgentRunner {
       if (r.code !== 0 || r.timedOut) { say("failed", `The install did not finish. ${redact((r.stderr || r.stdout).trim().split("\n").slice(-6).join(" ").slice(-400))}`); return; }
       say("done", "Installed.");
       await this.projectInspect(project);
-    } finally { this.installing.delete(key); }
+    } finally {
+      if (writesFrom) await this.store(project).noteAgentWrites(writesFrom).catch(() => undefined);
+      this.installing.delete(key);
+    }
   }
 
   // Open a project from a link: a new folder inside the folder the person chose. Never into an existing folder.
@@ -1946,7 +1980,8 @@ export class AgentRunner {
     const total = steps.length;
     let remaining = plan.budgetUsd - plan.usd, spent = plan.usd, completed = 0, status = "done", session = plan.sessionId;
     // Take the wheel: watch for changes the agent did not make, only while the plan is running.
-    const watcher = new ProjectWatcher(plan.project, (path) => this.requestPause(cmd.agent, "files_changed", path));
+    // Each file the person changes is written down first, so Undo of an earlier step never replaces it.
+    const watcher = new ProjectWatcher(plan.project, (path) => { this.store(plan.project).notePersonEdit(path); this.requestPause(cmd.agent, "files_changed", path); });
     this.watchers.set(cmd.agent, watcher);
     watcher.start();
     // The plan's goal, as a line about the project (memory.rememberGoals, read as the plan starts). Written once the watcher
