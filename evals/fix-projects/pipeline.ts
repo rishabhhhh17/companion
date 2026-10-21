@@ -74,7 +74,7 @@ export type FixContext = {
   models: Record<ModelRole, string>;
   flow?: Flow;
   onStuck?: "different" | "stop";
-  approvals?: "deny" | "allow";
+  approvals?: "deny" | "allow" | "settings";
   /** Turn on the second model review (COMPANION_REVIEW) for the fix task. */
   review?: boolean;
   /** Tests only: a stand in other than the known good fix (a wrong fix, one that breaks something else). */
@@ -110,7 +110,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
   const inner = ctx.agent ?? (ctx.mode === "dry" ? dryAgent(c, flow) : ctx.harness!.agent());
   const engine = ctx.meter.engine(inner);
   const reviewer = ctx.review ? ctx.meter.engine(ctx.mode === "dry" ? scripted([[{ text: '{"verdict":"approve","concerns":[]}', costUsd: 0 }]]) : ctx.harness!.reviewer(), "reviewer") : undefined;
-  const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "deny", onStuck: ctx.onStuck ?? "different", signal: ctx.signal });
+  const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "settings", onStuck: ctx.onStuck ?? "different", signal: ctx.signal });
   try {
     const before = await runHidden(c, dir);
     const printBefore = testPrint(dir);
@@ -173,7 +173,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     for (const r of regressions) notes.push(`Broke: ${r}`);
     for (const a of accept.filter((x) => !x.pass)) notes.push(`Hidden check failed: ${c.hidden.find((h) => h.name === a.name)?.what} (${after.why[a.name] ?? ""})`);
     if (changedTests.length) notes.push(`Test files changed: ${changedTests.join(", ")}`);
-    if (s.approvalsAsked.length) notes.push(`Companion asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "deny"}): ${s.approvalsAsked.slice(0, 2).join("; ")}`);
+    if (s.approvalsAsked.length) notes.push(`Companion asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "settings"}): ${s.approvalsAsked.slice(0, 2).join("; ")}`);
     if (c.expect === "ask" && said && !asked) notes.push(`The card showed: ${said.slice(0, 200)}${needsYou ? "" : " (not as a question: the task did not end as needs you)"}`);
     return {
       id: c.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: Date.now() - t0, notes,

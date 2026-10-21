@@ -9,7 +9,7 @@ import { commandsOf, hasDynamic, inputTargets, parseShell, redirectTargets, unwr
 import { isSafeUrl } from "./research.ts";
 import { isEnvFile } from "./diagram.ts";
 
-export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network";
+export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network" | "settings";
 export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason: string; undoable: boolean };
 export type ToolCall = { tool: string; input: Record<string, unknown> };
 // started: the ids of the background commands this task's own shell commands reported starting.
@@ -67,6 +67,32 @@ function whereIs(project: string, file: string, cwd?: string): Where {
   return { inside, segments, protectedPart: part, abs };
 }
 const insideProject = (project: string, file: string) => { const w = whereIs(project, file); return { inside: w.inside, inGit: w.segments.includes(".git") }; };
+
+// ---------- private settings files (.env and its family) ----------
+// T05: the hook asks before any write to a .env file (the real run of 22 Oct 2026 found it allowed every write). A card names the
+// settings it touches and never shows a value. A key, token or password is never written for the person: Companion tells them to
+// add that line themselves (rule: never ask for, make up or write a secret). Templates people share (.env.example) are free.
+const SETTINGS_TEMPLATE = /\.(example|sample|template|dist|defaults)$/i;
+/** A private settings file: .env, .env.local, .env.production, .env.<anything>, name.env. Not the shared templates. */
+export const isSettingsFile = (p: string): boolean => {
+  const b = basename(p).toLowerCase();
+  return (/^\.env(\.[^/]*)?$/.test(b) || /^[^/]+\.env$/.test(b)) && !SETTINGS_TEMPLATE.test(b);
+};
+const SECRET_NAME = /(SECRET|TOKEN|PASSW|PRIVATE|CREDENTIAL|AUTH|CERT|API_?KEY|ACCESS_?KEY|(^|_)KEY($|_))/i;
+/** Setting names written in some text ("SITE_NAME=Demo" gives SITE_NAME). Names only, at most six; never a value. */
+export function settingNames(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/(?:^|[\s"'`;&|>(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=/g)) if (!out.includes(m[1])) out.push(m[1]);
+  return out.slice(0, 6);
+}
+function settingsVerdict(file: string, names: string[]): Verdict {
+  const base = basename(file);
+  const secret = names.find((n) => SECRET_NAME.test(n));
+  if (secret) return deny("settings", `Companion does not write a key, token or password for you. Add the ${secret} line to ${base} yourself`);
+  return ask("settings", `changes your private settings file (${base})${names.length ? `: ${names.join(", ")}` : ""}`, true);
+}
+/** The text a file tool puts in a file, for its setting names only. */
+const writtenText = (input: Record<string, unknown>): string => [input.new_string, input.content, ...(Array.isArray(input.edits) ? input.edits.map((e: any) => e?.new_string) : [])].filter((x): x is string => typeof x === "string").join("\n");
 
 const WRITE_TOOLS: Record<string, string> = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
 const READ_PATHS: Record<string, string> = { Read: "file_path", Grep: "path", Glob: "path", LS: "path", NotebookRead: "notebook_path" };
@@ -133,6 +159,7 @@ const FILE_READ_TOOLS = new Set(Object.keys(READ_PATHS));
 const FILE_EDIT_TOOLS = new Set(Object.keys(WRITE_TOOLS));
 export function taskScopeCovers(call: ToolCall, v: Verdict, byHouseRule: boolean): boolean {
   if (v.decision !== "ask" || !v.undoable) return false;
+  if (v.risk === "settings") return false;   // a settings file is its own tap every time
   if (FILE_READ_TOOLS.has(call.tool)) return v.risk === "outside_project" || byHouseRule;
   if (FILE_EDIT_TOOLS.has(call.tool)) return byHouseRule;
   return false;
@@ -153,6 +180,7 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     const w = whereIs(ctx.project, p);
     if (w.protectedPart) return deny(w.protectedPart.startsWith(".git") ? "git" : "outside_project", protectedWhy(w.protectedPart));
     if (!w.inside) return deny("outside_project", "writes must stay inside the project folder");
+    if (isSettingsFile(w.abs)) return settingsVerdict(w.abs, settingNames(writtenText(input)));
     return allow();
   }
   if (tool in READ_PATHS) {
@@ -252,6 +280,7 @@ function pathVerdict(arg: string, ctx: Context, cwd: string): Verdict | null {
   const w = whereIs(ctx.project, arg, cwd);
   if (w.protectedPart) return deny(w.protectedPart.startsWith(".git") ? "git" : "outside_project", protectedWhy(w.protectedPart));
   if (!w.inside) return deny("outside_project", `${arg} is outside the project`);
+  if (isSettingsFile(w.abs)) return ask("settings", `changes your private settings file (${basename(w.abs)})`, true);
   return null;
 }
 
@@ -288,6 +317,12 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
     if (t.includes("$") || t.includes("`")) { out = worst(out, ask("irreversible", "this command writes to a place it works out while it runs")); continue; }
     const v = pathVerdict(t, ctx, cwd);
     if (v) out = worst(out, v);
+  }
+  // A write to a settings file names the settings in the command (never the values), and refuses a key, token or password.
+  if (out.decision === "ask" && out.risk === "settings") {
+    const names = settingNames(cmd);
+    const secret = names.find((n) => SECRET_NAME.test(n));
+    out = secret ? deny("settings", `Companion does not write a key, token or password for you. Add the ${secret} line to your settings file yourself`) : names.length ? { ...out, reason: `${out.reason}: ${names.join(", ")}` } : out;
   }
   // Last, so a specific reason (like "git push") is shown in preference to this general one.
   if (dynamic && out.decision === "allow" && commands.some((w) => w.some((x) => DANGEROUS_WORDS.has(basename(x))))) out = ask("irreversible", "this command builds part of itself while it runs, so I cannot check it");
