@@ -52,6 +52,16 @@ describe("installing packages, only when asked", () => {
     const t = runner(); await t.cmd({ type: "project.install", project: tmp("p") });
     expect(of(t.events, "project.install")[0]).toMatchObject({ stage: "failed" });
   });
+  test("a Go, Rust, Java, Kotlin or Swift project has no packages for the Install button: its build fetches them, and the words say how to do it yourself", async () => {
+    const p = tmp("p");
+    writeFileSync(join(p, "go.mod"), "module x\n\nrequire github.com/google/uuid v1.6.0\n");
+    const t = runner(); await t.cmd({ type: "project.install", project: p });
+    const e = of(t.events, "project.install")[0];
+    expect(e).toMatchObject({ stage: "failed" });
+    expect(e.detail).toMatch(/Go projects fetch their packages when they are built/);
+    expect(e.detail).toContain("go mod download");
+    expect(e.detail).not.toMatch(/package\.json/);
+  });
   test("Stop everything ends an install", async () => {
     const p = tmp("p");
     writeFileSync(join(p, "package.json"), JSON.stringify({ name: "x", version: "1.0.0", scripts: { preinstall: "sleep 30" } }));

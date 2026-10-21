@@ -5,6 +5,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node
 import { join } from "node:path";
 import { detectProject, replitRun, usableStartScript, type PackageManager } from "./detect.ts";
 import { pythonIntakeNote } from "./python.ts";
+import type { NativeSetup } from "./native.ts";
 import { label } from "../redact.ts";
 export { replitRun };
 
@@ -55,7 +56,7 @@ const readText = (p: string, max = 200_000): string => { try { const s = statSyn
 const ALWAYS_THERE = new Set(["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_OPTIONS", "TZ", "LANG", "USER", "SHELL", "TMPDIR", "NODE_ENV", "PORT", "HOST", "MODE", "DEV", "PROD", "SSR", "BASE_URL", "CI", "VERCEL", "VERCEL_ENV", "VERCEL_URL", "NEXT_RUNTIME", "PWD", "HOME", "PATH"]);
 export function namesInCode(dir: string): Set<string> {
   const found = new Set<string>();
-  const skip = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage", ".vercel", ".companion"]);
+  const skip = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage", ".vercel", ".companion", "target", "vendor", "Pods"]);
   let files = 0;
   const walk = (d: string, depth: number) => {
     if (depth > 6 || files > 1500) return;
@@ -66,7 +67,7 @@ export function namesInCode(dir: string): Set<string> {
       let st; try { st = lstatSync(p); } catch { continue; }   // a link is never followed (it could lead out of the project)
       if (st.isSymbolicLink()) continue;
       if (st.isDirectory()) { walk(p, depth + 1); continue; }
-      if (!/\.(m?[jt]sx?|vue|svelte|astro|py)$/.test(n) || st.size > 300_000) continue;
+      if (!/\.(m?[jt]sx?|vue|svelte|astro|py|go|rs|java|kt|swift)$/.test(n) || st.size > 300_000) continue;
       files++;
       const t = readText(p);
       for (const m of t.matchAll(/import\.meta\.env\.([A-Z][A-Z0-9_]*)/g)) found.add(m[1]);
@@ -74,6 +75,11 @@ export function namesInCode(dir: string): Set<string> {
       for (const m of t.matchAll(/process\.env\[["']([A-Z][A-Z0-9_]*)["']\]/g)) found.add(m[1]);
       for (const m of t.matchAll(/os\.(?:environ\.get|getenv)\(\s*["']([A-Z][A-Z0-9_]*)["']/g)) found.add(m[1]);
       for (const m of t.matchAll(/os\.environ\[["']([A-Z][A-Z0-9_]*)["']\]/g)) found.add(m[1]);
+      // Go, Rust, Java and Kotlin, Swift
+      for (const m of t.matchAll(/os\.(?:Getenv|LookupEnv)\(\s*"([A-Z][A-Z0-9_]*)"/g)) found.add(m[1]);
+      for (const m of t.matchAll(/\b(?:env::var|option_env!|env!)\(\s*"([A-Z][A-Z0-9_]*)"/g)) found.add(m[1]);
+      for (const m of t.matchAll(/System\.getenv\(\s*"([A-Z][A-Z0-9_]*)"/g)) found.add(m[1]);
+      for (const m of t.matchAll(/ProcessInfo\.processInfo\.environment\[\s*"([A-Z][A-Z0-9_]*)"/g)) found.add(m[1]);
     }
   };
   walk(dir, 0);
@@ -116,6 +122,16 @@ function stackOf(dir: string, deps: Record<string, string>): { stack: string; ex
   return { stack, extras };
 }
 
+/** What a Go, Rust, Java, Kotlin, Swift or Xcode project is, in the words About this project uses. */
+function nativeStack(s: NativeSetup): { stack: string; extras: string[] } {
+  return { stack: s.label, extras: s.stackNote ? [s.stackNote] : [] };
+}
+/** The lines About this project shows for such a project: what it is and how it is checked (and that a build may download
+ *  packages), then what is missing on this Mac or cannot be checked here, then the schemes and how to run it. */
+export function nativeNotes(s: NativeSetup): string[] {
+  return [s.note, ...(s.missing ? [s.missing] : []), ...s.gaps, ...s.hints];
+}
+
 export function inspectProject(dir: string): ProjectReport {
   const pkg = readJson(join(dir, "package.json"));
   const deps: Record<string, string> = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) };
@@ -138,8 +154,8 @@ export function inspectProject(dir: string): ProjectReport {
   const origin: Origin = "lovable-tagger" in deps || /lovable-tagger/.test(viteCfg) ? "lovable"
     : existsSync(join(dir, ".bolt", "config.json")) || existsSync(join(dir, ".bolt", "prompt")) ? "bolt"
     : replit ? "replit" : "unknown";
-  const { stack, extras } = stackOf(dir, deps);
   const det = detectProject(dir);
+  const { stack, extras } = det.native ? nativeStack(det.native) : stackOf(dir, deps);
   const notes: string[] = [];
 
   if (!pkg && existsSync(join(dir, "package.json.bak"))) notes.push("There is no package.json, only package.json.bak. The project cannot be installed or started until it is named package.json again.");
@@ -147,9 +163,12 @@ export function inspectProject(dir: string): ProjectReport {
   const needsInstall = !!pkg && !!pm && Object.keys(deps).length > 0 && !existsSync(join(dir, "node_modules"));
   if (workspace) notes.push("This is a workspace with more than one package; Companion checks it from the top folder.");
   if (det.python) notes.push(pythonIntakeNote(det.python));
+  if (det.native) notes.push(...nativeNotes(det.native));
 
   let start = det.start?.kind === "server" ? det.start.command : det.start?.kind === "static" ? "a plain web page (no command needed)" : null;
   if (!start && replit) { const r = replitRun(replit); if (r) start = r; }
+  // How the person starts a Go, Rust, Java, Kotlin or Swift project is told to them; a check never starts it on its own.
+  if (!start && det.native?.run) start = det.native.run;
 
   // Settings: what the code reads or the example file lists, against what the person's own .env files set.
   const exampleName = [".env.example", ".env.sample", ".env.template"].find((f) => existsSync(join(dir, f))) ?? null;

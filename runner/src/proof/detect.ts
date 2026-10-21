@@ -3,23 +3,27 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { isStartScript } from "../../../protocol/settings.ts";
-import { detectPython, looksPython, type PythonOptions, type PythonServer, type PythonSetup } from "./python.ts";
+import { detectPython, hasPythonMarks, looksPython, type PythonOptions, type PythonServer, type PythonSetup } from "./python.ts";
+import { detectNative, type NativeEnv, type NativeSetup } from "./native.ts";
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 // tool: for a Python check, the module it runs (so "No module named ruff" reads as not installed, not as a failure).
-export type Check = { name: "typecheck" | "lint" | "build"; command: string; tool?: string };
+// offline: for a Go, Rust, Java, Kotlin, Swift or Xcode check, the same command without any download; null when there is no
+// way to run it without one. The ladder runs it first, and the command itself only when the install setting allows it.
+export type Check = { name: "typecheck" | "lint" | "build"; command: string; tool?: string; offline?: string | null };
 // python: a Python dev server, told its host and port on the command line. env: fixed settings it needs (never the person's).
 // from: where the command came from (the project's .claude/launch.json, its dev or start script, its .replit file), so a
 // start that finishes on its own can be told apart from a tool (ladder.ts looksLikeSite).
 export type Start = { kind: "server"; command: string; port?: number; autoPort?: boolean; python?: PythonServer; env?: Record<string, string>; from?: "launch" | "dev" | "start" | "replit" | "settings" } | { kind: "static"; dir: string };
 export type Detected = {
-  kind: "node" | "python" | "static" | "unknown";
+  kind: "node" | "python" | "native" | "static" | "unknown";
   packageManager: PackageManager | null;
   lockfile: string | null;
   checks: Check[];
-  tests: { command: string; tool?: string } | null;
+  tests: { command: string; tool?: string; offline?: string | null } | null;
   start: Start | null;
   python?: PythonSetup;   // only for a Python project (one without a package.json)
+  native?: NativeSetup;   // only for a Go, Rust, Java, Kotlin, Swift or Xcode project (one without a package.json or Python marks)
 };
 
 const LOCKS: [string, PackageManager][] = [["bun.lock", "bun"], ["bun.lockb", "bun"], ["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"], ["package-lock.json", "npm"]];
@@ -28,11 +32,14 @@ function readJson(path: string): Record<string, any> | null {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-export function detectProject(dir: string, has: (m: PackageManager) => boolean = (m) => installed(m), pythonOptions?: PythonOptions): Detected {
+export function detectProject(dir: string, has: (m: PackageManager) => boolean = (m) => installed(m), pythonOptions?: PythonOptions, nativeEnv?: NativeEnv): Detected {
   const pkgPath = join(dir, "package.json");
   const hasPkg = existsSync(pkgPath);
-  // A folder with a package.json is a Node project, exactly as before; only one without is looked at as Python.
-  const py = !hasPkg && looksPython(dir) ? detectPython(dir, pythonOptions) : null;
+  // A folder with a package.json is a Node project, exactly as before; only one without is looked at as Python, or as a Go,
+  // Rust, Java, Kotlin, Swift or Xcode project. Python's own marks come first (a Rust extension for Python keeps its
+  // pyproject.toml); a stray .py file does not outrank a go.mod or a Cargo.toml.
+  const nat = !hasPkg && !hasPythonMarks(dir) ? detectNative(dir, nativeEnv) : null;
+  const py = !hasPkg && !nat && looksPython(dir) ? detectPython(dir, pythonOptions) : null;
   const pkg = hasPkg ? readJson(pkgPath) ?? {} : {};
   const scripts: Record<string, string> = typeof pkg.scripts === "object" && pkg.scripts ? pkg.scripts : {};
   const locks = LOCKS.filter(([f]) => existsSync(join(dir, f)));
@@ -53,8 +60,9 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
     if (pm && s) checks.push({ name, command: run(s) });
   }
   if (py) checks.push(...py.checks);
+  if (nat) checks.push(...nat.checks);
   // npm's default placeholder is not a test.
-  const tests = pm && scripts.test && !/no test specified/i.test(scripts.test) ? { command: run("test") } : py?.tests ?? null;
+  const tests = pm && scripts.test && !/no test specified/i.test(scripts.test) ? { command: run("test") } : py?.tests ?? nat?.tests ?? null;
 
   let start: Start | null = null;
   const launch = readJson(join(dir, ".claude", "launch.json"));
@@ -65,10 +73,12 @@ export function detectProject(dir: string, has: (m: PackageManager) => boolean =
   else if (pm && scripts.start) start = { kind: "server", command: run("start"), from: "start" };
   else if (py?.start) start = py.start;
   else if (existsSync(join(dir, ".replit")) && replitRun(readFileSync(join(dir, ".replit"), "utf8"))) start = { kind: "server", command: replitRun(readFileSync(join(dir, ".replit"), "utf8"))!, from: "replit" };
-  else if (existsSync(join(dir, "dist", "index.html"))) start = { kind: "static", dir: join(dir, "dist") };
-  else if (existsSync(join(dir, "index.html"))) start = { kind: "static", dir };
+  // A Go, Rust, Java, Kotlin or Swift project is never started on its own, and a stray index.html next to it is not "the
+  // site": only its own .claude/launch.json (or .replit) says how to start it.
+  else if (!nat && existsSync(join(dir, "dist", "index.html"))) start = { kind: "static", dir: join(dir, "dist") };
+  else if (!nat && existsSync(join(dir, "index.html"))) start = { kind: "static", dir };
 
-  return { kind: hasPkg ? "node" : py ? "python" : start ? "static" : "unknown", packageManager: pm, lockfile: lock?.[0] ?? null, checks, tests, start, ...(py ? { python: py.setup } : {}) };
+  return { kind: hasPkg ? "node" : py ? "python" : nat ? "native" : start ? "static" : "unknown", packageManager: pm, lockfile: lock?.[0] ?? null, checks, tests, start, ...(py ? { python: py.setup } : {}), ...(nat ? { native: nat.setup } : {}) };
 }
 
 /** check.start in Settings: start the project with one of its own scripts instead of the one found. "auto" (or nothing)

@@ -1,0 +1,26 @@
+{
+  "cmd": [
+    "xcodebuild",
+    "-project",
+    "Shop.xcodeproj",
+    "-scheme",
+    "Shop",
+    "-destination",
+    "platform=macOS",
+    "CODE_SIGNING_ALLOWED=NO",
+    "CODE_SIGNING_REQUIRED=NO",
+    "CODE_SIGN_IDENTITY=",
+    "-quiet",
+    "build"
+  ],
+  "probe": [
+    "xcodebuild",
+    "-version"
+  ],
+  "file": "Shop/main.swift",
+  "line": 5,
+  "about": "cannot convert",
+  "env": {
+    "DEVELOPER_DIR": "$XCODE_DEVELOPER_DIR"
+  }
+}

@@ -1,14 +1,18 @@
 // Did the task weaken the tests to make them pass? Compares the test files before and after.
 export type TestReport = { ok: boolean; before: number; after: number; problems: string[] };
 
+// Rust keeps its unit tests in the same file as the code (#[cfg(test)]), so every .rs file is looked at. Java, Kotlin and Swift
+// keep tests in src/test or Tests, in files named ...Test, ...Tests or ...IT.
 export const isTestFile = (path: string) =>
-  /(^|\/)(tests?|__tests__)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path) || /(^|\/)test_[^/]+\.py$/.test(path) || /_test\.(py|go)$/.test(path);
-const ACTIVE = /(?<![\w.])(?:test|it)\s*(?:\.(?:concurrent|each\s*\([^)]*\)))?\s*\(|^\s*(?:async\s+)?def\s+test_\w+|^func\s+Test\w+\s*\(/gm;
+  /(^|\/)(tests?|__tests__|Tests)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path) || /(^|\/)test_[^/]+\.py$/.test(path) || /_test\.(py|go)$/.test(path)
+  || /\.rs$/.test(path) || /(?:Tests?|IT)\.(?:java|kt|scala|groovy|swift)$/.test(path);
+const ACTIVE = /(?<![\w.])(?:test|it)\s*(?:\.(?:concurrent|each\s*\([^)]*\)))?\s*\(|^\s*(?:async\s+)?def\s+test_\w+|^func\s+Test\w+\s*\(|^\s*@(?:Parameterized|Repeated)?Test\b|#\[(?:\w+::)?test\b|^\s*(?:override\s+)?func\s+test\w*\s*\(/gm;
 // pytest's xfail, a skip or xfail call inside a test, importorskip and unittest's expectedFailure switch a test off too, while
 // its def test_ line stays (audit A32).
-const SWITCHED_OFF = /(?<![\w.])(?:(?:test|it|describe)\.(?:skip|only|todo)\b|xit\b|xtest\b|xdescribe\b)|@(?:pytest\.mark\.(?:skip\w*|xfail)|unittest\.(?:skip\w*|expectedFailure))\b|\bpytest\.(?:skip|xfail|importorskip)\s*\(|\bt\.Skip(?:Now)?\s*\(/g;
+const SWITCHED_OFF = /(?<![\w.])(?:(?:test|it|describe)\.(?:skip|only|todo)\b|xit\b|xtest\b|xdescribe\b)|@(?:pytest\.mark\.(?:skip\w*|xfail)|unittest\.(?:skip\w*|expectedFailure))\b|\bpytest\.(?:skip|xfail|importorskip)\s*\(|\bt\.Skip(?:Now)?\s*\(|#\[ignore\b|@(?:Disabled|Ignore)\b|\bXCTSkip\w*\s*\(|\.disabled\s*\(/g;
 // A commented out test is not a test.
-const uncomment = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[\s;{}()])\/\/.*$/gm, "$1").replace(/^\s*#.*$/gm, "");
+// (A line that starts with #[ is a Rust attribute, not a comment.)
+const uncomment = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[\s;{}()])\/\/.*$/gm, "$1").replace(/^\s*#(?![[!]).*$/gm, "");
 const count = (text: string, re: RegExp) => (uncomment(text).match(re) ?? []).length;
 
 export function analyzeTests(before: Record<string, string>, after: Record<string, string>): TestReport {

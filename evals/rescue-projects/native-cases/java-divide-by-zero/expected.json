@@ -1,0 +1,13 @@
+{
+  "cmd": [
+    "java",
+    "src/App.java"
+  ],
+  "probe": [
+    "javac",
+    "-version"
+  ],
+  "file": "src/App.java",
+  "line": 3,
+  "about": "by zero"
+}

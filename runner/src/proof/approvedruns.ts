@@ -52,12 +52,28 @@ export function runsOf(text: string | undefined): string {
   } catch { return `unreadable:${text}`; }
 }
 
-/** One fingerprint of everything in RUN_FILES that a check would run. */
+/** The files a Go, Rust, Java, Kotlin, Swift or Xcode build runs code from, at any depth: build.rs, Cargo's config, go.mod, a
+ *  Maven or Gradle build file, their wrapper scripts and settings, buildSrc, Package.swift, and an Xcode project (its run
+ *  script phases live in project.pbxproj). A task that changes one is asked about exactly like a changed package.json. */
+export const NATIVE_RUN_FILE = /(?:^|\/)(?:go\.(?:mod|sum|work)|Cargo\.(?:toml|lock)|build\.rs|rust-toolchain(?:\.toml)?|pom\.xml|mvnw|gradlew|gradle\.properties|(?:build|settings)\.gradle(?:\.kts)?|Package\.(?:swift|resolved)|project\.pbxproj|contents\.xcworkspacedata|maven-wrapper\.properties|gradle-wrapper\.properties|libs\.versions\.toml)$|(?:^|\/)\.cargo\/config(?:\.toml)?$|(?:^|\/)buildSrc\/|(?:^|\/)\.mvn\/(?:jvm|maven)\.config$/;
+export const isRunFile = (p: string): boolean => (RUN_FILES as readonly string[]).includes(p);
+export const isNativeRunFile = (p: string): boolean => NATIVE_RUN_FILE.test(p) && !p.split("/").some((part) => part === "node_modules" || part === ".git");
+const NATIVE_MAX = 2_000_000;
+
+/** The files a check would run from, as saved in a version: the usual ones (package.json, lock files, .replit, .claude/launch.json)
+ *  and a native project's build files. Those can be big (an Xcode project), so they are read up to 2 MB. */
+export async function readRunFiles(store: { readFiles(id: string, keep: (path: string) => boolean, maxBytes?: number): Promise<Record<string, string>> }, id: string): Promise<Record<string, string>> {
+  return { ...(await store.readFiles(id, isRunFile)), ...(await store.readFiles(id, isNativeRunFile, NATIVE_MAX)) };
+}
+
+/** One fingerprint of everything in RUN_FILES that a check would run, and of a native project's build files. A project with
+ *  none of those has the very same fingerprint as before they were looked at, so nobody is asked twice. */
 export function runPrint(files: Record<string, string | undefined>): string {
   const h = createHash("sha256");
   for (const f of RUN_FILES) {
     const v = f === "package.json" ? runsOf(files[f]) : files[f];
     h.update(`${f}\0${v === undefined ? "\u0001none" : v}\0`);
   }
+  for (const f of Object.keys(files).filter((k) => !(RUN_FILES as readonly string[]).includes(k) && isNativeRunFile(k)).sort()) h.update(`${f}\0${files[f] ?? "\u0001none"}\0`);
   return h.digest("hex");
 }

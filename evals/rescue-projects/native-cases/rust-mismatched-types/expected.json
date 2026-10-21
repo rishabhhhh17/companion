@@ -1,0 +1,20 @@
+{
+  "cmd": [
+    "cargo",
+    "check",
+    "--offline",
+    "--color",
+    "never"
+  ],
+  "probe": [
+    "cargo",
+    "--version"
+  ],
+  "env": {
+    "RUSTUP_HOME": "$REAL_HOME/.rustup",
+    "CARGO_HOME": "$REAL_HOME/.cargo"
+  },
+  "file": "src/main.rs",
+  "line": 6,
+  "about": "mismatched types"
+}

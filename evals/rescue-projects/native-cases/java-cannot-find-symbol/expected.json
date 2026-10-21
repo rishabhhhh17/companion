@@ -1,0 +1,15 @@
+{
+  "cmd": [
+    "javac",
+    "-d",
+    "out",
+    "src/App.java"
+  ],
+  "probe": [
+    "javac",
+    "-version"
+  ],
+  "file": "src/App.java",
+  "line": 7,
+  "about": "cannot find symbol"
+}

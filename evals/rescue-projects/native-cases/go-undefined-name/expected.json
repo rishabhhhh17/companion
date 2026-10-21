@@ -1,0 +1,10 @@
+{
+  "cmd": [
+    "go",
+    "build",
+    "./..."
+  ],
+  "file": "main.go",
+  "line": 10,
+  "about": "undefined"
+}

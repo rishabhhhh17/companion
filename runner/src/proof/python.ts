@@ -50,9 +50,16 @@ function brokenVenv(dir: string): string | null {
   return null;
 }
 
+/** Does this folder have the marks that only a Python project has (requirements, pyproject.toml, setup.py, a Pipfile,
+ *  manage.py)? A stray .py file does not count: a Go or Rust project can keep a helper script. */
+export function hasPythonMarks(dir: string): boolean {
+  if (["requirements.txt", "pyproject.toml", "setup.py", "Pipfile", "manage.py"].some((f) => existsSync(join(dir, f)))) return true;
+  try { return readdirSync(dir).some((n) => /^requirements.*\.txt$/.test(n)); } catch { return false; }
+}
+
 /** Does this folder look like a Python project? (A folder with a package.json is a Node project, as before.) */
 export function looksPython(dir: string): boolean {
-  if (["requirements.txt", "pyproject.toml", "setup.py", "Pipfile", "manage.py"].some((f) => existsSync(join(dir, f)))) return true;
+  if (hasPythonMarks(dir)) return true;
   let names: string[] = [];
   try { names = readdirSync(dir); } catch { return false; }
   if (names.some((n) => /^requirements.*\.txt$/.test(n))) return true;
