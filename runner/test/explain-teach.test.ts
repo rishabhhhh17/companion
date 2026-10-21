@@ -37,7 +37,7 @@ function setup(o: Opts) {
   // it is on here, where Your turn is what is tested (settings-memory.test.ts tests it off).
   const settings = new RunnerSettings();
   settings.apply({ v: 1, id: "s", type: "settings.apply", values: { "teach.yourTurn": true } });
-  const runner = new AgentRunner({ settings, shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), ...(o.noMemory ? {} : { memoryDir: data }), explainer, proof: async (ctx) => { proofCalls.push(ctx); return o.proofs ? o.proofs(ctx) : passed(); } });
+  const runner = new AgentRunner({ settings, shadowRoot: tmp("s"), engine, log: new TaskLog(":memory:"), emit: (e) => { events.push(e); if (e.type === "approval.request" && (e as any).risk === "settings") setTimeout(() => void runner.handle({ v: 1, id: "a" + Math.random(), type: "approval.resolve", approval: (e as any).approval, decision: "allow", scope: "once" } as never), 0); }, ...(o.noMemory ? {} : { memoryDir: data }), explainer, proof: async (ctx) => { proofCalls.push(ctx); return o.proofs ? o.proofs(ctx) : passed(); } });
   const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "s" + Math.random(), type: "agent.start", project, agent: "b1", mode: "drive", prompt: "fix the name", model: "m", budgetUsd: 1, ...extra } as never);
   const cmd = (c: Record<string, unknown>) => runner.handle({ v: 1, id: "c" + Math.random(), project, ...c } as never);
   const read = (f: string) => readFileSync(join(project, f), "utf8");
@@ -55,12 +55,13 @@ describe("Explain is built from the real change", () => {
     expect(t.calls[0].text).toContain("+ const n = user?.name;");
     expect(of(t.events, "explain.ready")[0].bullets.length).toBe(2);
   });
+  // (A key, token or password name is refused by the settings guard before it can be written, so the secret here is a value.)
   test("secrets, settings files and key files never reach it", async () => {
     const pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzQRS\n-----END RSA PRIVATE KEY-----\n";
-    const t = setup({ rounds: [[write(".env", "STRIPE_SECRET_KEY=sk_live_abcdefghijklmnop9999\nDB_URL=postgres://me:pw12345@db/x\n"), write("src/config.js", "export const key = \"sk_live_abcdefghijklmnop1234\";\nexport const site = \"shop\";\n"), write("certs/site.pem", pem), write("src/k.js", "const k = `" + pem + "`;\n"), say("Added the settings.")]] });
+    const t = setup({ rounds: [[write(".env", "SHOP_NAME=sk_live_abcdefghijklmnop9999\nDB_URL=postgres://me:pw12345@db/x\n"), write("src/config.js", "export const key = \"sk_live_abcdefghijklmnop1234\";\nexport const site = \"shop\";\n"), write("certs/site.pem", pem), write("src/k.js", "const k = `" + pem + "`;\n"), say("Added the settings.")]] });
     await t.start(); await Bun.sleep(100);
     const text = t.calls[0].text;
-    for (const leak of ["sk_live_abcdef", "STRIPE_SECRET_KEY=", "pw12345", "MIIEowIBAAKCAQEA", "DB_URL"]) expect(text, leak).not.toContain(leak);
+    for (const leak of ["sk_live_abcdef", "SHOP_NAME=", "pw12345", "MIIEowIBAAKCAQEA", "DB_URL"]) expect(text, leak).not.toContain(leak);
     expect(text).toMatch(/\.env \(a settings or key file, not shown\)/);
     expect(text).toContain("export const site");
   });
