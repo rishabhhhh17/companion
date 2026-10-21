@@ -1,25 +1,11 @@
 // How one explanation is scored, following RUBRIC.md: the rules checked in code here, and the parts a reader must judge
 // (is it true of the change, is the marked answer right, could a non-engineer follow it) asked of a grader model.
-import { parseExplain, type Explanation } from "../../runner/src/explain.ts";
+import { parseExplain, plainProblems, type Explanation } from "../../runner/src/explain.ts";
 import { countOutcomes, endedByAStop, notCleanLine, type CaseResult } from "../lib/results.ts";
 
-const JARGON = ["variable", "function", "parameter", "argument", "undefined", "null", "boolean", "integer", "array", "string", "async", "await", "promise", "callback", "runtime", "compile", "syntax", "regex", "refactor", "dependency", "stack trace", "exception", "directive", "hook", "typeerror", "referenceerror"];
-const FRAMEWORKS = /\b(Next|Node|Nuxt|Vue|Express|Three|Chart|Ember|Backbone)\.js\b/g;
-const MAX_LINE = 160, MAX_WORDS = 30;
+const MAX_LINE = 160;
 
-/** What makes a piece of text not plain, in plain words; empty when it is plain. */
-export function plainProblems(text: string): string[] {
-  const p: string[] = [];
-  const t = text.replace(FRAMEWORKS, "$1");
-  if (/`/.test(t)) p.push("it has code in backticks");
-  if (/=>|===|!==|;|[{}]|\w\(\)/.test(t)) p.push("it has code characters");
-  if (/\b[\w-]+\.(?:js|jsx|ts|tsx|mjs|cjs|json|py|css|html|sql|md|env|toml|ya?ml)\b/i.test(t)) p.push("it names a file name");
-  if (/\b[a-z]+[A-Z][A-Za-z0-9]*\b/.test(t) || /\b[a-z][a-z0-9]*_[a-z0-9_]+\b/.test(t)) p.push("it uses a code style name");
-  const lower = t.toLowerCase();
-  for (const w of JARGON) if (new RegExp(`\\b${w}s?\\b`).test(lower)) p.push(`it uses the programming word "${w}"`);
-  for (const s of t.split(/[.!?]+/)) if (s.trim().split(/\s+/).filter(Boolean).length > MAX_WORDS) { p.push("a sentence is too long"); break; }
-  return p;
-}
+export { plainProblems };
 
 export type Rules = { parsed: boolean; twoLines: boolean; plain: boolean; question: boolean; problems: string[]; explanation: Explanation | null; lines: string[] };
 

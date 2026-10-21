@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Plainer "why" lines, and the Fix it path tried on 25 projects: 22 Oct 2026
+
+- **The two "why" lines after a task are now checked for plain words, and rewritten once if they are not.** On our 24 real changes the lines passed 92% of the time (they were 17% two days ago), and 100% were true to the change with a fair check question.
+- **The app's own "Fix it with me" path was tried on all 25 broken projects with real Claude:** 20 fixed, none made worse, none invented, the problem found in the right place every time. It handed three back on purpose: one needs an email only you know, two need a line in your private settings file, which Companion never opens. About 12 cents a fix.
+- **Saving your work in git works:** in a project that already has git, Companion asks before each step, and after your yes the save really happens. Checked on real Claude.
+
 ## The first real run against real Claude: 21 Oct 2026
 
 - **For the first time, Companion's checks ran on a real key, for about $4 in all.** The smoke test passed 13 of 13. The 21 end to end checks passed 20 (one open, below). Of 25 broken practice projects, **23 were fixed, none were made worse, and the problem was found in the right place every time (24 of 24)**, for about 4 cents a fix. One more correctly stopped and asked, because only the person could supply the missing setting.

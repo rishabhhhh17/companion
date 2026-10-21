@@ -62,3 +62,49 @@ export function parseExplain(raw: string): Explanation | null {
   }
   return out;
 }
+
+// ---------- the plain words check, shared with the eval (evals/explain/score.ts) ----------
+const JARGON = ["variable", "function", "parameter", "argument", "undefined", "null", "boolean", "integer", "array", "string", "async", "await", "promise", "callback", "runtime", "compile", "syntax", "regex", "refactor", "dependency", "stack trace", "exception", "directive", "hook", "typeerror", "referenceerror"];
+const FRAMEWORKS = /\b(Next|Node|Nuxt|Vue|Express|Three|Chart|Ember|Backbone)\.js\b/g;
+const MAX_WORDS = 30;
+
+/** What makes a piece of text not plain, in plain words; empty when it is plain. */
+export function plainProblems(text: string): string[] {
+  const p: string[] = [];
+  const t = text.replace(FRAMEWORKS, "$1");
+  if (/`/.test(t)) p.push("it has code in backticks");
+  if (/=>|===|!==|;|[{}]|\w\(\)/.test(t)) p.push("it has code characters");
+  if (/\b[\w-]+\.(?:js|jsx|ts|tsx|mjs|cjs|json|py|css|html|sql|md|env|toml|ya?ml)\b/i.test(t)) p.push("it names a file name");
+  if (/\b[a-z]+[A-Z][A-Za-z0-9]*\b/.test(t) || /\b[a-z][a-z0-9]*_[a-z0-9_]+\b/.test(t)) p.push("it uses a code style name");
+  const lower = t.toLowerCase();
+  for (const w of JARGON) if (new RegExp(`\\b${w}s?\\b`).test(lower)) p.push(`it uses the programming word "${w}"`);
+  for (const s of t.split(/[.!?]+/)) if (s.trim().split(/\s+/).filter(Boolean).length > MAX_WORDS) { p.push("a sentence is too long"); break; }
+  return p;
+}
+
+/** Every way an explanation is not plain, once each: its two lines, and its question and options when a question is wanted. */
+export function explanationProblems(e: Explanation, withQuestion: boolean): string[] {
+  const words = [...e.bullets, ...(withQuestion && e.question ? [e.question.text, ...e.question.options] : [])];
+  return [...new Set(words.flatMap(plainProblems))];
+}
+
+export type ExplainAsk = (req: { text: string; system: string }) => Promise<{ text: string; costUsd: number }>;
+
+/** Asks for the explanation, and once more when it is not plain (the real eval, 21 Oct 2026, found the model still slips jargon in
+ *  now and then). The second ask names what was wrong. The answer with fewer problems is kept (the first on a tie), a second ask
+ *  that fails or cannot be read is ignored, and nothing here ever blocks the explanation. Both asks are paid; costUsd is their sum. */
+export async function explainPlain(ask: ExplainAsk, req: { text: string; system: string }, o: { question: boolean }): Promise<{ explanation: Explanation | null; costUsd: number }> {
+  const first = await ask(req);
+  let cost = Number.isFinite(first.costUsd) && first.costUsd > 0 ? first.costUsd : 0;
+  const e1 = parseExplain(first.text);
+  if (!e1) return { explanation: null, costUsd: cost };
+  const p1 = explanationProblems(e1, o.question);
+  if (p1.length === 0) return { explanation: e1, costUsd: cost };
+  try {
+    const second = await ask({ system: req.system, text: `${req.text}\n\nYour first answer was not plain enough: ${p1.join("; ")}. Write it again in plain words for someone who has never coded, with the same meaning, and without any of those. Reply with ONLY the JSON.` });
+    if (Number.isFinite(second.costUsd) && second.costUsd > 0) cost += second.costUsd;
+    const e2 = parseExplain(second.text);
+    if (e2 && explanationProblems(e2, o.question).length < p1.length) return { explanation: e2, costUsd: cost };
+  } catch { /* the first answer stands */ }
+  return { explanation: e1, costUsd: cost };
+}

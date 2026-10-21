@@ -16,6 +16,7 @@
 // before a command is sent, its budget is cut to the room left under the case's and the run's stops, and a task that is
 // cut short (Stop everything, a spending stop, a time limit, the end of a scenario) counts its whole budget, less what
 // the runner booked for it. A small Explain or diagram call the runner makes in the background is not bounded this way.
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseCommand } from "../../protocol/index.ts";
@@ -45,6 +46,8 @@ export type Live = {
 /** What a scenario is given: runners, folders, the models, and the case's own context. */
 export type RunnerOpts = { approve?: ApproveRule };
 /** The one command approve-after-wait allows: git init in the throwaway project, alone (a cd into it first is fine). */
+/** The two commands approve-git-save allows, each alone: git add of named files, and git commit with a short message. */
+export const GIT_SAVE_ONLY = /^(cd [^;&|`$()<>\n]+ && )?git (add [^;&|`$()<>\n]+|commit -m ("[^"`$\n]+"|'[^'\n]+'))$/;
 export const GIT_INIT_ONLY = /^(cd [^;&|`$()<>\n]+ && )?git init( [^;&|`$()<>\n]+)?$/;
 export type Kit = { runner(project: string, env?: Record<string, string>, o?: RunnerOpts): Live; scratch(label: string): string; agentModel: string; diagnoseModel: string; reviewModel: string; cheap: boolean; ctx: CaseCtx };
 export type Scenario = { name: string; what: string; estimateUsd: number; capUsd: number; timeoutS: number; inProcess?: boolean; run(kit: Kit, note: (s: string) => void): Promise<boolean> };
@@ -398,6 +401,24 @@ export const SCENARIOS: Scenario[] = [
       const readme = existsSync(join(dir, "README.md")) ? readFileSync(join(dir, "README.md"), "utf8") : "";
       note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; .git made = ${existsSync(join(dir, ".git"))}; tools: ${JSON.stringify(r.of("agent.tool").map((e) => `${e.tool}:${e.outcome}:${String(e.detail ?? e.summary ?? e.title ?? "").slice(0, 160)}`))}; README has hello = ${/hello/i.test(readme)}; receipt = ${rec ? rec.proof : "none"}; said = ${JSON.stringify(rec?.said ?? null)}`);
       return !!rec && asked.length >= 1 && resolved.some((e) => e.outcome === "allowed") && existsSync(join(dir, ".git")) && /hello/i.test(readme);
+    },
+  },
+  {
+    // Real run, 22 Oct 2026: only git init was proven to run after a yes. This asks whether git add and git commit work in a repo that
+    // already exists, under Claude Code's sandbox. It is a probe: the case reports what happened and passes only if the commit exists.
+    name: "approve-git-save", what: "in a repo that already exists, git add and git commit each ask, are answered yes, and the commit is made", estimateUsd: 0.1, capUsd: 0.6, timeoutS: 300,
+    async run(kit, note) {
+      const dir = kit.scratch("gitsave"); put(dir, { "notes.txt": "start" });
+      // The throwaway folder is made a repository by this script itself, with an identity only for it; never a real project.
+      const git = (...a: string[]) => execFileSync("git", ["-C", dir, ...a], { encoding: "utf8", env: { PATH: process.env.PATH ?? "", HOME: dir } }).trim();
+      git("init", "-q"); git("config", "user.email", "probe@example.invalid"); git("config", "user.name", "Probe");
+      const r = kit.runner(dir, {}, { approve: { only: GIT_SAVE_ONLY, afterMs: 1000 } }); if (!await r.ready()) return false;
+      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Create a file named hello.txt containing the word hi. Then save it in git: run git add hello.txt as its own command, then run git commit -m \"add hello\" as its own command. Never combine commands with && or ;. Then stop.", model: kit.agentModel, budgetUsd: 0.5 });
+      const rec = await r.until((e) => e.type === "receipt", 240_000);
+      const asked = r.of("approval.request"), resolved = r.of("approval.resolved");
+      let log = ""; try { log = git("log", "--oneline"); } catch { /* no commit */ }
+      note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; tools: ${JSON.stringify(r.of("agent.tool").map((e) => `${e.tool}:${e.outcome}:${String(e.detail ?? e.summary ?? e.title ?? "").slice(0, 100)}`))}; git log = ${JSON.stringify(log)}; said = ${JSON.stringify(rec?.said ?? null)}`);
+      return !!rec && /add hello/.test(log);
     },
   },
   {
