@@ -169,3 +169,13 @@ Inferred from their changelog and this research, not from using their app. The f
 6. Cost: their plans are $0, $20 and $100 with upgrade prompts. We bring your own Claude key: no seat price for a beginner or student.
 
 **Do not copy:** agents, routines, referral programs (F16 parks them). **Risks:** a beginner who is not stuck in week one never sees the hero (answered by M10 item 6b, the sample stuck moment); they can add a "builder mode", so being deeper and earlier, fast, is the protection.
+
+## Corrections (22 Oct 2026)
+Checked on the live web; details and sources in `2026-10-22-reality-check.md`.
+- "Lovable has no learn or explain mode": no longer true. Chat mode (21 Sep 2026) discusses an app without changing it, and security findings are explained in plain words (23 Sep).
+- "None proves the fix": no longer true. Claude Code desktop checks every change by default; Lovable, Replit, v0 and Copilot test in a real browser.
+- "Claude's Learning style is hidden in a developer tool": it is now a first class style that leaves a piece of code for the person to write.
+- Undo from shadow snapshots without touching git is not unique: Gemini CLI does the same.
+- "About 200,000 new Lovable projects a day (May 2026)": the sources say about 1M a week (about 140K a day).
+- The 7.1% Lovable security figure came from 476 apps and a vendor scanner; use Reeve's scan of 30,998 apps (Aug 2026).
+- The Stack Overflow 66% and 45% figures describe professional developers, not our users. Do not use them as evidence about non engineers.

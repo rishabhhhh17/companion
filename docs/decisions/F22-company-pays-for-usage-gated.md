@@ -16,6 +16,12 @@ Anthropic's terms for products built on Claude Code (which includes the Agent SD
 - If the answer is no for the Claude Code engine but yes for the plain API, only the light features (guide on screen, Explain, Prompt help, voice answers) go through managed usage, and "do the work" keeps the user's own Claude.
 - If the answer is no for both, the proxy is not launched and nothing is lost but the weeks spent; the own key route stays the only route.
 
+## Update after the live check of the terms (22 Oct 2026)
+- Confirmed: the Claude Code clause covers the Agent SDK, so the fix engine cannot be company paid without a written agreement. **Precedent to cite:** JetBrains includes its Claude Agent (built on the Agent SDK) in the JetBrains AI subscription.
+- **New:** the Commercial Terms allow the plain Messages API "to power products and services Customer makes available to its own customers". So the light features (the guide, pointing, Explain, Second Look) **can be company paid today** if they call the Messages API directly and do not run Claude Code. That makes a free, no key front door possible without waiting. The email asks Anthropic to confirm this reading.
+- Hedges to look at: Claude Managed Agents with self hosted sandboxes [verify], and OpenAI's "Sign in with ChatGPT" (commercial apps on a waitlist).
+- Source: `docs/research/2026-10-22-reality-check.md`, section 5.
+
 ## What changes in the rules
 `AGENTS.md` rule 1 ("never pay for, resell or route anyone's Claude usage") now reads as true unless managed usage is switched on with Anthropic's written yes. Rule 2 (the key stays in the Keychain) is unchanged: on managed usage there is no user key, only a Companion sign in token, kept in the Keychain the same way, and Companion's own Anthropic key never leaves the server.
 

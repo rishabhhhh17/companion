@@ -6,34 +6,35 @@
 
 ## Before you send
 
-- Do this after the Console organization exists and the Commercial Terms are accepted. Fill in the brackets.
-- Keep questions 1 to 4 word for word. They are what the decision depends on.
+- Updated 22 Oct 2026 after the live check of the terms (`docs/research/2026-10-22-reality-check.md`): question 2 is now a confirmation, and the JetBrains precedent is cited. The organization name and ID are filled in from your Console.
+- Keep questions 1 to 4 as they are. They are what the decision depends on. Add a website line if you have one; a plain email works too.
 - Send it **together with** the plan question, not instead of it. Each one answers a different way to remove the key.
 
 ---
 
-**Subject:** Written confirmation needed: may a desktop app built on the Agent SDK include Claude usage in its own paid plans?
+**Subject:** Written agreement request: including Claude usage in a desktop app built on the Agent SDK (like JetBrains)
 
 Hello,
 
-I am building a Mac desktop app called [product name] for people who build projects with AI and get stuck. It finds the problem, fixes it with them, checks the fix worked, and explains why in plain words. My Console organization is [name] ([organization ID]) and I have accepted the Commercial Terms.
+I am building a Mac desktop app, Companion (working name), for people who build software with AI but are not engineers, and get stuck. It finds the problem, fixes it with them, checks the fix really worked, and explains why in plain words, so they learn as they go. My Console organization is Rishabh's Individual Org (organization ID 12c243b5-7fed-4ffe-82f9-c5038e7cee75).
 
-Today the app runs Claude Code (the unmodified binary, through the Agent SDK) on the user's own API key, and that is a barrier for people who are not technical. I would like to offer plans where the Claude usage is included, so a user signs up, pays me a monthly price, and never makes a key. I understand your legal page says products built on the Agent SDK may not "pay for, resell, or intermediate" Claude usage on their end users' behalf, so I am asking before I build anything.
+The app runs Claude Code (the unmodified binary, through the Agent SDK). Today each user brings their own Claude API key. For people who are not technical, creating an API key is where most of them give up, so I would like to include the Claude usage in the app's own plans, the way JetBrains includes its Claude Agent, built on the Agent SDK, in the JetBrains AI subscription.
 
-1. **May an app built on the Agent SDK, running the unmodified Claude Code binary, include Claude usage in the app's own paid plans, paid for by my organization's API key and billed to my customers inside a subscription?** If not as written, is there an agreement, a partner programme or a different product (such as a managed or reseller arrangement) that allows it?
-2. **If a different route is needed, may I do this only for the app's lighter features** (short answers, explanations, pointing at the screen) **through the Messages API with my own organization's key, while the heavier "do the work" sessions still use the customer's own key or plan?** Would that split still fall under the "intermediate" restriction?
-3. **What would be required to do it properly:** a proxy that authenticates each of my users and forwards requests to your API under my key, with per-user spending limits and no logging of prompts. Is a proxy of that kind allowed? Are there limits on how I describe it to customers ("Powered by Claude")?
-4. **What rate limit tier and review would that need?** My organization is on the Start tier today.
+I have read the legal and compliance page for Claude Code, which says products may not "pay for, resell, or intermediate Claude usage on their end users' behalf" unless mutually agreed. I would like to ask for that agreement, or to learn what it takes.
 
-Some detail that may help you answer:
-- The app never reads, stores or forwards Claude login credentials.
-- Today it spends about 4 to 12 cents per fixed project and under one cent per explanation, so I can price against real costs.
-- I would add a hard daily limit per user and a clear message when it is reached.
-- Customers' project files stay on their Mac. Only what the task needs is sent to Claude.
+1. **May my organization include Claude Code (Agent SDK) usage in my app's paid plans, paid for by my organization and billed to my customers inside a subscription, under a written agreement like the one JetBrains has?** If yes, what is the process, and is there a minimum size or partner programme I should join first?
+2. **To confirm my understanding:** for the app's lighter features (short answers, explanations, checking an answer, pointing at something on the screen), which would call the Messages API directly with my organization's key and not run Claude Code, the Commercial Terms already allow this as a product I make available to my customers. Is that right?
+3. **What would you require of the server in between:** each user signs in to my app; my server checks their plan and a daily spending limit, forwards the request to your API under my key, and keeps no prompts or replies, only token counts. Is a server of that kind acceptable, and how should I describe it to customers ("Powered by Claude")?
+4. **Rate limits:** my organization is on the Start tier today. What tier and review would this need?
 
-I would be glad to join a short call if that is easier. Thank you.
+Some detail that may help:
+- The app never reads, stores or forwards anyone's Claude login credentials.
+- Measured cost today is about 4 to 12 cents per fixed project and under one cent per explanation, so I can price against real costs and set hard limits per user.
+- Customers' project files stay on their Mac. Only what each task needs is sent.
 
-[your name], [email], [website]
+I would be glad to join a short call. Thank you.
+
+Rishabh Kapadia, rishabhkapadia2007@gmail.com, [website, if you have one]
 
 ---
 

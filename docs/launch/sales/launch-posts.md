@@ -1,5 +1,8 @@
 # Launch post drafts (building in public)
 
+> **Note (22 Oct 2026, from `docs/research/2026-10-22-reality-check.md`):** proof, Undo and "fixes it" are no longer unique; Lovable, Replit, v0 and Claude Code all do versions of them now. Describe them, never claim them as what sets us apart. Lead with understanding (the why, Your turn) and working across tools. "The app has no server of its own" is true only on the own key route; it stops being true if managed usage (F22) is switched on.
+
+
 Drafted 20 Oct 2026. These are drafts for the founder to send by hand. Nothing is posted, scheduled or sent by any agent. Post only what is true on the day: each line marked **[check on the day]** depends on something that must be confirmed first.
 
 ## Ground rules for all three
