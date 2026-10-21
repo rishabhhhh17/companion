@@ -62,22 +62,31 @@ describe("the models a person can choose", () => {
       for (const c of Object.values(MODEL_CHOICES[job])) expect(KNOWN_MODELS, `${key} ${c.model}`).toContain(canonicalModel(c.model));
     }
   });
-  test("the usual option of each is exactly today's model", () => {
+  test("the usual option of each is the model its default names", () => {
     expect(modelForChoice("work", "recommended")).toBe(MODELS.agent);
     expect(modelForChoice("rescue", "careful")).toBe(MODELS.diagnose);
     expect(modelForChoice("quick", "fast")).toBe(MODELS.fast);
     expect(modelForChoice("work", defOf("model.work")!.default)).toBe(MODELS.agent);
     expect(modelForChoice("rescue", defOf("model.rescue")!.default)).toBe(MODELS.diagnose);
-    expect(modelForChoice("quick", defOf("model.quick")!.default)).toBe(MODELS.fast);
+    // Quick answers default to Sonnet 5.5 since the real Explain eval (21 Oct 2026): 83% passed against 63% to 67% on Haiku 4.5,
+    // for about $0.004 an explanation and about a second more.
+    expect(defOf("model.quick")!.default).toBe("recommended");
+    expect(modelForChoice("quick", defOf("model.quick")!.default)).toBe("claude-sonnet-5-5");
   });
-  test("nobody has run the real smoke test yet, so only the usual option is offered and a saved other choice still gets today's model", () => {
-    expect(SMOKE_PASSED).toEqual([]);
-    expect(offeredChoices("work")).toEqual(["recommended"]);
-    expect(offeredChoices("rescue")).toEqual(["careful"]);
-    expect(offeredChoices("quick")).toEqual(["fast"]);
-    expect(modelForChoice("work", "careful")).toBe(MODELS.agent);
-    expect(modelForChoice("rescue", "recommended")).toBe(MODELS.diagnose);
-    expect(modelForChoice("quick", "recommended")).toBe(MODELS.fast);
+  test("the smoke cases that passed on a real key (21 Oct 2026) are recorded, so every option is offered", () => {
+    expect([...SMOKE_PASSED].sort()).toEqual(["fast-haiku45", "fast-sonnet55", "main-engine-opus55", "main-engine-sonnet55", "rescue-opus55", "rescue-sonnet55"]);
+    for (const job of ["work", "rescue", "quick"] as const) for (const c of Object.values(MODEL_CHOICES[job])) expect(SMOKE_PASSED, c.smoke).toContain(c.smoke);
+    expect(offeredChoices("work")).toEqual(["recommended", "careful"]);
+    expect(offeredChoices("rescue")).toEqual(["careful", "recommended"]);
+    expect(offeredChoices("quick")).toEqual(["fast", "recommended"]);
+  });
+  test("with no smoke case passed, only the usual option is offered and a saved other choice still gets the usual model", () => {
+    expect(offeredChoices("work", [])).toEqual(["recommended"]);
+    expect(offeredChoices("rescue", [])).toEqual(["careful"]);
+    expect(offeredChoices("quick", [])).toEqual(["recommended"]);
+    expect(modelForChoice("work", "careful", [])).toBe(MODELS.agent);
+    expect(modelForChoice("rescue", "recommended", [])).toBe(MODELS.diagnose);
+    expect(modelForChoice("quick", "fast", [])).toBe("claude-sonnet-5-5");
   });
   test("once an option's own smoke case has passed, it is offered and its model is used", () => {
     const passed = [MODEL_CHOICES.work.careful.smoke, MODEL_CHOICES.rescue.recommended.smoke, MODEL_CHOICES.quick.recommended.smoke];
@@ -91,7 +100,7 @@ describe("the models a person can choose", () => {
   test("anything that is not an option gets the usual model, never a guess", () => {
     for (const v of ["claude-opus-5-5", "", null, 3, undefined, "__proto__", "constructor"]) {
       expect(modelForChoice("work", v as never, ["main-engine-opus55"]), String(v)).toBe(MODELS.agent);
-      expect(modelForChoice("quick", v as never), String(v)).toBe(MODELS.fast);
+      expect(modelForChoice("quick", v as never), String(v)).toBe("claude-sonnet-5-5");
     }
   });
   test("the cost words in Settings are true to the price list: careful costs twice recommended, recommended twice fast", () => {
@@ -112,22 +121,22 @@ describe("Claude for quick answers (model.quick) is read for each request", () =
     const lanes = createLanes(readSettings({ COMPANION_ROUTE: "plan", COMPANION_CLAUDE_BIN: "/bin/ls", ...env }), { queryFn: queryFn as never }, { quickModel: quick });
     return { asked, ask: () => lanes.fast.run({ text: "hi", raw: true }, () => {}, new AbortController().signal) };
   };
-  test("the usual choice is today's fast model; a change reaches the very next request", async () => {
+  test("the usual choice is Sonnet 5.5; a change reaches the very next request", async () => {
     const s = new RunnerSettings();
-    const l = lanesWith({}, () => quickModelOf(s, ["fast-sonnet55"]));
+    const l = lanesWith({}, () => quickModelOf(s));
     await l.ask();
-    s.apply(apply({ "model.quick": "recommended" }));
+    s.apply(apply({ "model.quick": "fast" }));
     await l.ask();
     s.apply(apply({}));
     await l.ask();
-    expect(l.asked).toEqual([MODELS.fast, "claude-sonnet-5-5", MODELS.fast]);
+    expect(l.asked).toEqual(["claude-sonnet-5-5", MODELS.fast, "claude-sonnet-5-5"]);
   });
-  test("until its smoke case passes, the other choice still gets today's fast model", async () => {
+  test("until the other choice's smoke case passes, a saved fast choice still gets the usual model", async () => {
     const s = new RunnerSettings();
-    s.apply(apply({ "model.quick": "recommended" }));
-    const l = lanesWith({}, () => quickModelOf(s));
+    s.apply(apply({ "model.quick": "fast" }));
+    const l = lanesWith({}, () => quickModelOf(s, []));
     await l.ask();
-    expect(l.asked).toEqual([MODELS.fast]);
+    expect(l.asked).toEqual(["claude-sonnet-5-5"]);
   });
   test("a developer's COMPANION_FAST_MODEL in dev.json still wins", async () => {
     const s = new RunnerSettings();
@@ -347,7 +356,7 @@ describe("most steps in a plan (drive.maxSteps)", () => {
     await r.approve(["A", "B", "C", "D"]);
     expect(of(r.events, "drive.done")[0]).toMatchObject({ completed: 3, total: 3 });
   });
-  test("Rescue plans keep their own 3 to 7 steps, whatever the setting", async () => {
+  test("Rescue plans keep their own 1 to 7 steps, whatever the setting", async () => {
     const diagnosis = { text: JSON.stringify({ summary: "A shop", works: ["the page"], broken: "The button calls a missing function.", steps: ["One", "Two", "Three", "Four", "Five"] }), costUsd: 0.01 };
     const r = setup([[diagnosis], [], [], [], [], []], [bad("x")], { values: { "drive.maxSteps": 3 } });
     await r.runner.handle({ v: 1, id: "r1", type: "rescue.diagnose", project: r.project, agent: "builder-1", model: "m", budgetUsd: 5 } as never);

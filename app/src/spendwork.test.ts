@@ -63,8 +63,11 @@ describe("the models a page starts work with", () => {
     expect(c(diagnose("/p")).model).toBe(MODELS.diagnose);
     expect([DEFAULT_MODEL, DIAGNOSE_MODEL]).toEqual([MODELS.agent, MODELS.diagnose]);
   });
-  test("a choice whose real smoke test has not passed still sends today's model", () => {
+  test("the saved choice is what is sent, now that its real smoke test has passed (21 Oct 2026)", () => {
     snap({ "model.work": "careful", "model.rescue": "recommended" });
+    expect(c(startTask("/p", "x")).model).toBe("claude-opus-5-5");
+    expect(c(diagnose("/p")).model).toBe("claude-sonnet-5-5");
+    snap({});
     expect(c(startTask("/p", "x")).model).toBe(MODELS.agent);
     expect(c(diagnose("/p")).model).toBe(MODELS.diagnose);
   });
@@ -83,14 +86,20 @@ describe("the models a page starts work with", () => {
 });
 
 describe("the model rows in Settings", () => {
-  test("are hidden while only the usual option can be offered (nobody has run the smoke test yet)", () => {
-    const shown = shownSettings().map((d) => d.key);
+  test("are hidden while only the usual option can be offered (no smoke case passed)", () => {
+    const shown = shownSettings(REGISTRY.settings, []).map((d) => d.key);
     for (const k of ["model.work", "model.rescue", "model.quick"]) expect(shown, k).not.toContain(k);
     expect(shown).toContain("budget.task");
     // The three model rows, and the tools tried (hidden: set only by a real use, groups.ts).
     expect(shown.length).toBe(REGISTRY.settings.length - 3 - REGISTRY.settings.filter((d) => d.hidden).length);
-    expect(offeredOptions("model.work")).toEqual(["recommended"]);
-    expect(offeredOptions("budget.task")).toBeNull();
+    expect(offeredOptions("model.work", [])).toEqual(["recommended"]);
+    expect(offeredOptions("budget.task", [])).toBeNull();
+  });
+  test("all three rows show now that the real smoke test has passed (21 Oct 2026)", () => {
+    const shown = shownSettings().map((d) => d.key);
+    for (const k of ["model.work", "model.rescue", "model.quick"]) expect(shown, k).toContain(k);
+    expect(offeredOptions("model.work")).toEqual(["recommended", "careful"]);
+    expect(offeredOptions("model.quick")).toEqual(["fast", "recommended"]);
   });
   test("appear with both options once an option's smoke case has passed", () => {
     const passed = [MODEL_CHOICES.work.careful.smoke];

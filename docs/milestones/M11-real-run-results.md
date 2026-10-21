@@ -1,0 +1,35 @@
+# The first real run: results (21 Oct 2026)
+
+First time Companion's own checks ran against real Claude, on a separate key in its own workspace (cap $30; credits $100). Companion's own count of the spend is about **$4.1**. The Anthropic Console is the true figure; compare it.
+
+Every run used the SDK's bundled Claude binary, a throwaway folder for Claude Code's files, no settings files, no MCP servers, never `bypassPermissions`, and the key read from the Keychain item `companion-dev` in code (never printed, never in chat). Runs were started from a clean environment (`env -i HOME PATH TMPDIR`), because a shell inside the Claude desktop app carries sign in variables that sent one call down the wrong billing route (see finding 2).
+
+## Results
+
+| Check | Result | Spent |
+|---|---|---|
+| Smoke test (13 cases: both agent models, Rescue on both models, the three fast models, Show me how on two models, pointing, resume, follow up, off the record) | 13 of 13 passed | about $0.30 over four runs |
+| Real verify (21 cases: house rules and Undo, Drive, visual receipt, the five practice projects, take the wheel, Rescue, memory, Explain, Research, daily limit, second model review, error explainer, approvals, Stop everything, loop breaker, ship gates) | 20 of 21 passed; one open (below) | about $1.4 with reruns |
+| Fix eval, 25 projects, Sonnet 5.5 | 23 fixed, 1 asked (correct: a missing setting only the person can supply), 1 could not run (this Mac has no Flask). Broke something: 0. Invented something: 0. The problem found in the right place: 24 of 24. Median fix 2 lines | $0.82 ($0.04 a fixed case) |
+| Pointing eval, 128 asks | Basic 100%, hard 95%, everyday 93%. Median 2.7 s, slowest 5.9 s | $0.67 |
+| Second model review, 10 diffs | Caught 100% of the 5 risky ones (all 5 named the real problem). False alarms on the 5 harmless ones: 0 | $0.14 |
+| Loop breaker, 5 cases | Card at the right time 5 of 5. Where only the person can decide, it asked instead of guessing: 100%. Thrashed 0, gamed 0, invented 0 | $0.19 |
+| Explain, 24 cases | 17% at first, 79% after the changes below (correct 100%, plain 83%, fair question 100%) | about $0.6 over eight runs |
+
+Real cost came in at 15% to 35% of the estimates: a fixed project is $0.04, not $0.22.
+
+## What the real run found, and what was done
+
+1. **Anthropic's own binary registers three built in plugins** (`cc-plugin-agents-md`, `cc-plugin-telemetry`, `cc-plugin-plugin-authoring`) that the harness refused as "plugins were loaded". They do not come from the person's settings. The harness now accepts exactly those three by name and still refuses any other plugin (`BUILT_IN_PLUGINS`, tested).
+2. **A call made from the live shell of the Claude desktop app failed with "credit balance too low"** while the same key worked in a clean environment. The shell carries about 30 `CLAUDE_CODE_*` sign in variables. Run the paid checks from a plain Terminal or with `env -i`. [verify] Does the shipped app, started from Finder, carry none of those? It should, but a real launch should confirm it.
+3. **Rescue padded its plan.** For a page with one wrong name it planned five steps, including "add your photos" and "optionally add styling", plus a step that only opened the page, which made the agent hunt for a browser with a shell command (denied). The prompt now asks for 1 to 7 steps, only what is broken, no optional extras, no step that only opens or checks (Companion checks each step itself), and anything that needs the person's own files last. Real result after the change: one step, done, proved, $0.08.
+4. **Explain failed the plain words check on 79% of cases** because the model was never told which words are off limits (the rubric was only applied in code and by the grader). The rules are now in the prompt, with two examples and rules for the check question. On Haiku 4.5 that reached 63% to 67%; Haiku 5.5 79%; Sonnet 5.5 83%. So **"Claude for quick answers" now defaults to Recommended (Sonnet 5.5)**: about $0.004 an explanation, about one second more. "Fast: Haiku 4.5" stays one tap away in Settings. The three model rows in Settings now show, because their smoke cases passed. The eval's default fast model now follows the app's default.
+5. **`stop-everything` costs more than the runner books.** A task cut short by Stop everything counts its whole budget as spent, $0.40 more than the runner booked. That is the safe side. Noted, not changed.
+6. **Fixed test script, not product:** `approve-after-wait` let Claude run `git init && echo hello > README.md` as one command; Companion correctly denied it. The prompt now asks for `git init` on its own.
+
+## Still open (needs the founder)
+
+- **An approved `git init` does not create `.git`.** The card appears, it is answered yes after the wait, the tool is marked as run, the README is written, yet no `.git` folder exists. The likely cause is Claude Code's macOS sandbox refusing writes inside `.git` (approved commands still run in the sandbox: `allowUnsandboxedCommands: false`), but this is not yet proven; a plain local reproduction did not show it. If it is the sandbox, a yes the person gives does nothing, which is a bad dead end. Fixing it means deciding whether approved git commands may run outside the sandbox, which touches rules 10 and 12 in `AGENTS.md`. Left for a decision. `real-verify.ts approve-after-wait` stays red until then, and now prints the tools the agent ran.
+- Explain is at 79%, not 100%. The misses are mostly code style names and the word "function". A code check with one retry would likely close most of it.
+- Flask based case `flask-wrong-status` and Go, Rust and Swift cases need those tools installed.
+- Everything here is proven with a key and in headless runs. The app itself, on screen, with the Keychain prompt, signed and installed, is still unproven.

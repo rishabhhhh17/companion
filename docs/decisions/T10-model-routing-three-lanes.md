@@ -70,10 +70,15 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
   (`model.quick`: Fast, Haiku 4.5, usual; Recommended, Sonnet 5.5). A setting keeps an option id, never a model id, so a model
   upgrade here never breaks a saved choice. The map from option to model, and the price words' basis, is `MODEL_CHOICES` in
   `runner/src/models.ts`; a test checks "about twice the cost" and "about half the cost" against the price table.
-- An option other than the usual one is offered only once its own real smoke test case has passed: `main-engine-opus55`,
-  `rescue-sonnet55` and `fast-sonnet55` in `runner/scripts/smoke-real.ts`. Whoever runs the smoke test with `--spend` adds the
-  name of each case that passed to `SMOKE_PASSED` in `models.ts`, with the date here. None has run yet, so the three rows are
-  hidden and every saved choice still gets today's model.
+- An option other than the usual one is offered only once its own real smoke test case has passed (`main-engine-sonnet55`,
+  `main-engine-opus55`, `rescue-opus55`, `rescue-sonnet55`, `fast-haiku45` and `fast-sonnet55` in `runner/scripts/smoke-real.ts`).
+  Whoever runs the smoke test with `--spend` adds the name of each case that passed to `SMOKE_PASSED` in `models.ts`, with the
+  date here. **21 Oct 2026: all 13 smoke cases passed on a real key, and those six are recorded, so the three Settings rows show.**
+- **21 Oct 2026: `model.quick` now defaults to Recommended (Sonnet 5.5), not Fast (Haiku 4.5).** Evidence: the real Explain eval
+  (24 cases) passed 63% to 67% on Haiku 4.5, 79% on Haiku 5.5 and 83% on Sonnet 5.5 with the same prompt; Sonnet costs about
+  $0.004 an explanation and the smoke case took about one second longer. Fast: Haiku 4.5 stays an option ("about half the cost").
+  Haiku 5.5 was not made the fast option: its lane shape is adaptive thinking, not disabled, so swapping it in would change
+  latency and the cost words together; worth its own check later. Revert by setting the default in `protocol/settings.json` back to "fast".
 - The fast lane asks for `model.quick` on every request (Prompt help, Explain, Draw it for me, the error explainer);
   `COMPANION_FAST_MODEL` in dev.json still wins for developers. The pages send `model.work` and `model.rescue` with each
   command; the practice task stays on the usual model.

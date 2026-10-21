@@ -217,6 +217,16 @@ describe("the real run harness checks the same list", () => {
     expect((buildSdkOptions(base) as any).tools).not.toContain("EndConversation");
     expect(evaluate({ tool: "EndConversation", input: {} }, { project: P }).decision).toBe("deny");
   });
+  // Claude Code's own binary registers a few built in plugins (AGENTS.md loading, usage analytics, plugin authoring)
+  // under cc-plugin-* names. They come from Anthropic's binary, not from the person's settings, so they are accepted;
+  // any other plugin still stops the run.
+  test("the built in cc-plugin-* plugins of Anthropic's binary do not stop a run, any other plugin does", () => {
+    const withPlugins = (names: string[]) => ({ ...init([...TASK_TOOLS]), plugins: names.map((name) => ({ name })) });
+    expect(checkInit(withPlugins(["cc-plugin-agents-md", "cc-plugin-telemetry", "cc-plugin-plugin-authoring"]), { tools: "agent" })).toEqual([]);
+    expect(checkInit(withPlugins(["cc-plugin-agents-md", "my-plugin"]), { tools: "agent" }).join(" ")).toMatch(/my-plugin/);
+    expect(checkInit(withPlugins(["cc-plugin-agents-md", "my-plugin"]), { tools: "agent" }).join(" ")).not.toMatch(/cc-plugin-agents-md/);
+    expect(checkInit(withPlugins(["cc-plugin-evil@somewhere"]), { tools: "agent" }).join(" ")).toMatch(/cc-plugin-evil@somewhere/);
+  });
   test("a lane that names no tools may list nothing, EndConversation included", () => {
     expect(checkInit(init(["EndConversation"]), { tools: [] }).join(" ")).toMatch(/EndConversation/);
   });

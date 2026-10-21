@@ -144,11 +144,11 @@ describe("--spend builds the real run harness", () => {
     const good = JSON.stringify(cases[0].good);
     const grade = JSON.stringify({ correct: true, questionRight: true, plain: true, why: "true of the change and plain" });
     const sdk = stubSdk((o) => ({ text: o.model === DEFAULT_MODELS.grader ? grade : good }));
-    const args = parseArgs(["--spend", "--out", join(tmp("out"), "r.json")], { perCaseUsd: 0.05, totalUsd: 1 });
+    const args = parseArgs(["--spend", "--fast-model", "claude-haiku-4-5-20251001", "--out", join(tmp("out"), "r.json")], { perCaseUsd: 0.05, totalUsd: 1 });
     const { results } = await runSet({ set: "explain", setDir: tmp("set"), cases, args, models: {}, summarize: explainSummary, log: quiet, harnessDeps: deps(sdk.fn).d,
       run: (c, ctx) => runExplainCase(c, { ...ctx, models: args.models }) });
     expect(results.cases[0].outcome).toBe("pass");
-    expect(sdk.calls.map((o) => o.model)).toEqual([DEFAULT_MODELS.fast, DEFAULT_MODELS.grader]);
+    expect(sdk.calls.map((o) => o.model)).toEqual(["claude-haiku-4-5-20251001", DEFAULT_MODELS.grader]);
     for (const o of sdk.calls) { expect(o.tools).toEqual([]); expect(o.persistSession).toBe(false); expect(o.maxTurns).toBe(1); }
     expect(results.cases[0].costUsd).toBeGreaterThan(0);
   });

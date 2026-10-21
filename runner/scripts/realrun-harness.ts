@@ -208,6 +208,10 @@ export function checkOptions(options: Record<string, any>, ex: { claudeBinary: s
   return p;
 }
 
+/** Plugins Anthropic's own binary registers itself (AGENTS.md loading, usage analytics, plugin authoring). They do not come from
+ *  the person's settings, so they are accepted by exact name; any other plugin still stops the run. */
+export const BUILT_IN_PLUGINS: readonly string[] = ["cc-plugin-agents-md", "cc-plugin-telemetry", "cc-plugin-plugin-authoring"];
+
 /** Every reason the system/init message is not what the case expects. */
 export function checkInit(m: Ev, ex: { tools: readonly string[] | "agent"; model?: string }): string[] {
   const p: string[] = [];
@@ -216,7 +220,8 @@ export function checkInit(m: Ev, ex: { tools: readonly string[] | "agent"; model
   const extra = tools.filter((t) => t.startsWith("mcp__") || !allowed.includes(t));
   if (extra.length) p.push(`tools this check does not expect: ${extra.join(", ")}${ex.tools === "agent" ? " (if one is a plain built in Claude Code tool, read what it does, then give it in runner/src/tools.ts, or refuse it in plain words in NOT_GIVEN in runner/src/safety.ts and add it to ALWAYS_LISTED here only if no tools list can leave it out)" : ""}`);
   if (Array.isArray(m.mcp_servers) && m.mcp_servers.length) p.push(`MCP servers were loaded: ${m.mcp_servers.map((s: Ev) => String(s?.name)).join(", ")}`);
-  if (Array.isArray(m.plugins) && m.plugins.length) p.push(`plugins were loaded: ${m.plugins.map((s: Ev) => String(s?.name)).join(", ")}`);
+  const strangePlugins = Array.isArray(m.plugins) ? m.plugins.map((s: Ev) => String(s?.name)).filter((n: string) => !BUILT_IN_PLUGINS.includes(n)) : [];
+  if (strangePlugins.length) p.push(`plugins were loaded: ${strangePlugins.join(", ")}`);
   if (m.apiKeySource !== "ANTHROPIC_API_KEY") p.push(`the key came from "${String(m.apiKeySource)}", not ANTHROPIC_API_KEY (the API key route)`);
   if (m.permissionMode === "bypassPermissions") p.push("the permission mode is bypassPermissions");
   if (ex.model && m.model && canonicalModel(String(m.model)) !== canonicalModel(ex.model)) p.push(`the model is ${String(m.model)}, not ${ex.model}`);

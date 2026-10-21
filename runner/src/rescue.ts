@@ -35,5 +35,7 @@ Look at the project (read only, change nothing) and reply with ONLY a JSON objec
 {"summary": "what this project is, in one sentence",
  "works": ["short things that already work"],
  "broken": "the root cause of what is wrong, in at most two sentences of plain words",
- "steps": ["3 to 7 small steps to finish it, in plain words, the first one being what to fix first"]}`;
+ "steps": ["1 to 7 small steps, in plain words, the first one being what to fix first"]}
+
+Steps: only what is broken or missing for this project to work, as few as it takes (one is fine). Each step changes the project. Never a step that only opens or checks the page or the code: Companion checks after every step by itself. No optional extras, no polish, nothing the person did not ask for. If a step needs something only the person has (their photos, text, accounts or keys), make it the last step and say what they need to bring.`;
 };

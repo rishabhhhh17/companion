@@ -69,7 +69,7 @@
     { "key": "work.maxTurns", "section": "work", "kind": "number", "default": 80, "min": 20, "max": 200, "step": 10, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "model.work", "section": "work", "kind": "choice", "default": "recommended", "options": ["recommended", "careful"], "scope": "app", "applies": ["pages"], "store": "settings", "live": false },
     { "key": "model.rescue", "section": "work", "kind": "choice", "default": "careful", "options": ["careful", "recommended"], "scope": "app", "applies": ["pages"], "store": "settings", "live": false },
-    { "key": "model.quick", "section": "work", "kind": "choice", "default": "fast", "options": ["fast", "recommended"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "model.quick", "section": "work", "kind": "choice", "default": "recommended", "options": ["fast", "recommended"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "work.tries", "section": "work", "kind": "number", "default": 3, "min": 1, "max": 5, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "work.askOnAnyFailure", "section": "work", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "work.tryAgain", "section": "work", "kind": "choice", "default": "carry_on", "options": ["carry_on", "fresh"], "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
