@@ -9,6 +9,8 @@ import { keyHint, type Keys } from "./keys.ts";
 import { formatUsd, type ChangeAt, type Practice, type PracticeResult, type Problem, type UndoState } from "./model.ts";
 import { costWords, timeWords, type ListRow, type PracticeEntry } from "./practice.ts";
 import { S } from "./strings.ts";
+import { useSetting } from "./settingsStore.ts";
+import { undoneExcept } from "./undoWords.ts";
 
 const placeLine = (w?: { file?: string; line?: number; message?: string }) => `${w?.file ? `${w.file}, line ${w.line}: ` : ""}${w?.message ?? ""}`;
 const kindWord = (k: string) => (S as unknown as Record<string, string>)[k] ?? k;
@@ -24,6 +26,7 @@ export type PanelActions = {
 function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoState | null; explain: ReactNode; act: PanelActions }) {
   const undoId = useId();
   const mine = undo && undo.checkpoint === r.checkpoint ? undo : null;
+  const keepsMine = useSetting("undo.protectMyEdits") !== false;
   return (
     <div role="group" aria-label={S.practiceChanged}>
       {r.changed.length > 0 && <div className="line muted">{S.practiceChanged}: {r.changed.map((c) => `${c.file} (${kindWord(c.kind)})`).join(", ")} · {S.cost}: {formatUsd(r.usdEstimate)}</div>}
@@ -33,13 +36,14 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
         <button className="btn" type="button" onClick={act.showResult}>{S.practiceShowResult}</button>
       </div>
       {mine?.stage === "confirm" && (
-        <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={act.undoCancel}><div>{S.undoSure}</div>
+        <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={act.undoCancel}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
           <div className="row">
             <button className="btn danger" type="button" onClick={() => act.undoYes(r.checkpoint)}>{S.undoYes}</button>
             <button className="btn" type="button" data-cancel onClick={act.undoCancel}>{S.undoNo}</button>
           </div></ConfirmStep>
       )}
       {mine?.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+      {mine?.stage === "done" && !!mine.yours?.length && <div className="line" role="status">{undoneExcept(mine.yours)}</div>}
       {mine?.stage === "failed" && <div className="line" role="alert">{mine.note}</div>}
       {explain}
     </div>

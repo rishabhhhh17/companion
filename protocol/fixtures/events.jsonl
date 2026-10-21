@@ -109,3 +109,6 @@
 {"v":1,"id":"ew5","type":"watch.evidence","project":"/Users/sam/shop","watch":"w_1a2b3c4d5e","kind":"deploy_status","text":"Your last Vercel deploy failed at app/page.tsx, line 6: Type error"}
 {"v":1,"id":"ew6","type":"where.ready","project":"/Users/sam/shop","lines":["You were working on: Add a contact form. It finished and its checks passed.","Not finished: Your site (shop.example.com) has been failing since 10:02: The site answered with an error on its side (503)."],"next":{"action":"fixWatch","watch":"w_1a2b3c4d5e"}}
 {"v":1,"id":"ew7","type":"where.ready","project":"/Users/sam/shop","lines":["Nothing is unfinished."],"next":{"action":"none"}}
+{"v":1,"id":"eu1","type":"checkpoint.restored","project":"p_9f2c","checkpoint":"cp_0003","safety":"cp_0007","recovered":[],"largeLeftAlone":[],"leftAlone":[],"yours":["a.js","b.css"]}
+{"v":1,"id":"eu2","type":"checkpoint.putBackDone","project":"p_9f2c","checkpoint":"cp_0003","ok":true,"putBack":["a.js","b.css"],"skipped":[],"savedTo":"/Users/sam/Library/Application Support/Companion/shadow/p_9f2c.git/recovered/cp_0009","safety":"cp_0009"}
+{"v":1,"id":"eu3","type":"checkpoint.putBackDone","project":"p_9f2c","checkpoint":"cp_0003","ok":false,"putBack":[],"skipped":[],"reason":"Something is still working on this project. Wait for it to finish, or press Stop, then try again."}

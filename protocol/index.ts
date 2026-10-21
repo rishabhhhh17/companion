@@ -26,6 +26,9 @@ export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string
 export type AgentInterruptAll = Envelope & { type: "agent.interruptAll"; reason: string };
 export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" };
 export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string };
+// "Put those back too": after an Undo left some of the person's own files alone, a second, confirmed press puts the old versions
+// back over them (their versions are saved aside first). `files` may only name files that Undo left alone; without it, all of them.
+export type CheckpointPutBack = Envelope & { type: "checkpoint.putBack"; project: string; checkpoint: string; confirm: true; files?: string[] };
 
 export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app: string; target: string; text: string; style: "full" | "light"; answer?: string; noQuestion?: boolean };
 // screens: when Show me looked at more than one screen (2 to 4), one picture each, the screen the mouse pointer is on first
@@ -141,7 +144,7 @@ export type EngineWarm = Envelope & { type: "engine.warm" };
 // engine applies that is not its usual value (a missing name is its usual value); projectValues: the named project's own.
 // Each one replaces the one before. The engine checks every value again and keeps them in memory only.
 export type SettingsApply = Envelope & { type: "settings.apply"; values: Record<string, unknown>; project?: string; projectValues?: Record<string, unknown> };
-export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore;
+export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -262,7 +265,10 @@ export type WalkDone = Envelope & { type: "walk.done"; walk: string; project: st
 export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reason: string };
 export type MetricsSummary = Envelope & { type: "metrics.summary"; enabled: boolean; days: Record<string, Record<string, number>>; totals: Record<string, number>; rates: Record<string, number | null> };
 // Undo finished. recovered: big files replaced by their older small version, copied aside first. largeLeftAlone: big files not touched.
-export type CheckpointRestored = Envelope & { type: "checkpoint.restored"; project: string; checkpoint: string; safety: string; recovered: string[]; largeLeftAlone: string[]; leftAlone: string[] };
+// yours: files the person changed themselves, which Undo left exactly as they are.
+export type CheckpointRestored = Envelope & { type: "checkpoint.restored"; project: string; checkpoint: string; safety: string; recovered: string[]; largeLeftAlone: string[]; leftAlone: string[]; yours?: string[] };
+// Put those back too finished. ok false: nothing was changed (reason says why). savedTo: the folder holding the person's versions.
+export type CheckpointPutBackDone = Envelope & { type: "checkpoint.putBackDone"; project: string; checkpoint: string; ok: boolean; putBack: string[]; skipped: string[]; savedTo?: string; safety?: string; reason?: string };
 export type BrowserStatus = Envelope & { type: "browser.status"; installed: boolean; installing: boolean };
 // The download's progress (percent 0 to 100 and its real size, once known), then done, failed or cancelled (Stop everything).
 export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
@@ -299,7 +305,7 @@ export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watc
 export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
 export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
 export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
-export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -414,6 +420,7 @@ const COMMANDS: Record<string, Check[]> = {
   "agent.interruptAll": [str("reason")],
   "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
   "checkpoint.restore": [str("project"), str("checkpoint")],
+  "checkpoint.putBack": [str("project"), str("checkpoint"), (m) => (m.confirm === true ? null : 'putting your files back needs "confirm": true'), opt("files", list("files"))],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
   "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("app", str("app")), opt("mode", oneOf("mode", ["everyday", "recheck"])), opt("before", oneOf("before", [...SHEET_CODES]))],
   "assist.cancel": [str("req")],
@@ -430,7 +437,8 @@ const EVENTS: Record<string, Check[]> = {
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail"), needsOk],
   "doctor.report": [list("items")],
   "diagram.ready": [str("project"), bool("made")],
-  "checkpoint.restored": [str("project"), str("checkpoint"), str("safety"), list("recovered"), list("largeLeftAlone"), list("leftAlone")],
+  "checkpoint.restored": [str("project"), str("checkpoint"), str("safety"), list("recovered"), list("largeLeftAlone"), list("leftAlone"), opt("yours", list("yours"))],
+  "checkpoint.putBackDone": [str("project"), str("checkpoint"), bool("ok"), list("putBack"), list("skipped")],
   "metrics.summary": [bool("enabled"), obj("days"), obj("totals"), obj("rates")],
   "browser.status": [bool("installed"), bool("installing")],
   "browser.install": [oneOf("stage", ["downloading", "done", "failed", "cancelled"]), str("detail"), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("mb", num("mb"))],

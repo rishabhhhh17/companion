@@ -82,3 +82,5 @@
 {"v":1,"id":"w6","type":"watch.remove","project":"/Users/sam/shop","watch":"w_1a2b3c4d5e"}
 {"v":1,"id":"w7","type":"where.was.i","project":"/Users/sam/shop","since":"2026-10-22T09:30:00.000Z"}
 {"v":1,"id":"w7b","type":"where.was.i","project":"/Users/sam/shop"}
+{"v":1,"id":"u1","type":"checkpoint.putBack","project":"p_9f2c","checkpoint":"cp_0042","confirm":true}
+{"v":1,"id":"u2","type":"checkpoint.putBack","project":"p_9f2c","checkpoint":"cp_0042","confirm":true,"files":["a.js","b.css"]}

@@ -11,7 +11,7 @@ import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, still
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
-import { AGENT, SETTINGS_LESSON_ID, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
@@ -25,6 +25,7 @@ import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
 import type { WatchKind, WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
@@ -481,6 +482,7 @@ function Card() {
   }, [m.toast?.lines.length]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
   const undone = m.undo?.stage === "done";
+  const keepsMine = useSetting("undo.protectMyEdits") !== false;
   // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
   const bv = browserView(m);
   useEffect(() => { if (m.runnerUp) void send(checkBrowser()).catch(() => {}); }, [m.runnerUp]);
@@ -1742,7 +1744,7 @@ function Card() {
             <div className="row"><button id={undoId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
           )}
           {m.undo?.stage === "confirm" && project && (
-            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div>
+            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.undoYes}</button>
                 <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
@@ -1750,7 +1752,19 @@ function Card() {
           )}
           {m.undo?.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
-          {m.undo?.stage === "done" && <div className="line" role="status">{S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}</div>}
+          {m.undo?.stage === "done" && <div className="line" role="status">{m.undo.yours?.length ? undoneExcept(m.undo.yours) : S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}{m.undo.putBack === "done" ? ` ${S.undoPutBackDone}` : ""}</div>}
+          {m.undo?.stage === "done" && !!m.undo.yours?.length && !m.undo.putBack && project && (
+            <div className="row"><button id={`${undoId}-back`} className="btn" type="button" onClick={() => dispatch({ type: "ui.putBackAsked" })}>{S.undoPutBack}</button></div>
+          )}
+          {m.undo?.stage === "done" && m.undo.putBack === "confirm" && project && (
+            <ConfirmStep className="line" label={S.undoPutBackSure} back={`${undoId}-back`} onCancel={() => dispatch({ type: "ui.putBackCancelled" })}><div>{S.undoPutBackSure}</div>
+              <div className="row">
+                <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.putBackSent" }); void send(undoPutBack(project, m.undo!.checkpoint)); }}>{S.undoPutBackYes}</button>
+                <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.putBackCancelled" })}>{S.undoPutBackNo}</button>
+              </div></ConfirmStep>
+          )}
+          {m.undo?.stage === "done" && m.undo.putBack === "working" && <div className="line" role="status">{S.undoPutBackWorking}</div>}
+          {m.undo?.stage === "done" && m.undo.putBack === "failed" && <div className="line" role="alert">{m.undo.putBackNote}</div>}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {groups.on("followUp") && (canFollowUp(m, project) || m.followUp === "sending") && (
             <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent} onRefused={followRefused}

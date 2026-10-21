@@ -15,6 +15,8 @@ const AREA_1: Record<string, unknown> = {
   // HeyClicky v1.0.53 parity: a task that ends on a question stops and waits (on, as built), and tasks may search the web (on,
   // as before; each search is paid on the person's key, so the fix eval decides whether it stays on).
   "work.stopOnQuestion": true, "work.webSearch": true,
+  // Undo never replaces a file the person changed themselves (T06), unless they turn it off.
+  "undo.protectMyEdits": true,
 };
 
 describe("the shipped list of settings", () => {

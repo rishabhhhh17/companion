@@ -43,6 +43,9 @@ export const answerApproval = (approval: string, allow: boolean): Command =>
   ({ v: 1, id: id(), type: "approval.resolve", approval, decision: allow ? "allow" : "deny", scope: "once" });
 export const undo = (project: string, checkpoint: string): Command =>
   ({ v: 1, id: id(), type: "checkpoint.restore", project, checkpoint });
+// "Put those back too": after Undo left some of the person's own files alone, a second yes puts the old versions back over them.
+export const undoPutBack = (project: string, checkpoint: string, files?: string[]): Command =>
+  ({ v: 1, id: id(), type: "checkpoint.putBack", project, checkpoint, confirm: true, ...(files?.length ? { files } : {}) });
 export const stopAgent = (): Command => ({ v: 1, id: id(), type: "agent.interrupt", agent: AGENT });
 // The person put aside what the agent was waiting on them for (Cancel on a plan, Close on an answer): it rests again, in
 // every window, only when nothing runs for it. It never stops anything (runner/src/agent.ts release).
