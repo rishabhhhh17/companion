@@ -53,4 +53,14 @@ describe("the privacy note names every flow that reads or sends something", () =
   test("the setting practice's lesson is said to be words only", () => {
     expect(row("You start a **practice project**")).toContain("never looks at your screen");
   });
+  test("Watch routines, the read only connections and Where was I each have their line, with how to turn them off", () => {
+    const site = row("You add a **watch** for a web address");
+    for (const w of ["cookies", "redirects", "private", "localhost", "Stop everything", S.set["watch.on"].label.split(" ")[0]]) expect(site, w).toContain(w);
+    expect(site).toContain("Nothing is sent to Claude");
+    const tools = row("You add a watch for your **Vercel deploy**");
+    for (const w of ["vercel", "gh", "only reading", "never deploys", S.set["rescue.readCiRun"].label]) expect(tools, w).toContain(w);
+    expect(row("You add a watch for **your project")).toContain("Stays on your Mac");
+    const where = row("You open Home after a break");
+    for (const w of ["off the record", "Claude is not asked", S.set["where.after"].label]) expect(where, w).toContain(w);
+  });
 });

@@ -86,3 +86,10 @@ A settings.json that cannot be read gives the usual values for that session, Pic
 
 ## Revisit if
 Settings need to sync between Macs (then the file format needs an owner and a merge rule), or a store that is wrapped today needs a change that is easier in settings.json.
+
+## Added with Watch routines and Where was I (F21, 22 Oct 2026)
+- A new section, **Watch routines**, and its settings, all in `settings.json`: `watch.on` (usual on; it only matters once a watch exists; the engine and the pages read it), `watch.schedule` (the schedule a new watch starts with: usual every 30 minutes), `watch.dailyHour` (usual 9), `watch.quiet` (usual off), `watch.quietFrom` (22) and `watch.quietTo` (7), read by the engine when an alert would be raised. Hours are plain numbers 0 to 23 on this Mac's clock.
+- `rescue.readCiRun` (Checking your project, usual on, engine): Rescue reads the failing GitHub run through the person's own `gh`.
+- `recap.after` is now `where.after` ("Show Where was I after a break of"; the old name is in `renamedFrom`, so a value the person chose carries over). Same choices (off, 30min, 2h, nextDay), same usual value.
+- Watches themselves are not settings: they are a list the engine keeps in `watch.json` (F21), listed in Delete everything under Settings.
+

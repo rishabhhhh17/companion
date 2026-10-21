@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sections": ["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
+  "sections": ["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
   "settings": [
     { "key": "flow.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "guide.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
@@ -8,7 +8,7 @@
     { "key": "files.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "groups.islandName", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "groups.showUntried", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
-    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 17, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "showMe", "lessons", "yourTurn", "practice", "talk", "speak", "promptHelp", "errorHelp", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
+    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 20, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI", "showMe", "lessons", "yourTurn", "practice", "talk", "speak", "promptHelp", "errorHelp", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
 
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
 
@@ -91,9 +91,17 @@
     { "key": "pictures.make", "section": "checks", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "pictures.keep", "section": "checks", "kind": "number", "default": 200, "min": 0, "max": 1000, "step": 50, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "rescue.readDeployLog", "section": "checks", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+    { "key": "rescue.readCiRun", "section": "checks", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
 
     { "key": "explain.mode", "section": "memory", "kind": "choice", "default": "reasonsAndQuestion", "options": ["off", "reasons", "reasonsAndQuestion"], "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
     { "key": "explain.after", "section": "memory", "kind": "choice", "default": "everyTask", "options": ["everyTask", "plansOnly"], "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+    { "key": "watch.on", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner", "pages"], "store": "settings", "live": true },
+    { "key": "watch.schedule", "section": "watch", "kind": "choice", "default": "30m", "options": ["5m", "15m", "30m", "1h", "daily"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "watch.dailyHour", "section": "watch", "kind": "number", "default": 9, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "watch.quiet", "section": "watch", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "watch.quietFrom", "section": "watch", "kind": "number", "default": 22, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "watch.quietTo", "section": "watch", "kind": "number", "default": 7, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+
     { "key": "memory.paused", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
     { "key": "memory.learnFromFiles", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "memory.learnFromWords", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
@@ -102,7 +110,7 @@
     { "key": "memory.recallLength", "section": "memory", "kind": "choice", "default": "normal", "options": ["short", "normal", "long"], "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "memory.toastSeconds", "section": "memory", "kind": "choice", "default": "10", "options": ["5", "10", "20", "60", "untilClosed"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "task.offRecordByDefault", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
-    { "key": "recap.after", "section": "memory", "kind": "choice", "default": "30min", "options": ["off", "30min", "2h", "nextDay"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "where.after", "section": "memory", "kind": "choice", "default": "30min", "options": ["off", "30min", "2h", "nextDay"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "renamedFrom": ["recap.after"] },
     { "key": "teach.startWhereYouAre", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "teach.yourTurn", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false,
       "from": { "pageStorage": { "name": "companion.yourTurn", "map": "isOn" } } },

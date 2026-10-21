@@ -24,7 +24,7 @@ describe("the shipped list of settings", () => {
   test("sections are in page order and every setting names one of them", () => {
     // Groups of tools come first (F20, M12): the four switches are the first thing Settings shows.
     expect(REGISTRY.sections[0]).toBe("groups");
-    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
+    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
     for (const d of REGISTRY.settings) expect(REGISTRY.sections).toContain(d.section);
   });
   test("every setting the core registers is there, with today's behaviour as its usual value", () => {
@@ -38,7 +38,7 @@ describe("the shipped list of settings", () => {
       "check.install": "auto", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true, "pictures.keep": 200, "rescue.readDeployLog": true,
       // Area 3: memory, Explain and teaching (settings-memory.test.ts)
       "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
-      "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "recap.after": "30min",
+      "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "where.after": "30min",
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
@@ -62,6 +62,9 @@ describe("the shipped list of settings", () => {
       // Groups of tools (F20, M12): every group on, the island names the working group, Home invites to tools not tried yet,
       // and nothing is tried at first (the list is set only by a real use).
       "flow.on": true, "guide.on": true, "voice.on": true, "files.on": true, "groups.islandName": true, "groups.showUntried": true, "groups.tried": [],
+      // F21: Watch routines are on (they only matter once a watch exists), a new watch is checked every 30 minutes, once a day at
+      // 9, alerts are held back 22:00 to 07:00 only when the person turns quiet hours on, and Rescue may read a failed GitHub run.
+      "watch.on": true, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

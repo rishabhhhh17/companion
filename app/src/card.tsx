@@ -11,7 +11,7 @@ import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, still
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
-import { AGENT, SETTINGS_LESSON_ID, releaseAgent, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
@@ -25,6 +25,9 @@ import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabKey, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { fixWhat, watchesOf } from "./watch.ts";
+import type { WatchKind, WatchView } from "../../protocol/index.ts";
+import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage } from "./settingsPage.tsx";
@@ -44,7 +47,7 @@ const send = (cmd: unknown) => invoke("send_command", { cmd });
 const SESSION_GAP_MS = 30 * 60 * 1000;
 const count = (name: string) => { void send(metricsNote(name)); };
 // When the person last used the card. Kept only on this Mac, in this page's own storage. Where was I is asked for after the
-// break the person chose (recap.after, memorySettings.ts).
+// break the person chose (where.after, memorySettings.ts).
 const SEEN_KEY = "companion.lastSeen";
 const lastSeen = (): number => { try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch { return 0; } };
 const touch = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); } catch { /* storage may be unavailable */ } };
@@ -766,6 +769,41 @@ function Card() {
   const openLink = () => { const u = link.trim(); if (!u || copying) return; dispatch({ type: "ui.cloneNoteClosed" }); void invoke("clone_project", { url: u }).then(() => { setLinkOpen(false); setLink(""); setCopying(true); }).catch((e) => { if (String(e)) setFolderNote(String(e)); }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
+  // The project's watches (F21): asked for whenever the folder is known or changes, and when Flow is switched back on.
+  const watchOn = groups.on("watch");
+  useEffect(() => { if (project && watchOn) void send(watchList(project)); }, [project, watchOn]);
+  // Fix it on a failed watch: the evidence was asked for on the person's press (model.ts only keeps evidence that was asked
+  // for), and the ordinary task starts once with it. Nothing starts by itself.
+  const fixing = m.watchFix;
+  useEffect(() => {
+    if (!fixing) return;
+    dispatch({ type: "ui.watchFixUsed" });
+    if (fixing.project !== projectRef.current || !toolOn("drive")) return;
+    dispatch({ type: "ui.undoClosed" });
+    homeDispatch({ type: "pick", tab: "now" });
+    void send(fixWatch(fixing.project, fixWhat(fixing.kind, fixing.target), fixing.text)).catch(explainRefusal);
+  }, [fixing]);
+  // The Watch list's buttons (F21). Each is a press; Fix it only asks for the evidence, and the task starts when it comes.
+  const watchHandlers = {
+    onAdd: (kind: WatchKind, schedule: string, target: string) => { if (project) void sendOrExplain(watchAdd(project, kind, schedule, target)); },
+    onCheck: (w: WatchView) => { if (project) void sendOrExplain(watchCheck(project, w.watch)); },
+    onPause: (w: WatchView, paused: boolean) => { if (project) void sendOrExplain(watchPause(project, w.watch, paused)); },
+    onRemove: (w: WatchView) => { if (project) void sendOrExplain(watchRemove(project, w.watch)); },
+    onFix: (w: WatchView) => {
+      if (!project) return;
+      if (!toolOn("connections") || !toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
+      dispatch({ type: "ui.watchAsked", watch: w.watch });
+      void send(watchFix(project, w.watch)).catch((e) => { dispatch({ type: "ui.watchAsked" }); explainRefusal(e); });
+    },
+  };
+  // Where was I's one next step: a button, so nothing starts until it is pressed.
+  const whereNext = () => {
+    const n = m.recap?.next;
+    if (!n || !project) return;
+    if (n.action === "fixWatch") { const w = m.watches[n.watch]; if (w) watchHandlers.onFix(w); return; }
+    if (n.action === "findProblem") { if (!toolOn("findProblem")) { dispatch({ type: "app.notice", message: offLine() }); return; } homeDispatch({ type: "pick", tab: "now" }); pressed(); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.pointClosed" })); return; }
+    homeDispatch({ type: "pick", tab: "now" });
+  };
   useEffect(() => {
     const off = listen("opened", (e) => {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
@@ -779,7 +817,9 @@ function Card() {
       // as it is now: this listener is set up once, before the folder is known.
       const last = lastSeen();
       const here = projectRef.current;
-      if (last && here && recapDue(last, Date.now())) void send(askRecap(here, new Date(last).toISOString()));
+      // Where was I (F21) is Flow's; with Flow off the older three line version (core) is asked instead. Never in the background:
+      // only when Home is opened, after the break chosen in Settings.
+      if (last && here && recapDue(last, Date.now())) void send(toolOn("whereWasI") ? whereWasI(here, new Date(last).toISOString()) : askRecap(here, new Date(last).toISOString()));
       if (!last || Date.now() - last >= SESSION_GAP_MS) count("session");   // a new visit after a break, not every time the card opens
       touch();
     });
@@ -1421,6 +1461,7 @@ function Card() {
           <div className="row"><CopyButton text={aboutCopy(m.about)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
+      {show("watch") && project && groups.on("watch") && <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />}
       {home.tab === "now" && <DropList drop={drop} />}
       {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
       <div hidden={!show("ask")}>
@@ -1907,7 +1948,7 @@ function Card() {
           <h2>{S.recapTitle}</h2>
           {m.recap.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
           <div className="line muted">{S.recapSource}</div>
-          <div className="row"><CopyButton text={recapCopy(m.recap)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
+          <div className="row">{m.recap.next && m.recap.next.action !== "none" && <button className="btn primary" type="button" onClick={whereNext}>{S.recapNext[m.recap.next.action]}</button>}<CopyButton text={recapCopy(m.recap)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
         </section>
       )}
 

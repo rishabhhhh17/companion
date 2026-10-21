@@ -18,7 +18,7 @@ describe("the catalog, read by the engine", () => {
   test("it is the same file the shell and the pages read, and every command the engine takes is in exactly one tool", () => {
     const src = readFileSync(join(import.meta.dir, "../../protocol/index.ts"), "utf8");
     const block = src.slice(src.indexOf("const COMMANDS"), src.indexOf("\n};", src.indexOf("const COMMANDS")));
-    const types = [...block.matchAll(/^ {2}"([a-z]+\.[A-Za-z]+)":/gm)].map((m) => m[1]);
+    const types = [...block.matchAll(/^ {2}"([a-z]+(?:\.[A-Za-z]+)+)":/gm)].map((m) => m[1]);
     const listed = TOOLS.flatMap((t) => t.runner);
     expect(new Set(listed).size).toBe(listed.length);
     expect([...listed, "agent.start"].sort()).toEqual([...types].sort());

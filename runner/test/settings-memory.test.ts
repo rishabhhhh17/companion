@@ -74,7 +74,7 @@ describe("the settings of this area, as the registry lists them", () => {
     "memory.recallLength": { kind: "choice", default: "normal", options: ["short", "normal", "long"], applies: ["runner"], store: "settings", live: false },
     "task.offRecordByDefault": { kind: "switch", default: false, applies: ["pages"], store: "settings", live: true },
     "memory.toastSeconds": { kind: "choice", default: "10", options: ["5", "10", "20", "60", "untilClosed"], applies: ["pages"], store: "settings", live: true },
-    "recap.after": { kind: "choice", default: "30min", options: ["off", "30min", "2h", "nextDay"], applies: ["pages"], store: "settings", live: true },
+    "where.after": { kind: "choice", default: "30min", options: ["off", "30min", "2h", "nextDay"], applies: ["pages"], store: "settings", live: true },
     // The engine works out an offer as a task ends, so turning it on reaches the next fix ("From the next task").
     "teach.yourTurn": { kind: "switch", default: false, applies: ["pages", "runner"], store: "settings", live: false },
   };

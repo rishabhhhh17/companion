@@ -25,6 +25,7 @@ fn runner_group(name: &str) -> &'static str {
         n if n.starts_with("metrics.json") => "numbers",
         "walks" => "lessons",
         n if n.starts_with("spending.json") => "settings",   // the daily spending limit chosen in Settings
+        n if n.starts_with("watch.") => "settings",   // the watch list (watch.json, watch.damaged.json) and its temporary files (F21)
         _ => "memory",
     }
 }
@@ -287,6 +288,19 @@ mod tests {
         let (_, failed) = erase(&m.home, &m.data);
         assert!(failed.is_empty(), "{failed:?}");
         assert!(!m.data.join("runner/spending.json").exists());
+    }
+    #[test]
+    fn the_watch_list_is_listed_as_a_setting_and_removed_with_everything_else() {
+        for n in ["watch.json", "watch.damaged.json", "watch.json.1a2b3c4d.tmp"] { assert_eq!(runner_group(n), "settings", "{n}"); }
+        let m = mac("watch");
+        write(m.data.join("runner/watch.json"), "{\"version\":1,\"watches\":[]}").unwrap();
+        write(m.data.join("runner/watch.damaged.json"), "{").unwrap();
+        let g = items(&m.home, &m.data);
+        assert!(g.iter().find(|i| i.id == "settings").unwrap().paths.iter().any(|p| p.ends_with("runner/watch.json")));
+        assert!(!g.iter().find(|i| i.id == "memory").unwrap().paths.iter().any(|p| p.ends_with("watch.json")));
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(!m.data.join("runner/watch.json").exists() && !m.data.join("runner/watch.damaged.json").exists());
     }
     #[test]
     fn the_keys_picked_in_settings_are_listed_as_a_setting_and_removed_with_everything_else() {

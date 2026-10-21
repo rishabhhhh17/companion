@@ -80,8 +80,8 @@
 {"key": "memory.toastSeconds", "value": "60", "ok": true, "normalized": "60"}
 {"key": "memory.toastSeconds", "value": 10, "ok": false, "reason": "notChoice"}
 {"key": "memory.toastSeconds", "value": "15", "ok": false, "reason": "notChoice"}
-{"key": "recap.after", "value": "nextDay", "ok": true, "normalized": "nextDay"}
-{"key": "recap.after", "value": "1h", "ok": false, "reason": "notChoice"}
+{"key": "where.after", "value": "nextDay", "ok": true, "normalized": "nextDay"}
+{"key": "where.after", "value": "1h", "ok": false, "reason": "notChoice"}
 {"key": "explain.on", "value": true, "ok": false, "reason": "unknown"}
 {"key": "keys.hotkeys", "value": {}, "ok": false, "reason": "custom"}
 {"key": "talk.voice", "value": null, "ok": false, "reason": "custom"}

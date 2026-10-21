@@ -8,6 +8,8 @@ import { S } from "./strings.ts";
 import { withKeys } from "./keys.ts";
 import { webLink } from "./links.ts";
 import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
+import type { WatchView, WhereNext } from "../../protocol/index.ts";
+import { validView } from "./watch.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -169,7 +171,14 @@ export type Model = {
   planCheckpoints: string[];
   teach: TeachState | null;
   explainOn: boolean;
-  recap: { lines: string[] } | null;
+  recap: { lines: string[]; next?: WhereNext } | null;
+  // Watch routines (F21), from the engine's events. watches: every watch heard about, by id (the Watch list shows one project's).
+  // watchAlerts: watches whose failing alert has not ended (the island's line and mark). watchFix: the evidence for a Fix it the
+  // person pressed, waiting for the page to start the task. watchAsked: the watch whose evidence was asked for.
+  watches: Record<string, WatchView>;
+  watchAlerts: Record<string, { project: string; kind: WatchView["kind"]; target?: string; reason: string; since: string }>;
+  watchFix: { project: string; watch: string; kind: WatchView["kind"]; target?: string; text: string } | null;
+  watchAsked: string | null;
   memory: MemoryState | null;
   memoryNote: string | null;
   exported: string | null;
@@ -199,7 +208,7 @@ export type Model = {
 
 // The record without one agent's entry.
 function without<T>(r: Record<string, T>, agent: string): Record<string, T> { const o = { ...r }; delete o[agent]; return o; }
-export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
+export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, watches: {}, watchAlerts: {}, watchFix: null, watchAsked: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -514,6 +523,44 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...m, spending: { project: e.project, limitUsd: e.limitUsd, spentUsd: e.spentUsd, minUsd: e.minUsd, maxUsd: e.maxUsd, ...(typeof e.problem === "string" && e.problem ? { problem: e.problem } : {}) } };
     }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
+    // Where was I: the lines, and the one next step as a button (it starts nothing until it is pressed).
+    case "where.ready": {
+      if (!Array.isArray(e.lines) || !e.lines.length) return { ...m, recap: null };
+      const n = e.next as { action?: string; watch?: unknown } | undefined;
+      const next: WhereNext | undefined = n?.action === "fixWatch" && typeof n.watch === "string" ? { action: "fixWatch", watch: n.watch } : n?.action === "findProblem" || n?.action === "open" ? { action: n.action } : undefined;
+      return { ...m, recap: { lines: e.lines.map(String), ...(next ? { next } : {}) } };
+    }
+    // Watch routines: one watch changed, or a project's whole list. A watch that is not failing has no alert left.
+    case "watch.state": {
+      if (!validView(e)) return m;
+      const v = e as unknown as WatchView;
+      const alerts = { ...m.watchAlerts };
+      if (v.state !== "failing") delete alerts[v.watch];
+      return { ...m, watches: { ...m.watches, [v.watch]: { project: v.project, watch: v.watch, kind: v.kind, ...(v.target ? { target: v.target } : {}), schedule: v.schedule, state: v.state, since: v.since, reason: v.reason, ...(v.lastCheckedAt ? { lastCheckedAt: v.lastCheckedAt } : {}), ...(v.nextAt ? { nextAt: v.nextAt } : {}), checking: v.checking === true, history: v.history } }, watchAlerts: alerts };
+    }
+    case "watch.list": {
+      if (typeof e.project !== "string" || !Array.isArray(e.watches)) return m;
+      const keep = Object.fromEntries(Object.entries(m.watches).filter(([, w]) => w.project !== e.project));
+      const fresh = (e.watches as unknown[]).filter(validView) as WatchView[];
+      const watches = { ...keep, ...Object.fromEntries(fresh.map((w) => [w.watch, w])) };
+      const alerts = Object.fromEntries(Object.entries(m.watchAlerts).filter(([id]) => watches[id]));
+      return { ...m, watches, watchAlerts: alerts, watchAsked: m.watchAsked && watches[m.watchAsked] ? m.watchAsked : null };
+    }
+    case "watch.alert": {
+      if (typeof e.watch !== "string" || typeof e.project !== "string") return m;
+      const alerts = { ...m.watchAlerts };
+      if (e.what === "failing") alerts[e.watch] = { project: e.project, kind: e.kind, ...(typeof e.target === "string" ? { target: e.target } : {}), reason: redact(String(e.reason ?? "")), since: String(e.since ?? "") };
+      else delete alerts[e.watch];
+      return { ...m, watchAlerts: alerts };
+    }
+    case "watch.evidence": {
+      if (typeof e.watch !== "string" || typeof e.project !== "string" || typeof e.text !== "string" || m.watchAsked !== e.watch) return m;
+      // Stopped or too slow: nothing was gathered. The page stops waiting, and no task starts.
+      if (e.stopped === true) return { ...m, watchAsked: null };
+      return { ...m, watchFix: { project: e.project, watch: e.watch, kind: e.kind, ...(typeof e.target === "string" ? { target: e.target } : {}), text: redact(e.text) } };
+    }
+    case "ui.watchAsked": return { ...m, watchAsked: typeof e.watch === "string" ? e.watch : null };
+    case "ui.watchFixUsed": return { ...m, watchFix: null, watchAsked: null };
     // A different folder: nothing from the old project (its cards, memory or history) may linger on screen.
     // The folder Home starts with: known from now on, nothing cleared.
     case "ui.folderShown": return m.folder === null && typeof e.project === "string" && e.project ? { ...m, folder: e.project } : m;
