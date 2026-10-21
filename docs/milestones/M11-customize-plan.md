@@ -161,7 +161,7 @@ floor" means a fixed part that must be proven by a test before the setting ships
 | `model.quick` Claude for quick answers (Prompt help, Explain, Draw it for me, the error explainer) | choice fast / recommended, fast | runner | models.ts, engines.ts, lanes.ts | fast = today's fast model; recommended = sonnet | The lanes must read it per request. COMPANION_FAST_MODEL in dev.json still wins. Check Anthropic's model list first (flag 3). |
 | `work.tries` Checks before Companion asks you what to do | number, 3 | runner | agent.ts MAX_TRIES | 1 to 5 | Counted per approach; the budget still caps the cost. |
 | `work.askOnAnyFailure` Ask me when the tries run out, even if each failure was different | switch, off | runner | agent.ts sameThree | | Off is today. The loop card still appears at most once per task. |
-| `drive.maxSteps` Most steps in a plan | number, 12 | runner | drive.ts | 3 to 20 | The estimate and the plan's budget still apply. Rescue plans stay 3 to 7. |
+| `drive.maxSteps` Most steps in a plan | number, 12 | runner | drive.ts | 3 to 20 | The estimate and the plan's budget still apply. Rescue plans stay 1 to 7. |
 | `drive.pauseOnMyEdits` Pause a plan when I change the project myself | switch, on | runner | agent.ts, watcher.ts | | Needs a floor: a test that undoing a step never puts back files the person changed during the plan. |
 | `work.tryAgain` Try again | choice carry_on / fresh, carry_on | runner | agent.ts, followup.ts | | Fresh still tells Claude how the last attempt ended. Off the record already starts fresh. |
 | `work.stopOnQuestion` Stop and wait when Claude asks me something | switch, on | runner | agent.ts, asks.ts | | Added 20 Oct 2026 (HeyClicky v1.0.53 parity review): on is how the parity work built it. Off, the failed checks go back to Claude as before and its question is only shown. An offer of more work never stops the fix round either way. |
@@ -175,7 +175,7 @@ checks, a fake SDK query on the plan route); the app was not built or opened and
   the edges of its range. The budgets are read by the pages as the work starts and checked again there; the engine still
   caps every budget at what is left of the day (tested at $50). The loop card and the different approach prompt say how
   the tries really ran out (the usual three identical failures keep exactly today's words, and today's event). A plan keeps
-  the most steps it was made with; Rescue keeps 3 to 7. The safety hook's limit is set from the setting's top, plus 2
+  the most steps it was made with; Rescue keeps 1 to 7. The safety hook's limit is set from the setting's top, plus 2
   minutes.
 - How long a question waits goes from 5 to 30 minutes for now, not to 120 (review, 19 Oct 2026). A wait longer than 30
   needs the SDK hook's limit above the 32 minutes relied on so far, and nobody has seen Claude Code honour a longer one

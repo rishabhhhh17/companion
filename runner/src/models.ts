@@ -38,8 +38,8 @@ const SETTING_OF: Record<ChoiceJob, string> = { work: "model.work", rescue: "mod
 /** The usual option, from the settings registry (today's model). */
 const usualChoice = (job: ChoiceJob): string => String(defaultOf(SETTING_OF[job]));
 /** The smoke cases that have passed in a real run (bun run scripts/smoke-real.ts --spend), added here by hand by whoever ran
- *  it, with the date in docs/decisions/T10-model-routing-three-lanes.md. Empty: nobody has spent a key on it yet. */
-export const SMOKE_PASSED: readonly string[] = [];
+ *  it, with the date in docs/decisions/T10-model-routing-three-lanes.md. These six passed on 21 Oct 2026 (smoke test, 13 of 13). */
+export const SMOKE_PASSED: readonly string[] = ["main-engine-sonnet55", "main-engine-opus55", "rescue-opus55", "rescue-sonnet55", "fast-haiku45", "fast-sonnet55"];
 const choicesOf = (job: ChoiceJob): Record<string, Choice> => MODEL_CHOICES[job] as Record<string, Choice>;
 /** The options Settings may offer for a job, in the registry's order: the usual one always, any other once its case passed. */
 export function offeredChoices(job: ChoiceJob, passed: readonly string[] = SMOKE_PASSED): string[] {

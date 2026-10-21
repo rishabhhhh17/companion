@@ -12,7 +12,7 @@ import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { RunnerSettings } from "../src/settings.ts";
 import { MemoryStore } from "../src/memory/store.ts";
-import { EXPLAIN_SYSTEM, explainRequest } from "../src/explain.ts";
+import { EXPLAIN_REASONS_SYSTEM, EXPLAIN_SYSTEM, explainRequest } from "../src/explain.ts";
 import { promptHelpMemory, RECALL_WORDS, recallWords } from "../src/memory/recall.ts";
 import { EXPLAIN_MODES, parseCommand, parseEvent, type Event } from "../../protocol/index.ts";
 import { defOf, REGISTRY } from "../../protocol/settings.ts";
@@ -29,7 +29,6 @@ const WITH_Q = '{"why":["The page read the name before the user had loaded.","Th
 const A = "import x\nconst n = user.name;\nend\n";
 const B = "function t() {\n  return title(user.name);\n}\n";
 // What Explain asked Claude before this setting existed, word for word: the usual choice must ask exactly this.
-const TODAYS_SYSTEM = "You explain what a coding task just did, to a person who is not an engineer. You are shown the real change it made (lines starting with - were taken away, + were added; secrets are hidden). Base what you say on that change; the assistant's own words about it can be wrong or incomplete. Reply with ONLY JSON: {\"why\":[\"...\",\"...\"], \"question\":{\"text\":\"...\",\"options\":[\"...\",\"...\"],\"correct\":0}}. \"why\" is two short lines in plain words: why the change was needed, and why it works. Not which files changed. No jargon, no code. \"question\" is one multiple choice question with two or three short options that checks they understood one reason; \"correct\" is the position of the right option, starting at 0. Leave it out only if no fair question exists.";
 const bothPlaces: Step[] = [edit("src/a.js", "user.name", "user?.name"), edit("src/b.js", "user.name", "user?.name"), say("I made the name safe in both places.")];
 
 type Rig = { rounds: Step[][]; values?: Record<string, unknown>; noMemory?: boolean; packageJson?: boolean };
@@ -119,12 +118,14 @@ describe("Explain after a task (explain.mode)", () => {
     expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "explain.state", project: "/p", enabled: true, mode: "reasons" })).ok).toBe(true);
     expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "explain.state", project: "/p", enabled: true, mode: "loud" })).ok).toBe(false);
   });
-  test("usual: the request is exactly today's, and the two reasons arrive with the check question", async () => {
+  test("usual: the request is the usual one, and the two reasons arrive with the check question", async () => {
     const t = rig({ rounds: [[edit("src/a.js", "user.name", "user?.name"), say("Fixed.")]] });
     await t.start(); await Bun.sleep(100);
     expect(t.calls.length).toBe(1);
-    expect(t.calls[0].system).toBe(TODAYS_SYSTEM);
-    expect(EXPLAIN_SYSTEM).toBe(TODAYS_SYSTEM);
+    // The usual mode sends the one usual prompt (with the question), never the reasons only one.
+    expect(t.calls[0].system).toBe(EXPLAIN_SYSTEM);
+    expect(EXPLAIN_SYSTEM).toContain("\"question\"");
+    expect(EXPLAIN_SYSTEM).not.toBe(EXPLAIN_REASONS_SYSTEM);
     const input = { label: "x", changed: [{ file: "a.js", kind: "modified" }], said: "s", diff: "d" };
     expect(explainRequest(input)).toEqual(explainRequest(input, { question: true }));
     const e = of(t.events, "explain.ready")[0];

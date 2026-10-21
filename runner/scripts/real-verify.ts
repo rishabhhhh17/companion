@@ -235,7 +235,9 @@ export const SCENARIOS: Scenario[] = [
   {
     name: "rescue", what: "Rescue diagnoses a broken button on Opus 5.5 without changing anything, then its plan fixes it with proof", estimateUsd: 0.6, capUsd: 1.5, timeoutS: 720,
     async run(kit, note) {
-      const page = `<!doctype html><html><head><title>Portfolio</title></head><body><h1>Portfolio</h1><button onclick="showGallery()">Show gallery</button><script>function show() { document.title = "ok"; }</script></body></html>`;
+      // A finished page with one bug: the button calls a name the script does not have. (An unfinished page, a button with no gallery
+// behind it, is a fair plan to finish the gallery, and Rescue rightly hands "add your photos" back to the person.)
+      const page = `<!doctype html><html><head><title>Portfolio</title></head><body><h1>Portfolio</h1><button onclick="showGallery()">Show gallery</button><div id="gallery" hidden><p>Three photos of my work</p></div><script>function show() { document.getElementById("gallery").hidden = false; }</script></body></html>`;
       const dir = kit.scratch("rescue"); put(dir, { "index.html": page });
       const r = kit.runner(dir); if (!await r.ready()) return false;
       await Bun.sleep(300);
@@ -390,11 +392,11 @@ export const SCENARIOS: Scenario[] = [
     async run(kit, note) {
       const dir = kit.scratch("approve"); put(dir, { "notes.txt": "start" });
       const r = kit.runner(dir, {}, { approve: { only: GIT_INIT_ONLY, afterMs: 5000 } }); if (!await r.ready()) return false;
-      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Run the shell command git init in this folder (I want this folder to be a git repository), then create a file README.md containing the word hello. Then stop.", model: kit.agentModel, budgetUsd: 0.5 });
+      r.send({ v: 1, id: "s", type: "agent.start", project: dir, agent: "b1", mode: "drive", prompt: "Run the shell command git init in this folder (I want this folder to be a git repository). Run it by itself as its own command, with nothing else on the same line. Then, as a separate step, create a file README.md containing the word hello with the file tool. Then stop.", model: kit.agentModel, budgetUsd: 0.5 });
       const rec = await r.until((e) => e.type === "receipt", 240_000);
       const asked = r.of("approval.request"), resolved = r.of("approval.resolved");
       const readme = existsSync(join(dir, "README.md")) ? readFileSync(join(dir, "README.md"), "utf8") : "";
-      note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; .git made = ${existsSync(join(dir, ".git"))}; README has hello = ${/hello/i.test(readme)}; receipt = ${rec ? rec.proof : "none"}`);
+      note(`approvals asked: ${JSON.stringify(asked.map((e) => `${e.risk}: ${e.title}`))}; resolved: ${JSON.stringify(resolved.map((e) => e.outcome))}; .git made = ${existsSync(join(dir, ".git"))}; tools: ${JSON.stringify(r.of("agent.tool").map((e) => `${e.tool}:${e.outcome}:${String(e.detail ?? e.summary ?? e.title ?? "").slice(0, 160)}`))}; README has hello = ${/hello/i.test(readme)}; receipt = ${rec ? rec.proof : "none"}`);
       return !!rec && asked.length >= 1 && resolved.some((e) => e.outcome === "allowed") && existsSync(join(dir, ".git")) && /hello/i.test(readme);
     },
   },

@@ -22,7 +22,7 @@ import { API_URL, ComputerUseVision, withFallback } from "../../runner/src/aim.t
 import { EngineStop, type Engine, type Usage } from "../../runner/src/engine.ts";
 import { getApiKey, type KeychainRef } from "../../runner/src/keychain.ts";
 import { FastLane, VisionLane, type VisionLike } from "../../runner/src/lanes.ts";
-import { MODELS, canonicalModel, estimateUsd, requestProblems } from "../../runner/src/models.ts";
+import { MODELS, canonicalModel, estimateUsd, requestProblems, usualModel } from "../../runner/src/models.ts";
 import { release as releaseShotDrive } from "../../runner/src/ramdisk.ts";
 import { SdkEngine, SessionTotals, resolveClaudeBinary } from "../../runner/src/sdkEngine.ts";
 import {
@@ -205,7 +205,7 @@ export async function realHarness(caps: { perCaseUsd: number; totalUsd: number }
 
 /** The models a set uses by default: the app's own defaults (runner/src/models.ts), so an eval measures what ships. aim is
  *  the experimental pointing lane's (--lane computer_use). */
-export const DEFAULT_MODELS = { agent: MODELS.agent, diagnose: MODELS.diagnose, review: MODELS.review, fast: MODELS.fast, vision: MODELS.vision, aim: MODELS.aim, grader: MODELS.agent } as const;
+export const DEFAULT_MODELS = { agent: MODELS.agent, diagnose: MODELS.diagnose, review: MODELS.review, fast: usualModel("quick"), vision: MODELS.vision, aim: MODELS.aim, grader: MODELS.agent } as const;
 export type ModelRole = keyof typeof DEFAULT_MODELS;
 
 export type EvalArgs = {

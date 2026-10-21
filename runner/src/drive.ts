@@ -2,7 +2,7 @@
 import { priceRatio } from "./models.ts";
 
 // The usual most steps in a plan. The person may change it ("Most steps in a plan", drive.maxSteps, 3 to 20), read when a
-// plan is made; Rescue's own plans keep this one, and their own 3 to 7 steps (rescue.ts).
+// plan is made; Rescue's own plans keep this one, and their own 1 to 7 steps (rescue.ts).
 export const MAX_STEPS = 12;
 
 const MAX_STEP_CHARS = 160;

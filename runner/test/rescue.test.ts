@@ -53,7 +53,13 @@ describe("reading the diagnosis", () => {
     const p = rescuePrompt([{ label: "Building and checking the code", status: "failed", detail: "Cannot find module 'left-pad'" }]);
     expect(p).toContain("Cannot find module 'left-pad'");
     expect(p).toMatch(/two sentences/i);
-    expect(p).toMatch(/3 to 7/);
+    expect(p).toMatch(/1 to 7/);
+    // Only what is broken: no padding, no optional extras, no step that only opens or checks (Companion checks each step itself),
+    // and anything that needs the person's own files or accounts comes last and says so.
+    expect(p).toMatch(/only what is (broken|wrong)/i);
+    expect(p).toMatch(/never a step that only opens or checks/i);
+    expect(p).toMatch(/optional/i);
+    expect(p).toMatch(/last step/i);
     expect(p).toMatch(/read only|change nothing/i);
   });
 });

@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The first real run against real Claude: 21 Oct 2026
+
+- **For the first time, Companion's checks ran on a real key, for about $4 in all.** The smoke test passed 13 of 13. The 21 end to end checks passed 20 (one open, below). Of 25 broken practice projects, **23 were fixed, none were made worse, and the problem was found in the right place every time (24 of 24)**, for about 4 cents a fix. One more correctly stopped and asked, because only the person could supply the missing setting.
+- **Pointing at the right button:** 100% on simple screens, 95% on busy dashboards, 93% on everyday app windows (128 tries, under 3 seconds typically).
+- **The second model review caught every risky change (5 of 5) and raised no false alarms (0 of 5).** The loop card appeared at the right time 5 of 5 and, where only the person can decide, it asked instead of guessing.
+- **Found by the run and fixed:** Rescue invented extra steps ("add your photos", "optional styling"); it now plans only what is broken. The "why" lines after a task used programming words 79% of the time; Explain now passes our check 79% of the time (it was 17%), and "Claude for quick answers" now defaults to Sonnet 5.5 for about a cent a day more. Settings now shows the three model choices.
+- **Still open:** when you say yes to a git change the agent asked for, the change may not happen (the Mac's safety box may be blocking it). It needs a decision before it is touched. Details in `docs/milestones/M11-real-run-results.md`.
+
 ## Text from the card page that becomes a file name or a path, tried hostile: 15 Oct 2026
 
 - Share card titles (about 320 including random junk, `../`, slashes, null bytes, right to left tricks, 5,000 characters), the file named in a problem (`../`, links that lead out of the project, absolute paths, `~`), and the project folder check (the whole disk, your home folder, Library, system folders, Companion's own folder, a link into Library, a file instead of a folder) were all attacked. Nothing got through: the checks were already sound, and are now locked in by tests. One compiler warning from the recent label change was also cleaned up.
