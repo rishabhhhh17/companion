@@ -64,7 +64,7 @@ They may use the editor, Finder, Terminal (`npm run dev`, `npm test`) and the br
 `bun run scripts/transfer-check.ts check signup ~/Desktop/"Contact page"`. It says Fixed or Not fixed in plain words, and
 names any file they changed that the fix should not touch (the test, `package.json`, or the code that reads a setting).
 The check uses the original of those files, so changing the test never passes. What the right fix is, and what a cheat
-looks like, is in that practice's `app/sample/transfer/<id>/FIX.md`. Never show FIX.md or fix.json to the person.
+looks like, is in that practice's `evals/did-they-learn/transfer/<id>/FIX.md`. Never show FIX.md or fix.json to the person.
 
 ## What to write down
 
@@ -110,6 +110,5 @@ Terminal before? (Write the answers down; they help explain results, they are no
 - **Some words teach in both groups.** The practice card's own lines (for example "An address must match on both
   sides" on the route practice) are not settings, so Group B sees them too. The setting practice is a lesson, which
   teaches by its steps in both groups. Prefer the signup practice.
-- The transfer projects ship inside the app's practice folder (`Resources/sample/transfer`), FIX.md included. The app
-  never copies or shows them, but a curious person could find them there. Give participants the copy, not the app's
-  folder.
+- The transfer projects live in the repo (`evals/did-they-learn/transfer`), not in the app, so a participant cannot find
+  the answers inside Companion. Give participants the copy that `transfer-check.ts copy` makes, never the repo folder.

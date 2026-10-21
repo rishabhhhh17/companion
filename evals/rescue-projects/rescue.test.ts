@@ -83,7 +83,7 @@ const practice: Record<string, Expected | GateExpected> = Object.fromEntries(cat
 describe("the practice stuck moments fail where they are meant to", () => {
   test("every practice project that ships has an entry in the catalog, and every entry has its folder", () => {
     // transfer is not a practice: it holds the did they learn study's second variants (runner/test/transfer-library.test.ts).
-    const shipped = readdirSync(samples).filter((n) => n !== "transfer" && statSync(join(samples, n)).isDirectory()).sort();
+    const shipped = readdirSync(samples).filter((n) => statSync(join(samples, n)).isDirectory()).sort();
     expect(shipped).toEqual(Object.keys(practice).sort());
   });
   for (const [name, exp] of Object.entries(practice)) {

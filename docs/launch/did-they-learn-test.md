@@ -31,8 +31,7 @@ Eight people is too few to prove anything. It is enough to see whether the gap i
 - **Backfire:** Group A feels lectured or slower. Then "Your turn" needs to be lighter.
 
 ## What is ready now (no spending)
-- **A transfer project for each of the five practices**, in `app/sample/transfer/<practice id>/project` (each practice's
-  `transfer` field in `app/sample/practices.json` points there). The same kind of mistake, in a different file with
+- **A transfer project for each of the five practices**, in `evals/did-they-learn/transfer/<practice id>/project` (outside the app, so the answers never ship inside it). The same kind of mistake, in a different file with
   different names and words:
   - signup: the contact form in `site/contact.html` sends to `/api/contact`, the server listens at `/api/messages`.
   - setting: the booking page needs `BOOKING_EMAIL`, and the error does not say where settings go.

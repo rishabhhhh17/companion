@@ -1,6 +1,6 @@
 // FREE, NO MODEL: the transfer projects for the "did they learn?" study (docs/launch/did-they-learn-test.md). Each
-// practice in app/sample/practices.json names a transfer folder (app/sample/transfer/<id>): the same kind of mistake in
-// a different file with different words. Its project/ folder is what the participant gets; FIX.md and fix.json beside it
+// practice in app/sample/practices.json has a transfer folder (evals/did-they-learn/transfer/<id>, outside the app, so the
+// answers never ship inside it): the same kind of mistake in a different file with different words. Its project/ folder is what the participant gets; FIX.md and fix.json beside it
 // are for the observer only. This makes a participant's copy (the project only, never the answers) and decides whether
 // a copy was fixed, the same way every time:
 //   bun run scripts/transfer-check.ts list
@@ -28,16 +28,15 @@ export type TransferChange = { file: string; old: string | null; new: string };
 export type TransferFix = { practice: string; check: TransferCheck; fails: string; protect: string[]; changes: TransferChange[] };
 export type Verdict = { fixed: boolean; says: string; changedProtected: string[] };
 
-type CatalogEntry = { id: string; transfer?: string };
-const catalog = (): CatalogEntry[] => (JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: CatalogEntry[] }).practices;
+export const TRANSFERS = join(import.meta.dir, "../../evals/did-they-learn/transfer");
+const practiceIds = (): string[] => (JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: { id: string }[] }).practices.map((e) => e.id);
 
 /** The practice ids that have a transfer project, in catalog order. */
-export function transferIds(): string[] { return catalog().filter((e) => e.transfer).map((e) => e.id); }
-/** The transfer folder of a practice (holds project/, FIX.md and fix.json). */
+export function transferIds(): string[] { return practiceIds().filter((id) => existsSync(join(TRANSFERS, id, "fix.json"))); }
+/** The transfer folder of a practice (holds project/, FIX.md and fix.json). Only a practice id from the catalog is accepted. */
 export function transferDir(id: string): string {
-  const e = catalog().find((x) => x.id === id);
-  if (!e?.transfer) throw new Error(`There is no transfer project for ${JSON.stringify(id)}. Try one of: ${transferIds().join(", ")}.`);
-  return join(SAMPLES, e.transfer);
+  if (!transferIds().includes(id)) throw new Error(`There is no transfer project for ${JSON.stringify(id)}. Try one of: ${transferIds().join(", ")}.`);
+  return join(TRANSFERS, id);
 }
 export const projectOf = (id: string) => join(transferDir(id), "project");
 export function fixOf(id: string): TransferFix { return JSON.parse(readFileSync(join(transferDir(id), "fix.json"), "utf8")) as TransferFix; }

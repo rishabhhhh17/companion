@@ -1,41 +1,36 @@
 {
   "version": 1,
-  "about": "The practice catalog: one list for the shell (practice.rs), the pages (practice.ts), the engine's tests and the rescue eval. Each practice is a folder next to this file, broken one way on purpose. Words a person reads are in app/src/strings.ts (S.practices), never here. minutes and costUsd are estimates until a real run measures them (docs/milestones/M11-real-run-checklist.md). transfer is the folder (next to this file) of the same kind of mistake in another project, for the did they learn study (docs/launch/did-they-learn-test.md, runner/scripts/transfer-check.ts); the app never copies or shows it.",
+  "about": "The practice catalog: one list for the shell (practice.rs), the pages (practice.ts), the engine's tests and the rescue eval. Each practice is a folder next to this file, broken one way on purpose. Words a person reads are in app/src/strings.ts (S.practices), never here. minutes and costUsd are estimates until a real run measures them (docs/milestones/M11-real-run-checklist.md).",
   "copyBase": "Companion practice",
   "practices": [
     {
       "id": "signup", "folder": "stuck-signup", "order": 1, "copyName": "signup page",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "test/signup.test.js", "line": 17, "about": "/api/signup" },
       "fix": "task", "prove": "receipt", "protect": ["test/signup.test.js", "package.json"],
-      "transfer": "transfer/signup",
       "needsNode": true, "budgetUsd": 0.6, "minutes": 2, "costUsd": 0.2
     },
     {
       "id": "setting", "folder": "stuck-setting", "order": 2, "copyName": "missing setting",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "settings.js", "line": 16, "about": "SHOP_NAME is not set" },
       "fix": "lesson", "prove": "checks", "protect": ["test/page.test.js"],
-      "transfer": "transfer/setting",
       "needsNode": true, "budgetUsd": 0, "minutes": 3, "costUsd": 0
     },
     {
       "id": "route", "folder": "stuck-route", "order": 3, "copyName": "missing page",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "test/links.test.js", "line": 19, "about": "goes to /prices" },
       "fix": "task", "prove": "receipt", "protect": ["test/links.test.js", "package.json"],
-      "transfer": "transfer/route",
       "needsNode": true, "budgetUsd": 0.6, "minutes": 2, "costUsd": 0.2
     },
     {
       "id": "import", "folder": "stuck-import", "order": 4, "copyName": "renamed file",
       "find": "checks", "expect": { "cmd": ["node", "--test"], "file": "server.js", "line": 3, "about": "Cannot find module" },
       "fix": "task", "prove": "receipt", "protect": ["test/prices.test.js", "package.json"],
-      "transfer": "transfer/import",
       "needsNode": true, "budgetUsd": 0.6, "minutes": 2, "costUsd": 0.2
     },
     {
       "id": "open-table", "folder": "stuck-open-table", "order": 5, "copyName": "open table",
       "find": "gate", "expect": { "gate": "database_access", "findings": ["notes"], "file": "supabase/migrations/20261001090000_create_notes.sql", "line": 2 },
       "fix": "task", "prove": "gate", "protect": ["supabase/migrations/20261001090000_create_notes.sql"],
-      "transfer": "transfer/open-table",
       "needsNode": true, "budgetUsd": 0.6, "minutes": 3, "costUsd": 0.2
     }
   ]

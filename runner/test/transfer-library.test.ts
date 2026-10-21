@@ -1,4 +1,4 @@
-// The transfer projects for the "did they learn?" study (app/sample/transfer, docs/launch/did-they-learn-test.md): for
+// The transfer projects for the "did they learn?" study (evals/did-they-learn/transfer, docs/launch/did-they-learn-test.md): for
 // each practice, the same kind of mistake in another project. Each must fail its own check as shipped, with the plain
 // words its fix.json says, and pass after the known good fix in fix.json; the observer's check
 // (runner/scripts/transfer-check.ts) must not be fooled by editing or deleting the test, and must accept the other right
@@ -10,7 +10,7 @@ import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rlsGate } from "../src/ship/rls.ts";
-import { SAMPLES, applyFix, checkTransfer, fixOf, makeCopy, projectOf, transferDir, transferIds } from "../scripts/transfer-check.ts";
+import { SAMPLES, TRANSFERS, applyFix, checkTransfer, fixOf, makeCopy, projectOf, transferDir, transferIds } from "../scripts/transfer-check.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -20,13 +20,14 @@ const edit = (p: string, f: string, from: string, to: string) => { const t = rea
 // The project's own check, as the participant runs it (npm test runs node --test), in a plain environment.
 const nodeTest = (p: string) => { const r = spawnSync("node", ["--test"], { cwd: p, encoding: "utf8", timeout: 60_000, env: { PATH: process.env.PATH ?? "", HOME: p, NO_COLOR: "1" } }); return { ok: r.status === 0, out: `${r.stdout}\n${r.stderr}` }; };
 const walk = (d: string): string[] => readdirSync(d).flatMap((n) => statSync(join(d, n)).isDirectory() ? walk(join(d, n)).map((x) => `${n}/${x}`) : [n]);
-const catalog = JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: { id: string; transfer?: string }[] };
+const catalog = JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: { id: string }[] };
 
 describe("one transfer project for every practice", () => {
   test("every practice names its transfer folder, and each holds the project, FIX.md and fix.json", () => {
     expect(transferIds()).toEqual(catalog.practices.map((p) => p.id));
-    for (const p of catalog.practices) expect(p.transfer, p.id).toBe(`transfer/${p.id}`);
-    expect(readdirSync(join(SAMPLES, "transfer")).sort()).toEqual([...transferIds()].sort());
+    expect(readdirSync(TRANSFERS).sort()).toEqual([...transferIds()].sort());
+    // The answers never ship inside the app: nothing for the study is in the app's practice folder.
+    expect(existsSync(join(SAMPLES, "transfer"))).toBe(false);
     for (const id of transferIds()) {
       expect(readdirSync(transferDir(id)).sort(), id).toEqual(["FIX.md", "fix.json", "project"]);
       const fix = fixOf(id);
