@@ -9,6 +9,9 @@ import { PROTECTED } from "./safety.ts";
 export const REGISTRY_DOMAINS = [
   "registry.npmjs.org", "registry.yarnpkg.com", "pypi.org", "files.pythonhosted.org",
   "crates.io", "static.crates.io", "index.crates.io", "rubygems.org", "index.rubygems.org",
+  // Go modules, Maven Central and the Gradle plugin portal and distributions. Not a code host: Swift packages (GitHub) are not
+  // reachable from the agent's own commands.
+  "proxy.golang.org", "sum.golang.org", "repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org", "services.gradle.org", "downloads.gradle.org",
 ];
 
 // Logins, keys, tokens, the person's own Claude login, Companion's own data, the Keychain, browsers, mail and messages.
@@ -20,8 +23,15 @@ const SENSITIVE = [
   "Library/Application Support/Google/Chrome", "Library/Application Support/Firefox", "Library/Application Support/Arc", "Library/Application Support/BraveSoftware",
   "Library/Application Support/Microsoft Edge", "Library/Application Support/Dia", "Library/Safari", "Library/Cookies", "Library/Messages", "Library/Mail", "Library/Accounts",
 ];
-// The only places in the home folder a command may write: the download caches of package managers.
-const CACHES = [".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm", "Library/pnpm", ".yarn", ".cargo/registry", ".cargo/git", ".gem", ".pnpm-store"];
+// The only places in the home folder a command may write: the download caches of package managers. Go, Maven, Gradle, Swift
+// and Xcode keep theirs in folders of their own, listed one by one: never the tool's whole folder, because Maven's
+// settings.xml, Gradle's gradle.properties and init scripts, and Cargo's config and credentials sit beside them. (Go's build
+// cache, SwiftPM's cache and Xcode's other caches are under Library/Caches already.)
+const CACHES = [
+  ".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm", "Library/pnpm", ".yarn", ".cargo/registry", ".cargo/git", ".gem", ".pnpm-store",
+  ".cargo/.package-cache", ".cargo/.package-cache-mutate", ".cargo/.global-cache",   // cargo's lock and usage files, which it writes beside the registry
+  "go/pkg/mod", ".m2/repository", ".m2/wrapper", ".gradle/caches", ".gradle/wrapper", ".gradle/native", ".gradle/daemon", "Library/org.swift.swiftpm", "Library/Developer/Xcode/DerivedData",
+];
 export const cachePaths = (home: string): string[] => CACHES.map((p) => `${home}/${p}`);
 export const sensitivePaths = (home: string): string[] => SENSITIVE.map((p) => `${home}/${p}`);
 
