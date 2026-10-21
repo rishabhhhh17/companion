@@ -1,0 +1,9 @@
+{
+  "practice": "setting",
+  "check": { "kind": "tests" },
+  "fails": "Missing setting BOOKING_EMAIL",
+  "protect": ["test/booking.test.js", "package.json", "lib/config.js", "server.js"],
+  "changes": [
+    { "file": ".env.local", "old": null, "new": "BOOKING_EMAIL=lessons@example.com\n" }
+  ]
+}

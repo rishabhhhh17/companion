@@ -22,6 +22,10 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **The structure is now written down (F23):** the hero for people who build with AI and get stuck; the guide for everyone, doing what HeyClicky does today where our privacy rules allow it, with basic agents from day one; and an AI helper for everyone who uses an LLM. The plan and the build order are in `docs/milestones/M14-guide-agents-and-second-look-plan.md`.
 - **The new helper is "Second Look": press a key on any AI answer and it says what is solid, what to check, and what it cannot tell, with sources.** Planned, not built. It will be tested on 100 answers with seeded mistakes before anyone sees it.
 - **A small test to find out whether people really learn** is written in `docs/launch/did-they-learn-test.md`.
+- **That test is ready to run.** Each of the five practice projects now has a second project with the same kind of
+  mistake in a different place, for people to fix on their own 20 minutes later. A check says whether they fixed it,
+  and changing the test does not fool it. The observer gets a sheet with what to say, what not to say, and how to score
+  "why was it broken?".
 
 ## "The company pays" is built, and switched off: 22 Oct 2026
 

@@ -1,0 +1,9 @@
+{
+  "practice": "signup",
+  "check": { "kind": "tests" },
+  "fails": "posts the message to /api/contact, which answered 404",
+  "protect": ["test/contact.test.js", "package.json"],
+  "changes": [
+    { "file": "site/contact.html", "old": "action=\"/api/contact\"", "new": "action=\"/api/messages\"" }
+  ]
+}

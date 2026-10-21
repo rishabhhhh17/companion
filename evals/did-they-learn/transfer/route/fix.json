@@ -1,0 +1,9 @@
+{
+  "practice": "route",
+  "check": { "kind": "tests" },
+  "fails": "the link Opening hours goes to /hours, which answered 404",
+  "protect": ["test/pages.test.js", "package.json"],
+  "changes": [
+    { "file": "pages/menu.html", "old": "href=\"/hours\"", "new": "href=\"/opening-hours\"" }
+  ]
+}

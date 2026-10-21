@@ -30,9 +30,27 @@ Eight people is too few to prove anything. It is enough to see whether the gap i
 - **Nothing:** about the same. Then teaching is not the reason to buy, and we say that to ourselves.
 - **Backfire:** Group A feels lectured or slower. Then "Your turn" needs to be lighter.
 
-## What I can prepare now (no spending)
-- A second variant for each of the five practice projects (the transfer bug), checked by the project's own tests.
-- A one page sheet for the observer, and the scoring guide for "why".
-- A switch recipe so Group B is exactly Group A with the teaching off.
+## What is ready now (no spending)
+- **A transfer project for each of the five practices**, in `evals/did-they-learn/transfer/<practice id>/project` (outside the app, so the answers never ship inside it). The same kind of mistake, in a different file with
+  different names and words:
+  - signup: the contact form in `site/contact.html` sends to `/api/contact`, the server listens at `/api/messages`.
+  - setting: the booking page needs `BOOKING_EMAIL`, and the error does not say where settings go.
+  - route: the menu page (not the home page) links to `/hours`, the page's address is `/opening-hours`.
+  - import: `lib/receipt.js` (not `server.js`) asks for `./sales-tax`, now named `lib/tax.js`, with no note saying so.
+  - open-table: the `shopping_lists` table has no row level security, and its owner column is `owner_id`.
+- **The answers, for the observer only:** `FIX.md` beside each project (the right fix, the other right fixes, what a
+  cheat looks like) and `fix.json` (the same fix, for the test).
+- **One command to copy and one to check**, from the `runner` folder: `bun run scripts/transfer-check.ts copy <id>
+  <folder>` makes the participant's copy without the answers; `... check <id> <folder>` says Fixed or Not fixed. It puts
+  back the test and the other files the fix should not touch before checking, so editing or deleting the test never
+  passes, and it names those files. For the open table it uses Companion's own database access check on the files.
+- **A test that proves all of this:** `runner/test/transfer-library.test.ts` (no model, no network): every transfer
+  fails as shipped with its plain words and passes after its fix, and the cheats do not pass.
+- **The observer sheet, the scoring guide for "why" and the Group B settings recipe:**
+  `docs/launch/did-they-learn-observer-sheet.md`.
+
+Found while preparing: "Your turn" only offers when a fix makes the same change in two places, and every practice is
+fixed with one change, so Group A will rarely see it. The difference between the groups is mostly Explain. If the
+test is meant to measure Your turn too, a practice whose fix repeats one change in two places is needed first.
 
 Honest limit: this measures one kind of mistake in a short window. It says nothing about a month later. If the gap is real, the next test is whether they come back.

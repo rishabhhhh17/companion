@@ -73,6 +73,7 @@ describe("the practice stuck moments", () => {
 
   test("each holds only the exercise: no packages to install and no hidden files (the app's copy may leave those out)", () => {
     const walk = (d: string): string[] => readdirSync(d).flatMap((n) => statSync(join(d, n)).isDirectory() ? walk(join(d, n)).map((x) => `${n}/${x}`) : [n]);
+    // transfer holds the did they learn study's projects, held to the same bar in transfer-library.test.ts.
     for (const name of readdirSync(SAMPLES).filter((n) => statSync(join(SAMPLES, n)).isDirectory())) {
       const pkg = JSON.parse(readFileSync(join(SAMPLES, name, "package.json"), "utf8"));
       expect(pkg.dependencies ?? {}, name).toEqual({}); expect(pkg.devDependencies ?? {}, name).toEqual({});

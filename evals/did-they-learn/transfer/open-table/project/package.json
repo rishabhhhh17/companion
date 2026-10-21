@@ -1,0 +1,9 @@
+{
+  "name": "shopping-lists",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny recipes and shopping lists app. Its database is in Supabase, made by the files in supabase/migrations.",
+  "scripts": {
+    "dev": "node server.js"
+  }
+}

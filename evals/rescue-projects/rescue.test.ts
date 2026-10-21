@@ -82,6 +82,7 @@ const catalog = JSON.parse(readFileSync(join(samples, "practices.json"), "utf8")
 const practice: Record<string, Expected | GateExpected> = Object.fromEntries(catalog.practices.map((p) => [p.folder, p.expect]));
 describe("the practice stuck moments fail where they are meant to", () => {
   test("every practice project that ships has an entry in the catalog, and every entry has its folder", () => {
+    // transfer is not a practice: it holds the did they learn study's second variants (runner/test/transfer-library.test.ts).
     const shipped = readdirSync(samples).filter((n) => statSync(join(samples, n)).isDirectory()).sort();
     expect(shipped).toEqual(Object.keys(practice).sort());
   });
