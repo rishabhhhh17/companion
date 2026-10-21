@@ -62,28 +62,28 @@ describe("your turn", () => {
     Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true, writable: true });
     try { f(); } finally { if (had) Object.defineProperty(globalThis, "localStorage", had); else delete (globalThis as { localStorage?: unknown }).localStorage; }
   };
-  test("it is off unless the person turns it on (teach.yourTurn in the registry, T16)", () => {
+  test("it is on unless the person turns it off (teach.yourTurn in the registry, T16)", () => {
     const kept = new Map<string, string>();
     withStorage({ getItem: (k: string) => kept.get(k) ?? null }, () => {
       try {
-        expect(yourTurnOn()).toBe(false);
+        expect(yourTurnOn()).toBe(true);   // on by default
         // Before the one migration, the old page storage still decides, with its old meaning.
         kept.set("companion.yourTurn", "on");
         expect(yourTurnOn()).toBe(true);
-        kept.set("companion.yourTurn", "yes");   // anything but the exact word is off
+        kept.set("companion.yourTurn", "yes");   // anything but the exact word was off
         expect(yourTurnOn()).toBe(false);
         // After it, the shell's value does.
-        takeSnapshot({ values: { "teach.yourTurn": true }, migrated: ["pageStorage.v1"] });
-        expect(yourTurnOn()).toBe(true);
-        takeSnapshot({ values: {}, migrated: ["pageStorage.v1"] });
+        takeSnapshot({ values: { "teach.yourTurn": false }, migrated: ["pageStorage.v1"] });
         expect(yourTurnOn()).toBe(false);
+        takeSnapshot({ values: {}, migrated: ["pageStorage.v1"] });
+        expect(yourTurnOn()).toBe(true);
       } finally { _resetForTests(); }
     });
   });
-  test("with page storage that fails, it stays off", () => {
+  test("with page storage that fails, it stays on (the usual)", () => {
     const broken = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
-    withStorage(broken, () => expect(yourTurnOn()).toBe(false));
-    withStorage(undefined, () => expect(yourTurnOn()).toBe(false));
+    withStorage(broken, () => expect(yourTurnOn()).toBe(true));
+    withStorage(undefined, () => expect(yourTurnOn()).toBe(true));
   });
   test("the commands are valid protocol and name the project and the fix", () => {
     const t = tryNextOne("/Users/me/site", "cp_1"), c = checkMyChange("/Users/me/site", "cp_1");

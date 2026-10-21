@@ -32,7 +32,7 @@ describe("the shipped list of settings", () => {
   test("every setting the core registers is there, with today's behaviour as its usual value", () => {
     const want: Record<string, unknown> = {
       "talk.speak": false, "talk.speakReplies": false, "talk.autoSend": false, "character.comeTo": true, "sharing.hide": true, "calls.quiet": true,
-      "showme.allScreens": false, "fun.reactions": true, "teach.yourTurn": false, "display.textSize": "standard", "updates.daily": true,
+      "showme.allScreens": false, "fun.reactions": true, "teach.yourTurn": true, "display.textSize": "standard", "updates.daily": true,
       "spend.dailyLimit": 10, "explain.mode": "reasonsAndQuestion", "memory.paused": false, "numbers.on": false, "work.maxTurns": 80, "keys.hotkeys": null, "talk.voice": null,
       ...AREA_1,
       // Area 2, checking your project (settings-checks-registry.test.ts).

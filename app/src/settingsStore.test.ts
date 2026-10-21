@@ -186,16 +186,16 @@ describe("what changed, and Undo after Reset all", () => {
     expect(calls.map((c) => c.args?.key)).toEqual(["keys.hotkeys", "fun.reactions"]);
   });
   test("a section reset keeps Undo's values for that section only, and Undo puts exactly those back", async () => {
-    takeSnapshot(snap({ "teach.yourTurn": true, "fun.reactions": false }));
+    takeSnapshot(snap({ "teach.yourTurn": false, "fun.reactions": false }));
     heard("memory.paused", true);
     heard("spend.dailyLimit", 25);
     const calls = shell((cmd, args) => (cmd === "settings_reset" ? snap({ "fun.reactions": false }) : cmd === "settings_set" ? snap({ [String(args!.key)]: args!.value }) : undefined));
     const { done, back } = await resetWithUndo("memory");
     expect(done.ok).toBe(true);
     expect(calls[0]).toEqual({ cmd: "settings_reset", args: { section: "memory", engine: ["memory.paused"] } });
-    expect(back).toEqual([["memory.paused", true], ["teach.yourTurn", true]]);
+    expect(back).toEqual([["memory.paused", true], ["teach.yourTurn", false]]);
     await undoReset(back);
-    expect(calls.slice(1)).toEqual([{ cmd: "settings_set", args: { key: "memory.paused", value: true } }, { cmd: "settings_set", args: { key: "teach.yourTurn", value: true } }]);
+    expect(calls.slice(1)).toEqual([{ cmd: "settings_set", args: { key: "memory.paused", value: true } }, { cmd: "settings_set", args: { key: "teach.yourTurn", value: false } }]);
   });
   // A reset or its Undo is for the project the page showed. If another folder is open by then, the shell refuses (projectChanged).
   test("a reset names the project the page showed, and Undo writes a project's own settings only back to that project", async () => {
