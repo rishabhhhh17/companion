@@ -10,6 +10,11 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Privacy:** it never writes a message body, an email or a name in any log, and the signing secret lives only in the server's settings, never in the repo.
 - **Still off:** no payment address is served at all unless you pick a provider, and included usage itself stays off until Anthropic says yes in writing. Fees, payout timing and terms are Dodo's own: check your Dodo dashboard.
 - **Checked by machine only,** with made up messages and no network. No real Dodo test message has been received yet: that needs your Dodo account. What may differ in real life is listed in the managed usage plan.
+## Anthropic replied: 23 Oct 2026
+
+- **Anthropic support answered the questions we sent.** Building on their Agent SDK with the person's own API key is the supported path. Signing in with a Claude plan inside an app is not allowed, so Squibby will not offer it. Including Claude usage in our own plans needs a written agreement, which support cannot give; we are still waiting on that.
+- **One line needs a written answer:** support said shipping Anthropic's program inside our app is not allowed, while their published page says it is allowed if it is unmodified and each person uses their own key. We meet every condition on that page. The reply, what it settles, the fallback if the answer is no, and the follow up to send are in `docs/outreach/anthropic-support-reply-2026-10-23.md`.
+- **Nothing in the app changes today.** The app's own screens never use the Claude Code name.
 
 ## You can now see what Squibby made and clean it up: 22 Oct 2026
 
