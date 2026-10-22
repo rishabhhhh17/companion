@@ -2,7 +2,7 @@
 // which pose shows. The name shown to people is in strings.ts; art and path ids stay out of the words.
 import type { CharacterState } from "./model.ts";
 
-export const POSES = ["look", "glance", "wave", "splash", "idea", "laptop", "magnify", "sleep", "swim", "peek"] as const;
+export const POSES = ["look", "glance", "wave", "splash", "idea", "laptop", "magnify", "sleep", "swim", "peek", "worry"] as const;
 export type Pose = (typeof POSES)[number];
 
 const FOR_STATE: Record<CharacterState, Pose> = {
@@ -14,7 +14,7 @@ const FOR_STATE: Record<CharacterState, Pose> = {
   checking: "magnify",
   needsYou: "wave",
   done: "splash",
-  error: "peek",   // an "uh oh", half hidden: never a sad or angry face (rule 16)
+  error: "worry",   // an "uh oh": a little worried, in the creature's own blue; never grey, sad or angry (rule 16)
 };
 
 /** The pose for a state. A trip across the screen and a cheer show only while the character is otherwise idle, so they
