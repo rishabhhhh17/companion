@@ -5,7 +5,7 @@
 // exactly like any other: the same safety hooks, approvals, undo points, proof, receipts and budgets.
 // The shell runs the same cases (app/src-tauri/src/newfolder.rs), so both sides agree on the command and on the task it becomes.
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MAX_REQUEST_CHARS, parseCommand, parseShellCommand, serialize, type Command, type Event } from "../../protocol/index.ts";
@@ -77,9 +77,9 @@ const waitFor = async (cond: () => boolean, ms = 3000) => { const end = Date.now
 
 /** What the shell leaves behind: a home folder, one folder for everything made for a request, and inside it a brand new
  *  empty folder named after the request. The task is the case's own task line, with that folder as the project. */
-function newFolder(caseName: string, rounds: Step[][], o: { proofs?: LadderResult[]; budgetUsd?: number } = {}) {
+function newFolder(caseName: string, rounds: Step[][], o: { proofs?: LadderResult[]; budgetUsd?: number; memory?: boolean; parentName?: string } = {}) {
   const home = tmp("home");
-  const parent = join(home, `${NAMES.newFolderParent}`);
+  const parent = join(home, o.parentName ?? `${NAMES.newFolderParent}`);
   mkdirSync(parent);
   const project = join(parent, "Website for my bakery");
   mkdirSync(project);
@@ -90,7 +90,7 @@ function newFolder(caseName: string, rounds: Step[][], o: { proofs?: LadderResul
   const engine = new ScriptedEngine(rounds);
   let n = 0;
   const proofs = o.proofs ?? [passed()];
-  const runner = new AgentRunner({ shadowRoot: tmp("shadow"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)], approvalTimeoutMs: 200 });
+  const runner = new AgentRunner({ shadowRoot: tmp("shadow"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)], approvalTimeoutMs: 200, ...(o.memory ? { memoryDir: tmp("memory") } : {}) });
   return { home, parent, project, task, events, engine, runner };
 }
 
@@ -153,6 +153,69 @@ describe("something to build, in a brand new empty folder", () => {
     await r.runner.handle({ v: 1, id: "a", type: "drive.approve", agent: "builder-1", steps: ["One", "Two"] });
     expect(of(r.events, "drive.step").map((s) => `${s.index}:${s.status}`)).toContain("1:not_done");
     expect(existsSync(join(r.project, "2.txt"))).toBe(false);
+  });
+});
+
+// Undo must really give back an empty folder (M14 real run finding): in a folder Squibby made, the shared files other coding
+// agents read (AGENTS.md and CLAUDE.md) are never written unless the person asks. Squibby's own hidden folder (.companion,
+// the project's notes) is the only thing a finished and undone first step may leave.
+describe("the shared files in a folder Squibby made", () => {
+  const SHARED = ["AGENTS.md", "CLAUDE.md"];
+  const buildSteps = (): Step[][] => [[planOf("Make the home page", "Add the menu")], [write("index.html", "<h1>Bakery</h1>"), write("package.json", JSON.stringify({ scripts: { dev: "vite" }, dependencies: { react: "1" } }))], [write("menu.html", "<ul></ul>")]];
+  const run = async (r: ReturnType<typeof newFolder>) => {
+    await r.runner.handle(r.task);
+    await r.runner.handle({ v: 1, id: "a", type: "drive.approve", agent: "builder-1", steps: ["Make the home page", "Add the menu"] });
+  };
+  test("a plan carried out writes no AGENTS.md or CLAUDE.md there, and asks nothing about them", async () => {
+    const r = newFolder("something to build starts a plan", buildSteps(), { memory: true });
+    await run(r);
+    expect(of(r.events, "drive.done")[0]).toMatchObject({ status: "done", completed: 2 });
+    for (const f of SHARED) expect(existsSync(join(r.project, f)), f).toBe(false);
+    expect(of(r.events, "memory.agents_written")).toEqual([]);
+    expect(of(r.events, "memory.agents_ask")).toEqual([]);
+    expect(of(r.events, "memory.saved").length).toBeGreaterThan(0);   // its notes are still kept, in the hidden folder
+  });
+  test("so Undo of the first step leaves the folder empty except Squibby's own hidden folder", async () => {
+    const r = newFolder("something to build starts a plan", buildSteps(), { memory: true });
+    await run(r);
+    const cp = of(r.events, "checkpoint.created")[0].checkpoint;
+    await r.runner.handle({ v: 1, id: "u", type: "checkpoint.restore", project: r.project, checkpoint: cp });
+    expect(of(r.events, "checkpoint.restored").length).toBe(1);
+    expect(readdirSync(r.project).sort()).toEqual([".companion"]);
+  });
+  test("when the person asks for them (yes to the shared files), they are written as usual", async () => {
+    const r = newFolder("something to build starts a plan", buildSteps(), { memory: true });
+    await run(r);
+    await r.runner.handle({ v: 1, id: "y", type: "memory.agents", project: r.project, answer: "yes" } as never);
+    expect(readFileSync(join(r.project, "AGENTS.md"), "utf8")).toContain("Project notes");
+    expect(readFileSync(join(r.project, "CLAUDE.md"), "utf8").split("\n")[0]).toBe("@AGENTS.md");
+  });
+  test("a person's own AGENTS.md put there later is never touched", async () => {
+    const r = newFolder("something to build starts a plan", buildSteps(), { memory: true });
+    await run(r);
+    writeFileSync(join(r.project, "AGENTS.md"), "# Mine\n");
+    await r.runner.handle({ v: 1, id: "f", type: "memory.erase", project: r.project, scope: "project" } as never);
+    expect(readFileSync(join(r.project, "AGENTS.md"), "utf8")).toBe("# Mine\n");
+  });
+  test("a research there files its notes and writes no shared files", async () => {
+    const answer = say('```json\n{"title":"Who competes","answer":"Two shops.","notes":[{"text":"Bake Co sells bread.","source":"https://example.com/bake"}]}\n```');
+    const r = newFolder("something to look up starts research", [[answer]], { memory: true });
+    await r.runner.handle(r.task);
+    for (const f of SHARED) expect(existsSync(join(r.project, f)), f).toBe(false);
+  });
+  test("the same plan in a project that is not one Squibby made still writes them, as before", async () => {
+    const r = newFolder("something to build starts a plan", buildSteps(), { memory: true, parentName: "Projects" });
+    await run(r);
+    expect(readFileSync(join(r.project, "AGENTS.md"), "utf8")).toContain("Project notes");
+    expect(readFileSync(join(r.project, "CLAUDE.md"), "utf8").split("\n")[0]).toBe("@AGENTS.md");
+    expect(of(r.events, "memory.agents_written").length).toBeGreaterThan(0);
+  });
+  test("a project that is not one Squibby made still gets the question when it already has its own AGENTS.md", async () => {
+    const r = newFolder("something to build starts a plan", buildSteps(), { memory: true, parentName: "Projects" });
+    writeFileSync(join(r.project, "AGENTS.md"), "# Team\nUse tabs.\n");
+    await run(r);
+    expect(of(r.events, "memory.agents_ask").length).toBe(1);
+    expect(readFileSync(join(r.project, "AGENTS.md"), "utf8")).toBe("# Team\nUse tabs.\n");
   });
 });
 

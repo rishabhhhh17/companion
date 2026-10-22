@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemoryStore } from "../src/memory/store.ts";
-import { removeSection, syncAgentsFiles } from "../src/memory/agentsmd.ts";
-import { PRODUCT } from "../src/names.ts";
+import { madeBySquibby, removeSection, syncAgentsFiles } from "../src/memory/agentsmd.ts";
+import { NAMES, PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agmd-")); made.push(d); return d; };
@@ -128,5 +128,16 @@ describe("keeping in step", () => {
     m.eraseAll("project");
     syncAgentsFiles(project, m, { approved: true, onlyIfPresent: true });
     expect(read(project, "AGENTS.md")).toBe("# Team\n");
+  });
+});
+
+describe("which folders Squibby made", () => {
+  test("only a folder directly inside the folder for everything made", () => {
+    expect(madeBySquibby(`/Users/sam/${NAMES.newFolderParent}/Website for my bakery`)).toBe(true);
+    expect(madeBySquibby(`/Users/sam/Documents/${NAMES.newFolderParent}/Research`)).toBe(true);
+    expect(madeBySquibby(`/Users/sam/${NAMES.newFolderParent}/Website/deeper`)).toBe(false);
+    expect(madeBySquibby(`/Users/sam/${NAMES.newFolderParent}`)).toBe(false);
+    expect(madeBySquibby("/Users/sam/Projects/Website")).toBe(false);
+    expect(madeBySquibby("/Users/sam/Website")).toBe(false);
   });
 });
