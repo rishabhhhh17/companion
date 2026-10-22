@@ -67,5 +67,8 @@ The read order, Electron and Chromium triggers, crates and pasteboard steps are 
 - **[verify] in M5:** password inputs in Chrome and Safari (settled for Dia: refused).
 - Read the source of `win-text-inject` (0.1.1, 3 stars) before depending on it.
 
+## Second Look (22 Oct 2026)
+Second Look reads the selected AI answer exactly as the error explainer reads an error (`ax::read_selection`, on its own hotkey only, the light first, the same refusals and the same answer per app), and is never switched on by anything but that key. It writes nothing back, so no paste is involved.
+
 ## Revisit if
 macOS enforces the pasteboard privacy prompt on our save and restore, or a pasted prompt is followed worse than a typed one in Claude Code. Either way, keep preferring the Accessibility read so the clipboard is untouched whenever possible (section 13).

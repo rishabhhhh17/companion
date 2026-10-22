@@ -186,7 +186,7 @@ describe("the rows for Home, the island and the character", () => {
     expect(w.help).toContain("or on the character when the island is off");
     expect(w.help).toContain("With Speak to me on, it also says what is waiting.");
     const floor = floorWords("needsMarked");
-    expect(floor).toContain("Prompt help and the error explainer you start always open Now");
+    expect(floor).toContain("Prompt help, the error explainer and Second Look you start always open Now");
     expect(floor).toContain("or on the character when the island is off");
     expect(floor).toContain("is said out loud when Speak to me is on");
     // Close Home when I click another app names the island only as something that may not be there.

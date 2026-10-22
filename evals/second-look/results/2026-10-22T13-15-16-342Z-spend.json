@@ -1,0 +1,962 @@
+{
+  "format": "companion-eval-results/1",
+  "set": "second-look",
+  "mode": "spend",
+  "harness": "real run harness (runner/scripts/realrun-harness.ts; key from the Keychain item \"companion-dev\")",
+  "startedAt": "2026-10-22T13:15:16.342Z",
+  "finishedAt": "2026-10-22T13:18:17.479Z",
+  "models": {
+    "fast": "claude-sonnet-5-5"
+  },
+  "caps": {
+    "perCaseUsd": 0.05,
+    "totalUsd": 1
+  },
+  "spentUsd": 0.070819,
+  "stopped": null,
+  "cases": [
+    {
+      "id": "budget-product",
+      "outcome": "caught",
+      "costUsd": 0.002447,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 7523,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "number",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "120 × 4 = 460",
+            "issue": "120 × 4 is 480, not 460.",
+            "verify": "Redo this calculation, or check it in a calculator.",
+            "by": "recomputed"
+          },
+          {
+            "kind": "number",
+            "claim": "120 × 4 = 460 dollars in total",
+            "issue": "The multiplication is wrong. 120 × 4 is 480, not 460. The total is off by $20, so any budget built on 460 will come out short.",
+            "verify": "Multiply 120 by 4 on a calculator, or add 120 four times (120+120+120+120). The result is 480. Then add tax to 480.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether the plan really costs $120 a month, and whether any setup fees, discounts, or pilot pricing apply. Check the vendor's quote or pricing page.",
+          "The tax rate that applies to you, which depends on your location and whether the purchase is exempt."
+        ],
+        "byCode": true
+      }
+    },
+    {
+      "id": "hours-sum",
+      "outcome": "caught",
+      "costUsd": 0.002464,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5444,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "number",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "7 + 8 = 22",
+            "issue": "7 + 8 is 15, not 22.",
+            "verify": "Redo this calculation, or check it in a calculator.",
+            "by": "recomputed"
+          },
+          {
+            "kind": "number",
+            "claim": "6 + 7 + 8 = 22 hours",
+            "issue": "6 + 7 + 8 equals 21, not 22. The total is off by one hour, and any final weekly total built on it will also be off by one.",
+            "verify": "Add the three numbers again with a calculator, or check them against your own time log. Then add the short days to the corrected 21.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "The actual hours logged on each day, and the hours of the short days, are not given, so whether 6, 7 and 8 match your records cannot be judged.",
+          "The answer says 'Monday to Friday' but names only three big days. Whether the other two days are the short days cannot be confirmed."
+        ],
+        "byCode": true
+      }
+    },
+    {
+      "id": "growth-percent",
+      "outcome": "caught",
+      "costUsd": 0.002437,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 9765,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "number",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "from 1,200 to 1,500, a 30% increase",
+            "issue": "From 1,200 to 1,500 is a 25% increase, not a 30% increase.",
+            "verify": "Redo this calculation, or check it in a calculator.",
+            "by": "recomputed"
+          },
+          {
+            "kind": "number",
+            "claim": "a 30% increase",
+            "issue": "The percentage is wrong. Going from 1,200 to 1,500 is a rise of 300, and 300 divided by 1,200 is 25%, not 30%. The 30% figure looks like it came from dividing by 1,000 or from a slip in the arithmetic.",
+            "verify": "Work it out as (1,500 - 1,200) / 1,200 = 0.25, which is 25%.",
+            "by": "model"
+          },
+          {
+            "kind": "logic",
+            "claim": "That is strong month on month growth.",
+            "issue": "The text never says the two numbers are from consecutive months, so calling it month on month is an assumption. Whether 25% counts as strong also depends on your baseline, past trend, seasonality and goals, and one data point cannot show th",
+            "verify": "Confirm the two figures are from adjacent months. Compare them against several previous months and your targets before calling the growth strong.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether 1,200 and 1,500 are really consecutive monthly figures.",
+          "Whether the growth is strong for this business, since that needs context not given."
+        ],
+        "byCode": true
+      }
+    },
+    {
+      "id": "expense-table",
+      "outcome": "caught",
+      "costUsd": 0.002512,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6073,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "number",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "Total Amount: 90",
+            "issue": "The rows add up to 80, not 90.",
+            "verify": "Redo this calculation, or check it in a calculator.",
+            "by": "recomputed"
+          },
+          {
+            "kind": "number",
+            "claim": "Total | 90",
+            "issue": "The listed amounts are 45 + 30 + 5 = 80, not 90. The total is overstated by 10, so the claim of about $90 a month is wrong based on the table's own numbers.",
+            "verify": "Add the three amounts yourself: 45 + 30 + 5 = 80. If the true total is 90, a cost line is missing or one amount is wrong, so check your invoices.",
+            "by": "model"
+          },
+          {
+            "kind": "logic",
+            "claim": "So you spend about $90 a month on tools.",
+            "issue": "The conclusion repeats the wrong total. The table supports about $80 a month. Also, the table has no units, and a domain at 5 is usually billed yearly, not monthly, so treating all lines as monthly may be misleading.",
+            "verify": "Check the billing period for each item (especially the domain) and the currency on your bills or statements, then convert everything to a monthly amount before adding.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether the individual amounts (45, 30, 5) are correct, or whether they are monthly and in dollars, since no source was given."
+        ],
+        "byCode": true
+      }
+    },
+    {
+      "id": "revenue-yearly",
+      "outcome": "caught",
+      "costUsd": 0.002434,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6075,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "number",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "85 x 40 = 3,600",
+            "issue": "85 x 40 is 3,400, not 3,600.",
+            "verify": "Redo this calculation, or check it in a calculator.",
+            "by": "recomputed"
+          },
+          {
+            "kind": "number",
+            "claim": "85 x 40 = 3,600 a month",
+            "issue": "85 x 40 is 3,400, not 3,600. The monthly figure is overstated by $200.",
+            "verify": "Multiply 85 by 40 on a calculator: 80 x 40 = 3,200, plus 5 x 40 = 200, gives 3,400.",
+            "by": "model"
+          },
+          {
+            "kind": "number",
+            "claim": "so about $43,200 a year",
+            "issue": "This is built on the wrong monthly figure (3,600 x 12 = 43,200). With the correct monthly figure of 3,400, the yearly total is 3,400 x 12 = $40,800, so the answer is about $2,400 too high.",
+            "verify": "Multiply 85 x 40 x 12 = 40,800.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether the 85 customers and $40 price are the right inputs, or whether churn, discounts, or fees would change the yearly revenue."
+        ],
+        "byCode": true
+      }
+    },
+    {
+      "id": "sql-injection",
+      "outcome": "caught",
+      "costUsd": 0.002414,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 7961,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "code",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "code",
+            "claim": "db.query(\"SELECT * FROM users WHERE email = '\" + email + \"' AND password = '\" + password + \"'\")",
+            "issue": "The email and password are pasted straight into the SQL text. This is SQL injection. Someone could type something like ' OR '1'='1 as the email and log in without valid details, or read or delete data. It is unsafe to use for a login.",
+            "verify": "Rewrite it with placeholders and pass the values separately, e.g. db.query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]) (placeholder style depends on your database library). Then test with an input like ' OR '1'='",
+            "by": "model"
+          },
+          {
+            "kind": "logic",
+            "claim": "WHERE ... AND password = '\" + password + \"'",
+            "issue": "This compares the typed password to the stored value directly, which means passwords are stored in plain text (or the stored value is used as if it were the password). Passwords should be stored as salted hashes and checked with a slow hash",
+            "verify": "Look up the user by email only, then compare with bcrypt.compare or argon2.verify against a stored hash. Check how your users table stores passwords.",
+            "by": "model"
+          },
+          {
+            "kind": "logic",
+            "claim": "This returns the user if the details match.",
+            "issue": "It also returns the whole row with SELECT *, including the password column, which can leak into responses or logs. And with injection, it can return a user when the details do NOT match, so the statement is misleading.",
+            "verify": "Select only the columns you need and never send the password field to the client. Also check what db.query returns in your library (often a result object with rows, not a single user).",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Which database library is used, so the exact placeholder syntax and the shape of the returned result are unknown."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "off-by-one-loop",
+      "outcome": "caught",
+      "costUsd": 0.002369,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4483,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "code",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "code",
+            "claim": "This prints all three items.",
+            "issue": "range(1, len(items)) starts at index 1, so index 0 ('a') is skipped. The code prints only 'b' and 'c', two items, not three.",
+            "verify": "Run the code: it prints b and c. To print all three, use range(len(items)) or simply `for item in items: print(item)`.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [],
+        "byCode": false
+      }
+    },
+    {
+      "id": "env-in-frontend",
+      "outcome": "caught",
+      "costUsd": 0.002404,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6340,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "code",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "code",
+            "claim": "Put your secret key in the frontend so the button can charge cards",
+            "issue": "This is dangerous advice. A Stripe secret key (sk_...) must never be in frontend code. Anything in a React app, including REACT_APP_ environment variables, is bundled into the JavaScript and visible to every visitor. Anyone who gets the key",
+            "verify": "Read Stripe's docs on API keys: the secret key is for server-side use only. If a secret key was already put in frontend code or deployed, roll (replace) it right away in the Stripe Dashboard under Developers > API keys.",
+            "by": "model"
+          },
+          {
+            "kind": "code",
+            "claim": "const stripe = Stripe(process.env.REACT_APP_STRIPE_SECRET_KEY);",
+            "issue": "Stripe.js on the client is meant to be initialized with the publishable key (pk_...), not the secret key. Stripe.js may also refuse or warn when given a secret key. The REACT_APP_ prefix exists specifically to expose the value to the browse",
+            "verify": "Use Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY) with a pk_ key on the frontend. Create the charge from a backend: the server creates a PaymentIntent or Checkout Session using the secret key, and the frontend only confirms it with t",
+            "by": "model"
+          }
+        ],
+        "cantTell": [],
+        "byCode": false
+      }
+    },
+    {
+      "id": "fake-case",
+      "outcome": "caught",
+      "costUsd": 0.002392,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5914,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "citation",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "citation",
+            "claim": "Henderson v. Pacific Data Corp., 512 U.S. 401 (1994)",
+            "issue": "I do not recognize this case. Volume 512 of U.S. Reports covers 1994 decisions, but I know of no Supreme Court case with this name or at this page. The case may be invented or the citation wrong.",
+            "verify": "Search the name and citation on Google Scholar (case law), Oyez, supremecourt.gov, or CourtListener. Also look up what is actually at 512 U.S. 401.",
+            "by": "model"
+          },
+          {
+            "kind": "fact",
+            "claim": "the Supreme Court held that employers must disclose all monitoring software",
+            "issue": "No Supreme Court ruling I know of creates a general duty for private employers to disclose all monitoring software. Employer monitoring notice rules mostly come from state laws (for example Connecticut, Delaware, New York) and federal law l",
+            "verify": "Check your state's employee monitoring notice statute and the ECPA. Ask an employment lawyer or your state labor department before relying on this.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "I cannot confirm without searching whether the case exists, though I believe it does not."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "fake-quote",
+      "outcome": "caught",
+      "costUsd": 0.002352,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6195,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "citation",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "citation",
+            "claim": "As Steve Jobs said in his 2005 Stanford speech: \"Innovation is saying no to a thousand AI tools.\"",
+            "issue": "This quote is almost certainly not from the 2005 Stanford commencement speech. That speech was about connecting the dots, love and loss, and death (\"Stay hungry, stay foolish\"). It did not mention AI tools, and Jobs died in 2011, long befor",
+            "verify": "Read the full transcript of the 2005 Stanford commencement speech (posted on Stanford's news site) and search it for the word 'innovation' or 'no'. For the original line, look up Jobs's 1997 WWDC Q&A and check it against a reliable source b",
+            "by": "model"
+          }
+        ],
+        "cantTell": [],
+        "byCode": false
+      }
+    },
+    {
+      "id": "fake-study",
+      "outcome": "caught",
+      "costUsd": 0.002384,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6804,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "citation",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "remote employees are exactly 47.3% more productive",
+            "issue": "Productivity studies of remote work rarely give one precise figure, and the word 'exactly' suggests false precision. Well-known research (e.g., Bloom's Ctrip study) found effects of about 13%, and hybrid work studies found little or no prod",
+            "verify": "Find the original paper and see what exactly was measured (which workers, what productivity measure, remote vs. hybrid) and whether 47.3% appears in it.",
+            "by": "model"
+          },
+          {
+            "kind": "citation",
+            "claim": "Harvard Business School, Working Paper 23-911",
+            "issue": "This working paper number looks unfamiliar and may be invented or attached to a different topic. I can't confirm it exists or that it concerns remote productivity.",
+            "verify": "Search the HBS Working Papers page (hbs.edu/faculty) for the number 23-911 and check its title, authors and findings.",
+            "by": "model"
+          },
+          {
+            "kind": "fact",
+            "claim": "A 2023 Harvard study of 50,000 workers",
+            "issue": "The sample size and year are stated without authors or a title. I can't tie them to any known Harvard study, and the details may be made up or mixed up with another study.",
+            "verify": "Look up the paper's authors, year and sample size in its abstract. If you can't find a matching study, don't repeat the claim.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether a study with these exact details exists, since I can't search the web."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "stale-price",
+      "outcome": "caught",
+      "costUsd": 0.002327,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6111,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "fact",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "number",
+            "claim": "ChatGPT Plus costs $10 a month",
+            "issue": "As far as I know, ChatGPT Plus has been priced at $20 a month in the US since it launched, not $10. I can't confirm today's price without looking it up, and prices can differ by country and change over time.",
+            "verify": "Check OpenAI's pricing page (chatgpt.com/pricing) or the upgrade screen in your ChatGPT account for the current price in your region.",
+            "by": "model"
+          },
+          {
+            "kind": "fact",
+            "claim": "includes unlimited GPT-4 use",
+            "issue": "Plus has never offered truly unlimited use of the top models. It has had message caps that vary by model and change over time. GPT-4 may also have been replaced or retired in favor of newer models, so the statement is likely misleading or o",
+            "verify": "Read the Plus plan details on OpenAI's pricing page and the Help Center article on usage limits for Plus, which list which models are included and the current caps.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "The exact current Plus price and model lineup in your country, since these change and I can't look them up."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "stale-law",
+      "outcome": "caught",
+      "costUsd": 0.002232,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6068,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "fact",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "fact",
+            "claim": "California's minimum wage is $10.50 an hour for all employers.",
+            "issue": "This looks out of date. $10.50 was the state rate for smaller employers (25 or fewer employees) around 2017, and the state rate has risen every year since. The statewide minimum was $16.50 in 2025, and it is likely higher in 2026. Also, the",
+            "verify": "Check the California Department of Industrial Relations minimum wage page (dir.ca.gov) for the current 2026 statewide rate, and your city or county's website for any higher local minimum. For fast food or healthcare work, check the sector-s",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "The exact 2026 statewide rate, since I cannot look it up. It is above $10.50 either way."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "correlation-cause",
+      "outcome": "caught",
+      "costUsd": 0.002277,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6672,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "logic",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "logic",
+            "claim": "Our pages with more pop-ups also have more sales, so adding pop-ups causes more sales.",
+            "issue": "A link between two things does not show that one causes the other. Pages with more pop-ups may be the busiest or most important pages (product, checkout), which would have more sales anyway. Or visitors who are already about to buy may be t",
+            "verify": "Run a test: add pop-ups to a random half of comparable pages and leave the other half alone, then compare sales. Or compare the same pages before and after the change, accounting for traffic and season.",
+            "by": "model"
+          },
+          {
+            "kind": "logic",
+            "claim": "Add three more to every page.",
+            "issue": "The advice goes beyond what the data shows. Even if pop-ups help a little, more of them often annoy visitors, slow pages, and lower sales or search ranking. A gain seen at the current level does not mean three more on every page will keep h",
+            "verify": "Try the change on a few pages first. Watch conversion rate, bounce rate, page speed, and complaints. Check Google's guidance on intrusive interstitials, especially for mobile pages.",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether pop-ups really affect sales on your site, since that depends on your own data and a proper test."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "wrong-conclusion",
+      "outcome": "caught",
+      "costUsd": 0.002362,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6107,
+      "notes": [],
+      "detail": {
+        "label": "seeded",
+        "kind": "logic",
+        "verdict": "check",
+        "items": [
+          {
+            "kind": "logic",
+            "claim": "fixing each takes about two days. We have one day left, so we can launch on Friday with everything fixed.",
+            "issue": "The conclusion does not follow. Three bugs at about two days each is roughly six days of work if done one after another. Even with three people working in parallel, each fix still takes about two days, which is more than the one day left. R",
+            "verify": "Add up the estimates: 3 bugs x 2 days = 6 person-days. Ask the team how many people can work in parallel, and whether the 'one day left' is working days. Add time for retesting. Then either move the launch date, cut scope, or decide which b",
+            "by": "model"
+          }
+        ],
+        "cantTell": [
+          "Whether the bugs can be fixed in parallel or whether a partial fix or workaround would be acceptable.",
+          "Whether 'Friday' is actually one day away, since that depends on today's date and the team's working days."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-product",
+      "outcome": "clean",
+      "costUsd": 0.002267,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4239,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "number",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Whether $25 a month per seat is the actual current price. That figure comes from the question or the vendor, and I can't confirm it. Check it on the vendor's pr",
+          "Whether taxes, annual-billing discounts, or minimum seat counts would change the total."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-percent",
+      "outcome": "clean",
+      "costUsd": 0.002309,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4089,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "number",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Whether the 2,000 and 2,500 visitor figures themselves are accurate, since the source data was not provided."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-table",
+      "outcome": "clean",
+      "costUsd": 0.002394,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6147,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "number",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Whether the individual costs (hosting, email tool, domain) match the person's real prices, since no source is given.",
+          "Whether all amounts use the same billing period and currency."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-loop",
+      "outcome": "clean",
+      "costUsd": 0.002347,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3973,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "code",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-param-query",
+      "outcome": "clean",
+      "costUsd": 0.002394,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5448,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "code",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Whether the rest of the app is safe, such as how `email` is obtained or whether other queries build SQL by string concatenation. This snippet does not show that",
+          "Which database library `db` actually is. The $1 style works with pg but not with MySQL libraries, which use ?."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-publishable",
+      "outcome": "clean",
+      "costUsd": 0.002404,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5424,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "code",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Which build tool the person uses: with Vite or Next.js the env variable prefix would differ (VITE_ or NEXT_PUBLIC_), so REACT_APP_ would not work there."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-definition",
+      "outcome": "clean",
+      "costUsd": 0.002362,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 7630,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "fact",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-steps",
+      "outcome": "clean",
+      "costUsd": 0.002377,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 8071,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "logic",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Google changes the Gmail layout from time to time, so the exact button wording or position may differ slightly from what you see today. Open the search options "
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-hedged",
+      "outcome": "clean",
+      "costUsd": 0.002367,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6843,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "fact",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "The question itself is not shown, so I cannot tell which central bank or time period is meant, or whether the answer is as helpful as it could be.",
+          "I cannot check the current rate outlook or what forecasters expect right now, because I cannot search. If you need that, look at the central bank's latest state"
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-division",
+      "outcome": "clean",
+      "costUsd": 0.002212,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4829,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "number",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "The original question is not shown, so I cannot confirm that $900 and 4 people are the right inputs (for example, whether the total includes tax or tip, or whet"
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-email",
+      "outcome": "clean",
+      "costUsd": 0.002372,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5743,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "other",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "Whether an invoice dated 3 October really exists, is still unpaid, and was sent to Sam. Priya should check her own records before sending.",
+          "Whether the payment terms (for example 30 days) mean the invoice is actually overdue yet. If it isn't, the wording 'still open' is fine but not urgent."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-git-advice",
+      "outcome": "clean",
+      "costUsd": 0.002334,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 7188,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "code",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "The question is not shown, so I can't tell whether this fits the person's situation. It would not suit someone who has already pushed the commit, or who wanted ",
+          "It also assumes the commit is not the first in the repository. `HEAD~1` fails if there is no parent commit."
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-average",
+      "outcome": "clean",
+      "costUsd": 0.002287,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4360,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "number",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-convert",
+      "outcome": "clean",
+      "costUsd": 0.002214,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3789,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "number",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "The original question was not shown, so I cannot tell whether 3 × 60 was the right calculation for what the person asked (for example, whether it was 3 hours in"
+        ],
+        "byCode": false
+      }
+    },
+    {
+      "id": "clean-caveat",
+      "outcome": "clean",
+      "costUsd": 0.002372,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5827,
+      "notes": [],
+      "detail": {
+        "label": "clean",
+        "kind": "fact",
+        "verdict": "solid",
+        "items": [],
+        "cantTell": [
+          "The question is not shown, so I cannot tell if the answer fits it. If it was about something else, such as photos, video or messages, the advice might differ.",
+          "The answer names no specific place or law, so there is nothing to verify beyond the general point. If you are recording across state or country lines, check the"
+        ],
+        "byCode": false
+      }
+    }
+  ],
+  "summary": {
+    "counts": {
+      "caught": 15,
+      "caught_other": 0,
+      "missed": 0,
+      "confidently_wrong": 0,
+      "unsure": 0,
+      "clean": 15,
+      "false_alarm": 0,
+      "error": 0,
+      "refused": 0,
+      "stopped": 0,
+      "not_started": 0
+    },
+    "catchRate": 1,
+    "rightReasonRate": 1,
+    "caughtByCode": 5,
+    "falseAlarmRate": 0,
+    "confidentlyWrong": 0,
+    "unsure": 0,
+    "costUsd": 0.070819
+  }
+}

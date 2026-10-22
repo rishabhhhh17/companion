@@ -423,7 +423,12 @@ export type LastStep = "yes" | "no" | "unsure";
 /** Where the person clicks: the last target (the prompt lists them in the order to look at them, ending with the click),
  *  or the point when there is no list. What the aim eval scores, and what a lesson rings. */
 export function clickPoint(r: Located): Point | null { return r.targets?.length ? r.targets[r.targets.length - 1] : r.point; }
-export interface FastLike { run(req: { text: string; system?: string; extra?: string; raw?: boolean }, onDelta: (t: string) => void, signal: AbortSignal): Promise<{ text: string; costUsd: number }> }
+/** A request on the fast lane. search: Second Look's web search, at most maxUses searches; only a lane that says canSearch
+ *  sends it (the plain API lanes, direct.ts), and the Claude Code lane never searches. */
+export type FastReq = { text: string; system?: string; extra?: string; raw?: boolean; search?: { maxUses: number } };
+/** searches: how many web searches were made; sources: the pages they returned (address and title only). */
+export type FastOut = { text: string; costUsd: number; searches?: number; sources?: { url: string; title: string }[] };
+export interface FastLike { readonly canSearch?: boolean; run(req: FastReq, onDelta: (t: string) => void, signal: AbortSignal): Promise<FastOut> }
 export interface VisionLike { locate(req: LocateReq, signal: AbortSignal): Promise<Located> }
 
 /** How long the first look's words are kept for a look again. */
