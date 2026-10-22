@@ -33,9 +33,10 @@ describe("Start every task off the record (task.offRecordByDefault)", () => {
     expect(card).toContain('const offDefault = useSetting("task.offRecordByDefault") === true;');
     expect(card).toContain('useEffect(() => { setOff((ticked) => offBoxAfter(ticked, box.current?.value ?? "", offDefault)); }, [offDefault]);');
     // After a task, a plan or a question is sent (each empties the box), the box goes back to the setting, never simply
-    // unticked. Rescue leaves the words in the box, so it goes back only the way the setting changing does.
+    // unticked. Rescue leaves the words in the box, so it goes back only the way the setting changing does. The fourth is
+    // a request sent to a new folder (startNew), which empties the box too.
     expect(card).not.toContain("setOff(false)");
-    expect(card.match(/setOff\(offRecordAtStart\(\)\)/g)?.length).toBe(3);
+    expect(card.match(/setOff\(offRecordAtStart\(\)\)/g)?.length).toBe(4);
     expect(card.match(/setOff\(\(ticked\) => offBoxAfter\(ticked, box\.current\?\.value \?\? ""/g)?.length).toBe(2);
   });
   test("the setting going off never unticks a box with words in it, so words typed off the record are never kept", () => {

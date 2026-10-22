@@ -10,6 +10,7 @@ The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder
 
 ## Built so far (22 Oct 2026)
 - The light lanes straight on the Messages API, off by default (`runner/src/direct.ts`, PR 155).
+- Basic agents with no project open, the engine side and the minimum in the ask box (22 Oct 2026): with no project open, Start, Plan it and Look it up (and, with a project open, the tick box Make it in a new folder) ask the shell for a new folder named after the request in `~/Companion makes` (the setting `make.folder` can put it in Documents or on the Desktop). The shell makes it (never over anything, never in a git project or one of the person's projects, never through a link), opens it as the project and starts an ordinary plan or Look it up there, so it gets the same safety, approvals, Undo, proof, receipts and budgets as any task (`app/src-tauri/src/newfolder.rs`, `protocol/index.ts` `project.new`). Tested with stand ins, and then once against real Claude (22 Oct 2026, see "Real run: make something in a new folder" below). Not yet tried in the built app. **Not yet built:** the look (waits for the founder), a list of folders made this way, and moving one to the Trash.
 - Second Look's engine (`runner/src/secondlook.ts`) and its eval (`evals/second-look/`, 30 cases). This first eval has 30 answers, not the planned 100; it grows once the first real run shows where it is weak.
 - Second Look wired end to end (22 Oct 2026, branch `m14/second-look-wire`): its own hotkey (Control, Option, Command and C, changeable in Settings), the selection read the error explainer's way (the light first, Accessibility, the same answer per app, never stored or logged), `secondlook.check` and `secondlook.result` in the protocol, the daily limit, Stop everything and Voice off, a switch in Settings (Second Look, on) and a search cap (Web searches per Second Look, 3, at most 5). On the plain API lanes it may search the web (the basic web search tool, $10 per 1,000 searches, counted in its cost) and shows a page only when that search returned it; on the Claude Code lane it does not search and says so. The usage proxy forwards that one capped search and no other tool. The card shows it through the existing panel and lines, with no new look. **Not yet done:** a real Mac run (the read in ChatGPT, Claude and a browser), the real eval run, a real search on each quick model, and the look of the card (yours).
 
@@ -63,3 +64,26 @@ For numbers it redoes the arithmetic itself. For facts it searches and shows sou
 - A yes or no on this plan.
 - Whether the guide's "agents with no project" should write into a new folder in your home folder (my suggestion, with Undo) or somewhere else.
 - The Mac session (`docs/launch/mac-session-script.md`), which gates everything visual.
+
+## Real run: make something in a new folder (22 Oct 2026)
+
+What was run: `real-verify.ts` cases `new-folder`, `new-folder-detailed` and `new-folder-research`, on the founder's key (the `companion-dev` Keychain item), Sonnet 5.5, the SDK's bundled Claude binary, started from a clean environment (`env -i`), per case stop $1.00 and total stop $2.50. Each case makes a brand new empty folder laid out as the shell leaves it (a "Companion makes" folder, a neighbour project and a file beside it), then sends exactly the command the shell would send (`drive.plan` or `research.ask`). It is the engine side only: the Mac shell that makes the folder (`newfolder.rs`) and the screens were not part of it.
+
+**Cost, by Companion's own count (the Anthropic Console is the true figure; compare it):** `new-folder` $0.065 and then $0.041 on a rerun, `new-folder-detailed` $0.070, `new-folder-research` $0.053. Total about **$0.23** in two runs. No case came near its stop.
+
+| Check | Result | Evidence |
+|---|---|---|
+| (a) the plan is sensible for an empty folder | pass, both build cases | 3 steps each, plain words ("Create the page with the bakery name, a short welcome and a simple look", "Add the opening hours section", "Add the contact section with address, phone and email"); no bug fix, no editor chore, no jargon |
+| (b) every file written is inside the new folder | pass, all three | the neighbour project, the file beside the folder and the home folder's list of entries were unchanged; every snapshot named the new folder; planning wrote nothing |
+| (c) a fair proof when there was nothing to check at first | pass | every check `passed` with the page served and opened in the hidden browser (start and browser passed; install, build and tests skipped with "no build or lint steps" and "no tests", which did not make it fail); no step ended done with nothing checked |
+| (d) Undo takes the folder back to empty | pass (with a note) | the page was gone after Undo of the first step. Left: `.companion/project.md`, `AGENTS.md` and `CLAUDE.md`. Those are Companion's own notes (the script answered yes to the shared files question, as a person might). Not strictly empty |
+| (e) research writes nothing outside its notes | pass | only `.companion/research/<date>-before-opening-a-small-bakery.md`; 4 notes, every one with a web address; tools were a search only; no write or shell tool ran |
+| (f) no secret, no network write, nothing touching git | pass, all three | no command ran at all, no approval card, no `.git`, no `.env`, the key in no event and no file |
+| (g) cost per case | see above | $0.04 to $0.07 a build case, $0.05 research |
+
+**What it found (not fixed, a decision for the founder):**
+- **A vague request stops after step 1 to ask the bakery's name.** "a one page website for my bakery with opening hours and a contact section" has no name, so step 1 built the page with a stand in title, then asked "What is your bakery's name?". By design (a question only the person can answer) the plan stops there and the other 2 steps wait: `drive.done` said `needs_you`, 0 of 3 completed (step 1 was done and proven, but the plan counts it as waiting). Both times. The same request with the facts in it (`new-folder-detailed`) finished all 3 steps, 3 receipts, 3 passed proofs. So the first thing a person will meet with this front door is a question. The screens should make the question easy to answer, and answering should carry on with the plan. **Unproven: what the shell and the page do after the answer.**
+- Undo leaves Companion's own notes (`.companion/`, `AGENTS.md`, `CLAUDE.md`) in the folder. Whether a "back to empty" should also remove them, or not write them into a folder that was just made, is not decided.
+
+**Still unproven:** the Mac shell making the folder, the page, a person using it, a second run on the same request (different plans each time are possible), a request that needs more than one page or a package install (the proof for that was not tried in a new folder), Claude's own web search being allowed in a user's network, and the Console figure.
+

@@ -600,6 +600,14 @@ export const S = {
   folderRecent: "Recent folders",
   folderPick: "Pick one…",
   folderNone: "No project folder is chosen yet. Pick the folder of the project you are working on.",
+  // Make something with no project open, or in a new folder (F23, M14 Part 1; commands.ts newFolderTask).
+  newFolder: {
+    tick: "Make it in a new folder",
+    noProject: "No project is open, so Start, Plan it and Look it up make a new folder for this, named after what you ask. Where new folders go is in Settings.",
+    made: (name: string) => `Made a new folder for this: ${name}. It is the project now.`,
+    busy: "Something is still working or waiting for you here. Let it finish, or press Stop, then ask again. Your words are still in the box.",
+    noFiles: "Added files cannot go to a new folder yet. Remove them, then ask again. Your words are still in the box.",
+  },
   onlineButton: "Put it online",
   onlineTitle: "Putting it online",
   makeLive: "Make it live",
@@ -1040,6 +1048,7 @@ export const S = {
     "work.webSearch": { label: "Let tasks search the web", help: "Claude can search the web while it works on a task, for example to read how a library is used. Each search is a small extra cost on your own key. Research always searches the web.", also: ["web", "search", "internet", "cost", "money", "google"] },
     "undo.protectMyEdits": { label: "Undo keeps files I changed myself", help: "On, Undo never replaces a file you changed yourself after a task: it leaves those files as you have them and tells you which. Off, Undo puts the project back exactly as it was and replaces your own later edits (your versions are kept in the safety copy Undo makes first, so Undo can be undone). Files you changed while a plan was paused are always kept.", also: ["undo", "my edits", "overwrite", "protect", "replace", "own changes", "recover"] },
     "drive.maxSteps": { label: "Most steps in a plan", help: "A Drive plan is asked for no more steps than this, and a longer one is cut. The estimate shown and the plan's spending limit still apply. Rescue plans keep their own 1 to 7 steps.", also: ["drive", "plan", "steps", "long"] },
+    "make.folder": { label: "Where new folders go", help: "When you ask for something with no project open, or tick Make it in a new folder, Companion makes a new folder for it, named after what you asked. They all go in one folder for them in the place you pick here. A folder already there is never used or written over.", also: ["new folder", "new project", "make", "where", "location", "home", "documents", "desktop"], options: { home: "Your home folder", documents: "Documents", desktop: "Desktop" } },
     "approval.waitMinutes": { label: "How long a question waits for your answer", help: "When Companion asks before doing something, the question waits this long for you. A question already waiting keeps its time.", also: ["approval", "question", "ask", "timeout", "wait", "minutes"] },
     "explain.mode": { label: "Explain after a task", help: "Two short reasons under each result, in plain words, and if you like one quick question to check them. For all your projects. Each one is a small cost on your own Claude.", also: ["why", "learn", "teach", "reasons", "question", "quiz"], options: { off: "Off", reasons: "Short reasons", reasonsAndQuestion: "Reasons and a quick check question" } },
     "explain.after": { label: "Explain after", help: "After every task, or only after each step of a plan you approved. Each Explain is a quick answer on your own Claude, so only plan steps also costs less.", also: ["plan", "steps", "drive", "cost", "money", "why"], options: { everyTask: "Every task", plansOnly: "Only steps of a plan" } },

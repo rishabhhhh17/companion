@@ -147,6 +147,19 @@ export type EngineWarm = Envelope & { type: "engine.warm" };
 // engine applies that is not its usual value (a missing name is its usual value); projectValues: the named project's own.
 // Each one replaces the one before. The engine checks every value again and keeps them in memory only.
 export type SettingsApply = Envelope & { type: "settings.apply"; values: Record<string, unknown>; project?: string; projectValues?: Record<string, unknown> };
+// Make something with no project open (F23, M14 Part 1): "make me a website for my bakery", "research who competes with X".
+// A page sends it to the shell only (start_in_new_folder), never to the engine, and it names no project. The shell makes a
+// new empty folder named after the request in plain words (app/src-tauri/src/newfolder.rs; where it goes is the setting
+// make.folder), chooses it as the project, and sends an ordinary drive.plan (build: a plan first) or research.ask for it
+// with these words, model and budget, which the engine runs like any other task. The engine cannot read this command
+// (parseCommand refuses it), so it can never be asked to make a folder outside a project. parseShellCommand and the shell's
+// own check both run protocol/fixtures/project-new-cases.jsonl, with the task each one becomes.
+export const NEW_FOLDER_KINDS = ["build", "research"] as const;
+export type NewFolderKind = (typeof NEW_FOLDER_KINDS)[number];
+/** The longest request, in characters a person sees: the ask box's longest draft (app/src/askbox.ts MAX_DRAFT). */
+export const MAX_REQUEST_CHARS = 4000;
+export type ProjectNew = { v: 1; id: string; ts?: string; type: "project.new"; kind: NewFolderKind; request: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
+export type ShellCommand = ProjectNew;
 export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
@@ -548,7 +561,16 @@ function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {
   return { ok: true, msg: o as unknown as T };
 }
 
+// Commands only the shell takes (it does the work, then sends the engine an ordinary command). The engine's parseCommand
+// does not know them.
+const requestOk: Check = (m) => (typeof m.request === "string" && m.request.trim().length > 0 && Array.from(m.request).length <= MAX_REQUEST_CHARS ? null : `"request" must be words, at most ${MAX_REQUEST_CHARS} characters`);
+const SHELL_COMMANDS: Record<string, Check[]> = {
+  "project.new": [oneOf("kind", [...NEW_FOLDER_KINDS]), requestOk, str("agent"), str("model"), num("budgetUsd"), opt("offTheRecord", bool("offTheRecord")),
+    (m) => (m.project === undefined ? null : 'a new folder is made by the shell, so the command names no "project"')],
+};
+
 export const parseCommand = (line: string): Parsed<Command> => parseWith<Command>(line, COMMANDS);
+export const parseShellCommand = (line: string): Parsed<ShellCommand> => parseWith<ShellCommand>(line, SHELL_COMMANDS);
 export const parseEvent = (line: string): Parsed<Event> => parseWith<Event>(line, EVENTS);
 // Half an emoji is not valid text and the app refuses it, so any stray half is replaced before a message is sent.
 export const serialize = (msg: Command | Event): string => JSON.stringify(msg, (_k, v) => (typeof v === "string" ? v.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd") : v));

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "about": "The names of the folders made for something asked with no project open (F23, M14 Part 1; app/src-tauri/src/newfolder.rs). Every new folder goes inside one folder for all of them (parent), in the place the setting make.folder names. A request whose words cannot name a folder (only small words, nothing but symbols, something that looks like a secret, or off the record) gets the fallback name for its kind. Names are placeholders (rule 21): they live here, never in logic.",
+  "parent": "Companion makes",
+  "fallback": { "build": "New project", "research": "Research" }
+}

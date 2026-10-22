@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## "Make me something" tried on real Claude: 22 Oct 2026
+
+- **The engine behind "make something with no project open" has now run on real Claude, in a brand new empty folder.** A one page bakery site was planned in 3 plain steps, built, checked in a hidden browser and given a receipt for each step. "What should I know before opening a small bakery" came back with 4 cited notes and nothing else written. Undo took the page away again. Nothing was written outside the new folder, no key leaked, nothing touched git. All of it cost about 23 cents.
+- **One thing to know:** if you do not say the bakery's name, it builds the page, then stops to ask for it, and the other steps wait for your answer. With the name and the facts in the request it finishes all three steps. The screens still need to be built, and the folder making on the Mac has not been tried in the app.
+
 ## Second Look's engine: 22 Oct 2026
 
 - **The engine behind "check any AI answer" is built.** It redoes the maths itself (sums, percentages, table totals), so a wrong number is caught for certain, not guessed. Then one short look by Claude covers code, citations, out of date facts and steps that do not follow.
