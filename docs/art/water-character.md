@@ -31,7 +31,6 @@ Written 22 Oct 2026.
 A trip or a cheer never hides that something waits for you, that the screen is being looked at, or that it is off.
 
 **Still open for the founder.**
-1. **Licence.** The pictures were made with ChatGPT. Check that the plan used allows commercial use before the app is sold. Most paid plans do; some free ones do not.
-2. **Real "uh oh" pose.** Peek is a stand in. A proper worried but friendly pose would be better.
-3. **More:** a puddle only version for the smallest size, the surfboard that becomes the pointer, and the fluid cursor from the brief. Moving versions (Rive or short loops) when ready.
-4. **A look on the real Mac,** on both a light and a dark desktop, with the real glow rings.
+1. **Real "uh oh" pose.** Peek is a stand in. A proper worried but friendly pose would be better.
+2. **More:** a puddle only version for the smallest size, the surfboard that becomes the pointer, and the fluid cursor from the brief. Moving versions (Rive or short loops) when ready.
+3. **A look on the real Mac,** on both a light and a dark desktop, with the real glow rings.
