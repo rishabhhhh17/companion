@@ -4,6 +4,7 @@ import { invoke, listen } from "./tauri.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
+import { poseFor, poseUrl } from "./characters.ts";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
@@ -79,13 +80,15 @@ function Dock() {
     if (!p) return;
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
   };
+  const pose = poseFor(state, { roam: roam.phase, react: react?.r });
   return (
     <main className="dock">
-      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
+      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
+        <img className="pose" src={poseUrl(pose)} alt="" draggable={false} />
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
       <div className="muted" role="status" aria-live="polite">{label}</div>
