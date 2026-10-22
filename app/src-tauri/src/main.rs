@@ -54,6 +54,7 @@ mod presentation;
 mod settings;
 mod groups;
 mod convert;
+mod docread;
 mod homeset;
 mod houserules;
 
@@ -1973,9 +1974,10 @@ fn apply_sharing(s: &presentation::Settings) {
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setSharingType(t); } });
 }
 
-/// Quiet during calls: a known call app is in front (and, once verified, a camera is in use). Only the front app's id (and
-/// whether a camera is on) is looked at, and only at the moment something would be said or a reaction would play.
-fn quiet() -> bool { presentation::quiet_with(&presentation_now(), &presentation::call_apps_from(&setting_now("calls.apps")), &front_id(), || presentation::CAMERA_CHECK_ON && presentation::mac::camera_in_use()) }
+/// Quiet during calls: a known call app is in front (and, once verified, a camera is in use, or another app uses a
+/// microphone). Only the front app's id (and whether a camera or another app's microphone is on) is looked at, and only at
+/// the moment something would be said or a reaction would play.
+fn quiet() -> bool { presentation::quiet_with(&presentation_now(), &presentation::call_apps_from(&setting_now("calls.apps")), &front_id(), || presentation::CAMERA_CHECK_ON && presentation::mac::camera_in_use(), || presentation::MIC_CHECK_ON && presentation::mac::mic_in_use_by_another_app()) }
 
 /// Settings: hide from screen sharing and quiet during calls (the registry's sharing.hide and calls.quiet), kept in
 /// `presentation.json` in Companion's own folder as before, applied at once. Changed only through settings_set.
@@ -2663,6 +2665,19 @@ fn copy_text(window: tauri::WebviewWindow, text: String) -> Result<(), String> {
     let Some(text) = share::copyable(&text) else { return Err("That could not be copied.".into()) };
     ax::write_clipboard(text);
     Ok(())
+}
+
+/// Files into the ask box: the text of a PDF, Word or Excel document Home's page was given by a drop or a paste
+/// (attachfiles.ts), read on this Mac with the Mac's own tools in a private folder that is removed at once (docread.rs).
+/// Only from Home. The text goes back to the page only; nothing about the document, its name or its text is logged.
+#[tauri::command]
+async fn read_document(window: tauri::WebviewWindow, name: String, data: String) -> Value {
+    if window.label() != "card" { return docread::reply(Err(docread::Refuse::Kind)); }
+    if data.len() > docread::MAX_INPUT.div_ceil(3) * 4 { return docread::reply(Err(docread::Refuse::TooBig)); }
+    use base64::Engine as _;
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()) else { return docread::reply(Err(docread::Refuse::Unreadable)) };
+    let r = tauri::async_runtime::spawn_blocking(move || docread::read(&docread::read_root(), &name, &bytes)).await;
+    docread::reply(r.unwrap_or(Err(docread::Refuse::Unreadable)))
 }
 
 /// Open a link in the person's own browser, through the Mac's own `open`: only from Home, only a plain web address
@@ -3394,6 +3409,8 @@ fn main() {
     // F19: work folders a Companion ended mid job left behind. Only when this copy surely is the one that runs, so no other
     // copy's job is using them.
     if matches!(instance, instance::Taken::Ours(_)) && convert::sweep(&convert::work_root()) { log("drop_work_swept", json!({})); }
+    // Files into the ask box: a document read a Companion ended mid read left behind (its private folder, docread.rs).
+    if matches!(instance, instance::Taken::Ours(_)) { docread::sweep(&docread::read_root()); }
     let _instance = instance;   // held until Companion quits; macOS lets the lock go when the program ends
     let app = tauri::Builder::default()
         .activate_ignoring_other_apps(false)
@@ -3462,7 +3479,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, read_document, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

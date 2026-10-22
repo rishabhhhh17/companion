@@ -19,7 +19,7 @@ describe("which files may be added", () => {
   test("a text file is known by its name alone, the one thing the engine is given, never by the type the Mac gives it", () => {
     // The page knows a file's type, the engine does not: a rule that let the type decide would let the page add a file the
     // engine then refuses, and the whole request with it.
-    for (const [n, t] of [["something.weird", "text/plain"], ["notes", "text/plain"], ["Procfile.dev", "text/plain"], ["invite.ics", "text/calendar"], ["notes.rtf", "text/rtf"], ["blob", "application/json"]]) {
+    for (const [n, t] of [["something.weird", "text/plain"], ["notes", "text/plain"], ["Procfile.dev", "text/plain"], ["invite.ics", "text/calendar"], ["notes.pages", "text/rtf"], ["blob", "application/json"]]) {
       expect(kindOf(n, t), `${n} ${t}`).toBe("kind");
       expect(kindOf(n), n).toBe("kind");
     }
@@ -34,8 +34,9 @@ describe("which files may be added", () => {
       expect(kindOf(n, "text/plain"), n).toBe("secret");
     }
   });
-  test("anything else is not added (other pictures, documents, programs)", () => {
-    for (const n of ["clip.gif", "photo.heic", "doc.pdf", "sheet.xlsx", "app.dmg", "a.zip", "song.mp3", "Untitled"]) expect(kindOf(n), n).toBe("kind");
+  test("anything else is not added (other pictures, documents the Mac cannot read as text, programs)", () => {
+    // PDF, Word and Excel documents are their own kind now (attach-documents.test.ts): their text comes from the shell.
+    for (const n of ["clip.gif", "photo.heic", "old.xls", "doc.pages", "app.dmg", "a.zip", "song.mp3", "Untitled"]) expect(kindOf(n), n).toBe("kind");
   });
   test("the engine's settings and key file rule is the same one the files use", () => {
     for (const n of [".env", "x/.env.local", "id_rsa", "a/b/secrets.json", "notes.md"]) expect(fromRules(n)).toBe(isEnvFile(n));
@@ -168,7 +169,7 @@ describe("the engine checks the same rules again", () => {
   test("anything off is refused whole, in plain words, so nothing is started", () => {
     const bad: Record<string, unknown>[] = [
       { files: "notes" }, { files: [{ name: ".env", text: "A=1" }] }, { files: [{ name: "src/../../x.md", text: "x" }] },
-      { files: [{ name: "doc.pdf", text: "x" }] }, { files: [{ name: "a.md", text: "x".repeat(ATTACH.maxTextBytes + 1) }] },
+      { files: [{ name: "doc.pages", text: "x" }] }, { files: [{ name: "a.md", text: "x".repeat(ATTACH.maxTextBytes + 1) }] },
       { files: [{ name: "a.md", text: "a\u0000b" }] }, { files: [{ name: "a.md" }] },
       { files: Array.from({ length: ATTACH.maxFiles + 1 }, (_, i) => ({ name: `${i}.md`, text: "x" })) },
       { images: [{ name: "a.png", mediaType: "image/gif", base64: toBase64(PNG) }] },

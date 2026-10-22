@@ -40,7 +40,7 @@ import { aboutCopy, copyable, ehCopy, explainCopy, receiptCopy, recapCopy, rescu
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
-import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, type Attached, type FileLike } from "./attachfiles.ts";
+import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -360,7 +360,7 @@ function Card() {
   // Reading takes a moment: what it added joins the box as it is when it ends (mergeAdded), so files Start sent or a chip
   // removed meanwhile never come back. Files dropped before a folder change are dropped with it (dropGen).
   const dropGen = useRef(0);
-  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); const before = attachedNow.current; const gen = dropGen.current; void addFiles(before, list).then((r) => { if (gen !== dropGen.current) return; const fresh = r.have.slice(before.length); const next = mergeAdded(before, r.have, attachedNow.current); attachedNow.current = next; setAttached(next); setAttachNotes(r.notes); setAttachSaid(addedLine(fresh.filter((f) => next.includes(f)))); }); };
+  const addDropped = (files: ArrayLike<FileLike> | null | undefined) => { const list = Array.from(files ?? []); if (!list.length) return; homeDispatch({ type: "pick", tab: "now" }); const before = attachedNow.current; const gen = dropGen.current; void addFiles(before, list, { readDocument: shellReader(invoke), docLimitBytes: docLimitBytes(setting(DOC_LIMIT_KEY)) }).then((r) => { if (gen !== dropGen.current) return; const fresh = r.have.slice(before.length); const next = mergeAdded(before, r.have, attachedNow.current); attachedNow.current = next; setAttached(next); setAttachNotes(r.notes); setAttachSaid(addedLine(fresh.filter((f) => next.includes(f)))); }); };
   const clearAttached = () => { attachedNow.current = []; setAttached([]); setAttachNotes([]); setAttachSaid(""); };
   // What Start sent, kept in memory only until the engine says the task began (askbox.ts sentOutcome). If it says no
   // instead (a file it will not take, no Claude for a picture, something else working, the daily limit), or Stop came
