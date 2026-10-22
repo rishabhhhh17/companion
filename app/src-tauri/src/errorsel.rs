@@ -29,7 +29,7 @@ pub fn prepare(raw: &str) -> Selection {
 
 /// At most `max` characters from the start, ending at the end of a whole line. When the first line alone is longer, it is cut
 /// at a space, never inside a word.
-fn head(c: &[char], max: usize) -> String {
+pub(crate) fn head(c: &[char], max: usize) -> String {
     let w = &c[..max.min(c.len())];
     let end = if c.len() <= max || c[max] == '\n' { w.len() }
         else if let Some(i) = w.iter().rposition(|&x| x == '\n') { i }

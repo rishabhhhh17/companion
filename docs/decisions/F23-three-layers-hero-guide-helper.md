@@ -23,6 +23,9 @@ Each is a rule in `AGENTS.md`. The founder can reopen one at a time, knowing wha
 - Computer use that clicks and types for you in any app or browser: held back by rule 13 (never send, pay, delete or go live without a tap); the closest allowed version is "does it with a tap on each step". Needs its own decision.
 - Sending screenshots or prompts through Companion's server without saying so: F22's privacy rules.
 
+## Built so far (22 Oct 2026)
+Second Look is wired end to end on the engine's side (`docs/milestones/M14-guide-agents-and-second-look-plan.md`, Built so far): its hotkey, the read, the protocol, the daily limit, Stop, a switch, and a capped web search with sources on the plain API. Its card uses the existing panel with no new look, which stays the founder's to decide.
+
 ## Honest limits
 - "Exactly what HeyClicky can do now" is a moving target; they shipped 53 versions in a few months. The aim is parity on the daily features, then pull ahead where our rules make us different (proof, undo, honest pointing, safety).
 - Nothing in the guide has been tested on a real app yet. Parity is claimed only after the head to head in M14.

@@ -61,6 +61,7 @@ describe("the keys main.rs registers", () => {
     expect(arm("Problem")).toContain('"find-problem"');
     expect(arm("Read")).toContain("phelp::on_hotkey(");
     expect(arm("Explain")).toContain("errhelp::on_hotkey(");
+    expect(arm("SecondLook")).toContain("seclook::on_hotkey(");
     expect(arm("Accept")).toContain("phelp::put_back(&a, false)");
     expect(arm("Stop")).toContain('stop_everything("kill switch")');
     expect(main).toContain("fn is_talk(s: &Shortcut) -> bool { key_action(s) == Some(keymap::Action::Talk) }");
@@ -108,6 +109,7 @@ describe("every hint names the keys in use", () => {
   const lines: [string, Job][] = [
     [S.cardHint, "card"], [S.pointHint, "problem"], [S.practiceKeys, "problem"], [S.showMeKeyHint, "showme"], [S.phKeyHint, "read"],
     [S.phNeedsAccess, "read"], [S.errKeyHint, "explain"], [S.ehNeedsAccess, "explain"], [S.ehOwnApp, "explain"], [S.ehNothing("Terminal"), "explain"],
+    [S.slKeyHint, "secondlook"], [S.slNeedsAccess, "secondlook"], [S.slOwnApp, "secondlook"], [S.slNothing("ChatGPT"), "secondlook"],
     [S.stopHint, "stop"], [S.phHotkeys, "accept"], [S.voiceHint, "talk"],
   ];
   test("each is a template with one place for the keys, and names no key itself", () => {

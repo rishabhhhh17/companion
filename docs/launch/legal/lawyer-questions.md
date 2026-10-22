@@ -144,3 +144,5 @@
 3. Several open source converters (for example EasyConvert and convertfile43) are GPL. We have copied no code from any of them. Confirm that studying their features and writing our own code is safe, and what a clean room approach should look like.
 4. Tangerine (a commercial Mac converter by Leap Studio) has a drag and radial menu feel. We have not copied or looked at its code. Is the general idea of dragging a file onto a menu of conversions protectable? Is our own ring menu at any risk of looking too similar (trade dress), and what should we avoid?
 
+## The name (22 Oct 2026)
+- The product is called Squibby (F24). Please run a trademark search in the US and India before launch. Known sound alikes: "Squibb" (Bristol Myers Squibb, pharma) and Simon Squibb's AI mentor app. Is "Squibby" safe to use and register for a Mac software product?

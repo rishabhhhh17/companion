@@ -37,7 +37,11 @@ function copyOf(e: Entry): string {
 // The small fix a person (or Claude) would make, as the stand in agent's tool calls through Companion's own tools.
 const FIX: Record<string, Step[]> = {
   signup: [{ tool: { name: "Edit", input: { file_path: "public/signup.js", old_string: 'fetch("/api/signup"', new_string: 'fetch("/api/register"' } }, costUsd: 0.01 }],
-  route: [{ tool: { name: "Edit", input: { file_path: "index.html", old_string: 'href="/prices"', new_string: 'href="/pricing"' } }, costUsd: 0.01 }],
+  // The same broken link is in two places (the menu and the button), so the fix is the same small change twice.
+  route: [
+    { tool: { name: "Edit", input: { file_path: "index.html", old_string: '<a href="/prices">Prices</a>', new_string: '<a href="/pricing">Prices</a>' } }, costUsd: 0.01 },
+    { tool: { name: "Edit", input: { file_path: "index.html", old_string: '<a href="/prices">See prices</a>', new_string: '<a href="/pricing">See prices</a>' } }, costUsd: 0.01 },
+  ],
   import: [{ tool: { name: "Edit", input: { file_path: "server.js", old_string: 'require("./lib/format-price")', new_string: 'require("./lib/money")' } }, costUsd: 0.01 }],
   "open-table": [{ tool: { name: "Write", input: { file_path: "supabase/migrations/20261003090000_protect_notes.sql", content: "alter table public.notes enable row level security;\ncreate policy \"Each person reads their own notes\" on public.notes for select to authenticated using ((select auth.uid()) = user_id);\n" } }, costUsd: 0.01 }],
 };
@@ -60,6 +64,33 @@ const gateOf = (ev: any, e: Entry) => ev.gates.find((g: any) => g.id === e.expec
 const foundFor = (e: Entry, ev: any) => (e.find === "gate"
   ? { label: gateOf(ev, e).label, detail: gateOf(ev, e).detail, problem: { kind: "line", file: gateOf(ev, e).places[0].file, line: gateOf(ev, e).places[0].line, lineText: gateOf(ev, e).places[0].lineText, message: gateOf(ev, e).detail, from: "ship" } as const }
   : { label: ev.label, detail: ev.detail, problem: ev.problem });
+
+// The learning loop on a real practice (F16, did-they-learn study): Companion fixes the menu link, puts the button's link back for
+// the person, the person changes it, and Companion's own checks prove their change. The real proof ladder, no model.
+describe("Your turn on the route practice", () => {
+  test("the fix is offered as Your turn, trying it puts back only the second link, and the person's own change passes the checks", async () => {
+    const e = CATALOG.practices.find((x) => x.id === "route")!;
+    const p = copyOf(e);
+    const s = runnerFor(p, [FIX.route]);
+    const prompt = fixFoundPrompt(foundFor(e, await s.find(e)));
+    await s.runner.handle({ v: 1, id: "fix", type: "agent.start", project: p, agent: "builder-1", mode: "drive", prompt, model: "m", budgetUsd: PRACTICE_BUDGET_USD, practice: e.id });
+    const rc = of(s.events, "receipt")[0];
+    expect(rc.repeat).toBeDefined();
+    await s.runner.handle({ v: 1, id: "try", type: "teach.try", project: p, checkpoint: rc.checkpoint } as never);
+    const ready = of(s.events, "teach.ready").at(-1);
+    expect(ready.made).toBe(true);
+    const html = readFileSync(join(p, "index.html"), "utf8");
+    expect((html.match(/href="\/prices"/g) ?? []).length).toBe(1);   // one link put back for the person, the other stays fixed
+    expect(ready.target.file).toBe("index.html");
+    // The person makes the change themselves, then asks Companion to check it.
+    writeFileSync(join(p, "index.html"), html.replace('href="/prices"', 'href="/pricing"'));
+    await s.runner.handle({ v: 1, id: "check", type: "teach.check", project: p, agent: "builder-1", checkpoint: rc.checkpoint } as never);
+    const result = of(s.events, "teach.result").at(-1);
+    expect(["passed", "partial"]).toContain(result.verdict);
+    expect(result.same).toBe(true);
+    for (const ev of [ready, result]) expect(parseEvent(JSON.stringify(ev)).ok).toBe(true);
+  }, 240_000);
+});
 
 describe("every practice in the catalog, start to finish, with no model", () => {
   test("the catalog and the shared fixtures name the same five practices", () => {
@@ -111,6 +142,9 @@ describe("every practice in the catalog, start to finish, with no model", () => 
       expect(["passed", "partial"]).toContain(rc.proof);   // partial: the page check was skipped because no browser is installed
       expect(rc.changed.map((c: any) => c.file).some((f: string) => e.protect.includes(f))).toBe(false);
       for (const ev of [cp, rc]) expect(parseEvent(JSON.stringify(ev)).ok).toBe(true);
+      // Your turn (on by default): only the route practice makes the same small change twice, so only its receipt offers the second place.
+      if (e.id === "route") expect(rc.repeat, "route offers Your turn").toMatchObject({ was: expect.stringContaining("prices"), now: expect.stringContaining("pricing") });
+      else expect(rc.repeat, e.id).toBeUndefined();
       // Find again: fixed.
       const after = await s.find(e);
       if (e.find === "gate") expect(gateOf(after, e).status).not.toBe("blocked");

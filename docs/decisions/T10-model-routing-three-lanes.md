@@ -103,5 +103,8 @@ Found by the audit of 20 Oct 2026 and checked against the code; each is fixed, w
   paths that price from token counts. It is now $10 in, $50 out (Claude Fable 5.1's list price, section 3's table), with
   cache reads at $1 and cache writes at $12.50, both on the high side on purpose (`UNKNOWN_PRICE` in `models.ts`).
 
+## Web search on the fast lane (22 Oct 2026)
+Second Look alone may add Anthropic's web search server tool to a fast lane request, and only on the plain API lanes (`direct.ts`; Claude Code's fast lane has no tools). It sends the basic version, `web_search_20250305`, which the web search page names for every current model and which runs without code execution, with `max_uses` from the setting `secondLook.searches` (usually 3, at most `MAX_SEARCHES`, 5). Price: $10 per 1,000 searches plus tokens (search results are input tokens), read on 22 Oct 2026 from platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool; `WEB_SEARCH_USD` in `models.ts` adds `usage.server_tool_use.web_search_requests` to every cost estimate. [verify] in the first real run: a search on Haiku 4.5 and on Sonnet 5.5, and that the count and the price match the Console.
+
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).

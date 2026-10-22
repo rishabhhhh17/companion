@@ -54,3 +54,5 @@ fixed with one change, so Group A will rarely see it. The difference between the
 test is meant to measure Your turn too, a practice whose fix repeats one change in two places is needed first.
 
 Honest limit: this measures one kind of mistake in a short window. It says nothing about a month later. If the gap is real, the next test is whether they come back.
+
+**Update (22 Oct 2026): Your turn now shows on the route practice.** Its home page has the same broken link twice (the menu and a button), so Companion fixes one and offers the second as Your turn; tested end to end with the real checks (`runner/test/practice-e2e.test.ts`, "Your turn on the route practice"). **Use the route practice for both groups**, so Group A gets the whole learning loop (Your turn, the two line why and the check question) and Group B gets none of it. The transfer test for it is `evals/did-they-learn/transfer/route`.

@@ -11,7 +11,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 
 - **The engine behind "check any AI answer" is built.** It redoes the maths itself (sums, percentages, table totals), so a wrong number is caught for certain, not guessed. Then one short look by Claude covers code, citations, out of date facts and steps that do not follow.
 - **It is honest by design:** it never says "solid" when the maths found a slip, never claims to have checked a source (it cannot search yet), and says "I can't tell" when it cannot. Secrets are hidden before anything is sent.
-- **Tested on 30 AI answers, 15 with a planted mistake.** The real score with Claude is still to come; the button and the card come with the screens.
+- **Tested on 30 AI answers, 15 with a planted mistake.** **Real score with Claude (22 Oct 2026, about 15 cents):** it caught every planted mistake. The first real run also flagged 3 of the 15 clean answers (20%, over the 10% target), once because Claude contradicted itself mid sentence ("the sum is wrong ... the addition holds"). After a tighter instruction and a filter for that, false alarms were 0% on one run and 7% on the next. The button and the card come with the screens.
 
 ## The light features can run without Claude Code: 22 Oct 2026
 

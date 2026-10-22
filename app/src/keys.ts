@@ -4,20 +4,20 @@
 // reads key presses (rule 8).
 import { S } from "./strings.ts";
 
-export type Job = "card" | "problem" | "showme" | "read" | "accept" | "explain" | "talk" | "stop";
+export type Job = "card" | "problem" | "showme" | "read" | "accept" | "explain" | "secondlook" | "talk" | "stop";
 /** In the order Settings shows them, the same as keymap.rs ACTIONS (hotkeys.test.ts checks). */
-export const JOBS: readonly Job[] = ["card", "problem", "showme", "read", "accept", "explain", "talk", "stop"];
+export const JOBS: readonly Job[] = ["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"];
 /** Each job's usual keys, the ones Companion always had; hotkeys.test.ts checks them against keymap.rs DEFAULTS. */
 export const KEY_DEFAULTS: Readonly<Record<Job, string>> = {
   card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
-  accept: "control-option-command-a", explain: "control-option-command-e", talk: "option-space", stop: "control-option-command-x",
+  accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", stop: "control-option-command-x",
 };
 export type Keys = { using: Record<Job, string | null>; picked: Record<Job, string> };
 export const KEYS_START: Keys = { using: { ...KEY_DEFAULTS }, picked: { ...KEY_DEFAULTS } };
 
 // A chord's id is keymap.rs's: the modifiers in the Mac's order (Control, Option, Shift, Command), then the key.
 const MODS = ["control", "option", "shift", "command"] as const;
-const KEYS = ["a", "e", "f", "i", "j", "k", "l", "o", "p", "r", "s", "u", "x", "space", "return"];
+const KEYS = ["a", "c", "e", "f", "i", "j", "k", "l", "o", "p", "r", "s", "u", "x", "space", "return"];
 const keyWord = (k: string): string => (k.length === 1 ? k.toUpperCase() : (S.keyWords as Record<string, string>)[k] ?? "");
 
 /** "Control, Option, Command and K", "Option and Space"; empty for anything not written exactly the way the app writes it. */

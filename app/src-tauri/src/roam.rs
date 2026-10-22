@@ -782,7 +782,7 @@ mod tests {
         assert!(here < go, "read where the character is before it sets off");
         assert!(!draw.contains("spot"), "the arrow never starts from where the character is going");
         assert!(!body(MAIN, "fn roam_to(").contains("-> Option<Rect>"), "roam_to does not hand back where it is going");
-        for f in [include_str!("errhelp.rs"), include_str!("phelp.rs")] { assert!(f.contains("crate::roam_beside_window_of(app, pid)"), "a result about a window brings it"); }
+        for f in [include_str!("errhelp.rs"), include_str!("phelp.rs"), include_str!("seclook.rs")] { assert!(f.contains("crate::roam_beside_window_of(app, pid)"), "a result about a window brings it"); }
         let to = body(MAIN, "fn roam_to(");
         for gate in ["come_to", "HIDDEN_BY_US", "USER_HID", "roam::display_of(", "roam::plan("] { assert!(to.contains(gate), "{gate}"); }
     }

@@ -97,6 +97,9 @@
     { "id": "errorHelp", "group": "voice", "hotkeys": ["explain"], "tried": "page", "permissions": ["accessibility"], "settings": [],
       "commands": ["eh_consent", "eh_dismiss"],
       "runner": ["error.explain"], "stays": ["eh_dismiss"] },
+    { "id": "secondLook", "group": "voice", "hotkeys": ["secondlook"], "tried": "page", "permissions": ["accessibility"], "settings": ["secondLook.on", "secondLook.searches"],
+      "commands": ["sl_consent", "sl_dismiss"],
+      "runner": ["secondlook.check"], "stays": ["sl_dismiss"] },
 
     { "id": "convert", "group": "files", "tried": "shell", "permissions": [], "settings": ["drop.on", "drop.saveTo"],
       "commands": ["drop_now", "drop_pick", "drop_stop", "drop_close", "drop_reveal", "drop_trim"],
