@@ -20,7 +20,7 @@
       "commands": ["showme_clear", "showme_hide", "speak_stop"],
       "runner": ["agent.interrupt", "agent.interruptAll", "approval.resolve", "assist.cancel", "runner.ping"] },
     { "id": "projects", "group": "core", "permissions": [], "settings": [],
-      "commands": ["get_project", "list_projects", "use_project", "pick_project", "clone_project", "start_in_new_folder"],
+      "commands": ["get_project", "list_projects", "use_project", "pick_project", "clone_project", "start_in_new_folder", "list_made", "open_made", "reveal_made", "trash_made"],
       "runner": ["tasks.list", "project.inspect", "project.install", "project.clone", "recap.ask"] },
     { "id": "account", "group": "core", "permissions": [], "settings": [],
       "commands": ["save_api_key", "remove_api_key", "data_inventory", "permission_overview", "permissions_status", "open_permission_page", "delete_everything", "export_logs", "report_problem", "open_acknowledgements", "update_status", "check_update", "install_update"],

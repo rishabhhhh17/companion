@@ -37,6 +37,7 @@ mod logexport;
 mod practice;
 mod names;
 mod newfolder;
+mod made;
 mod diagram;
 mod snap;
 mod prompthelp;
@@ -1515,6 +1516,58 @@ fn start_in_new_folder(window: tauri::WebviewWindow, app: AppHandle, cmd: Value)
     runner::check_project(&task, &current_project())?;
     app.state::<runner::Runner>().send(&task).map_err(|_| concat!("Your new folder is made and open, but ", crate::product_s!(), " engine is not running. Press the button again in a moment.").to_string())?;
     Ok(folder)
+}
+
+// ---------- What Squibby made (M14, made.rs): list, open, show in Finder, move to the Trash ----------
+
+/// The folder for all of them (newfolder.rs), worked out from the setting every time and never taken from a page, with the real
+/// home folder it is under. The folder may not exist yet.
+fn made_parent() -> Result<(PathBuf, PathBuf), String> {
+    newfolder::parent_of(std::path::Path::new(&home_dir()), setting_now("make.folder").as_str().unwrap_or(""))
+}
+/// What Squibby made, newest first: names, dates and rough sizes only, never what is in a file. `busy`: the page knows a task
+/// works or waits; the shell knows too (updates::running_now), and either one makes every folder wait. Counted off the main
+/// thread, since a big folder takes a moment.
+#[tauri::command]
+async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let (home, parent) = made_parent()?;
+    let (current, busy) = (current_project(), busy || updates::running_now());
+    tauri::async_runtime::spawn_blocking(move || {
+        let l = made::list(&parent, &current, busy)?;
+        Ok(json!({ "where": made::where_words(&home, &parent), "busy": busy, "folders": l.rows.iter().map(made::Row::to_json).collect::<Vec<_>>(), "more": l.more }))
+    }).await.map_err(|_| "The list could not be read.".to_string())?
+}
+/// Open as project: a folder from the list becomes the project (checked like any folder: projects::validate).
+#[tauri::command]
+fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: bool) -> Result<String, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let (_, parent) = made_parent()?;
+    let path = made::open_path(&parent, &name, busy || updates::running_now())?;
+    use_project_inner(app, path.to_string_lossy().to_string())
+}
+/// Show in Finder: a folder from the list, selected in its place.
+#[tauri::command]
+fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let (_, parent) = made_parent()?;
+    let path = made::open_path(&parent, &name, false)?;
+    std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).spawn().map(|_| ()).map_err(|_| "Finder could not be opened.".to_string())
+}
+/// Move to the Trash, after the person confirmed it (`git`: and, for a folder with git history, confirmed that too). Only a
+/// folder from the list, never the project open now, never while a task works or waits (made::trash). The Mac's own Trash, so
+/// it can be put back; nothing is deleted. Then it leaves the recent folders. Its undo points stay in Companion's own folder.
+#[tauri::command]
+fn trash_made(window: tauri::WebviewWindow, app: AppHandle, name: String, git: bool, busy: bool) -> Result<String, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let moved = {
+        let _g = NEW_FOLDER.lock().unwrap_or_else(|x| x.into_inner());   // never while a new folder is being made
+        let (_, parent) = made_parent()?;
+        made::trash(&parent, &name, &current_project(), busy || updates::running_now(), git, move_to_trash)?
+    };
+    log("made_trashed", json!({ "git": git }));
+    forget_folder(&app, &moved);
+    Ok(name)
 }
 
 #[tauri::command]
@@ -3519,7 +3572,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## You can now see what Squibby made and clean it up: 22 Oct 2026
+
+- **A new list in Settings, "What Squibby made".** When you ask Squibby to make something with no project open, it makes a new folder for it. Until now you had no way to see those folders in one place. The list shows each one with when it was made and about how big it is. It sits under Practice, below the setting that says where new folders go.
+- **Three buttons on each folder:** Open as project, Show in Finder, and Move to the Trash. Moving to the Trash always asks first, names the folder, and says you can put it back from the Trash. Nothing is ever deleted outright.
+- **What it will not do:** it will not move the project you have open, or any folder while something is working or waiting for you. It only lists real folders sitting directly in that one folder, never a shortcut to somewhere else, and it only looks at names, dates and sizes, never inside your files.
+- **If a folder has git history,** the list says so and asks a second, longer question before moving it. Squibby does not run any git command or touch your git; the folder simply goes to the Trash with its history, and can be put back.
+- **Checked by machine only,** with temporary folders and a stand in for the Trash. Nobody has tried it on a real Mac yet, so the real Trash, and folders kept in iCloud Desktop and Documents, are not yet checked.
+
 ## Answering a question now carries your plan on: 22 Oct 2026
 
 - **A found bug, fixed:** when you ask for something vague ("a one page website for my bakery"), the first step builds the page and then asks a question only you can answer, such as the bakery's name, and the plan stops. Until now, typing the answer finished only that one thing and **the other steps were forgotten**: they never ran.
