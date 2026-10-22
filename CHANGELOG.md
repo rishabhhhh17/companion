@@ -9,6 +9,11 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **What it will not do:** it will not move the project you have open, or any folder while something is working or waiting for you. It only lists real folders sitting directly in that one folder, never a shortcut to somewhere else, and it only looks at names, dates and sizes, never inside your files.
 - **If a folder has git history,** the list says so and asks a second, longer question before moving it. Squibby does not run any git command or touch your git; the folder simply goes to the Trash with its history, and can be put back.
 - **Checked by machine only,** with temporary folders and a stand in for the Trash. Nobody has tried it on a real Mac yet, so the real Trash, and folders kept in iCloud Desktop and Documents, are not yet checked.
+## A plan for the first demo clip and the launch: 22 Oct 2026
+
+- **A shot list for the first clip** (red to green, with Undo and the one line why, about 25 seconds, on the practice project), two follow up clips, the post words, true answers to the questions a reel like this gets, and a launch order that fits one person: `docs/launch/demo-clip-and-launch-plan.md`.
+- **The bigger real Claude checks were rerun after the rename and held:** 23 of 24 test projects fixed outright and 1 stopped to ask first (nothing broken, nothing invented, the problem found in the right place 24 of 24, $0.11 a fix), Explain 96%, the second model review caught every risky change with no false alarms. About $2.70 in all.
+- **Two stale lines were fixed in the docs:** the rules file said agents were out for now, but basic ones (make me something) have been in since the three layer decision; and a finding that had already been fixed was still listed as open.
 
 ## Answering a question now carries your plan on: 22 Oct 2026
 
