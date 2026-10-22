@@ -11,7 +11,7 @@ import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, still
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
-import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac } from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac, newFolderTask } from "./commands.ts";
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
@@ -27,7 +27,7 @@ import { TABS, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArm
 import { S } from "./strings.ts";
 import { undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
-import type { WatchKind, WatchView } from "../../protocol/index.ts";
+import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
@@ -1182,8 +1182,38 @@ function Card() {
   // its receipt is not shown): it is put aside too.
   const awayRest = Object.keys(m.away).filter((a) => releasable(m, a)).join("|");
   useEffect(() => { for (const a of awayRest.split("|").filter(Boolean)) void send(releaseAgent(a)); }, [awayRest]);
+  // Make something with no project open, or with Make it in a new folder ticked (F23, M14 Part 1): the shell makes a new
+  // folder named after the words, opens it as the project, and starts a plan (Start and Plan it) or Look it up there. The
+  // engine never makes the folder. A refusal puts the words back, never over anything typed since.
+  const [newFolder, setNewFolder] = useState(false);
+  const [madeFolder, setMadeFolder] = useState<string | null>(null);
+  const inNewFolder = !project || newFolder;
+  const startNew = (kind: NewFolderKind) => {
+    const words = box.current?.value ?? "";
+    const c = newFolderTask(kind, words, off);
+    if (!c) return;
+    // Something to build is a plan, which is Flow's: with Flow off the words stay and the box says why (the shell refuses
+    // it too, and makes nothing).
+    if (kind === "build" && !toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
+    // Never a new folder while something works or waits on the person in this one: the words stay, and the box says why.
+    if (isBusy(m)) { dispatch({ type: "app.notice", message: S.newFolder.busy }); return; }
+    // Added files never go with a plan or Look it up, and a new folder clears them, so they are never dropped silently.
+    if (attachedNow.current.length > 0) { dispatch({ type: "app.notice", message: S.newFolder.noFiles }); return; }
+    sentFromBox(kind === "build" ? "plan" : "research");
+    dispatch({ type: "ui.undoClosed" });
+    dispatch({ type: kind === "build" ? "ui.planRequested" : "ui.researchRequested" });
+    const wasOff = off;
+    setMadeFolder(null);
+    void invoke("start_in_new_folder", { cmd: c }).then((p) => setMadeFolder(String(p)), (e) => {
+      const r = putBack<Attached>({ prompt: words, attached: [], off: wasOff }, { text: box.current?.value ?? "", attached: [] });
+      if (r.text !== undefined) { offNow.current = !!r.off; setOff(!!r.off); setBox(r.text); }
+      explainRefusal(e);
+    });
+    setOff(offRecordAtStart()); clearBox(); setNewFolder(false);
+  };
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
+    if (prompt && inNewFolder) { startNew("build"); return; }
     if (!prompt || !project) return;
     // A task is Flow's. With Flow off the words stay in the box and the box says why, instead of bouncing silently (the ask
     // box is core, so it stays; Enter and hold to talk both come through here).
@@ -1245,6 +1275,7 @@ function Card() {
   }, [m.ph?.stage, m.ph?.text, phShown]);
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
   const research = () => {
+    if (inNewFolder) { startNew("research"); return; }
     const c = askResearch(project, box.current?.value ?? "", off);
     if (!c || !project) return;
     sentFromBox("research");
@@ -1254,6 +1285,7 @@ function Card() {
   };
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
+    if (goal && inNewFolder) { startNew("build"); return; }
     if (!goal || !project) return;
     sentFromBox("plan");
     dispatch({ type: "ui.undoClosed" });
@@ -1517,6 +1549,11 @@ function Card() {
       {!working && (
         <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
       )}
+      {!working && project && (
+        <label className="check"><input type="checkbox" checked={newFolder} onChange={(e) => setNewFolder(e.target.checked)} /> {S.newFolder.tick}</label>
+      )}
+      {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
+      {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
       </div>
 
       {show("urgent") && <div ref={urgent}>

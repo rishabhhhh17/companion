@@ -1,5 +1,5 @@
 // Builds the commands the pages send. Rust checks each one again before it reaches the runner.
-import type { Command, Problem, WatchKind } from "../../protocol/index.ts";
+import { MAX_REQUEST_CHARS, type Command, type NewFolderKind, type Problem, type ShellCommand, type WatchKind } from "../../protocol/index.ts";
 import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 // Model ids live in one place, with the runner's (T10).
 import { MODELS } from "../../runner/src/models.ts";
@@ -66,7 +66,14 @@ export const askResearch = (project: string, question: string, offTheRecord = fa
   const q = question.replace(/\s+/g, " ").trim();
   return q ? { v: 1, id: id(), type: "research.ask", project, agent: AGENT, question: q, model: workModel(), budgetUsd: budgetFor("budget.research"), ...(offTheRecord ? { offTheRecord: true } : {}) } : null;
 };
-export const checkShip = (project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
+// Make something with no project open, or in a new folder (F23, M14 Part 1): sent to the shell (start_in_new_folder), never
+// to the engine. The shell makes a new folder named after the words, opens it as the project and starts an ordinary plan
+// (build) or Look it up (research) there, with this model and budget.
+export const newFolderTask = (kind: NewFolderKind, words: string, offTheRecord = false): ShellCommand | null => {
+  const request = Array.from(words.trim()).slice(0, MAX_REQUEST_CHARS).join("").trim();
+  return request ? { v: 1, id: id(), type: "project.new", kind, request, agent: AGENT, model: workModel(), budgetUsd: budgetFor(kind === "build" ? "budget.plan" : "budget.research"), ...(offTheRecord ? { offTheRecord: true } : {}) } : null;
+};
+export const checkShip =(project: string, o: { runChecks?: boolean; confirm?: string[] } = {}): Command =>
   ({ v: 1, id: id(), type: "ship.check", project, ...(o.runChecks ? { runChecks: true } : {}), ...(o.confirm?.length ? { confirm: o.confirm } : {}) });
 
 // Memory: what Companion knows, shown on a page the person can change.

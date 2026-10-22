@@ -10,6 +10,7 @@ The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder
 
 ## Built so far (22 Oct 2026)
 - The light lanes straight on the Messages API, off by default (`runner/src/direct.ts`, PR 155).
+- Basic agents with no project open, the engine side and the minimum in the ask box (22 Oct 2026): with no project open, Start, Plan it and Look it up (and, with a project open, the tick box Make it in a new folder) ask the shell for a new folder named after the request in `~/Companion makes` (the setting `make.folder` can put it in Documents or on the Desktop). The shell makes it (never over anything, never in a git project or one of the person's projects, never through a link), opens it as the project and starts an ordinary plan or Look it up there, so it gets the same safety, approvals, Undo, proof, receipts and budgets as any task (`app/src-tauri/src/newfolder.rs`, `protocol/index.ts` `project.new`). Tested with stand ins only: not yet tried in the built app or against real Claude. **Not yet built:** the look (waits for the founder), a list of folders made this way, and moving one to the Trash.
 - Second Look's engine (`runner/src/secondlook.ts`) and its eval (`evals/second-look/`, 30 cases). This first eval has 30 answers, not the planned 100; it grows once the first real run shows where it is weak. **Not yet built:** searching for sources (the fast lane has no tools; a web search on the plain API is the next step), the hotkey, reading the selection, and the card.
 
 ## Part 1: the guide, "exactly what HeyClicky does", in an order that works

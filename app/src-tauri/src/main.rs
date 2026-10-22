@@ -34,6 +34,7 @@ mod yourturn;
 mod wipe;
 mod logexport;
 mod practice;
+mod newfolder;
 mod diagram;
 mod snap;
 mod prompthelp;
@@ -1477,6 +1478,35 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
     let parent = projects::validate_parent(&parent, &home_dir(), &data_dir())?;
     let cmd = json!({ "v": 1, "id": format!("clone{}", now()), "type": "project.clone", "url": url, "parent": parent.to_string_lossy() });
     app.state::<runner::Runner>().send(&cmd).map_err(|_| "Companion's engine is not running. Try again in a moment.".to_string())
+}
+
+/// One new folder at a time (two presses at once never race for the same name).
+static NEW_FOLDER: Mutex<()> = Mutex::new(());
+/// Make something with no project open (F23, M14 Part 1; newfolder.rs): Home's ask box sends project.new on the person's
+/// press. A new empty folder is made for it, named after the request, in the place Settings names (make.folder), chosen as
+/// the project, and the engine is sent an ordinary drive.plan or research.ask for it, checked like one from a page. Nothing
+/// is made when that tool is switched off. Returns the new folder.
+#[tauri::command]
+fn start_in_new_folder(window: tauri::WebviewWindow, app: AppHandle, cmd: Value) -> Result<String, String> {
+    settings::only_card(window.label())?;   // only Home, on the person's press
+    let req = newfolder::check(&cmd)?;
+    // A tool whose group is switched off does nothing, and no folder is made for it (groups.rs).
+    if let Some(line) = groups::refuse_runner(&group_off, &newfolder::task_command(&req, "")) { return Err(line.into()); }
+    let made = {
+        let _g = NEW_FOLDER.lock().unwrap_or_else(|x| x.into_inner());
+        let (home, data) = (PathBuf::from(home_dir()), data_dir());
+        let mut known = projects::load(&projects_path()).recent;
+        known.push(current_project());
+        let name = newfolder::folder_name(&req.request, req.kind, req.off);
+        newfolder::make(&home, setting_now("make.folder").as_str().unwrap_or(""), &name, &data, &known, practice::taken(&data))?
+    };
+    log("new_folder_made", json!({ "kind": req.kind.as_str() }));
+    let folder = use_project_inner(app.clone(), made.to_string_lossy().to_string())?;
+    let task = newfolder::task_command(&req, &folder);
+    runner::check_command(&task)?;
+    runner::check_project(&task, &current_project())?;
+    app.state::<runner::Runner>().send(&task).map_err(|_| "Your new folder is made and open, but Companion's engine is not running. Press the button again in a moment.".to_string())?;
+    Ok(folder)
 }
 
 #[tauri::command]
@@ -3462,7 +3492,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
