@@ -30,7 +30,8 @@ const ALLOWED: &[&str] = &[
     "browser.check", "browser.install",
     "spending.show",
     // Which task broke it: checks earlier saved versions in a private copy, then undoes just that task on a yes. Both name the
-    // project, so both are project bound. error.explain is not here: only the hotkey flow (errhelp.rs) sends it.
+    // project, so both are project bound. error.explain and secondlook.check are not here: only their hotkey flows (errhelp.rs,
+    // seclook.rs) send them.
     "bisect.start", "bisect.undo",
     // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
     "teach.try", "teach.check",
@@ -461,6 +462,8 @@ mod tests {
     fn a_page_can_never_send_text_to_be_explained_as_if_it_was_read_from_another_app() {
         // Only the hotkey flow (errhelp.rs) sends error.explain, straight to the engine, after the light and the read rules.
         assert!(check_command(&json!({ "v": 1, "id": "x", "type": "error.explain", "req": "r", "app": "a", "text": "t" })).is_err());
+        // The same for Second Look: only its hotkey flow (seclook.rs) sends secondlook.check, after the light and the read rules.
+        assert!(check_command(&json!({ "v": 1, "id": "x", "type": "secondlook.check", "req": "r", "app": "a", "text": "t" })).is_err());
     }
     #[test]
     fn the_shared_command_fixtures_for_pages_pass_the_same_checks() {
@@ -477,7 +480,7 @@ mod tests {
                 assert!(check_project(&v, project).is_ok(), "{line}");
                 assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
             }
-            if t == "error.explain" { assert!(check_command(&v).is_err(), "{line}"); }
+            if t == "error.explain" || t == "secondlook.check" { assert!(check_command(&v).is_err(), "{line}"); }
         }
         assert_eq!(seen, 2);
     }

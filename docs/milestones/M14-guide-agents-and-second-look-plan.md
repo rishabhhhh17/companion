@@ -10,7 +10,8 @@ The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder
 
 ## Built so far (22 Oct 2026)
 - The light lanes straight on the Messages API, off by default (`runner/src/direct.ts`, PR 155).
-- Second Look's engine (`runner/src/secondlook.ts`) and its eval (`evals/second-look/`, 30 cases). This first eval has 30 answers, not the planned 100; it grows once the first real run shows where it is weak. **Not yet built:** searching for sources (the fast lane has no tools; a web search on the plain API is the next step), the hotkey, reading the selection, and the card.
+- Second Look's engine (`runner/src/secondlook.ts`) and its eval (`evals/second-look/`, 30 cases). This first eval has 30 answers, not the planned 100; it grows once the first real run shows where it is weak.
+- Second Look wired end to end (22 Oct 2026, branch `m14/second-look-wire`): its own hotkey (Control, Option, Command and C, changeable in Settings), the selection read the error explainer's way (the light first, Accessibility, the same answer per app, never stored or logged), `secondlook.check` and `secondlook.result` in the protocol, the daily limit, Stop everything and Voice off, a switch in Settings (Second Look, on) and a search cap (Web searches per Second Look, 3, at most 5). On the plain API lanes it may search the web (the basic web search tool, $10 per 1,000 searches, counted in its cost) and shows a page only when that search returned it; on the Claude Code lane it does not search and says so. The usage proxy forwards that one capped search and no other tool. The card shows it through the existing panel and lines, with no new look. **Not yet done:** a real Mac run (the read in ChatGPT, Claude and a browser), the real eval run, a real search on each quick model, and the look of the card (yours).
 
 ## Part 1: the guide, "exactly what HeyClicky does", in an order that works
 
