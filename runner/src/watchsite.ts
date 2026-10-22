@@ -7,6 +7,7 @@ import * as nodeHttp from "node:http";
 import * as nodeHttps from "node:https";
 import { isIP } from "node:net";
 import { hostAllowed, isLocalName, parseTarget, resolvedAllowed } from "./watchaddress.ts";
+import { PRODUCT } from "./names.ts";
 
 export type CheckResult = { outcome: "ok" | "failing" | "unknown"; reason: string };
 export type SiteResponse = { status: number; headers: { get(name: string): string | null }; body?: { cancel(): unknown } | null };
@@ -73,7 +74,7 @@ async function hop(url: string, local: boolean, typed: string, d: SiteDeps, sign
     address = addresses[0];
   }
   try {
-    const res = await d.fetch(url, { method: "GET", redirect: "manual", signal, credentials: "omit", headers: { "user-agent": "Companion-site-check (read only)", accept: "*/*" }, ...(address ? { address } : {}) });
+    const res = await d.fetch(url, { method: "GET", redirect: "manual", signal, credentials: "omit", headers: { "user-agent": `${PRODUCT}-site-check (read only)`, accept: "*/*" }, ...(address ? { address } : {}) });
     try { void res.body?.cancel(); } catch { /* the body is never read */ }
     return { ok: true, status: res.status, location: res.headers.get("location") };
   } catch {

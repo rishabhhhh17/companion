@@ -2,7 +2,7 @@
   "id": "replit-download",
   "title": "Get your Replit project onto your Mac",
   "app": "Replit",
-  "goal": "Download the project as a zip so Companion can open it",
+  "goal": "Download the project as a zip so {product} can open it",
   "status": "draft",
   "needsProject": false,
   "steps": [
@@ -52,8 +52,8 @@
     },
     {
       "id": "open-in-companion",
-      "say": "In Companion, press Change folder and choose that folder.",
-      "find": "the Change folder button in Companion's card",
+      "say": "In {product}, press Change folder and choose that folder.",
+      "find": "the Change folder button in {product_s} card",
       "check": {
         "kind": "ask"
       }

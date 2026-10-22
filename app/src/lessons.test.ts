@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
 import { SETTINGS_LESSON_ID, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop } from "./commands.ts";
 import { KEYS_START, setKeysNow } from "./keys.ts";
+import { PRODUCT } from "./strings.ts";
 
 const run = (events: Record<string, unknown>[], m: Model = initial()): Model => events.reduce<Model>((x, e) => reduce(x, e as never), m);
 const step = (over: Record<string, unknown> = {}) => ({ type: "walk.step", walk: "w1", project: "p", lesson: "keys", title: "Add your keys", index: 0, total: 3, variant: "main", say: "Open settings", find: "the Settings link", ask: true, ...over });
@@ -24,7 +25,7 @@ describe("lessons on the card", () => {
   test("a step keeps the lesson's own words, so the keys in use are filled in when it is shown and said, not when it arrived", () => {
     // The keys changed before the step arrived; the model still keeps the words as sent (card.tsx and speech.ts fill in
     // the keys in use each time they draw or speak, so a later change in Settings shows at once).
-    const say = "Press Control, Option, Command and F in Companion.";
+    const say = `Press Control, Option, Command and F in ${PRODUCT}.`;
     setKeysNow({ using: { ...KEYS_START.using, problem: "control-option-command-p" }, picked: { ...KEYS_START.picked, problem: "control-option-command-p" } });
     try {
       const m = run([...started, step({ say, log: [{ say, how: "done" }] }), { type: "walk.wait", walk: "w1", index: 0, say }]);

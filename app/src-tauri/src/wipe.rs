@@ -8,7 +8,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The marked block Companion adds to AGENTS.md and CLAUDE.md (see runner/src/memory/agentsmd.ts).
-const BEGIN: &str = "<!-- companion:begin (kept up to date by Companion; delete this whole block to stop) -->";
+/// How a block opens, whatever name it was written under (the words after it name the product, and the product has been renamed once).
+const BEGIN_MARK: &str = "<!-- companion:begin";
+/// The whole opening line as the engine writes it now (runner/src/memory/agentsmd.ts), for the tests.
+#[cfg(test)]
+const BEGIN: &str = concat!("<!-- companion:begin (kept up to date by ", crate::product!(), "; delete this whole block to stop) -->");
 const END: &str = "<!-- companion:end -->";
 
 /// One thing Companion keeps, in the person's words.
@@ -39,9 +43,9 @@ pub fn items(home: &Path, data: &Path) -> Vec<Item> {
         Item { id: "numbers", label: "Your beta numbers (counts only, if you turned them on)", paths: vec![] },
         Item { id: "lessons", label: "Where you are in each guided lesson", paths: vec![] },
         Item { id: "practice", label: "Which practice projects you tried, and where their copies are", paths: vec![] },
-        Item { id: "memory", label: "What Companion knows about you and your projects", paths: vec![] },
+        Item { id: "memory", label: concat!("What ", crate::product!(), " knows about you and your projects"), paths: vec![] },
         Item { id: "speech", label: "The speech model for hold to talk", paths: vec![data.join("models")] },
-        Item { id: "browser", label: "The hidden browser Companion checks your pages with", paths: vec![home.join("Library/Application Support/Companion/browsers")] },
+        Item { id: "browser", label: concat!("The hidden browser ", crate::product!(), " checks your pages with"), paths: vec![home.join("Library/Application Support/Companion/browsers")] },
         Item { id: "settings", label: "Settings, recent folders and the activity log", paths: vec![] },
     ];
     let mut add = |id: &str, p: PathBuf| { if let Some(g) = groups.iter_mut().find(|g| g.id == id) { g.paths.push(p); } };
@@ -125,7 +129,7 @@ pub fn remove_block(text: &str) -> Option<String> {
     let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
     let mut cur = text.to_string();
     let mut found = false;
-    while let Some(a) = cur.find(BEGIN) {
+    while let Some(a) = cur.find(BEGIN_MARK) {
         let Some(end) = cur[a..].find(END).map(|i| a + i + END.len()) else { break };
         found = true;
         let mut out = String::new();
@@ -146,7 +150,7 @@ const OURS_IN_DOT: &[&str] = &["project.md", "ships.json", "research"];
 pub fn project_has_ours(project: &Path) -> bool {
     let dot = project.join(".companion");
     if fs::symlink_metadata(&dot).is_ok_and(|m| m.is_dir() && !m.is_symlink()) && OURS_IN_DOT.iter().any(|n| fs::symlink_metadata(dot.join(n)).is_ok()) { return true; }
-    ["AGENTS.md", "CLAUDE.md"].iter().any(|f| fs::read_to_string(project.join(f)).is_ok_and(|t| t.contains(BEGIN)))
+    ["AGENTS.md", "CLAUDE.md"].iter().any(|f| fs::read_to_string(project.join(f)).is_ok_and(|t| t.contains(BEGIN_MARK)))
 }
 
 /// Writes a file next to `target` under a random name, then renames it over the target: a link planted at the temporary
@@ -178,7 +182,7 @@ pub fn clean_project(project: &Path) -> Vec<String> {
     if fs::symlink_metadata(&dot).is_ok_and(|m| m.is_dir() && !m.is_symlink()) {
         let mut removed = false;
         for n in OURS_IN_DOT { if fs::symlink_metadata(dot.join(n)).is_ok() && remove_path(&dot.join(n)).is_ok() { removed = true; } }
-        if removed { said.push("Companion's notes in the .companion folder".into()); }
+        if removed { said.push(concat!(crate::product_s!(), " notes in the .companion folder").into()); }
         let _ = fs::remove_dir(&dot);   // only if empty: the person's rules.txt keeps it
         if dot.exists() { said.push("kept your rules.txt".into()); }
     }
@@ -186,7 +190,7 @@ pub fn clean_project(project: &Path) -> Vec<String> {
         let p = project.join(f);
         if !fs::symlink_metadata(&p).is_ok_and(|m| m.is_file() && !m.is_symlink()) { continue; }
         let Ok(text) = fs::read_to_string(&p) else { continue };
-        if let Some(next) = remove_block(&text) { if replace_file(&p, next.as_bytes()).is_ok() { said.push(format!("Companion's block in {f}")); } }
+        if let Some(next) = remove_block(&text) { if replace_file(&p, next.as_bytes()).is_ok() { said.push(format!(concat!(crate::product_s!(), " block in {f}"), f = f)); } }
     }
     said
 }
@@ -208,8 +212,8 @@ pub fn run_helper(home: &Path, data: &Path, projects: &[PathBuf], with_projects:
     // again, so nothing is deleted. The person is told on the next start, and nothing else of theirs changes.
     if !gone {
         let _ = fs::create_dir_all(data);
-        let _ = fs::write(data.join("wipe-note.txt"), "Companion did not close in time, so nothing was deleted. Quit Companion, then use Settings, Delete everything again.");
-        return vec!["Companion did not close in time".to_string()];
+        let _ = fs::write(data.join("wipe-note.txt"), concat!(crate::product!(), " did not close in time, so nothing was deleted. Quit ", crate::product!(), ", then use Settings, Delete everything again."));
+        return vec![concat!(crate::product!(), " did not close in time").to_string()];
     }
     if with_projects { for p in projects { let _ = clean_project(p); } }
     let mut failed = vec![];
@@ -229,7 +233,7 @@ pub fn run_helper(home: &Path, data: &Path, projects: &[PathBuf], with_projects:
     } else {
         // Told to the person on the next start, because the data folder is where the note has to live.
         let _ = fs::create_dir_all(data);
-        let _ = fs::write(data.join("wipe-note.txt"), format!("Some of what Companion keeps could not be deleted: {}. Quit Companion and use Settings, Delete everything again.", failed.join(", ")));
+        let _ = fs::write(data.join("wipe-note.txt"), format!(concat!("Some of what ", crate::product!(), " keeps could not be deleted: {}. Quit ", crate::product!(), " and use Settings, Delete everything again."), failed.join(", ")));
     }
     (h.relaunch)();
     failed
@@ -332,7 +336,7 @@ mod tests {
         // practice.rs keeps which practices were tried and where their copies are (practice.json in Companion's folder).
         let m = mac("practice");
         write(m.data.join("practice.json"), "{}").unwrap();
-        let copy = m.home.join("Companion practice signup page"); create_dir_all(&copy).unwrap(); write(copy.join("package.json"), "{}").unwrap();
+        let copy = m.home.join(concat!(crate::practice_base!(), " signup page")); create_dir_all(&copy).unwrap(); write(copy.join("package.json"), "{}").unwrap();
         let g = items(&m.home, &m.data);
         let practice = g.iter().find(|i| i.id == "practice").unwrap();
         assert_eq!(practice.paths, vec![m.data.join("practice.json")]);
@@ -408,12 +412,17 @@ mod tests {
     }
     #[test]
     fn the_marked_block_goes_and_every_other_line_stays_exactly() {
-        let text = format!("# My rules\n\nUse tabs.\n\n{BEGIN}\n## Project notes (from Companion)\n- Uses Vite\n{END}\n\n## Other\nKeep it short.\n");
+        let text = format!(concat!("# My rules\n\nUse tabs.\n\n{BEGIN}\n## Project notes (from ", crate::product!(), ")\n- Uses Vite\n{END}\n\n## Other\nKeep it short.\n"), BEGIN = BEGIN, END = END);
         assert_eq!(remove_block(&text).unwrap(), "# My rules\n\nUse tabs.\n\n## Other\nKeep it short.\n");
         assert_eq!(remove_block(&format!("Before\n{BEGIN}\nx\n{END}\n")).unwrap(), "Before\n");
         assert_eq!(remove_block(&format!("{BEGIN}\n@AGENTS.md\n{END}\n")).unwrap(), "");
         assert!(remove_block("no block here\n").is_none());
         assert!(remove_block(&format!("{BEGIN} but never closed")).is_none());
+    }
+    #[test]
+    fn a_block_written_under_the_earlier_name_is_still_ours_to_remove() {
+        let old = "<!-- companion:begin (kept up to date by Companion; delete this whole block to stop) -->";
+        assert_eq!(remove_block(&format!("Mine\n\n{old}\n- fact\n{END}\n")).unwrap(), "Mine\n");
     }
     #[test]
     fn cleaning_a_project_removes_only_what_companion_wrote_and_keeps_the_persons_rules() {
@@ -426,7 +435,7 @@ mod tests {
         write(p.join("CLAUDE.md"), "@AGENTS.md\n").unwrap();   // no block: never changed
         assert!(project_has_ours(&p));
         let said = clean_project(&p);
-        assert_eq!(said, vec!["Companion's notes in the .companion folder".to_string(), "kept your rules.txt".to_string(), "Companion's block in AGENTS.md".to_string()]);
+        assert_eq!(said, vec![concat!(crate::product_s!(), " notes in the .companion folder").to_string(), "kept your rules.txt".to_string(), concat!(crate::product_s!(), " block in AGENTS.md").to_string()]);
         assert!(!p.join(".companion/project.md").exists() && !p.join(".companion/research").exists() && !p.join(".companion/ships.json").exists());
         assert_eq!(fs::read_to_string(p.join(".companion/rules.txt")).unwrap(), "Never delete the database");
         assert_eq!(fs::read_to_string(p.join("AGENTS.md")).unwrap(), "# Mine\n");
@@ -500,7 +509,7 @@ mod tests {
         let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
             parent_gone: &|| false, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| *waits.borrow_mut() += 1,
         });
-        assert_eq!(failed, vec!["Companion did not close in time".to_string()]);
+        assert_eq!(failed, vec![concat!(crate::product!(), " did not close in time").to_string()]);
         assert_eq!(*waits.borrow(), 200, "it waited the whole time");
         assert!(log.borrow().is_empty(), "the key is not deleted and the app is not opened a second time");
         assert!(m.data.join("runner/tasks.db").exists() && p.join(".companion/project.md").exists(), "nothing was deleted");

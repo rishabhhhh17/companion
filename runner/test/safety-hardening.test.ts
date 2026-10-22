@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { evaluate } from "../src/safety.ts";
 import { applyRules, parseRules } from "../src/rules.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterAll(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -102,7 +103,7 @@ describe("the file tools and links", () => {
     expect(write("outdir/new.txt").decision).toBe("deny");
   });
   for (const f of [".claude/settings.json", ".claude/settings.local.json", ".Claude/settings.json", ".CLAUDE/hooks.json", ".companion/rules.txt", ".Companion/rules.txt", ".COMPANION/x", "./.companion/../.companion/rules.txt", "src/../.claude/settings.json"]) {
-    test(`Companion's and Claude's own settings are not for the agent to write: ${f}`, () => expect(write(f).decision, f).toBe("deny"));
+    test(`${PRODUCT_S} and Claude's own settings are not for the agent to write: ${f}`, () => expect(write(f).decision, f).toBe("deny"));
   }
   test("writing .git in any spelling is refused, nested projects too", () => {
     for (const f of [".git/config", ".GIT/config", "./.git/../.git/x", "sub/.git/config", ".gitmodules"]) expect(write(f).decision, f).toBe("deny");

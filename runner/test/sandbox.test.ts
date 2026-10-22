@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cachePaths, projectNotes, readDenyRules, REGISTRY_DOMAINS, sandboxSettings, sensitivePaths } from "../src/sandbox.ts";
 import { buildSdkOptions } from "../src/sdkEngine.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -17,7 +18,7 @@ describe("places agents may never read", () => {
   test("logins, keys and tokens", () => {
     for (const s of [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".npmrc", ".netrc", ".git-credentials", ".config/gcloud", ".config/gh", ".azure"]) expect(p, s).toContain(`${HOME}/${s}`);
   });
-  test("the person's own Claude login and Companion's own data", () => {
+  test(`the person's own Claude login and ${PRODUCT_S} own data`, () => {
     for (const s of [".claude", ".claude.json", "Library/Application Support/Companion", "Library/Application Support/dev.companion.app"]) expect(p, s).toContain(`${HOME}/${s}`);
   });
   test("the Keychain, browser data, mail and messages", () => {
@@ -126,7 +127,7 @@ describe("what Claude is given from the project", () => {
 // Companion itself writes a CLAUDE.md that is only "@AGENTS.md" (memory/agentsmd.ts), so an import line is followed, one
 // level deep, only to a plain file inside the project, never through a link, and with the same size limit.
 describe("a notes file that imports another file", () => {
-  test("Companion's own one line CLAUDE.md gives Claude what AGENTS.md says, not the words '@AGENTS.md'", () => {
+  test(`${PRODUCT_S} own one line CLAUDE.md gives Claude what AGENTS.md says, not the words '@AGENTS.md'`, () => {
     const d = tmp("imp"); writeFileSync(join(d, "CLAUDE.md"), "@AGENTS.md\n"); writeFileSync(join(d, "AGENTS.md"), "# AGENTS.md\n\n- Built with Vite\n");
     const n = projectNotes(d)!;
     expect(n).toContain("Built with Vite");
@@ -139,9 +140,9 @@ describe("a notes file that imports another file", () => {
     expect(n.indexOf("Use tabs.")).toBeLessThan(n.indexOf("Short sentences."));
     expect(n.indexOf("Short sentences.")).toBeLessThan(n.indexOf("Never touch pricing."));
   });
-  test("Companion's marked block holding the import is followed too", () => {
+  test(`${PRODUCT_S} marked block holding the import is followed too`, () => {
     const d = tmp("imp3");
-    writeFileSync(join(d, "CLAUDE.md"), "Mine.\n\n<!-- companion:begin (kept up to date by Companion; delete this whole block to stop) -->\n@AGENTS.md\n<!-- companion:end -->\n");
+    writeFileSync(join(d, "CLAUDE.md"), `Mine.\n\n<!-- companion:begin (kept up to date by ${PRODUCT}; delete this whole block to stop) -->\n@AGENTS.md\n<!-- companion:end -->\n`);
     writeFileSync(join(d, "AGENTS.md"), "- Uses Postgres");
     expect(projectNotes(d)).toContain("Uses Postgres");
   });
@@ -224,7 +225,7 @@ describe("an import of a settings or key file", () => {
     });
   }
   for (const rel of [".claude/settings.local.json", ".claude/settings.json", ".git/config", ".companion/project.md", "sub/.git/config"]) {
-    test(`${rel} (Claude's, git's or Companion's own folder) is never read`, () => {
+    test(`${rel} (Claude's, git's or ${PRODUCT_S} own folder) is never read`, () => {
       const n = imports(rel);
       expect(n).not.toContain(SECRET);
       expect(n).toContain(`@${rel}`);
@@ -253,7 +254,7 @@ describe("the options handed to the SDK", () => {
     expect(o.systemPrompt.append).toMatch(/notes from the project/i);
   });
   test("the sandbox settings are the tested ones", () => expect(o.sandbox).toMatchObject({ enabled: process.platform === "darwin", allowUnsandboxedCommands: false }));
-  test("the agent's own tools may not write Companion's or Claude's settings folders", () => {
+  test(`the agent's own tools may not write ${PRODUCT_S} or Claude's settings folders`, () => {
     for (const rule of ["Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)"]) expect(o.disallowedTools).toContain(rule);
   });
 });

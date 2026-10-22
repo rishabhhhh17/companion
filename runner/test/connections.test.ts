@@ -9,6 +9,7 @@ import { redactOutput, stripTerminal } from "../src/redact.ts";
 import { refuseWrite, words } from "../src/readonly.ts";
 import { VercelCli } from "../src/ship/deploy.ts";
 import { shq, type RunResult } from "../src/proof/exec.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "conn-")); made.push(d); return d; };
@@ -16,7 +17,7 @@ afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true 
 const res = (o: Partial<RunResult>): RunResult => ({ code: 0, signal: null, stdout: "", stderr: "", timedOut: false, ms: 1, ...o });
 
 describe("only reading commands pass", () => {
-  test("the commands Companion really uses are allowed", () => {
+  test(`the commands ${PRODUCT} really uses are allowed`, () => {
     for (const c of [
       "vercel list --format json", "vercel list", "vercel ls", `vercel inspect ${shq("https://shop-abc.vercel.app")} --logs --scope ${shq("team_1")}`,
       "gh repo view --json defaultBranchRef", "gh run list --limit 20 --json databaseId,status,conclusion --branch 'main'", "gh run view '123' --json jobs", "gh run view '123' --log-failed",
@@ -31,9 +32,9 @@ describe("only reading commands pass", () => {
       "gh run view 123 --web", "gh repo view --web", "gh run list --method POST",
     ];
     for (const c of writes) { const why = refuseWrite(c); expect(why, c).not.toBeNull(); expect(why, c).toMatch(/only reads|only runs|never runs|only reads from/); }
-    expect(refuseWrite("vercel deploy")).toBe('Companion never runs "deploy" on your tools. It only reads.');
-    expect(refuseWrite("gh run rerun 123")).toBe('Companion never runs "rerun" on your tools. It only reads.');
-    expect(refuseWrite("gh pr create")).toBe('Companion never runs "create" on your tools. It only reads.');
+    expect(refuseWrite("vercel deploy")).toBe(`${PRODUCT} never runs "deploy" on your tools. It only reads.`);
+    expect(refuseWrite("gh run rerun 123")).toBe(`${PRODUCT} never runs "rerun" on your tools. It only reads.`);
+    expect(refuseWrite("gh pr create")).toBe(`${PRODUCT} never runs "create" on your tools. It only reads.`);
   });
   test("a reading command with something else tacked on is refused, however it is joined", () => {
     for (const c of [

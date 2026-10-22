@@ -1,5 +1,5 @@
 #!/bin/sh
-# Known security problems in what Companion is built from. Run before every release (the advisory lists change every
+# Known security problems in what Squibby is built from. Run before every release (the advisory lists change every
 # day, so this is not part of test-all.sh: a new advisory must not block an unrelated merge).
 #   cargo install cargo-audit --locked   (once)
 set -e

@@ -8,6 +8,7 @@ import { CheckpointStore } from "../src/checkpoints.ts";
 import { needsInstall, runLadder, type StepUpdate } from "../src/proof/ladder.ts";
 import type { RunResult } from "../src/proof/exec.ts";
 import { failureSignature } from "../src/drive.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -27,7 +28,7 @@ async function scenario(before: Record<string, string>, change: (dir: string) =>
   const result = await runLadder({ project: dir, store, beforeId: b.id, afterId: a.id, onStep: (u) => updates.push(u), limits: { checkMs: 15000, testMs: 30000, installMs: 15000, startMs: 15000, browserMs: 15000, ...limits }, ...extra });
   return { result, updates, dir };
 }
-const GOOD_PAGE = "<!doctype html><h1>Hello from Companion</h1><p>hi</p>";
+const GOOD_PAGE = `<!doctype html><h1>Hello from ${PRODUCT}</h1><p>hi</p>`;
 const BAD_PAGE = "<!doctype html><h1>Hello</h1><script>nothing.here.is.defined()</script>";
 const SERVER = (status: number) => `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("<h1>Hello from the server</h1>", { status: ${status}, headers: { "content-type": "text/html" } }) });`;
 const pkg = (scripts: Record<string, string>) => JSON.stringify({ name: "x", version: "1.0.0", scripts });
@@ -276,7 +277,7 @@ describe("a check the Mac had no room to start is not the project's check failin
     expect(calls.filter((c) => /lint/.test(c))).toHaveLength(2);
     expect(result.noRoom).toBeUndefined();
   }, 30000);
-  test("one that still cannot start is said in Companion's words, with what to do, and is marked as such", async () => {
+  test(`one that still cannot start is said in ${PRODUCT_S} words, with what to do, and is marked as such`, async () => {
     const { result, calls } = await ladderWith((c) => (/lint/.test(c) ? res({ code: 1, stderr: NPM_EAGAIN }) : res()));
     expect(calls.filter((c) => /lint/.test(c))).toHaveLength(3);
     expect(result.verdict).toBe("failed");

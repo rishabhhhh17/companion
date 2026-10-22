@@ -7,11 +7,13 @@ import { writeAtomic } from "../atomic.ts";
 import { screenLine } from "./filter.ts";
 import { readCompanionFile } from "../companionfile.ts";
 import type { MemoryStore } from "./store.ts";
+import { PRODUCT } from "../names.ts";
 
 export type SyncResult = { status: "written" | "unchanged" | "needs_ask" | "declined" | "nothing_to_write" | "failed"; files: string[]; reason?: string };
-const BEGIN = "<!-- companion:begin (kept up to date by Companion; delete this whole block to stop) -->";
+const BEGIN = `<!-- companion:begin (kept up to date by ${PRODUCT}; delete this whole block to stop) -->`;
 const END = "<!-- companion:end -->";
-const BLOCK = new RegExp(`\\n?${BEGIN.replace(/[()]/g, "\\$&")}[\\s\\S]*?${END}\\n?`);
+// Found by its opening mark alone, so a block written under an earlier name is still ours to update and to remove.
+const BLOCK = new RegExp(`\\n?<!-- companion:begin[^\\n]*?-->[\\s\\S]*?${END}\\n?`);
 
 function ruleLines(project: string): string[] {
   const r = readCompanionFile(project, "rules.txt");   // never through a link (companionfile.ts)
@@ -22,7 +24,7 @@ function section(project: string, m: MemoryStore): string | null {
   const facts = m.list("project").entries.map((e) => e.text).filter((t) => screenLine(t).ok);
   const rules = ruleLines(project).filter((t) => screenLine(t).ok);
   if (!facts.length && !rules.length) return null;
-  return [BEGIN, "## Project notes (from Companion)", ...(facts.length ? facts.map((f) => `- ${f}`) : ["- Nothing yet."]), ...(rules.length ? ["", "## House rules", ...rules.map((r) => `- ${r}`)] : []), END].join("\n");
+  return [BEGIN, `## Project notes (from ${PRODUCT})`, ...(facts.length ? facts.map((f) => `- ${f}`) : ["- Nothing yet."]), ...(rules.length ? ["", "## House rules", ...rules.map((r) => `- ${r}`)] : []), END].join("\n");
 }
 
 type State = { kind: "absent" } | { kind: "text"; text: string } | { kind: "unreadable" } | { kind: "link" };
@@ -46,7 +48,7 @@ export function syncAgentsFiles(project: string, m: MemoryStore, o: { approved: 
   // Keeping in step after a change: only where Companion already wrote its block, and a block with nothing left goes away.
   if (o.onlyIfPresent && !hasOurs) return { status: "unchanged", files: [] };
   if (!block) return hasOurs && removeSection(aPath) ? { status: "written", files: ["AGENTS.md"] } : { status: "nothing_to_write", files: [] };
-  if (a.kind === "link" || c.kind === "link") return { status: "failed", files: [], reason: `${a.kind === "link" ? "AGENTS.md" : "CLAUDE.md"} in your project is a link to another file, so nothing was changed. Companion never writes through a link.` };
+  if (a.kind === "link" || c.kind === "link") return { status: "failed", files: [], reason: `${a.kind === "link" ? "AGENTS.md" : "CLAUDE.md"} in your project is a link to another file, so nothing was changed. ${PRODUCT} never writes through a link.` };
   if (a.kind === "unreadable" || c.kind === "unreadable") return { status: "failed", files: [], reason: "A file in your project could not be read, so nothing was changed." };
 
   const ours = (s: State) => s.kind === "text" && BLOCK.test(s.text);

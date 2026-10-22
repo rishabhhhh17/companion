@@ -14,6 +14,7 @@ import { EngineStop, type Turn } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { retryPrompt } from "../src/followup.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -70,7 +71,7 @@ describe("which failures mean Claude could not be reached", () => {
     expect(outOfReach({ text: "getaddrinfo EAI_AGAIN api.anthropic.com", from: "run" })).toBe("no_connection");
   });
   test("a flow with no Try again is marked, so the card says ask again", () => {
-    expect(withoutTryAgain("no_connection: Companion could not reach Claude (x)")).toBe("no_connection (ask again): Companion could not reach Claude (x)");
+    expect(withoutTryAgain(`no_connection: ${PRODUCT} could not reach Claude (x)`)).toBe(`no_connection (ask again): ${PRODUCT} could not reach Claude (x)`);
     expect(withoutTryAgain("claude_stopped:rate_limit: Claude stopped (x)")).toBe("claude_stopped:rate_limit (ask again): Claude stopped (x)");
     expect(withoutTryAgain("error_max_budget_usd: the spending limit was reached")).toBe("error_max_budget_usd: the spending limit was reached");
   });
@@ -148,7 +149,7 @@ describe("the runner says so, and Try again is there", () => {
     writeFileSync(join(project, "a.txt"), "x");
     const events: Event[] = [];
     let n = 0;
-    const engine = { executesTools: true, async *start(o: any): AsyncGenerator<Turn, void, any> { n++; if (n === 1) throw new EngineStop("no_connection: Companion could not reach Claude (API Error: Connection error.)"); yield { text: `again: ${o.prompt}`, costUsd: 0 }; } };
+    const engine = { executesTools: true, async *start(o: any): AsyncGenerator<Turn, void, any> { n++; if (n === 1) throw new EngineStop(`no_connection: ${PRODUCT} could not reach Claude (API Error: Connection error.)`); yield { text: `again: ${o.prompt}`, costUsd: 0 }; } };
     const log = new TaskLog(":memory:");
     const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: engine as never, log, emit: (e) => events.push(e) });
     await runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "fix it", model: "m", budgetUsd: 1 });
@@ -180,7 +181,7 @@ describe("flows with no Try again say ask again", () => {
     return (events.filter((e) => e.type === "protocol.error") as any[]).map((e) => String(e.reason));
   };
   test("planning that could not reach Claude is marked, so its words point at no button", async () => {
-    const reasons = await runWith("no_connection: Companion could not reach Claude (API Error: Connection error.)", (project) => ({ v: 1, id: "p", type: "drive.plan", project, agent: "a1", goal: "add prices", model: "m", budgetUsd: 1 }));
+    const reasons = await runWith(`no_connection: ${PRODUCT} could not reach Claude (API Error: Connection error.)`, (project) => ({ v: 1, id: "p", type: "drive.plan", project, agent: "a1", goal: "add prices", model: "m", budgetUsd: 1 }));
     expect(reasons.at(-1)).toMatch(/no_connection \(ask again\)/);
   });
   test("Rescue's look at the project, the same", async () => {
@@ -197,7 +198,7 @@ describe("flows with no Try again say ask again", () => {
     return { runner, events };
   };
   test("the error explainer names it, so the card says it plainly", async () => {
-    const r = withExplainer("no_connection: Companion could not reach Claude (API Error: Connection error.)");
+    const r = withExplainer(`no_connection: ${PRODUCT} could not reach Claude (API Error: Connection error.)`);
     await r.runner.handle({ v: 1, id: "x", type: "error.explain", req: "eh_1", text: "TypeError: x is undefined" } as never);
     expect((r.events.find((e) => e.type === "error.explained") as any).reason).toMatch(/^no_connection \(ask again\): /);
   });
@@ -208,7 +209,7 @@ describe("flows with no Try again say ask again", () => {
     expect((r.events.find((e) => e.type === "diagram.ready") as any).reason).toMatch(/^claude_busy \(ask again\): /);
   });
   test("a task keeps its Try again words", async () => {
-    const reasons = await runWith("no_connection: Companion could not reach Claude (x)", (project) => ({ v: 1, id: "c", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "fix it", model: "m", budgetUsd: 1 }));
+    const reasons = await runWith(`no_connection: ${PRODUCT} could not reach Claude (x)`, (project) => ({ v: 1, id: "c", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "fix it", model: "m", budgetUsd: 1 }));
     expect(reasons.at(-1)).toMatch(/^no_connection: /);
   });
 });

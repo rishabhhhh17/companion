@@ -26,7 +26,7 @@ pub const AUTO_SEND_MIN_WORDS: usize = 3;
 
 /// What the person is told when the microphone will not open, or closed, because Companion is hidden: the light is the
 /// character, and nobody can see it (rule 5).
-pub const HIDDEN_WORDS: &str = "Companion is hidden right now, so I cannot show you that I am listening, and I will not record without that. Show Companion from the menu bar icon, then hold the keys again.";
+pub const HIDDEN_WORDS: &str = concat!(crate::product!(), " is hidden right now, so I cannot show you that I am listening, and I will not record without that. Show ", crate::product!(), " from the menu bar icon, then hold the keys again.");
 
 /// Why an open microphone must close now, whatever the keys are doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,7 +115,7 @@ impl Silence {
     /// The words if the page does not have its own (the page says it from strings.ts, by `word`).
     pub fn fallback(self) -> &'static str {
         match self {
-            Silence::Permission => "The microphone gave me only silence. It may be switched off for Companion in System Settings, Privacy and Security, Microphone.",
+            Silence::Permission => concat!("The microphone gave me only silence. It may be switched off for ", crate::product!(), " in System Settings, Privacy and Security, Microphone."),
             Silence::Lid => "Your Mac's lid is closed, so its own microphone is off. Plug in a microphone or headphones with one, or pick another microphone in Settings, then hold the keys again.",
             Silence::Device => "The microphone gave me only silence. Check that it is plugged in and not muted, or pick another microphone in Settings.",
         }
@@ -214,7 +214,7 @@ mod tests {
             h.up(cap / 2);   // let go: the microphone is already closed while what was said is understood
             assert_eq!(h.must_close(cap, true), None, "{v}");
         }
-        assert!(HIDDEN_WORDS.starts_with("Companion is hidden right now") && !HIDDEN_WORDS.contains('\u{2014}'));
+        assert!(HIDDEN_WORDS.starts_with(concat!(crate::product!(), " is hidden right now")) && !HIDDEN_WORDS.contains('\u{2014}'));
     }
     #[test]
     fn stop_everything_reaches_hold_to_talk_even_while_it_waits_or_turns_words_into_text() {

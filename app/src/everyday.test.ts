@@ -7,7 +7,7 @@ import { checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, main
 import { initial, reduce, type Model } from "./model.ts";
 import { need, islandLine } from "./home.ts";
 import { defOf } from "../../protocol/settings.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -23,7 +23,7 @@ describe("which way the key goes", () => {
     expect(heroRoute({ everyday: undefined, project: "", front: "unknown" })).toBe("screen");
     expect(heroRoute({ everyday: true, project: "/Users/me/site", front: "other" })).toBe("screen");
   });
-  test("a project with a code tool, a browser (its own page or a builder) or Companion in front is checked as before", () => {
+  test(`a project with a code tool, a browser (its own page or a builder) or ${PRODUCT} in front is checked as before`, () => {
     for (const front of ["code", "browser", "own", "unknown"]) expect(heroRoute({ everyday: true, project: "/Users/me/site", front }), front).toBe("project");
   });
   test("a practice copy always runs its own Find, whatever app is in front", () => {

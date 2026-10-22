@@ -3,10 +3,11 @@
 // cloud "metadata" address) unless the person typed localhost for their own dev server. The same rules judge every
 // redirect the address sends the check to. Pure code, tested without a network.
 import { isIP } from "node:net";
+import { PRODUCT } from "./names.ts";
 
 export type Address = { ok: true; url: string; host: string; local: boolean } | { ok: false; reason: string };
 const MAX_LENGTH = 2000;
-export const QUERY_REFUSED = "Leave the part after the ? out of the address. Companion keeps watched addresses on this Mac and never keeps keys or passwords.";
+export const QUERY_REFUSED = `Leave the part after the ? out of the address. ${PRODUCT} keeps watched addresses on this Mac and never keeps keys or passwords.`;
 
 /** A host that is this Mac itself, typed by the person: localhost, 127.0.0.1, ::1, or a name ending in .localhost. */
 export function isLocalName(host: string): boolean {
@@ -107,7 +108,7 @@ export function parseTarget(text: string): Address {
   let u: URL;
   try { u = new URL(t); } catch { return { ok: false, reason: "That does not look like a web address." }; }
   if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, reason: "Only web addresses that start with http or https can be watched." };
-  if (u.username || u.password) return { ok: false, reason: "Leave the user name and password out of the address. Companion never keeps passwords." };
+  if (u.username || u.password) return { ok: false, reason: `Leave the user name and password out of the address. ${PRODUCT} never keeps passwords.` };
   const host = u.hostname.toLowerCase();
   if (!host) return { ok: false, reason: "That does not look like a web address." };
   // The address is kept on this Mac and shown in Companion, and a part after ? is where keys and tokens go. Companion keeps
@@ -128,8 +129,8 @@ export function parseTarget(text: string): Address {
 export function hostAllowed(host: string, typedLocal: boolean): string | null {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   if (isLocalName(h)) return typedLocal ? null : "That address is on this Mac itself. Type localhost to watch your own dev server.";
-  if (isIP(h)) { const why = privateReason(h); return why ? `That address is ${why}, so Companion will not visit it.` : null; }
-  if (h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".lan") || h.endsWith(".home.arpa")) return "That address is on a private network, so Companion will not visit it.";
+  if (isIP(h)) { const why = privateReason(h); return why ? `That address is ${why}, so ${PRODUCT} will not visit it.` : null; }
+  if (h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".lan") || h.endsWith(".home.arpa")) return `That address is on a private network, so ${PRODUCT} will not visit it.`;
   return null;
 }
 
@@ -140,7 +141,7 @@ export function resolvedAllowed(addresses: string[], typedLocal: boolean): strin
     const why = privateReason(a);
     if (!why) continue;
     if (typedLocal && why === "this Mac itself") continue;
-    return `That address leads to ${why}, so Companion will not visit it.`;
+    return `That address leads to ${why}, so ${PRODUCT} will not visit it.`;
   }
   return null;
 }

@@ -35,6 +35,7 @@ mod yourturn;
 mod wipe;
 mod logexport;
 mod practice;
+mod names;
 mod newfolder;
 mod diagram;
 mod snap;
@@ -1484,7 +1485,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
     let Some(parent) = chosen else { return Err(String::new()) };
     let parent = projects::validate_parent(&parent, &home_dir(), &data_dir())?;
     let cmd = json!({ "v": 1, "id": format!("clone{}", now()), "type": "project.clone", "url": url, "parent": parent.to_string_lossy() });
-    app.state::<runner::Runner>().send(&cmd).map_err(|_| "Companion's engine is not running. Try again in a moment.".to_string())
+    app.state::<runner::Runner>().send(&cmd).map_err(|_| concat!(crate::product_s!(), " engine is not running. Try again in a moment.").to_string())
 }
 
 /// One new folder at a time (two presses at once never race for the same name).
@@ -1512,7 +1513,7 @@ fn start_in_new_folder(window: tauri::WebviewWindow, app: AppHandle, cmd: Value)
     let task = newfolder::task_command(&req, &folder);
     runner::check_command(&task)?;
     runner::check_project(&task, &current_project())?;
-    app.state::<runner::Runner>().send(&task).map_err(|_| "Your new folder is made and open, but Companion's engine is not running. Press the button again in a moment.".to_string())?;
+    app.state::<runner::Runner>().send(&task).map_err(|_| concat!("Your new folder is made and open, but ", crate::product_s!(), " engine is not running. Press the button again in a moment.").to_string())?;
     Ok(folder)
 }
 
@@ -1640,7 +1641,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
         if !plat.screen_recording_granted() {
             // Asked here, the first time the feature is used, with a plain sentence first.
             macos_see::request_screen_recording();
-            say_showme(&app, "needs_permission", "Allow Screen Recording for Companion in System Settings, then press Show me again. macOS may ask you to reopen Companion.", json!({}));
+            say_showme(&app, "needs_permission", concat!("Allow Screen Recording for ", crate::product!(), " in System Settings, then press Show me again. macOS may ask you to reopen ", crate::product!(), "."), json!({}));
             return;
         }
         log("showme_start", json!({}));
@@ -1652,7 +1653,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
                 showme_pending().begin(&req, prep);
                 say_showme(&app, "thinking", if covered > 0 { "Finding it. I covered some private text first." } else { "Finding it" }, json!({ "req": req, "covered": covered }));
             }
-            Err(showme::Refusal::NeedsScreenRecording) => say_showme(&app, "needs_permission", "Allow Screen Recording for Companion in System Settings, then press Show me again.", json!({})),
+            Err(showme::Refusal::NeedsScreenRecording) => say_showme(&app, "needs_permission", concat!("Allow Screen Recording for ", crate::product!(), " in System Settings, then press Show me again."), json!({})),
             Err(showme::Refusal::SecureInput) => say_showme(&app, "error", "A password box is active, so I did not look at your screen. Click away from it and try again.", json!({})),
             Err(showme::Refusal::CaptureFailed(e)) => say_showme(&app, "error", &format!("I could not look at your screen ({e})."), json!({})),
             Err(showme::Refusal::PictureFailed(e)) => say_showme(&app, "error", &format!("I could not prepare the picture ({e})."), json!({})),
@@ -1916,7 +1917,7 @@ fn do_it_for_me(app: AppHandle) {
         if yourturn::risky(&label) { say_showme(&app, "your_turn_miss", SELF, json!({})); return; }
         if !ax::trusted(false) {
             ax::trusted(true);
-            say_showme(&app, "needs_permission", "To click for you, Companion needs Accessibility. Allow it in System Settings, then press Do it for me again. Or click it yourself.", json!({}));
+            say_showme(&app, "needs_permission", concat!("To click for you, ", crate::product!(), " needs Accessibility. Allow it in System Settings, then press Do it for me again. Or click it yourself."), json!({}));
             return;
         }
         if TURN_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
@@ -2200,7 +2201,7 @@ fn cmd_out(c: &str, a: &[&str]) -> String { std::process::Command::new(c).args(a
 /// person's press. Nothing is sent: the person attaches the file and sends it themselves. Returns the saved file's name.
 #[tauri::command]
 async fn report_problem(window: tauri::WebviewWindow, subject: String, body: String) -> Result<String, String> {
-    if window.label() != "card" { return Err("A report can only be started from Companion's own window.".into()); }
+    if window.label() != "card" { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
     let cfg = report::parse_config(include_str!("../report.json"));
     // The words are checked before anything is written, so a refusal leaves nothing behind.
     report::address(&cfg, &subject, &body, "0", "0")?;
@@ -2402,7 +2403,7 @@ static WIPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 
 /// A question macOS itself asks, so a script in a page can never answer it. Cancel is the default button.
 fn confirm_delete_natively() -> bool {
-    let script = r#"display dialog "Delete everything Companion keeps on this Mac? This cannot be undone." buttons {"Cancel", "Delete everything"} default button "Cancel" cancel button "Cancel" with icon caution with title "Companion""#;
+    let script = concat!(r#"display dialog "Delete everything "#, crate::product!(), r#" keeps on this Mac? This cannot be undone." buttons {"Cancel", "Delete everything"} default button "Cancel" cancel button "Cancel" with icon caution with title ""#, crate::product!(), r#"""#);
     std::process::Command::new("/usr/bin/osascript").args(["-e", script]).output().is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("Delete everything"))
 }
 
@@ -2614,7 +2615,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
             if !plat.screen_recording_granted() {
                 macos_see::request_screen_recording();
                 let lead = if said.is_empty() { String::new() } else { format!("{said} ") };
-                say_showme(&app, "needs_permission", &format!("{lead}To have me circle it on your screen, allow Screen Recording for Companion in System Settings, then try again."), json!({}));
+                say_showme(&app, "needs_permission", &format!(concat!("{lead}To have me circle it on your screen, allow Screen Recording for ", crate::product!(), " in System Settings, then try again."), lead = lead), json!({}));
                 return;
             }
         }
@@ -2698,7 +2699,7 @@ fn copy_link(url: String) -> Result<(), String> {
 /// anything that looks like a key again first), checked here (share::copyable). The text is not logged.
 #[tauri::command]
 fn copy_text(window: tauri::WebviewWindow, text: String) -> Result<(), String> {
-    if window.label() != "card" { return Err("Only Companion's own window can copy.".into()); }
+    if window.label() != "card" { return Err(concat!("Only ", crate::product_s!(), " own window can copy.").into()); }
     let Some(text) = share::copyable(&text) else { return Err("That could not be copied.".into()) };
     ax::write_clipboard(text);
     Ok(())
@@ -2722,7 +2723,7 @@ async fn read_document(window: tauri::WebviewWindow, name: String, data: String)
 /// card.tsx for that); nothing the model wrote is ever opened by itself. The address is not logged.
 #[tauri::command]
 fn open_link(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
-    if window.label() != "card" { return Err("Links can only be opened from Companion's own window.".into()); }
+    if window.label() != "card" { return Err(concat!("Links can only be opened from ", crate::product_s!(), " own window.").into()); }
     let Some(url) = share::web_link(&url) else { return Err("That is not a plain web address, so it was not opened.".into()) };
     let ok = std::process::Command::new("/usr/bin/open").arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
     log("link_opened", json!({ "ok": ok }));
@@ -3021,10 +3022,10 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 if hold.down_for(t, cap) != voice::Step::Start { continue; }
                 stops_at = VOICE_STOPS.load(Ordering::SeqCst);
                 voice_mac::set_buffer_room(voice::buffer_samples(cap));
-                if !voice_mac::model_ready(&data) { hold.cancel(); if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); } else { say_voice(&app, "needs_model", "To talk to Companion, it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac.", json!({})); } continue; }
+                if !voice_mac::model_ready(&data) { hold.cancel(); if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); } else { say_voice(&app, "needs_model", concat!("To talk to ", crate::product!(), ", it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac."), json!({})); } continue; }
                 match voice_mac::mic_status() {
                     voice_mac::Mic::NotAsked => { hold.cancel(); voice_mac::ask_for_mic(); say_voice(&app, "needs_mic", "Allow the microphone in the box macOS shows, then hold the keys again.", json!({})); continue; }
-                    voice_mac::Mic::Refused => { hold.cancel(); say_voice(&app, "mic_refused", "The microphone is switched off for Companion. Turn it on in System Settings, Privacy and Security, Microphone. If it is not in the list, run this in Terminal and reopen Companion: tccutil reset Microphone dev.companion.app", json!({})); continue; }
+                    voice_mac::Mic::Refused => { hold.cancel(); say_voice(&app, "mic_refused", concat!("The microphone is switched off for ", crate::product!(), ". Turn it on in System Settings, Privacy and Security, Microphone. If it is not in the list, run this in Terminal and reopen ", crate::product!(), ": tccutil reset Microphone dev.companion.app"), json!({})); continue; }
                     voice_mac::Mic::Allowed => {}
                 }
                 // The light is the dock character (and the card). If the person cannot see it (a full screen app is in front, or they hid it) nothing is recorded (rule 5).
@@ -3615,13 +3616,13 @@ fn main() {
                 runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-wipe-note", "type": "app.notice", "message": note }));
             }
             // The menu bar icon: hide or show, stop everything, quit. Clicking it never takes your typing.
-            let hide = MenuItemBuilder::with_id("hide", "Hide or show Companion").build(app)?;
+            let hide = MenuItemBuilder::with_id("hide", concat!("Hide or show ", crate::product!())).build(app)?;
             let stop = MenuItemBuilder::with_id("stop", "Stop everything").build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Quit Companion").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", concat!("Quit ", crate::product!())).build(app)?;
             let menu = MenuBuilder::new(app).items(&[&hide, &stop, &quit]).build()?;
             TrayIconBuilder::new()
                 .icon(Image::from_bytes(include_bytes!("../icons/32x32.png"))?)
-                .tooltip("Companion")
+                .tooltip(crate::product!())
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
                     "hide" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }

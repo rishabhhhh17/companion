@@ -13,6 +13,7 @@ import { EVERYDAY_SYSTEM } from "../src/everyday.ts";
 import apps from "../../protocol/apps.json";
 import { parseCommand, type Event } from "../../protocol/index.ts";
 import { defOf } from "../../protocol/settings.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const EVERYDAY = { "com.apple.mail": "Mail", "com.apple.finder": "Finder", "com.apple.systempreferences": "System Settings", "com.apple.iWork.Numbers": "Numbers", "com.microsoft.Excel": "Excel", "com.apple.iWork.Keynote": "Keynote", "com.figma.Desktop": "Figma", "com.adobe.Photoshop": "Photoshop", "com.apple.iCal": "Calendar", "com.apple.iWork.Pages": "Pages", "com.microsoft.Word": "Word" };
 const CODING = ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.apple.dt.Xcode", "dev.zed.Zed", "com.jetbrains.intellij", "com.anthropic.claudefordesktop", "com.openai.chat", "com.openai.codex", "com.github.GitHubClient"];
@@ -26,11 +27,11 @@ const UNKNOWN = ["com.example.SomeNotesApp", "com.someone.NewEditor"];
 
 describe("which kind of app is in front", () => {
   test("everyday apps are everyday", () => { for (const id of Object.keys(EVERYDAY)) expect(appKind(id), id).toBe("everyday"); });
-  test("an app Companion does not know is not taken to be everyday: it might be a builder's tool, so the screen decides", () => { for (const id of UNKNOWN) expect(appKind(id), id).toBe("other"); });
+  test(`an app ${PRODUCT} does not know is not taken to be everyday: it might be a builder's tool, so the screen decides`, () => { for (const id of UNKNOWN) expect(appKind(id), id).toBe("other"); });
   test("terminals, editors and AI coding or chat tools are coding tools", () => { for (const id of CODING) expect(appKind(id), id).toBe("coding"); });
   test("app building tools, the phone simulator, git apps and more terminals are coding tools too", () => { for (const id of MORE_CODING) expect(appKind(id), id).toBe("coding"); });
   test("browsers are browsers: the page in them can be either", () => { for (const id of [...BROWSERS, ...MORE_BROWSERS]) expect(appKind(id), id).toBe("browser"); });
-  test("nothing known, Companion itself, or something that is not an app id is unknown", () => {
+  test(`nothing known, ${PRODUCT} itself, or something that is not an app id is unknown`, () => {
     for (const id of [undefined, "", "dev.companion.app", "../etc", ".hidden", "a..b", "has space", 42, "x".repeat(201)]) expect(appKind(id), String(id)).toBe("unknown");
   });
   test("the terminals are the same list Prompt help uses (one list, not two)", () => {
@@ -47,10 +48,10 @@ describe("the tutor is chosen only with the setting on", () => {
   test("off (the usual value): no tutor for any app, so every answer is asked as before", () => {
     for (const id of [...Object.keys(EVERYDAY), ...CODING, ...BROWSERS]) { expect(tutorFor(id, false)).toBeNull(); expect(tutorFor(id, undefined)).toBeNull(); expect(tutorFor(id, "yes")).toBeNull(); }
   });
-  test("on: an everyday app gets the tutor, named when Companion knows its name", () => {
+  test(`on: an everyday app gets the tutor, named when ${PRODUCT} knows its name`, () => {
     for (const [id, name] of Object.entries(EVERYDAY)) expect(tutorFor(id, true), id).toEqual({ kind: "everyday", app: name });
   });
-  test("on: only an app Companion knows by name gets the everyday tutor; any other app gets the lines that let the screen decide", () => {
+  test(`on: only an app ${PRODUCT} knows by name gets the everyday tutor; any other app gets the lines that let the screen decide`, () => {
     for (const id of UNKNOWN) expect(tutorFor(id, true), id).toEqual({ kind: "other" });
   });
   test("on: a coding or app building tool, or no known app, keeps the usual answer", () => {
@@ -78,7 +79,7 @@ describe("the words the model is given", () => {
     expect(NEVER_LINE).toMatch(/projects/);
     expect(NEVER_LINE).toMatch(/code/);
   });
-  test("an app Companion does not know: the screen decides, with no claim that the person is not building anything", () => {
+  test(`an app ${PRODUCT} does not know: the screen decides, with no claim that the person is not building anything`, () => {
     const s = visionSystem({ kind: "other" });
     expect(s).toMatch(/the app in front is not known by name, so decide from the screen/i);
     expect(s).not.toContain(NEVER_LINE);
@@ -87,7 +88,7 @@ describe("the words the model is given", () => {
     expect(s).toMatch(/building, hosting, databases or code[^.]*answer as usual/i);
     expect(s).not.toContain("com.");
   });
-  test("an everyday tutor with no name Companion knows gets the same lines as an unknown app, never the full tutor", () => {
+  test(`an everyday tutor with no name ${PRODUCT} knows gets the same lines as an unknown app, never the full tutor`, () => {
     expect(tutorLines({ kind: "everyday" })).toBe(tutorLines({ kind: "other" }));
     expect(tutorLines({ kind: "everyday", app: "SomeNotesApp" })).toBe(tutorLines({ kind: "other" }));
   });
@@ -129,7 +130,7 @@ describe("Show me how and anywhere mode ask the vision lane with the tutor", () 
   test("with the setting on and Mail in front, the lane is asked as a tutor for Mail", async () => {
     expect((await svc({ "showme.everydayTutor": true }).ask("com.apple.mail")).tutor).toEqual({ kind: "everyday", app: "Mail" });
   });
-  test("with the setting on and an app Companion does not know in front, the screen decides (never the full tutor)", async () => {
+  test(`with the setting on and an app ${PRODUCT} does not know in front, the screen decides (never the full tutor)`, async () => {
     expect((await svc({ "showme.everydayTutor": true }).ask("com.google.android.studio")).tutor).toBeUndefined();
     expect((await svc({ "showme.everydayTutor": true }).ask("com.example.SomeNotesApp")).tutor).toEqual({ kind: "other" });
     expect((await svc({ "showme.everydayTutor": true }).ask("org.mozilla.firefoxdeveloperedition")).tutor).toEqual({ kind: "browser" });

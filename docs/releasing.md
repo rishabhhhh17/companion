@@ -35,10 +35,10 @@ Checked offline on 20 Oct 2026 (build, disk image, bundle contents, Info.plist, 
 5. **Release.**
    `COMPANION_SIGN_ID="Developer ID Application: Your Name (TEAMID)" sh app/scripts/release.sh`
    It builds, signs, sends the app to Apple, waits (usually 2 to 15 minutes; the first ones can be hours), staples, makes the disk image, signs it, sends it to Apple, waits, staples, and checks. Total about 20 to 40 minutes. macOS may ask once to let `codesign` use your key: choose Always Allow.
-   Success ends with `ready to send: .../app/installer/Companion-<version>.dmg`, and the lines `accepted` / `source=Notarized Developer ID` from `spctl`.
-6. **Try it on a Mac that is not yours** (or a fresh user account on your Mac): copy the `.dmg` over by AirDrop or a download, open it, drag Companion to Applications, open it. It must open with no "Open Anyway" and no "damaged" message. Do not skip this: it is the only test of the real thing.
+   Success ends with `ready to send: .../app/installer/Squibby-<version>.dmg`, and the lines `accepted` / `source=Notarized Developer ID` from `spctl`.
+6. **Try it on a Mac that is not yours** (or a fresh user account on your Mac): copy the `.dmg` over by AirDrop or a download, open it, drag Squibby to Applications, open it. It must open with no "Open Anyway" and no "damaged" message. Do not skip this: it is the only test of the real thing.
 7. **Update files.** `sh app/scripts/build-update.sh "what changed, in plain words"`. It asks for the update key password and prints the one `gh release create ...` command that publishes. Read what it made in `app/installer/update`, then run that command. It goes public.
-8. **The installer for friends.** Upload `app/installer/Companion-<version>.dmg` to the same public release (the `gh release create` command above can take it as one more file), and send the release page link. The first friends install the disk image by hand. After that, installed copies find new versions by themselves (once a day, if on) and install only when the person presses Install and nothing is running.
+8. **The installer for friends.** Upload `app/installer/Squibby-<version>.dmg` to the same public release (the `gh release create` command above can take it as one more file), and send the release page link. The first friends install the disk image by hand. After that, installed copies find new versions by themselves (once a day, if on) and install only when the person presses Install and nothing is running.
 
 ## What goes wrong, and what you will see
 
@@ -63,7 +63,7 @@ Checked offline on 20 Oct 2026 (build, disk image, bundle contents, Info.plist, 
 
 ## What an update check sends
 
-Companion asks the address for `latest.json`. It is a plain request: it names the update tool, and the address sees the person's internet address like any web request. No project, no words, no ids. Installs happen only on a press, never while something is running, and only if the file's signature matches the public key inside the app.
+Squibby asks the address for `latest.json`. It is a plain request: it names the update tool, and the address sees the person's internet address like any web request. No project, no words, no ids. Installs happen only on a press, never while something is running, and only if the file's signature matches the public key inside the app.
 
 ## Known soft spots (not blockers)
 

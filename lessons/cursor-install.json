@@ -57,8 +57,8 @@
     },
     {
       "id": "tell",
-      "say": "Back in Companion, press Change folder and choose the same folder, so Companion and Cursor look at the same project.",
-      "find": "the Change folder button in Companion's card",
+      "say": "Back in {product}, press Change folder and choose the same folder, so {product} and Cursor look at the same project.",
+      "find": "the Change folder button in {product_s} card",
       "check": {
         "kind": "ask"
       }

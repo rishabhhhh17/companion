@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 
 import { characterWords, initial, motionFor, reduce, visualState, type Model } from "./model.ts";
 import { TABS, characterShows, homeReduce, homeStart, need, shownOn } from "./home.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const main = read("../src-tauri/src/main.rs");
@@ -66,7 +66,7 @@ describe("the island window", () => {
     expect(main).toMatch(/NSTrackingAreaOptions::MouseEnteredAndExited \| NSTrackingAreaOptions::ActiveAlways \| NSTrackingAreaOptions::InVisibleRect/);
     expect(main).not.toMatch(/addGlobalMonitorForEvents|NSEventMask::KeyDown|CGEventTap/);
   });
-  test("is hidden with the rest in a full screen app and when the person hides Companion, and shown again after", () => {
+  test(`is hidden with the rest in a full screen app and when the person hides ${PRODUCT}, and shown again after`, () => {
     const tick = fnBody("tick");
     const hide = tick.slice(tick.indexOf("if !show"), tick.indexOf("hidden_for_full_screen"));
     expect(hide).toContain("island_show(false)");

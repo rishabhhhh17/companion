@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { characterWords, initial, reduce, visualState, type Model } from "./model.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()): Model => events.reduce<Model>((m, e) => reduce(m, e), from);
 
@@ -60,13 +60,13 @@ describe("what the character looks like", () => {
 // when the permission is granted. The shell says why (`why`); the words are the page's own.
 describe("why the microphone gave only silence", () => {
   test("each reason has its own plain words, and only a missing permission names System Settings' microphone switch", () => {
-    const blocked = (why: unknown) => run([{ type: "app.voice", stage: "blocked", message: "The microphone gave me only silence. It may be switched off for Companion in System Settings.", why }]).voice!.message;
+    const blocked = (why: unknown) => run([{ type: "app.voice", stage: "blocked", message: `The microphone gave me only silence. It may be switched off for ${PRODUCT} in System Settings.`, why }]).voice!.message;
     expect(blocked("lid")).toBe(S.voiceSilent.lid);
     expect(blocked("device")).toBe(S.voiceSilent.device);
     expect(blocked("permission")).toBe(S.voiceSilent.permission);
     expect(S.voiceSilent.lid).toMatch(/lid is closed/);
-    expect(S.voiceSilent.device).not.toMatch(/System Settings|Privacy|permission|switched off for Companion/i);
-    expect(S.voiceSilent.lid).not.toMatch(/Privacy|permission|switched off for Companion/i);
+    expect(S.voiceSilent.device).not.toMatch(new RegExp(`System Settings|Privacy|permission|switched off for ${PRODUCT}`, "i"));
+    expect(S.voiceSilent.lid).not.toMatch(new RegExp(`Privacy|permission|switched off for ${PRODUCT}`, "i"));
     expect(S.voiceSilent.permission).toMatch(/Privacy and Security/);
     for (const t of Object.values(S.voiceSilent)) expect(/[–—]/.test(t), t).toBe(false);
   });

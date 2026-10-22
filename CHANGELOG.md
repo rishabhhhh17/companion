@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The app is now called Squibby, and its water creature Flowflow: 22 Oct 2026
+
+- **Every word you read now says Squibby.** The cards, the messages, the permission questions, the menu bar, the Delete everything question, the lessons, the install and privacy notes, and the words we send to Claude about who we are. The built app is now `Squibby.app`, and the disk image is `Squibby-<version>.dmg`.
+- **The water creature is called Flowflow** wherever a character is named.
+- **One file holds the names.** `protocol/names.json` is read by the screens, the engine and the Mac app, so the next rename is one edit. A test fails if the old name is left in a sentence a person reads, or if the Mac app and the screens disagree about which names exist.
+- **What did not change, on purpose, so nobody loses anything:** the app's hidden identity (`dev.companion.app`), the Keychain items, the data folders, the `.companion` notes in projects and the code names. Practice copies and notes blocks made under the old name are still recognised, so Remove my copy and Delete everything still find them. New practice copies are named `Squibby practice ...` and new folders go in `Squibby makes`.
+- **Checked by machine only.** The tests pass and the app builds and starts, but nobody has used the renamed app on a real Mac yet. Because the model is now told the new name in a few places, a few real Claude checks should be run again before the next release.
+
 ## The water character is in the app: 22 Oct 2026
 
 - **The character on the screen edge is now the water creature**, with a different picture for each thing it is doing: asleep when off, a plain look when idle, a light bulb when thinking, a laptop when working, a magnifying glass when checking, a wave when it needs you, a splash when something is proven, and a half hidden "uh oh" when something went wrong.

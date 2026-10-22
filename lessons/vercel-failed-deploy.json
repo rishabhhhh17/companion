@@ -52,8 +52,8 @@
     },
     {
       "id": "ask",
-      "say": "Press Control, Option, Command and F in Companion to find the same place in your project. If Provisioning Integrations failed, do not press Skip.",
-      "find": "Companion's character on the edge of the screen",
+      "say": "Press Control, Option, Command and F in {product} to find the same place in your project. If Provisioning Integrations failed, do not press Skip.",
+      "find": "{product_s} character on the edge of the screen",
       "check": {
         "kind": "ask"
       }

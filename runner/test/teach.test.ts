@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { changeTarget, diffForExplain, hunksOf, repeatedChange, revertHunk, taskHunks, teachable, turnChange } from "../src/teach.ts";
 import { costsAtMost } from "./cost.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const lines = (...l: string[]) => l.join("\n") + "\n";
 
@@ -52,7 +53,7 @@ describe("cutting a change into the places that changed", () => {
 });
 
 describe("which files can be taught from", () => {
-  test("settings and key files, Companion's, Claude's and git's own folders, installed packages and lock files are never used", () => {
+  test(`settings and key files, ${PRODUCT_S}, Claude's and git's own folders, installed packages and lock files are never used`, () => {
     for (const f of [".env", ".env.local", "config/.env.production", "id_rsa", "certs/server.pem", "secrets.json", ".git/config", ".companion/project.md", ".claude/settings.json", "node_modules/x/index.js", "dist/app.js", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "app.min.js"])
       expect(teachable(f), f).toBe(false);
     for (const f of ["src/App.tsx", "package.json", "README.md", "api/users.py", "styles/site.css"]) expect(teachable(f), f).toBe(true);

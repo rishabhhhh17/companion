@@ -29,11 +29,11 @@ const MAX_NAME_CHARS: usize = 40;
 #[derive(Deserialize)]
 struct Fallback { build: String, research: String }
 #[derive(Deserialize)]
-struct Names { parent: String, fallback: Fallback }
+struct Names { fallback: Fallback }
 pub const NAMES_TEXT: &str = include_str!("../../../protocol/newfolder.json");
 fn names() -> &'static Names { static N: OnceLock<Names> = OnceLock::new(); N.get_or_init(|| serde_json::from_str(NAMES_TEXT).expect("protocol/newfolder.json is JSON")) }
-/// The folder every new folder goes in ("Companion makes", a placeholder like every name).
-pub fn parent_name() -> &'static str { &names().parent }
+/// The folder every new folder goes in ("Squibby makes"), from protocol/names.json (rule 21).
+pub fn parent_name() -> &'static str { crate::names::new_folder_parent() }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind { Build, Research }
@@ -45,7 +45,7 @@ pub struct Request { pub id: String, pub kind: Kind, pub request: String, pub ag
 
 /// Takes or refuses `project.new` exactly as protocol/index.ts parseShellCommand does (the shared cases).
 pub fn check(v: &Value) -> Result<Request, String> {
-    let bad = |what: &str| Err(format!("Companion could not read that request ({what})."));
+    let bad = |what: &str| Err(format!(concat!(crate::product!(), " could not read that request ({what})."), what = what));
     let Some(o) = v.as_object() else { return bad("not a message") };
     if o.get("v").and_then(Value::as_i64) != Some(1) { return bad("version"); }
     let text = |k: &str| o.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
@@ -150,17 +150,17 @@ pub fn make(home: &Path, place: &str, base: &str, data: &Path, known: &[String],
         at = at.join(d);
         match fs::symlink_metadata(&at) {
             Ok(m) if m.is_dir() => {}
-            Ok(_) => return Err(format!("Your {d} folder is a link or a file, so Companion will not put a new folder there. {settings_hint}")),
+            Ok(_) => return Err(format!(concat!("Your {d} folder is a link or a file, so ", crate::product!(), " will not put a new folder there. {settings_hint}"), d = d, settings_hint = settings_hint)),
             Err(_) => return Err(format!("Your {d} folder was not found. {settings_hint}")),
         }
     }
     let parent = at.join(parent_name());
     // Checked before anything is made, so a refusal leaves nothing behind.
-    if let Some(g) = in_git(&parent) { return Err(format!("{} is inside a git project, so Companion will not make a new folder there. {settings_hint}", g.display())); }
-    if let Some(p) = in_project(&parent, known) { return Err(format!("That place is inside your project {p}, so Companion will not make a new folder there. {settings_hint}")); }
+    if let Some(g) = in_git(&parent) { return Err(format!(concat!("{} is inside a git project, so ", crate::product!(), " will not make a new folder there. {settings_hint}"), g.display(), settings_hint = settings_hint)); }
+    if let Some(p) = in_project(&parent, known) { return Err(format!(concat!("That place is inside your project {p}, so ", crate::product!(), " will not make a new folder there. {settings_hint}"), p = p, settings_hint = settings_hint)); }
     match fs::symlink_metadata(&parent) {
         Ok(m) if m.is_dir() => {}
-        Ok(_) => return Err(format!("{} is a link or a file, so Companion will not put anything in it. Move it, or pick another place for new folders in Settings.", parent.display())),
+        Ok(_) => return Err(format!(concat!("{} is a link or a file, so ", crate::product!(), " will not put anything in it. Move it, or pick another place for new folders in Settings."), parent.display())),
         Err(_) => fs::create_dir(&parent).or_else(|e| if e.kind() == std::io::ErrorKind::AlreadyExists && fs::symlink_metadata(&parent).is_ok_and(|m| m.is_dir()) { Ok(()) } else { Err(format!("Could not make the folder for new projects ({e}).")) })?,
     }
     // The same checks a folder the person picks passes (never a system, private or Companion's own folder).
@@ -207,9 +207,9 @@ mod tests {
     #[test]
     fn the_task_is_an_ordinary_command_a_page_may_send_and_only_for_the_new_folder() {
         for c in cases().iter().filter(|c| c["ok"] == json!(true)) {
-            let t = task_command(&check(&c["cmd"]).unwrap(), "/Users/sam/Companion makes/Website for my bakery");
+            let t = task_command(&check(&c["cmd"]).unwrap(), concat!("/Users/sam/", crate::new_folder_parent!(), "/Website for my bakery"));
             assert!(crate::runner::check_command(&t).is_ok(), "{t}");
-            assert!(crate::runner::check_project(&t, "/Users/sam/Companion makes/Website for my bakery").is_ok(), "{t}");
+            assert!(crate::runner::check_project(&t, concat!("/Users/sam/", crate::new_folder_parent!(), "/Website for my bakery")).is_ok(), "{t}");
             assert!(crate::runner::check_project(&t, "/Users/sam/shop").is_err(), "{t}");
             assert!(crate::runner::check_project(&t, "").is_err(), "{t}");
         }
@@ -266,7 +266,7 @@ mod tests {
         let fb = names();
         for s in ["make me a", "please", "🎂🎂🎂", "!!!", "\n\t", "the"] { assert_eq!(folder_name(s, Kind::Build, false), fb.fallback.build, "{s:?}"); }
         assert_eq!(folder_name("research", Kind::Research, false), fb.fallback.research);
-        assert_eq!((fb.fallback.build.as_str(), fb.fallback.research.as_str(), parent_name()), ("New project", "Research", "Companion makes"));
+        assert_eq!((fb.fallback.build.as_str(), fb.fallback.research.as_str(), parent_name()), ("New project", "Research", crate::new_folder_parent!()));
     }
     #[test]
     fn a_secret_or_anything_off_the_record_never_names_a_folder() {
@@ -294,7 +294,7 @@ mod tests {
     }
     #[test]
     fn each_name_gets_a_number_only_when_it_is_taken() {
-        let p = Path::new("/Users/sam/Companion makes");
+        let p = Path::new(concat!("/Users/sam/", crate::new_folder_parent!()));
         assert_eq!(destination(p, "Website", |_| false), Some(p.join("Website")));
         assert_eq!(destination(p, "Website", |x| x.ends_with("Website")), Some(p.join("Website 2")));
         assert_eq!(destination(p, "Website", |x| x.ends_with("Website") || x.ends_with("Website 2")), Some(p.join("Website 3")));
@@ -307,9 +307,9 @@ mod tests {
     fn it_makes_a_new_empty_folder_in_the_folder_for_all_of_them_in_the_home_folder() {
         let home = tmp("plain");
         let made = mk(&home, "home", "Website for my bakery", &[]).unwrap();
-        assert_eq!(made, home.join("Companion makes/Website for my bakery"));
+        assert_eq!(made, home.join(concat!(crate::new_folder_parent!(), "/Website for my bakery")));
         assert!(made.is_dir() && files_in(&made).is_empty());
-        assert_eq!(files_in(&home), ["Companion makes"]);
+        assert_eq!(files_in(&home), [crate::new_folder_parent!()]);
         // It is a folder Companion accepts as a project, by the same checks a picked folder passes.
         assert_eq!(crate::projects::validate(made.to_str().unwrap(), home.to_str().unwrap(), &home.join("Library/Application Support/dev.companion.app")).unwrap(), made);
         let _ = fs::remove_dir_all(&home);
@@ -320,38 +320,38 @@ mod tests {
         let first = mk(&home, "home", "Website", &[]).unwrap();
         fs::write(first.join("index.html"), "mine").unwrap();
         let second = mk(&home, "home", "Website", &[]).unwrap();
-        assert_eq!(second, home.join("Companion makes/Website 2"));
+        assert_eq!(second, home.join(concat!(crate::new_folder_parent!(), "/Website 2")));
         assert_eq!(fs::read_to_string(first.join("index.html")).unwrap(), "mine");
         assert_eq!(files_in(&first), ["index.html"]);
-        std::os::unix::fs::symlink("/nowhere", home.join("Companion makes/Website 3")).unwrap();   // a link that leads nowhere
+        std::os::unix::fs::symlink("/nowhere", home.join(concat!(crate::new_folder_parent!(), "/Website 3"))).unwrap();   // a link that leads nowhere
         let data = home.join("Library/Application Support/dev.companion.app");
-        fs::create_dir_all(shadow_of(&data, &home.join("Companion makes/Website 4"))).unwrap();   // an old folder's undo history
-        assert_eq!(mk(&home, "home", "Website", &[]).unwrap(), home.join("Companion makes/Website 5"));
+        fs::create_dir_all(shadow_of(&data, &home.join(concat!(crate::new_folder_parent!(), "/Website 4")))).unwrap();   // an old folder's undo history
+        assert_eq!(mk(&home, "home", "Website", &[]).unwrap(), home.join(concat!(crate::new_folder_parent!(), "/Website 5")));
         let _ = fs::remove_dir_all(&home);
     }
     #[test]
     fn a_folder_that_appears_at_the_chosen_name_is_never_taken_over() {
         let home = tmp("raced");
-        let theirs = home.join("Companion makes/Website"); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
+        let theirs = home.join(concat!(crate::new_folder_parent!(), "/Website")); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
         let data = home.join("data");
         assert!(make(&home, "home", "Website", &data, &[], |_| false).is_err());   // the name looked free a moment before
         assert_eq!(files_in(&theirs), ["mine.txt"]);
         let err = make(&home, "home", "Website", &data, &[], |_| true).unwrap_err();
         assert!(err.contains("name"), "{err}");
-        assert_eq!(files_in(&home.join("Companion makes")), ["Website"]);
+        assert_eq!(files_in(&home.join(crate::new_folder_parent!())), ["Website"]);
         let _ = fs::remove_dir_all(&home);
     }
     #[test]
     fn the_folder_for_all_of_them_is_never_a_link_or_a_file() {
         let home = tmp("parentlink");
         let elsewhere = tmp("parentlink-target");
-        std::os::unix::fs::symlink(&elsewhere, home.join("Companion makes")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, home.join(crate::new_folder_parent!())).unwrap();
         assert!(mk(&home, "home", "Website", &[]).is_err());
         assert!(files_in(&elsewhere).is_empty(), "nothing was made through the link");
-        fs::remove_file(home.join("Companion makes")).unwrap();
-        fs::write(home.join("Companion makes"), "a file").unwrap();
+        fs::remove_file(home.join(crate::new_folder_parent!())).unwrap();
+        fs::write(home.join(crate::new_folder_parent!()), "a file").unwrap();
         assert!(mk(&home, "home", "Website", &[]).is_err());
-        assert_eq!(fs::read_to_string(home.join("Companion makes")).unwrap(), "a file");
+        assert_eq!(fs::read_to_string(home.join(crate::new_folder_parent!())).unwrap(), "a file");
         let _ = fs::remove_dir_all(&home); let _ = fs::remove_dir_all(&elsewhere);
     }
     #[test]
@@ -360,13 +360,13 @@ mod tests {
         assert!(mk(&home, "documents", "Website", &[]).is_err(), "no Documents folder: nothing is made");
         assert_eq!(files_in(&home), Vec::<String>::new());
         fs::create_dir(home.join("Documents")).unwrap();
-        assert_eq!(mk(&home, "documents", "Website", &[]).unwrap(), home.join("Documents/Companion makes/Website"));
+        assert_eq!(mk(&home, "documents", "Website", &[]).unwrap(), home.join(concat!("Documents/", crate::new_folder_parent!(), "/Website")));
         let elsewhere = tmp("places-target");
         std::os::unix::fs::symlink(&elsewhere, home.join("Desktop")).unwrap();
         assert!(mk(&home, "desktop", "Website", &[]).is_err(), "a Desktop that is a link is never followed");
         assert!(files_in(&elsewhere).is_empty());
         // An unknown place is the usual one.
-        assert_eq!(mk(&home, "/etc", "Website", &[]).unwrap(), home.join("Companion makes/Website"));
+        assert_eq!(mk(&home, "/etc", "Website", &[]).unwrap(), home.join(concat!(crate::new_folder_parent!(), "/Website")));
         let _ = fs::remove_dir_all(&home); let _ = fs::remove_dir_all(&elsewhere);
     }
     #[test]
@@ -385,12 +385,12 @@ mod tests {
         fs::write(home.join(".git"), "gitdir: /elsewhere").unwrap();   // a git worktree marks itself with a file
         assert!(mk(&home, "home", "Website", &[]).is_err());
         fs::remove_file(home.join(".git")).unwrap();
-        fs::create_dir_all(home.join("Companion makes/.git")).unwrap();   // the person ran git init in the folder for all of them
+        fs::create_dir_all(home.join(concat!(crate::new_folder_parent!(), "/.git"))).unwrap();   // the person ran git init in the folder for all of them
         assert!(mk(&home, "home", "Website", &[]).is_err());
-        assert_eq!(files_in(&home.join("Companion makes")), [".git"]);
+        assert_eq!(files_in(&home.join(crate::new_folder_parent!())), [".git"]);
         fs::create_dir_all(home.join("Documents/.git")).unwrap();
         assert!(mk(&home, "documents", "Website", &[]).is_err());
-        assert!(!exists_at(&home.join("Documents/Companion makes")));
+        assert!(!exists_at(&home.join(concat!("Documents/", crate::new_folder_parent!()))));
         let _ = fs::remove_dir_all(&home);
     }
     #[test]
@@ -399,13 +399,13 @@ mod tests {
         fs::create_dir_all(home.join("Documents")).unwrap();
         let docs = home.join("Documents").to_string_lossy().to_string();
         assert!(mk(&home, "documents", "Website", &[docs.clone()]).is_err(), "Documents is one of their projects");
-        assert!(!exists_at(&home.join("Documents/Companion makes")));
-        fs::create_dir_all(home.join("Companion makes")).unwrap();
-        let parent = home.join("Companion makes").to_string_lossy().to_string();
+        assert!(!exists_at(&home.join(concat!("Documents/", crate::new_folder_parent!()))));
+        fs::create_dir_all(home.join(crate::new_folder_parent!())).unwrap();
+        let parent = home.join(crate::new_folder_parent!()).to_string_lossy().to_string();
         assert!(mk(&home, "home", "Website", &[parent]).is_err(), "they chose the folder for all of them as a project");
         // A folder made here before, chosen as a project, sits beside the new one, never around it.
         let old = mk(&home, "home", "Old", &[]).unwrap();
-        assert_eq!(mk(&home, "home", "Website", &[old.to_string_lossy().to_string(), docs, String::new(), "/no/such".into()]).unwrap(), home.join("Companion makes/Website"));
+        assert_eq!(mk(&home, "home", "Website", &[old.to_string_lossy().to_string(), docs, String::new(), "/no/such".into()]).unwrap(), home.join(concat!(crate::new_folder_parent!(), "/Website")));
         let _ = fs::remove_dir_all(&home);
     }
 

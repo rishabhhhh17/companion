@@ -5,7 +5,7 @@ practice, then its transfer project. Use the signup practice unless you have a r
 
 ## Before each session (5 minutes, before the person arrives)
 
-1. **Set the group** in Companion (Home, then the Settings tab, section "Memory, Explain and teaching"):
+1. **Set the group** in Squibby (Home, then the Settings tab, section "Memory, Explain and teaching"):
 
    | Setting (as it reads on screen) | Group A (as it ships) | Group B (teaching off) | Key in `protocol/settings.json` |
    |---|---|---|---|
@@ -23,9 +23,9 @@ practice, then its transfer project. Use the signup practice unless you have a r
 
 ## What to say at the start (read it, the same words every time)
 
-"Thanks for coming. This is a test of the app, not of you. First you will use Companion to fix a small project that has
+"Thanks for coming. This is a test of the app, not of you. First you will use Squibby to fix a small project that has
 one thing wrong on purpose. Then we take a break. Then I will give you a different small project to fix on your own,
-without Companion. I will stay quiet the whole time, and I cannot help, so do what you would do if you were alone. There
+without Squibby. I will stay quiet the whole time, and I cannot help, so do what you would do if you were alone. There
 are no wrong answers. You can stop any time."
 
 ## What not to say
@@ -41,8 +41,8 @@ are no wrong answers. You can stop any time."
 | Minute | What happens |
 |---|---|
 | 0 to 2 | The words above. |
-| 2 to 12 | The practice in Companion (Learn tab, the practice, Find what is wrong, Fix it with me). Let them read what Companion shows. |
-| 12 to 32 | The break, 20 minutes, the same for both groups: a coffee, or the background questions at the bottom. Nothing about code. Quit Companion now (menu bar, Quit Companion). |
+| 2 to 12 | The practice in Squibby (Learn tab, the practice, Find what is wrong, Fix it with me). Let them read what Squibby shows. |
+| 12 to 32 | The break, 20 minutes, the same for both groups: a coffee, or the background questions at the bottom. Nothing about code. Quit Squibby now (menu bar, Quit Squibby). |
 | 32 to 42 | The transfer. Open their copy in Finder, say the one line for that project (below), start the clock. **Stop at 10 minutes.** |
 | 42 to 47 | The questions, in order. |
 
@@ -76,10 +76,10 @@ One row per person. The scorers of "why" see only the answer, never the group.
 | Could say why in their own words | Ask: **"Why was it broken?"** Write the answer word for word. Do not ask a second time or help. Scored later, see below. |
 | Confidence | Ask: **"How sure are you that you could fix this again, from 1 (not at all) to 5 (completely)?"** The number. |
 | Felt taught or felt lectured | Ask: **"Did the first part feel like it taught you something, or like a lecture?"** One line, in their words. |
-| Would use it again | Ask: **"Would you use Companion again?"** Yes, no, or only when stuck. |
+| Would use it again | Ask: **"Would you use Squibby again?"** Yes, no, or only when stuck. |
 
 Also write: the person's id (never a name on the same sheet as the answers), the group, the practice, the date, and
-whether Companion showed the two reasons and the question (Group A should see them, Group B should not).
+whether Squibby showed the two reasons and the question (Group A should see them, Group B should not).
 
 ## Scoring "Why was it broken?" (0, 1, 2)
 
@@ -111,6 +111,6 @@ Terminal before? (Write the answers down; they help explain results, they are no
   sides" on the route practice) are not settings, so Group B sees them too. The setting practice is a lesson, which
   teaches by its steps in both groups. Prefer the signup practice.
 - The transfer projects live in the repo (`evals/did-they-learn/transfer`), not in the app, so a participant cannot find
-  the answers inside Companion. Give participants the copy that `transfer-check.ts copy` makes, never the repo folder.
+  the answers inside Squibby. Give participants the copy that `transfer-check.ts copy` makes, never the repo folder.
 
-**Update (22 Oct 2026): Your turn now shows on the route practice.** Its home page has the same broken link twice (the menu and a button), so Companion fixes one and offers the second as Your turn; tested end to end with the real checks (`runner/test/practice-e2e.test.ts`, "Your turn on the route practice"). **Use the route practice for both groups**, so Group A gets the whole learning loop (Your turn, the two line why and the check question) and Group B gets none of it. The transfer test for it is `evals/did-they-learn/transfer/route`.
+**Update (22 Oct 2026): Your turn now shows on the route practice.** Its home page has the same broken link twice (the menu and a button), so Squibby fixes one and offers the second as Your turn; tested end to end with the real checks (`runner/test/practice-e2e.test.ts`, "Your turn on the route practice"). **Use the route practice for both groups**, so Group A gets the whole learning loop (Your turn, the two line why and the check question) and Group B gets none of it. The transfer test for it is `evals/did-they-learn/transfer/route`.

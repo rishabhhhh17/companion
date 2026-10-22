@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrowserSetup, pretendInstaller, type InstallFn } from "../src/proof/browsersetup.ts";
 import { browserCheck, browserExecutable, installBrowser, parseInstallProgress } from "../src/proof/browser.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 const tmp = () => { const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-bs-"))); made.push(d); return d; };
@@ -126,7 +127,7 @@ describe("the download, only when the person presses the button", () => {
 
 describe("when the download goes wrong, the words say what to do", () => {
   const failWith = async (out: { ok: boolean; detail: string; timedOut?: boolean }, installed = () => false) => { const r = setup(async () => out, installed); await r.s.install(); return r.of("failed")[0]; };
-  test("no internet", async () => expect((await failWith({ ok: false, detail: "Error: getaddrinfo ENOTFOUND cdn.playwright.dev" })).detail).toBe("Companion could not reach the download server. Check your internet connection, then try again."));
+  test("no internet", async () => expect((await failWith({ ok: false, detail: "Error: getaddrinfo ENOTFOUND cdn.playwright.dev" })).detail).toBe(`${PRODUCT} could not reach the download server. Check your internet connection, then try again.`));
   test("a full disk", async () => expect((await failWith({ ok: false, detail: "ENOSPC: no space left on device, write" })).detail).toMatch(/not enough free space/i));
   test("too slow", async () => expect((await failWith({ ok: false, detail: "", timedOut: true })).detail).toMatch(/took too long/i));
   test("anything else: a plain line, never the raw output", async () => {
@@ -225,7 +226,7 @@ describe("the real downloader's progress", () => {
       expect(r.ok).toBe(true);
     } finally { if (prev === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH; else process.env.PLAYWRIGHT_BROWSERS_PATH = prev; }
   });
-  test("the installer keeps its archive in Companion's own folder, and a stopped download leaves nothing there", async () => {
+  test(`the installer keeps its archive in ${PRODUCT_S} own folder, and a stopped download leaves nothing there`, async () => {
     // Seen 16 Oct 2026: a stopped download left Playwright's 104 MB archive in the Mac's shared temporary folder.
     const prev = process.env.PLAYWRIGHT_BROWSERS_PATH;
     const root = tmp();
@@ -234,7 +235,7 @@ describe("the real downloader's progress", () => {
     try {
       const run = async (_c: string, o: { env?: Record<string, string> }) => {
         scratch = o.env?.TMPDIR ?? "";
-        if (!scratch.startsWith(root + "/")) throw new Error(`the installer's temporary folder is outside Companion's: ${scratch}`);
+        if (!scratch.startsWith(root + "/")) throw new Error(`the installer's temporary folder is outside ${PRODUCT_S}: ${scratch}`);
         mkdirSync(join(scratch, "playwright-download-x"), { recursive: true });
         writeFileSync(join(scratch, "playwright-download-x", "chromium-headless-shell.zip"), "half an archive");
         return { code: null, signal: "SIGKILL", stdout: "", stderr: "", timedOut: false, ms: 1, aborted: true };
@@ -245,7 +246,7 @@ describe("the real downloader's progress", () => {
       expect(readdirSync(root)).toEqual([]);
     } finally { if (prev === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH; else process.env.PLAYWRIGHT_BROWSERS_PATH = prev; }
   });
-  test("it installs into Companion's own browsers folder, with Playwright's own installer and nothing else", async () => {
+  test(`it installs into ${PRODUCT_S} own browsers folder, with Playwright's own installer and nothing else`, async () => {
     let cmd = "", env: Record<string, string> | undefined;
     const run = async (c: string, o: { env?: Record<string, string> }) => { cmd = c; env = o.env; return { code: 0, signal: null, stdout: "", stderr: "", timedOut: false, ms: 1 }; };
     await installBrowser({ run });

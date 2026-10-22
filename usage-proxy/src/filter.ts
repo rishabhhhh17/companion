@@ -2,6 +2,7 @@
 // that cannot be raised, and no tools but the one Second Look sends (a web search with a small cap). Everything else is refused
 // here, before anything is sent to Anthropic.
 import { KNOWN_MODELS, MAX_SEARCHES, WEB_SEARCH_TOOL, canonicalModel } from "../../runner/src/models.ts";
+import { PRODUCT } from "./names.ts";
 
 export const MAX_BODY_BYTES = 8_000_000;   // a long working session with a few screenshots is well under this
 export const MAX_OUTPUT_TOKENS = 64_000;
@@ -28,13 +29,13 @@ function toolsOk(tools: unknown): boolean {
 const NO_FIELDS = ["mcp_servers", "container", "tool_choice"];
 
 export function checkRequest(method: string, path: string, raw: string): Checked {
-  if (method !== "POST" || !PATHS.has(path)) return no(404, "This address is not available through Companion.");
+  if (method !== "POST" || !PATHS.has(path)) return no(404, `This address is not available through ${PRODUCT}.`);
   if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return no(413, "That request is too big to send.");
   let j: any;
   try { j = JSON.parse(raw); } catch { return no(400, "The request could not be read."); }
   if (!j || typeof j !== "object" || Array.isArray(j)) return no(400, "The request could not be read.");
-  if (typeof j.model !== "string" || !KNOWN_MODELS.includes(canonicalModel(j.model))) return no(400, "That model is not available through Companion.");
-  if (!toolsOk(j.tools) || NO_FIELDS.some((f) => j[f] !== undefined)) return no(400, "That kind of request is not available through Companion.");
+  if (typeof j.model !== "string" || !KNOWN_MODELS.includes(canonicalModel(j.model))) return no(400, `That model is not available through ${PRODUCT}.`);
+  if (!toolsOk(j.tools) || NO_FIELDS.some((f) => j[f] !== undefined)) return no(400, `That kind of request is not available through ${PRODUCT}.`);
   const free = path === "/v1/messages/count_tokens";
   if (!free) {
     if (!Number.isInteger(j.max_tokens) || j.max_tokens < 1) return no(400, "The request did not say how long the answer may be.");

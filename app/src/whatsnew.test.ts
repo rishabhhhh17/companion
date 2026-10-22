@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { compareVersions, releases, whatsNew, type Release } from "./whatsnew.ts";
+import { PRODUCT } from "./strings.ts";
 
 const appVersion = (): string => JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8")).version;
 const list: Release[] = [
@@ -37,7 +38,7 @@ describe("what changed after an update", () => {
     expect(whatsNew(null, "0.2.0", list)).toEqual({ show: [], remember: "0.2.0" });
     expect(whatsNew("", "0.2.0", list)).toEqual({ show: [], remember: "0.2.0" });
   });
-  test("someone who used Companion before it kept the version sees what changed in this one, once", () => {
+  test(`someone who used ${PRODUCT} before it kept the version sees what changed in this one, once`, () => {
     // No version kept, but the first run was finished earlier: this is an update from a version before this note existed.
     expect(versions(whatsNew(null, "0.2.0", list, { usedBefore: true }).show)).toEqual(["0.2.0"]);
     expect(whatsNew(null, "0.2.0", list, { usedBefore: true }).remember).toBe("0.2.0");

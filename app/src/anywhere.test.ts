@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { answered, asksWorked, atLimit, clicked, failed, judged, MAX_ANYWHERE_STEPS, nextQuestion, settlesBeforeLook, unchecked, waitsForPage } from "./anywhere.ts";
 import { readFileSync } from "node:fs";
+import { PRODUCT } from "./strings.ts";
 
 describe("anywhere mode", () => {
   test("a step that worked is carried on as done", () => {
@@ -37,7 +38,7 @@ describe("asking Did that work?", () => {
     expect(asksWorked({ ...clean, setting: undefined })).toBe(true);
     expect(asksWorked({ ...clean, setting: "whenUnsure" })).toBe(false);
   });
-  test("still asked when unsure: a soft ring (a guess), a click off the target first, or a press Companion made", () => {
+  test(`still asked when unsure: a soft ring (a guess), a click off the target first, or a press ${PRODUCT} made`, () => {
     expect(asksWorked({ ...clean, setting: "whenUnsure", soft: true })).toBe(true);
     expect(asksWorked({ ...clean, setting: "whenUnsure", missed: true })).toBe(true);
     expect(asksWorked({ ...clean, setting: "whenUnsure", how: "done_for_you" })).toBe(true);

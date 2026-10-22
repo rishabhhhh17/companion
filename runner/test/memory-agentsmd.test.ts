@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemoryStore } from "../src/memory/store.ts";
 import { removeSection, syncAgentsFiles } from "../src/memory/agentsmd.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agmd-")); made.push(d); return d; };
@@ -69,6 +70,13 @@ describe("a project that already has its own files", () => {
     const a = read(project, "AGENTS.md");
     expect(a).toContain("Deploys to Vercel"); expect(a.match(/companion:begin/g)!.length).toBe(1); expect(a.startsWith("# Team rules\nUse tabs.\n")).toBe(true);
   });
+  test("a section written under an earlier name is updated in place, not added a second time", () => {
+    const { project, m } = rig();
+    writeFileSync(join(project, "AGENTS.md"), "# Team rules\nUse tabs.\n\n<!-- companion:begin (kept up to date by Companion; delete this whole block to stop) -->\n## Project notes (from Companion)\n- Old fact\n<!-- companion:end -->\n");
+    syncAgentsFiles(project, m, { approved: false });
+    const a = read(project, "AGENTS.md");
+    expect(a.match(/companion:begin/g)!.length).toBe(1); expect(a).not.toContain("Old fact"); expect(a).not.toContain("Companion"); expect(a).toContain("Built with React, Vite");
+  });
   test("the section can be removed and the person's own text is left exactly as it was", () => {
     const { project, m } = rig();
     writeFileSync(join(project, "AGENTS.md"), "# Team rules\nUse tabs.\n");
@@ -103,7 +111,7 @@ describe("safety", () => {
 });
 
 describe("keeping in step", () => {
-  test("after a line is forgotten the block loses it, but only where Companion already wrote one", () => {
+  test(`after a line is forgotten the block loses it, but only where ${PRODUCT} already wrote one`, () => {
     const { project, m } = rig();
     syncAgentsFiles(project, m, { approved: false });
     const id = m.list("project").entries.find((e) => e.text.startsWith("Built with"))!.id;

@@ -10,6 +10,7 @@
 import type { Image, Ocr, Point, VisionLike } from "./lanes.ts";
 import { MODELS, apiShape, computerToolFor, estimateUsd } from "./models.ts";
 import { TUTOR_EXAMPLE, tutorLines, type Tutor } from "./tutor.ts";
+import { PRODUCT } from "./names.ts";
 
 export const API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_OCR = 60;
@@ -99,7 +100,7 @@ export class ComputerUseVision implements VisionLike {
   async locate(req: Req, signal: AbortSignal): Promise<{ point: Point | null; costUsd: number }> {
     const model = this.o.model ?? MODELS.aim;
     if (this.refused) throw new Error("this model does not take the computer use toolset");
-    if (!computerToolFor(model)) throw new Error("Companion knows no computer use toolset for this model");
+    if (!computerToolFor(model)) throw new Error(`${PRODUCT} knows no computer use toolset for this model`);
     if (!req.image.w || !req.image.h) throw new Error("the picture's size is not known");
     if (req.image.w > MAX_SIDE || req.image.h > MAX_SIDE) throw new Error("the picture is too large for the computer use toolset");
     // One picture only; with more than one screen the ordinary lane answers instead (withFallback).

@@ -13,6 +13,7 @@ import { writeAtomic } from "./atomic.ts";
 import { clip, redact } from "./redact.ts";
 import type { CheckResult } from "./watchsite.ts";
 import { parseTarget } from "./watchaddress.ts";
+import { PRODUCT } from "./names.ts";
 
 export const KINDS = ["site_up", "deploy_status", "ci_status", "project_checks"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -139,7 +140,7 @@ export class WatchEngine {
   }
   private save() {
     try { writeAtomic(this.o.file, JSON.stringify({ version: 1, watches: this.watches }, null, 2) + "\n", 0o600); }
-    catch { this.o.onProblem?.("Your watch list could not be saved on this Mac, so it will be lost when Companion closes."); }
+    catch { this.o.onProblem?.(`Your watch list could not be saved on this Mac, so it will be lost when ${PRODUCT} closes.`); }
   }
 
   // ---------- views ----------
@@ -298,7 +299,7 @@ export class WatchEngine {
       target = t.url;
     }
     if (this.in(project).length >= MAX_PER_PROJECT) { this.fail(`A project can have at most ${MAX_PER_PROJECT} watches. Remove one first.`); return; }
-    if (this.watches.length >= MAX_TOTAL) { this.fail(`Companion can run at most ${MAX_TOTAL} watches in all. Remove one first.`); return; }
+    if (this.watches.length >= MAX_TOTAL) { this.fail(`${PRODUCT} can run at most ${MAX_TOTAL} watches in all. Remove one first.`); return; }
     if (this.in(project).some((x) => x.kind === cmd.kind && x.target === target)) { this.fail("You are already watching that."); return; }
     const t = this.now();
     const at = new Date(t).toISOString();

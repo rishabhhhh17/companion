@@ -6,14 +6,14 @@ Why it matters: our own research says opt in lessons fail (17% understood) and t
 
 ## Who and how many
 8 to 10 people who build with AI and are not engineers. Split in two:
-- **Group A (Companion as it ships):** a fix that teaches (Your turn on, the two line why, the check question).
+- **Group A (Squibby as it ships):** a fix that teaches (Your turn on, the two line why, the check question).
 - **Group B (the control):** the same fix with the teaching turned off (Settings: Your turn off, Explain off).
 Eight people is too few to prove anything. It is enough to see whether the gap is big or nothing. If it is nothing, we have learned that cheaply.
 
 ## The session (about 30 minutes each, you silent)
 1. The person opens a practice project with a stuck moment (the practice library has five; use the signup one first).
-2. They use Companion to fix it. Group A gets the teaching; Group B does not.
-3. **The transfer test, 20 minutes later:** a similar but different bug in a different file (a second variant of the same kind of mistake). They fix it **without Companion open**. This is the one that counts.
+2. They use Squibby to fix it. Group A gets the teaching; Group B does not.
+3. **The transfer test, 20 minutes later:** a similar but different bug in a different file (a second variant of the same kind of mistake). They fix it **without Squibby open**. This is the one that counts.
 4. Then the questions below.
 
 ## What to write down
@@ -43,7 +43,7 @@ Eight people is too few to prove anything. It is enough to see whether the gap i
 - **One command to copy and one to check**, from the `runner` folder: `bun run scripts/transfer-check.ts copy <id>
   <folder>` makes the participant's copy without the answers; `... check <id> <folder>` says Fixed or Not fixed. It puts
   back the test and the other files the fix should not touch before checking, so editing or deleting the test never
-  passes, and it names those files. For the open table it uses Companion's own database access check on the files.
+  passes, and it names those files. For the open table it uses Squibby's own database access check on the files.
 - **A test that proves all of this:** `runner/test/transfer-library.test.ts` (no model, no network): every transfer
   fails as shipped with its plain words and passes after its fix, and the cheats do not pass.
 - **The observer sheet, the scoring guide for "why" and the Group B settings recipe:**
@@ -55,4 +55,4 @@ test is meant to measure Your turn too, a practice whose fix repeats one change 
 
 Honest limit: this measures one kind of mistake in a short window. It says nothing about a month later. If the gap is real, the next test is whether they come back.
 
-**Update (22 Oct 2026): Your turn now shows on the route practice.** Its home page has the same broken link twice (the menu and a button), so Companion fixes one and offers the second as Your turn; tested end to end with the real checks (`runner/test/practice-e2e.test.ts`, "Your turn on the route practice"). **Use the route practice for both groups**, so Group A gets the whole learning loop (Your turn, the two line why and the check question) and Group B gets none of it. The transfer test for it is `evals/did-they-learn/transfer/route`.
+**Update (22 Oct 2026): Your turn now shows on the route practice.** Its home page has the same broken link twice (the menu and a button), so Squibby fixes one and offers the second as Your turn; tested end to end with the real checks (`runner/test/practice-e2e.test.ts`, "Your turn on the route practice"). **Use the route practice for both groups**, so Group A gets the whole learning loop (Your turn, the two line why and the check question) and Group B gets none of it. The transfer test for it is `evals/did-they-learn/transfer/route`.

@@ -5,7 +5,7 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 ```json
 {
   "id": "companion-screen-recording",
-  "title": "Let Companion see your screen when you ask",
+  "title": "Let {product} see your screen when you ask",
   "app": "System Settings",
   "goal": "One sentence on what the person gets",
   "steps": [
@@ -20,7 +20,8 @@ A lesson is one JSON file in `lessons/` (shipped with the app) or in the `lesson
 }
 ```
 
-- **Up to 15 steps.** Step ids are unique. `say` (up to 200 letters) is what the person reads; `find` (up to 120) is what Companion looks for on the screen.
+- **Up to 15 steps.** Step ids are unique. `say` (up to 200 letters) is what the person reads; `find` (up to 120) is what Squibby looks for on the screen.
+- **Names are filled in, never typed.** Write `{product}` (and `{product_s}` for the possessive, `{character}`, `{character_s}`) where the app's name goes. The engine fills them from `protocol/names.json` when it loads the lesson, so a rename needs no edit in the lesson files.
 - **`check`** says how a step is proven. Only these kinds exist, so a lesson can never run a command:
   - `{"kind":"ask"}`: the person is asked "Did that work?" (the default).
   - `{"kind":"env_name","name":"SUPABASE_URL"}`: a `.env` file in the project names this setting. Only names are read, never values.
@@ -46,15 +47,15 @@ Lessons for everyday apps are not shipped at launch (F17). Five are kept as test
 
 A step is proven from the project whenever its result lands there: a setting name in a `.env` file, a file made, a line in a config file. `ask` stays only where the result is on another app's screen. Checked step by step on 16 Oct 2026 for the shipped lessons:
 
-- **GitHub (`github-new-repo`)**: written out for a folder with or without git (a Bolt or Replit download has none). Two steps are proven from the project: `.gitignore` holds `.env*`, so the keys stay out of git before anything is saved in it, and the folder has a `.git` folder after `git init` (both only looked at; nothing is run and git is never written by Companion). Saving the files (`git add .` and a commit), sending them (GitHub's lines for an existing repository) and seeing them on GitHub are asked. An earlier draft proved the link by `.git/config` naming `github.com`; that was dropped, because any project cloned from GitHub already passes it (Companion's own Open from a link, Lovable's GitHub sync) and it says nothing about this new repository. It also no longer points to GitHub's "new repository on the command line" steps, which save and send only `README.md`. This lesson needs a chosen folder.
-- **The other eleven stay `ask`**, because nothing they do touches a project folder: the three Companion permission lessons (System Settings), Lovable publish and Lovable to GitHub (Lovable's site), the two Vercel lessons (Vercel's site; the generic one cannot name a setting, so the project's own names are proven by the lessons made from the project, below), Bolt and Replit downloads (before any project exists here), and installing Cursor or Claude Code (apps, not project files).
+- **GitHub (`github-new-repo`)**: written out for a folder with or without git (a Bolt or Replit download has none). Two steps are proven from the project: `.gitignore` holds `.env*`, so the keys stay out of git before anything is saved in it, and the folder has a `.git` folder after `git init` (both only looked at; nothing is run and git is never written by Squibby). Saving the files (`git add .` and a commit), sending them (GitHub's lines for an existing repository) and seeing them on GitHub are asked. An earlier draft proved the link by `.git/config` naming `github.com`; that was dropped, because any project cloned from GitHub already passes it (Squibby's own Open from a link, Lovable's GitHub sync) and it says nothing about this new repository. It also no longer points to GitHub's "new repository on the command line" steps, which save and send only `README.md`. This lesson needs a chosen folder.
+- **The other eleven stay `ask`**, because nothing they do touches a project folder: the three Squibby permission lessons (System Settings), Lovable publish and Lovable to GitHub (Lovable's site), the two Vercel lessons (Vercel's site; the generic one cannot name a setting, so the project's own names are proven by the lessons made from the project, below), Bolt and Replit downloads (before any project exists here), and installing Cursor or Claude Code (apps, not project files).
 
 ## Lessons made from your project
 
 Two lessons are made from the chosen project each time the Lessons list opens, from the setting names its code reads (the same names as About this project). They are data like any other lesson, go through the same checks, are drafts, and have at most 15 steps.
 
 - **Set up the settings this project needs** (`from-project-settings`): for exactly the names the code reads that no `.env` file sets yet. First the settings file (`.env.local`, or `.env` for a plain Node server or Python), proven when it exists. Then one step per name: where to get the value (a small table of well known names: Supabase, Stripe, OpenAI, Resend, DATABASE_URL; otherwise it says it does not know and points to the README), and how to add it to the file. Each is proven by an `env_name` check. A value is never asked for, kept or shown (the check reads the file only for the names in it): the steps say to paste it only into the file. Last, restart the project (asked).
-- **Add this project's settings to Vercel** (`from-project-vercel`): every name the project needs, since the live site needs them all and Companion cannot see Vercel. Each name is added in the project's Vercel settings and confirmed by the person (asked), then a redeploy.
+- **Add this project's settings to Vercel** (`from-project-vercel`): every name the project needs, since the live site needs them all and Squibby cannot see Vercel. Each name is added in the project's Vercel settings and confirmed by the person (asked), then a redeploy.
 - More than fits in 15 steps: the first ones are covered (names the page reads first) and the goal says how many are left. A paused lesson keeps its list of names, so it picks up where it was.
 - A name the page can read (it starts with `VITE_`, `NEXT_PUBLIC_` and the like) that looks like a secret key gets a plain warning instead of where to get it: ask whoever made the project, and set it only if they say it is safe. That step is asked, not proven by the name, since setting it is what the warning says to hold off on. A name a setting check cannot hold (lower case, one letter) is left out.
 - About this project shows "Show me how to set them" when settings are missing. Lesson files cannot use ids that start with `from-project-`.

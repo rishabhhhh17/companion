@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { DirectFastLane, DirectVisionLane, type DirectAuth } from "../src/direct.ts";
 import { DESCRIBE_SYSTEM, FAST_SYSTEM, VISION_SYSTEM, wrapUserText, type Image } from "../src/lanes.ts";
 import { estimateUsd, MODELS } from "../src/models.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 // The light features straight on the Messages API (F22 update, 22 Oct 2026): the plain API can be company paid, Claude Code
 // cannot. These lanes must answer exactly like the Claude Code lanes, never write a picture to disk, never leak the key, and
@@ -67,7 +68,7 @@ describe("the fast lane, direct", () => {
     await new DirectFastLane(r.deps).run({ text: "x" }, () => {}, sig());
     expect(r.seen[0].body.model).toBe(MODELS.fast);
   });
-  test("on managed usage the request goes to Companion's server with the sign in token, never an Anthropic key", async () => {
+  test(`on managed usage the request goes to ${PRODUCT_S} server with the sign in token, never an Anthropic key`, async () => {
     const r = rig(() => new Response(streamOf("ok"), { headers: { "content-type": "text/event-stream" } }), { key: "cmp_" + "t".repeat(40), base: "https://usage.example.com" });
     await new DirectFastLane(r.deps).run({ text: "x" }, () => {}, sig());
     expect(r.seen[0].url).toBe("https://usage.example.com/v1/messages");

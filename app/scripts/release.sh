@@ -45,9 +45,9 @@ C="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
 [ "$V" = "$C" ] || { echo "FAIL: the version is $V in tauri.conf.json but $C in Cargo.toml; make them the same"; exit 1; }
 [ "${COMPANION_ALLOW_NO_UPDATER:-}" = "1" ] || python3 -c 'import json,sys;d=json.load(open("src-tauri/updater.json"));sys.exit(0 if d.get("pubkey") and d.get("endpoint") else 1)' || { echo "FAIL: updater.json is empty, so this build could never update itself. Run make-update-key.sh first, commit the file, then release. (To skip on purpose: COMPANION_ALLOW_NO_UPDATER=1.)"; exit 1; }
 sh scripts/build-app.sh
-APP="src-tauri/target/release/bundle/macos/Companion.app"
+APP="${CARGO_TARGET_DIR:-src-tauri/target}/release/bundle/macos/Squibby.app"
 ZIPDIR="$(mktemp -d)"; trap 'rm -rf "$ZIPDIR"' EXIT
-ZIP="$ZIPDIR/Companion.zip"
+ZIP="$ZIPDIR/Squibby.zip"
 # A notarization that comes back Invalid must stop here, whatever the exit code of the tool.
 notarize() {
   OUT="$(xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait --output-format json)" || { echo "FAIL: notarytool could not submit. Is the profile '$PROFILE' stored (xcrun notarytool store-credentials $PROFILE ...), is the internet on, and is the Apple account approved?"; exit 1; }
@@ -59,7 +59,7 @@ notarize "$ZIP"
 xcrun stapler staple "$APP"
 spctl -a -t exec -vv "$APP"
 sh scripts/make-dmg.sh
-DMG="$(ls -t installer/Companion-*.dmg | head -1)"
+DMG="$(ls -t installer/Squibby-*.dmg | head -1)"
 notarize "$DMG"
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"

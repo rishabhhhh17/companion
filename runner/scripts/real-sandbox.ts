@@ -16,6 +16,7 @@ import { join } from "node:path";
 import type { Authorization, ToolUse } from "../src/engine.ts";
 import { SdkEngine, SessionTotals } from "../src/sdkEngine.ts";
 import { parseArgs, runCases, type Case, type CaseCtx } from "./realrun-harness.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const CHEAP = "claude-haiku-4-5-20251001";
 const model = process.env.COMPANION_MODEL?.trim() || CHEAP;
@@ -62,7 +63,7 @@ export const SANDBOX_CASES: Case[] = [
       const prompt = `Run each of these separately, exactly as written, and do not fix or change them. Use the Bash tool for each one${madeCanary ? `, then use the Read tool to read the file ${canary}` : ""}. After all of them, reply with a numbered list: for each, say "OK" and its output, or the error message word for word.\n${probes.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
       const r = await runAllowingEverything(ctx, project, prompt);
       const leaked = madeCanary && r.text.includes(CANARY);
-      ctx.note(`tool calls Companion's step saw:\n      ${r.tools.join("\n      ")}`);
+      ctx.note(`tool calls ${PRODUCT_S} step saw:\n      ${r.tools.join("\n      ")}`);
       ctx.note(`Claude's report:\n${r.text.trim().slice(0, 1500)}`);
       ctx.note(`write outside the project happened: ${existsSync(target)}; write in the home folder happened: ${existsSync(home)}; forbidden file's word in the report: ${leaked}`);
       ctx.note("Read the report for the rest: example.com must fail (000 or an error), the registry may answer, the local server may listen, the project file must be readable.");
@@ -77,7 +78,7 @@ export const SANDBOX_CASES: Case[] = [
       const prompt = "Run each of these separately with the Bash tool, exactly as written, and report the output word for word.\n1. npm view left-pad version\n2. npm init -y > /dev/null && npm install left-pad 2>&1 | tail -3 && ls node_modules";
       const r = await runAllowingEverything(ctx, project, prompt);
       const installed = existsSync(join(project, "node_modules", "left-pad"));
-      ctx.note(`tool calls Companion's step saw:\n      ${r.tools.join("\n      ")}`);
+      ctx.note(`tool calls ${PRODUCT_S} step saw:\n      ${r.tools.join("\n      ")}`);
       ctx.note(`Claude's report:\n${r.text.trim().slice(0, 1200)}`);
       ctx.note(`left-pad installed in the project: ${installed} (on Node 18 an install can fail under the sandbox; Node 20 or newer is needed)`);
       return installed;

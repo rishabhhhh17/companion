@@ -9,6 +9,7 @@ import { detectProject } from "../src/proof/detect.ts";
 import { findPython, missingModule } from "../src/proof/python.ts";
 import { pythonPortArgs } from "../src/proof/server.ts";
 import { inspectProject } from "../src/proof/intake.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -82,13 +83,13 @@ describe("what a Python project has to check", () => {
     const lit = detectProject(project({ ...VENV, "requirements.txt": "streamlit\n", "streamlit_app.py": "import streamlit as st\nst.title('Hi')\n" }));
     expect(lit.start).toMatchObject({ kind: "server", command: "'.venv/bin/python' -m streamlit run 'streamlit_app.py' --server.headless true --browser.gatherUsageStats false", python: "streamlit" });
   });
-  test("the server is always told to listen only on this Mac, on the port Companion chose", () => {
+  test(`the server is always told to listen only on this Mac, on the port ${PRODUCT} chose`, () => {
     expect(pythonPortArgs("flask", 5123)).toBe(" --host 127.0.0.1 --port 5123");
     expect(pythonPortArgs("uvicorn", 5123)).toBe(" --host 127.0.0.1 --port 5123");
     expect(pythonPortArgs("django", 5123)).toBe(" 127.0.0.1:5123");
     expect(pythonPortArgs("streamlit", 5123)).toBe(" --server.address 127.0.0.1 --server.port 5123");
   });
-  test("an app that runs itself (python main.py on Replit) is started by its framework instead, so it binds where Companion says", () => {
+  test(`an app that runs itself (python main.py on Replit) is started by its framework instead, so it binds where ${PRODUCT} says`, () => {
     const det = detectProject(project({ ...VENV, ".replit": 'run = "python main.py"\n', "main.py": "from flask import Flask\napp = Flask(__name__)\nif __name__ == '__main__':\n    app.run(host='0.0.0.0', port=8080)\n" }));
     expect(det.start).toMatchObject({ python: "flask" });
   });

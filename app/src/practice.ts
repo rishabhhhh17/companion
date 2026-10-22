@@ -4,7 +4,7 @@
 // practicePanel.tsx only draw what this decides. The words are in strings.ts (S.practices), never in the catalog.
 import catalogJson from "../sample/practices.json";
 import type { DoctorItem, Practice, Problem } from "./model.ts";
-import { S } from "./strings.ts";
+import { S, NAMES } from "./strings.ts";
 import { isBusy } from "./updates.ts";
 import { noTableOpen } from "../../runner/src/ship/opentables.ts";
 
@@ -18,9 +18,11 @@ export type PracticeEntry = {
   protect: string[]; needsNode: boolean; budgetUsd: number; minutes: number; costUsd: number;
 };
 export const CATALOG: readonly PracticeEntry[] = [...(catalogJson as { practices: PracticeEntry[] }).practices].sort((a, b) => a.order - b.order);
-/** The start of every copy's folder name ("Companion practice"), a placeholder like every name (rule 21). */
-export const COPY_BASE: string = (catalogJson as { copyBase: string }).copyBase;
-const looksLikeCopy = (folder: string) => (folder.split("/").filter(Boolean).at(-1) ?? "").startsWith(`${COPY_BASE} `) || (folder.split("/").filter(Boolean).at(-1) ?? "") === COPY_BASE;
+/** The start of every copy's folder name (practiceCopyBase in protocol/names.json), a placeholder like every name (rule 21). */
+export const COPY_BASE: string = NAMES.practiceCopyBase;
+/** Every start a copy's folder name may have: today's, then the names it had before a rename (copies made earlier). */
+const COPY_BASES: string[] = [COPY_BASE, ...NAMES.earlierPracticeCopyBases];
+const looksLikeCopy = (folder: string) => { const last = folder.split("/").filter(Boolean).at(-1) ?? ""; return COPY_BASES.some((b) => last.startsWith(`${b} `) || last === b); };
 export const practiceOf = (id: unknown): PracticeEntry | undefined => CATALOG.find((e) => e.id === id);
 /** The first practice: the first run's recommended one. */
 export const FIRST_PRACTICE = CATALOG[0].id;

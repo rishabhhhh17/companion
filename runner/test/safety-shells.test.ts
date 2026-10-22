@@ -12,6 +12,7 @@ import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { buildSdkOptions, SdkEngine } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -41,7 +42,7 @@ describe("stopping a background command", () => {
   });
   test("no id asks", () => expect(v("TaskStop", {}).decision).toBe("ask"));
   test("without a record of what the task started, it asks", () => expect(v("TaskStop", { task_id: "b7k2p9" }, { project: P }).decision).toBe("ask"));
-  test("in a part of Companion that only looks, it is refused", () => expect(evaluateReadOnly({ tool: "TaskStop", input: { task_id: "x" } }, { project: P }).decision).toBe("deny"));
+  test(`in a part of ${PRODUCT} that only looks, it is refused`, () => expect(evaluateReadOnly({ tool: "TaskStop", input: { task_id: "x" } }, { project: P }).decision).toBe("deny"));
 });
 
 describe("reading a background command's output", () => {

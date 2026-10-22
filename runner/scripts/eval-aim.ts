@@ -32,6 +32,7 @@ import { isClean } from "../../evals/lib/results.ts";
 import { aimEstimate, aimHarness, aimReport, parseAimArgs, runAimAsk, summarizeAim, type AimArgs, type AimAsk } from "../../evals/show-me-how/aim.ts";
 import { everydayPages, FIND_ELEMENTS, hardPages, rightTargets, type HardAsk } from "../../evals/show-me-how/hard.ts";
 import type { Element } from "../../evals/show-me-how/score.ts";
+import { PRODUCT } from "../src/names.ts";
 
 let aim: AimArgs;
 try { aim = parseAimArgs(process.argv.slice(2), process.env); } catch (e) { explainFailure(e); }
@@ -72,7 +73,7 @@ const pages = (): Page[] => {
 const SITES = ["https://github.com/login", "https://news.ycombinator.com", "https://en.wikipedia.org/wiki/Main_Page", "https://www.python.org", "https://vercel.com", "https://stripe.com", "https://supabase.com", "https://www.npmjs.com"];
 let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 const exe = browserExecutable();
-if (!exe) await fail(new Error("The hidden browser is not installed, so no page can be rendered. Install it from Companion first."));
+if (!exe) await fail(new Error(`The hidden browser is not installed, so no page can be rendered. Install it from ${PRODUCT} first.`));
 
 // Render every page once and keep what each ask needs: the picture, the controls on it, the target (and any other control
 // that answers it as well, on the hard set) and the question.

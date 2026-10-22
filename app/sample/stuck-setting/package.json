@@ -2,7 +2,7 @@
   "name": "practice-setting",
   "version": "1.0.0",
   "private": true,
-  "description": "A tiny shop page for Companion's practice run. It needs one setting that is not set yet.",
+  "description": "A tiny shop page for the practice run. It needs one setting that is not set yet.",
   "scripts": {
     "dev": "node server.js",
     "test": "node --test"

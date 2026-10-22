@@ -299,7 +299,7 @@ pub(crate) const WHERE_TO_PICK: &str = "in Settings, under Keys to remember";
 /// every other job without keys, then each job using its usual keys for now. None when everything works as picked.
 pub fn launch_notice(started: &[Started; N], damaged: bool) -> Option<String> {
     let mut out: Vec<String> = vec![];
-    if damaged { out.push("Companion could not read the keys you saved, so some jobs are back to their usual keys.".into()); }
+    if damaged { out.push(concat!(crate::product!(), " could not read the keys you saved, so some jobs are back to their usual keys.").into()); }
     let at = |a: Action| started[a.index()];
     if let Started::Taken(c) = at(Action::Stop) {
         out.push(format!("Another app is already using {}, so the key for Stop everything does not work right now. Stop everything is still in the menu bar icon.", label(c)));
@@ -312,7 +312,7 @@ pub fn launch_notice(started: &[Started; N], damaged: bool) -> Option<String> {
         out.push(if a == Action::Talk {
             format!("Another app is already using the keys you picked for hold to talk ({}), so hold to talk uses {} for now.", label(picked), label(using))
         } else {
-            format!("Another app is already using the keys you picked for {} ({}), so Companion uses {} for it for now.", a.job(), label(picked), label(using))
+            format!(concat!("Another app is already using the keys you picked for {} ({}), so ", crate::product!(), " uses {} for it for now."), a.job(), label(picked), label(using))
         });
     }
     if out.is_empty() { return None; }
@@ -695,7 +695,7 @@ mod tests {
     }
     #[test]
     fn a_damaged_file_is_said_once_with_where_to_pick_again() {
-        assert_eq!(launch_notice(&ready(), true).unwrap(), "Companion could not read the keys you saved, so some jobs are back to their usual keys. You can pick other keys in Settings, under Keys to remember.");
+        assert_eq!(launch_notice(&ready(), true).unwrap(), concat!(crate::product!(), " could not read the keys you saved, so some jobs are back to their usual keys. You can pick other keys in Settings, under Keys to remember."));
     }
     #[test]
     fn stop_everything_without_keys_is_said_first_and_plainly_with_the_menu_bar_icon() {
@@ -710,13 +710,13 @@ mod tests {
         s[Talk.index()] = Started::Taken(OPT_SPACE);
         s[Explain.index()] = Started::FellBack { picked: k(Key::J), using: k(Key::E) };
         let n = launch_notice(&s, false).unwrap();
-        assert_eq!(n, "Another app is already using the keys for: point at the problem, Show me how, so those shortcuts do not work right now. Another app is already using Option and Space, so hold to talk is off. Another app is already using the keys you picked for explain an error (Control, Option, Command and J), so Companion uses Control, Option, Command and E for it for now. You can pick other keys in Settings, under Keys to remember.");
+        assert_eq!(n, concat!("Another app is already using the keys for: point at the problem, Show me how, so those shortcuts do not work right now. Another app is already using Option and Space, so hold to talk is off. Another app is already using the keys you picked for explain an error (Control, Option, Command and J), so ", crate::product!(), " uses Control, Option, Command and E for it for now. You can pick other keys in Settings, under Keys to remember."));
         let mut t = ready(); t[Talk.index()] = Started::FellBack { picked: OPT_RETURN, using: OPT_SPACE };
         assert_eq!(launch_notice(&t, false).unwrap(), "Another app is already using the keys you picked for hold to talk (Option and Return), so hold to talk uses Option and Space for now. You can pick other keys in Settings, under Keys to remember.");
         let mut both = s; both[Stop.index()] = Started::FellBack { picked: k(Key::L), using: k(Key::X) };
         let all = launch_notice(&both, true).unwrap();
-        assert!(all.starts_with("Companion could not read the keys you saved"), "{all}");
-        assert!(all.contains("for stop everything (Control, Option, Command and L), so Companion uses Control, Option, Command and X for it for now."), "{all}");
+        assert!(all.starts_with(concat!(crate::product!(), " could not read the keys you saved")), "{all}");
+        assert!(all.contains(concat!("for stop everything (Control, Option, Command and L), so ", crate::product!(), " uses Control, Option, Command and X for it for now.")), "{all}");
         assert!(all.ends_with("You can pick other keys in Settings, under Keys to remember.") && all.matches("You can pick").count() == 1);
         for x in [n, all] { assert!(!x.contains('—'), "no em dashes"); }
     }

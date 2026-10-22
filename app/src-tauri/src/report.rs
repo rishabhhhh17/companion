@@ -66,8 +66,8 @@ pub fn address(cfg: &Config, subject: &str, body: &str, version: &str, macos: &s
 #[cfg(test)]
 mod tests {
     use super::*;
-    const SUBJECT: &str = "Companion problem report";
-    const BODY: &str = "Companion {version} on macOS {macos}.\n\nWhat happened:\n\nPlease attach the log file Companion saved in your Downloads folder.";
+    const SUBJECT: &str = concat!(crate::product!(), " problem report");
+    const BODY: &str = concat!(crate::product!(), " {version} on macOS {macos}.\n\nWhat happened:\n\nPlease attach the log file ", crate::product!(), " saved in your Downloads folder.");
     fn mail(email: &str) -> Config { Config { email: email.into(), page: String::new() } }
 
     #[test]
@@ -100,7 +100,7 @@ mod tests {
     }
     #[test]
     fn the_words_are_plain_text_of_a_sensible_length() {
-        assert_eq!(plain_text(" Companion problem report ", 120).as_deref(), Some("Companion problem report"));
+        assert_eq!(plain_text(concat!(" ", crate::product!(), " problem report "), 120).as_deref(), Some(concat!(crate::product!(), " problem report")));
         assert_eq!(plain_text("line one\nline two", 120).as_deref(), Some("line one\nline two"));
         assert_eq!(plain_text("", 120), None);
         assert_eq!(plain_text("a\u{0}b", 120), None);
@@ -110,8 +110,8 @@ mod tests {
     #[test]
     fn an_email_draft_carries_the_two_versions_and_nothing_else_from_this_mac() {
         let a = address(&mail("help@example.com"), SUBJECT, BODY, "0.1.0", "15.1").unwrap();
-        assert!(a.starts_with("mailto:help@example.com?subject=Companion%20problem%20report&body="), "{a}");
-        assert!(a.contains("Companion%200.1.0%20on%20macOS%2015.1."), "{a}");
+        assert!(a.starts_with(concat!("mailto:help@example.com?subject=", crate::product!(), "%20problem%20report&body=")), "{a}");
+        assert!(a.contains(concat!(crate::product!(), "%200.1.0%20on%20macOS%2015.1.")), "{a}");
         assert!(a.contains("%0A%0AWhat%20happened%3A"), "{a}");
         // Only the parts that were asked for, each encoded: no new line, space, ampersand or question mark left raw.
         let rest = &a["mailto:help@example.com?".len()..];
@@ -134,7 +134,7 @@ mod tests {
         // A version that is not a version (a damaged sw_vers answer, a path) is sent as "unknown", never as it came.
         let a = address(&Config::default(), SUBJECT, BODY, "0.1.0 /Users/rishabh", "15.1\nRishabh's MacBook").unwrap();
         assert!(!a.to_lowercase().contains("rishabh") && !a.contains("%2FUsers") && !a.contains("MacBook"), "{a}");
-        assert!(a.contains("Companion%20unknown%20on%20macOS%20unknown."), "{a}");
+        assert!(a.contains(concat!(crate::product!(), "%20unknown%20on%20macOS%20unknown.")), "{a}");
         // The words must be plain and short, or nothing is opened at all.
         assert!(address(&Config::default(), SUBJECT, "x\u{0}y", "0.1.0", "15.1").is_err());
         assert!(address(&Config::default(), &"s".repeat(200), BODY, "0.1.0", "15.1").is_err());

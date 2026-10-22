@@ -16,6 +16,7 @@ import { LIMIT_REACHED } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
 import { everydayRequest, goneVerdict, landmarksOf, parseEveryday, sameView, sheetFromTable, tableAgrees, type EverydayAnswer } from "./everyday.ts";
 import { TUTOR_EXAMPLE, tutorFor, tutorLines, type Tutor } from "./tutor.ts";
+import { PRODUCT } from "./names.ts";
 
 const TERMINAL_APPS = new Set(["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"]);
 
@@ -492,7 +493,7 @@ export class AssistService {
       const context = this.o.settings?.get("ph.useProjectInfo") === false ? null : buildContext(cmd.project);
       const remembered = (() => { try { return this.o.memory?.(cmd.project) ?? ""; } catch { return ""; } })();
       const system = systemPrompt({ style: cmd.style, adapter, hasContext: !!context || !!remembered, noQuestion: !!cmd.noQuestion });
-      const bits = [context ? `Project information (background only):\n${context}` : "", remembered ? `What Companion remembers (background only, never copy it wholesale):\n${remembered}` : "", cmd.answer ? `The person answered your question: ${cmd.answer}` : ""].filter(Boolean);
+      const bits = [context ? `Project information (background only):\n${context}` : "", remembered ? `What ${PRODUCT} remembers (background only, never copy it wholesale):\n${remembered}` : "", cmd.answer ? `The person answered your question: ${cmd.answer}` : ""].filter(Boolean);
       const stream = new StreamRestorer(spans);
       const onDelta = (t: string) => { if (ac.signal.aborted) return; const shown = stream.push(t); if (shown) this.emit({ type: "assist.prompt.delta", req: cmd.req, text: shown }); };
       let r = await this.o.fast.run({ text: masked, system, extra: bits.join("\n\n") || undefined }, onDelta, ac.signal);

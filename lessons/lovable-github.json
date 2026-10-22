@@ -2,7 +2,7 @@
   "id": "lovable-github",
   "title": "Connect your Lovable project to GitHub",
   "app": "Lovable",
-  "goal": "Connect the project to GitHub and find its link, so Companion can open it from a link",
+  "goal": "Connect the project to GitHub and find its link, so {product} can open it from a link",
   "status": "draft",
   "needsProject": false,
   "steps": [
@@ -52,7 +52,7 @@
     },
     {
       "id": "link",
-      "say": "Copy the page's web address. In Companion, choose Open from a link and paste it.",
+      "say": "Copy the page's web address. In {product}, choose Open from a link and paste it.",
       "find": "the address bar of the GitHub page",
       "check": {
         "kind": "ask"

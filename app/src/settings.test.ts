@@ -48,7 +48,7 @@ describe("permissions", () => {
   });
 });
 
-describe("what Companion keeps, and deleting it", () => {
+describe(`what ${PRODUCT} keeps, and deleting it`, () => {
   const inv: Inventory = { items: [{ id: "history", label: "Your task history and spending record", bytes: 12288 }, { id: "speech", label: "The speech model for hold to talk", bytes: 141 * 1024 * 1024 }], keySaved: true, projectsWithNotes: 2 };
   test("every group is listed with its size, and a saved key is named", () => {
     expect(deletableLines(inv)).toEqual(["Your task history and spending record: 12 KB", "The speech model for hold to talk: 141 MB", "Your saved Claude key (in your Keychain)"]);
@@ -107,7 +107,7 @@ import { numbersLines } from "./settings.ts";
 describe("beta numbers in words", () => {
   test("counts and rates are shown plainly, and a missing rate says so", () => {
     const l = numbersLines({ enabled: true, totals: { session: 5, walk_started: 4, walk_done: 3 }, rates: { walkCompletion: 0.75, stepSuccess: null, proofPass: 0.5, anywhereShare: null, softRingCorrections: 2 } });
-    expect(l[0]).toBe("Times you used Companion: 5");
+    expect(l[0]).toBe(`Times you used ${PRODUCT}: 5`);
     expect(l[2]).toBe("Lessons started: 4, finished: 3 (75%)");
     expect(l[3]).toContain("not enough yet");
     expect(l.at(-1)).toBe("Times you corrected a guess: 2");
@@ -159,7 +159,7 @@ describe("Show me on all screens", () => {
 
 import { keyChangedLine, keyHints, keyRows, pickerLines, resetLine, TALK_DEFAULT, talkCost, talkSharedNote, voiceHint } from "./settings.ts";
 import { chordLabel, choicesFrom, KEY_DEFAULTS, KEYS_START, type Choices, type Job, type Keys } from "./keys.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 // Keys to remember (M11 wave 4): every job, its keys, and Change for a short list of free keys; hold to talk (F18.3) is one of them.
 describe("the Keys section in Settings", () => {
   const set = (job: Job, using: string | null, picked?: string): Keys => ({ using: { ...KEYS_START.using, [job]: using }, picked: { ...KEYS_START.picked, [job]: picked ?? using ?? KEY_DEFAULTS[job] } });
@@ -203,7 +203,7 @@ describe("the Keys section in Settings", () => {
   });
   test("a job on its usual keys because another app has the ones picked says so, and how to keep them", () => {
     const fell = keyRows(set("explain", "control-option-command-e", "control-option-command-j")).find((r) => r.job === "explain")!;
-    expect(fell).toMatchObject({ keys: "Control, Option, Command and E", problem: true, line: "Another app is already using Control, Option, Command and J, so Companion uses Control, Option, Command and E for this for now. Keep them, or press Change to pick others." });
+    expect(fell).toMatchObject({ keys: "Control, Option, Command and E", problem: true, line: `Another app is already using Control, Option, Command and J, so ${PRODUCT} uses Control, Option, Command and E for this for now. Keep them, or press Change to pick others.` });
     const talk = keyRows(set("talk", "option-space", "option-return")).find((r) => r.job === "talk")!;
     expect(talk.line).toBe("Another app is already using Option and Return, so hold to talk uses Option and Space for now. Keep them, or press Change to pick others.");
     for (const r of [...keyRows(set("stop", null)), fell, talk]) expect(r.line).not.toContain("—");

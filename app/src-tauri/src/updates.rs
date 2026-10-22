@@ -20,7 +20,7 @@ pub fn parse_config(text: &str) -> Option<Config> {
 pub fn failure_words(raw: &str) -> &'static str {
     let r = raw.to_lowercase();
     if r.contains("does not specify the version") || r.contains("signed version") || r.contains("missingsignedversion") { "This update was not signed for this version, so it was not installed. Nothing changed. Please get the newest version from the website." }
-    else if r.contains("signature") || r.contains("verif") { "That update did not check out against Companion's key, so it was not installed. Nothing changed." }
+    else if r.contains("signature") || r.contains("verif") { concat!("That update did not check out against ", crate::product_s!(), " key, so it was not installed. Nothing changed.") }
     else if r.contains("dns") || r.contains("connect") || r.contains("network") || r.contains("timed out") || r.contains("error sending request") { "I could not reach the update address. Check your internet and try again." }
     else { "I could not check for updates just now. Try again later." }
 }

@@ -152,13 +152,13 @@ pub fn crash_part(text: &str) -> String {
 pub fn compose(f: &Facts, activity: &str, crash: Option<(&str, &str)>, home: &str, names: &[String], projects: &[String]) -> String {
     let yes = |b: bool| if b { "yes" } else { "no" };
     let mut s = String::new();
-    s.push_str("Companion support log\n");
+    s.push_str(concat!(crate::product!(), " support log\n"));
     s.push_str("This file holds no project content, no typed or spoken words and nothing from your screen. It is safe to send.\n\n");
-    s.push_str(&format!("Companion version: {}\nmacOS: {} ({})\n\n", f.version, f.macos, f.arch));
+    s.push_str(&format!(concat!(crate::product!(), " version: {}\nmacOS: {} ({})\n\n"), f.version, f.macos, f.arch));
     s.push_str("Permissions (allowed or not):\n");
     for (k, v) in &f.permissions { s.push_str(&format!("  {k}: {v}\n")); }
     s.push_str(&format!("\nClaude key saved in the Keychain: {}\nSpeech model downloaded: {}\nHidden browser installed: {}\n", yes(f.key_saved), yes(f.speech_ready), yes(f.browser_installed)));
-    s.push_str("\nWhat Companion keeps on this Mac (sizes only):\n");
+    s.push_str(concat!("\nWhat ", crate::product!(), " keeps on this Mac (sizes only):\n"));
     for (k, b) in &f.kept { s.push_str(&format!("  {k}: {}\n", kb(*b))); }
     s.push_str("\nActivity log (the last events, with times; no content):\n");
     s.push_str(&tail_lines(&safe_activity(activity), ACTIVITY_LINES));
@@ -167,14 +167,18 @@ pub fn compose(f: &Facts, activity: &str, crash: Option<(&str, &str)>, home: &st
     scrub(&s, home, names, projects)
 }
 
-/// companion-logs-<stamp>.txt, then -2, -3 ... when that name is taken; never replaces a file.
+/// The start of a support log's file name ("squibby-logs"): the product in lower case, from protocol/names.json.
+pub fn logs_stem() -> String { format!("{}-logs", crate::names::product().to_lowercase()) }
+
+/// <product>-logs-<stamp>.txt (the product in lower case, e.g. squibby-logs-...), then -2, -3 ... when that name is taken; never replaces a file.
 pub fn unique_path(dir: &Path, stamp: &str, taken: impl Fn(&Path) -> bool) -> PathBuf {
     for n in 1..1000 {
-        let name = if n == 1 { format!("companion-logs-{stamp}.txt") } else { format!("companion-logs-{stamp}-{n}.txt") };
+        let stem = logs_stem();
+        let name = if n == 1 { format!("{stem}-{stamp}.txt") } else { format!("{stem}-{stamp}-{n}.txt") };
         let p = dir.join(name);
         if !taken(&p) { return p; }
     }
-    dir.join(format!("companion-logs-{stamp}-{}.txt", std::process::id()))
+    dir.join(format!("{}-{stamp}-{}.txt", logs_stem(), std::process::id()))
 }
 
 /// The newest crash report of Companion in the last two weeks, if any: a real file only (never a link), not dated in the
@@ -184,7 +188,8 @@ pub fn latest_crash(dir: &Path, now: std::time::SystemTime) -> Option<(String, S
     for e in fs::read_dir(dir).ok()?.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         let lower = name.to_lowercase();
-        if !(lower.starts_with("companion") && (lower.ends_with(".ips") || lower.ends_with(".crash"))) { continue; }
+        // A crash report is named after the program that crashed: the executable (companion-app, which a rename does not change) or the product.
+        if !((lower.starts_with("companion") || lower.starts_with(&crate::names::product().to_lowercase())) && (lower.ends_with(".ips") || lower.ends_with(".crash"))) { continue; }
         let Ok(m) = fs::symlink_metadata(e.path()) else { continue };
         if !m.is_file() { continue; }
         let Ok(t) = m.modified() else { continue };
@@ -273,7 +278,7 @@ mod tests {
     fn a_crash_report_loses_the_list_of_other_software_and_ends_on_a_whole_line() {
         let t = format!("Exception: SIGSEGV\nThread 0 crashed\n  0 main\nBinary Images:\n  0x1 com.1password.app\n");
         assert_eq!(crash_part(&t), "Exception: SIGSEGV\nThread 0 crashed\n  0 main\n");
-        let ips = "{\"app_name\":\"Companion\"}\n{\"exception\":\"x\",\"usedImages\":[{\"path\":\"/Applications/Zoom.app\"}]}";
+        let ips = concat!("{\"app_name\":\"", crate::product!(), "\"}\n{\"exception\":\"x\",\"usedImages\":[{\"path\":\"/Applications/Zoom.app\"}]}");
         assert!(!crash_part(ips).contains("Zoom"));
         let big = "line of text\n".repeat(20_000);
         let c = crash_part(&big); assert!(c.len() <= CRASH_MAX as usize && c.ends_with("text"));
@@ -282,11 +287,11 @@ mod tests {
     fn the_file_has_the_facts_the_activity_and_the_crash_and_nothing_unscrubbed() {
         let f = Facts { version: "0.0.1".into(), macos: "27.0.1".into(), arch: "arm64".into(), permissions: vec![("Screen Recording".into(), "allowed".into()), ("Microphone".into(), "not asked yet".into())], key_saved: true, speech_ready: false, browser_installed: true, kept: vec![("undo snapshots".into(), 5 * 1024 * 1024), ("history".into(), 300)] };
         let activity = (1..=400).map(|i| format!("{{\"seq\":{i},\"ev\":\"hotkey\",\"id\":\"F\",\"front\":\"Zoom\"}}")).collect::<Vec<_>>().join("\n");
-        let out = compose(&f, &activity, Some(("Companion-2026.ips", "crash in /Users/sam/Developer/shop token sk-ant-api03-AbCdEfGhIjKlMnOp")), HOME, &n(&["sam"]), &["/Users/sam/Developer/shop".into()]);
-        assert!(out.contains("Companion version: 0.0.1") && out.contains("macOS: 27.0.1 (arm64)") && out.contains("Screen Recording: allowed") && out.contains("Claude key saved in the Keychain: yes"));
+        let out = compose(&f, &activity, Some((concat!(crate::product!(), "-2026.ips"), "crash in /Users/sam/Developer/shop token sk-ant-api03-AbCdEfGhIjKlMnOp")), HOME, &n(&["sam"]), &["/Users/sam/Developer/shop".into()]);
+        assert!(out.contains(concat!(crate::product!(), " version: 0.0.1")) && out.contains("macOS: 27.0.1 (arm64)") && out.contains("Screen Recording: allowed") && out.contains("Claude key saved in the Keychain: yes"));
         assert!(out.contains("undo snapshots: 5 MB") && out.contains("history: under 1 KB"));
         assert!(out.contains("\"seq\":400") && !out.contains("\"seq\":100,") && out.matches("\"ev\":\"hotkey\"").count() == ACTIVITY_LINES);
-        assert!(out.contains("Companion-2026.ips") && out.contains("<project 1>"));
+        assert!(out.contains(concat!(crate::product!(), "-2026.ips")) && out.contains("<project 1>"));
         for leaked in ["/Users/sam", "shop", "sk-ant", "sam", "Zoom"] { assert!(!out.contains(leaked), "{leaked}"); }
     }
     #[test]
@@ -297,19 +302,19 @@ mod tests {
     #[test]
     fn the_file_never_replaces_another() {
         let d = Path::new("/Users/sam/Downloads");
-        assert_eq!(unique_path(d, "2026-10-12-2012", |_| false), d.join("companion-logs-2026-10-12-2012.txt"));
-        assert_eq!(unique_path(d, "2026-10-12-2012", |p| p.ends_with("companion-logs-2026-10-12-2012.txt")), d.join("companion-logs-2026-10-12-2012-2.txt"));
+        assert_eq!(unique_path(d, "2026-10-12-2012", |_| false), d.join(format!("{}-2026-10-12-2012.txt", logs_stem())));
+        assert_eq!(unique_path(d, "2026-10-12-2012", |p| p.ends_with(format!("{}-2026-10-12-2012.txt", logs_stem()))), d.join(format!("{}-2026-10-12-2012-2.txt", logs_stem())));
     }
     #[test]
     fn the_newest_recent_real_crash_report_of_companion_is_found_read_only_to_the_limit() {
         let dir = std::env::temp_dir().join(format!("companion-crash-{}", std::process::id())); let _ = fs::remove_dir_all(&dir); fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("Companion-old.ips"), "old").unwrap(); fs::write(dir.join("Safari-new.ips"), "not ours").unwrap(); fs::write(dir.join("companion-app-2026-10-12.ips"), "x".repeat(200_000)).unwrap();
-        fs::File::options().write(true).open(dir.join("Companion-old.ips")).unwrap().set_modified(SystemTime::now() - Duration::from_secs(30 * 86_400)).unwrap();
+        fs::write(dir.join(concat!(crate::product!(), "-old.ips")), "old").unwrap(); fs::write(dir.join("Safari-new.ips"), "not ours").unwrap(); fs::write(dir.join("companion-app-2026-10-12.ips"), "x".repeat(200_000)).unwrap();
+        fs::File::options().write(true).open(dir.join(concat!(crate::product!(), "-old.ips"))).unwrap().set_modified(SystemTime::now() - Duration::from_secs(30 * 86_400)).unwrap();
         // a link named like a report, and a report dated in the future, are never the newest
         let secret = std::env::temp_dir().join(format!("companion-secret-{}", std::process::id())); fs::write(&secret, "top secret").unwrap();
-        std::os::unix::fs::symlink(&secret, dir.join("Companion-link.ips")).unwrap();
-        fs::write(dir.join("Companion-future.ips"), "future").unwrap();
-        fs::File::options().write(true).open(dir.join("Companion-future.ips")).unwrap().set_modified(SystemTime::now() + Duration::from_secs(10 * 86_400)).unwrap();
+        std::os::unix::fs::symlink(&secret, dir.join(concat!(crate::product!(), "-link.ips"))).unwrap();
+        fs::write(dir.join(concat!(crate::product!(), "-future.ips")), "future").unwrap();
+        fs::File::options().write(true).open(dir.join(concat!(crate::product!(), "-future.ips"))).unwrap().set_modified(SystemTime::now() + Duration::from_secs(10 * 86_400)).unwrap();
         let (name, text) = latest_crash(&dir, SystemTime::now()).unwrap();
         assert_eq!(name, "companion-app-2026-10-12.ips"); assert_eq!(text.len(), CRASH_MAX as usize + 1);
         fs::remove_file(dir.join("companion-app-2026-10-12.ips")).unwrap();

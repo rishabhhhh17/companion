@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, visualState, type Model } from "./model.ts";
 import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 import { PH_KEYS_MS } from "./keys.ts";
 
@@ -125,7 +125,7 @@ describe("which tab opens by itself", () => {
   });
 });
 
-describe("what Companion says about itself shows on every tab", () => {
+describe(`what ${PRODUCT} says about itself shows on every tab`, () => {
   test("opening Home with the engine down shows why, whatever tab was left open", () => {
     const m = run([ev({ type: "app.runner_down" })]);
     expect(m.error).toBeTruthy();

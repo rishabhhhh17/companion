@@ -20,7 +20,7 @@ pub struct Captured { pub frame: Frame, /// The display in global top-left point
 
 /// What is said when Show me or Point at the problem would look while nothing of Companion can be seen (hidden from the
 /// menu bar, or for a full screen app, with Home closed): the light could not be seen, so nothing is looked at (rule 5).
-pub const HIDDEN_WORDS: &str = "Companion is hidden right now, so I did not look at your screen. Leave full screen or show Companion from the menu bar icon, then try again.";
+pub const HIDDEN_WORDS: &str = concat!(crate::product!(), " is hidden right now, so I did not look at your screen. Leave full screen or show ", crate::product!(), " from the menu bar icon, then try again.");
 
 #[derive(Debug, PartialEq, Eq)]
 /// Stopped: Stop everything or a newer question came after the light went on, so no picture was taken at all.
@@ -972,7 +972,7 @@ mod tests {
     fn nothing_is_looked_at_while_companion_cannot_be_seen_and_hiding_it_ends_every_pointer() {
         // Rule 5: the light is the character, the island and Home. Hidden (from the menu bar, or for a full screen app) with
         // Home closed, none of it can be seen, so no look starts, and a look already under the light takes no picture.
-        assert!(HIDDEN_WORDS.starts_with("Companion is hidden right now, so I did not look at your screen.") && !HIDDEN_WORDS.contains('\u{2014}'));
+        assert!(HIDDEN_WORDS.starts_with(concat!(crate::product!(), " is hidden right now, so I did not look at your screen.")) && !HIDDEN_WORDS.contains('\u{2014}'));
         let main = include_str!("main.rs");
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let unseen = body("fn light_unseen(");

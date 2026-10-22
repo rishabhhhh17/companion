@@ -2,6 +2,7 @@
 // It holds a short redacted label, never the full prompt, screen content or secrets.
 import type { Database } from "bun:sqlite";
 import { openDatabase } from "./db.ts";
+import { PRODUCT } from "./names.ts";
 
 export type TaskRow = { id: number; project: string; agent: string; mode: string; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
 
@@ -14,7 +15,7 @@ export class TaskLog {
     try { this.setup(); }
     catch {
       try { this.db.close(); } catch { /* already unusable */ }
-      onProblem?.("Your task history could not be saved on this Mac, so it will be lost when Companion closes.");
+      onProblem?.(`Your task history could not be saved on this Mac, so it will be lost when ${PRODUCT} closes.`);
       this.db = openDatabase(":memory:");
       this.setup();
     }

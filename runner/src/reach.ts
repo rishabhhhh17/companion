@@ -7,6 +7,7 @@
 // the fast and vision lanes (lanes.ts). Plain, testable rules; [verify] on a real Mac with the Wi-Fi off which words and
 // status Claude Code really sends (it costs nothing: no request reaches Anthropic).
 import { clip, redact } from "./redact.ts";
+import { PRODUCT } from "./names.ts";
 
 export type OutOfReach = "no_connection" | "claude_busy";
 
@@ -33,7 +34,7 @@ export function outOfReach(f: { status?: number | null; kind?: string; text?: st
 
 /** The engine's stop message for it: the named reason first (agent.ts keeps it as the task's status), then what happened. */
 export const reachMessage = (why: OutOfReach, detail: string): string =>
-  why === "no_connection" ? `no_connection: Companion could not reach Claude (${detail})` : `claude_busy: Claude is busy or having trouble right now (${detail})`;
+  why === "no_connection" ? `no_connection: ${PRODUCT} could not reach Claude (${detail})` : `claude_busy: Claude is busy or having trouble right now (${detail})`;
 
 // The kinds of failed request Claude Code names (the pinned sdk.d.ts SDKAssistantMessageError) that the card words itself
 // (app/src/strings.ts S.claudeStopped). A kind this version does not know is "unknown".

@@ -1,7 +1,6 @@
 {
   "version": 1,
   "about": "The practice catalog: one list for the shell (practice.rs), the pages (practice.ts), the engine's tests and the rescue eval. Each practice is a folder next to this file, broken one way on purpose. Words a person reads are in app/src/strings.ts (S.practices), never here. minutes and costUsd are estimates until a real run measures them (docs/milestones/M11-real-run-checklist.md).",
-  "copyBase": "Companion practice",
   "practices": [
     {
       "id": "signup", "folder": "stuck-signup", "order": 1, "copyName": "signup page",

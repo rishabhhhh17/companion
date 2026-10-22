@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createEngine, createLanes, readSettings, MANAGED_NEEDS_OWN_CLAUDE } from "../src/engines.ts";
 import { heldKey } from "../src/keychain.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 // Which lanes the runner uses (F22 update, 22 Oct 2026). The default is unchanged until a real run proves the direct lanes.
 const KEY = "sk-ant-api03-WIRING-0000000000000000";
@@ -47,7 +48,7 @@ describe("the lanes each route gets", () => {
     expect(out.text).toBe("hi");
     expect(s.seen).toEqual([{ url: "https://api.anthropic.com/v1/messages", key: KEY }]);
   });
-  test("managed usage: the Companion sign in token, to Companion's own server, for every light lane", async () => {
+  test(`managed usage: the ${PRODUCT} sign in token, to ${PRODUCT_S} own server, for every light lane`, async () => {
     const s = spy();
     const lanes = createLanes(readSettings({ COMPANION_ROUTE: "managed", COMPANION_MANAGED_BASE: "https://usage.example.com" }), { fetchFn: s.fetchFn, keyFn: async () => TOKEN });
     await lanes.fast.run({ text: "x" }, () => {}, sig());

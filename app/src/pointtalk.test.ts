@@ -12,7 +12,7 @@ import { appAnswersFrom, answerOp, forgetAllCount, needsConfirm, neverFrontOp } 
 import { addCallApp, BUILT_IN_CALL_APPS, callAppRows, MAX_ADDED_CALL_APPS, toggleCallApp } from "./callapps.ts";
 import { checkRegistry, defOf, validateKey } from "../../protocol/settings.ts";
 import { problemWords, rowModel, valueWords } from "./settingsRows.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const src = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 
@@ -109,7 +109,7 @@ describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () =
   });
 });
 
-describe("When Companion is only guessing (point.guesses)", () => {
+describe(`When ${PRODUCT} is only guessing (point.guesses)`, () => {
   test("below the confidence line nothing is drawn whatever the setting, and a guess said in words says it is a guess", () => {
     const t = (confidence: number): Target => ({ x: 1, y: 1, targetText: "Save", caption: "Click Save", confidence });
     expect(planSteps([t(0.39)])[0].draw).toBe(false);
@@ -345,7 +345,7 @@ describe("Apps that count as a call (calls.apps)", () => {
     expect(toggleCallApp(off, "us.zoom.xos", true)).toEqual(usual);
     expect(toggleCallApp([...usual, "com.example.calls"], "com.apple.FaceTime", false)).toEqual([...usual.filter((x) => x !== "com.apple.FaceTime"), "com.example.calls"]);
   });
-  test("adding the app in front: up to 20, never twice, never Companion, and only its id is kept", () => {
+  test(`adding the app in front: up to 20, never twice, never ${PRODUCT}, and only its id is kept`, () => {
     const usual = defOf("calls.apps")!.default as string[];
     expect(addCallApp(usual, "com.example.calls")).toEqual({ ok: true, list: [...usual, "com.example.calls"] });
     expect(addCallApp(usual, "US.ZOOM.XOS")).toEqual({ ok: false, why: "already" });

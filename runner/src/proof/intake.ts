@@ -7,6 +7,7 @@ import { detectProject, replitRun, usableStartScript, type PackageManager } from
 import { pythonIntakeNote } from "./python.ts";
 import type { NativeSetup } from "./native.ts";
 import { label } from "../redact.ts";
+import { PRODUCT } from "../names.ts";
 export { replitRun };
 
 export type Origin = "lovable" | "bolt" | "replit" | "unknown";
@@ -161,7 +162,7 @@ export function inspectProject(dir: string): ProjectReport {
   if (!pkg && existsSync(join(dir, "package.json.bak"))) notes.push("There is no package.json, only package.json.bak. The project cannot be installed or started until it is named package.json again.");
   const pm = det.packageManager;
   const needsInstall = !!pkg && !!pm && Object.keys(deps).length > 0 && !existsSync(join(dir, "node_modules"));
-  if (workspace) notes.push("This is a workspace with more than one package; Companion checks it from the top folder.");
+  if (workspace) notes.push(`This is a workspace with more than one package; ${PRODUCT} checks it from the top folder.`);
   if (det.python) notes.push(pythonIntakeNote(det.python));
   if (det.native) notes.push(...nativeNotes(det.native));
 

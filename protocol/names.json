@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "about": "The one place the product's names live (AGENTS.md rule 21, F24). The pages (app/src/strings.ts), the engine (runner/src/names.ts) and the shell (app/src-tauri/src/names.rs, include_str!) all read this file, so the next rename is one edit here. Static files that cannot read it (app/*.html titles, tauri.conf.json productName, Info.plist usage text) are checked against it by runner/test/names.test.ts. Earlier names that must still be recognised (earlierPracticeCopyBases: practice copies made before the rename, so Remove my copy still finds them) are the only place the old name is kept. Internal identifiers do not live here and do not change with the name: the bundle identifier, Keychain item names, data folder names, the .companion folder, COMPANION_* environment names and protocol field names.",
+  "product": "Squibby",
+  "productPossessive": "Squibby's",
+  "character": "Flowflow",
+  "characterPossessive": "Flowflow's",
+  "practiceCopyBase": "Squibby practice",
+  "earlierPracticeCopyBases": ["Companion practice"],
+  "newFolderParent": "Squibby makes"
+}

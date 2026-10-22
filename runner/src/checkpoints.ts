@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { RULES_FILE } from "./rules.ts";
+import { PRODUCT } from "./names.ts";
 
 export type Skipped = { path: string; reason: string };
 export type Checkpoint = { id: string; commit: string; label: string; files: number; skipped: Skipped[]; createdAt: string; envFiles: string[] };
@@ -52,7 +53,7 @@ const ENV_SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build",
 const stores = new Map<string, CheckpointStore>();
 
 // git is Apple's, and a new Mac asks to install it the first time it is used. Say what to do, in plain words.
-export const NEEDS_GIT = "Companion needs Apple's free developer tools to keep a safe copy of your project. Open Terminal, type  xcode-select --install  and press Return. When it finishes, try again.";
+export const NEEDS_GIT = `${PRODUCT} needs Apple's free developer tools to keep a safe copy of your project. Open Terminal, type  xcode-select --install  and press Return. When it finishes, try again.`;
 // xcrun's own words included ("xcrun: error: invalid active developer path"), which Apple's stand in for git says when the
 // developer tools were removed or never installed.
 export const friendlyGitError = (e: unknown): Error => {
@@ -164,8 +165,8 @@ export class CheckpointStore {
     Object.assign(e, {
       GIT_DIR: this.shadowDir, GIT_WORK_TREE: this.projectDir,
       GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_TERMINAL_PROMPT: "0",
-      GIT_AUTHOR_NAME: "Companion", GIT_AUTHOR_EMAIL: "companion@localhost",
-      GIT_COMMITTER_NAME: "Companion", GIT_COMMITTER_EMAIL: "companion@localhost",
+      GIT_AUTHOR_NAME: PRODUCT, GIT_AUTHOR_EMAIL: "companion@localhost",
+      GIT_COMMITTER_NAME: PRODUCT, GIT_COMMITTER_EMAIL: "companion@localhost",
     });
     if (index) e.GIT_INDEX_FILE = index;
     return e;
@@ -700,7 +701,7 @@ export class CheckpointStore {
     for (const rel of take) {
       let abs: string;
       try { abs = this.inProject(rel); } catch { skipped.push({ path: rel, reason: "this file cannot be touched" }); continue; }
-      if (this.hasLinkOnTheWay(abs)) { skipped.push({ path: rel, reason: "this file is behind a link, so Companion will not write there" }); continue; }
+      if (this.hasLinkOnTheWay(abs)) { skipped.push({ path: rel, reason: `this file is behind a link, so ${PRODUCT} will not write there` }); continue; }
       let st; try { st = lstatSync(abs); } catch { st = null; }
       if (st?.isSymbolicLink() || (st && !st.isFile())) { skipped.push({ path: rel, reason: "this is not an ordinary file" }); continue; }
       if (stale.has(rel)) { skipped.push({ path: rel, reason: "the saved version of this file is only an old small copy, so it is left as you have it" }); continue; }
@@ -812,7 +813,7 @@ export class CheckpointStore {
     }
     if (why.later.length && yours && why.later.every((f) => yours!.has(f))) reason = `You changed ${names(why.later)} yourself after this task, so undoing it on its own would lose your ${why.later.length === 1 ? "edit" : "edits"}. Your ${why.later.length === 1 ? "file stays" : "files stay"} as you have ${why.later.length === 1 ? "it" : "them"}.`;
     else if (why.later.length) reason = `Later work changed the same ${why.later.length === 1 ? "file" : "files"} (${names(why.later)}), so undoing this task on its own would lose that work.`;
-    else if (why.link.length) reason = `${names(why.link)} ${are(why.link)} behind a link now, so Companion will not write there.`;
+    else if (why.link.length) reason = `${names(why.link)} ${are(why.link)} behind a link now, so ${PRODUCT} will not write there.`;
     else if (why.big.length) reason = `${names(why.big)} ${are(why.big)} too big to have a saved copy (over 2 MiB).`;
     else if (why.unsaved.length) reason = `${names(why.unsaved)} could not be read when a version was saved, so there is no copy to put back.`;
     else if (why.git.length) reason = `${names(why.git)} ${are(why.git)} inside a folder with its own git history, which Undo does not cover.`;

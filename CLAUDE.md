@@ -8,7 +8,7 @@ Everything that applies to every coding agent lives in `AGENTS.md` (imported abo
 
 **Plan mode.** Use plan mode for anything bigger than a small fix, and for the start of every milestone.
 
-**Testing Companion with Claude Code itself.** Companion drives Claude Code through the Agent SDK, so tests and spikes run real Claude Code processes. In every one:
+**Testing Squibby with Claude Code itself.** Squibby drives Claude Code through the Agent SDK, so tests and spikes run real Claude Code processes. In every one:
 - Never use `bypassPermissions`.
 - Use the SDK's bundled binary through `pathToClaudeCodeExecutable`, never the `claude` on your `PATH`.
 - Keep `settingSources` explicit, and also set `strictMcpConfig: true`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`. `settingSources` alone does not stop the developer's claude.ai connectors or auto memory from loading. Check that `system/init` lists only the tools the test expects.

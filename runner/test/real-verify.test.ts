@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { parseCommand } from "../../protocol/index.ts";
 import { SCENARIOS, checkedCommand, listTree, planProblems, realKit, safetyAudit, verifyCases, type Kit, type Live } from "../scripts/real-verify.ts";
 import { SpendMeter, SpendStop, type CaseCtx, type Proc } from "../scripts/realrun-harness.ts";
+import { NAMES } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -159,7 +160,7 @@ describe("new-folder: how the cases are scored", () => {
     expect(sent[0].goal).toBe("a one page website for my bakery with opening hours and a contact section");
     expect(sent[1].goal).toContain("Rosa");
     expect(sent[2].question).toBe("what should I know before opening a small bakery");
-    for (const p of projects) { expect(listTree(p)).toEqual([]); expect(p).toContain("/Companion makes/"); expect(p.startsWith(process.env.HOME ?? "\0")).toBe(false); }
+    for (const p of projects) { expect(listTree(p)).toEqual([]); expect(p).toContain(`/${NAMES.newFolderParent}/`); expect(p.startsWith(process.env.HOME ?? "\0")).toBe(false); }
   }, 15_000);
 });
 

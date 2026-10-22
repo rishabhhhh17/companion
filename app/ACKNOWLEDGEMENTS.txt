@@ -1,12 +1,12 @@
 ACKNOWLEDGEMENTS
 
-Companion is built from the open source software below, and ships a small number of programs from others. Each is used
-under its own licence, reproduced here as those licences ask. Companion's own code is not covered by these notices.
+Squibby is built from the open source software below, and ships a small number of programs from others. Each is used
+under its own licence, reproduced here as those licences ask. Squibby's own code is not covered by these notices.
 
-SHIPPED WITH COMPANION
+SHIPPED WITH SQUIBBY
 - Claude Code (Anthropic's program, run unmodified): (c) Anthropic PBC. All rights reserved. Used under Anthropic's
   Commercial Terms of Service and legal agreements: https://code.claude.com/docs/en/legal-and-compliance
-- Bun (the JavaScript runtime that runs Companion's engine): MIT licence. https://bun.sh
+- Bun (the JavaScript runtime that runs Squibby's engine): MIT licence. https://bun.sh
 - Whisper speech model "ggml-base" (downloaded on first use of hold to talk, runs on this Mac): MIT licence,
   OpenAI Whisper and whisper.cpp by Georgi Gerganov. https://github.com/ggerganov/whisper.cpp
 - The idea of pointing through the Computer Use tool, and of looking at other displays, was prompted by Clicky

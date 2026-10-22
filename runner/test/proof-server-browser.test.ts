@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer, freePort } from "../src/proof/server.ts";
 import { browserCheck, browserInstalled } from "../src/proof/browser.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 const stops: (() => Promise<void> | void)[] = [];
@@ -85,8 +86,8 @@ describe("the hidden browser", () => {
   };
   test("it is installed here", () => expect(browserInstalled()).toBe(true));
   test("a healthy page passes, with the words we expect", async () => {
-    const url = serve({ "/": { body: "<h1>Hello from Companion</h1><p>Welcome</p>" } });
-    const r = await browserCheck(url, { expectText: ["Hello from Companion"] });
+    const url = serve({ "/": { body: `<h1>Hello from ${PRODUCT}</h1><p>Welcome</p>` } });
+    const r = await browserCheck(url, { expectText: [`Hello from ${PRODUCT}`] });
     expect(r).toMatchObject({ ok: true, problems: [] });
   }, 30000);
   test("an error in the page's code fails, and says what it was", async () => {
@@ -109,9 +110,9 @@ describe("the hidden browser", () => {
   }, 30000);
   test("words that should be on the page but are not fail", async () => {
     const url = serve({ "/": { body: "<h1>Something else</h1>" } });
-    const r = await browserCheck(url, { expectText: ["Hello from Companion"] });
+    const r = await browserCheck(url, { expectText: [`Hello from ${PRODUCT}`] });
     expect(r.ok).toBe(false);
-    expect(r.problems.join(" ")).toContain("Hello from Companion");
+    expect(r.problems.join(" ")).toContain(`Hello from ${PRODUCT}`);
   }, 30000);
   test("a page that answers with an error fails", async () => {
     const url = serve({ "/": { body: "Internal Server Error", status: 500 } });

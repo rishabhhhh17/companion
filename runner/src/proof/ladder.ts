@@ -17,6 +17,7 @@ import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHe
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 import { readRunFiles, runPrint, type RunApprovals } from "./approvedruns.ts";
+import { PRODUCT } from "../names.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
 // needs: "browser" when the browser rung was skipped only because the hidden browser is not installed (the page offers it).
@@ -134,7 +135,7 @@ const NOT_INSTALLED_NO = "The project's packages were not installed (you said no
 const NOT_INSTALLED_NEVER = "The project's packages are not installed, and Settings says never to install them for a check, so it was checked as it is.";
 // A script the check would run that changes a database or puts something online (detect.ts changesData): never run.
 const CHANGES_DATA_WORDS = { install: "The project's install steps", typecheck: "The type check script", lint: "The lint script", build: "The build script", test: "The test script", start: "The start script" } as const;
-const changesDataGap = (what: keyof typeof CHANGES_DATA_WORDS) => `${CHANGES_DATA_WORDS[what]} also changes a database or puts something online, so Companion did not run it${what === "start" ? ", and the page was not checked" : what === "install" ? " and checked the project as it is" : ""}.`;
+const changesDataGap = (what: keyof typeof CHANGES_DATA_WORDS) => `${CHANGES_DATA_WORDS[what]} also changes a database or puts something online, so ${PRODUCT} did not run it${what === "start" ? ", and the page was not checked" : what === "install" ? " and checked the project as it is" : ""}.`;
 // The task changed what the project runs, and no yes came to running it.
 const RUN_CHANGED_NO = "This task changed the project's scripts or packages, which run on this Mac outside the safety box, and you did not say yes to running them, so the install, build, tests and server were not run.";
 const RUN_CHANGED_SHORT = "Not run: this task changed the project's scripts or packages, and running them needs your yes.";

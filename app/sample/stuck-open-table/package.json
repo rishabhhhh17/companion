@@ -2,7 +2,7 @@
   "name": "practice-open-table",
   "version": "1.0.0",
   "private": true,
-  "description": "A tiny notes app for Companion's practice run. Its database table is open to anyone who has the site's address.",
+  "description": "A tiny notes app for the practice run. Its database table is open to anyone who has the site's address.",
   "scripts": {
     "dev": "node server.js"
   }

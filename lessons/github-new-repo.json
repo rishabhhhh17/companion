@@ -60,7 +60,7 @@
     },
     {
       "id": "init",
-      "say": "In Terminal, inside your project folder, run git init. It is safe to run even if the folder already uses git. Companion then checks that the folder uses git.",
+      "say": "In Terminal, inside your project folder, run git init. It is safe to run even if the folder already uses git. {product} then checks that the folder uses git.",
       "find": "the Terminal window",
       "check": {
         "kind": "file_exists",

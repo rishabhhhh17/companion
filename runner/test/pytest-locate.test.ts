@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { locateProblem } from "../src/proof/locate.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -48,7 +49,7 @@ describe("pytest: the failing place, in every report style", () => {
     const p = project(SHOP);
     expect(locateProblem(fixture("pytest-exception-long", p), p, "tests")).toMatchObject({ kind: "line", file: "shop/cart.py", line: 14, lineText: "return price - price / percent", message: "ZeroDivisionError: division by zero" });
   });
-  test("the short report Companion asks for: frames in the virtual environment are skipped", () => {
+  test(`the short report ${PRODUCT} asks for: frames in the virtual environment are skipped`, () => {
     const p = project(SHOP);
     for (const f of [".venv/lib/python3.12/site-packages/werkzeug/test.py", ".venv/lib/python3.12/site-packages/flask/testing.py", ".venv/lib/python3.12/site-packages/flask/app.py"]) { mkdirSync(dirname(join(p, f)), { recursive: true }); writeFileSync(join(p, f), "x\n".repeat(2000)); }
     expect(locateProblem(fixture("pytest-short-tb", p), p, "tests")).toMatchObject({ kind: "line", file: "app.py", line: 6, message: "FileNotFoundError: [Errno 2] No such file or directory: 'data/items.json'" });

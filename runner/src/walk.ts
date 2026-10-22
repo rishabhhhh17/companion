@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { join, sep } from "node:path";
 import { isEnvFile } from "./diagram.ts";
 import { envNames } from "./proof/intake.ts";
+import { fillNames } from "./names.ts";
 
 export const MAX_STEPS = 15;
 /** The stand in "project" for lessons that need none (installing a tool, leaving a builder): they only ask the person. */
@@ -114,7 +115,7 @@ export function loadLessons(dirs: string[]): { lessons: Lesson[]; problems: { fi
       try {
         const p = join(dir, n);
         if (statSync(p).size > 100_000) { problems.push({ file: n, error: "the file is too big" }); continue; }
-        const r = parseLesson(JSON.parse(readFileSync(p, "utf8")));
+        const r = parseLesson(JSON.parse(fillNames(readFileSync(p, "utf8"))));   // the lesson files hold {product}, filled from protocol/names.json (rule 21)
         if (!r.ok) problems.push({ file: n, error: r.error });
         else if (!lessons.some((l) => l.id === r.lesson.id)) lessons.push(r.lesson);
       } catch { problems.push({ file: n, error: "the file could not be read as a lesson" }); }

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { parseEvent } from "../../protocol/index.ts";
 import { defaultOf } from "../../protocol/settings.ts";
 import { HISTORY, MAX_PER_PROJECT, MAX_TOTAL, NOT_CHECKED, WatchEngine, nextRun, parseSchedule, type Answer, type Checks } from "../src/watch.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-watch-${l}-`))); made.push(d); return d; };
@@ -476,7 +477,7 @@ describe("a check that does not finish, or cannot run", () => {
   });
   test("a project that is busy is not judged: the state stays, and it is tried again in two minutes", async () => {
     const r = rig();
-    r.script.project = [r.ok("All of the project's own checks passed."), () => Promise.resolve({ skip: "Companion is working on this project right now." }), r.bad("Tests did not pass")];
+    r.script.project = [r.ok("All of the project's own checks passed."), () => Promise.resolve({ skip: `${PRODUCT} is working on this project right now.` }), r.bad("Tests did not pass")];
     await r.cmd("watch.add", { kind: "project_checks", schedule: "1h" }); await r.settle();
     r.clock.t += 61 * MIN; r.engine.tick(); await r.settle();
     expect(r.engine.all()[0]).toMatchObject({ state: "ok" });
@@ -510,7 +511,7 @@ describe("watch.json", () => {
     again.tick(); await again.idle(); await new Promise((x) => setTimeout(x, 2));
     expect(ofType(r, "watch.alert")).toHaveLength(1);   // not told a second time after a restart
   });
-  test("a damaged file is kept aside, the list starts empty, and Companion says so", async () => {
+  test(`a damaged file is kept aside, the list starts empty, and ${PRODUCT} says so`, async () => {
     const dir = tmp("dmg");
     const file = join(dir, "watch.json");
     writeFileSync(file, "{ not json");

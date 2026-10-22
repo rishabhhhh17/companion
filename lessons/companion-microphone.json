@@ -1,8 +1,8 @@
 {
   "id": "companion-microphone",
-  "title": "Let Companion hear you when you hold to talk",
+  "title": "Let {product} hear you when you hold to talk",
   "app": "System Settings",
-  "goal": "Turn on the Microphone for Companion (only used while you hold the talk keys)",
+  "goal": "Turn on the Microphone for {product} (only used while you hold the talk keys)",
   "status": "draft",
   "needsProject": false,
   "steps": [
@@ -32,13 +32,13 @@
     },
     {
       "id": "switch",
-      "say": "Turn on the switch next to Companion.",
-      "find": "the switch next to Companion",
+      "say": "Turn on the switch next to {product}.",
+      "find": "the switch next to {product}",
       "check": {
         "kind": "ask"
       },
       "instead": {
-        "say": "If Companion is not in the list, press the plus button under the list and pick Companion from Applications.",
+        "say": "If {product} is not in the list, press the plus button under the list and pick {product} from Applications.",
         "find": "the plus button under the list"
       }
     }

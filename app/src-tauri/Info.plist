@@ -7,6 +7,6 @@
   <true/>
   <!-- Shown by macOS the first time the talk keys are used. -->
   <key>NSMicrophoneUsageDescription</key>
-  <string>Companion listens only while you hold its talk keys. Your voice is turned into words on this Mac and is never sent anywhere or saved.</string>
+  <string>Squibby listens only while you hold its talk keys. Your voice is turned into words on this Mac and is never sent anywhere or saved.</string>
 </dict>
 </plist>

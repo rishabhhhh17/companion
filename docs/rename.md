@@ -1,5 +1,7 @@
 # When the name changes (AGENTS.md rule 21)
 
+**Update, 22 Oct 2026 (F24): the product is now Squibby and the rename below was done once.** The names a person reads now live in `protocol/names.json`, so the next rename is part 1 below as one edit there (plus `productName` in `tauri.conf.json`, the HTML titles and the microphone sentence in `Info.plist`, which `runner/test/names.test.ts` checks against it). Part 2 (identifiers) was left alone on purpose and still needs a migration if it is ever changed. The text that follows is the original plan, kept for the reasoning.
+
 "Companion" is a placeholder. Today the name lives in about 58 source files (11 in `app/src`, 27 in `runner/src`, 15 in `app/src-tauri/src`, 5 lessons) plus the docs, not only in `app/src/strings.ts`. Most of those are plain sentences the person reads. Do the rename in two parts, because some uses are identifiers that must **not** change blindly.
 
 ## 1. Words the person reads (safe to find and replace)

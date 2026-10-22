@@ -13,6 +13,7 @@ import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
+import { NAMES } from "../src/names.ts";
 
 type Case = { name: string; ok: boolean; cmd: Record<string, unknown>; task?: Record<string, unknown> };
 const cases: Case[] = readFileSync(new URL("../../protocol/fixtures/project-new-cases.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
@@ -36,7 +37,7 @@ describe("the command a page sends to make something in a new folder", () => {
   test("the task each one becomes is an ordinary engine command, with the request's own words", () => {
     for (const c of cases.filter((x) => x.ok)) {
       const t = c.task!;
-      const parsed = parseCommand(JSON.stringify({ ...t, project: "/Users/sam/Companion makes/Website for my bakery" }));
+      const parsed = parseCommand(JSON.stringify({ ...t, project: `/Users/sam/${NAMES.newFolderParent}/Website for my bakery` }));
       expect(parsed.ok, c.name).toBe(true);
       expect(t.type, c.name).toBe(c.cmd.kind === "build" ? "drive.plan" : "research.ask");
       expect(t[c.cmd.kind === "build" ? "goal" : "question"], c.name).toBe(String(c.cmd.request).trim());
@@ -78,7 +79,7 @@ const waitFor = async (cond: () => boolean, ms = 3000) => { const end = Date.now
  *  empty folder named after the request. The task is the case's own task line, with that folder as the project. */
 function newFolder(caseName: string, rounds: Step[][], o: { proofs?: LadderResult[]; budgetUsd?: number } = {}) {
   const home = tmp("home");
-  const parent = join(home, "Companion makes");
+  const parent = join(home, `${NAMES.newFolderParent}`);
   mkdirSync(parent);
   const project = join(parent, "Website for my bakery");
   mkdirSync(project);

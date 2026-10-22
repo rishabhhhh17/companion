@@ -8,13 +8,14 @@ import { buildSdkOptions, resolveClaudeBinary, SdkEngine } from "../src/sdkEngin
 import { AgentRunner } from "../src/agent.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-sdk-${l}-`))); made.push(d); return d; };
 const base = { project: "/p", model: "claude-sonnet-5-5", budgetUsd: 3, claudeBinary: "/x/claude", env: { PATH: "/usr/bin" }, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal };
 
-describe("what Companion remembers reaches the agent", () => {
+describe(`what ${PRODUCT} remembers reaches the agent`, () => {
   test("it is added to the instructions, as background that the request outranks", () => {
     const o: any = buildSdkOptions({ ...base, memory: "- Prefers short answers" });
     expect(o.systemPrompt.append).toContain("Prefers short answers");

@@ -16,6 +16,7 @@ import { findPython } from "../src/proof/python.ts";
 import { minimalEnv } from "../src/env.ts";
 import { MAX_RUNS } from "../src/bisect.ts";
 import { parseEvent, type Event } from "../../protocol/index.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -76,7 +77,7 @@ describe("finding which task broke it", () => {
     for (const e of s.events) expect(parseEvent(JSON.stringify(e)).ok, e.type).toBe(true);
     expect(of(s.events, "bisect.progress")[0]).toMatchObject({ run: 1, maxRuns: MAX_RUNS, what: "now" });
   });
-  test("at most six checks, each in a private copy in Companion's folder that is deleted afterwards", async () => {
+  test(`at most six checks, each in a private copy in ${PRODUCT_S} folder that is deleted afterwards`, async () => {
     const s = setup({ breaks: 2, tasks: 9 });
     await s.runTasks();
     const before = treeHash(s.project);

@@ -16,6 +16,7 @@ import { EXPLAIN_REASONS_SYSTEM, EXPLAIN_SYSTEM, explainRequest } from "../src/e
 import { promptHelpMemory, RECALL_WORDS, recallWords } from "../src/memory/recall.ts";
 import { EXPLAIN_MODES, parseCommand, parseEvent, type Event } from "../../protocol/index.ts";
 import { defOf, REGISTRY } from "../../protocol/settings.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -244,7 +245,7 @@ describe("remembering the goals of approved plans (memory.rememberGoals)", () =>
     expect(t.projectFile()).toContain("Goal: make a shop for my plants");
     expect(of(t.events, "drive.done")[0]).toMatchObject({ status: "done" });
   });
-  test("the goal is written once the plan's watcher is looking, as Companion's own write, so it never pauses the plan", () => {
+  test(`the goal is written once the plan's watcher is looking, as ${PRODUCT_S} own write, so it never pauses the plan`, () => {
     // Written before the watcher started, the memory file and the AGENTS.md it may create could arrive as file events
     // after it started, and pause the plan as if the person had changed the project (seen while building this setting).
     const src = readFileSync(new URL("../src/agent.ts", import.meta.url), "utf8");
@@ -262,7 +263,7 @@ describe("remembering the goals of approved plans (memory.rememberGoals)", () =>
   });
 });
 
-describe("telling Claude what Companion remembers (memory.tellClaude)", () => {
+describe(`telling Claude what ${PRODUCT} remembers (memory.tellClaude)`, () => {
   test("usual: every task is told, as today", async () => {
     const t = rig({ rounds: [[say("done")]] });
     await t.start("add a page");

@@ -3,6 +3,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { dirname } from "node:path";
+import { PRODUCT } from "./names.ts";
 
 function open(path: string): Database {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -25,7 +26,7 @@ export function openDatabase(path: string, onProblem: (message: string) => void 
       } catch { /* fall through to memory */ }
     }
     void first;
-    onProblem("Your task history could not be saved on this Mac, so it will be lost when Companion closes.");
+    onProblem(`Your task history could not be saved on this Mac, so it will be lost when ${PRODUCT} closes.`);
     return open(":memory:");
   }
 }

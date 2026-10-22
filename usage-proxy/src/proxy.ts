@@ -8,6 +8,7 @@ import { budgetCheck, planOf } from "./plans.ts";
 import type { Store } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { UsageSniffer, costOf, usageFromJson } from "./usage.ts";
+import { PRODUCT, PRODUCT_S } from "./names.ts";
 
 export type SafeEvent = { kind: "refused" | "request" | "upstream_error"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
 export type Deps = {
@@ -48,13 +49,13 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
   const refuse = (reason: string, res: Response, userId?: string) => { log({ kind: "refused", reason, status: res.status, ...(userId ? { userId } : {}) }); return res; };
 
   return async (req) => {
-    if (!d.enabled()) return refuse("disabled", error(503, "api_error", "Companion's included usage is not switched on yet. Use your own Claude key in Settings for now."));
+    if (!d.enabled()) return refuse("disabled", error(503, "api_error", `${PRODUCT_S} included usage is not switched on yet. Use your own Claude key in Settings for now.`));
     const url = new URL(req.url);
     const token = tokenFromHeaders(req.headers);
-    if (!token) return refuse("no_token", error(401, "authentication_error", "Sign in to Companion again."));
+    if (!token) return refuse("no_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
     const user = await d.store.userByTokenHash(await hashToken(token));
-    if (!user) return refuse("unknown_token", error(401, "authentication_error", "Sign in to Companion again."));
-    if (user.status === "canceled" || user.status === "revoked") return refuse("inactive", error(403, "permission_error", "Your Companion plan is not active. Choose a plan, or use your own Claude key in Settings."), user.id);
+    if (!user) return refuse("unknown_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
+    if (user.status === "canceled" || user.status === "revoked") return refuse("inactive", error(403, "permission_error", `Your ${PRODUCT} plan is not active. Choose a plan, or use your own Claude key in Settings.`), user.id);
 
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
     const checked = checkRequest(req.method, url.pathname, await req.text());
@@ -65,8 +66,8 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       const b = budgetCheck(plan, await d.store.spent(user.id, now()), now());
       if (!b.ok) {
         const message = b.reason === "day"
-          ? "Today's included Companion usage is used up. It comes back at midnight UTC. To keep going now, add your own Claude key in Settings."
-          : "This month's included Companion usage is used up. It comes back on the 1st (UTC). To keep going now, add your own Claude key in Settings or change plan.";
+          ? `Today's included ${PRODUCT} usage is used up. It comes back at midnight UTC. To keep going now, add your own Claude key in Settings.`
+          : `This month's included ${PRODUCT} usage is used up. It comes back on the 1st (UTC). To keep going now, add your own Claude key in Settings or change plan.`;
         return refuse(`${b.reason}_limit`, error(402, "billing_error", message, { "x-companion-resets-at": new Date(b.resetsAt).toISOString() }), user.id);
       }
     }
@@ -105,7 +106,7 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       return new Response(text, { status: res.status, headers: back });
     } catch {
       await release();
-      return error(502, "api_error", "Companion could not reach Claude. Try again in a moment.");
+      return error(502, "api_error", `${PRODUCT} could not reach Claude. Try again in a moment.`);
     }
   };
 }

@@ -23,7 +23,7 @@ pub struct Entry {
     pub protect: Vec<String>,
 }
 #[derive(Deserialize)]
-struct Catalog { #[serde(rename = "copyBase")] copy_base: String, practices: Vec<Entry> }
+struct Catalog { practices: Vec<Entry> }
 
 pub const CATALOG_TEXT: &str = include_str!("../../sample/practices.json");
 fn catalog() -> &'static Catalog {
@@ -32,8 +32,8 @@ fn catalog() -> &'static Catalog {
 }
 /// Every practice, in the order a person meets them.
 pub fn entries() -> &'static [Entry] { &catalog().practices }
-/// The start of every copy's name ("Companion practice"), a placeholder like every name (rule 21).
-pub fn copy_base() -> &'static str { &catalog().copy_base }
+/// The start of every copy's name ("Squibby practice"), from protocol/names.json (rule 21).
+pub fn copy_base() -> &'static str { crate::names::practice_copy_base() }
 /// The first practice: the first run's, and the one used when a page names none.
 pub fn first() -> &'static Entry { &entries()[0] }
 
@@ -100,9 +100,11 @@ fn copy_into(src: &Path, dst: &Path) -> Result<(), String> {
 /// The first line of the house rules Companion writes into a practice copy. It says who wrote them (they show in Settings
 /// as this project's house rules), and it marks the folder as a copy Companion made, so Remove my copy never takes a
 /// folder the person made with the same name.
-pub const RULES_MARK: &str = "# Companion added these rules to its practice copy, so the fix cannot pass by changing the check.";
+pub const RULES_MARK: &str = concat!("# ", crate::product!(), " added these rules to its practice copy, so the fix cannot pass by changing the check.");
 /// The house rules for a copy: one "never edit" line per protected file. The engine enforces them in code before every
 /// action (runner/src/rules.ts), so a fix that changes the check is refused (rule 12), not only asked against in words.
+/// Is this the first line of a practice copy's house rules, as written now or under an earlier name of the product?
+pub fn is_rules_mark(line: &str) -> bool { line == RULES_MARK || (line.starts_with("# ") && line.ends_with(" added these rules to its practice copy, so the fix cannot pass by changing the check.")) }
 pub fn rules_text(e: &Entry) -> String { let mut s = format!("{RULES_MARK}\n"); for f in &e.protect { s.push_str(&format!("never edit {f}\n")); } s }
 
 /// Makes the practice folder and its house rules, or leaves nothing behind: a copy that fails halfway is removed. Only a
@@ -149,7 +151,7 @@ pub struct Record { pub practices: BTreeMap<String, Progress> }
 fn is_day(s: &str) -> bool { s.len() == 10 && s.bytes().enumerate().all(|(i, b)| if i == 4 || i == 7 { b == b'-' } else { b.is_ascii_digit() }) }
 /// A path a practice copy may have: directly in the home folder, with a practice copy's name.
 pub fn copy_path_ok(p: &Path, home: &Path) -> bool {
-    p.is_absolute() && p.parent() == Some(home) && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&format!("{} ", copy_base())))
+    p.is_absolute() && p.parent() == Some(home) && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| crate::names::practice_copy_bases().iter().any(|b| n.starts_with(&format!("{b} "))))
 }
 
 impl Record {
@@ -202,11 +204,11 @@ impl Record {
 pub fn removable(r: &Record, id: &str, home: &Path, current: &str, busy: bool) -> Result<PathBuf, String> {
     let path = r.practices.get(id).and_then(|p| p.path.clone()).ok_or("There is no practice copy to remove.".to_string())?;
     let p = PathBuf::from(&path);
-    if !copy_path_ok(&p, home) { return Err("That folder is not a practice copy, so Companion leaves it alone.".into()); }
+    if !copy_path_ok(&p, home) { return Err(concat!("That folder is not a practice copy, so ", crate::product!(), " leaves it alone.").into()); }
     let m = fs::symlink_metadata(&p).map_err(|_| "That practice copy is not there any more.".to_string())?;
-    if !m.is_dir() || m.is_symlink() { return Err("That is not the practice copy Companion made, so Companion leaves it alone.".into()); }
-    let ours = fs::symlink_metadata(p.join(".companion/rules.txt")).is_ok_and(|m| m.is_file()) && fs::read_to_string(p.join(".companion/rules.txt")).is_ok_and(|t| t.lines().next() == Some(RULES_MARK));
-    if !ours { return Err("That folder does not look like the practice copy Companion made, so Companion leaves it alone.".into()); }
+    if !m.is_dir() || m.is_symlink() { return Err(concat!("That is not the practice copy ", crate::product!(), " made, so ", crate::product!(), " leaves it alone.").into()); }
+    let ours = fs::symlink_metadata(p.join(".companion/rules.txt")).is_ok_and(|m| m.is_file()) && fs::read_to_string(p.join(".companion/rules.txt")).is_ok_and(|t| t.lines().next().is_some_and(is_rules_mark));
+    if !ours { return Err(concat!("That folder does not look like the practice copy ", crate::product!(), " made, so ", crate::product!(), " leaves it alone.").into()); }
     if busy && current == path { return Err("Something is still working on this practice. Wait for it to finish, or press Stop.".into()); }
     Ok(p)
 }
@@ -274,13 +276,13 @@ mod tests {
             assert!(!e.copy_name.is_empty() && !e.protect.is_empty(), "{}", e.id);
         }
         assert_eq!(first().id, "signup");
-        assert_eq!(copy_base(), "Companion practice");
+        assert_eq!(copy_base(), crate::practice_base!());
     }
     #[test]
     fn the_source_is_found_in_the_app_then_the_override_then_next_to_the_source() {
         let source = |exe: &Path, env: Option<&str>| source_of("stuck-signup", exe, env);
         let root = tmp("src");
-        let app = root.join("Companion.app/Contents"); fs::create_dir_all(app.join("Resources/sample/stuck-signup")).unwrap(); fs::write(app.join("Resources/sample/stuck-signup/package.json"), "{}").unwrap();
+        let app = root.join(concat!(crate::product!(), ".app/Contents")); fs::create_dir_all(app.join("Resources/sample/stuck-signup")).unwrap(); fs::write(app.join("Resources/sample/stuck-signup/package.json"), "{}").unwrap();
         assert_eq!(source(&app.join("MacOS/companion-app"), None), Some(app.join("Resources/sample/stuck-signup")));
         let env = root.join("env"); fs::create_dir_all(env.join("stuck-signup")).unwrap(); fs::write(env.join("stuck-signup/package.json"), "{}").unwrap();
         assert_eq!(source(Path::new("/x/y/companion-app"), Some(env.to_str().unwrap())), Some(env.join("stuck-signup")));
@@ -293,20 +295,20 @@ mod tests {
     #[test]
     fn each_copy_is_named_after_its_practice_with_a_number_only_when_the_name_is_taken() {
         let h = Path::new("/Users/sam");
-        assert_eq!(destination(h, signup(), |_| false), Some(h.join("Companion practice signup page")));
-        assert_eq!(destination(h, signup(), |p| p.ends_with("Companion practice signup page")), Some(h.join("Companion practice signup page 2")));
+        assert_eq!(destination(h, signup(), |_| false), Some(h.join(concat!(crate::practice_base!(), " signup page"))));
+        assert_eq!(destination(h, signup(), |p| p.ends_with(concat!(crate::practice_base!(), " signup page"))), Some(h.join(concat!(crate::practice_base!(), " signup page 2"))));
         let route = pick(Some("route")).unwrap();
-        assert_eq!(destination(h, route, |p| p.ends_with("Companion practice signup page")), Some(h.join("Companion practice missing page")));
+        assert_eq!(destination(h, route, |p| p.ends_with(concat!(crate::practice_base!(), " signup page"))), Some(h.join(concat!(crate::practice_base!(), " missing page"))));
         let names: Vec<PathBuf> = entries().iter().map(|e| destination(h, e, |_| false).unwrap()).collect();
         for (i, a) in names.iter().enumerate() { for b in &names[i + 1..] { assert_ne!(a, b); } }
     }
     #[test]
     fn a_name_with_undo_history_left_by_an_old_copy_counts_as_taken() {
         let root = tmp("hist"); let (home, data) = (root.join("home"), root.join("data")); fs::create_dir_all(&home).unwrap();
-        let old = home.join("Companion practice signup page");
+        let old = home.join(concat!(crate::practice_base!(), " signup page"));
         fs::create_dir_all(shadow_of(&data, &old)).unwrap();   // the old copy is gone, but Companion still has its history
         assert!(taken(&data)(&old));
-        assert!(!taken(&data)(&home.join("Companion practice signup page 2")));
+        assert!(!taken(&data)(&home.join(concat!(crate::practice_base!(), " signup page 2"))));
         // the runner keeps a project's history under the first 16 characters of the sha256 of its path
         assert_eq!(shadow_of(Path::new("/d"), Path::new("/Users/sam/x")), PathBuf::from(format!("/d/runner/shadow/{}.git", &sha2::Sha256::digest(b"/Users/sam/x").iter().map(|b| format!("{b:02x}")).collect::<String>()[..16])));
         let _ = fs::remove_dir_all(&root);
@@ -328,13 +330,13 @@ mod tests {
         let src = root.join("src"); fs::create_dir_all(&src).unwrap(); fs::write(src.join("package.json"), "{}").unwrap();
         assert!(make(&src, Path::new(""), signup(), exists_at).is_err()); assert!(make(&src, Path::new("relative"), signup(), exists_at).is_err());
         let home = root.join("home"); fs::create_dir_all(&home).unwrap();
-        std::os::unix::fs::symlink("/nowhere", home.join("Companion practice signup page")).unwrap();   // a link to nothing holds the first name
+        std::os::unix::fs::symlink("/nowhere", home.join(concat!(crate::practice_base!(), " signup page"))).unwrap();   // a link to nothing holds the first name
         let made = make(&src, &home, signup(), exists_at).unwrap();
-        assert_eq!(made, home.join("Companion practice signup page 2")); assert!(made.join("package.json").is_file());
+        assert_eq!(made, home.join(concat!(crate::practice_base!(), " signup page 2"))); assert!(made.join("package.json").is_file());
         // a source that cannot be copied leaves no half made folder
         let bad = root.join("missing");
         assert!(make(&bad, &home, signup(), exists_at).is_err());
-        assert!(!home.join("Companion practice signup page 3").exists());
+        assert!(!home.join(concat!(crate::practice_base!(), " signup page 3")).exists());
         let _ = fs::remove_dir_all(&root);
     }
     // Review fix (20 Oct 2026): names are never freed (an old copy's undo history keeps its name taken), and a copy that
@@ -343,7 +345,7 @@ mod tests {
     fn when_every_name_is_taken_nothing_is_made_and_a_folder_of_the_persons_is_never_touched() {
         let root = tmp("full"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
         let src = root.join("src"); fs::create_dir_all(&src).unwrap(); fs::write(src.join("package.json"), "{}").unwrap();
-        let theirs = home.join("Companion practice signup page"); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
+        let theirs = home.join(concat!(crate::practice_base!(), " signup page")); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
         assert_eq!(destination(&home, signup(), |_| true), None);
         let err = make(&src, &home, signup(), |_| true).unwrap_err();
         assert!(err.contains("name"), "{err}");
@@ -356,7 +358,7 @@ mod tests {
         // `taken` says the name is free (the folder appeared a moment after the name was chosen): the copy refuses and leaves it.
         let root = tmp("raced"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample/stuck-signup");
-        let theirs = home.join("Companion practice signup page"); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
+        let theirs = home.join(concat!(crate::practice_base!(), " signup page")); fs::create_dir_all(&theirs).unwrap(); fs::write(theirs.join("mine.txt"), "mine").unwrap();
         assert!(make(&src, &home, signup(), |_| false).is_err());
         assert_eq!(fs::read_to_string(theirs.join("mine.txt")).unwrap(), "mine");
         assert_eq!(fs::read_dir(&theirs).unwrap().count(), 1);   // nothing copied into it, no house rules written
@@ -415,18 +417,18 @@ mod tests {
     fn the_record_keeps_only_paths_and_dates_and_reads_back_what_it_wrote() {
         let home = Path::new("/Users/sam");
         let mut r = Record::default();
-        r.started("signup", &home.join("Companion practice signup page"), D);
-        assert!(r.mark("signup", "found", D, &home.join("Companion practice signup page")));
-        assert!(r.mark("signup", "done", "2026-10-20", &home.join("Companion practice signup page")));
+        r.started("signup", &home.join(concat!(crate::practice_base!(), " signup page")), D);
+        assert!(r.mark("signup", "found", D, &home.join(concat!(crate::practice_base!(), " signup page"))));
+        assert!(r.mark("signup", "done", "2026-10-20", &home.join(concat!(crate::practice_base!(), " signup page"))));
         let text = r.to_text();
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(v, serde_json::json!({ "version": 1, "practices": { "signup": { "path": "/Users/sam/Companion practice signup page", "started": D, "found": D, "done": "2026-10-20" } } }));
+        assert_eq!(v, serde_json::json!({ "version": 1, "practices": { "signup": { "path": concat!("/Users/sam/", crate::practice_base!(), " signup page"), "started": D, "found": D, "done": "2026-10-20" } } }));
         let (back, damaged) = Record::parse(Some(&text), home);
         assert!(!damaged); assert_eq!(back, r);
     }
     #[test]
     fn marking_counts_only_for_the_recorded_copy_and_a_stage_on_the_list() {
-        let home = Path::new("/Users/sam"); let p = home.join("Companion practice signup page");
+        let home = Path::new("/Users/sam"); let p = home.join(concat!(crate::practice_base!(), " signup page"));
         let mut r = Record::default();
         assert!(!r.mark("signup", "found", D, &p));   // never started
         r.started("signup", &p, D);
@@ -438,11 +440,11 @@ mod tests {
     }
     #[test]
     fn a_fresh_copy_keeps_a_done_practice_done() {
-        let home = Path::new("/Users/sam"); let p = home.join("Companion practice signup page");
+        let home = Path::new("/Users/sam"); let p = home.join(concat!(crate::practice_base!(), " signup page"));
         let mut r = Record::default(); r.started("signup", &p, D); r.mark("signup", "done", D, &p);
-        r.started("signup", &home.join("Companion practice signup page 2"), "2026-10-21");
+        r.started("signup", &home.join(concat!(crate::practice_base!(), " signup page 2")), "2026-10-21");
         let s = &r.practices["signup"];
-        assert_eq!((s.path.as_deref(), s.found.as_deref(), s.done.as_deref()), (Some("/Users/sam/Companion practice signup page 2"), None, Some(D)));
+        assert_eq!((s.path.as_deref(), s.found.as_deref(), s.done.as_deref()), (Some(concat!("/Users/sam/", crate::practice_base!(), " signup page 2")), None, Some(D)));
     }
     #[test]
     fn the_record_is_checked_when_read_and_a_damaged_one_reads_as_empty() {
@@ -451,23 +453,23 @@ mod tests {
         for bad in ["not json", "[]", "{\"practices\": 3}", "\u{0}"] { let (r, damaged) = Record::parse(Some(bad), home); assert!(damaged, "{bad}"); assert!(r.practices.is_empty()); }
         // An id not in the catalog, a path outside the home folder, a path that is not a practice copy's name and a date that
         // is not a date are each dropped; the rest stays.
-        let text = r#"{"version":1,"practices":{
-            "signup":{"path":"/Users/sam/Companion practice signup page","started":"2026-10-19"},
-            "deploy":{"path":"/Users/sam/Companion practice deploy","started":"2026-10-19"},
+        let text = concat!(r#"{"version":1,"practices":{
+            "signup":{"path":"/Users/sam/"#, crate::product!(), r#" practice signup page","started":"2026-10-19"},
+            "deploy":{"path":"/Users/sam/"#, crate::product!(), r#" practice deploy","started":"2026-10-19"},
             "route":{"path":"/etc","started":"2026-10-19"},
-            "import":{"path":"/Users/sam/Projects/Companion practice renamed file","started":"2026-10-19"},
+            "import":{"path":"/Users/sam/Projects/"#, crate::product!(), r#" practice renamed file","started":"2026-10-19"},
             "setting":{"path":"/Users/sam/My shop","started":"2026-10-19"},
-            "open-table":{"path":"/Users/sam/Companion practice open table","started":"yesterday"}}}"#;
+            "open-table":{"path":"/Users/sam/"#, crate::product!(), r#" practice open table","started":"yesterday"}}}"#);
         let (r, damaged) = Record::parse(Some(text), home);
         assert!(damaged);
         assert_eq!(r.practices.keys().collect::<Vec<_>>(), ["signup"]);
     }
     #[test]
     fn the_list_says_for_each_practice_whether_its_copy_is_still_there() {
-        let root = tmp("list"); let home = root.join("home"); fs::create_dir_all(home.join("Companion practice signup page")).unwrap();
+        let root = tmp("list"); let home = root.join("home"); fs::create_dir_all(home.join(concat!(crate::practice_base!(), " signup page"))).unwrap();
         let mut r = Record::default();
-        r.started("signup", &home.join("Companion practice signup page"), D);
-        r.started("route", &home.join("Companion practice missing page"), D);
+        r.started("signup", &home.join(concat!(crate::practice_base!(), " signup page")), D);
+        r.started("route", &home.join(concat!(crate::practice_base!(), " missing page")), D);
         let v = r.listed();
         let rows = v["practices"].as_array().unwrap();
         assert_eq!(rows.len(), 5);
@@ -500,7 +502,7 @@ mod tests {
     #[test]
     fn a_folder_the_person_made_with_the_same_name_a_link_or_a_file_is_never_removed() {
         let root = tmp("notours"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
-        let p = home.join("Companion practice signup page");
+        let p = home.join(concat!(crate::practice_base!(), " signup page"));
         let mut r = Record::default(); r.started("signup", &p, D);
         fs::create_dir_all(&p).unwrap(); fs::write(p.join("notes.txt"), "mine").unwrap();   // the person's own folder, same name
         assert!(removable(&r, "signup", &home, "", false).is_err());
@@ -515,13 +517,27 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
     #[test]
+    fn a_copy_made_under_the_earlier_name_of_the_product_is_still_ours_to_remove() {
+        let root = tmp("earlier"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
+        let earlier = crate::names::names().earlier_practice_copy_bases[0].clone();
+        assert!(!earlier.is_empty() && earlier != copy_base());
+        let p = home.join(format!("{earlier} signup page"));
+        let mut r = Record::default(); r.started("signup", &p, D);
+        fs::create_dir_all(p.join(".companion")).unwrap();
+        fs::write(p.join(".companion/rules.txt"), "# Companion added these rules to its practice copy, so the fix cannot pass by changing the check.\nnever edit package.json\n").unwrap();
+        assert_eq!(removable(&r, "signup", &home, "", false), Ok(p.clone()));
+        fs::write(p.join(".companion/rules.txt"), "# My own rules\nnever edit package.json\n").unwrap();   // a person's own first line is never taken for ours
+        assert!(removable(&r, "signup", &home, "", false).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
     fn removing_moves_the_copy_to_the_trash_and_the_record_forgets_the_path_but_not_that_it_was_done() {
         let root = tmp("remove"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
         let (mut r, p) = copy_for(&home, "signup"); r.mark("signup", "done", D, &p);
         let trash = root.join("Trash"); fs::create_dir_all(&trash).unwrap();
         let moved = remove(&mut r, "signup", &home, "", false, |x: &Path| fs::rename(x, trash.join(x.file_name().unwrap())).map_err(|e| e.to_string())).unwrap();
         assert_eq!(moved, p);
-        assert!(!p.exists() && trash.join("Companion practice signup page/package.json").is_file());
+        assert!(!p.exists() && trash.join(concat!(crate::practice_base!(), " signup page/package.json")).is_file());
         assert_eq!(r.practices["signup"].path, None); assert_eq!(r.practices["signup"].done.as_deref(), Some(D));
         // A refused Trash leaves the copy where it is, and the record still points at it.
         let (mut r2, p2) = copy_for(&home, "route");
@@ -539,9 +555,9 @@ mod tests {
         let trash = root.join("Trash"); fs::create_dir_all(&trash).unwrap();
         let out = restart(&mut r, e, &src, &home, &data, "", false, "2026-10-20", |x: &Path| fs::rename(x, trash.join(x.file_name().unwrap())).map_err(|e| e.to_string())).unwrap();
         assert!(out.kept_old.is_none());
-        assert_eq!(fs::read_to_string(trash.join("Companion practice signup page/public/signup.js")).unwrap(), "fixed by the person");
+        assert_eq!(fs::read_to_string(trash.join(concat!(crate::practice_base!(), " signup page/public/signup.js"))).unwrap(), "fixed by the person");
         // The fresh copy never takes over the old copy's undo history, so it gets the next name.
-        assert_eq!(out.path, home.join("Companion practice signup page 2"));
+        assert_eq!(out.path, home.join(concat!(crate::practice_base!(), " signup page 2")));
         for f in files_under(&src) { assert_eq!(fs::read(src.join(&f)).unwrap(), fs::read(out.path.join(&f)).unwrap(), "{f}"); }
         assert_eq!(r.practices["signup"].path.as_deref(), out.path.to_str());
         // A refused Trash leaves both copies in place: the old one untouched, the new one fresh.
@@ -592,7 +608,7 @@ mod tests {
     fn the_copies_listed_for_removal_are_only_the_recorded_ones_still_there() {
         let root = tmp("all"); let home = root.join("home"); fs::create_dir_all(&home).unwrap();
         let (mut r, p) = copy_for(&home, "signup");
-        r.started("route", &home.join("Companion practice missing page"), D);   // recorded, but gone
+        r.started("route", &home.join(concat!(crate::practice_base!(), " missing page")), D);   // recorded, but gone
         assert_eq!(copies(&r, &home), vec![("signup".to_string(), p)]);
         let _ = fs::remove_dir_all(&root);
     }

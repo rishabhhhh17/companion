@@ -145,12 +145,12 @@ pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Optio
     // Both from the developer's setup or both from the installed app, never a mix of two different engines.
     let (bun, runner) = match (dev_bun, dev_runner) {
         (Some(b), Some(r)) => (PathBuf::from(b), PathBuf::from(r)),
-        (Some(_), None) => return Err("Companion cannot find the runner. Run app/scripts/dev-setup.sh".into()),
-        (None, Some(_)) => return Err("Companion cannot find Bun. Run app/scripts/dev-setup.sh".into()),
+        (Some(_), None) => return Err(concat!(crate::product!(), " cannot find the runner. Run app/scripts/dev-setup.sh").into()),
+        (None, Some(_)) => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         (None, None) => match (in_bundle("bin/bun"), in_bundle("runner/src/main.ts")) {
             (Some(b), Some(r)) => (b, r),
-            _ if bundle.is_some() => return Err("Companion's engine is missing from this copy of the app. Download Companion again and replace this one.".into()),
-            _ => return Err("Companion cannot find Bun. Run app/scripts/dev-setup.sh".into()),
+            _ if bundle.is_some() => return Err(concat!(crate::product_s!(), " engine is missing from this copy of the app. Download ", crate::product!(), " again and replace this one.").into()),
+            _ => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         },
     };
     Ok(Locations { bun, runner, data, env: allowed_env(&dev) })
@@ -274,7 +274,7 @@ pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Ch
             if shared.quitting.load(Ordering::SeqCst) { return; }
             failures = if started.elapsed() >= t.healthy { 0 } else { failures + 1 };
             let Some(wait) = backoff(failures.max(1), &t).filter(|_| failures < t.give_up_after) else {
-                emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": "The engine keeps stopping. Quit and open Companion again." }));
+                emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": concat!("The engine keeps stopping. Quit and open ", crate::product!(), " again.") }));
                 return;
             };
             let until = Instant::now() + wait;
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn an_installed_app_uses_the_engine_that_came_with_it_and_the_developer_file_still_wins() {
         let root = std::env::temp_dir().join(format!("companion-engine-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
-        let eng = root.join("Companion.app/Contents/Resources/engine");
+        let eng = root.join(concat!(crate::product!(), ".app/Contents/Resources/engine"));
         std::fs::create_dir_all(eng.join("bin")).unwrap(); std::fs::create_dir_all(eng.join("runner/src")).unwrap();
         std::fs::write(eng.join("bin/bun"), "x").unwrap(); std::fs::write(eng.join("runner/src/main.ts"), "x").unwrap();
         let none = |_: &str| None;
@@ -590,7 +590,7 @@ mod tests {
         let l = locations_with_bundle(Some(r#"{"bun":"/dev/bun","runner":"/dev/r"}"#), &none, "/d".into(), Some(eng.clone())).unwrap();
         assert_eq!((l.bun, l.runner), (PathBuf::from("/dev/bun"), PathBuf::from("/dev/r")));
         // the app's own executable leads to the engine folder
-        assert_eq!(bundled_engine(&root.join("Companion.app/Contents/MacOS/companion-app")), Some(root.join("Companion.app/Contents/Resources/engine")));
+        assert_eq!(bundled_engine(&root.join(concat!(crate::product!(), ".app/Contents/MacOS/companion-app"))), Some(root.join(concat!(crate::product!(), ".app/Contents/Resources/engine"))));
         assert_eq!(bundled_engine(std::path::Path::new("/repo/app/src-tauri/target/debug/companion-app")), None);
         std::fs::remove_file(eng.join("bin/bun")).unwrap();
         let e = locations_with_bundle(None, &none, "/d".into(), Some(eng)).unwrap_err();

@@ -187,7 +187,7 @@ mod tests {
         // First look: Safari full screen on the Mac's display, which now reports nothing kept free. Not recorded.
         let full = [w(SAFARI, 0, DISPLAY)];
         assert_eq!(seen.look(&full, SAFARI, &[(DISPLAY, DISPLAY)]), vec![(DISPLAY, false)], "unknown means the measured size check");
-        assert!(front_app_is_full_screen(&full, SAFARI, &seen.look(&full, SAFARI, &[(DISPLAY, DISPLAY)])), "a full screen video hides Companion");
+        assert!(front_app_is_full_screen(&full, SAFARI, &seen.look(&full, SAFARI, &[(DISPLAY, DISPLAY)])), concat!("a full screen video hides ", crate::product!()));
         // Out of full screen: the menu bar is back and the display keeps room. Recorded as keeping room.
         assert_eq!(seen.look(&[w(SAFARI, 0, WORK)], SAFARI, &[MAC_AREAS]), vec![MAC]);
         // Full screen again, with the desktop picture still listed (not measured either): it still counts.

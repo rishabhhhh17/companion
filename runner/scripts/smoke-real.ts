@@ -19,6 +19,7 @@ import { release as releaseShotDrive } from "../src/ramdisk.ts";
 import { SdkEngine, SessionTotals } from "../src/sdkEngine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { parseArgs, runCases, type Case, type CaseCtx } from "./realrun-harness.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 // ---------- what each case may and may not leave on disk ----------
 
@@ -192,7 +193,7 @@ export const SMOKE_CASES: Case[] = [
   },
   {
     name: "resumed-companion-folder", models: [SONNET], estimateUsd: 0.08, capUsd: 0.2, timeoutS: 180,
-    what: "a conversation continued later, in the Claude Code folder Companion owns on the key route (its data folder), as the app does",
+    what: `a conversation continued later, in the Claude Code folder ${PRODUCT} owns on the key route (its data folder), as the app does`,
     async run(ctx) {
       const project = ctx.scratch("project"), data = ctx.scratch("data");
       const { CLAUDE_CONFIG_DIR: _shell, ...parent } = process.env;
@@ -205,7 +206,7 @@ export const SMOKE_CASES: Case[] = [
       if (!one.sessionId) { ctx.note("the first round named no conversation"); return false; }
       const two = await ask("What word did I ask you to remember? Reply with only that word.", one.sessionId);
       const saved = conversations(own);
-      ctx.note(`second answer ${JSON.stringify(two.text.trim())}; same conversation: ${two.sessionId === one.sessionId}; saved in Companion's folder: ${saved.length}; new in the throwaway folder: ${added(throwaway, conversations(ctx.configDir)).length}; in ~/.claude: ${inHomeClaude(project)}`);
+      ctx.note(`second answer ${JSON.stringify(two.text.trim())}; same conversation: ${two.sessionId === one.sessionId}; saved in ${PRODUCT_S} folder: ${saved.length}; new in the throwaway folder: ${added(throwaway, conversations(ctx.configDir)).length}; in ~/.claude: ${inHomeClaude(project)}`);
       return /plum/i.test(two.text) && saved.length >= 1 && added(throwaway, conversations(ctx.configDir)).length === 0 && !inHomeClaude(project);
     },
   },
