@@ -160,16 +160,35 @@ export function computerToolFor(model: string): typeof TOOLSET | null {
   return ruleOf(model)?.computer.includes(TOOLSET) ? TOOLSET : null;
 }
 
-type UsageLike = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | null | undefined;
+// ---------- web search (Second Look only) ----------
+// The web search server tool on the Messages API, for Second Look's checks on the plain API lanes (M14). Source: Anthropic's
+// web search tool page, platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool, "Usage and pricing", read on
+// 22 Oct 2026: "$10 USD per 1,000 searches, plus standard token costs for search-generated content"; a search that fails
+// is not billed; the count is usage.server_tool_use.web_search_requests. The results a search brings back are counted as
+// input tokens, so they are already in the token cost. UNPROVEN until a real run (check the live page again before shipping).
+/** Dollars for one web search. */
+export const WEB_SEARCH_USD = 0.01;
+/** The tool Companion sends: the basic web search, called directly by the model. The page names it for every current model
+ *  (Haiku 4.5 included); the newer versions run searches from inside code execution (dynamic filtering), which Second Look
+ *  does not need. The usage proxy forwards only this (usage-proxy/src/filter.ts). */
+export const WEB_SEARCH_TOOL = "web_search_20250305";
+/** The most searches one Second Look check may make, whatever is saved: the settings registry's top for secondLook.searches,
+ *  and what the usage proxy allows. */
+export const MAX_SEARCHES = 5;
+
+type UsageLike = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; server_tool_use?: { web_search_requests?: number } | null } | null | undefined;
 const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
+/** How many web searches a reply made (whole searches only). */
+export const searchesOf = (u: UsageLike): number => Math.floor(n(u && typeof u === "object" ? u.server_tool_use?.web_search_requests : 0));
 /** What a reply cost by its token counts, at this model's list price (the long prompt card when its prompt is over the
- *  line). One request's usage at a time: the card is chosen per request. An estimate: always labelled as one where shown. */
+ *  line), plus its web searches. One request's usage at a time: the card is chosen per request. An estimate: always
+ *  labelled as one where shown. */
 export function estimateUsd(model: string, u: UsageLike): number {
   if (!u || typeof u !== "object") return 0;
   const r = ruleOf(model);
   const prompt = n(u.input_tokens) + n(u.cache_read_input_tokens) + n(u.cache_creation_input_tokens);
   const p = r ? (r.long && prompt > r.long.over ? r.long.price : r.price) : UNKNOWN_PRICE;
-  return (n(u.input_tokens) * p.in + n(u.output_tokens) * p.out + n(u.cache_read_input_tokens) * p.cacheRead + n(u.cache_creation_input_tokens) * p.cacheWrite) / 1e6;
+  return (n(u.input_tokens) * p.in + n(u.output_tokens) * p.out + n(u.cache_read_input_tokens) * p.cacheRead + n(u.cache_creation_input_tokens) * p.cacheWrite) / 1e6 + searchesOf(u) * WEB_SEARCH_USD;
 }
 
 /** A request, in the parts that decide whether a model accepts it. via "sdk": sent through the pinned Agent SDK, which can

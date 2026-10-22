@@ -132,6 +132,9 @@ export type BisectUndo = Envelope & { type: "bisect.undo"; project: string; chec
 // The error explainer: text the person selected in another app, read on the hotkey (Rust sends it, never a page). The runner
 // hides secrets in it before it goes anywhere.
 export type ErrorExplain = Envelope & { type: "error.explain"; req: string; app: string; text: string; project?: string };
+// Second Look (M14): an AI answer the person selected in another app, read on its hotkey with the light first (Rust sends it,
+// never a page). The runner hides secrets in it before it goes anywhere, and never logs it.
+export type SecondLookCheck = Envelope & { type: "secondlook.check"; req: string; app: string; text: string; project?: string };
 // Your turn (F16, F17): after a fix that made the same small change in two places, the person asks to make the second one
 // themselves (try), then asks for the proof ladder on their own change (check). Each names the task's receipt checkpoint.
 export type TeachTry = Envelope & { type: "teach.try"; project: string; checkpoint: string };
@@ -144,7 +147,7 @@ export type EngineWarm = Envelope & { type: "engine.warm" };
 // engine applies that is not its usual value (a missing name is its usual value); projectValues: the named project's own.
 // Each one replaces the one before. The engine checks every value again and keeps them in memory only.
 export type SettingsApply = Envelope & { type: "settings.apply"; values: Record<string, unknown>; project?: string; projectValues?: Record<string, unknown> };
-export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
+export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -293,6 +296,16 @@ export type BisectUndone = Envelope & { type: "bisect.undone"; project: string; 
 // The error explainer's answer: two plain sentences (none when it could not be explained, with reason), where it lives in the
 // project when that could be confirmed, the first error line, and the selection with secrets hidden (the evidence for Fix it).
 export type ErrorExplained = Envelope & { type: "error.explained"; req: string; project?: string; ok: boolean; sentences: string[]; where?: Problem; excerpt: string; evidence: string; reason?: string; usdEstimate: number };
+// Second Look's answer (runner/src/secondlook.ts): a verdict when ok (solid, check, or I can't tell), the items to check (each
+// with what looks wrong, how to check it, and a page a web search found when there is one), what it checked, what it could
+// not tell, whether it searched the web (search, searches), and what it cost. Not ok: reason says why, in plain words.
+export const LOOK_KINDS = ["number", "code", "fact", "citation", "logic", "other"] as const;
+export const LOOK_SEARCH = ["searched", "not_needed", "off", "unavailable"] as const;
+export type SecondLookItemView = { kind: (typeof LOOK_KINDS)[number]; claim: string; issue: string; verify: string; by: "recomputed" | "model"; source?: { url: string; title: string } };
+export type SecondLookResult = Envelope & {
+  type: "secondlook.result"; req: string; project?: string; ok: boolean; verdict?: "solid" | "check" | "cant_tell";
+  items: SecondLookItemView[]; checked: string[]; cantTell: string[]; search: (typeof LOOK_SEARCH)[number]; searches: number; reason?: string; usdEstimate: number;
+};
 // What the engine took from settings.apply (names only) and what it refused (each then at its usual value), never values.
 export type SettingsApplied = Envelope & { type: "settings.applied"; accepted: string[]; refused: string[] };
 // The state of one watch. since: when it came to this state. history: the states it has been in, newest last (at most 20).
@@ -305,7 +318,7 @@ export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watc
 export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
 export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
 export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
-export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -355,6 +368,14 @@ const imagesOk: Check = opt("images", (m) => (Array.isArray(m.images) && m.image
 const practiceOk: Check = opt("practice", (m) => (typeof m.practice === "string" && /^[a-z][a-z-]{0,39}$/.test(m.practice) ? null : '"practice" must be a practice id'));
 const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
 
+const lookItemOk = (i: unknown): boolean => {
+  if (typeof i !== "object" || i === null || Array.isArray(i)) return false;
+  const o = i as Record<string, unknown>;
+  const src = o.source as Record<string, unknown> | undefined;
+  return (LOOK_KINDS as readonly string[]).includes(o.kind as string) && ["claim", "issue", "verify"].every((k) => typeof o[k] === "string") && ["recomputed", "model"].includes(o.by as string)
+    && (src === undefined || (typeof src === "object" && src !== null && typeof src.url === "string" && /^https?:\/\/[^\s]+$/i.test(src.url) && typeof src.title === "string"));
+};
+
 const COMMANDS: Record<string, Check[]> = {
   "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk, practiceOk],
   "tasks.list": [str("project")],
@@ -381,6 +402,7 @@ const COMMANDS: Record<string, Check[]> = {
   "bisect.start": [str("project"), str("agent")],
   "bisect.undo": [str("project"), str("checkpoint"), (m) => (m.confirm === true ? null : 'undoing a task needs "confirm": true')],
   "error.explain": [str("req"), str("app"), str("text"), opt("project", str("project"))],
+  "secondlook.check": [str("req"), str("app"), str("text"), opt("project", str("project"))],
   "teach.try": [str("project"), str("checkpoint")],
   "teach.check": [str("project"), str("agent"), str("checkpoint")],
   "walk.list": [str("project")],
@@ -447,6 +469,11 @@ const EVENTS: Record<string, Check[]> = {
   "bisect.result": [str("project"), str("agent"), oneOf("outcome", ["found", "not_failing", "already_failing", "after_last_task", "outside_change", "unsure", "too_few", "cannot_check", "busy", "failed", "cancelled"]), num("runs"), num("maxRuns"),
     opt("undo", oneOf("undo", ["safe", "show_only"])), (m) => (m.outcome !== "found" || (typeof m.task === "object" && m.task !== null && typeof (m.task as Record<string, unknown>).checkpoint === "string") ? null : 'a found task needs "task" with its "checkpoint"')],
   "bisect.undone": [str("project"), str("checkpoint"), bool("ok"), list("reverted")],
+  "secondlook.result": [str("req"), bool("ok"), list("items"), list("checked"), list("cantTell"), oneOf("search", [...LOOK_SEARCH]), num("searches"), num("usdEstimate"),
+    (m) => (m.ok !== true || ["solid", "check", "cant_tell"].includes(m.verdict as string) ? null : 'an answer needs "verdict": solid, check or cant_tell'),
+    (m) => (m.verdict === undefined || ["solid", "check", "cant_tell"].includes(m.verdict as string) ? null : '"verdict" must be solid, check or cant_tell'),
+    (m) => ((m.items as unknown[]).every(lookItemOk) ? null : 'each item needs kind, claim, issue, verify and by, and a source only as a web address with a title'),
+    (m) => ([...(m.checked as unknown[]), ...(m.cantTell as unknown[])].every((x) => typeof x === "string") ? null : '"checked" and "cantTell" must be lists of text')],
   "error.explained": [str("req"), bool("ok"), list("sentences"), (m) => (typeof m.excerpt === "string" && typeof m.evidence === "string" ? null : 'missing text fields "excerpt" and "evidence"'), num("usdEstimate")],
   "walk.lessons": [str("project"), list("lessons")],
   // link: the one web page the step is about, shown as an Open button and opened only on the person's press.

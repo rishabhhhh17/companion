@@ -57,7 +57,7 @@ const vercel = new VercelCli(undefined, undefined, undefined, slow);
 const gh = new GhCli(undefined, undefined, slow);
 const watchList: { engine: WatchEngine | null } = { engine: null };
 const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
-const runner = new AgentRunner({ settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const runner = new AgentRunner({ settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -92,7 +92,7 @@ process.on("unhandledRejection", survive("unhandledRejection"));
 process.on("uncaughtException", survive("uncaughtException"));
 
 /** A group that has just been switched off stops its tools here: Flow ends the tasks and checks that are running, Guide the
- *  lessons and Show me, Voice what Prompt help and the error explainer were reading. (The shell stops its own: the
+ *  lessons and Show me, Voice what Prompt help, the error explainer and Second Look were reading. (The shell stops its own: the
  *  microphone, speech, the pointer, a conversion.) What they made stays, and Undo of it still works. */
 function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, browser, assist, watches }); }
 

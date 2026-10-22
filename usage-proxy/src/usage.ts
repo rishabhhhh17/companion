@@ -2,18 +2,24 @@
 // stream that carry "usage", and holds at most one unfinished line (capped) in a private field.
 import { estimateUsd } from "../../runner/src/models.ts";
 
-export type Usage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number };
-const ZERO = (): Usage => ({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
+/** web_search_requests: Second Look's web searches (usage.server_tool_use.web_search_requests), each priced on top of the tokens. */
+export type Usage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; web_search_requests: number };
+const ZERO = (): Usage => ({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? Math.floor(x) : 0);
 const FIELDS = ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"] as const;
 const MAX_LINE = 64 * 1024;
 
 /** Dollars at the app's own price table; a model the table does not know is priced at the dearest one. */
-export const costOf = (model: string, u: Usage): number => estimateUsd(model, u);
+export const costOf = (model: string, u: Usage): number => estimateUsd(model, { ...u, server_tool_use: { web_search_requests: u.web_search_requests ?? 0 } });
+/** The counts in one usage object of a reply. */
+function read(out: Usage, u: any, keep: (a: number, b: number) => number): void {
+  for (const f of FIELDS) out[f] = keep(out[f], num(u?.[f]));
+  out.web_search_requests = keep(out.web_search_requests, num(u?.server_tool_use?.web_search_requests));
+}
 
 export function usageFromJson(text: string): Usage {
   const out = ZERO();
-  try { const u = JSON.parse(text)?.usage; if (u) for (const f of FIELDS) out[f] = num(u[f]); } catch { /* not a reply */ }
+  try { const u = JSON.parse(text)?.usage; if (u) read(out, u, (_a, b) => b); } catch { /* not a reply */ }
   return out;
 }
 
@@ -44,6 +50,6 @@ export class UsageSniffer {
     let e: any;
     try { e = JSON.parse(line.slice(5)); } catch { return; }
     const u = e?.type === "message_start" ? e.message?.usage : e?.type === "message_delta" ? e.usage : null;
-    if (u) for (const f of FIELDS) this.#u[f] = Math.max(this.#u[f], num(u[f]));
+    if (u) read(this.#u, u, Math.max);
   }
 }
