@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The water character is in the app: 22 Oct 2026
+
+- **The character on the screen edge is now the water creature**, with a different picture for each thing it is doing: asleep when off, a plain look when idle, a light bulb when thinking, a laptop when working, a magnifying glass when checking, a wave when it needs you, a splash when something is proven, and a half hidden "uh oh" when something went wrong.
+- **It swims** when it comes to the window it is about, and splashes on a big win. A soft glow around it still shows when it is listening, looking at your screen, waiting for you, or done.
+- **Two things were left out on purpose:** the angry face (this is a tool, not a mood) and the sad face (a broken project is bad enough without a guilt trip). The Apple logo on its laptop was removed.
+- **Not tried on a real Mac yet.** It looks right at the size of the dock on a light and a dark background; the real look comes in the Mac session.
 ## Drop a document in and ask about it: 22 Oct 2026
 
 - **You can now drag a PDF, Word, rich text, OpenDocument or Excel file into the ask box** (up to 20 MB), and Squibby reads its words on your Mac, hides anything that looks like a password or key, and sends only the text with your question. Nothing is kept, and the file itself is never sent.
