@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Checked again on real Claude after the rename: 22 Oct 2026
+
+- **The renamed app passed every real check:** 13 of 13 smoke checks and 21 of 21 fix, undo, approval and safety scenarios, for about $1.35 in all. One scenario first failed because the test script was too strict about a multi line commit message; the app itself behaved correctly. The script is fixed.
+
 ## Flowflow looks a little worried when something goes wrong: 22 Oct 2026
 
 - **When a check fails or something breaks, the character now shows a small worried face in its own bright blue**, instead of the half hidden peek. It is the same drawing as the sad one that was left out, recoloured so it is never grey, and it reads as "uh oh", not as blame.

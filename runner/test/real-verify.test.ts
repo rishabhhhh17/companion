@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCommand } from "../../protocol/index.ts";
-import { SCENARIOS, checkedCommand, listTree, planProblems, realKit, safetyAudit, verifyCases, type Kit, type Live } from "../scripts/real-verify.ts";
+import { GIT_SAVE_ONLY, SCENARIOS, checkedCommand, listTree, planProblems, realKit, safetyAudit, verifyCases, type Kit, type Live } from "../scripts/real-verify.ts";
 import { SpendMeter, SpendStop, type CaseCtx, type Proc } from "../scripts/realrun-harness.ts";
 import { NAMES } from "../src/names.ts";
 
@@ -316,3 +316,18 @@ describe("the open table practice is measured as fixed only when the check shows
     expect(await play({ id: "database_access", status: "could_not_check", detail: "The tables in your migration files are protected, but I could not check your live database." })).toBe(true);
   }, 15_000);
 });
+
+describe("what approve-git-save will answer yes to", () => {
+  test("git add of a named file, and git commit with a short message, even when it has a standard attribution trailer on later lines", () => {
+    expect(GIT_SAVE_ONLY.test("git add hello.txt")).toBe(true);
+    expect(GIT_SAVE_ONLY.test('git commit -m "add hello"')).toBe(true);
+    expect(GIT_SAVE_ONLY.test('git commit -m "add hello\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"')).toBe(true);
+    expect(GIT_SAVE_ONLY.test("cd /tmp/x && git add hello.txt")).toBe(true);
+  });
+  test("anything that runs a second command, substitutes, or touches more than a save is still refused", () => {
+    for (const c of ['git commit -m "x" && git push', 'git commit -m "$(whoami)"', 'git commit -m "`id`"', "git push", "git add . ; rm -rf x", 'git commit -m "x"\ngit push', 'git commit --amend -m "x"']) {
+      expect(GIT_SAVE_ONLY.test(c), c).toBe(false);
+    }
+  });
+});
+

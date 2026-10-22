@@ -55,3 +55,8 @@ Found while building it: the safety hook never guarded `.env` at all (T05 said i
 ## The attack on the guard (22 Oct 2026, no spending)
 
 131 disguised writes and reads in two rounds, tried against the safety hook directly. 16 got through at first, and every one is closed or asked now. The most important was older than the guard: a redirect hidden inside `sh -c "..."` was never checked, for any file. Details in T05.
+
+## 22 Oct 2026, after the rename to Squibby (real Claude, new key)
+- **Smoke:** 13 of 13 passed, about $0.23.
+- **Real verify (21 cases, no model for ship gates):** 21 of 21 passed, about $1.12 in all by Squibby's count (the new folder cases were run separately the same day, see the M14 plan). The first run had one red case, `approve-git-save`. It was the check script, not the app: Claude added a standard attribution trailer, so its commit message ran over several lines, and the script's allow pattern refused any multi line message. The app asked first and denied exactly what it was told to deny. The pattern now accepts a message over several lines (still no backtick or `$`, no second command), with tests that fail first, and the case passes (about $0.03).
+- **Not rerun:** the fix eval (25 projects), aim, Prompt help and Explain sets. The model is now told the new name, so they are worth one rerun before launch.
