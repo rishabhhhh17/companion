@@ -1,0 +1,1513 @@
+{
+  "format": "companion-eval-results/1",
+  "set": "fix-projects",
+  "mode": "spend",
+  "harness": "real run harness (runner/scripts/realrun-harness.ts; key from the Keychain item \"companion-dev\")",
+  "startedAt": "2026-10-22T17:11:21.385Z",
+  "finishedAt": "2026-10-22T17:22:08.436Z",
+  "models": {
+    "agent": "claude-sonnet-5-5",
+    "diagnose": "claude-opus-5-5",
+    "review": "claude-opus-5-5",
+    "fast": "claude-sonnet-5-5",
+    "vision": "claude-sonnet-5-5",
+    "aim": "claude-sonnet-5-5",
+    "grader": "claude-sonnet-5-5"
+  },
+  "caps": {
+    "perCaseUsd": 0.75,
+    "totalUsd": 8
+  },
+  "spentUsd": 2.430191,
+  "stopped": null,
+  "cases": [
+    {
+      "id": "rescue-bad-json-config",
+      "outcome": "fixed",
+      "costUsd": 0.138839,
+      "turns": 4,
+      "tokens": {
+        "in": 22540,
+        "cacheRead": 27141,
+        "out": 1027
+      },
+      "ms": 24814,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.js",
+            "line": 3
+          },
+          "message": "SyntaxError: Expected double-quoted property name in JSON at position 16 (line 1 column 17)"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "json-config-port",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I took out the extra comma after `3000` in `config.json`. The file now reads `{ \"port\": 3000 }`. I ran the test again and it passes now. The app reads the settings file without crashing and prints `{ port: 3000 }`. Nothing else in the project was changed.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 6799,
+          "cacheRead": 11901,
+          "out": 644
+        },
+        "capped": false,
+        "hard": true,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-bun-runtime-error",
+      "outcome": "fixed",
+      "costUsd": 0.0903658,
+      "turns": 4,
+      "tokens": {
+        "in": 12142,
+        "cacheRead": 37776,
+        "out": 1088
+      },
+      "ms": 24919,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.ts",
+            "line": 3
+          },
+          "message": "TypeError: undefined is not an object (evaluating 'items[0].toUpperCase')"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "bun-first-safe",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 0
+        },
+        "asked": false,
+        "said": "The script doesn't crash anymore. I added one line to the `first()` function in `app.ts`. It checks whether the list is empty before the function reads the first item, and returns an empty string if it is. Before, the function always tried to read the first item, so it crashed when the list was empty. I ran the script again and it finished without errors. It prints a blank line, because the list is still empty.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1830,
+          "cacheRead": 17124,
+          "out": 588
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-failing-test",
+      "outcome": "fixed",
+      "costUsd": 0.092685,
+      "turns": 4,
+      "tokens": {
+        "in": 12224,
+        "cacheRead": 37460,
+        "out": 1195
+      },
+      "ms": 23673,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "test/price.js",
+            "line": 6
+          },
+          "message": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "withtax-20",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I fixed the tax calculation, and the test now passes. The tax helper in `price.js` was multiplying prices by 1.1, which only adds 10 percent tax. I changed that one number to 1.2 so it adds 20 percent, which is what the test expects. A price of 100 now comes out as 120. Nothing else in the project was touched.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1814,
+          "cacheRead": 16894,
+          "out": 635
+        },
+        "capped": false,
+        "hard": false,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-missing-local-file",
+      "outcome": "fixed",
+      "costUsd": 0.08951409999999999,
+      "turns": 4,
+      "tokens": {
+        "in": 12021,
+        "cacheRead": 37627,
+        "out": 1078
+      },
+      "ms": 23849,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.js",
+            "line": 1
+          },
+          "message": "Error: Cannot find module './settings'"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "settings-module",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 0
+        },
+        "asked": false,
+        "said": "I added the missing `settings.js` file next to `app.js`. It holds one line, `module.exports = {};`, which gives `app.js` an empty set of settings to load. The tests pass now. `app.js` starts, loads the settings and prints `{}` (empty, because nothing is in the file yet). Nothing else in the project was changed.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1807,
+          "cacheRead": 16995,
+          "out": 647
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-missing-setting",
+      "outcome": "asked",
+      "costUsd": 0.108862,
+      "turns": 4,
+      "tokens": {
+        "in": 12690,
+        "cacheRead": 69543,
+        "out": 1566
+      },
+      "ms": 30355,
+      "notes": [
+        "Companion asked for approval 1 times (answered settings): This task changed the project's scripts or packages. Run its install, build, tests and server to check the work? They run on this Mac outside the safety box Claude's own commands get. Without a yes, the work is not checked."
+      ],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "config.js",
+            "line": 2
+          },
+          "message": "Error: SUPABASE_URL is not set"
+        },
+        "locatedRight": true,
+        "proof": "skipped",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "nothing_to_check",
+        "finalStep": null,
+        "accept": [],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": true,
+        "said": "I changed one line in `package.json`. The test command now loads the project's `.env` file before the app starts. It's `node --env-file-if-exists=.env app.js` instead of `node app.js`. I ran the tests afterwards and they still fail with the same \"SUPABASE_URL is not set\" error. That's expected for now: Node accepted the new command, but the address itself hasn't been added yet. Step 2 is where it gets added. What is your Supabase project's web address (it looks like https://xxxx.supabase.co and is under Project Settings → API in your Supabase dashboard)?",
+        "needsYou": true,
+        "approvalsAsked": 1,
+        "approvalCards": 1,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1929,
+          "cacheRead": 17113,
+          "out": 942
+        },
+        "capped": false,
+        "hard": true,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-python-name-error",
+      "outcome": "fixed",
+      "costUsd": 0.074591,
+      "turns": 4,
+      "tokens": {
+        "in": 10882,
+        "cacheRead": 30934,
+        "out": 691
+      },
+      "ms": 17800,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.py",
+            "line": 2
+          },
+          "message": "NameError: name 'nme' is not defined"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "python-greet",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I fixed the typo in `app.py` on line 2. The code said `nme` where it meant `name`, so the line now reads `return 'Hello ' + name`. That was the only change. Squibby will run its checks next, and the program should now print \"Hello Sam\" instead of crashing.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1324,
+          "cacheRead": 10815,
+          "out": 407
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-read-property-of-nothing",
+      "outcome": "fixed",
+      "costUsd": 0.09124,
+      "turns": 4,
+      "tokens": {
+        "in": 12144,
+        "cacheRead": 37816,
+        "out": 1139
+      },
+      "ms": 22795,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.js",
+            "line": 3
+          },
+          "message": "TypeError: Cannot read properties of undefined (reading 'city')"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "city-runs",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I fixed the crash. The project now runs from start to finish. **What was wrong:** Sam's user record has no address. Line 3 of `app.js` tried to read the city from inside that missing address, so the script crashed. **What I changed:** I made one small edit on line 3 of `app.js`, from `user.address.city` to `user.address?.city`. The `?.` makes it check first whether there is an address. If there isn't one, it gives back nothing instead of crashing. **Result:** I ran the project again and it finished without errors. It printed `undefined`, which is JavaScript's way of saying \"nothing\", because…",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1847,
+          "cacheRead": 17152,
+          "out": 558
+        },
+        "capped": false,
+        "hard": false,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-rejected-promise",
+      "outcome": "fixed",
+      "costUsd": 0.096697,
+      "turns": 4,
+      "tokens": {
+        "in": 12233,
+        "cacheRead": 37577,
+        "out": 1392
+      },
+      "ms": 26342,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.js",
+            "line": 2
+          },
+          "message": "Error: the server said no"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "promise-handled",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 3,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "The test passes now. When the load step fails, the script shows a short message instead of crashing. **What I changed:** In `app.js` I added an error handler to the `load()` call on line 4. Before, the script crashed with a long error report whenever the load step failed. Now it prints one line and finishes normally: ``` Could not load: the server said no ``` **What still fails:** The load step itself still fails every time, because line 2 is written to always fail. The script never actually talks to a real server. It just doesn't crash about it anymore, so it never gets as far as printing \"o…",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1807,
+          "cacheRead": 16942,
+          "out": 734
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-syntax-missing-paren",
+      "outcome": "fixed",
+      "costUsd": 0.088855,
+      "turns": 4,
+      "tokens": {
+        "in": 11830,
+        "cacheRead": 52712,
+        "out": 950
+      },
+      "ms": 24324,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.js",
+            "line": 2
+          },
+          "message": "SyntaxError: missing ) after argument list"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "paren-output",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I fixed it. Line 2 of `app.js` was missing a closing bracket at the end, and I added it. The line now reads `console.log(items.map((x) => x * 2));`. I ran the tests afterwards and they now pass: the script prints `[ 2, 4, 6 ]`, which is each number in the list doubled. Nothing else in the project changed.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1694,
+          "cacheRead": 16869,
+          "out": 545
+        },
+        "capped": false,
+        "hard": false,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-ts-missing-property",
+      "outcome": "fixed",
+      "costUsd": 0.0847714,
+      "turns": 4,
+      "tokens": {
+        "in": 11101,
+        "cacheRead": 45724,
+        "out": 998
+      },
+      "ms": 24997,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Building and checking the code",
+          "place": {
+            "file": "app.ts",
+            "line": 2
+          },
+          "message": "Property 'email' is missing in type '{ name: string; }' but required in type 'User'."
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "ts-types-honest",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I made the fix. On line 1 of `app.ts`, I changed `email: string` to `email?: string`. The question mark makes the email optional, so the code now accepts Sam with just a name. I ran the project's code check again and it passes with no errors.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1279,
+          "cacheRead": 10694,
+          "out": 571
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-ts-unknown-import",
+      "outcome": "fixed",
+      "costUsd": 0.0823541,
+      "turns": 4,
+      "tokens": {
+        "in": 11401,
+        "cacheRead": 36841,
+        "out": 891
+      },
+      "ms": 22672,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Building and checking the code",
+          "place": {
+            "file": "app.ts",
+            "line": 1
+          },
+          "message": "Cannot find module './helpers' or its corresponding type declarations."
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "ts-helper",
+            "pass": true
+          },
+          {
+            "name": "ts-types-honest",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 3,
+          "removed": 0
+        },
+        "asked": false,
+        "said": "I added the missing helpers file, and the code check that failed before now passes with no errors. The new file is `helpers.ts`, next to `app.ts`. It contains the `helper` function that `app.ts` was looking for, and that function returns the message \"Hello from helper!\" for the program to print. I didn't change anything else in the project.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1498,
+          "cacheRead": 16590,
+          "out": 507
+        },
+        "capped": false,
+        "hard": false,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-ts-wrong-argument-count",
+      "outcome": "fixed",
+      "costUsd": 0.08832499999999999,
+      "turns": 4,
+      "tokens": {
+        "in": 11535,
+        "cacheRead": 52292,
+        "out": 997
+      },
+      "ms": 26176,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Building and checking the code",
+          "place": {
+            "file": "app.ts",
+            "line": 4
+          },
+          "message": "Expected 2 arguments, but got 1."
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "ts-types-honest",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I fixed the error, and the project's code check now passes. In `app.ts`, the `greet` function needs two things: a name and a greeting. The code only gave it a name (`greet('Sam')`), so the check failed. I changed the first line so that \"Hello\" is used when no greeting is given: ```ts function greet(name: string, greeting: string = 'Hello') { ``` So `greet('Sam')` should now print \"Hello Sam\". Nothing else in the project was changed.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1518,
+          "cacheRead": 16778,
+          "out": 501
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-ts-wrong-type",
+      "outcome": "fixed",
+      "costUsd": 0.086057,
+      "turns": 4,
+      "tokens": {
+        "in": 11486,
+        "cacheRead": 52143,
+        "out": 902
+      },
+      "ms": 24748,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Building and checking the code",
+          "place": {
+            "file": "app.ts",
+            "line": 4
+          },
+          "message": "Type 'number' is not assignable to type 'string'."
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "ts-types-honest",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I fixed the error. Line 4 of `app.ts` was saving the doubled number in a spot meant only for text. It now turns the number into text first: `double(4)` became `String(double(4))`. The script still prints 8. I ran the project's type check again and it passed with no errors. Nothing else in the project changed.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1513,
+          "cacheRead": 16779,
+          "out": 460
+        },
+        "capped": false,
+        "hard": false,
+        "split": "train"
+      }
+    },
+    {
+      "id": "rescue-undefined-variable",
+      "outcome": "fixed",
+      "costUsd": 0.09409210000000001,
+      "turns": 4,
+      "tokens": {
+        "in": 12123,
+        "cacheRead": 37802,
+        "out": 1287
+      },
+      "ms": 27587,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.js",
+            "line": 3
+          },
+          "message": "ReferenceError: quantity is not defined"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "total-number",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 0
+        },
+        "asked": true,
+        "said": "The script runs now. I added one line to `app.js`, right under the price line: `const quantity = 1;`. Before, the script used a quantity that was never set, so it crashed. I ran the test again and it passed: it prints `10`, which is the price (10) times the quantity (1). I picked 1 because I don't know your real number. You can change it on line 2 of `app.js` whenever you like. How many items should the total be worked out for, or is 1 right?",
+        "needsYou": true,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1828,
+          "cacheRead": 17136,
+          "out": 751
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "rescue-wrong-export-name",
+      "outcome": "fixed",
+      "costUsd": 0.09038209999999999,
+      "turns": 4,
+      "tokens": {
+        "in": 12045,
+        "cacheRead": 52865,
+        "out": 971
+      },
+      "ms": 21651,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "app.mjs",
+            "line": 1
+          },
+          "message": "SyntaxError: The requested module './math.mjs' does not provide an export named 'sum'"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "sum-three",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 2,
+          "removed": 2
+        },
+        "asked": false,
+        "said": "The app is fixed and the test passes now. The app was asking the math file for a function called \"sum\", but that file only has one called \"add\". In `app.mjs` I changed \"sum\" to \"add\" in both places. When I ran the test again, it printed **3** (1 + 2), which is the right answer. I didn't touch any other file.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 1839,
+          "cacheRead": 16734,
+          "out": 645
+        },
+        "capped": false,
+        "hard": false,
+        "split": "test"
+      }
+    },
+    {
+      "id": "missing-setting-name",
+      "outcome": "fixed",
+      "costUsd": 0.1439231,
+      "turns": 4,
+      "tokens": {
+        "in": 16450,
+        "cacheRead": 55653,
+        "out": 2518
+      },
+      "ms": 37975,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "lib/site.js",
+            "line": 5
+          },
+          "message": "Error: SITE_NAME is not set. Add it to your .env file."
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "site-title",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "I changed one line in `lib/site.js`. The code now looks for the shop name under `PUBLIC_SITE_NAME` instead of `SITE_NAME`. That's the name the project's example settings file uses, and it matches how the currency setting is named (`PUBLIC_CURRENCY`). I ran the tests again and both passed: the page title now shows the shop name, and prices still show the currency. Nothing else in the project was changed.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 3947,
+          "cacheRead": 33023,
+          "out": 1905
+        },
+        "capped": false,
+        "hard": true,
+        "split": "test"
+      }
+    },
+    {
+      "id": "wrong-api-route",
+      "outcome": "fixed",
+      "costUsd": 0.101081,
+      "turns": 4,
+      "tokens": {
+        "in": 13983,
+        "cacheRead": 38589,
+        "out": 1157
+      },
+      "ms": 24094,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "src/api.js",
+            "line": 6
+          },
+          "message": "Error: Could not load your orders: the server said 404 for /api/v1/orders"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "orders-load",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "The orders page can load your orders now. The page was asking the server for orders at `/api/v1/orders`, but the server keeps them at `/api/orders`. Since that address didn't exist, the server answered \"404, not found.\" I changed one line in `src/api.js` (line 2) so the page uses `/api` instead of `/api/v1`. Now it asks for the right address. Nothing else was changed. I ran the tests again and both pass: the orders check and the products check.",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 2718,
+          "cacheRead": 17036,
+          "out": 678
+        },
+        "capped": false,
+        "hard": true,
+        "split": "train"
+      }
+    },
+    {
+      "id": "import-after-rename",
+      "outcome": "fixed",
+      "costUsd": 0.10629,
+      "turns": 4,
+      "tokens": {
+        "in": 13328,
+        "cacheRead": 54032,
+        "out": 1434
+      },
+      "ms": 25786,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "pages/profile.js",
+            "line": 2
+          },
+          "message": "Error: Cannot find module '../components/UserCard'"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "profile-renders",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 2,
+          "removed": 2
+        },
+        "asked": false,
+        "said": "I fixed the profile page and its test now passes. **What was wrong:** The card that shows the name and bio was renamed from \"UserCard\" to \"ProfileCard\" at some point. The profile page still looked for the old name. That file doesn't exist anymore, so the page crashed before it could show anything. **What I changed:** In `pages/profile.js`, I changed the two places that used the old name \"UserCard\" to \"ProfileCard.\" I didn't touch anything else. **Result:** After the change I ran the project's test, and it passed (1 of 1). The page shows the name \"Sam Rivera\" and the bio \"Makes pots on Sundays…",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 2312,
+          "cacheRead": 16737,
+          "out": 796
+        },
+        "capped": false,
+        "hard": true,
+        "split": "test"
+      }
+    },
+    {
+      "id": "supabase-open-table",
+      "outcome": "fixed",
+      "costUsd": 0.11958540000000001,
+      "turns": 4,
+      "tokens": {
+        "in": 14787,
+        "cacheRead": 55391,
+        "out": 1721
+      },
+      "ms": 35487,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Building and checking the code",
+          "place": {
+            "file": "supabase/migrations/002_notes.sql",
+            "line": 1
+          },
+          "message": "Table public.notes is public, but row level security has not been enabled (rls_disabled_in_public)"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "rls-all-tables",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 23,
+          "removed": 0
+        },
+        "asked": false,
+        "said": "The notes table is now locked so each person can only reach their own notes, and the database check passes. I changed one file, `supabase/migrations/002_notes.sql`. It now does two things: - **Turns on protection (row level security)** for the notes table, so nobody gets in by default. - **Adds four rules.** A signed-in person can see, add, change and delete a note only if it belongs to them. I wrote them the same way as the rules already protecting the profiles table. The database check now says \"2 tables checked, all protected.\" The project's one test also passes. One thing to know: if this…",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 2990,
+          "cacheRead": 16611,
+          "out": 895
+        },
+        "capped": false,
+        "hard": true,
+        "split": "train"
+      }
+    },
+    {
+      "id": "changed-signature",
+      "outcome": "fixed",
+      "costUsd": 0.1025082,
+      "turns": 4,
+      "tokens": {
+        "in": 13335,
+        "cacheRead": 48226,
+        "out": 1300
+      },
+      "ms": 26333,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "src/money.js",
+            "line": 3
+          },
+          "message": "TypeError: formatPrice needs an amount, for example formatPrice({ amount: 12, currency: \"USD\" })"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "cart-currency",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "The cart works again and all 3 tests now pass, including the one that was failing. **What was wrong:** the code that writes out prices was recently changed so the amount and the currency have to be handed over together, as one bundle. The cart code was still handing them over as two separate values. So the price code got no amount and stopped with an error. **What I changed:** one line in `src/cart.js` (line 6). It now hands over the amount and currency together. Nothing else changed. When I first ran the tests I pointed the test command at the folder the wrong way, and it reported a failure.…",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 2175,
+          "cacheRead": 10977,
+          "out": 590
+        },
+        "capped": false,
+        "hard": true,
+        "split": "test"
+      }
+    },
+    {
+      "id": "next-client-component",
+      "outcome": "fixed",
+      "costUsd": 0.1077372,
+      "turns": 4,
+      "tokens": {
+        "in": 15175,
+        "cacheRead": 39116,
+        "out": 1194
+      },
+      "ms": 32995,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Building and checking the code",
+          "place": {
+            "file": "components/LikeButton.jsx",
+            "line": 1
+          },
+          "message": "Error: You're importing a component that needs useState. This React hook only works in a client component. To fix, mark the file (or its parent) with the \"use client\" directive."
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "next-rules",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 2,
+          "removed": 0
+        },
+        "asked": false,
+        "said": "The build works now. I added one line, `'use client';`, to the very top of `components/LikeButton.jsx`, above the import. That line tells the project the Like button runs in the visitor's browser. It needs to, because it keeps track of whether it has been clicked. I didn't change the main page file. I ran the project's build check afterwards and it printed \"Compiled successfully.\"",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 3320,
+          "cacheRead": 16915,
+          "out": 748
+        },
+        "capped": false,
+        "hard": true,
+        "split": "train"
+      }
+    },
+    {
+      "id": "vite-env-prefix",
+      "outcome": "fixed",
+      "costUsd": 0.1525101,
+      "turns": 9,
+      "tokens": {
+        "in": 17169,
+        "cacheRead": 93831,
+        "out": 2381
+      },
+      "ms": 44070,
+      "notes": [
+        "Companion asked for approval 1 times (answered settings): changes your private settings file (.env)"
+      ],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "src/config.js",
+            "line": 5
+          },
+          "message": "Error: The weather could not load: the address of the weather service is undefined."
+        },
+        "locatedRight": true,
+        "proof": "skipped",
+        "receipts": 2,
+        "checks": 3,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "vite-forecast",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 3,
+          "added": 3,
+          "removed": 3
+        },
+        "asked": false,
+        "said": "Nothing new to change here. I already did this rename while fixing the failed check on step 1. Your `.env` file and `.env.example` both call the setting `VITE_API_URL` now, and the value in `.env` stayed the same. The test passed right after that rename, so the widget is getting the weather service address. Running the rename again would do nothing, because no line starts with `API_URL` anymore.",
+        "needsYou": false,
+        "approvalsAsked": 1,
+        "approvalCards": 1,
+        "tasks": 2,
+        "firstRound": {
+          "in": 3684,
+          "cacheRead": 17070,
+          "out": 1281
+        },
+        "capped": false,
+        "hard": true,
+        "split": "test"
+      }
+    },
+    {
+      "id": "css-hidden-button",
+      "outcome": "fixed",
+      "costUsd": 0.10543799999999999,
+      "turns": 4,
+      "tokens": {
+        "in": 14575,
+        "cacheRead": 38822,
+        "out": 1231
+      },
+      "ms": 27376,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "test/checkout.js",
+            "line": 7
+          },
+          "message": "AssertionError [ERR_ASSERTION]: The Checkout button is hidden (display: none, from .btn)"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "checkout-visible",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "The Checkout button shows up now. **What I changed:** In `index.html`, the Checkout button's style name was misspelled as `btn-primay`. I corrected it to `btn-primary`. That was the only change. **Why it works:** The site hides every button unless the button has a style name it recognizes. With the typo, it didn't recognize the Checkout button, so it stayed hidden. With the correct name, the button shows up in its blue style. **Check:** Both tests now pass: \"the Checkout button can be seen\" and \"the Empty the cart button can be seen\".",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 2986,
+          "cacheRead": 16992,
+          "out": 693
+        },
+        "capped": false,
+        "hard": true,
+        "split": "train"
+      }
+    },
+    {
+      "id": "pagination-off-by-one",
+      "outcome": "fixed",
+      "costUsd": 0.09348700000000001,
+      "turns": 4,
+      "tokens": {
+        "in": 12881,
+        "cacheRead": 38011,
+        "out": 1065
+      },
+      "ms": 26102,
+      "notes": [],
+      "detail": {
+        "flow": "rescue",
+        "found": {
+          "verdict": "failed",
+          "label": "Running the tests",
+          "place": {
+            "file": "test/paginate.js",
+            "line": 8
+          },
+          "message": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+        },
+        "locatedRight": true,
+        "proof": "passed",
+        "receipts": 1,
+        "checks": 2,
+        "stuckShown": false,
+        "finalVerdict": "passed",
+        "finalStep": null,
+        "accept": [
+          {
+            "name": "pages-right",
+            "pass": true
+          }
+        ],
+        "regressions": [],
+        "proofFooled": false,
+        "testsChanged": [],
+        "diff": {
+          "files": 1,
+          "added": 1,
+          "removed": 1
+        },
+        "asked": false,
+        "said": "Page 1 of the order history now shows the first five orders. Before, it skipped them and started at order 6. **What was wrong:** The page buttons count from 1, but the code that picks which orders go on a page was counting from 0. So everything was shifted forward by one page. **What I changed:** I changed one line in `src/paginate.js`. It now subtracts 1 from the page number before working out where the page starts, so page 1 begins at the first order. Nothing else was touched. **Result:** I ran the tests after the change and both pass: page 1 starts with the first order, and twelve orders m…",
+        "needsYou": false,
+        "approvalsAsked": 0,
+        "approvalCards": 0,
+        "tasks": 1,
+        "firstRound": {
+          "in": 2155,
+          "cacheRead": 17050,
+          "out": 560
+        },
+        "capped": false,
+        "hard": true,
+        "split": "test"
+      }
+    },
+    {
+      "id": "flask-wrong-status",
+      "outcome": "cannot_run",
+      "costUsd": 0,
+      "turns": 0,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 0,
+      "notes": [
+        "This Mac does not have python3:flask,pytest, which this case needs."
+      ]
+    }
+  ],
+  "summary": {
+    "counts": {
+      "fixed": 23,
+      "not_fixed": 0,
+      "broke_something": 0,
+      "asked": 1,
+      "invented": 0,
+      "cannot_run": 1,
+      "error": 0,
+      "refused": 0,
+      "stopped": 0,
+      "not_started": 0
+    },
+    "ran": 24,
+    "goodRate": 1,
+    "costUsd": 2.430191,
+    "costPerFixedUsd": 0.10566,
+    "medianTurns": 4,
+    "proofFooled": 0,
+    "testsChanged": 0,
+    "loopCards": 0,
+    "locatedRight": 24,
+    "locatedOf": 24,
+    "medianLinesChanged": 2,
+    "approvalCards": 2,
+    "tasks": 25,
+    "approvalsPerTask": 0.08,
+    "casesWithApprovals": 2,
+    "medianFirstRoundIn": 18954
+  }
+}
