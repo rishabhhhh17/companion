@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCommand } from "../../protocol/index.ts";
-import { GIT_SAVE_ONLY, SCENARIOS, checkedCommand, listTree, planProblems, realKit, safetyAudit, verifyCases, type Kit, type Live } from "../scripts/real-verify.ts";
+import { BAKERY_ANSWER, GIT_SAVE_ONLY, SECOND_ANSWER, SCENARIOS, answerUsedProblems, carryOnProblems, checkedCommand, proofFairness, listTree, planProblems, realKit, safetyAudit, verifyCases, type Kit, type Live } from "../scripts/real-verify.ts";
 import { SpendMeter, SpendStop, type CaseCtx, type Proc } from "../scripts/realrun-harness.ts";
 import { NAMES } from "../src/names.ts";
 
@@ -58,6 +58,7 @@ describe("every command it sends is one today's runner accepts", () => {
     research: ["research.ask"],
     "new-folder": ["drive.plan", "drive.approve", "checkpoint.restore"],
     "new-folder-detailed": ["drive.plan", "drive.approve", "checkpoint.restore"],
+    "new-folder-answer": ["drive.plan", "drive.approve"],   // the stand in never asks a question, so the answer is not sent here: new-folder-answer is played against a scripted run below
     "new-folder-research": ["research.ask"],
     "daily-limit": ["drive.plan", "agent.start"],
     "error-explainer": ["error.explain"],
@@ -161,6 +162,105 @@ describe("new-folder: how the cases are scored", () => {
     expect(sent[1].goal).toContain("Rosa");
     expect(sent[2].question).toBe("what should I know before opening a small bakery");
     for (const p of projects) { expect(listTree(p)).toEqual([]); expect(p).toContain(`/${NAMES.newFolderParent}/`); expect(p.startsWith(process.env.HOME ?? "\0")).toBe(false); }
+  }, 15_000);
+});
+
+// The vague request, answered (M14): how new-folder-answer scores, and the whole case played against a scripted run (no model, no money).
+describe("new-folder-answer: how the case is scored", () => {
+  const step = (index: number, status: string) => ({ type: "drive.step", index, total: 3, status });
+  const rcpt = (o: Record<string, unknown> = {}) => ({ type: "receipt", ended: "done", inPlan: true, proof: "passed", ...o });
+  const stop = [{ type: "drive.done", status: "needs_you", completed: 0, total: 3 }];
+  const good = [step(1, "started"), { type: "checkpoint.created" }, rcpt(), step(1, "done"), step(2, "started"), { type: "checkpoint.created" }, rcpt(), step(2, "done"), step(3, "started"), { type: "checkpoint.created" }, rcpt(), step(3, "done"), { type: "drive.done", status: "done", completed: 3, total: 3 }];
+  test("the answer is the one the card would send, and the files must hold what it said", () => {
+    expect(BAKERY_ANSWER).toBe("Sweet Crumb Bakery, open 7 to 3 Tuesday to Sunday, 12 High Street, 020 7946 0000");
+    expect(answerUsedProblems("<h1>Sweet Crumb Bakery</h1> Tuesday to Sunday 7am to 3pm 12 High Street Tel 020 7946 0000")).toEqual([]);
+    expect(answerUsedProblems("<h1>Your Bakery</h1> Tuesday to Sunday 12 High Street 020 7946 0000").join()).toMatch(/the name/);
+    expect(answerUsedProblems("Sweet Crumb Bakery 12 High Street").join()).toMatch(/phone number, the opening days/);
+  });
+  test("a plan that carried on: every waiting step started, with an undo point, a receipt and no lost plan", () => {
+    expect(carryOnProblems(stop, good, 3)).toEqual([]);
+  });
+  test("a plan that did not carry on is caught: nothing ran, only some steps ran, a step started something else, or it stopped again", () => {
+    expect(carryOnProblems(stop, [], 3).join()).toMatch(/never finished/);
+    expect(carryOnProblems(stop, [rcpt(), { type: "checkpoint.created" }, { type: "drive.done", status: "done", completed: 1, total: 1 }], 3).join()).toMatch(/wanted 3 of 3/);
+    expect(carryOnProblems(stop, good.slice(0, 4).concat([{ type: "drive.done", status: "needs_you", completed: 1, total: 3 }]), 3).join()).toMatch(/needs_you/);
+    expect(carryOnProblems(stop, good.map((e) => (e.type === "receipt" ? rcpt({ inPlan: undefined }) : e)), 3).join()).toMatch(/not a step of the plan/);
+    expect(carryOnProblems(stop, good.filter((e) => e.type !== "checkpoint.created"), 3).join()).toMatch(/undo points/);
+  });
+  test("a plan that stopped again on a new question (the case answers it once) is carried on from that step; an unanswered second stop is a fail", () => {
+    const twice = [step(1, "started"), { type: "checkpoint.created" }, rcpt(), step(1, "done"), step(2, "started"), { type: "checkpoint.created" }, rcpt(), step(2, "done"), step(3, "started"), { type: "checkpoint.created" }, rcpt({ ended: "needs_you", asks: true }), { type: "drive.done", status: "needs_you", completed: 2, total: 3 },
+      step(3, "started"), { type: "checkpoint.created" }, rcpt(), step(3, "done"), { type: "drive.done", status: "done", completed: 3, total: 3 }];
+    expect(carryOnProblems(stop, twice, 3, 1)).toEqual([]);
+    expect(carryOnProblems(stop, twice, 3, 0).join()).toMatch(/1 more questions stopped the plan/);
+    expect(SECOND_ANSWER).toMatch(/email/);
+  });
+  test("a plan that stopped at step 2 is carried on from step 2, not from the start", () => {
+    const later = [{ type: "drive.done", status: "needs_you", completed: 1, total: 3 }];
+    const rest = [step(2, "started"), { type: "checkpoint.created" }, rcpt(), step(2, "done"), step(3, "started"), { type: "checkpoint.created" }, rcpt(), step(3, "done"), { type: "drive.done", status: "done", completed: 3, total: 3 }];
+    expect(carryOnProblems(later, rest, 3)).toEqual([]);
+    expect(carryOnProblems(later, good, 3).join()).toMatch(/steps started after the answer/);
+  });
+  test("the proof after the answer is fair only when every receipt has a real check behind it", () => {
+    const real = { rung: "start", label: "Starting it", status: "passed", detail: "", ms: 1 };
+    expect(proofFairness([rcpt()], [{ verdict: "passed", steps: [real] }])).toEqual([]);
+    expect(proofFairness([rcpt()], []).join()).toMatch(/no check ran/);
+    expect(proofFairness([rcpt({ proof: "skipped" })], [{ verdict: "passed", steps: [real] }]).join()).toMatch(/nothing checked/);
+  });
+  test("what the second real run recorded: the last step, answered, changed no file, so it has nothing new to check and is not scored as unchecked work", () => {
+    const real = { rung: "start", label: "Starting it", status: "passed", detail: "", ms: 1 };
+    const recorded = [rcpt({ changed: [{ file: "index.html" }] }), rcpt({ changed: [{ file: "index.html" }] }), rcpt({ ended: "needs_you", asks: true, changed: [{ file: "index.html" }] }), rcpt({ proof: "skipped", changed: [] })];
+    const proofs = [1, 2, 3].map(() => ({ verdict: "passed", steps: [real] }));
+    expect(proofFairness(recorded, proofs)).toEqual([]);
+    expect(proofFairness([...recorded.slice(0, 3), rcpt({ proof: "skipped", changed: [{ file: "index.html" }] })], proofs).join()).toMatch(/nothing checked/);
+  });
+  test("played against a scripted run: it sends the plan, the approval, then the answer, and passes when the plan carried on", async () => {
+    const sent: Record<string, any>[] = [];
+    const events: Record<string, any>[] = [];
+    let dir = "";
+    const proof = { type: "proof.result", verdict: "passed", steps: [{ rung: "start", label: "Starting it", status: "passed", detail: "", ms: 1 }, { rung: "browser", label: "Opening it", status: "passed", detail: "", ms: 1 }] };
+    const answered = () => [...good.slice(0, -1).flatMap((e) => (e.type === "receipt" ? [proof, e] : e.type === "checkpoint.created" ? [{ ...e, project: dir }] : [e])), { type: "drive.done", status: "done", completed: 3, total: 3, usdEstimate: 0.1 }];
+    const kit: Kit = {
+      runner: (project: string): Live => {
+        dir = project;
+        const push = (...e: Record<string, any>[]) => { events.push(...e); };
+        return {
+          project, data: tmp("data"), events,
+          send: (c) => {
+            checkedCommand(c); sent.push(c);
+            if (c.type === "drive.plan") push({ type: "plan.ready", agent: "builder-1", steps: [{ title: "Make the page and hours" }, { title: "Add the hours section" }, { title: "Add the contact section with the phone number" }], estimateUsd: 0.1 });
+            if (c.type === "drive.approve") push({ type: "receipt", ended: "needs_you", asks: true, said: "What is your bakery's name?", inPlan: true }, { type: "drive.done", status: "needs_you", completed: 0, total: 3, usdEstimate: 0.05 });
+            if (c.type === "agent.send") { writeFileSync(join(project, "index.html"), "<title>Sweet Crumb Bakery</title><p>Tuesday to Sunday, 7 to 3</p><p>12 High Street, 020 7946 0000</p>"); push(...answered()); }
+          },
+          of: (t) => events.filter((e) => e.type === t),
+          until: async (pred, _ms, from = 0) => events.slice(from).find(pred) ?? null,
+          ready: async () => true, usd: () => 0.1, stop: () => {},
+        };
+      },
+      scratch: (l) => tmp(l), agentModel: "claude-sonnet-5-5", diagnoseModel: "claude-opus-5-5", reviewModel: "claude-opus-5-5", cheap: false, ctx: {} as CaseCtx,
+    };
+    const notes: string[] = [];
+    const ok = await SCENARIOS.find((x) => x.name === "new-folder-answer")!.run(kit, (l) => notes.push(l));
+    expect(sent.map((c) => c.type)).toEqual(["drive.plan", "drive.approve", "agent.send"]);
+    expect(sent[2]).toMatchObject({ agent: "builder-1", text: BAKERY_ANSWER });
+    expect(sent[2].project).toBe(sent[0].project);
+    expect(notes.filter((n) => /: FAIL/.test(n))).toEqual([]);
+    expect(ok).toBe(true);
+  }, 15_000);
+  test("when the plan does not stop to ask, the case is not a pass: there was no answer to give", async () => {
+    const events: Record<string, any>[] = [];
+    const sent: string[] = [];
+    const kit: Kit = {
+      runner: (project: string): Live => ({
+        project, data: tmp("data"), events,
+        send: (c) => { checkedCommand(c); sent.push(c.type); if (c.type === "drive.plan") events.push({ type: "plan.ready", steps: [{ title: "Add hours and contact" }], estimateUsd: 0.1 }); if (c.type === "drive.approve") events.push({ type: "receipt", ended: "done", proof: "passed" }, { type: "drive.done", status: "done", completed: 1, total: 1 }); },
+        of: (t) => events.filter((e) => e.type === t), until: async (pred, _ms, from = 0) => events.slice(from).find(pred) ?? null, ready: async () => true, usd: () => 0, stop: () => {},
+      }),
+      scratch: (l) => tmp(l), agentModel: "claude-sonnet-5-5", diagnoseModel: "claude-opus-5-5", reviewModel: "claude-opus-5-5", cheap: false, ctx: {} as CaseCtx,
+    };
+    const notes: string[] = [];
+    expect(await SCENARIOS.find((x) => x.name === "new-folder-answer")!.run(kit, (l) => notes.push(l))).toBe(false);
+    expect(sent).toEqual(["drive.plan", "drive.approve"]);
+    expect(notes.join("\n")).toMatch(/INCONCLUSIVE/);
   }, 15_000);
 });
 
