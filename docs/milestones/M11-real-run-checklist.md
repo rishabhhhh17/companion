@@ -141,6 +141,7 @@ These are listed so nothing is lost; the hands on session and the spikes own the
 
 - T01: panel focus, clicks, levels over full screen Spaces, Stage Manager, sleep and display changes, presentation mode, hiding from screen sharing (also `technical_research.md` section 20 and F18's "open, to settle on a real Mac": how the home at the notch looks and behaves).
 - `app/src-tauri/src/presentation.rs`: listing cameras never shows a camera prompt.
+- `app/src-tauri/src/presentation.rs` (M14): reading Core Audio's list of the apps that use sound (`voice_mac::input_processes`) never shows a microphone prompt, and with nothing in a call no app shows as listening (Siri, Voice Control, Dictation, a menu bar recorder). Only then may `MIC_CHECK_ON` be turned on, with Settings words that say the microphone.
 - T02: `interrupt()` settles (spike g); T05 and T02: the workspace trust check for project hooks.
 - T03: the plan login items (`auth status` output, several processes on one login, a `.command` file needing no Automation consent). The plan route stays behind its switch.
 - T04: notarization of a nested executable signed by another team; the hardened runtime entitlements; fish shells; whether the bundled binary calls git at start.

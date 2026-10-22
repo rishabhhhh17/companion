@@ -37,7 +37,7 @@ HeyClicky started as a screen tutor and is now a general Mac assistant: talk or 
 | Text mode box with copyable, selectable replies and drafts that persist | have weaker | S | none |
 | Home chat window (conversations, files, search, pin, archive, unread badge, quick peek, resizable, pop out) | missing | L | founder decision |
 | Home in the Mac notch (menu bar icon and panel removed) | cut by founder | S | none |
-| Drag in, attach or paste files, document preview, whole document understanding | missing | M | none |
+| Drag in, attach or paste files, document preview, whole document understanding | partial (re-checked 22 Oct 2026: text and code files and pictures dragged or pasted into the ask box since wave 4; PDF, Word, rich text, OpenDocument text and Excel documents read as text on this Mac since M14, clipped to a limit in Settings; no preview of a document, and a long one sends only its start) | M | none |
 | Clickys: persistent named agents with their own face, memory, files and chat, created by conversation | cut by founder | L | founder decision |
 | Characters (Dreamy Cloud, Puff Pals) whose faces react to listening, thinking, talking and dozing | have weaker | M | founder art |
 | Character style and cursor colour customisation | missing | S | founder art |
@@ -53,7 +53,7 @@ HeyClicky started as a screen tutor and is now a general Mac assistant: talk or 
 | Hands on onboarding tutorial, replay the tour, first three tasks end differently | have weaker | M | founder Mac session |
 | Personalised setup interview (character style plus four questions) | have weaker | S | founder art |
 | Permission setup and routing | have weaker | S | founder Mac session |
-| Quiet on calls and screen sharing | missing | M | founder Mac session |
+| Quiet on calls and screen sharing | partial (re-checked 22 Oct 2026: hide from screen sharing and quiet while a call app is in front, both settings on unless turned off, built in M11; the camera and another app's microphone checks are written and switched off until the founder's Mac session) | M | founder Mac session |
 | Announcement switches and done announcements | partial | S | none |
 | Microphone picker, mic failover, Bluetooth route following, muted Mac fallback | missing | S | founder Mac session |
 | Model router, escalation to a deeper model, honest model disclosure | partial | S | API spend |
@@ -96,7 +96,7 @@ Statuses: *forbidden by our rules* means AGENTS.md rules block it as HeyClicky d
 - **Health report when opening a Lovable, Bolt or Replit export** (have it, S). Origin, stack, missing setting names, install needed and a Rescue diagnosis in one card. Neutral across builder tools.
 - **Python projects in the proof ladder (pytest, ruff or mypy, Flask or FastAPI dev server)** (to build, M). Replit and Claude Code users often build in Python. Today they get 'nothing to check'.
 - **Privacy by architecture: own key, no proxy, voice on the device, captures in RAM only, local opt-in counts** (have it, S). HeyClicky keeps screenshot analysis and prompts and sends everything through its proxy. Ours becomes provable once the fast lane persistSession bug is fixed.
-- **Hide Companion from screen sharing and quiet during calls (presentation mode)** (to build, M). Rings and cards never leak into a Zoom share, and it stays quiet in meetings, within rule 7.
+- **Hide Companion from screen sharing and quiet during calls (presentation mode)** (built, weaker: re-checked 22 Oct 2026. Hide from screen sharing and quiet while a call app is in front are on; the camera and microphone checks wait for the founder's Mac session, so a call in a browser, or a share with another app in front, is not noticed yet). Rings and cards never leak into a Zoom share, and it stays quiet in meetings, within rule 7.
 - **Accessibility as part of done: VoiceOver labels, keyboard only flows, reduced motion everywhere** (to build, M). Clicky has no reduced motion or VoiceOver support. Reactions already freeze under reduced motion. The rest is not built.
 - **A small library of practice stuck moments (missing setting, wrong route, broken import, open table)** (built 19 Oct 2026 with no model; real runs and a person still owed, see `M11-real-run-checklist.md`, "The practice library"). People can see the full hero loop before they are stuck, and each one doubles as an eval case. Five in all with the signup page, in one catalog (`app/sample/practices.json`), on the Learn tab with progress kept on this Mac. A failed deploy practice is left out: a real one needs a Vercel account and a real failed deploy read through the person's own Vercel tool, and a fake deploy log in a local copy would teach a screen that never looks like that.
 - **After a fix, ring the changed lines in the person's editor** (to build, S). Shows exactly what changed and where, reusing the Point at the problem path. It makes the receipt something you can see.

@@ -54,6 +54,8 @@ Rules for you during the hour:
 | 17 | Start any task, then press **Control+Option+Command+X** (stop everything) | Everything stops within seconds, the mic light goes out | Anything keeps running |
 | 18 | Look in the menu bar for the mic and screen indicators | They are off when you are not using voice or show me | Either stays on |
 | 19 | Change one hotkey in Settings | It works at once, and a clash is explained in plain words | It silently fails |
+| 20 | Open Home, drag in a PDF with real text (a bank letter or an invoice), then a Word file and an Excel sheet, and ask "what is the total?" with Start | Each shows as a chip with its KB of text; the answer uses what is in them. A scanned PDF says it has no text to read; a long one says only its start goes | A chip is missing, the answer ignores the file, or anything waits more than a few seconds |
+| 21 | Join a test call in Zoom or FaceTime with Hide from screen sharing on, share your screen, and ask Companion something with Speak to me on | Your shared screen shows no character, ring or Home; while the call app is in front Companion does not speak | Any of them shows in the share, or it speaks over the call |
 
 ## Part 5: how it feels (5 minutes)
 

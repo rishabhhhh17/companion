@@ -10,6 +10,8 @@ The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder
 
 ## Built so far (22 Oct 2026)
 - The light lanes straight on the Messages API, off by default (`runner/src/direct.ts`, PR 155).
+- Drag a file in or paste one, and ask about it: text and code files and pictures already went with a request (wave 4). PDF, Word (.docx, .doc), rich text, OpenDocument text and Excel (.xlsx) documents now do too: their text is read on this Mac with the Mac's own tools (`app/src-tauri/src/docread.rs`, no new dependency), secrets hidden, clipped to a limit in Settings (`attach.docLimit`, 50 KB unless changed), never stored or logged. Not built: a preview of the document, and reading the old .xls, Pages, Numbers or Keynote files.
+- Quiet during calls and screen sharing: hide from screen sharing and quiet while a call app is in front were built in M11 (both on unless turned off). Another app using a microphone is now written beside the camera check, both switched off until your Mac session shows they never ask for a permission and are not fooled by macOS's own listeners. Nothing pops up unasked and Companion plays no sounds, so speech, reactions and confetti are what quiet holds back.
 - Second Look's engine (`runner/src/secondlook.ts`) and its eval (`evals/second-look/`, 30 cases). This first eval has 30 answers, not the planned 100; it grows once the first real run shows where it is weak. **Not yet built:** searching for sources (the fast lane has no tools; a web search on the plain API is the next step), the hotkey, reading the selection, and the card.
 
 ## Part 1: the guide, "exactly what HeyClicky does", in an order that works
