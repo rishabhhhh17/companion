@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Anthropic replied: 23 Oct 2026
+
+- **Anthropic support answered the questions we sent.** Building on their Agent SDK with the person's own API key is the supported path. Signing in with a Claude plan inside an app is not allowed, so Squibby will not offer it. Including Claude usage in our own plans needs a written agreement, which support cannot give; we are still waiting on that.
+- **One line needs a written answer:** support said shipping Anthropic's program inside our app is not allowed, while their published page says it is allowed if it is unmodified and each person uses their own key. We meet every condition on that page. The reply, what it settles, the fallback if the answer is no, and the follow up to send are in `docs/outreach/anthropic-support-reply-2026-10-23.md`.
+- **Nothing in the app changes today.** The app's own screens never use the Claude Code name.
+
 ## You can now see what Squibby made and clean it up: 22 Oct 2026
 
 - **A new list in Settings, "What Squibby made".** When you ask Squibby to make something with no project open, it makes a new folder for it. Until now you had no way to see those folders in one place. The list shows each one with when it was made and about how big it is. It sits under Practice, below the setting that says where new folders go.
