@@ -27,7 +27,7 @@ import { Ledger } from "./ledger.ts";
 import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { recallWords } from "./memory/recall.ts";
-import { removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
+import { madeBySquibby, removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { explainPlain, explainRequest } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
@@ -344,6 +344,9 @@ export class AgentRunner {
       const m = this.memoryFor(project);
       if (!m) return;
       const choice = m.agentsChoice();
+      // A folder Squibby made gets no AGENTS.md or CLAUDE.md (and no question about them) until the person says yes, so that
+      // Undo really returns it to empty. Its notes stay in the hidden .companion folder.
+      if (choice !== "approved" && madeBySquibby(project)) return;
       const r = syncAgentsFiles(project, m, { approved: choice === "approved", declined: choice === "declined", onlyIfPresent });
       const key = resolve(project);
       if (r.status === "needs_ask" && !this.agentsAsked.has(key)) { this.agentsAsked.add(key); this.emit({ type: "memory.agents_ask", project, files: r.files } as never); }
