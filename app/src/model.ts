@@ -126,6 +126,13 @@ export type BisectState = {
 // The error explainer: the stage the app is in (reading, consent, thinking...), then the answer for this press (req).
 // where is only ever a line confirmed in the project.
 export type ErrorHelp = { stage: string; app?: string; req?: string; why?: string; project?: string; sentences?: string[]; where?: Problem; excerpt?: string; evidence?: string; reason?: string };
+// Second Look: the stage the app is in (reading, consent, thinking, off...), then the engine's answer for this press (req):
+// ready with a verdict and what to check, or failed with a reason. A source is only ever a page a web search returned.
+export type LookItem = { kind: string; claim: string; issue: string; verify: string; by: string; source?: { url: string; title: string } };
+export type SecondLookView = {
+  stage: string; app?: string; req?: string; why?: string; verdict?: string; items?: LookItem[]; checked?: string[]; cantTell?: string[];
+  search?: string; searches?: number; usd?: number; reason?: string;
+};
 export type Model = {
   // The folder Home shows (null until the page has heard it). away: agents still at work that was started in another
   // folder, and that folder: nothing of that work (its steps, checks, receipt, picture or explanation) is shown here, since
@@ -140,6 +147,7 @@ export type Model = {
   researchCount: number;
   bisect: BisectState | null;
   eh: ErrorHelp | null;
+  sl: SecondLookView | null;
   browser: BrowserSetupState;
   spending: Spending | null;
   doctor: DoctorItem[] | null;
@@ -209,7 +217,7 @@ export type Model = {
 
 // The record without one agent's entry.
 function without<T>(r: Record<string, T>, agent: string): Record<string, T> { const o = { ...r }; delete o[agent]; return o; }
-export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, watches: {}, watchAlerts: {}, watchFix: null, watchAsked: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
+export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, sl: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, watches: {}, watchAlerts: {}, watchFix: null, watchAsked: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -432,6 +440,23 @@ function reduceRest(m: Model, e: Ev): Model {
         excerpt: String(e.excerpt ?? ""), evidence: String(e.evidence ?? ""), ...(typeof e.reason === "string" ? { reason: claudeStopWords(e.reason) ?? e.reason } : {}) } };
     }
     case "ui.ehClosed": return { ...m, eh: null };
+    // ---- Second Look ----
+    case "app.second_look": {
+      if (e.stage === "dismissed") return { ...m, sl: null };
+      return { ...m, sl: { stage: String(e.stage ?? ""), app: typeof e.app === "string" ? e.app : m.sl?.app, ...(typeof e.req === "string" ? { req: e.req } : {}), ...(typeof e.why === "string" ? { why: e.why } : {}) } };
+    }
+    case "secondlook.result": {
+      if (!m.sl?.req || m.sl.req !== e.req) return m;   // only the answer to this press
+      const texts = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : []);
+      const web = (u: unknown): boolean => typeof u === "string" && /^https?:\/\/\S+$/i.test(u);
+      const items: LookItem[] = (Array.isArray(e.items) ? e.items : []).filter((i: any) => i && typeof i.claim === "string" && typeof i.issue === "string")
+        .map((i: any) => ({ kind: String(i.kind ?? "other"), claim: i.claim, issue: i.issue, verify: typeof i.verify === "string" ? i.verify : "", by: String(i.by ?? "model"), ...(i.source && web(i.source.url) ? { source: { url: i.source.url, title: typeof i.source.title === "string" ? i.source.title : i.source.url } } : {}) }));
+      const ok = e.ok === true && ["solid", "check", "cant_tell"].includes(String(e.verdict));
+      return { ...m, sl: { ...m.sl, stage: ok ? "ready" : "failed", ...(ok ? { verdict: String(e.verdict) } : {}), items, checked: texts(e.checked), cantTell: texts(e.cantTell),
+        search: typeof e.search === "string" ? e.search : undefined, searches: typeof e.searches === "number" ? e.searches : 0, usd: typeof e.usdEstimate === "number" ? e.usdEstimate : 0,
+        ...(typeof e.reason === "string" ? { reason: claudeStopWords(e.reason) ?? e.reason } : {}) } };
+    }
+    case "ui.slClosed": return { ...m, sl: null };
     case "ui.undoCancelled": case "ui.undoClosed": return { ...m, undo: null };
     case "ui.undoSent": return m.undo ? { ...m, undo: { ...m.undo, stage: "working" } } : m;
     case "checkpoint.restored": {
@@ -506,10 +531,10 @@ function reduceRest(m: Model, e: Ev): Model {
       const proof = m.task?.proof;
       const task = m.task && proof ? { ...m.task, proof: { ...proof, steps: proof.steps.map((x) => (x.status === "running" ? { ...x, status: "skipped" as const, detail: S.stepStoppedRestart } : x)) } } : m.task;
       const notice = turn?.target ? S.restartedTurn(turn.target.file, turn.target.line) : ran ? S.restartedStopped : S.restartedNothing;
-      return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
+      return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
@@ -1104,6 +1129,47 @@ export function ehLines(m: Model): string[] {
     case "unexplained": return [sentence(h.reason) || S.ehError, ...where];
     default: return [refused[h.why ?? ""] ?? S.ehError];
   }
+}
+
+// ---- Second Look ----
+
+/** Each stage of Second Look, then its answer, one plain sentence per line: the verdict, each thing to check (what looks
+ *  wrong, how to check it), what it checked, what it could not tell, whether it searched the web, and what it cost. The
+ *  pages it found are buttons on the card (slSources). */
+export function slLines(m: Model): string[] {
+  const l = m.sl;
+  if (!l) return [];
+  const app = l.app || S.thisApp;
+  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: withKeys(S.slOwnApp, "secondlook"), no_engine: S.ehNoEngine };
+  switch (l.stage) {
+    case "reading": return [S.slReading(app)];
+    case "thinking": return [S.slThinking];
+    case "consent": return [S.slConsent(app)];
+    case "off": return [S.slOff];
+    case "needs_accessibility": return [withKeys(S.slNeedsAccess, "secondlook")];
+    case "nothing_selected": return [withKeys(S.slNothing(app), "secondlook")];
+    case "failed": return [sentence(l.reason) || S.slError];
+    case "ready": {
+      const out = [S.slVerdict[l.verdict ?? ""] ?? S.slVerdict.cant_tell];
+      for (const i of l.items ?? []) {
+        out.push(S.slItem(i.claim, i.issue));
+        out.push(i.by === "recomputed" ? S.slRecomputed : i.verify ? S.slVerify(i.verify) : "");
+      }
+      if (l.checked?.length) out.push(S.slChecked(l.checked.join("; ")));
+      if (l.cantTell?.length) out.push(S.slCantTell(l.cantTell.join("; ")));
+      out.push(l.search === "searched" && (l.searches ?? 0) > 0 ? S.slSearched(l.searches ?? 0) : S.slSearch[l.search ?? ""] ?? S.slSearch.unavailable);
+      out.push(S.slCost(formatUsd(l.usd ?? 0)));
+      return out.filter(Boolean);
+    }
+    default: return [refused[l.why ?? ""] ?? S.slError];
+  }
+}
+/** The pages Second Look's web searches found, each once, for Open buttons (opened only on the person's press). */
+export function slSources(m: Model): { url: string; title: string }[] {
+  const out: { url: string; title: string }[] = [];
+  if (m.sl?.stage !== "ready") return out;
+  for (const i of m.sl.items ?? []) if (i.source && !out.some((x) => x.url === i.source!.url)) out.push(i.source);
+  return out;
 }
 
 // What the task was not allowed to do (a safety rule or a house rule said no), so a "Done" is never read as "all of it".

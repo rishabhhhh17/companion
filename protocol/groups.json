@@ -20,7 +20,7 @@
       "commands": ["showme_clear", "showme_hide", "speak_stop"],
       "runner": ["agent.interrupt", "agent.interruptAll", "approval.resolve", "assist.cancel", "runner.ping"] },
     { "id": "projects", "group": "core", "permissions": [], "settings": [],
-      "commands": ["get_project", "list_projects", "use_project", "pick_project", "clone_project"],
+      "commands": ["get_project", "list_projects", "use_project", "pick_project", "clone_project", "start_in_new_folder"],
       "runner": ["tasks.list", "project.inspect", "project.install", "project.clone", "recap.ask"] },
     { "id": "account", "group": "core", "permissions": [], "settings": [],
       "commands": ["save_api_key", "remove_api_key", "data_inventory", "permission_overview", "permissions_status", "open_permission_page", "delete_everything", "export_logs", "report_problem", "open_acknowledgements", "update_status", "check_update", "install_update"],
@@ -97,6 +97,9 @@
     { "id": "errorHelp", "group": "voice", "hotkeys": ["explain"], "tried": "page", "permissions": ["accessibility"], "settings": [],
       "commands": ["eh_consent", "eh_dismiss"],
       "runner": ["error.explain"], "stays": ["eh_dismiss"] },
+    { "id": "secondLook", "group": "voice", "hotkeys": ["secondlook"], "tried": "page", "permissions": ["accessibility"], "settings": ["secondLook.on", "secondLook.searches"],
+      "commands": ["sl_consent", "sl_dismiss"],
+      "runner": ["secondlook.check"], "stays": ["sl_dismiss"] },
 
     { "id": "convert", "group": "files", "tried": "shell", "permissions": [], "settings": ["drop.on", "drop.saveTo"],
       "commands": ["drop_now", "drop_pick", "drop_stop", "drop_close", "drop_reveal", "drop_trim"],

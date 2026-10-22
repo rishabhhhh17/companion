@@ -112,3 +112,5 @@ Terminal before? (Write the answers down; they help explain results, they are no
   teaches by its steps in both groups. Prefer the signup practice.
 - The transfer projects live in the repo (`evals/did-they-learn/transfer`), not in the app, so a participant cannot find
   the answers inside Companion. Give participants the copy that `transfer-check.ts copy` makes, never the repo folder.
+
+**Update (22 Oct 2026): Your turn now shows on the route practice.** Its home page has the same broken link twice (the menu and a button), so Companion fixes one and offers the second as Your turn; tested end to end with the real checks (`runner/test/practice-e2e.test.ts`, "Your turn on the route practice"). **Use the route practice for both groups**, so Group A gets the whole learning loop (Your turn, the two line why and the check question) and Group B gets none of it. The transfer test for it is `evals/did-they-learn/transfer/route`.

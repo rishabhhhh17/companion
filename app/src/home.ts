@@ -16,7 +16,7 @@ export const tabPanelId = (t: Tab) => `home-panel-${t}`;
 // notice, an error from something done on any tab) and must never be hidden on a tab the person is not looking at.
 export type Panel =
   | "folder" | "ask" | "urgent" | "notes" | "about" | "diagram" | "promptHelp" | "drive" | "ship" | "research" | "rescue"
-  | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "everyday" | "bisect" | "errorHelp" | "showMe" | "recap" | "toast"
+  | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "everyday" | "bisect" | "errorHelp" | "secondLook" | "showMe" | "recap" | "toast"
   | "whatsNew" | "watch"
   | "history"
   | "practice" | "lessons" | "walk"
@@ -28,7 +28,7 @@ export const PANEL_TAB: Record<Panel, Place> = {
   notes: "every",
   folder: "now", ask: "now", urgent: "now", about: "now", diagram: "now", promptHelp: "now", drive: "now", ship: "now",
   research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now", everyday: "now",
-  bisect: "now", errorHelp: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now", watch: "now",
+  bisect: "now", errorHelp: "now", secondLook: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now", watch: "now",
   history: "did",
   practice: "learn", lessons: "learn", walk: "learn",
   memory: "memory",
@@ -68,6 +68,7 @@ const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "blocked", "erro
 // Prompt help and the error explainer start from a hotkey and answer on Now: each step there, a refusal included.
 const PH_NEEDS = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
 const EH_NEEDS = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
+const SL_NEEDS = ["reading", "consent", "ready", "failed", "off", "needs_accessibility", "nothing_selected", "refused", "error"];
 
 /** The most important thing waiting for the person, if any. A question to answer comes first. */
 export function need(m: Model): Need | null {
@@ -83,6 +84,7 @@ export function need(m: Model): Need | null {
   if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: "learn", why: S.practiceTitle };
   if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle, mustShow: true };
   if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle, mustShow: true };
+  if (m.sl && SL_NEEDS.includes(m.sl.stage)) return { key: `sl:${m.sl.req ?? ""}:${m.sl.stage}`, tab: "now", why: S.slTitle, mustShow: true };
   if (m.point?.stage === "found") return { key: `point:${m.point.label ?? ""}`, tab: "now", why: S.pointTitle };
   // An everyday look's answer (everyday.ts): what is wrong, whether it is fixed, or Did that work?
   if (m.everyday && EVERYDAY_NEEDS.includes(m.everyday.stage)) return { key: `everyday:${m.everyday.req ?? ""}:${m.everyday.stage}`, tab: "now", why: S.everydayTitle };
@@ -162,7 +164,7 @@ export function tabKey(t: Tab, key: string): Tab | null {
  *  to other apps to get a key or sign in). */
 export function closesOnClickAway(m: Model, onboarding: boolean, on = true): boolean {
   if (!on || onboarding || need(m)) return false;
-  if (m.walk || m.practice || m.showme || m.teach || m.ph || m.eh || m.voice) return false;
+  if (m.walk || m.practice || m.showme || m.teach || m.ph || m.eh || m.sl || m.voice) return false;
   if (m.point?.stage === "checking" || m.diagram?.stage === "asking") return false;
   if (m.undo?.stage === "confirm" || m.bisect?.undoStage === "confirm") return false;
   return true;

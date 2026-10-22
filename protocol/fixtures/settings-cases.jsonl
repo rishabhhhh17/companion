@@ -275,3 +275,13 @@
 {"key": "approval.waitMinutes", "value": 7, "ok": true, "normalized": 5}
 {"key": "approval.waitMinutes", "value": 8, "ok": true, "normalized": 10}
 {"key": "approval.waitMinutes", "value": 0, "ok": false, "reason": "tooLow"}
+{"key": "make.folder", "value": "home", "ok": true, "normalized": "home"}
+{"key": "make.folder", "value": "documents", "ok": true, "normalized": "documents"}
+{"key": "make.folder", "value": "desktop", "ok": true, "normalized": "desktop"}
+{"key": "make.folder", "value": "/etc", "ok": false, "reason": "notChoice"}
+{"key": "make.folder", "value": "../Library", "ok": false, "reason": "notChoice"}
+{"key": "make.folder", "value": "~/Projects", "ok": false, "reason": "notChoice"}
+{"key": "make.folder", "value": "Home", "ok": false, "reason": "notChoice"}
+{"key": "make.folder", "value": "", "ok": false, "reason": "notChoice"}
+{"key": "make.folder", "value": 1, "ok": false, "reason": "notChoice"}
+{"key": "make.folder", "value": null, "ok": false, "reason": "notChoice"}

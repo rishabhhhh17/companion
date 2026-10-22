@@ -1,7 +1,7 @@
 //! Every Companion hotkey, and the keys the person picked for each (M11 wave 4, building on hold to talk, F18 item 3).
 //!
 //! One map from each job to its keys: open the ask box, Point at the problem, Show me how, Prompt help (read, and use a
-//! suggestion while one shows), the error explainer, hold to talk and Stop everything. Every one is a chord, one or more
+//! suggestion while one shows), the error explainer, Second Look, hold to talk and Stop everything. Every one is a chord, one or more
 //! modifiers held with one key, registered through the global shortcut plugin: the Mac's hot key service reports it, so
 //! nothing reads key events and nothing asks for Input Monitoring (rule 8). A modifier alone, a double tap or the Fn key
 //! are not possible, and no list here has one.
@@ -50,10 +50,10 @@ const MODS: [(u8, &str, &str, Modifiers); 4] = [
 
 /// The keys a chord can end with. Only the ones some list uses: anything else in a saved file is not a chord here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Key { A, E, F, I, J, K, L, O, P, R, S, U, X, Space, Return }
+pub enum Key { A, C, E, F, I, J, K, L, O, P, R, S, U, X, Space, Return }
 /// Each key, in the order of `Key`, with the plugin's code, its id and the word a person reads.
-const KEYS: [(Key, Code, &str, &str); 15] = [
-    (Key::A, Code::KeyA, "a", "A"), (Key::E, Code::KeyE, "e", "E"), (Key::F, Code::KeyF, "f", "F"), (Key::I, Code::KeyI, "i", "I"),
+const KEYS: [(Key, Code, &str, &str); 16] = [
+    (Key::A, Code::KeyA, "a", "A"), (Key::C, Code::KeyC, "c", "C"), (Key::E, Code::KeyE, "e", "E"), (Key::F, Code::KeyF, "f", "F"), (Key::I, Code::KeyI, "i", "I"),
     (Key::J, Code::KeyJ, "j", "J"), (Key::K, Code::KeyK, "k", "K"), (Key::L, Code::KeyL, "l", "L"), (Key::O, Code::KeyO, "o", "O"),
     (Key::P, Code::KeyP, "p", "P"), (Key::R, Code::KeyR, "r", "R"), (Key::S, Code::KeyS, "s", "S"), (Key::U, Code::KeyU, "u", "U"),
     (Key::X, Code::KeyX, "x", "X"), (Key::Space, Code::Space, "space", "Space"), (Key::Return, Code::Enter, "return", "Return"),
@@ -106,16 +106,16 @@ pub fn decode(v: u32) -> Option<Chord> {
 
 /// Each job that has keys, in the order Settings shows them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Action { Card, Problem, ShowMe, Read, Accept, Explain, Talk, Stop }
-pub const N: usize = 8;
-pub const ACTIONS: [Action; N] = [Action::Card, Action::Problem, Action::ShowMe, Action::Read, Action::Accept, Action::Explain, Action::Talk, Action::Stop];
+pub enum Action { Card, Problem, ShowMe, Read, Accept, Explain, SecondLook, Talk, Stop }
+pub const N: usize = 9;
+pub const ACTIONS: [Action; N] = [Action::Card, Action::Problem, Action::ShowMe, Action::Read, Action::Accept, Action::Explain, Action::SecondLook, Action::Talk, Action::Stop];
 impl Action {
     pub fn index(self) -> usize { self as usize }
     /// The id the page and the saved file use.
     pub fn id(self) -> &'static str {
         match self {
             Action::Card => "card", Action::Problem => "problem", Action::ShowMe => "showme", Action::Read => "read",
-            Action::Accept => "accept", Action::Explain => "explain", Action::Talk => "talk", Action::Stop => "stop",
+            Action::Accept => "accept", Action::Explain => "explain", Action::SecondLook => "secondlook", Action::Talk => "talk", Action::Stop => "stop",
         }
     }
     pub fn from_id(s: &str) -> Option<Action> { ACTIONS.into_iter().find(|a| a.id() == s) }
@@ -124,7 +124,7 @@ impl Action {
         match self {
             Action::Card => "open the ask box", Action::Problem => "point at the problem", Action::ShowMe => "Show me how",
             Action::Read => "Prompt help", Action::Accept => "use a Prompt help suggestion", Action::Explain => "explain an error",
-            Action::Talk => "hold to talk", Action::Stop => "stop everything",
+            Action::SecondLook => "Second Look", Action::Talk => "hold to talk", Action::Stop => "stop everything",
         }
     }
     /// Registered only while a Prompt help result shows (with Esc), never at launch; elsewhere its keys are only tried.
@@ -139,6 +139,8 @@ pub const DEFAULTS: [(Action, Chord); N] = [
     (Action::Read, Chord::new(CONTROL | OPTION | COMMAND, Key::R)),
     (Action::Accept, Chord::new(CONTROL | OPTION | COMMAND, Key::A)),
     (Action::Explain, Chord::new(CONTROL | OPTION | COMMAND, Key::E)),
+    // Second Look (M14), added 22 Oct 2026: C for check, in the same place on QWERTY, QWERTZ and AZERTY keyboards.
+    (Action::SecondLook, Chord::new(CONTROL | OPTION | COMMAND, Key::C)),
     (Action::Talk, Chord::new(OPTION, Key::Space)),
     (Action::Stop, Chord::new(CONTROL | OPTION | COMMAND, Key::X)),
 ];
@@ -433,7 +435,7 @@ mod tests {
     #[test]
     fn the_usual_keys_are_exactly_the_ones_companion_always_had() {
         let three = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
-        for (a, code) in [(Card, Code::KeyK), (Problem, Code::KeyF), (ShowMe, Code::KeyS), (Read, Code::KeyR), (Accept, Code::KeyA), (Explain, Code::KeyE), (Stop, Code::KeyX)] {
+        for (a, code) in [(Card, Code::KeyK), (Problem, Code::KeyF), (ShowMe, Code::KeyS), (Read, Code::KeyR), (Accept, Code::KeyA), (Explain, Code::KeyE), (SecondLook, Code::KeyC), (Stop, Code::KeyX)] {
             assert_eq!(shortcut(default(a)), Shortcut::new(Some(three), code), "{a:?}");
         }
         assert_eq!(shortcut(default(Talk)), Shortcut::new(Some(Modifiers::ALT), Code::Space));

@@ -48,7 +48,7 @@ describe("the shipped list of settings", () => {
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
-      "ph.handBack": "paste", "ph.appAnswers": null, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
+      "ph.handBack": "paste", "ph.appAnswers": null, "secondLook.on": true, "secondLook.searches": 3, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
       // The practice library: Point at the problem's Fix it looks deeper first (Rescue), as it always has.
       "point.fixWith": "rescue",
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
@@ -70,6 +70,8 @@ describe("the shipped list of settings", () => {
       // F21: Watch routines are on (they only matter once a watch exists), a new watch is checked every 30 minutes, once a day at
       // 9, alerts are held back 22:00 to 07:00 only when the person turns quiet hours on, and Rescue may read a failed GitHub run.
       "watch.on": true, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
+      // F23, M14: something asked for with no project open gets a new folder in the home folder (newfolder.rs).
+      "make.folder": "home",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
