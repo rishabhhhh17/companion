@@ -99,3 +99,33 @@ describe("the whole check", () => {
     expect(SECOND_LOOK_SYSTEM).toMatch(/cannot search|did not search|without searching/i);
   });
 });
+
+describe("false alarms (the real run flagged 3 of 15 clean answers)", () => {
+  const flagged = (issue: string) => JSON.stringify({ verdict: "check", items: [{ kind: "number", claim: "30 + 45 + 75 = 150", issue, verify: "Add them up" }], checked: [], cantTell: [] });
+  test("a finding that says in its own words that the claim holds is dropped, and the answer is solid", async () => {
+    for (const issue of [
+      "The sum is wrong. 30 + 45 + 75 = 150 is correct, so on recheck the addition holds.",
+      "No error found here.",
+      "On a second look this is correct and the total matches the rows.",
+      "The listed items add up, so the total matches the rows.",
+    ]) {
+      const r = await secondLook("Three orders of $30, $45 and $75 add up to $150.", model(flagged(issue)), sig());
+      expect(r.items, issue).toEqual([]);
+      expect(r.verdict, issue).toBe("solid");
+    }
+  });
+  test("a real problem that happens to use the word correct is kept", async () => {
+    const r = await secondLook("x", model(flagged("The correct total is 160, not 150.")), sig());
+    expect(r.items.length).toBe(1);
+    expect(r.verdict).toBe("check");
+  });
+  test("a real caveat that uses the word holds is kept", async () => {
+    const r = await secondLook("x", model(flagged("This only holds for small orders; a big order is priced differently.")), sig());
+    expect(r.items.length).toBe(1);
+  });
+  test("the instructions say a missing unit or a general but safe answer is not a problem, and not to list what you then find sound", () => {
+    expect(SECOND_LOOK_SYSTEM).toMatch(/missing (unit|detail)/i);
+    expect(SECOND_LOOK_SYSTEM).toMatch(/never list/i);
+  });
+});
+
