@@ -4,8 +4,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { ATTACH, checkAttachments } from "../../runner/src/attach.ts";
-import { addFiles, addedLine, blocksDrop, carriesFiles, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, type FileLike } from "./attachfiles.ts";
+import { ATTACH, CLIPPED_NOTE, DOC_LIMIT_KEY, checkAttachments, toBase64 } from "../../runner/src/attach.ts";
+import { addFiles, addedLine, blocksDrop, carriesFiles, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, type DocRead, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
 
@@ -44,10 +44,10 @@ describe("adding files to the ask box", () => {
   });
   test("a file too big, or of a kind that cannot go, is refused before it is read", async () => {
     const big = file("server.log", enc("x"), "text/plain", ATTACH.maxTextBytes + 1);
-    const pdf = file("plan.pdf", enc("%PDF"), "application/pdf");
+    const pdf = file("plan.pages", enc("PK"), "application/x-iwork-pages-sffpages");
     const r = await addFiles([], [big, pdf]);
     expect(r.have).toEqual([]);
-    expect(r.notes).toEqual([S.attachRefused.too_big("server.log"), S.attachRefused.kind("plan.pdf")]);
+    expect(r.notes).toEqual([S.attachRefused.too_big("server.log"), S.attachRefused.kind("plan.pages")]);
     expect(big.read || pdf.read).toBe(false);
   });
   test("several at once: the good ones are added, each refused one gets its own line", async () => {
@@ -69,6 +69,7 @@ describe("adding files to the ask box", () => {
   });
   test("the words name the same caps the rules use", () => {
     expect(S.attachRefused.too_big("x")).toContain(`${ATTACH.maxTextBytes / 1000} KB`);
+    expect(S.attachRefused.too_big("x")).toContain(`a document up to ${ATTACH.maxDocBytes / 1_000_000} MB`);
     expect(S.attachRefused.too_big("x")).toContain(`${ATTACH.maxImageBytes / 1_000_000} MB`);
     expect(S.attachRefused.too_much("x")).toContain(`${ATTACH.maxTextTotal / 1000} KB`);
     expect(S.attachRefused.too_many("x")).toContain(`up to ${ATTACH.maxFiles} files`);
@@ -80,6 +81,82 @@ describe("adding files to the ask box", () => {
       expect(line, k).toContain("notes.md");
       expect(/[–—]/.test(line), k).toBe(false);
     }
+  });
+});
+
+describe("documents: a PDF, a Word file or an Excel sheet", () => {
+  // The shell reads a document's text with the Mac's own tools (docread.rs); here a stand in plays it, so these tests never
+  // run a tool. calls: what the stand in was given.
+  const reader = (answers: Record<string, DocRead | (() => never)>) => {
+    const calls: { name: string; bytes: number }[] = [];
+    const read = async (name: string, bytes: Uint8Array) => { calls.push({ name, bytes: bytes.length }); const a = answers[name]; if (typeof a === "function") a(); return (a as DocRead) ?? { error: "unreadable" }; };
+    return { calls, read };
+  };
+  test("its text, read by the shell, is added as text under the document's name; its secrets hidden and said so", async () => {
+    const r0 = reader({ "Invoice.pdf": { text: `Invoice total 42 dollars.\nkey ${KEY}`, cut: false } });
+    const f = file("Invoice.pdf", enc("%PDF-1.4 ..."), "application/pdf", 2_000_000);
+    const r = await addFiles([], [f], { readDocument: r0.read, docLimitBytes: 50_000 });
+    expect(r0.calls).toEqual([{ name: "Invoice.pdf", bytes: 12 }]);
+    expect(r.have[0]).toMatchObject({ kind: "text", name: "Invoice.pdf", hidden: true, clipped: false });
+    expect(JSON.stringify(r.have)).not.toContain(KEY);
+    expect(r.notes).toEqual([S.attachHidden("Invoice.pdf")]);
+    expect(forRequest(r.have).files[0].text).toContain("Invoice total 42 dollars.");
+  });
+  test("a long one is clipped to the limit in Settings, and the person is told only the start goes", async () => {
+    const r0 = reader({ "report.docx": { text: "A line of the report.\n".repeat(10_000) } });
+    const r = await addFiles([], [file("report.docx", enc("PK"))], { readDocument: r0.read, docLimitBytes: 20_000 });
+    const a = r.have[0];
+    expect(a.kind === "text" && a.clipped).toBe(true);
+    expect(a.kind === "text" && a.text.endsWith(CLIPPED_NOTE)).toBe(true);
+    expect(new TextEncoder().encode(a.kind === "text" ? a.text : "").length).toBeLessThanOrEqual(20_000);
+    expect(r.notes).toEqual([S.attachClipped("report.docx", 20)]);
+    expect(chipLabel(a)).toMatch(/^report\.docx, \d+ KB of text, shortened$/);
+  });
+  test("settings and key files, documents too big and kinds the Mac cannot read are refused before anything is read", async () => {
+    const r0 = reader({});
+    const files = [file("credentials.xlsx", enc("PK")), file("secrets.pdf", enc("%PDF")), file("huge.pdf", enc("%PDF"), "", ATTACH.maxDocBytes + 1), file("old.xls", enc("x"))];
+    const r = await addFiles([], files, { readDocument: r0.read });
+    expect(r.have).toEqual([]);
+    expect(r.notes).toEqual([S.attachRefused.secret("credentials.xlsx"), S.attachRefused.secret("secrets.pdf"), S.attachRefused.too_big("huge.pdf"), S.attachRefused.kind("old.xls")]);
+    expect(r0.calls).toEqual([]);
+    expect(files.some((f) => f.read)).toBe(false);
+  });
+  test("each reason the shell gives has its own plain line", async () => {
+    const r0 = reader({ "locked.pdf": { error: "locked" }, "scan.pdf": { error: "noText" }, "broken.docx": { error: "unreadable" }, "big.xlsx": { error: "tooBig" }, "odd.rtf": { error: "kind" }, "boom.odt": () => { throw new Error("gone"); }, "blank.doc": { text: "  \n " } });
+    const names = ["locked.pdf", "scan.pdf", "broken.docx", "big.xlsx", "odd.rtf", "boom.odt", "blank.doc"];
+    const r = await addFiles([], names.map((n) => file(n, enc("x"))), { readDocument: r0.read });
+    expect(r.have).toEqual([]);
+    expect(r.notes).toEqual([S.attachRefused.locked("locked.pdf"), S.attachRefused.no_text("scan.pdf"), S.attachUnreadable("broken.docx"), S.attachRefused.too_big("big.xlsx"), S.attachRefused.kind("odd.rtf"), S.attachUnreadable("boom.odt"), S.attachRefused.no_text("blank.doc")]);
+  });
+  test("with no shell to read it, a document is not read and says so", async () => {
+    const f = file("plan.pdf", enc("%PDF"));
+    const r = await addFiles([], [f]);
+    expect(r).toEqual({ have: [], notes: [S.attachUnreadable("plan.pdf")] });
+    expect(f.read).toBe(false);
+  });
+  test("the shell is asked with the file's bytes in base64, and only an answer of the right shape is taken", async () => {
+    const asked: [string, Record<string, unknown>][] = [];
+    const answer = (a: unknown) => shellReader(async (cmd, args) => { asked.push([cmd, args]); return a; });
+    const bytes = enc("%PDF-1.4");
+    expect(await answer({ text: "hi", cut: true })("a.pdf", bytes)).toEqual({ text: "hi", cut: true });
+    expect(asked[0]).toEqual(["read_document", { name: "a.pdf", data: toBase64(bytes) }]);
+    expect(await answer({ text: "hi" })("a.pdf", bytes)).toEqual({ text: "hi", cut: false });
+    for (const w of ["locked", "noText", "unreadable", "tooBig", "kind"] as const) expect(await answer({ error: w })("a.pdf", bytes)).toEqual({ error: w });
+    for (const odd of [null, "text", { text: 5 }, { error: "other" }, { error: 1 }, []]) expect(await answer(odd)("a.pdf", bytes), JSON.stringify(odd)).toEqual({ error: "unreadable" });
+    expect(await shellReader(async () => { throw new Error("no shell"); })("a.pdf", bytes)).toEqual({ error: "unreadable" });
+  });
+  test("Home reads documents through the shell, clipped to the limit the person chose in Settings", () => {
+    const add = card.slice(card.indexOf("const addDropped = "), card.indexOf("\n", card.indexOf("const addDropped = ")));
+    expect(add).toContain("addFiles(before, list, { readDocument: shellReader(invoke), docLimitBytes: docLimitBytes(setting(DOC_LIMIT_KEY)) })");
+    expect(DOC_LIMIT_KEY).toBe("attach.docLimit");
+  });
+  test("a document dropped twice is added once; it still counts as one of the five", async () => {
+    const r0 = reader({ "a.pdf": { text: "one" } });
+    const once = await addFiles([], [file("a.pdf", enc("%PDF"))], { readDocument: r0.read });
+    const twice = await addFiles(once.have, [file("a.pdf", enc("%PDF"))], { readDocument: r0.read });
+    expect(twice.have.length).toBe(1);
+    expect(twice.notes).toEqual([S.attachRefused.already("a.pdf")]);
+    expect(mergeAdded([], once.have, [])).toHaveLength(1);
   });
 });
 
@@ -114,14 +191,16 @@ describe("the box and the engine use one rule", () => {
   test("whatever mix of names, types and sizes is dropped", async () => {
     let seed = 7;
     const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed % n; };
-    const names = ["notes.md", "notes", "a.pl", "b.ics", "c.rtf", "d.ndjson", "Procfile.dev", "App.tsx", "shot.png", "clipboard", "x.jpg", ".env", "id_rsa", "doc.pdf", " pad .md", `${"z".repeat(119)} q.md`];
+    const names = ["notes.md", "notes", "a.pl", "b.ics", "c.rtf", "d.ndjson", "Procfile.dev", "App.tsx", "shot.png", "clipboard", "x.jpg", ".env", "id_rsa", "doc.pdf", "sheet.xlsx", "Letter.docx", "credentials.xlsx", " pad .md", `${"z".repeat(119)} q.md`];
     const types = ["", "text/plain", "text/calendar", "application/json", "image/png", "image/jpeg"];
     const bodies = [enc("hello"), grow(30_000), grow(99_900), grow(65_000), PNG, enc("const k = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123';"), new Uint8Array([0xff, 0xfe, 0])];
     for (let round = 0; round < 60; round++) {
       let have: Awaited<ReturnType<typeof addFiles>>["have"] = [];
       for (let drop = 0; drop < 3; drop++) {
         const files = Array.from({ length: 1 + rnd(4) }, () => file(names[rnd(names.length)], bodies[rnd(bodies.length)].slice(), types[rnd(types.length)]));
-        have = (await addFiles(have, files)).have;
+        // Documents read by a stand in for the shell: long, short, with secrets, empty or refused.
+        const readDocument = async (_: string, b: Uint8Array): Promise<DocRead> => [{ text: "word ".repeat(30_000) }, { text: "Sheet: A\na,b", cut: true }, { text: `key ${KEY}` }, { text: " " }, { error: "locked" as const }][b.length % 5];
+        have = (await addFiles(have, files, { readDocument, docLimitBytes: [20_000, 50_000, 100_000][rnd(3)] })).have;
       }
       expect(passes(have), `round ${round}: ${have.map((a) => a.name).join(", ")}`).toBe("passed");
     }

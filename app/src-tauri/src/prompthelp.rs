@@ -418,7 +418,7 @@ mod tests {
             assert_eq!(secure_now(role, sub, secure).unwrap_or(ReadVerdict::Ok), at_press, "{role} {secure}");
         }
         // Both readers ask it right before reading, and the reading itself never takes a password box.
-        for (file, src, read) in [("phelp.rs", include_str!("phelp.rs"), "ax::read_ladder(pid)"), ("errhelp.rs", include_str!("errhelp.rs"), "ax::read_selection(pid)")] {
+        for (file, src, read) in [("phelp.rs", include_str!("phelp.rs"), "ax::read_ladder(pid)"), ("errhelp.rs", include_str!("errhelp.rs"), "ax::read_selection(pid)"), ("seclook.rs", include_str!("seclook.rs"), "ax::read_selection(pid)")] {
             let at = src.find(read).unwrap_or_else(|| panic!("{file}"));
             let before = &src[..at];
             let fun = &before[before.rfind("\nfn ").unwrap()..];
@@ -596,6 +596,7 @@ mod tests {
         // An answer given on the card (Prompt help or the error explainer) shows in Settings at once.
         assert!(phelp.contains("crate::settings_told(&app, &[\"ph.appAnswers\".to_string()])"));
         assert!(include_str!("errhelp.rs").contains("crate::settings_told(&app, &[\"ph.appAnswers\".to_string()])"));
+        assert!(include_str!("seclook.rs").contains("crate::settings_told(&app, &[\"ph.appAnswers\".to_string()])"));
         // Settings changes the answers only through these rules, and a failed save changes nothing.
         let change = &phelp[phelp.find("pub fn apps_change(").unwrap()..];
         let change = &change[..change.find("\n}\n").unwrap()];

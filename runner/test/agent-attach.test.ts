@@ -48,6 +48,15 @@ describe("text files with a request", () => {
     expect(r.log.list()[0].label).toBe("Make the signup button match");
     expect(of(r.events, "receipt").length).toBe(1);
   });
+  test("a document's text (a PDF, Word or Excel file read on this Mac) follows the request under the document's name", async () => {
+    const r = setup([[write("a.txt", "v1")]]);
+    await r.start({ files: [{ name: "Invoice March.pdf", text: `Invoice total 42 dollars.\nkey ${KEY}` }, { name: "budget.xlsx", text: "Sheet: Sales\nItem,Price\nBread,4.5" }] });
+    const prompt = r.engine.calls[0].prompt;
+    expect(prompt).toContain("--- File: Invoice March.pdf ---\nInvoice total 42 dollars.");
+    expect(prompt).toContain("--- File: budget.xlsx ---\nSheet: Sales\nItem,Price\nBread,4.5\n--- End of budget.xlsx ---");
+    expect(prompt).not.toContain(KEY);
+    expect(r.log.list()[0].label).toBe("Make the signup button match");
+  });
   test("off the record, a later round says the request again with its files (no conversation was saved)", async () => {
     const r = setup([[write("a.txt", "v1")], [write("a.txt", "v2")]], { proofs: [bad(), good()] });
     await r.start({ offTheRecord: true, files: [{ name: "notes.md", text: "Use the brand blue." }] });
@@ -55,7 +64,7 @@ describe("text files with a request", () => {
     expect(r.engine.calls[1].prompt).toContain("--- File: notes.md ---");
   });
   test("a settings or key file, or anything else off, refuses the whole request: nothing is snapshotted or started", async () => {
-    for (const files of [[{ name: ".env", text: "A=1" }], [{ name: "a/b.md", text: "x" }], [{ name: "doc.pdf", text: "x" }]]) {
+    for (const files of [[{ name: ".env", text: "A=1" }], [{ name: "a/b.md", text: "x" }], [{ name: "doc.pages", text: "x" }]]) {
       const r = setup([[write("a.txt", "v1")]]);
       await r.start({ files });
       expect(r.engine.calls.length).toBe(0);

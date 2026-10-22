@@ -5,7 +5,7 @@
 
 ## Decision
 1. **A group is a set of related tools** (its elements) with one switch, one settings section, one plain line saying what it may do on your Mac, and its own place in the island, Home and the first run. Four groups at launch, made only from what already exists:
-   - **Flow** (water, the first creature): find the problem, fix it, prove it, undo it, explain it (Rescue, Drive, Proof, Undo, Explain, which task broke it, follow ups).
+   - **Flow** (water, the first creature, named **Flowflow** by the founder on 22 Oct 2026, F24): find the problem, fix it, prove it, undo it, explain it (Rescue, Drive, Proof, Undo, Explain, which task broke it, follow ups).
    - **Guide:** Show me how, walkthroughs and lessons, Your turn, practice, everyday help on screen.
    - **Voice:** hold to talk, spoken answers, Prompt help, the error explainer.
    - **Files:** drop a file on the companion to convert it (F19).

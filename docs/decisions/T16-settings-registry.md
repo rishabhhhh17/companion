@@ -76,6 +76,9 @@ One setting (Reset, only when it differs from usual), a section (Reset this sect
 - A new optional field on a definition: `hidden` (pages only; the shell and the engine ignore it).
 - Which tool belongs to which group is in `protocol/groups.json`, not in the registry; a tool's `settings` list there only names registry keys the tool reads, and a test checks each exists.
 
+## Added with something made with no project open (M14 Part 1, 22 Oct 2026)
+- `make.folder` ("Where new folders go", work section, shell, choice, usual the home folder): when a person asks for something with no project open, or ticks Make it in a new folder, the shell makes a new folder for it, named after the request, inside one folder for all of them (its name is in `protocol/newfolder.json`) in the home folder, Documents or the Desktop (`app/src-tauri/src/newfolder.rs`). A choice, never a path typed or picked: each option is a fixed place inside the home folder, and anything else (a damaged file) is the usual one. The home folder is the usual one because Documents and the Desktop are often synced to iCloud, which is slow with the thousands of small files a web project installs. The shared cases hold its bounds. Read on each press. Kept in `settings.json` like every page setting; no new file.
+
 ## Not proven
 - Area 5 (pointing, talking and other apps) is built and tested with fakes only: the ring's colour, lettering and time, the pace, the words only guesses, Draw it for me kept until closed, the hold to talk cap, the extra spoken lines, the editor choice, the per app answers editor and the call apps list were not tried in the built app on a real Mac.
 - Built and tested with fakes only. The app was not built and opened in this change; carrying a real Mac's old choices over, a setting kept across a quit, Reset and Undo, and Delete everything removing settings.json are still to be tried on a real Mac. The keyboard and VoiceOver pass needs a person.

@@ -1,6 +1,6 @@
 // Copy on replies and receipts: the text a Copy button puts on the clipboard, the same lines the card shows. Anything that
 // looks like a key or a password is hidden again first (the clipboard can be read by every app), as on the card.
-import { blockedNote, ehLines, formatUsd, receiptProofWords, type About, type Explain, type Model, type RescueCard, type ResearchCard } from "./model.ts";
+import { blockedNote, ehLines, slLines, formatUsd, receiptProofWords, type About, type Explain, type Model, type RescueCard, type ResearchCard } from "./model.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 
@@ -47,6 +47,8 @@ export function rescueCopy(r: RescueCard): string {
 
 /** An explained error: its sentences and where it is in the project. */
 export function ehCopy(m: Model): string { return m.eh ? lines(ehLines(m)) : ""; }
+/** Second Look's answer as text, with the address of each page it found. */
+export function slCopy(m: Model): string { return m.sl ? lines([...slLines(m), ...(m.sl.items ?? []).flatMap((i) => (i.source ? [`${i.source.title}: ${i.source.url}`] : []))]) : ""; }
 
 /** Why it was done: its points, and the question with its choices when there is one. */
 export function explainCopy(e: Explain): string {

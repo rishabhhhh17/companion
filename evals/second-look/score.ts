@@ -7,7 +7,7 @@ import type { SecondLook } from "../../runner/src/secondlook.ts";
 export const OUTCOMES = ["caught", "caught_other", "missed", "confidently_wrong", "unsure", "clean", "false_alarm", "error", "refused", "stopped", "not_started"] as const;
 export type LookOutcome = (typeof OUTCOMES)[number];
 
-export function classifyLook(c: { label: "seeded" | "clean"; about: string[] }, r: SecondLook): LookOutcome {
+export function classifyLook(c: { label: "seeded" | "clean"; about: string[] }, r: Omit<SecondLook, "search" | "searches">): LookOutcome {
   if (c.label === "clean") return r.verdict === "check" ? "false_alarm" : "clean";
   if (r.verdict === "solid") return "confidently_wrong";
   if (r.verdict === "cant_tell") return "unsure";

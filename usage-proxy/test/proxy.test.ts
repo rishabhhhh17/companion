@@ -107,7 +107,7 @@ describe("what is forwarded", () => {
 describe("money", () => {
   test("a plain reply is charged by its token counts at the app's price table, and the spend adds up", async () => {
     const t = rig(); await t.send(); await t.send();
-    const each = costOf("claude-sonnet-5-5", { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
+    const each = costOf("claude-sonnet-5-5", { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
     expect(t.store.records.length).toBe(2);
     expect(t.store.records[0].usd).toBeCloseTo(each, 8);
     expect((await t.store.spent("u1", NOW)).day).toBeCloseTo(each * 2, 8);
@@ -117,7 +117,7 @@ describe("money", () => {
     const t = rig({ upstream: () => sseResponse(STREAM) });
     const r = await t.send({ body: { model: "claude-sonnet-5-5", max_tokens: 2000, stream: true, messages: [{ role: "user", content: PROMPT_MARK }] } });
     expect(await r.text()).toBe(STREAM);
-    const want = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 700, cache_read_input_tokens: 8000, cache_creation_input_tokens: 0 });
+    const want = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 700, cache_read_input_tokens: 8000, cache_creation_input_tokens: 0, web_search_requests: 0 });
     expect(t.store.records[0].usd).toBeCloseTo(want, 8);
     expect(t.store.records[0].complete).toBe(true);
     expect(t.store.inFlight("u1")).toBe(0);

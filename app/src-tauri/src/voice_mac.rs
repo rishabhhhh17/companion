@@ -165,7 +165,28 @@ mod ca {
         }
         out
     }
+    /// Core Audio's list of the apps that use sound (macOS 14.2 and later): each one's process id and whether its input
+    /// runs. Nothing else is read: never a sound, a level, a device or an app's name. None where there is no such list.
+    pub fn input_processes() -> Option<Vec<(i32, bool)>> {
+        let all = addr(b"prs#", b"glob");
+        let n = size(1, &all) as usize / std::mem::size_of::<u32>();
+        if n == 0 || n > 4096 { return None; }
+        let mut procs = vec![0u32; n];
+        let mut bytes = (n * std::mem::size_of::<u32>()) as u32;
+        if unsafe { AudioObjectGetPropertyData(1, &all, 0, std::ptr::null(), &mut bytes, procs.as_mut_ptr().cast()) } != 0 { return None; }
+        procs.truncate(bytes as usize / std::mem::size_of::<u32>());
+        Some(procs.into_iter().filter_map(|p| {
+            let mut pid = 0i32; let mut sz = std::mem::size_of::<i32>() as u32;
+            if unsafe { AudioObjectGetPropertyData(p, &addr(b"ppid", b"glob"), 0, std::ptr::null(), &mut sz, (&mut pid as *mut i32).cast()) } != 0 { return None; }
+            let mut on = 0u32; let mut sz = std::mem::size_of::<u32>() as u32;
+            if unsafe { AudioObjectGetPropertyData(p, &addr(b"piri", b"glob"), 0, std::ptr::null(), &mut sz, (&mut on as *mut u32).cast()) } != 0 { return None; }
+            Some((pid, on != 0))
+        }).collect())
+    }
 }
+
+/// Which apps use sound and whether each one's input runs (presentation.rs, quiet during calls). See `ca::input_processes`.
+pub fn input_processes() -> Option<Vec<(i32, bool)>> { ca::input_processes() }
 
 /// The microphones listed now, the Mac's default, and those that cannot hear now (for Settings, off the main thread).
 pub fn mics() -> (Vec<Input>, Option<String>, Vec<String>) {

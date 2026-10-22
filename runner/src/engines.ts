@@ -128,6 +128,7 @@ export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?
     ? withFallback(new ComputerUseVision({ apiKey: async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; }, model: s.aimModel }), classic)
     : classic;
   return {
+    // Claude Code's fast lane has no tools, so it never searches the web (no canSearch): Second Look says so on its card.
     fast: { run: async (req, onDelta, signal) => new FastLane({ ...(await lane()), model: s.fastModel ?? o.quickModel?.() ?? MODELS.fast }).run(req, onDelta, signal) },
     vision,
     // Pictures added to a request (attach.ts): looked at on the vision lane's model, the way Show me looks at a screen picture.
@@ -148,7 +149,8 @@ function directLanes(s: Settings, deps: EngineDeps, o: { quickModel?: () => stri
   const d = { auth, ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) };
   const vision = new DirectVisionLane({ ...d, model: s.visionModel ?? MODELS.vision });
   return {
-    fast: { run: (req, onDelta, signal) => new DirectFastLane({ ...d, model: s.fastModel ?? o.quickModel?.() ?? MODELS.fast }).run(req, onDelta, signal) },
+    // The one lane that can search the web (Second Look only, capped): the plain API takes the web search tool.
+    fast: { canSearch: true, run: (req, onDelta, signal) => new DirectFastLane({ ...d, model: s.fastModel ?? o.quickModel?.() ?? MODELS.fast }).run(req, onDelta, signal) },
     vision,
     describe: (req, signal) => vision.describe(req, signal),
     look: (req, signal) => vision.ask(req, signal),

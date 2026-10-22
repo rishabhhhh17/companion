@@ -49,6 +49,8 @@ import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } fro
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
+import { secondLook, SecondLookError } from "./secondlook.ts";
+import type { FastLike } from "./lanes.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
 import { aboutLine, inspectProject } from "./proof/intake.ts";
 import { cloneTarget } from "./proof/clone.ts";
@@ -121,6 +123,9 @@ export type RunnerOptions = {
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
   explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
+  // Second Look's checks (secondlook.ts): the fast lane itself, which on the plain API can also search the web (capped by
+  // secondLook.searches). Without it, Second Look says in plain words that it needs Claude.
+  checker?: FastLike;
   // Pictures the person added to a request (files into the ask box, attach.ts) are looked at first, the way Show me looks
   // at a screen picture (lanes.ts describe), and only the words said about them go to the task. Without it, pictures are
   // refused in plain words and nothing is started.
@@ -603,6 +608,7 @@ export class AgentRunner {
       case "bisect.start": return this.bisectStart(cmd);
       case "bisect.undo": return this.bisectUndo(cmd);
       case "error.explain": return this.errorExplain(cmd);
+      case "secondlook.check": return this.secondLookCheck(cmd);
       case "teach.try": return this.teachTry(cmd);
       case "teach.check": return this.teachCheck(cmd);
       case "diagram.ask": return this.diagramAsk(cmd);
@@ -1825,6 +1831,38 @@ export class AgentRunner {
       // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it plainly.
       const msg = String((e as Error)?.message ?? e);
       say(false, { ...at, reason: ac.signal.aborted ? (timedOut ? "That took too long. Try again." : "Stopped.") : isClaudeStop(msg) ? withoutTryAgain(msg) : "I could not explain that just now. Try again." });
+    } finally { clearTimeout(timer); this.picturing.delete(ac); }
+  }
+
+  // ---------- Second Look ----------
+
+  // An AI answer the person selected in another app and sent with Second Look's hotkey. The text is used only in memory: it
+  // is never logged or written anywhere, and secondLook() hides secrets before anything is sent. Like the error explainer, it
+  // counts in the project's day and waits at its limit, and Stop everything (or Voice going off) ends it.
+  private async secondLookCheck(cmd: Extract<Command, { type: "secondlook.check" }>): Promise<void> {
+    const project = cmd.project && existsSync(cmd.project) ? cmd.project : undefined;
+    const say = (ok: boolean, extra: Record<string, unknown>) => this.emit({ type: "secondlook.result", req: cmd.req, ...(cmd.project ? { project: cmd.project } : {}), ok, items: [], checked: [], cantTell: [], search: "off", searches: 0, usdEstimate: 0, ...extra } as never);
+    if (this.setting<boolean>("secondLook.on") === false) { say(false, { reason: "Second Look is off. Turn it on in Settings, under Other apps." }); return; }
+    if (!String(cmd.text ?? "").trim()) { say(false, { reason: "Select the answer you want checked, then press the keys again." }); return; }
+    if (!this.o.checker) { say(false, { reason: "Second Look needs Claude, which is not connected here." }); return; }
+    if (this.roomFor(project) <= 0) { say(false, { reason: LIMIT_REACHED }); return; }
+    const ac = new AbortController();
+    this.picturing.add(ac); this.owner.set(ac, "voice");   // Stop everything ends it, and so does Voice going off
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 90_000);
+    const ended = () => (timedOut ? "That took too long. Try again." : "Stopped.");
+    try {
+      const gone = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
+      const r = await Promise.race([secondLook(cmd.text, this.o.checker, ac.signal, { maxSearches: Number(this.setting<number>("secondLook.searches")) }), gone]);
+      this.bookSpend(project, r.costUsd);
+      if (ac.signal.aborted) { say(false, { reason: ended(), usdEstimate: r.costUsd }); return; }
+      say(true, { verdict: r.verdict, items: r.items, checked: r.checked, cantTell: r.cantTell, search: r.search, searches: r.searches, usdEstimate: r.costUsd });
+    } catch (e) {
+      const cost = e instanceof SecondLookError ? e.costUsd : 0;
+      this.bookSpend(project, cost);
+      // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it plainly.
+      const msg = String((e as Error)?.message ?? e);
+      say(false, { usdEstimate: cost, reason: ac.signal.aborted ? ended() : e instanceof SecondLookError ? msg : isClaudeStop(msg) ? withoutTryAgain(msg) : "Second Look could not check that just now. Try again." });
     } finally { clearTimeout(timer); this.picturing.delete(ac); }
   }
 

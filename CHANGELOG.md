@@ -8,12 +8,23 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **It swims** when it comes to the window it is about, and splashes on a big win. A soft glow around it still shows when it is listening, looking at your screen, waiting for you, or done.
 - **Two things were left out on purpose:** the angry face (this is a tool, not a mood) and the sad face (a broken project is bad enough without a guilt trip). The Apple logo on its laptop was removed.
 - **Not tried on a real Mac yet.** It looks right at the size of the dock on a light and a dark background; the real look comes in the Mac session.
+## Drop a document in and ask about it: 22 Oct 2026
+
+- **You can now drag a PDF, Word, rich text, OpenDocument or Excel file into the ask box** (up to 20 MB), and Squibby reads its words on your Mac, hides anything that looks like a password or key, and sends only the text with your question. Nothing is kept, and the file itself is never sent.
+- **Plain lines instead of failures:** a locked PDF, a scanned page with no text, and a file that cannot be read each get their own short explanation. Old `.xls`, Pages, Numbers and Keynote files are not supported yet.
+- **How much text goes** is a setting (20, 50 or 100 KB; 50 by default), and a long document says in plain words where it was cut.
+- **Quiet while another app uses your microphone** is built but switched off until the Mac session shows it works without surprises.
+
+## "Make me something" tried on real Claude: 22 Oct 2026
+
+- **The engine behind "make something with no project open" has now run on real Claude, in a brand new empty folder.** A one page bakery site was planned in 3 plain steps, built, checked in a hidden browser and given a receipt for each step. "What should I know before opening a small bakery" came back with 4 cited notes and nothing else written. Undo took the page away again. Nothing was written outside the new folder, no key leaked, nothing touched git. All of it cost about 23 cents.
+- **One thing to know:** if you do not say the bakery's name, it builds the page, then stops to ask for it, and the other steps wait for your answer. With the name and the facts in the request it finishes all three steps. The screens still need to be built, and the folder making on the Mac has not been tried in the app.
 
 ## Second Look's engine: 22 Oct 2026
 
 - **The engine behind "check any AI answer" is built.** It redoes the maths itself (sums, percentages, table totals), so a wrong number is caught for certain, not guessed. Then one short look by Claude covers code, citations, out of date facts and steps that do not follow.
 - **It is honest by design:** it never says "solid" when the maths found a slip, never claims to have checked a source (it cannot search yet), and says "I can't tell" when it cannot. Secrets are hidden before anything is sent.
-- **Tested on 30 AI answers, 15 with a planted mistake.** The real score with Claude is still to come; the button and the card come with the screens.
+- **Tested on 30 AI answers, 15 with a planted mistake.** **Real score with Claude (22 Oct 2026, about 15 cents):** it caught every planted mistake. The first real run also flagged 3 of the 15 clean answers (20%, over the 10% target), once because Claude contradicted itself mid sentence ("the sum is wrong ... the addition holds"). After a tighter instruction and a filter for that, false alarms were 0% on one run and 7% on the next. The button and the card come with the screens.
 
 ## The light features can run without Claude Code: 22 Oct 2026
 

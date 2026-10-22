@@ -10,6 +10,11 @@
 //!    A call in a web browser (Meet) cannot be told apart from any other page without reading content, so it is not noticed.
 //!    The camera part is written but switched off (CAMERA_CHECK_ON) until a real Mac shows it never asks for a permission
 //!    (rule 18, and rule 8: Companion never asks for the camera).
+//!  - and while another app uses a microphone (a call shared with another app in front, a call in a web browser): Core
+//!    Audio's list of the apps that use sound, each one's process id and whether its input runs, nothing else (never a
+//!    sound, a level or a name); Companion's own hold to talk never counts. Written but switched off too (MIC_CHECK_ON):
+//!    the founder's Mac session must show it never asks for the microphone, and that macOS's own listeners (Siri, Voice
+//!    Control) do not keep Companion quiet all day. That list is on macOS 14.2 and later; before it, nothing is noticed.
 use serde_json::{json, Value};
 
 /// Native call apps, by bundle id. Only the id of the app in front is compared, exactly (macOS ignores case in ids).
@@ -27,6 +32,14 @@ pub const CALL_APPS: &[&str] = &[
 /// shows a camera permission prompt (technical research section 20; T01 [verify]). Only then may this become true, together
 /// with the Settings words that mention the camera.
 pub const CAMERA_CHECK_ON: bool = false;
+
+/// Whether another app's microphone use is part of the check. Off until the founder's Mac session (see above, rule 18).
+/// Only then may this become true, together with Settings words that mention the microphone.
+pub const MIC_CHECK_ON: bool = false;
+
+/// From Core Audio's list of the apps that use sound (process id, whether its input runs): is an app other than Companion
+/// listening? Companion's own hold to talk never counts.
+pub fn other_app_listening(apps: &[(i32, bool)], own_pid: i32) -> bool { apps.iter().any(|&(pid, on)| on && pid > 0 && pid != own_pid) }
 
 pub fn is_call_app(bundle: &str) -> bool { !bundle.is_empty() && CALL_APPS.iter().any(|c| c.eq_ignore_ascii_case(bundle)) }
 
@@ -47,9 +60,10 @@ pub fn call_apps_from(v: &Value) -> Vec<String> {
 }
 /// Whether the app in front is one of these (macOS ignores case in ids).
 pub fn is_call_app_in(apps: &[String], bundle: &str) -> bool { !bundle.is_empty() && apps.iter().any(|c| c.eq_ignore_ascii_case(bundle)) }
-/// `quiet`, with the apps from Settings.
-pub fn quiet_with(s: &Settings, apps: &[String], front_bundle: &str, camera_in_use: impl FnOnce() -> bool) -> bool {
-    s.quiet_on_calls && (is_call_app_in(apps, front_bundle) || camera_in_use())
+/// `quiet`, with the apps from Settings, and also while another app uses a microphone. Each check is made only when the
+/// ones before it said no: the app in front, then the camera, then the microphone.
+pub fn quiet_with(s: &Settings, apps: &[String], front_bundle: &str, camera_in_use: impl FnOnce() -> bool, mic_in_use: impl FnOnce() -> bool) -> bool {
+    s.quiet_on_calls && (is_call_app_in(apps, front_bundle) || camera_in_use() || mic_in_use())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,6 +98,13 @@ pub mod mac {
         let Some(video) = (unsafe { AVMediaTypeVideo }) else { return false };
         let devices = unsafe { AVCaptureDevice::devicesWithMediaType(video) };
         devices.iter().any(|d| unsafe { d.isInUseByAnotherApplication() })
+    }
+    /// Whether an app other than Companion is using a microphone, from Core Audio's list of the apps that use sound
+    /// (voice_mac::input_processes: process ids and whether each one's input runs, nothing else). Never opens a
+    /// microphone. False where macOS has no such list (before 14.2). **[verify]** on a real Mac that it never shows a
+    /// microphone prompt and that macOS's own listeners do not count. Not run by tests.
+    pub fn mic_in_use_by_another_app() -> bool {
+        crate::voice_mac::input_processes().is_some_and(|l| super::other_app_listening(&l, std::process::id() as i32))
     }
 }
 
@@ -146,9 +167,9 @@ mod tests {
         let mine = call_apps_from(&json!(["com.apple.FaceTime", "com.example.calls"]));
         assert!(!is_call_app_in(&mine, "us.zoom.xos"));
         assert!(is_call_app_in(&mine, "com.example.calls") && is_call_app_in(&mine, "COM.EXAMPLE.CALLS"));
-        assert!(quiet_with(&Settings::default(), &mine, "com.example.calls", || false));
-        assert!(!quiet_with(&Settings::default(), &mine, "us.zoom.xos", || false));
-        assert!(!quiet_with(&Settings { quiet_on_calls: false, ..Settings::default() }, &mine, "com.example.calls", || false), "the switch still turns it off");
+        assert!(quiet_with(&Settings::default(), &mine, "com.example.calls", || false, || false));
+        assert!(!quiet_with(&Settings::default(), &mine, "us.zoom.xos", || false, || false));
+        assert!(!quiet_with(&Settings { quiet_on_calls: false, ..Settings::default() }, &mine, "com.example.calls", || false, || false), "the switch still turns it off");
         // At most 20 added apps count, whatever the list holds; a list the rules refuse is the built in seven.
         let many: Vec<String> = (0..27).map(|i| format!("com.example.app{i}")).collect();
         let kept = call_apps_from(&json!(many));
@@ -179,6 +200,48 @@ mod tests {
         // and the Settings words (quietOnCallsHelp) must then say the camera too.
         assert!(!CAMERA_CHECK_ON);
         assert!(!include_str!("../../src/strings.ts").contains("or your camera is on"));
+    }
+    #[test]
+    fn another_app_using_the_microphone_counts_and_companions_own_hold_to_talk_never_does() {
+        // Core Audio's list of the apps that use sound: each one's process id and whether its input (a microphone) runs.
+        let me = 4242;
+        assert!(other_app_listening(&[(me, false), (501, true)], me), "Zoom listening during a share, with another app in front");
+        assert!(!other_app_listening(&[(me, true)], me), "hold to talk is Companion's own: never quiet because of it");
+        assert!(!other_app_listening(&[(me, true), (501, false), (77, false)], me));
+        assert!(!other_app_listening(&[], me));
+        assert!(!other_app_listening(&[(0, true), (-1, true)], me), "no real process");
+    }
+    #[test]
+    fn quiet_when_another_app_uses_the_microphone_asked_last_and_never_when_turned_off() {
+        let asked = Cell::new(0);
+        let mic = |on: bool| { let a = &asked; move || { a.set(a.get() + 1); on } };
+        let usual = call_apps_from(&json!(CALL_APPS));
+        assert!(quiet_with(&Settings::default(), &usual, "com.apple.Keynote", || false, mic(true)), "a call shares Keynote: Zoom is not in front, its microphone is on");
+        assert!(!quiet_with(&Settings::default(), &usual, "com.apple.Keynote", || false, mic(false)));
+        assert_eq!(asked.get(), 2);
+        // Not even asked when the answer is known already, or the switch is off.
+        assert!(quiet_with(&Settings::default(), &usual, "us.zoom.xos", || false, mic(true)));
+        assert!(quiet_with(&Settings::default(), &usual, "com.apple.Safari", || true, mic(true)));
+        assert!(!quiet_with(&Settings { quiet_on_calls: false, ..Settings::default() }, &usual, "com.apple.Safari", || true, mic(true)));
+        assert_eq!(asked.get(), 2);
+    }
+    #[test]
+    fn the_microphone_is_not_looked_at_until_a_real_mac_shows_it_never_asks_and_is_never_fooled() {
+        // Rule 18, as for the camera: Core Audio's process list is read only once the founder's Mac session shows that it
+        // never brings up a microphone prompt (rule 8) and that macOS's own listeners (Siri, Voice Control) do not keep it
+        // on all day. Until then the Settings words do not mention the microphone.
+        assert!(!MIC_CHECK_ON);
+        assert!(!include_str!("../../src/strings.ts").contains("or another app is using the microphone"));
+        let main = include_str!("main.rs");
+        let q = &main[main.find("fn quiet() -> bool").unwrap()..];
+        let q = &q[..q.find('\n').unwrap()];
+        assert!(q.contains("|| presentation::MIC_CHECK_ON && presentation::mac::mic_in_use_by_another_app()"), "{q}");
+        // Only whether an input runs and whose it is: never a sound, a level or a name.
+        let mac = include_str!("voice_mac.rs");
+        let f = &mac[mac.find("pub fn input_processes()").unwrap()..];
+        let f = &f[..f.find("\n    }\n").unwrap()];
+        for read in ["b\"prs#\"", "b\"ppid\"", "b\"piri\""] { assert!(f.contains(read), "{read}"); }
+        for never in ["AudioDeviceStart", "AudioUnit", "cpal", "build_input_stream", "pbid", "lnam"] { assert!(!f.contains(never), "{never}"); }
     }
     #[test]
     fn hiding_from_sharing_asks_for_no_sharing_and_off_puts_back_the_macos_default() {

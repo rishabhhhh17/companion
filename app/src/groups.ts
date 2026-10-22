@@ -21,7 +21,7 @@ export type ToolId =
   | "askBox" | "engine" | "stop" | "projects" | "account" | "settings" | "memory" | "ship" | "research"
   | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "whichTask" | "watch" | "connections" | "whereWasI"
   | "showMe" | "lessons" | "yourTurn" | "practice"
-  | "talk" | "speak" | "promptHelp" | "errorHelp" | "convert";
+  | "talk" | "speak" | "promptHelp" | "errorHelp" | "secondLook" | "convert";
 
 export const GROUPS = catalog.groups as unknown as Group[];
 export const SWITCHED = GROUPS.filter((g) => g.switch);
@@ -141,6 +141,7 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
     case "assist.point": tool = ctx.walk ? null : "showMe"; break;
     case "assist.prompt.done": tool = "promptHelp"; break;
     case "error.explained": tool = ev.ok === true ? "errorHelp" : null; break;
+    case "secondlook.result": tool = ev.ok === true ? "secondLook" : null; break;
   }
   return tool && toolOn(tool, read) ? [tool] : [];
 }
@@ -172,7 +173,7 @@ const RUNNING = ["thinking", "working", "checking"];
 /** Which group the thing going on belongs to, or none. `drop`: a file is being converted. */
 export function activeGroup(m: Model, drop = false): GroupId | null {
   if (m.voice && ["listening", "transcribing"].includes(m.voice.stage)) return "voice";
-  if ((m.ph && ["reading", "thinking"].includes(m.ph.stage)) || (m.eh && ["reading", "thinking"].includes(m.eh.stage))) return "voice";
+  if ((m.ph && ["reading", "thinking"].includes(m.ph.stage)) || (m.eh && ["reading", "thinking"].includes(m.eh.stage)) || (m.sl && ["reading", "thinking"].includes(m.sl.stage))) return "voice";
   if (m.walk || m.practice || (m.showme && ["looking", "thinking", "pointing", "pointing_roughly"].includes(m.showme.stage))) return "guide";
   if (m.diagram?.stage === "asking" || m.point?.stage === "checking" || m.bisect?.stage === "running") return "flow";
   if (m.runnerUp && Object.values(m.agents).some((s) => RUNNING.includes(s))) return "flow";

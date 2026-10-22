@@ -8,7 +8,7 @@
     { "key": "files.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "groups.islandName", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "groups.showUntried", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
-    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 20, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI", "showMe", "lessons", "yourTurn", "practice", "talk", "speak", "promptHelp", "errorHelp", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
+    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 21, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI", "showMe", "lessons", "yourTurn", "practice", "talk", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
 
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
 
@@ -77,6 +77,7 @@
     { "key": "work.webSearch", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "undo.protectMyEdits", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false },
     { "key": "drive.maxSteps", "section": "work", "kind": "number", "default": 12, "min": 3, "max": 20, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+    { "key": "make.folder", "section": "work", "kind": "choice", "default": "home", "options": ["home", "documents", "desktop"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "approval.waitMinutes", "section": "work", "kind": "number", "default": 30, "min": 5, "max": 30, "step": 5, "unit": "minutes", "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "noAnswerIsNo" },
 
     { "key": "rules.house", "section": "checks", "kind": "list", "default": [], "maxItems": 50, "item": { "maxLength": 200 }, "scope": "project", "applies": ["runner"], "store": "rules", "live": true, "protective": true, "floor": "rulesStricter" },
@@ -120,6 +121,8 @@
     { "key": "ph.useProjectInfo", "section": "otherApps", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "ph.handBack", "section": "otherApps", "kind": "choice", "default": "paste", "options": ["paste", "copy"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "ph.handBack" },
     { "key": "ph.appAnswers", "section": "otherApps", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "promptHelpApps", "live": true, "protective": true, "floor": "ph.appAnswers" },
+    { "key": "secondLook.on", "section": "otherApps", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner"], "store": "settings", "live": true },
+    { "key": "secondLook.searches", "section": "otherApps", "kind": "number", "default": 3, "min": 0, "max": 5, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "pointat.editor", "section": "otherApps", "kind": "choice", "default": "editorInFront", "options": ["editorInFront", "cursor", "vscode", "windsurf", "macDefault"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
 
     { "key": "drop.on", "section": "files", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "drop.local" },
@@ -131,6 +134,7 @@
     { "key": "drop.quality", "section": "files", "kind": "choice", "default": "medium", "options": ["high", "medium", "small"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "drop.sampleRate", "section": "files", "kind": "choice", "default": "44100", "options": ["16000", "22050", "44100", "48000"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "drop.saveTo", "section": "files", "kind": "choice", "default": "nextTo", "options": ["nextTo", "downloads", "desktop"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "drop.never" },
+    { "key": "attach.docLimit", "section": "files", "kind": "choice", "default": "50", "options": ["20", "50", "100"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
 
     { "key": "sharing.hide", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
