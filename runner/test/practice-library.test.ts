@@ -18,7 +18,8 @@ const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = () => { const d = realpathSync(mkdtempSync(join(tmpdir(), "companion-practice-"))); made.push(d); return d; };
 const copy = (name: string) => { const p = tmp(); cpSync(join(SAMPLES, name), p, { recursive: true }); return p; };
-const edit = (p: string, f: string, from: string, to: string) => { const t = readFileSync(join(p, f), "utf8"); expect(t).toContain(from); writeFileSync(join(p, f), t.replace(from, to)); };
+// Every place: the route practice has the same broken link twice (so Your turn can offer the second one).
+const edit = (p: string, f: string, from: string, to: string) => { const t = readFileSync(join(p, f), "utf8"); expect(t).toContain(from); writeFileSync(join(p, f), t.split(from).join(to)); };
 
 async function check(project: string) {
   const store = new CheckpointStore(tmp(), project);

@@ -487,7 +487,7 @@ export const S = {
     route: {
       title: "A link to a missing page",
       teaches: "An address must match on both sides: the link, and the page it opens.",
-      start: "Its home page has a link to the prices that opens a page that is not there.",
+      start: "Its home page links to the prices twice, from the menu and from a button, and both open a page that is not there. Companion fixes one; the second is your turn.",
       foundMore: "Companion ran the project's own checks. The ring is on the check that fails: it follows each link and says which one goes nowhere. The line to change is the link, or the list of pages. Nothing was changed yet.",
       doneMore: "That is the whole loop: the link and the page now have the same address, and the checks prove it.",
     },
