@@ -1,0 +1,1000 @@
+{
+  "format": "companion-eval-results/1",
+  "set": "explain",
+  "mode": "spend",
+  "harness": "real run harness (runner/scripts/realrun-harness.ts; key from the Keychain item \"companion-dev\")",
+  "startedAt": "2026-10-22T17:22:22.821Z",
+  "finishedAt": "2026-10-22T17:26:51.836Z",
+  "models": {
+    "fast": "claude-sonnet-5-5",
+    "grader": "claude-sonnet-5-5"
+  },
+  "caps": {
+    "perCaseUsd": 0.05,
+    "totalUsd": 1
+  },
+  "spentUsd": 0.097894,
+  "stopped": null,
+  "cases": [
+    {
+      "id": "rescue-bad-json-config",
+      "outcome": "pass",
+      "costUsd": 0.007266,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 12018,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The settings file had an extra comma after its last entry, which the reader of that file does not accept, so it failed to load and the checks failed.",
+          "Removing the stray comma makes the file follow the expected format, so it loads and the port setting is found."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before the change?",
+          "options": [
+            "The settings file had a stray comma that made it unreadable",
+            "The port number was set to the wrong value",
+            "The settings file was missing entirely"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (a trailing comma made the settings file unreadable), the words are plain, and the marked answer is right, though the stray-comma option echoes the explanation's wording a little closely."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-bun-runtime-error",
+      "outcome": "pass",
+      "costUsd": 0.0035240000000000002,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 9666,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The code tried to change the first entry of a list to capital letters, but the list was empty, so there was nothing to work on and it broke.",
+          "Now it first checks whether the list has anything in it, and if not it gives back empty text instead of breaking."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before the change?",
+          "options": [
+            "The code asked for the first item of a list that had no items in it",
+            "The code turned the text into capital letters in the wrong way",
+            "The list held too many items for the code to handle"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change and use plain words, but the first line does not say why the list was empty and the question is slightly easy to pick by wording."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-failing-test",
+      "outcome": "pass",
+      "costUsd": 0.003439,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 7156,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The price calculation added only ten percent tax, but the checks expect twenty percent, so every total came out too low and the checks failed.",
+          "Changing the multiplier so it adds twenty percent makes the calculated price match what the checks expect."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing?",
+          "options": [
+            "The tax rate in the price calculation was lower than the rate the checks expect",
+            "The price calculation was ignoring the tax completely",
+            "The checks were written with the wrong price and needed editing"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (10 percent raised to 20 percent) in plain words, and the marked answer is right with believable wrong options, though the word 'multiplier' is slightly technical."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-missing-local-file",
+      "outcome": "pass",
+      "costUsd": 0.003167,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 10301,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The program tries to read a settings file at startup, but that file was not in the project, so it stopped and the checks failed.",
+          "Adding a settings file, even an empty one, gives the program something to find, so it starts and the checks can run."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before the change?",
+          "options": [
+            "The program looked for a settings file that was not there",
+            "The settings file held wrong values that broke the program",
+            "The checks themselves were written incorrectly"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change, which adds an empty settings file the program was looking for, and the question checks that one reason with believable wrong options."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-python-name-error",
+      "outcome": "pass",
+      "costUsd": 0.0034212,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 8348,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The greeting step used a misspelled name for the person being greeted, so the program did not recognize it and stopped with an error.",
+          "Fixing the spelling makes the greeting use the real name it was given, so it builds the message and the checks can pass."
+        ],
+        "checkQuestion": {
+          "text": "Why did the greeting fail before the fix?",
+          "options": [
+            "It used a misspelled name that the program did not recognize.",
+            "It was missing the word Hello in the message.",
+            "It was given the wrong person's name by the checks."
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (a misspelled name fixed), and the question checks the actual cause with believable wrong options, though 'stopped with an error' is slightly generic."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-read-property-of-nothing",
+      "outcome": "pass",
+      "costUsd": 0.005189299999999999,
+      "turns": 3,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 12445,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The code looked for a city inside the user's address, but this user, Sam, had no address saved, so there was nothing to read and it stopped with an error.",
+          "Now it first checks whether an address exists, and if not it gives back the word unknown, so the step finishes without stopping."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before the change?",
+          "options": [
+            "The code tried to read a city from an address that Sam never had.",
+            "The city was saved in the wrong spelling, so it did not match.",
+            "The tests were out of date and expected the wrong word."
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change, using plain words and a fair question, though 'stopped with an error' is slightly general and the wrong options are only moderately believable."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-rejected-promise",
+      "outcome": "pass",
+      "costUsd": 0.005305000000000001,
+      "turns": 3,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 15794,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "When the step that loads data failed with the server saying no, nothing was set up to handle that failure, so the whole program crashed and the checks failed.",
+          "Now the failure is caught and a short message is shown, so the program carries on instead of stopping."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before this change?",
+          "options": [
+            "A loading failure was not handled anywhere, so it crashed the program",
+            "The server was too slow and the program gave up waiting",
+            "The success message was printed in the wrong place"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "All parts hold: the refusal that nothing handled matches the added catch, the wording is plain, and the wrong options are believable but not what the change shows."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-syntax-missing-paren",
+      "outcome": "pass",
+      "costUsd": 0.003427,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 9729,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "One line of the program was missing a closing mark at its end, so the computer could not read the line and stopped before running anything.",
+          "Adding the missing closing mark completes the line, so the program can be read and the checks can run again."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before the change?",
+          "options": [
+            "A line was left unfinished, so the program could not be read at all",
+            "The doubling step used the wrong math and gave wrong numbers",
+            "The list of numbers was empty, so nothing could be shown"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines are accurate and plain, but the first line's 'stopped before running anything' is slightly more than the change shows; the question and its distractors are fair."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-ts-missing-property",
+      "outcome": "pass",
+      "costUsd": 0.0035062,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 8356,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "Every user record is supposed to have a name and an email, but Sam was created with only a name, so the project's checks failed.",
+          "Giving Sam an email address means the record now has everything required, so the checks can pass."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before the change?",
+          "options": [
+            "Sam's record was missing an email that every user is required to have",
+            "Sam's name was written in a format the project does not allow",
+            "The checks were looking at the wrong file and could not find Sam"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change and the question tests the real cause, though 'record' is slightly technical but still understandable."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-ts-unknown-import",
+      "outcome": "pass",
+      "costUsd": 0.0033090000000000003,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 9748,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "Other parts of the project asked for a shared helper file that was not there, so the checks stopped as soon as they tried to use it.",
+          "Adding the file with the helper it needs means the project finds what it asked for and the checks can run."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before the change?",
+          "options": [
+            "A file that other parts of the project rely on was missing",
+            "The checks themselves contained wrong expected answers",
+            "The helper returned the wrong piece of text"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "The weakest part is that line one is a little vague about which parts asked for the file, but it matches the change and the assistant's account, and the question and its options are fair."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-ts-wrong-argument-count",
+      "outcome": "pass",
+      "costUsd": 0.0034590000000000003,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 10733,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The greeting step needs two things, a greeting word and a name, but the call only handed it a name, so the message came out wrong or broken.",
+          "Now the call passes both the name and the greeting word, so the step has everything it needs to build the full message."
+        ],
+        "checkQuestion": {
+          "text": "What was the real cause of the failing checks?",
+          "options": [
+            "The greeting step was started with only one of the two things it needs",
+            "The name Sam was spelled in a way the program did not accept",
+            "The message was printed before the program had finished loading"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "The explanation matches the change, but 'wrong or broken' is a little vague about what the missing greeting actually caused."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-ts-wrong-type",
+      "outcome": "pass",
+      "costUsd": 0.0034070000000000003,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 10385,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The project's checks failed because a label that must be text was being given a number, and the checks do not allow that mismatch.",
+          "Wrapping the result so the number becomes text means the label now holds the kind of value it was declared to hold, so the checks pass."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before the change?",
+          "options": [
+            "A piece of text was expected but a number was supplied, so the kinds of value did not match.",
+            "The doubling step calculated the wrong answer for four.",
+            "The label was never given any value at all."
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines are true to the change and the question is fair, though 'wrapping the result' is slightly abstract and the wrong options are a bit easy to dismiss."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-undefined-variable",
+      "outcome": "pass",
+      "costUsd": 0.0032362,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 7967,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The total was worked out using an amount of items that was never given a value, so the calculation had nothing to use and the checks failed.",
+          "Giving the amount a starting value of one means the price now has a number to work with, so the total comes out right."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before the change?",
+          "options": [
+            "The total relied on an amount of items that was never given a value",
+            "The price was set to the wrong number",
+            "The tests themselves contained a mistake"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "The explanation matches the change (a missing quantity was given a value of one), though the second line's claim that the total 'comes out right' is slightly general and the wrong options are fairly easy to rule out."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "rescue-wrong-export-name",
+      "outcome": "pass",
+      "costUsd": 0.0034419999999999997,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 10596,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The app asked the math file for a tool called sum, but the file only offers one called add, so the app could not find what it wanted and failed.",
+          "Now the app asks for add, the name the math file really uses, so it finds the tool and the checks can run."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before the change?",
+          "options": [
+            "The app asked the math file for something under a name the file does not have",
+            "The math file had the wrong numbers inside it",
+            "The tests were written incorrectly and needed changing"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "All parts hold up; the first line is exactly 30 words, which is the limit, but it passes, and the wrong options are believable enough."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "missing-setting-name",
+      "outcome": "pass",
+      "costUsd": 0.003652,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 12115,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The code that builds the page title looked for a site name under one label, but the settings hold it under a different label, so nothing was found.",
+          "Now the code asks for the label the settings actually use, so it finds the site name and the title is built correctly."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before this change?",
+          "options": [
+            "The title code asked for the site name using a label that the settings do not use",
+            "The title text was missing the word Shop at the end",
+            "The tests themselves had the wrong site name written in them"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (SITE_NAME renamed to PUBLIC_SITE_NAME) and use plain words, though the first line says 'label' without naming the real setting, which is a minor vagueness."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "wrong-api-route",
+      "outcome": "pass",
+      "costUsd": 0.003512,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 8469,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The order tracker page asked the server for orders at an address with an extra version part in it, but the server does not answer at that address.",
+          "Removing the extra part makes the page ask at the address the server really uses, so the requests find an answer and the checks pass."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before the change?",
+          "options": [
+            "The page asked for orders at an address the server does not use",
+            "The server was switched off while the checks ran",
+            "The tests themselves contained a mistake in how they count orders"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (the extra version part was removed from the address), use plain words, and the question tests the real cause with believable wrong options."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "import-after-rename",
+      "outcome": "pass",
+      "costUsd": 0.004077,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 8537,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The profile page still asked for a card part by its old name, but that part had been renamed, so the page could not find it and stopped working.",
+          "The page now asks for the card by its new name, so it finds the part and can build the profile the way the checks expect."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing?",
+          "options": [
+            "The profile page asked for a part using a name that no longer existed after a rename.",
+            "The avatar part was missing from the project entirely.",
+            "The checks themselves had been written with the wrong expected results."
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (old name replaced by the renamed card), though 'stopped working' is a mild inference and the question is fair with believable wrong options."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "supabase-open-table",
+      "outcome": "pass",
+      "costUsd": 0.003849,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 11737,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The notes storage had no rule about who may see which note, so anyone who reached it could read or change every person's notes.",
+          "The new rule limits each signed-in person to notes that carry their own account, and blocks reading or saving anyone else's."
+        ],
+        "checkQuestion": {
+          "text": "What was the real problem the change addresses?",
+          "options": [
+            "Nothing limited who could see each note, so people could reach notes that were not theirs",
+            "The notes were being saved with the wrong account attached every time",
+            "Signed-in people were being blocked from seeing any notes at all"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the added security rule, the question checks the real cause, and the wrong options are believable, so the weakest part is only that the right option is slightly longer."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "changed-signature",
+      "outcome": "pass",
+      "costUsd": 0.0039040000000000004,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 11101,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The cart passed the price and the currency to the price formatter as two separate items, but the formatter now expects them bundled together as one.",
+          "Now the cart bundles the total and the currency into one package, so the formatter reads both correctly and the cart summary comes out right."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing?",
+          "options": [
+            "The cart handed over the price and currency in a different shape than the formatter now expected",
+            "The cart added up the item prices incorrectly",
+            "The formatter was never given the number of items"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (two separate values replaced by one object), use plain words, and the question tests the real cause with believable wrong options."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "next-client-component",
+      "outcome": "pass",
+      "costUsd": 0.005185,
+      "turns": 3,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 17063,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The like button needs to remember whether it was pressed, which only works in the visitor's browser, but it was being built as if it ran only on the server.",
+          "Adding a marker at the top tells the project this button runs in the browser, so remembering a press works and the checks pass."
+        ],
+        "checkQuestion": {
+          "text": "Why did the checks fail before this change?",
+          "options": [
+            "The button needed to remember a press, which only works in the browser, but it was set up to run on the server",
+            "The page was loading the plants from the server too slowly, so the checks timed out",
+            "The button had a typo in its name, so the page could not find it"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "The weakest part is the question: the right answer is the longest and most detailed option, and the two wrong ones are fairly easy to rule out, but all three parts hold up."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "vite-env-prefix",
+      "outcome": "pass",
+      "costUsd": 0.005802,
+      "turns": 3,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 14701,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The widget looked for the weather address under a name the build tool never passes on to the page, so the address came through empty and the checks failed.",
+          "The tool only shares settings whose names start with a special prefix, so renaming the setting and the place that reads it lets the address arrive."
+        ],
+        "checkQuestion": {
+          "text": "Why did the widget fail to get the weather address before the change?",
+          "options": [
+            "The setting had a name the build tool does not share with the page, so the page never saw it.",
+            "The weather address in the settings file was typed wrongly, so it pointed at the wrong place.",
+            "The tests were checking for a different address than the one the widget was using."
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "The explanation matches the rename to VITE_API_URL and the question tests the real cause, though the right option is the longest and 'prefix' is slightly technical."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "css-hidden-button",
+      "outcome": "pass",
+      "costUsd": 0.0036190000000000003,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 12257,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "The Checkout button had a misspelled style name, so the page never matched it to the look meant for main buttons and the checks failed.",
+          "Fixing the spelling makes the button's style name match the one the page expects, so the look applies and the checks can find it."
+        ],
+        "checkQuestion": {
+          "text": "What was the real cause of the problem?",
+          "options": [
+            "A style name on the Checkout button had a typo, so it did not match",
+            "The Checkout button was missing from the page entirely",
+            "The cart text said the wrong number of mugs"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (typo btn-primay fixed to btn-primary), though 'the checks can find it' is slightly inferred and the question's wrong options are fairly easy to rule out."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "pagination-off-by-one",
+      "outcome": "fail",
+      "costUsd": 0.0055493,
+      "turns": 3,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 19007,
+      "notes": [
+        "The grader found it not true of the change: The first line says page 1 skipped 'the first five orders', but the change never shows the page size, so that number is unsupported, and 'treated the first page as number 0' muddles the actual cause."
+      ],
+      "detail": {
+        "lines": [
+          "Pages are numbered from 1 on the page links, but the code worked out where a page begins as if counting from 0, so page 1 skipped the first five orders.",
+          "Taking one off the page number before multiplying by the page size makes page 1 begin at the very first order, and every later page lines up too."
+        ],
+        "checkQuestion": {
+          "text": "Why did the first page of orders show the wrong items?",
+          "options": [
+            "The start position was worked out as if pages began at 0, but pages are numbered from 1.",
+            "The page size was set too small, so too few orders appeared on each page.",
+            "The list of orders was in the wrong order before it was split into pages."
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": false,
+        "grade": {
+          "correct": false,
+          "questionRight": true,
+          "plain": true,
+          "why": "The first line says page 1 skipped 'the first five orders', but the change never shows the page size, so that number is unsupported, and 'treated the first page as number 0' muddles the actual cause."
+        },
+        "capped": false
+      }
+    },
+    {
+      "id": "flask-wrong-status",
+      "outcome": "pass",
+      "costUsd": 0.003647,
+      "turns": 2,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 10597,
+      "notes": [],
+      "detail": {
+        "lines": [
+          "When someone typed a missing or invalid email, the signup reply still said everything was fine, so the checks and the page treated it as a success.",
+          "Now the reply says the request was refused when the email is bad, so the checks and the page see a failure and show the error message."
+        ],
+        "checkQuestion": {
+          "text": "Why were the checks failing before the change?",
+          "options": [
+            "A bad email got a reply that said the signup worked, even though it was refused",
+            "The email check was removed, so any email was accepted",
+            "The error message text was wrong, so the page could not show it"
+          ],
+          "correct": 0
+        },
+        "shown": true,
+        "twoLines": true,
+        "plain": true,
+        "question": true,
+        "correct": true,
+        "grade": {
+          "correct": true,
+          "questionRight": true,
+          "plain": true,
+          "why": "Both lines match the change (a bad email got a success status and now gets a refusal status), though the claim that the page shows the error message goes slightly beyond what the change shows."
+        },
+        "capped": false
+      }
+    }
+  ],
+  "summary": {
+    "counts": {
+      "pass": 23,
+      "fail": 1,
+      "no_explanation": 0,
+      "not_graded": 0,
+      "error": 0,
+      "refused": 0,
+      "stopped": 0,
+      "not_started": 0
+    },
+    "passRate": 0.9583333333333334,
+    "correct": 0.9583333333333334,
+    "plain": 1,
+    "twoLines": 1,
+    "question": 1,
+    "costUsd": 0.097894
+  }
+}

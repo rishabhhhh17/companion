@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A plan for the first demo clip and the launch: 22 Oct 2026
+
+- **A shot list for the first clip** (red to green, with Undo and the one line why, about 25 seconds, on the practice project), two follow up clips, the post words, true answers to the questions a reel like this gets, and a launch order that fits one person: `docs/launch/demo-clip-and-launch-plan.md`.
+- **The bigger real Claude checks were rerun after the rename and held:** 23 of 24 test projects fixed outright and 1 stopped to ask first (nothing broken, nothing invented, the problem found in the right place 24 of 24, $0.11 a fix), Explain 96%, the second model review caught every risky change with no false alarms. About $2.70 in all.
+- **Two stale lines were fixed in the docs:** the rules file said agents were out for now, but basic ones (make me something) have been in since the three layer decision; and a finding that had already been fixed was still listed as open.
+
 ## Answering a question now carries your plan on: 22 Oct 2026
 
 - **A found bug, fixed:** when you ask for something vague ("a one page website for my bakery"), the first step builds the page and then asks a question only you can answer, such as the bakery's name, and the plan stops. Until now, typing the answer finished only that one thing and **the other steps were forgotten**: they never ran.

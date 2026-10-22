@@ -60,3 +60,11 @@ Found while building it: the safety hook never guarded `.env` at all (T05 said i
 - **Smoke:** 13 of 13 passed, about $0.23.
 - **Real verify (21 cases, no model for ship gates):** 21 of 21 passed, about $1.12 in all by Squibby's count (the new folder cases were run separately the same day, see the M14 plan). The first run had one red case, `approve-git-save`. It was the check script, not the app: Claude added a standard attribution trailer, so its commit message ran over several lines, and the script's allow pattern refused any multi line message. The app asked first and denied exactly what it was told to deny. The pattern now accepts a message over several lines (still no backtick or `$`, no second command), with tests that fail first, and the case passes (about $0.03).
 - **Not rerun:** the fix eval (25 projects), aim, Prompt help and Explain sets. The model is now told the new name, so they are worth one rerun before launch.
+
+### Bigger sets, after the rename (22 Oct 2026, real Claude, new key)
+- **Fix projects through "Fix it with me" (25 cases, 24 runnable):** fixed 23, asked 1 (a plain approval card: install, build and tests run outside the safety box, so it asks), not fixed 0, broke something 0, invented 0, could not run 1 (this Mac has no python3 with flask and pytest). Good 100% of 24. Problem found in the right place 24 of 24. Cost $2.43 ($0.11 per fixed case), median 4 turns, median fix 2 lines. Results: `evals/fix-projects/results/`.
+- **Explain (24 cases):** passed 96% (correct 96%, plain 100%, two lines 100%, a fair question 100%). Cost $0.10. It was 92% before the rename (dry and real mix), so no drop. Results: `evals/explain/results/`.
+- **Second model review (10 diffs):** caught 100% of the 5 risky diffs (all 5 named the real problem), false alarms on 0% of the 5 harmless ones. Cost $0.13. Results: `evals/review-catch/results/`.
+- **Not rerun:** loop breaker and the aim (pointing) eval. The loop breaker real scenario passed in the 21 case check the same day, and the aim eval's prompts did not change.
+- **Total real spend this session (Squibby's count):** about $4.7, of the founder's $30 cap. The Anthropic Console is the true figure.
+
