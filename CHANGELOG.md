@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Checked again on real Claude after the rename: 22 Oct 2026
+
+- **The renamed app passed every real check:** 13 of 13 smoke checks and 21 of 21 fix, undo, approval and safety scenarios, for about $1.35 in all. One scenario first failed because the test script was too strict about a multi line commit message; the app itself behaved correctly. The script is fixed.
+
+## Flowflow looks a little worried when something goes wrong: 22 Oct 2026
+
+- **When a check fails or something breaks, the character now shows a small worried face in its own bright blue**, instead of the half hidden peek. It is the same drawing as the sad one that was left out, recoloured so it is never grey, and it reads as "uh oh", not as blame.
+
 ## The app is now called Squibby, and its water creature Flowflow: 22 Oct 2026
 
 - **Every word you read now says Squibby.** The cards, the messages, the permission questions, the menu bar, the Delete everything question, the lessons, the install and privacy notes, and the words we send to Claude about who we are. The built app is now `Squibby.app`, and the disk image is `Squibby-<version>.dmg`.

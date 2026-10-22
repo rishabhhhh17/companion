@@ -49,8 +49,8 @@ export type Live = {
 /** What a scenario is given: runners, folders, the models, and the case's own context. */
 export type RunnerOpts = { approve?: ApproveRule };
 /** The one command approve-after-wait allows: git init in the throwaway project, alone (a cd into it first is fine). */
-/** The two commands approve-git-save allows, each alone: git add of named files, and git commit with a short message. */
-export const GIT_SAVE_ONLY = /^(cd [^;&|`$()<>\n]+ && )?git (add [^;&|`$()<>\n]+|commit -m ("[^"`$\n]+"|'[^'\n]+'))$/;
+/** The two commands approve-git-save allows, each alone: git add of named files, and git commit with a short message (the quoted message may run over several lines: Claude Code adds an attribution trailer on later lines). */
+export const GIT_SAVE_ONLY = /^(cd [^;&|`$()<>\n]+ && )?git (add [^;&|`$()<>\n]+|commit -m ("[^"`$]+"|'[^'\n]+'))$/;
 /** What approve-env-line allows: adding a line with a shell append, or an edit or write of a settings file (its summary names the file). */
 export const ENV_LINE_ONLY = /^(?:(?:printf|echo) .*>> \.env(?: .*)?|(?:Edit|Write|MultiEdit): .*\.env)$/;
 export const GIT_INIT_ONLY = /^(cd [^;&|`$()<>\n]+ && )?git init( [^;&|`$()<>\n]+)?$/;

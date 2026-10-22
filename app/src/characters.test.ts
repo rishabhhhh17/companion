@@ -21,7 +21,7 @@ describe("which picture shows", () => {
     expect(new Set(shown).size).toBe(own.length);
   });
   test("error is a quiet 'uh oh', never a sad or angry face", () => {
-    expect(poseFor("error")).toBe("peek");
+    expect(poseFor("error")).toBe("worry");
     for (const p of POSES) expect(p).not.toMatch(/sad|angry|cry|mad/);
   });
   test("working: the laptop. checking: the magnifier. thinking: the bulb. needs you: the wave. done: the splash", () => {
