@@ -8,6 +8,10 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Now they all count, always.** With a project open, the cost goes in that project's day. With none open, it goes in a day of its own for "no project", with the same limit and the same midnight reset. It is kept when Squibby restarts, it is only a number (never any of your words), and it shows in the Settings spending row.
 - **When the limit is reached** each helper says the usual plain sentence and does not ask Claude anything. Your projects and "no project" each have their own day, so one being full never blocks the other.
 - **Checked by machine only** with stand ins: no real Claude was used and nobody has tried it on a real Mac yet.
+## Undo now really empties a folder Squibby made: 22 Oct 2026
+
+- **When you ask Squibby to make something with no project open, Undo of the first step now gives you back an empty folder.** Before, it left three of Squibby's own notes behind (a hidden notes folder and two files called AGENTS.md and CLAUDE.md that other coding tools read). Now Squibby does not write those two files in a folder it made, and does not ask about them, unless you say yes. Its hidden notes folder (`.companion`) is still kept, so the folder is empty except for that. Your own projects work as before: they still get the question about the shared files.
+- **Checked on real Claude:** one run of the bakery request ended with a folder holding only the hidden notes folder after Undo, for about $0.07.
 
 ## Checked again on real Claude after the rename: 22 Oct 2026
 
