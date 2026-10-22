@@ -18,6 +18,8 @@ The research (`docs/research/2026-10-22-reality-check.md`, agreed by the founder
 
 ## Part 1: the guide, "exactly what HeyClicky does", in an order that works
 
+- The light features and the daily limit with no project open (22 Oct 2026, branch `m14/book-cost`): **the follow up is done.** Before, the cost of Prompt help, the error explainer, Second Look, Draw it for me and Explain was booked only against a project that was open, and Show me how and the everyday looks were never booked at all, so a person with no folder open had no daily cap on them. Now one function (`bookSpend` in `agent.ts`) books every light call, and with no project named it counts in the stand in project's own day: same limit, same local day, kept in the same ledger file, kept across a restart, only a number, and shown in the Settings row for the stand in. At the limit each feature refuses in the usual words and asks nothing. Show me how now carries the open project from the Mac app, so with a folder open it counts in that folder's day. A "make me something" folder is a project, and a test now proves its plan, steps and research are booked there and stop at the limit. Tested with stand ins only; **not yet seen on a real Mac or with real Claude** (the `daily-limit` real check still covers only a project).
+
 The full row by row table is in `M11-match-and-beat.md`. Statuses there were checked on 16 Oct and a lot has changed since (follow up by voice, microphone fallbacks, Home stepping aside were built on 17 to 19 Oct), so **re-check each row against the code before building it.** Order, by how many people hit it on day one:
 
 | Wave | What | Why this order | Needs |
