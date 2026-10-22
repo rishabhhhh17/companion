@@ -73,6 +73,8 @@ export function checkedCommand(c: Ev): string {
 // nothing lands outside the new folder, that the proof is fair when there was nothing to check at first, that Undo gives back an
 // empty folder, and that no secret, no git and no network write happens.
 const OWN_FILES = (f: string) => f === ".companion" || f.startsWith(".companion/") || f === "AGENTS.md" || f === "CLAUDE.md";
+/** Inside the hidden .companion folder (Squibby's own notes): the only thing Undo of a folder made for a request may leave. */
+const isOwnNotes = (f: string) => f === ".companion" || f.startsWith(".companion/");
 /** Every file and folder under `dir`, as paths inside it (links are listed, never followed). */
 export function listTree(dir: string, base = dir): string[] {
   const out: string[] = [];
@@ -239,9 +241,11 @@ function newFolderBuild(o: { name: string; what: string; request: string; allowQ
       const n = r.events.length;
       r.send({ v: 1, id: "u", type: "checkpoint.restore", project: dir, checkpoint: cps[0]?.checkpoint });
       const restored = await r.until((e) => e.type === "checkpoint.restored" || e.type === "protocol.error", 20_000, n);
-      const after = listTree(dir), left = after.filter((f) => !OWN_FILES(f));
-      note(`after Undo of the first step: ${JSON.stringify(after)} (${PRODUCT_S} own notes are not the person's files)`);
-      verdicts["(d) Undo takes the folder back to empty"] = restored?.type === "checkpoint.restored" && left.length === 0 ? "pass" : `FAIL: restored = ${restored?.type}; left behind ${JSON.stringify(left)}`;
+      // Exactly empty, except the hidden .companion folder (${PRODUCT_S}'s own notes). AGENTS.md and CLAUDE.md are not tolerated: a folder
+      // made for a request never gets them unless the person asks.
+      const after = listTree(dir), left = after.filter((f) => !isOwnNotes(f)), top = readdirSync(dir).sort();
+      note(`after Undo of the first step: ${JSON.stringify(after)}; the folder's top level (ls -A) = ${JSON.stringify(top)}`);
+      verdicts["(d) Undo takes the folder back to empty"] = restored?.type === "checkpoint.restored" && left.length === 0 && top.every((f) => f === ".companion") ? "pass" : `FAIL: restored = ${restored?.type}; left behind ${JSON.stringify(left)}; top level ${JSON.stringify(top)}`;
       note(`cost of this case: $${r.usd().toFixed(3)}`);
       for (const [k, v] of Object.entries(verdicts)) note(`${k}: ${v}`);
       const last = receipts.at(-1);

@@ -2,18 +2,23 @@
 // from the same project facts. Project facts and house rules only: never the personal profile, never a key or private line.
 // Files the person already has are never changed without a yes, and then only one marked block is added, which can be removed.
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { writeAtomic } from "../atomic.ts";
 import { screenLine } from "./filter.ts";
 import { readCompanionFile } from "../companionfile.ts";
 import type { MemoryStore } from "./store.ts";
-import { PRODUCT } from "../names.ts";
+import { NAMES, PRODUCT } from "../names.ts";
 
 export type SyncResult = { status: "written" | "unchanged" | "needs_ask" | "declined" | "nothing_to_write" | "failed"; files: string[]; reason?: string };
 const BEGIN = `<!-- companion:begin (kept up to date by ${PRODUCT}; delete this whole block to stop) -->`;
 const END = "<!-- companion:end -->";
 // Found by its opening mark alone, so a block written under an earlier name is still ours to update and to remove.
 const BLOCK = new RegExp(`\\n?<!-- companion:begin[^\\n]*?-->[\\s\\S]*?${END}\\n?`);
+
+/** True for a folder Squibby made for a request with no project open: it sits directly inside the one folder for all of them
+ *  (protocol/names.json newFolderParent; the shell makes it, app/src-tauri/src/newfolder.rs). There the shared files are
+ *  written only when the person asks (M14 real run: so that Undo of the first step gives back an empty folder). */
+export function madeBySquibby(project: string): boolean { return basename(dirname(resolve(project))) === NAMES.newFolderParent; }
 
 function ruleLines(project: string): string[] {
   const r = readCompanionFile(project, "rules.txt");   // never through a link (companionfile.ts)
