@@ -444,8 +444,9 @@ export class AssistService {
   private seen: { code: string; landmarks: string[]; at: number } | null = null;
   // settings: what the shell applied (settings.apply, T16), read on each request: ph.useProjectInfo and ph.handBack, and
   // showme.everydayTutor for Show me how.
-  // spend: Prompt help spends on the person's key, so with a project it waits at the project's daily limit and books what
-  // it cost there (the runner's ledger). Show me how names no project, so it has nothing to book against.
+  // spend: Prompt help, Show me how and the everyday looks spend on the person's key, so each waits at the daily limit and
+  // books what it cost (the runner's ledger): in the project's day when the command names one, else in the stand in's own day
+  // (the runner decides which, so a person with no folder open is held to the limit too).
   // look: the vision lane with its own instructions, for an everyday stuck moment; without it (the free stand in) only the
   // spreadsheet table can answer one.
   constructor(private o: { fast: FastLike; vision: VisionLike; look?: Look; images: ImageStore; emit: (e: Event) => void; now?: () => number; memory?: (project?: string) => string; locateTimeoutMs?: number; settings?: RunnerSettings; spend?: { room: (project?: string) => number; book: (project: string | undefined, usd: number) => void } }) {}
@@ -478,10 +479,15 @@ export class AssistService {
     catch (e) { this.emit({ type: "assist.error", req: cmd.ref, reason: (e as Error).message }); }
   }
 
+  /** At the day's limit for this project (or the stand in): no light question is asked. */
+  private atLimit(project?: string): boolean { try { return !!this.o.spend && this.o.spend.room(project) <= 0; } catch { return false; } }
+  /** What a light question cost, booked in the day. Booking never breaks the answer. */
+  private book(project: string | undefined, usd: number) { try { this.o.spend?.book(project, usd); } catch { /* the answer matters more than the count */ } }
+
   private async prompt(cmd: Extract<Command, { type: "assist.prompt" }>) {
     if (!cmd.text.trim()) return this.emit({ type: "assist.error", req: cmd.req, reason: "There is no text to improve." });
-    if (this.o.spend && this.o.spend.room(cmd.project) <= 0) return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED });
-    const book = (usd: number) => { try { this.o.spend?.book(cmd.project, usd); } catch { /* booking never breaks Prompt help */ } };
+    if (this.atLimit(cmd.project)) return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED });
+    const book = (usd: number) => this.book(cmd.project, usd);
     const ac = new AbortController();
     this.active.set(cmd.req, ac); this.kind.set(cmd.req, "voice");
     try {
@@ -529,6 +535,8 @@ export class AssistService {
     // rather than a guess made from only some of the screens. Every picture is dropped either way.
     const many = (cmd.screens ?? []).length > 1 ? cmd.screens!.slice(0, 4) : [];
     const dropAll = () => { this.o.images.delete(cmd.image.ref); for (const s of many) this.o.images.delete(s.ref); };
+    // It spends on the person's key, so it waits at the daily limit like Prompt help, and the picture is dropped, not kept.
+    if (this.atLimit(cmd.project)) { dropAll(); return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED }); }
     const screens: Screen[] = [];
     for (const [i, s] of many.entries()) {
       const pic = i === 0 && s.ref !== cmd.image.ref ? undefined : this.o.images.get(s.ref);
@@ -548,6 +556,7 @@ export class AssistService {
       const tutor = tutorFor(cmd.app, this.o.settings?.get("showme.everydayTutor"));
       const r = await Promise.race([this.o.vision.locate({ image: { ...img, w: cmd.image.w, h: cmd.image.h }, question: cmd.question, ocr: cmd.ocr ?? [], ...(screens.length > 1 ? { screens } : {}), ...(tutor ? { tutor } : {}) }, ac.signal),
         new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
+      this.book(cmd.project, r.costUsd);   // whatever the answer was, it was paid for
       if (ac.signal.aborted) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : "cancelled" });
       const list = (r.targets?.length ? r.targets : r.point ? [r.point] : []).slice(0, MAX_TARGETS);
       if (!list.length) return this.emit({ type: "assist.error", req: cmd.req, reason: "No clear target was found" });
@@ -582,6 +591,7 @@ export class AssistService {
       const got = await Promise.race([this.o.look({ image, question: r.text, ocr, system: r.system, ...(screens.length > 1 ? { screens } : {}) }, ac.signal),
         new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
       cost = got.costUsd;
+      this.book(cmd.project, cost);
       answer = parseEveryday(got.text, pictures);
       if (!answer) failure = "No clear answer came back";
     } catch (e) { failure = String((e as Error).message ?? e); }

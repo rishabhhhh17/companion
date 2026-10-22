@@ -86,7 +86,7 @@ pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     match v.get("project").and_then(Value::as_str) {
         // Lessons that need no project (installing a tool, leaving a builder) use this stand in name and read nothing. The
         // settings page shows the daily limit, Explain and pausing (for every project) before a folder is chosen: the engine
-        // reads no folder for these with the stand in (profile only memory, nothing spent).
+        // reads no folder for these with the stand in (profile only memory; what the light features spend with it counts in its own day).
         Some(NO_PROJECT) if t.starts_with("walk.") || t == "spending.show" || t == "memory.list" => Ok(()),
         Some(p) if !current.is_empty() && p == current => Ok(()),
         _ => Err("that command may only name the project folder you chose".into()),

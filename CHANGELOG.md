@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The daily spending limit now covers the small helpers when no project is open: 22 Oct 2026
+
+- **A gap is closed.** The small helpers (Prompt help, Show me how, the error explainer, Second Look, Draw it for me, Explain and pictures you add) used to count against your daily spending limit only when a project was open. With no project open they were not counted, so there was no daily cap on them. Show me how was not counted at all, even with a project open.
+- **Now they all count, always.** With a project open, the cost goes in that project's day. With none open, it goes in a day of its own for "no project", with the same limit and the same midnight reset. It is kept when Squibby restarts, it is only a number (never any of your words), and it shows in the Settings spending row.
+- **When the limit is reached** each helper says the usual plain sentence and does not ask Claude anything. Your projects and "no project" each have their own day, so one being full never blocks the other.
+- **Checked by machine only** with stand ins: no real Claude was used and nobody has tried it on a real Mac yet.
+
 ## Checked again on real Claude after the rename: 22 Oct 2026
 
 - **The renamed app passed every real check:** 13 of 13 smoke checks and 21 of 21 fix, undo, approval and safety scenarios, for about $1.35 in all. One scenario first failed because the test script was too strict about a multi line commit message; the app itself behaved correctly. The script is fixed.

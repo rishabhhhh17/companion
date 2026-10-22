@@ -1631,7 +1631,7 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let _ = a2.state::<runner::Runner>().send(&everyday::with_mode(showme::locate_command(&req2, q, pics, cands, &front), mode, before));
+                let _ = a2.state::<runner::Runner>().send(&showme::with_project(everyday::with_mode(showme::locate_command(&req2, q, pics, cands, &front), mode, before), &current_project()));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );

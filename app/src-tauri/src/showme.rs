@@ -155,6 +155,13 @@ pub fn locate_command(req: &str, question: &str, pics: &[Pic], cands: &[Cand], a
     v
 }
 
+/// The folder the person has open, when one is: only its name, so the engine counts what this question costs in that
+/// project's day (the daily limit). With none open nothing is added, and the engine counts it in its own stand in day.
+pub fn with_project(mut cmd: Value, project: &str) -> Value {
+    if let (false, Some(o)) = (project.is_empty(), cmd.as_object_mut()) { o.insert("project".into(), json!(project)); }
+    cmd
+}
+
 /// Light on, capture the display under the pointer, note the windows, cover, shrink, send. The light goes off again
 /// whatever happens. This is the default (product doc sections 5 and 10: one press, the display under the cursor).
 pub fn start(p: &dyn Platform, question: &str) -> Result<Prepared, Refusal> { start_on(p, question, false) }
@@ -666,6 +673,20 @@ mod tests {
         assert_eq!(locate_command("sm_1", "q", &pic, &[], "com.apple.mail")["app"], "com.apple.mail");
         assert!(locate_command("sm_1", "q", &pic, &[], "").get("app").is_none());
         assert!(locate_command("sm_1", "q", &pic, &[], &"x".repeat(201)).get("app").is_none());
+    }
+
+    #[test]
+    fn the_question_names_the_open_project_so_its_cost_counts_in_that_project_s_day() {
+        let pic = [Pic { screen: 1, w: 1280, h: 800, label: None }];
+        let cmd = locate_command("sm_1", "q", &pic, &[], "");
+        assert_eq!(with_project(cmd.clone(), "/Users/me/site")["project"], "/Users/me/site");
+        // No folder chosen: nothing is named, and the engine counts it in the stand in's own day.
+        assert!(with_project(cmd.clone(), "").get("project").is_none());
+        assert_eq!(with_project(cmd.clone(), "/Users/me/site")["type"], "assist.locate");
+        // Only the name of the folder is added: the rest of the question is as it was.
+        let mut named = with_project(cmd.clone(), "/Users/me/site");
+        named.as_object_mut().unwrap().remove("project");
+        assert_eq!(named, cmd);
     }
 
     // ---- the window the picture was taken of (rule 22) ----
