@@ -2,6 +2,7 @@
 // user's own spend: we never pay for, resell or route anyone's Claude usage.
 import type { Database } from "bun:sqlite";
 import { openDatabase } from "./db.ts";
+import { PRODUCT } from "./names.ts";
 
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -13,7 +14,7 @@ export class Ledger {
     try { this.setup(); }
     catch {
       try { this.db.close(); } catch { /* already unusable */ }
-      onProblem?.("Your spending count could not be saved on this Mac, so it will start again when Companion closes.");
+      onProblem?.(`Your spending count could not be saved on this Mac, so it will start again when ${PRODUCT} closes.`);
       this.db = openDatabase(":memory:");
       this.setup();
     }

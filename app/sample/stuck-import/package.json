@@ -2,7 +2,7 @@
   "name": "practice-import",
   "version": "1.0.0",
   "private": true,
-  "description": "A tiny price list for Companion's practice run. A file was renamed and one place still uses the old name.",
+  "description": "A tiny price list for the practice run. A file was renamed and one place still uses the old name.",
   "scripts": {
     "dev": "node server.js",
     "test": "node --test"

@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 publish = false
-description = "Companion desktop shell: native non activating panels with a web page inside (T01)."
+description = "Squibby desktop shell: native non activating panels with a web page inside (T01)."
 
 [build-dependencies]
 tauri-build = { version = "=2.7.1", features = [] }
+serde_json = "1"   # build.rs hands protocol/names.json to the compiler (src/names.rs)
 
 [dependencies]
 tauri = { version = "=2.12.1", features = ["tray-icon", "image-png", "macos-private-api"] }

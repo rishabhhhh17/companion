@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { lessonsFromProject, settingsFile, settingsLesson, SETTINGS_LESSON, vercelLesson, VERCEL_LESSON, whereToGet } from "../src/lessongen.ts";
 import { MAX_STEPS, parseLesson, projectChecker, type Lesson } from "../src/walk.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -77,8 +78,8 @@ describe("the settings lesson", () => {
     expect(text).not.toContain("THE-SECRET-VALUE");
     expect(text).not.toContain("VALUE-IN-EXAMPLE");
     const l = byId(all, SETTINGS_LESSON)!;
-    expect(l.steps[0].say).toMatch(/never in Companion or a chat/);
-    for (const s of all.flatMap((x) => x.steps)) expect(`${s.say} ${s.instead?.say ?? ""}`).not.toMatch(/(paste|type|send) (it|the value|your key)[^.]* (in|into|to) (Companion|the chat|a chat)/i);
+    expect(l.steps[0].say).toMatch(new RegExp(`never in ${PRODUCT} or a chat`));
+    for (const s of all.flatMap((x) => x.steps)) expect(`${s.say} ${s.instead?.say ?? ""}`).not.toMatch(new RegExp(`(paste|type|send) (it|the value|your key)[^.]* (in|into|to) (${PRODUCT}|the chat|a chat)`, "i"));
   });
   test("the settings file follows what the project is built with", () => {
     expect(settingsFile("Next.js")).toBe(".env.local");

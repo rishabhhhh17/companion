@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { detectProject } from "../src/proof/detect.ts";
 import { detectNative, goPlan, gradlePlan, mavenPlan, rustPlan, swiftPlan, xcodePlan } from "../src/proof/native.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -80,7 +81,7 @@ describe("Go", () => {
     const d = detectNative(project({ "go.mod": GO_MOD }), NONE)!;
     expect(d.checks).toEqual([]); expect(d.tests).toBeNull();
     expect(d.setup.missing).toMatch(/Go is not installed on this Mac/);
-    expect(d.setup.missing).toMatch(/Companion does not install it/);
+    expect(d.setup.missing).toMatch(new RegExp(`${PRODUCT} does not install it`));
     expect(d.setup.missing).toContain("brew install go");
   });
   test("packages: a go.mod that requires something may download", () => {
@@ -290,7 +291,7 @@ describe("Xcode projects", () => {
     const d = detectNative(project({ "Shop.xcodeproj/project.pbxproj": pbx(targets), "Shop.xcodeproj/xcshareddata/xcschemes/Shop.xcscheme": scheme("Shop", "Shop", ["ShopTests", "ShopUITests"]) }), ALL)!;
     expect(d.tests?.command).toContain("-skip-testing:'ShopUITests'");
   });
-  test("an iPhone only project is not built: it needs a simulator, which Companion never uses", () => {
+  test(`an iPhone only project is not built: it needs a simulator, which ${PRODUCT} never uses`, () => {
     const d = detectNative(project({ "Phone.xcodeproj/project.pbxproj": pbx([{ id: "AAAAAAAAAAAAAAAAAAAAAAA1", name: "Phone", type: APP, sdk: "iphoneos" }]), "Phone.xcodeproj/xcshareddata/xcschemes/Phone.xcscheme": scheme("Phone", "Phone") }), ALL)!;
     expect(d.checks).toEqual([]); expect(d.tests).toBeNull();
     expect(d.setup.gaps.join(" ")).toMatch(/iPhone|iPad/);
@@ -341,7 +342,7 @@ describe("Xcode projects", () => {
 });
 
 describe("what a project says about itself in About this project", () => {
-  test("the note says plainly that a build may download packages, and that Companion tries without first", () => {
+  test(`the note says plainly that a build may download packages, and that ${PRODUCT} tries without first`, () => {
     const d = detectNative(project({ "pom.xml": POM }), ALL)!;
     expect(d.setup.note).toMatch(/may download/);
     expect(d.setup.note).toMatch(/internet/);

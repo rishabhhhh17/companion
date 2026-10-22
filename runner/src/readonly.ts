@@ -5,6 +5,7 @@
 // that is not a plain read) is refused with a plain line, and so is anything a shell could treat as more than one command.
 
 /** The words of a command, single quotes honoured (the way shq writes them), or null when it is more than a plain command. */
+import { PRODUCT } from "./names.ts";
 export function words(command: string): string[] | null {
   const out: string[] = [];
   let cur = "", has = false, quoted = false;
@@ -29,11 +30,11 @@ const WRITE_WORDS = new Set(["deploy", "promote", "rollback", "redeploy", "remov
 /** The plain reason this command may not run, or null when it only reads. */
 export function refuseWrite(command: string): string | null {
   const w = words(command);
-  if (!w || w.length === 0) return "Companion only runs plain reading commands on your tools.";
+  if (!w || w.length === 0) return `${PRODUCT} only runs plain reading commands on your tools.`;
   const [tool, a = "", b = ""] = w;
-  const named = (): string => { const hit = w.slice(1, 4).find((x) => WRITE_WORDS.has(x.toLowerCase())); return hit ? `Companion never runs "${hit}" on your tools. It only reads.` : "Companion only reads from your tools, and that is not a reading command."; };
+  const named = (): string => { const hit = w.slice(1, 4).find((x) => WRITE_WORDS.has(x.toLowerCase())); return hit ? `${PRODUCT} never runs "${hit}" on your tools. It only reads.` : `${PRODUCT} only reads from your tools, and that is not a reading command.`; };
   if (w.some((x) => /^(--prod|--prebuilt|--force|--yes|-y|--web|-w|--method|-X|--field|-f|-F|--input|--raw-field|--delete|--token|-t)$/i.test(x) || /^--(method|token)=/i.test(x))) return named();
   if (tool === "vercel") return VERCEL_READS.has(a.toLowerCase()) ? null : named();
   if (tool === "gh") return GH_READS.has(`${a.toLowerCase()} ${b.toLowerCase()}`) ? null : named();
-  return "Companion only reads from the Vercel and GitHub tools.";
+  return `${PRODUCT} only reads from the Vercel and GitHub tools.`;
 }

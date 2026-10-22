@@ -11,10 +11,10 @@ import { join } from "node:path";
 import { AGENT, releaseAgent } from "./commands.ts";
 import { cardWorking, foundHandsOver, initial, reduce, releasable, stateLabel, teachActions, waitsForAnswer, type Model } from "./model.ts";
 import { islandAlert, islandLine } from "./home.ts";
-import { workingOn } from "./practice.ts";
+import { workingOn, COPY_BASE } from "./practice.ts";
 import { installAllowed, isBusy } from "./updates.ts";
 import { parseCommand, serialize } from "../../protocol/index.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -77,7 +77,7 @@ describe("A53: Cancel on a plan, or Close on Rescue's report", () => {
 
 describe("A54: the first practice's Find shows the problem and Fix it with me can be pressed", () => {
   const FOUND = new Map(readFileSync(join(import.meta.dir, "../../protocol/fixtures/practice-found.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => { const x = JSON.parse(l); return [x.practice as string, x.event as Record<string, unknown>]; }));
-  const copy = "/Users/sam/Companion practice signup";
+  const copy = `/Users/sam/${COPY_BASE} signup`;
   const found = run([ev({ type: "ui.practiceStarted", project: copy, kind: "signup" }), ev({ type: "ui.findProblem" }), state("checking"), { ...FOUND.get("signup")!, project: copy }, state("needsYou")]);
   test("before: the agent waits on the person, so the practice said to wait (the real order of events)", () => {
     expect(found.practice?.stage).toBe("found");

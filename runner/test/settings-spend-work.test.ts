@@ -17,6 +17,7 @@ import { TaskLog } from "../src/tasklog.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
 import { defOf } from "../../protocol/settings.ts";
+import { PRODUCT } from "../src/names.ts";
 
 // Each task here takes real snapshots of a temporary folder; a busy Mac can take a few seconds over a Drive plan.
 setDefaultTimeout(30_000);
@@ -56,7 +57,7 @@ function setup(rounds: Step[][], proofs: LadderResult[] = [ok()], o: { values?: 
 // ---------- the model choices (model.work, model.rescue, model.quick) ----------
 
 describe("the models a person can choose", () => {
-  test("option ids, never model ids, are what a setting holds, and each option is a model Companion knows", () => {
+  test(`option ids, never model ids, are what a setting holds, and each option is a model ${PRODUCT} knows`, () => {
     for (const [job, key] of [["work", "model.work"], ["rescue", "model.rescue"], ["quick", "model.quick"]] as const) {
       expect(Object.keys(MODEL_CHOICES[job]).sort(), key).toEqual([...(defOf(key)!.options ?? [])].sort());
       for (const c of Object.values(MODEL_CHOICES[job])) expect(KNOWN_MODELS, `${key} ${c.model}`).toContain(canonicalModel(c.model));
@@ -182,7 +183,7 @@ describe("a budget from Settings never goes above what is left of the daily limi
 
 // ---------- work.tries and work.askOnAnyFailure ----------
 
-describe("checks before Companion asks you what to do (work.tries)", () => {
+describe(`checks before ${PRODUCT} asks you what to do (work.tries)`, () => {
   const same = bad("1 failed: expected blue, got grey");
   test("the usual 3: the card after the third identical failure, worded exactly as before", async () => {
     const r = setup(writes(4), [same]);
@@ -389,7 +390,7 @@ describe("the rough cost shown before Start (at most) follows the model the plan
   test("a Rescue on Recommended (Sonnet 5.5) shows about half, as its words say", async () => {
     expect(await rescue(MODEL_CHOICES.rescue.recommended.model)).toBe(0.5);
   });
-  test("a model Companion does not know counts as the dearest it knows, so the figure is never too low", async () => {
+  test(`a model ${PRODUCT} does not know counts as the dearest it knows, so the figure is never too low`, async () => {
     const unknown = await plan("claude-future-9");
     for (const m of KNOWN_MODELS) expect(unknown, m).toBeGreaterThanOrEqual(planEstimate(4, m, MODELS.agent));
   });

@@ -719,7 +719,7 @@ mod tests {
         let (home, data) = (tmp.join("home"), tmp.join("home/Library/Application Support/dev.companion.app"));
         std::fs::create_dir_all(&data).unwrap();
         let p = path(&data);
-        assert_eq!(p.parent(), Some(data.as_path()), "directly in Companion's own folder");
+        assert_eq!(p.parent(), Some(data.as_path()), concat!("directly in ", crate::product_s!(), " own folder"));
         crate::logfile::write_atomic(&p, last_json("x").as_bytes()).unwrap();
         let items = crate::wipe::items(&home, &data);
         let settings = items.iter().find(|i| i.id == "settings").unwrap();

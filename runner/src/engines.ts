@@ -12,6 +12,7 @@ import { buildChildEnv } from "./safety.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS, modelForChoice } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
+import { PRODUCT } from "./names.ts";
 
 export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan" | "managed"; data: string;
@@ -84,7 +85,7 @@ const NOT_CONNECTED = "Not connected: add your API key, or sign in with your Cla
 // How every Claude Code run starts, agent tasks and both lanes alike: the bundled binary, and the environment for the
 // current sign in. Looked up each time, so adding a key while the app is open just works.
 /** The fix engine runs Claude Code, which Companion may not pay for without Anthropic's written agreement (F22). */
-export const MANAGED_NEEDS_OWN_CLAUDE = "Fixing needs your own Claude for now: add your API key or sign in with your Claude plan. The guide and explanations keep working with your Companion sign in.";
+export const MANAGED_NEEDS_OWN_CLAUDE = `Fixing needs your own Claude for now: add your API key or sign in with your Claude plan. The guide and explanations keep working with your ${PRODUCT} sign in.`;
 async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: Record<string, string> }> {
   if (s.route === "managed") throw new Error(MANAGED_NEEDS_OWN_CLAUDE);
   const a = await currentAuth(s);

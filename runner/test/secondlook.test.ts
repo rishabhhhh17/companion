@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MAX_CHECKED_CHARS, recompute, secondLook, SECOND_LOOK_SYSTEM } from "../src/secondlook.ts";
 import type { FastLike } from "../src/lanes.ts";
+import { PRODUCT } from "../src/names.ts";
 
 // Second Look (M14): select any AI answer, press a key, and it says what is solid, what to check, and what it cannot tell.
 // The maths is redone by code, never guessed; the model looks at the rest; it never says "solid" when the maths found a slip.
@@ -72,7 +73,7 @@ describe("the whole check", () => {
     await expect(secondLook("The sky is blue.", model("not json at all"), sig())).rejects.toThrow(/could not check/i);
   });
   test("a failed request with maths findings still shows them; without, the failure is passed on", async () => {
-    const boom = () => { throw new Error("no_connection: Companion could not reach Claude (x)"); };
+    const boom = () => { throw new Error(`no_connection: ${PRODUCT} could not reach Claude (x)`); };
     const r = await secondLook("120 × 4 = 460", model(boom as never), sig());
     expect(r.items).toHaveLength(1);
     await expect(secondLook("The sky is blue.", model(boom as never), sig())).rejects.toThrow(/no_connection/);

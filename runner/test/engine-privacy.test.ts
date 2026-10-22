@@ -17,6 +17,7 @@ import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -33,7 +34,7 @@ const drain = async (e: SdkEngine, extra: Record<string, unknown> = {}) => {
   for await (const _ of e.start({ prompt: "p", project: "/p", model: "m", signal: new AbortController().signal, authorize: base.authorize, budgetUsd: 3, ...extra } as any)) { /* drain */ }
 };
 
-describe("what Companion remembers reaches the real engine", () => {
+describe(`what ${PRODUCT} remembers reaches the real engine`, () => {
   test("the engine hands the remembered lines to the agent's instructions", async () => {
     const c = capture();
     await drain(new SdkEngine({ claudeBinary: "/x/claude", env: {}, queryFn: c.q }), { memory: "- Prefers short answers" });
@@ -70,7 +71,7 @@ describe("which conversations are saved", () => {
 
 describe("Claude Code's own folder", () => {
   const parent = { PATH: "/usr/bin", HOME: "/Users/x" };
-  test("on the API key route it is the folder Companion names", () => {
+  test(`on the API key route it is the folder ${PRODUCT} names`, () => {
     expect(buildChildEnv(parent, { route: "api_key", apiKey: "k", configDir: "/data/claude" }).CLAUDE_CONFIG_DIR).toBe("/data/claude");
   });
   test("on the API key route with no folder named, it is left alone", () => {
@@ -82,7 +83,7 @@ describe("Claude Code's own folder", () => {
   test("an empty setting counts as not set", () => {
     expect(buildChildEnv({ ...parent, CLAUDE_CONFIG_DIR: "" }, { route: "api_key", apiKey: "k", configDir: "/data/claude" }).CLAUDE_CONFIG_DIR).toBe("/data/claude");
   });
-  test("on the plan route it is never set by Companion", () => {
+  test(`on the plan route it is never set by ${PRODUCT}`, () => {
     expect(buildChildEnv(parent, { route: "plan" }).CLAUDE_CONFIG_DIR).toBeUndefined();
     // Even if a caller tries: the plan route takes no folder.
     expect(buildChildEnv(parent, { route: "plan", configDir: "/data/claude" } as never).CLAUDE_CONFIG_DIR).toBeUndefined();
@@ -98,7 +99,7 @@ describe("Claude Code's own folder", () => {
 });
 
 describe("the environment the engine gets", () => {
-  test("API key route: Claude Code's folder is inside Companion's data folder, made private", () => {
+  test(`API key route: Claude Code's folder is inside ${PRODUCT_S} data folder, made private`, () => {
     const data = tmp("data");
     const e = engineEnv({ method: "api_key", apiKey: "k" }, data, { PATH: "/usr/bin", HOME: "/Users/x" });
     expect(e.CLAUDE_CONFIG_DIR).toBe(join(data, "claude"));
@@ -156,7 +157,7 @@ describe("the engine and lanes the app makes", () => {
     return c.seen[0];
   };
   for (const [name, via] of [["agent tasks", viaEngine], ["the fast lane", viaFast], ["the vision lane", viaVision], ["looking at a picture added to a request", viaDescribe]] as const) {
-    test(`${name}, API key route: Claude Code's folder is inside Companion's data folder`, async () => {
+    test(`${name}, API key route: Claude Code's folder is inside ${PRODUCT_S} data folder`, async () => {
       const { data, bin, s } = settings("api_key");
       const o = await via(s);
       expect(o.env.CLAUDE_CONFIG_DIR).toBe(join(data, "claude"));

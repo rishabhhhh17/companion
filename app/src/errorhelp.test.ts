@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ERROR_FIX_PROMPT, fixError } from "./commands.ts";
 import { ehLines, initial, reduce, type Model } from "./model.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -37,7 +37,7 @@ describe("each stage on the card", () => {
     expect(m.eh?.where).toBeUndefined();
   });
   test("asking about an app, refusals, nothing selected and Accessibility, in plain words naming the right key", () => {
-    expect(ehLines(run([stage("consent", { app: "Terminal" })]))[0]).toBe("Allow Companion to read what you select in Terminal? The same answer covers Prompt help there.");
+    expect(ehLines(run([stage("consent", { app: "Terminal" })]))[0]).toBe(`Allow ${PRODUCT} to read what you select in Terminal? The same answer covers Prompt help there.`);
     for (const why of ["secure_field", "secure_input", "never_app", "refused_by_you", "own_app", "no_engine", "something_new"]) {
       const l = ehLines(run([stage(why === "own_app" || why === "no_engine" || why === "something_new" ? "error" : "refused", { why })]));
       expect(l.length, why).toBe(1); expect(l[0], why).toMatch(/\.$/); expect(l[0]).not.toMatch(/undefined|—/);

@@ -11,6 +11,7 @@ import { ScriptedEngine } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) { const d = made.pop()!; try { chmodSync(d, 0o755); } catch { /* gone */ } rmSync(d, { recursive: true, force: true }); } });
@@ -178,7 +179,7 @@ describe("a damaged memory settings file fails closed", () => {
   });
 });
 
-describe("Companion's writes in the person's project are careful", () => {
+describe(`${PRODUCT_S} writes in the person's project are careful`, () => {
   test("a link CLAUDE.md -> AGENTS.md is never replaced, and the file's permissions stay", async () => {
     const { syncAgentsFiles } = await import("../src/memory/agentsmd.ts");
     const { MemoryStore } = await import("../src/memory/store.ts");

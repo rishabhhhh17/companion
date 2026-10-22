@@ -12,19 +12,19 @@ import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 import { canFollowUp, canRetry, initial, lessonWordsOnly, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
-import { CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, needsMacCheck, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
-import { S } from "./strings.ts";
+import { COPY_BASE, CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, needsMacCheck, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
+import { S, PRODUCT, PRODUCT_S, NAMES } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
 const FOUND = new Map(readFileSync(join(import.meta.dir, "../../protocol/fixtures/practice-found.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => { const x = JSON.parse(l); return [x.practice as string, x.event as Record<string, any>]; }));
-const P = (e: PracticeEntry) => `/Users/sam/Companion practice ${e.copyName}`;
+const P = (e: PracticeEntry) => `/Users/sam/${COPY_BASE} ${e.copyName}`;
 const entry = (id: string) => practiceOf(id)!;
 const NO: PracticeRecord = { rows: [], damaged: false };
 const start = (e: PracticeEntry, extra: Record<string, unknown> = {}) => ev({ type: "ui.practiceStarted", project: P(e), kind: e.id, ...extra });
 // What Find answers for this practice, in its own project (the engine's real event, from the shared fixture).
 const found = (e: PracticeEntry): Record<string, any> => ({ ...FOUND.get(e.id)!, project: P(e) });
-const cp = (e: PracticeEntry, id = "cp_0001", practice: string | null = e.id) => ev({ type: "checkpoint.created", project: P(e), agent: "builder-1", checkpoint: id, label: "Before: Companion checked this project", files: 4, skipped: [], ...(practice ? { practice } : {}) });
+const cp = (e: PracticeEntry, id = "cp_0001", practice: string | null = e.id) => ev({ type: "checkpoint.created", project: P(e), agent: "builder-1", checkpoint: id, label: `Before: ${PRODUCT} checked this project`, files: 4, skipped: [], ...(practice ? { practice } : {}) });
 const receipt = (e: PracticeEntry, proof: string, o: Record<string, unknown> = {}) => ev({ type: "receipt", agent: "builder-1", checkpoint: "cp_0001", changed: [{ file: "x.js", kind: "modified" }], commands: 1, notUndoable: [], proof, usdEstimate: 0.12, practice: e.id, ...o });
 const gates = (e: PracticeEntry, blocked: boolean) => ev({ type: "ship.gates", project: P(e), canShip: false, gates: blocked ? FOUND.get("open-table")!.gates : [{ id: "database_access", label: "Database access is protected", status: "could_not_check", detail: "I could not check your live database.", overridable: true }], blockedBy: [], needsYou: [], confirmed: [], allowedCount: 0 });
 const passed = (e: PracticeEntry) => ev({ type: "problem.found", project: P(e), agent: "builder-1", verdict: "passed" });
@@ -180,7 +180,7 @@ describe("the fix is the practice's own task, matched by its practice id", () =>
   // or Check before going live with checks) marked the practice failed while its fix kept running, and the passing receipt
   // was then dropped, so it never reached Done.
   test("once its task has begun, a refusal of another command does not end the fix; its receipt does", () => {
-    for (const refused of [ev({ type: "protocol.error", agent: "builder-1", reason: "Companion is already working on this project. Wait for it to finish, or press Stop." }), ev({ type: "protocol.error", reason: "A task is still working on this project. Wait for it to finish, or press Stop, then check it." })]) {
+    for (const refused of [ev({ type: "protocol.error", agent: "builder-1", reason: `${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.` }), ev({ type: "protocol.error", reason: "A task is still working on this project. Wait for it to finish, or press Stop, then check it." })]) {
       const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), refused]);
       expect(m.practice?.stage).toBe("fixing");
       expect(run([receipt(e, "passed")], m).practice).toMatchObject({ stage: "done" });
@@ -379,8 +379,8 @@ describe("a practice whose copy is still there is opened, never copied a second 
 describe("the record and the list on Learn", () => {
   const rec = (rows: unknown[], damaged = false): PracticeRecord => recordFrom({ practices: rows, damaged });
   test("the shell's list is checked: only catalog ids, real days and text paths", () => {
-    const r = rec([{ id: "signup", path: "/Users/sam/Companion practice signup page", there: true, started: "2026-10-19", done: "yesterday" }, { id: "deploy", there: true }, null, { id: "route", path: 3, there: "yes" }]);
-    expect(r.rows).toEqual([{ id: "signup", path: "/Users/sam/Companion practice signup page", there: true, started: "2026-10-19" }, { id: "route", there: false }]);
+    const r = rec([{ id: "signup", path: `/Users/sam/${COPY_BASE} signup page`, there: true, started: "2026-10-19", done: "yesterday" }, { id: "deploy", there: true }, null, { id: "route", path: 3, there: "yes" }]);
+    expect(r.rows).toEqual([{ id: "signup", path: `/Users/sam/${COPY_BASE} signup page`, there: true, started: "2026-10-19" }, { id: "route", there: false }]);
     expect(recordFrom(null)).toEqual({ rows: [], damaged: false });
     expect(recordFrom({ practices: [], damaged: true }).damaged).toBe(true);
   });
@@ -393,7 +393,7 @@ describe("the record and the list on Learn", () => {
     for (const w of [...Object.values(S.practiceState), S.practiceDone, ...CATALOG.map((e) => S.practices[e.id].doneMore)]) expect(w).not.toMatch(/great|awesome|well done|streak|badge|score|points|%|congrat|amazing/i);
   });
   test("the list is in catalog order with the title, what it teaches, about how long, the cost and Needs Node when Node is missing", () => {
-    const rows = listRows(rec([{ id: "route", path: "/Users/sam/Companion practice missing page", there: true }]), null);
+    const rows = listRows(rec([{ id: "route", path: `/Users/sam/${COPY_BASE} missing page`, there: true }]), null);
     expect(rows.map((r) => r.entry.id)).toEqual(CATALOG.map((e) => e.id));
     expect(rows.find((r) => r.entry.id === "route")!.state).toBe("inProgress");
     expect(rows[0]).toMatchObject({ title: "A Join button that fails", time: "About 2 minutes", cost: "About 20 cents on your key", needsNode: false });
@@ -426,19 +426,25 @@ describe("the record and the list on Learn", () => {
     expect(nextPractice(rec(CATALOG.map((e) => ({ id: e.id, there: false, done: "2026-10-19" }))), "import")).toBeNull();
   });
   test("Back to my project is the folder used before, never a practice copy, else the newest folder of the person's own", () => {
-    const r = rec([{ id: "signup", path: "/Users/sam/Companion practice signup page", there: true }]);
-    const recent = ["/Users/sam/Companion practice signup page", "/Users/sam/Companion practice 2", "/Users/sam/shop", "/Users/sam/blog"];
+    const r = rec([{ id: "signup", path: `/Users/sam/${COPY_BASE} signup page`, there: true }]);
+    const recent = [`/Users/sam/${COPY_BASE} signup page`, `/Users/sam/${COPY_BASE} 2`, "/Users/sam/shop", "/Users/sam/blog"];
     expect(backTo("/Users/sam/blog", recent, r)).toBe("/Users/sam/blog");
     expect(backTo(undefined, recent, r)).toBe("/Users/sam/shop");
-    expect(backTo("/Users/sam/Companion practice signup page", recent, r)).toBe("/Users/sam/shop");
-    expect(backTo("/Users/sam/gone", ["/Users/sam/Companion practice signup page"], r)).toBeNull();
-    expect(copyOf(r, "/Users/sam/Companion practice signup page")).toBe("signup");
+    expect(backTo(`/Users/sam/${COPY_BASE} signup page`, recent, r)).toBe("/Users/sam/shop");
+    expect(backTo("/Users/sam/gone", [`/Users/sam/${COPY_BASE} signup page`], r)).toBeNull();
+    expect(copyOf(r, `/Users/sam/${COPY_BASE} signup page`)).toBe("signup");
+  });
+  test("a copy made under the product's earlier name is still a practice copy for Back to my project", () => {
+    const earlier = NAMES.earlierPracticeCopyBases[0];
+    expect(earlier).toBeTruthy(); expect(earlier).not.toBe(COPY_BASE);
+    const recent = [`/Users/sam/${earlier} signup page`, "/Users/sam/shop"];
+    expect(backTo(undefined, recent, rec([]))).toBe("/Users/sam/shop");
   });
   test("the Vercel lesson is left out only in a practice copy, which is never on Vercel", () => {
     expect(VERCEL_LESSON_ID).toBe(VERCEL_LESSON);
-    const r = rec([{ id: "setting", path: "/Users/sam/Companion practice missing setting", there: true }]);
+    const r = rec([{ id: "setting", path: `/Users/sam/${COPY_BASE} missing setting`, there: true }]);
     const lessons = [{ id: SETTINGS_LESSON_ID }, { id: VERCEL_LESSON_ID }, { id: "lovable-publish" }];
-    expect(lessonsShown(lessons, "/Users/sam/Companion practice missing setting", r, VERCEL_LESSON_ID).map((l) => l.id)).toEqual([SETTINGS_LESSON_ID, "lovable-publish"]);
+    expect(lessonsShown(lessons, `/Users/sam/${COPY_BASE} missing setting`, r, VERCEL_LESSON_ID).map((l) => l.id)).toEqual([SETTINGS_LESSON_ID, "lovable-publish"]);
     expect(lessonsShown(lessons, "/Users/sam/shop", r, VERCEL_LESSON_ID)).toEqual(lessons);
   });
 });
@@ -473,8 +479,8 @@ describe("beta numbers and the record count each stage once", () => {
 
 describe("the words are plain and true", () => {
   test("the start words name the real folder of this copy", () => {
-    expect(S.practiceStartIn("Companion practice signup page 2", S.practices.signup.start)).toContain("Companion practice signup page 2");
-    expect(S.practiceStartIn("x", "y")).not.toContain("the folder Companion practice in");
+    expect(S.practiceStartIn(`${COPY_BASE} signup page 2`, S.practices.signup.start)).toContain(`${COPY_BASE} signup page 2`);
+    expect(S.practiceStartIn("x", "y")).not.toContain(`the folder ${COPY_BASE} in`);
   });
   test("Join shows Something went wrong, as the page really does", () => {
     const page = readFileSync(join(import.meta.dir, "../sample/stuck-signup/public/signup.js"), "utf8");
@@ -494,9 +500,9 @@ describe("the words are plain and true", () => {
     expect(S.practiceBlocked.nothing).toMatch(/Start over/);
     expect(S.practiceBlocked.elsewhere).not.toMatch(/Node/);
   });
-  test("the first run says Companion will copy the project, before any copy exists", () => {
+  test(`the first run says ${PRODUCT} will copy the project, before any copy exists`, () => {
     expect(S.obPracticeHelp).toMatch(/will copy/);
-    expect(S.obPracticeHelp).not.toMatch(/Companion made/);
+    expect(S.obPracticeHelp).not.toMatch(new RegExp(`${PRODUCT} made`));
   });
   test("for signup and route the ring is on the check that fails, and the words say so", () => {
     for (const id of ["signup", "route"]) { expect(entry(id).expect.file.startsWith("test/")).toBe(true); expect(S.practices[id].foundMore).toMatch(/check that fails/); }
@@ -504,8 +510,8 @@ describe("the words are plain and true", () => {
   test("the open table's done words say the live database is checked once it is connected", () => {
     expect(S.practices["open-table"].doneMore).toMatch(/live database/);
   });
-  test("the copy's house rule is said to be Companion's, not the person's", () => {
-    expect(S.practiceRulesNote).toMatch(/Companion added/);
+  test(`the copy's house rule is said to be ${PRODUCT_S}, not the person's`, () => {
+    expect(S.practiceRulesNote).toMatch(new RegExp(`${PRODUCT} added`));
   });
 });
 

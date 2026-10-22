@@ -1,5 +1,5 @@
 {
-  "about": "The one list of the apps Companion knows by kind, from their ids only, never anything in them. The shell reads it (app/src-tauri/src/everyday.rs front_kind: the kind of app in front for the stuck key) and so does the engine (runner/src/tutor.ts appKind: the everyday tutor). On both sides the terminals Prompt help knows (runner/src/prompthelp.ts and app/src-tauri/src/phelp.rs TERMINALS) are coding tools too. everyday: the names the model may be told, and only these.",
+  "about": "The one list of the apps the app knows by kind, from their ids only, never anything in them. The shell reads it (app/src-tauri/src/everyday.rs front_kind: the kind of app in front for the stuck key) and so does the engine (runner/src/tutor.ts appKind: the everyday tutor). On both sides the terminals Prompt help knows (runner/src/prompthelp.ts and app/src-tauri/src/phelp.rs TERMINALS) are coding tools too. everyday: the names the model may be told, and only these.",
   "oursPrefix": "dev.companion",
   "editors": [
     "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92", "com.apple.dt.Xcode", "dev.zed.Zed",

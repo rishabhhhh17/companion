@@ -6,6 +6,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { runCommand, shq, type RunOptions, type RunResult } from "./exec.ts";
+import { PRODUCT } from "../names.ts";
 
 export type PythonServer = "flask" | "uvicorn" | "django" | "streamlit";
 export type PythonEnv = { command: string; venv: string | null };
@@ -282,9 +283,9 @@ export function detectPython(dir: string, o: PythonOptions = {}): PythonDetected
   const install = venv ? `${venv}/bin/${pkgs}` : `python3 -m venv .venv, then .venv/bin/${pkgs}`;
   const where = venv ? `this project's own virtual environment (${venv})` : env ? `this Mac's Python (${env.command}), because the project has no virtual environment` : "";
   const note = broken
-    ? `This project's virtual environment (${broken}) is broken: the Python it was made with is gone, so the Python checks cannot run. Companion does not install Python packages. To make it again, in Terminal in the project folder, run: rm -rf ${broken}, then python3 -m venv .venv, then .venv/bin/${pkgs}`
+    ? `This project's virtual environment (${broken}) is broken: the Python it was made with is gone, so the Python checks cannot run. ${PRODUCT} does not install Python packages. To make it again, in Terminal in the project folder, run: rm -rf ${broken}, then python3 -m venv .venv, then .venv/bin/${pkgs}`
     : !env ? "Python is not set up on this Mac, so this Python project cannot be checked. Install Python from python.org, then try again."
-    : `Companion does not install Python packages. It checks this project with ${where}.`;
+    : `${PRODUCT} does not install Python packages. It checks this project with ${where}.`;
   const setup: PythonSetup = { command: env?.command ?? null, venv, declared, note, install };
   if (!env) return { setup, checks: [], tests: null, start: null };
 
@@ -340,8 +341,8 @@ export function removeNewEmptyDatabases(dir: string, before: Set<string>): strin
 export function pythonIntakeNote(s: PythonSetup): string {
   if (!s.command) return s.note;
   return s.venv
-    ? `Companion checks this Python project with its own virtual environment (${s.venv}). It cannot install its packages for you.`
-    : `This Python project has no virtual environment, so its packages are probably not installed here. Companion cannot install its packages for you. In Terminal, in the project folder, run: ${s.install}`;
+    ? `${PRODUCT} checks this Python project with its own virtual environment (${s.venv}). It cannot install its packages for you.`
+    : `This Python project has no virtual environment, so its packages are probably not installed here. ${PRODUCT} cannot install its packages for you. In Terminal, in the project folder, run: ${s.install}`;
 }
 
 /** Plain words for a check that could not run because a package is missing, with what to run (never run by Companion). */
@@ -349,5 +350,5 @@ export function missingWords(miss: { module: string; tool: boolean }, s: PythonS
   const where = s.venv ? `in this project's virtual environment (${s.venv})` : "for this Mac's Python";
   const fix = miss.tool ? (s.venv ? `${s.venv}/bin/pip install ${miss.module}` : `python3 -m venv .venv, then .venv/bin/pip install ${miss.module}`) : s.install;
   const subject = miss.tool ? `${miss.module} is not installed ${where}, so ${what} could not run.` : `${what[0].toUpperCase()}${what.slice(1)} need${what.endsWith("s") ? "" : "s"} ${miss.module}, which is not installed ${where}.`;
-  return `${subject} Companion does not install Python packages. To install ${miss.tool ? "it" : "them"}, in Terminal in the project folder, run: ${fix}`;
+  return `${subject} ${PRODUCT} does not install Python packages. To install ${miss.tool ? "it" : "them"}, in Terminal in the project folder, run: ${fix}`;
 }

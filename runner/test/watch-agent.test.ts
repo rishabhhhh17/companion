@@ -12,6 +12,7 @@ import type { LadderResult } from "../src/proof/ladder.ts";
 import { runPrint } from "../src/proof/approvedruns.ts";
 import type { CiLatest, CiReader } from "../src/connections.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -126,7 +127,7 @@ describe("the project's own checks for a watch", () => {
     const files = await s.ladderCalls[0].store.readFiles("live", () => true);
     expect(Object.keys(files)).toEqual(["package.json"]);
   });
-  test("it builds and tests only: it never starts the project, and its commands end with Companion", async () => {
+  test(`it builds and tests only: it never starts the project, and its commands end with ${PRODUCT}`, async () => {
     const s = setup();
     await run(s);
     expect(s.ladderCalls[0].noServer).toBe(true);
@@ -135,7 +136,7 @@ describe("the project's own checks for a watch", () => {
     expect(typeof wrapped).toBe("function");
     expect((await wrapped("true", { cwd: s.project, timeoutMs: 5000 })).code).toBe(0);
   });
-  test("a project nobody has allowed Companion to run is not run: it says so, once, in the watch", async () => {
+  test(`a project nobody has allowed ${PRODUCT} to run is not run: it says so, once, in the watch`, async () => {
     const s = setup({ approve: false });
     const r = await run(s);
     expect(r).toMatchObject({ outcome: "unknown", reason: expect.stringMatching(/not been allowed to run this project's scripts/) });

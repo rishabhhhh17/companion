@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { lineFor, shortLine, wordsToSay } from "./speech.ts";
 import { leadMs, lineMs, planSteps, startTimes } from "./sequence.ts";
 import { defOf } from "../../protocol/settings.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { KEYS_START } from "./keys.ts";
 
 const walk = (o: Record<string, unknown> = {}) => ({ id: "w1", index: 0, variant: "main", stage: "step", say: "Click Rules at the top of the Settings window. Rules sort your mail for you as it arrives.", ...o }) as never;
@@ -34,14 +34,14 @@ describe("one short line", () => {
     expect(shortLine(none)).toBe(none);
   });
   test("a key chord is never split, and a step that also warns is said whole", () => {
-    expect(shortLine("Press Control, Option, Command and F in Companion. It finds the same place.")).toBe("Press Control, Option, Command and F in Companion.");
-    const warned = "Press Control, Option, Command and F in Companion to find the same place in your project. If Provisioning Integrations failed, do not press Skip.";
+    expect(shortLine(`Press Control, Option, Command and F in ${PRODUCT}. It finds the same place.`)).toBe(`Press Control, Option, Command and F in ${PRODUCT}.`);
+    const warned = `Press Control, Option, Command and F in ${PRODUCT} to find the same place in your project. If Provisioning Integrations failed, do not press Skip.`;
     expect(shortLine(warned)).toBe(warned);
   });
   test("a later sentence that is a step of its own, a warning, a question or a key is never left out", () => {
     for (const t of [
       "Open the Mail menu! Then choose Settings.",
-      "Copy the page's web address. In Companion, choose Open from a link and paste it.",
+      `Copy the page's web address. In ${PRODUCT}, choose Open from a link and paste it.`,
       "Type a short name for the project in the Repository name box. Use letters, numbers and dashes.",
       "Paste the value in the Value box. If it is a password or secret key, make it a Secret so it cannot be read again after saving. Do not paste it anywhere else.",
       "Choose who can see it. Private means only you (and people you invite); Public means anyone on the internet. If unsure, choose Private.",

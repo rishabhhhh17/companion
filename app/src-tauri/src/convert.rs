@@ -2787,7 +2787,7 @@ mod tests {
         assert!(ids.len() > 55, "{}", ids.len());
         for id in &ids { assert!(strings.contains(&format!("      {id}: {{ short: \"")), "{id} has no words in strings.ts"); }
         for why in ["noText", "onePage", "noFrame", "tooSmall", "notSquare", "unsafeZip", "zipLocked", "notZip", "tooBig", "special", "noRoom"] {
-            assert!(strings.contains(&format!("      {why}: \"")), "{why} has no line in strings.ts");
+            assert!(strings.contains(&format!("      {why}: \"")) || strings.contains(&format!("      {why}: `")), "{why} has no line in strings.ts");
         }
     }
 

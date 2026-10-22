@@ -7,6 +7,7 @@ import { AssistService, ImageStore, type FastLike } from "../src/lanes.ts";
 import { buildContext, StreamRestorer } from "../src/prompthelp.ts";
 import type { Event } from "../../protocol/index.ts";
 import { RunnerSettings } from "../src/settings.ts";
+import { PRODUCT } from "../src/names.ts";
 
 type Req = { text: string; system?: string; extra?: string };
 function mk(replies: string[], opts: { deltas?: string[][] } = {}) {
@@ -30,7 +31,7 @@ function mk(replies: string[], opts: { deltas?: string[][] } = {}) {
 }
 const token = (req: Req) => req.text.match(/\[\[KEEP_\d+\]\]/)?.[0] ?? "";
 
-describe("what Companion remembers", () => {
+describe(`what ${PRODUCT} remembers`, () => {
   test("it is sent as background next to the prompt, never inside the text being rewritten", async () => {
     const calls: Req[] = [];
     const fast = { async run(req: Req, onDelta: (t: string) => void) { calls.push(req); onDelta("Better"); return { text: "Better", costUsd: 0.001 }; } } as unknown as FastLike;
@@ -178,7 +179,7 @@ describe("Prompt help settings", () => {
     writeFileSync(join(d, "package.json"), JSON.stringify({ name: "studio-site", dependencies: { react: "19" } }));
     return d;
   };
-  test("project info is sent by default, and not at all when it is turned off; what Companion remembers is left to its own setting", async () => {
+  test(`project info is sent by default, and not at all when it is turned off; what ${PRODUCT} remembers is left to its own setting`, async () => {
     const d = folder();
     const on = withSettings({});
     await on.ask({ project: d });
@@ -214,7 +215,7 @@ describe("Prompt help settings", () => {
     const body = code.slice(code.indexOf("export function buildContext("), code.indexOf("// Shows streamed text"));
     expect([...body.matchAll(/lines\.push\(`([A-Z][a-z ]+):/g)].map((x) => x[1]).sort()).toEqual(Object.keys(named).sort());
     const strings = readFileSync(new URL("../../app/src/strings.ts", import.meta.url), "utf8");
-    const help = /"ph\.useProjectInfo": \{ label: "[^"]+", help: "([^"]+)"/.exec(strings)![1];
+    const help = /"ph\.useProjectInfo": \{ label: "[^"]+", help: [`"]([^`"]+)[`"]/.exec(strings)![1];
     for (const line of ctx.split("\n")) { const label = line.slice(0, line.indexOf(":")); expect(named[label], label).toBeDefined(); expect(help).toContain(named[label]); }
     expect(help).toContain("Nothing else from your files is sent.");
     expect(help).not.toContain("never sends what is inside your files");

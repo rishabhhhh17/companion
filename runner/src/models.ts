@@ -5,6 +5,7 @@
 // against Anthropic's model list as bundled with the Claude API notes (cached 6 Oct 2026, not the live list): Haiku 4.5 is
 // still listed as active. Check the live list again before shipping; changing the fast default is the founder's call.
 import { defaultOf } from "../../protocol/settings.ts";
+import { PRODUCT_S } from "./names.ts";
 
 export const MODELS = {
   // Agent sessions (Drive, Research, the practice fix). T10 names Opus 5.5 for planning; planning still uses this one today.
@@ -205,7 +206,7 @@ export function requestProblems(model: string, q: RequestParts): string[] {
   const effort = q.effort ?? undefined;
   const t = q.thinking ?? undefined;
   if (effort !== undefined) {
-    if (!r) out.push(`${model} is not in Companion's model table, so no effort is sent to it`);
+    if (!r) out.push(`${model} is not in ${PRODUCT_S} model table, so no effort is sent to it`);
     else if (r.effort === null) out.push(`${model} takes no effort setting`);
     else if (!EFFORTS.includes(effort)) out.push(`"${effort}" is not an effort level`);
   }
@@ -213,7 +214,7 @@ export function requestProblems(model: string, q: RequestParts): string[] {
   if (t !== undefined) {
     const type = String((t as { type?: unknown }).type);
     const extra = Object.keys(t).filter((k) => k !== "type");
-    if (!r) out.push(`${model} is not in Companion's model table, so no thinking setting is sent to it`);
+    if (!r) out.push(`${model} is not in ${PRODUCT_S} model table, so no thinking setting is sent to it`);
     else if (type === "disabled") {
       if (r.off === "never" || r.off === "between_tools") out.push(`${model} refuses thinking type "disabled"${r.off === "between_tools" ? ' (its off switch is "between_tools")' : ""}`);
       else if (r.off === "up_to_high" && !atOrBelowHigh) out.push(`${model} takes thinking off only at effort high or below`);

@@ -16,6 +16,7 @@
 // Plain code with no file access: the page imports it as it imports redact.ts.
 import { redact } from "./redact.ts";
 import { isEnvFile } from "./secretfiles.ts";
+import { PRODUCT_S } from "./names.ts";
 
 export const ATTACH = { maxFiles: 5, maxTextBytes: 100_000, maxTextTotal: 200_000, maxImages: 2, maxImageBytes: 3_500_000, maxDocBytes: 20_000_000, maxName: 120 } as const;
 export type TextFile = { name: string; text: string };
@@ -143,7 +144,7 @@ export function docLimitBytes(v: unknown): number {
   return Number(k) * 1000;
 }
 /** Said at the end of a document's text when only its start goes, so the answer never claims to have read it all. */
-export const CLIPPED_NOTE = "[The rest of this document was left out: it is longer than the limit set in Companion's Settings.]";
+export const CLIPPED_NOTE = `[The rest of this document was left out: it is longer than the limit set in ${PRODUCT_S} Settings.]`;
 
 /** At most `maxBytes` of the text's UTF-8, cut between characters (never inside one), with any space at the cut taken off. */
 export function clipText(text: string, maxBytes: number): { text: string; cut: boolean } {

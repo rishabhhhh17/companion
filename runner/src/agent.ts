@@ -64,6 +64,11 @@ import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { defaultOf } from "../../protocol/settings.ts";
+import { PRODUCT } from "./names.ts";
+
+/** An undo error that already reads as a plain sentence is shown as it is (the product name comes from protocol/names.json). */
+const SAYS_ITSELF_A = new RegExp(`^(That|This|${PRODUCT} needs|Something)`);
+const SAYS_ITSELF_B = new RegExp(`^(That|This|${PRODUCT} needs)`);
 
 const isNeedsGit = (e: unknown): boolean => String((e as Error)?.message ?? e) === NEEDS_GIT;
 
@@ -390,7 +395,7 @@ export class AgentRunner {
    *  project: the person's own work on it comes first and ends the check (projectInUse), which is then tried again soon. */
   async checkWithoutModel(project: string, signal: AbortSignal): Promise<CheckResult | { skip: string } | null> {
     const key = resolve(project);
-    if (this.finding.has(project) || this.workBlocks(project) || this.watchRuns.has(key)) return { skip: "Companion is working on this project right now." };
+    if (this.finding.has(project) || this.workBlocks(project) || this.watchRuns.has(key)) return { skip: `${PRODUCT} is working on this project right now.` };
     const run = { abort: new AbortController(), yielded: false };
     const stop = () => run.abort.abort();
     signal.addEventListener("abort", stop, { once: true });
@@ -399,18 +404,18 @@ export class AgentRunner {
       const store = liveFiles(project);
       const approvals = this.approvals(project);
       const print = runPrint(await readRunFiles(store, "live"));
-      if (approvals.empty() || !approvals.has(print)) return { outcome: "unknown", reason: "Companion has not been allowed to run this project's scripts yet. Run Point at the problem or a task here once, and this watch will start checking." };
+      if (approvals.empty() || !approvals.has(print)) return { outcome: "unknown", reason: `${PRODUCT} has not been allowed to run this project's scripts yet. Run Point at the problem or a task here once, and this watch will start checking.` };
       let res: LadderResult;
       try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: true, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals }); }
       catch (e) { return { outcome: "unknown", reason: `The checker itself stopped (${clip(redactOutput(String((e as Error).message ?? e)), 80)}).` }; }
       if (run.abort.signal.aborted || res.verdict === "cancelled") return run.yielded && !signal.aborted ? { skip: "Your own work on this project came first." } : null;
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
       if (res.verdict === "failed") return { outcome: "failing", reason: failed ? `${failed.label} did not pass: ${clip(redactOutput(failed.detail).replace(/\s+/g, " ").trim(), 140)}` : "The project's checks did not pass." };
-      if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: "There is nothing in this project that Companion can check yet." };
+      if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: `There is nothing in this project that ${PRODUCT} can check yet.` };
       if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
       return { outcome: "ok", reason: "All of the project's own checks passed." };
     } catch (e) {
-      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `Companion could not check the project (${clip(redactOutput(String((e as Error).message ?? e)), 100)}).` };
+      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check the project (${clip(redactOutput(String((e as Error).message ?? e)), 100)}).` };
     } finally { signal.removeEventListener("abort", stop); if (this.watchRuns.get(key) === run) this.watchRuns.delete(key); }
   }
 
@@ -661,7 +666,7 @@ export class AgentRunner {
           this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone, yours: r.yours } as never);
         } catch (e) {
           const m = String((e as Error).message ?? e);
-          this.fail(/^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : /^(That|This|Companion needs|Something)/.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`);
+          this.fail(/^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : SAYS_ITSELF_A.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`);
         }
         return;
       }
@@ -676,7 +681,7 @@ export class AgentRunner {
           said(true, { putBack: r.putBack, skipped: r.skipped.map((x) => x.path), ...(r.putBack.length ? { savedTo: r.savedTo, safety: r.safetyCheckpoint } : {}), ...(r.putBack.length === 0 ? { reason: "There was nothing left to put back." } : {}) });
         } catch (e) {
           const m = String((e as Error).message ?? e);
-          said(false, { reason: /^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : /^(That|This|Companion needs|Something)/.test(m) ? m : `Companion could not put them back (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.` });
+          said(false, { reason: /^Unknown checkpoint/.test(m) ? "That undo point is not there any more." : SAYS_ITSELF_A.test(m) ? m : `${PRODUCT} could not put them back (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.` });
         }
         return;
       }
@@ -857,7 +862,7 @@ export class AgentRunner {
         if (abort.signal.aborted) { this.state(cmd.agent, "idle"); return { ended: { status: "interrupted", usd: 0 } }; }
         const why = String((e as Error).message ?? e);
         // Claude out of reach or a failed request is said as that (reach.ts), never as a problem with the picture.
-        this.fail(isClaudeStop(why) ? withoutTryAgain(why) : `Companion could not look at the picture (${clip(redact(why.split("\n")[0]), 120)}), so nothing was started. Remove it, or press Start again.`, cmd.agent);
+        this.fail(isClaudeStop(why) ? withoutTryAgain(why) : `${PRODUCT} could not look at the picture (${clip(redact(why.split("\n")[0]), 120)}), so nothing was started. Remove it, or press Start again.`, cmd.agent);
         this.state(cmd.agent, "error");
         return { ended: { status: "error", usd: 0 } };
       } finally { this.sessions.delete(cmd.agent); }
@@ -1195,7 +1200,7 @@ export class AgentRunner {
     let text = "";
     const gen = this.o.reviewer!.start({
       prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}), unbilled: spent,
-      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: "Blocked by Companion: the reviewer only reads the text it is given." }; },
+      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: `Blocked by ${PRODUCT}: the reviewer only reads the text it is given.` }; },
     });
     try {
       let next = await gen.next();
@@ -1203,7 +1208,7 @@ export class AgentRunner {
         const turn = next.value;
         spent(turn.costUsd);
         let result: ToolResult | undefined;
-        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: "Blocked by Companion: the reviewer only reads the text it is given." }; }
+        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: `Blocked by ${PRODUCT}: the reviewer only reads the text it is given.` }; }
         else if (turn.text) text += turn.text + "\n";
         next = await gen.next(result);
       }
@@ -1251,12 +1256,12 @@ export class AgentRunner {
       }
       // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.
       const notGiven = NOT_GIVEN.get(tool.name);
-      let refusal = notGiven ? `Blocked by Companion: ${notGiven}` : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      let refusal = notGiven ? `Blocked by ${PRODUCT}: ${notGiven}` : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
       // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
-      if (!refusal && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refusal = `Blocked by Companion: ${v.reason}.`; }
+      if (!refusal && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refusal = `Blocked by ${PRODUCT}: ${v.reason}.`; }
       const ok = allowed.has(tool.name) && !refusal;
       this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
-      return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? "Blocked by Companion: this can only look at the project, not change it." };
+      return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? `Blocked by ${PRODUCT}: this can only look at the project, not change it.` };
     };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
@@ -1303,7 +1308,7 @@ export class AgentRunner {
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
     // Most steps in a plan (drive.maxSteps, usual 12): read as the plan is made, and kept with it until it is approved.
     const max = this.setting<number>("drive.maxSteps", cmd.project);
-    await this.readOnly({ mode: "drive", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: "Blocked by Companion: planning can only look at the project, not change it." }, async (ask, st) => {
+    await this.readOnly({ mode: "drive", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: `Blocked by ${PRODUCT}: planning can only look at the project, not change it.` }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal, max)));
       if (steps.length > max && !st.abort.signal.aborted) {
         const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length, max)) : ask(shortenPrompt(steps.length, max), st.sessionId)));
@@ -1325,8 +1330,8 @@ export class AgentRunner {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
-    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? "Blocked by Companion: research may only open public web pages, never this computer or a private network." : null;
-    await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: "Blocked by Companion: research can look things up, but never change the project." }, async (ask, st) => {
+    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? `Blocked by ${PRODUCT}: research may only open public web pages, never this computer or a private network.` : null;
+    await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: `Blocked by ${PRODUCT}: research can look things up, but never change the project.` }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
@@ -1464,7 +1469,7 @@ export class AgentRunner {
       if (!r.ok && r.unclear) {
         try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "live", unconfirmed: true, snapshot: p.snapshot, url: p.url, gates: p.gates, proof: p.proof }); } catch { /* the record is not worth stopping for */ }
         this.previews.delete(key);
-        this.shipSay(cmd.project, "failed", `${r.reason} Companion could not confirm whether it went live. Check your project on vercel.com.`, { previewUrl: p.url });
+        this.shipSay(cmd.project, "failed", `${r.reason} ${PRODUCT} could not confirm whether it went live. Check your project on vercel.com.`, { previewUrl: p.url });
         return;
       }
       if (!r.ok) { this.shipSay(cmd.project, "failed", `${r.reason} Nothing went live.`); return; }
@@ -1486,11 +1491,11 @@ export class AgentRunner {
     try {
       if ((cmd as { confirm?: unknown }).confirm !== true) { this.shipSay(cmd.project, "refused", "A rollback needs your yes."); return; }
       const ships = readShips(cmd.project), lastLive = [...ships].reverse().find((s) => s.action === "live"), lastBack = [...ships].reverse().find((s) => s.action === "rollback");
-      if (!lastLive || (lastBack && lastBack.at > lastLive.at)) { this.shipSay(cmd.project, "refused", "Nothing has gone live from Companion that could be rolled back."); return; }
+      if (!lastLive || (lastBack && lastBack.at > lastLive.at)) { this.shipSay(cmd.project, "refused", `Nothing has gone live from ${PRODUCT} that could be rolled back.`); return; }
       if (!d.signedIn()) { this.shipSay(cmd.project, "not_signed_in", NOT_SIGNED_IN); return; }
       const r = await d.rollback(cmd.project, ac.signal);
       // As with going live: a rollback cut short may still finish on Vercel's side, so it is never said to have changed nothing.
-      if (!r.ok) { this.shipSay(cmd.project, "failed", r.unclear ? `${r.reason} Companion could not confirm whether the live site was rolled back. Check your project on vercel.com.` : `${r.reason} The live site was not changed.`); return; }
+      if (!r.ok) { this.shipSay(cmd.project, "failed", r.unclear ? `${r.reason} ${PRODUCT} could not confirm whether the live site was rolled back. Check your project on vercel.com.` : `${r.reason} The live site was not changed.`); return; }
       try { addShipReceipt(cmd.project, { at: this.now().toISOString(), action: "rollback", snapshot: lastLive.snapshot, gates: [], proof: lastLive.proof }); } catch { /* the record is not worth stopping for */ }
       this.shipSay(cmd.project, "rolled_back", "The live site is back to the version before.");
     } catch (e) {
@@ -1545,7 +1550,7 @@ export class AgentRunner {
       this.teaching.set(key, { checkpoint: cmd.checkpoint, start: start.id, restore: restore.id, hunk: second });
       say(true, { target: placeOf(second, "before"), example: { file: first.file, line: placeOf(first, "after").line, was: shown(first.before), now: shown(first.after) }, change: { was: offer.repeat.was, now: offer.repeat.now }, restore: restore.id });
     } catch (e) {
-      say(false, { reason: `Companion could not set that up (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
+      say(false, { reason: `${PRODUCT} could not set that up (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
     } finally { if (this.projectBusy.get(key) === "teach") this.projectBusy.delete(key); }
   }
 
@@ -1559,7 +1564,7 @@ export class AgentRunner {
     const say = (verdict: string, same: boolean, extra: Record<string, unknown> = {}) => this.emit({ type: "teach.result", project: cmd.project, checkpoint: cmd.checkpoint, verdict, same, ...extra } as never);
     const turn = this.teaching.get(key);
     if (!turn || turn.checkpoint !== cmd.checkpoint) { say("cancelled", false, { reason: "There is nothing of yours waiting to be checked." }); return; }
-    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.projectInUse(cmd.project)) { say("cancelled", false, { reason: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.projectInUse(cmd.project)) { say("cancelled", false, { reason: `${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.` }); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent });
     try {
@@ -1569,7 +1574,7 @@ export class AgentRunner {
       const given = (await store.readFiles(turn.start, (p) => p === file))[file];
       const theirs = (await store.readFiles(snap.id, (p) => p === file))[file];
       const now = theirs ?? (existsSync(join(cmd.project, file)) ? undefined : null);   // null: they deleted the file
-      if (given === undefined || now === undefined) { say("cancelled", false, { reason: "Companion could not read that file, so your change was not checked." }); return; }
+      if (given === undefined || now === undefined) { say("cancelled", false, { reason: `${PRODUCT} could not read that file, so your change was not checked.` }); return; }
       const did = turnChange(given, now, turn.hunk);
       if (did === "unchanged") { say("cancelled", false, { reason: "You have not changed that line yet." }); return; }
       this.state(cmd.agent, "checking");
@@ -1582,7 +1587,7 @@ export class AgentRunner {
       say(res.verdict, did === "same", { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
       this.state(cmd.agent, res.verdict === "failed" ? "needsYou" : "idle");
     } catch (e) {
-      say("cancelled", false, { reason: isNeedsGit(e) ? NEEDS_GIT : `Companion could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });
+      say("cancelled", false, { reason: isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check it (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}).` });
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
   }
@@ -1594,7 +1599,7 @@ export class AgentRunner {
     // note: one plain line about something that could not be checked (the Vercel tool missing, say), with what to do.
     const found = (verdict: string, fl?: Pick<Step, "label" | "detail" | "problem">, needs?: "browser", note?: string) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}), ...(note ? { note } : {}) } as never);
     // An install the person started, a copy or a ship step counts too: a check on half installed packages points at nothing real.
-    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { this.fail("Companion is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); found("cancelled"); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { this.fail(`${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.`, cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent, flow: true });
     try {
@@ -1623,7 +1628,7 @@ export class AgentRunner {
       found(res.verdict, fl, needs, notes.length ? notes.join(" ") : undefined);
       this.state(cmd.agent, fl ? "needsYou" : "idle");
     } catch (e) {
-      this.fail(isNeedsGit(e) ? NEEDS_GIT : `Companion could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
+      this.fail(isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check the project (${clip(String((e as Error).message ?? e), 120)}).`, cmd.agent);
       found("cancelled");
       this.state(cmd.agent, "idle");
     } finally { this.finding.delete(cmd.project); }
@@ -1671,7 +1676,7 @@ export class AgentRunner {
     let runs = 0;
     const result = (outcome: string, extra: Record<string, unknown> = {}) => this.emit({ type: "bisect.result", project: cmd.project, agent: cmd.agent, outcome, runs, maxRuns: MAX_RUNS, ...extra } as never);
     if (!this.o.bisect) { result("cannot_check", { detail: "Finding which task broke it is not available here." }); return; }
-    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { result("busy", { detail: "Companion is already working on this project. Wait for it to finish, or press Stop." }); return; }
+    if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { result("busy", { detail: `${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.` }); return; }
     if (!existsSync(cmd.project)) { result("failed", { detail: "That project folder is not there any more." }); return; }
     // A Python project is checked like any other: each private copy borrows its virtual environment (checkCopy), its
     // requirement files decide which versions can use it (packagesKey), and a step that could not run in a version (a
@@ -1703,12 +1708,12 @@ export class AgentRunner {
           try { paths = (await pythonPaths(det.python.command, cmd.project, { cwd: empty, signal: abort.signal, ...(this.o.bisect.run ? { run: this.o.bisect.run } : {}) })) ?? undefined; }
           finally { rmSync(empty, { recursive: true, force: true }); }
           if (abort.signal.aborted) { result("cancelled"); return; }
-          if (!paths) { result("cannot_check", { detail: "This project's Python did not say where it loads code from, so Companion cannot be sure an earlier version would run its own code. Companion cannot check earlier versions of this project yet. Nothing was changed." }); return; }
+          if (!paths) { result("cannot_check", { detail: `This project's Python did not say where it loads code from, so ${PRODUCT} cannot be sure an earlier version would run its own code. ${PRODUCT} cannot check earlier versions of this project yet. Nothing was changed.` }); return; }
         }
         const linked = editableInside(cmd.project, paths);
         if (linked) {
           const where = det.python.venv ? `its virtual environment (${det.python.venv})` : "this Mac's Python";
-          result("cannot_check", { detail: `This project's own code is installed in ${where} from its ${linked.split("/")[0]} folder, so an earlier version would still run the installed code, not its own. Companion cannot check earlier versions of this project yet. Nothing was changed.` });
+          result("cannot_check", { detail: `This project's own code is installed in ${where} from its ${linked.split("/")[0]} folder, so an earlier version would still run the installed code, not its own. ${PRODUCT} cannot check earlier versions of this project yet. Nothing was changed.` });
           return;
         }
       }
@@ -1771,7 +1776,7 @@ export class AgentRunner {
       result(o.kind, { step, ...(o.earlier ? { earlier: brief(o.earlier) } : {}), ...(o.later ? { later: brief(o.later) } : {}),
         ...(o.kind === "unsure" && why.length ? { detail: why.join(" ") } : {}) });
     } catch (e) {
-      result("failed", { detail: isNeedsGit(e) ? NEEDS_GIT : `Companion could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
+      result("failed", { detail: isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not finish looking (${clip(redact(String((e as Error).message ?? e).split("\n")[0]), 120)}). Nothing was changed.` });
     } finally {
       this.finding.delete(cmd.project);
       if (shown) this.state(cmd.agent, found ? "needsYou" : "idle");
@@ -1796,7 +1801,7 @@ export class AgentRunner {
     } catch (e) {
       const m = String((e as Error).message ?? e);
       const safety = e instanceof UndoOneError ? e.safetyCheckpoint : undefined;
-      done(false, { reason: e instanceof UndoOneError || /^(That|This|Companion needs)/.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`, ...(safety ? { safety } : {}) });
+      done(false, { reason: e instanceof UndoOneError || SAYS_ITSELF_B.test(m) ? m : `Undo could not finish (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`, ...(safety ? { safety } : {}) });
     }
   }
 
@@ -1909,11 +1914,11 @@ export class AgentRunner {
     this.yieldWatch(project);
     // Never while anything else works in this project: a check building while node_modules is rewritten would fail for nothing.
     const busy = this.installing.has(key) || this.finding.size > 0 || this.shipping.size > 0 || this.sessions.size > 0 || this.driving.size > 0;
-    if (busy) { say("failed", "Companion is already working on this project. Wait for it to finish, or press Stop."); return; }
+    if (busy) { say("failed", `${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.`); return; }
     const det = detectProject(project);
     if (!det.packageManager) {
       say("failed", det.native
-        ? `${det.native.label.replace(/ \(.*\)$/, "")} projects fetch their packages when they are built, so there is nothing for Companion to install here. To fetch them yourself, in Terminal in the project folder, run: ${det.native.fetch}`
+        ? `${det.native.label.replace(/ \(.*\)$/, "")} projects fetch their packages when they are built, so there is nothing for ${PRODUCT} to install here. To fetch them yourself, in Terminal in the project folder, run: ${det.native.fetch}`
         : "This project has no package list (package.json), so there is nothing to install.");
       return;
     }
@@ -2114,7 +2119,7 @@ export class AgentRunner {
 
     if (verdict.decision === "deny") {
       tell("blocked");
-      return { allow: false, reason: `Blocked by Companion: ${verdict.reason}` };
+      return { allow: false, reason: `Blocked by ${PRODUCT}: ${verdict.reason}` };
     }
     // After Stop (or a pause) nothing more runs in this task, and nothing more is asked: the real engine can still ask once
     // while it winds down.

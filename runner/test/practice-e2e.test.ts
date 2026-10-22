@@ -14,6 +14,7 @@ import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { FIX_ASK, fixFoundPrompt, PRACTICE_BUDGET_USD } from "../src/fixfound.ts";
 import { parseEvent, type Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 type Entry = { id: string; folder: string; find: "checks" | "gate"; expect: { file: string; line: number; about?: string; gate?: string; findings?: string[] }; fix: "task" | "lesson"; prove: string; protect: string[] };
 const ROOT = join(import.meta.dir, "../..");
@@ -30,7 +31,7 @@ function copyOf(e: Entry): string {
   const p = tmp(e.id);
   cpSync(join(ROOT, "app/sample", e.folder), p, { recursive: true });
   mkdirSync(join(p, ".companion"), { recursive: true });
-  writeFileSync(join(p, ".companion/rules.txt"), `# Companion added these rules to its practice copy, so the fix cannot pass by changing the check.\n${e.protect.map((f) => `never edit ${f}`).join("\n")}\n`);
+  writeFileSync(join(p, ".companion/rules.txt"), `# ${PRODUCT} added these rules to its practice copy, so the fix cannot pass by changing the check.\n${e.protect.map((f) => `never edit ${f}`).join("\n")}\n`);
   return p;
 }
 

@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { hostAllowed, parseTarget, privateReason, resolvedAllowed } from "../src/watchaddress.ts";
 import { checkSite, pinnedFetch, type Fetcher, type SiteDeps, type SiteResponse } from "../src/watchsite.ts";
+import { PRODUCT } from "../src/names.ts";
 
 describe("which addresses can be watched", () => {
   test("a public web address is kept, a bare name gets https, localhost gets http", () => {
@@ -14,7 +15,7 @@ describe("which addresses can be watched", () => {
     expect(parseTarget("[::1]:8080")).toMatchObject({ ok: true, local: true });
     expect(parseTarget("http://app.localhost:3000")).toMatchObject({ ok: true, local: true });
   });
-  test("a part after ? is refused, because that is where keys go and Companion keeps the address", () => {
+  test(`a part after ? is refused, because that is where keys go and ${PRODUCT} keeps the address`, () => {
     const r = parseTarget("https://site.com/health?key=abc123");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/after the \?/);

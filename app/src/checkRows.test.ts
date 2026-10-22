@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { defOf } from "../../protocol/settings.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { addRule, afterPressShown, askRuleOn, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import { problemWords, valueWords } from "./settingsRows.ts";
 import { _invokeForTests, _resetForTests, changeSetting } from "./settingsStore.ts";
@@ -25,7 +25,7 @@ describe("the facts come from the engine's project report", () => {
 });
 
 describe("how to start this project for the check", () => {
-  test("Let Companion find it first, then the project's own scripts, never a box to type a command in", () => {
+  test(`Let ${PRODUCT} find it first, then the project's own scripts, never a box to type a command in`, () => {
     expect(startOptions("auto", facts({ scripts: ["dev", "preview", "start:web"] }))).toEqual([{ id: "auto", label: S.set["check.start"].options.auto }, { id: "dev", label: "dev" }, { id: "preview", label: "preview" }, { id: "start:web", label: "start:web" }]);
     expect(defOf("check.start")!.kind).toBe("choice");
   });
@@ -35,7 +35,7 @@ describe("how to start this project for the check", () => {
   test("a chosen script that is not there any more is still shown, said as gone", () => {
     expect(startOptions("old", facts()).at(-1)).toEqual({ id: "old", label: S.chkScriptGone("old") });
   });
-  test("with nothing known about the project yet, only Let Companion find it", () => {
+  test(`with nothing known about the project yet, only Let ${PRODUCT} find it`, () => {
     expect(startOptions("auto", null)).toEqual([{ id: "auto", label: S.set["check.start"].options.auto }]);
   });
 });

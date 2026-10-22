@@ -15,6 +15,7 @@ import { TaskLog } from "../src/tasklog.ts";
 import { RunnerSettings } from "../src/settings.ts";
 import { ALWAYS_LISTED, AGENT_TOOLS, checkInit, checkOptions } from "../scripts/realrun-harness.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -107,7 +108,7 @@ describe("the runner tells the engine which tools each flow gets", () => {
   });
 });
 
-describe("a built in tool Companion does not give is refused in plain words, never an unknown tool card", () => {
+describe(`a built in tool ${PRODUCT} does not give is refused in plain words, never an unknown tool card`, () => {
   for (const t of NOT_OURS) test(t, () => {
     const r = evaluate({ tool: t, input: {} }, { project: P });
     expect(r.decision).toBe("deny");
@@ -121,7 +122,7 @@ describe("a built in tool Companion does not give is refused in plain words, nev
       for (const t of ["Agent", "Task"]) {
         const r = evaluate({ tool: t, input }, { project: P });
         expect(r.decision, `${t} ${JSON.stringify(input)}`).toBe("deny");
-        expect(r.reason).toBe("Companion does not give Claude sub agents. Do the work yourself with the tools you have.");
+        expect(r.reason).toBe(`${PRODUCT} does not give Claude sub agents. Do the work yourself with the tools you have.`);
       }
     }
   });
@@ -147,7 +148,7 @@ describe("a built in tool Companion does not give is refused in plain words, nev
       expect(typeof r.reason, t).toBe("string");
     }
   });
-  test("every tool Companion gives is judged by its own rule, never as unknown", () => {
+  test(`every tool ${PRODUCT} gives is judged by its own rule, never as unknown`, () => {
     const input: Record<string, Record<string, unknown>> = { Read: { file_path: "a.txt" }, Grep: { pattern: "x" }, Glob: { pattern: "*.js" }, Edit: { file_path: "a.txt" }, Write: { file_path: "a.txt" }, Bash: { command: "ls" }, TaskStop: { task_id: "x" }, WebFetch: { url: "https://example.com/" } };
     for (const t of GIVEN_TOOLS) expect(evaluate({ tool: t, input: input[t] ?? {} }, { project: P }).reason, t).not.toMatch(/unknown tool/);
   });
@@ -201,9 +202,9 @@ describe("Let tasks search the web (work.webSearch)", () => {
 });
 
 describe("the real run harness checks the same list", () => {
-  test("AGENT_TOOLS is exactly what Companion gives", () => expect([...AGENT_TOOLS].sort()).toEqual([...GIVEN_TOOLS].sort()));
+  test(`AGENT_TOOLS is exactly what ${PRODUCT} gives`, () => expect([...AGENT_TOOLS].sort()).toEqual([...GIVEN_TOOLS].sort()));
   const init = (tools: string[]) => ({ type: "system", subtype: "init", tools, mcp_servers: [], plugins: [], apiKeySource: "ANTHROPIC_API_KEY", permissionMode: "acceptEdits" });
-  test("system/init listing a tool Companion does not give stops the run", () => {
+  test(`system/init listing a tool ${PRODUCT} does not give stops the run`, () => {
     for (const t of ["Agent", "Task", "AskUserQuestion", "Skill", "Monitor", "TaskCreate", "EnterPlanMode", "NotebookEdit"]) expect(checkInit(init(["Read", t]), { tools: "agent" }).join(" "), t).toMatch(new RegExp(t));
     expect(checkInit(init([...TASK_TOOLS]), { tools: "agent" })).toEqual([]);
   });

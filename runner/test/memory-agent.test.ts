@@ -8,6 +8,7 @@ import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -233,7 +234,7 @@ describe("Where was I", () => {
   });
 });
 
-describe("Companion's own memory writes are not mistaken for the person taking the wheel", () => {
+describe(`${PRODUCT_S} own memory writes are not mistaken for the person taking the wheel`, () => {
   test("a plan with memory on runs to the end without pausing", async () => {
     const project = tmp("p"), data = tmp("d"), events: Event[] = [];
     writeFileSync(join(project, "package.json"), JSON.stringify({ dependencies: { react: "1" } }));

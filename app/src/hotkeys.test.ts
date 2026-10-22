@@ -4,7 +4,7 @@
 // must be the ones keymap.rs registers.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { keyHints, TALK_DEFAULT } from "./settings.ts";
 import { chordLabel, JOBS, KEY_DEFAULTS, KEYS_START, keyHint, withKeys, type Job, type Keys } from "./keys.ts";
 
@@ -211,7 +211,7 @@ describe("every hint names the keys in use", () => {
     const talk = install.slice(install.indexOf("**To talk**"), install.indexOf("\n", install.indexOf("**To talk**")));
     expect(talk).toContain("Alfred, Raycast and ChatGPT also use Option and Space unless you changed theirs.");
     expect(talk).toContain("If one of them stops opening, or talking does nothing, pick other keys");
-    expect(talk).not.toMatch(/If another app already uses Option and Space, Companion says so when it opens/);
+    expect(talk).not.toMatch(new RegExp(`If another app already uses Option and Space, ${PRODUCT} says so when it opens`));
     expect(talk).toContain("no longer add a new line");
   });
   test("the launch notice and the ready line point to the same Settings heading the page shows", () => {

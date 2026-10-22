@@ -69,7 +69,7 @@ mod tests {
         assert!(f.contains("let chosen = setting_now(\"drawIt.seconds\");") && f.contains("diagram::timing(&chosen)"));
         assert!(f.contains("\"ms\": diagram::shown_ms(&chosen)"), "the page is sent the same time");
         assert!(!f.contains("16_000") && !f.contains("16_500"), "no second number of its own");
-        assert!(f.contains("HIDDEN_BY_US") && f.contains("USER_HID"), "a picture kept until closed goes when Companion is hidden");
+        assert!(f.contains("HIDDEN_BY_US") && f.contains("USER_HID"), concat!("a picture kept until closed goes when ", crate::product!(), " is hidden"));
         let overlay = include_str!("../../src/overlay.ts");
         let draw = &overlay[overlay.find("function drawDiagram(").unwrap()..overlay.find("void listen(\"overlay-diagram\"").unwrap()];
         assert!(!draw.contains("15_000") && draw.contains("if (ms !== null) timer = setTimeout("), "the page fades it after the time it is sent");

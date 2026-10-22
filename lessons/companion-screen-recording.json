@@ -1,8 +1,8 @@
 {
   "id": "companion-screen-recording",
-  "title": "Let Companion see your screen when you ask",
+  "title": "Let {product} see your screen when you ask",
   "app": "System Settings",
-  "goal": "Turn on Screen Recording for Companion (only used when you press the key)",
+  "goal": "Turn on Screen Recording for {product} (only used when you press the key)",
   "status": "draft",
   "needsProject": false,
   "steps": [
@@ -32,13 +32,13 @@
     },
     {
       "id": "switch",
-      "say": "Turn on the switch next to Companion. macOS may ask you to reopen Companion.",
-      "find": "the switch next to Companion",
+      "say": "Turn on the switch next to {product}. macOS may ask you to reopen {product}.",
+      "find": "the switch next to {product}",
       "check": {
         "kind": "ask"
       },
       "instead": {
-        "say": "If Companion is not in the list, press the plus button under the list and pick Companion from Applications.",
+        "say": "If {product} is not in the list, press the plus button under the list and pick {product} from Applications.",
         "find": "the plus button under the list"
       }
     }

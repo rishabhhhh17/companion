@@ -2,6 +2,7 @@
 // Reading versions only; nothing is installed or changed here.
 import { runCommand } from "./proof/exec.ts";
 import { browserInstalled } from "./proof/browser.ts";
+import { PRODUCT } from "./names.ts";
 
 // missing: the tool is not on this Mac at all (an old version is not missing). The practice projects wait for Node only
 // when it is missing, since their checks (node --test) run on an older Node too.
@@ -30,10 +31,10 @@ export async function doctor(run: Run = defaultRun, hasBrowser: () => boolean = 
   const [node, git, vercel] = await Promise.all([ver("node --version"), gitVersion(), ver("vercel --version")]);
   const items: Item[] = [];
   items.push(node
-    ? atLeast(node, [20, 0]) ? { id: "node", label: "Node", ok: true, detail: `Version ${node.join(".")} is fine.` } : { id: "node", label: "Node", ok: false, detail: `Version ${node.join(".")} is too old for installing packages while Companion is working (it needs 20 or newer).`, fix: "Install the current version from nodejs.org." }
+    ? atLeast(node, [20, 0]) ? { id: "node", label: "Node", ok: true, detail: `Version ${node.join(".")} is fine.` } : { id: "node", label: "Node", ok: false, detail: `Version ${node.join(".")} is too old for installing packages while ${PRODUCT} is working (it needs 20 or newer).`, fix: "Install the current version from nodejs.org." }
     : { id: "node", label: "Node", ok: false, detail: "Node is not installed. Many web projects need it to build and check.", fix: "Install it from nodejs.org.", missing: true });
   // Every task, check, Undo and Which task broke it keeps its undo points with Git, so it is needed, not optional.
-  items.push(git ? { id: "git", label: "Git", ok: true, detail: `Version ${git.join(".")}.` } : { id: "git", label: "Git", ok: false, detail: "Companion needs Git to keep undo points, so no task or check can start without it.", fix: "Open Terminal and run: xcode-select --install", missing: true });
+  items.push(git ? { id: "git", label: "Git", ok: true, detail: `Version ${git.join(".")}.` } : { id: "git", label: "Git", ok: false, detail: `${PRODUCT} needs Git to keep undo points, so no task or check can start without it.`, fix: "Open Terminal and run: xcode-select --install", missing: true });
   // Nothing downloads it on its own: the person presses the button the card shows after a check that had to skip the page.
   items.push(hasBrowser() ? { id: "browser", label: "Page checker", ok: true, detail: "The hidden browser used to check pages is installed." } : { id: "browser", label: "Page checker", ok: false, detail: "The hidden browser that opens your pages during a check is not on this Mac yet, so checks skip that step.", fix: "After a check that skipped the page, press Get the browser check on the result. It downloads once (about 200 MB) and only when you press it." });
   items.push(vercel ? { id: "vercel", label: "Vercel tool", ok: true, detail: `Version ${vercel.join(".")}. Needed only to put a site online.` } : { id: "vercel", label: "Vercel tool", ok: false, detail: "The Vercel tool is not installed. You only need it to put a site online.", fix: "Install it with: npm install -g vercel" });

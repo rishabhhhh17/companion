@@ -146,7 +146,7 @@ mod wiring {
         // home.size: see island.rs (one place for Home, at the size in force).
         // character.linger, character.motion, character.overFullScreen.
         assert!(body("fn roam_tick(").contains("linger_ms: home_set().linger_ms"));
-        assert!(MAIN.contains("fn reduce_motion() -> bool { home_set().less_motion || NSWorkspace::sharedWorkspace()."), "the Mac's setting or Companion's own (motion.test.ts checks the rest)");
+        assert!(MAIN.contains("fn reduce_motion() -> bool { home_set().less_motion || NSWorkspace::sharedWorkspace()."), concat!("the Mac's setting or ", crate::product_s!(), " own (motion.test.ts checks the rest)"));
         let tick = body("fn tick(");
         assert!(tick.contains(r#"visibility::over_full_screen(std::env::var("COMPANION_OVER_FULLSCREEN").ok().as_deref(), home_set().over_full_screen)"#));
         assert!(tick.contains("show_over_full_screen: over,"));

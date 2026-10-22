@@ -1,6 +1,6 @@
 // Settings page helpers: plain words only, so they can be tested without a screen.
 import { keyLooksRight } from "./onboarding.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { canPick, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import type { Spending } from "./model.ts";
 import { setting } from "./settingsStore.ts";
@@ -29,8 +29,8 @@ export function formatBytes(n: number): string {
 }
 
 const ROWS: Record<PermissionKind, { label: string; why: string }> = {
-  screen_recording: { label: "Screen Recording", why: "Lets Companion look at your screen once when you press its key, so it can point at what is wrong. Asked the first time you use that." },
-  accessibility: { label: "Accessibility", why: "Lets Companion find the exact button or line you need and, if you ask, click it for you. Asked the first time you use that." },
+  screen_recording: { label: "Screen Recording", why: `Lets ${PRODUCT} look at your screen once when you press its key, so it can point at what is wrong. Asked the first time you use that.` },
+  accessibility: { label: "Accessibility", why: `Lets ${PRODUCT} find the exact button or line you need and, if you ask, click it for you. Asked the first time you use that.` },
   microphone: { label: "Microphone", why: "Lets you hold the talk keys and speak. It listens only while you hold them. Asked the first time you use that." },
 };
 /** One permission in words: its state, what to do about it (empty when nothing), and whether System Settings can help. */
@@ -53,7 +53,7 @@ const pct = (r: number | null | undefined) => (typeof r === "number" ? `${Math.r
 export function numbersLines(s: NumbersSummary): string[] {
   const t = (k: string) => s.totals[k] ?? 0;
   return [
-    `Times you used Companion: ${t("session")}`,
+    `Times you used ${PRODUCT}: ${t("session")}`,
     `Times you pressed the key for a problem: ${t("hero_press")}`,
     `Lessons started: ${t("walk_started")}, finished: ${t("walk_done")} (${pct(s.rates.walkCompletion)})`,
     `Lesson steps that worked the first way: ${pct(s.rates.stepSuccess)}`,

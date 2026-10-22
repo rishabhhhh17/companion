@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes app/ACKNOWLEDGEMENTS.txt: the licence notices for everything Companion is built from and ships.
+"""Writes app/ACKNOWLEDGEMENTS.txt: the licence notices for everything the app is built from and ships.
 
 MIT, Apache and BSD licences require their notice to travel with the program. This reads every Rust crate in
 app/src-tauri/Cargo.lock and every production JavaScript package the app and the engine ship, finds each one's licence
@@ -8,6 +8,9 @@ text on this Mac, and groups identical texts. Run it again whenever a dependency
 """
 import glob, hashlib, json, os, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The product's name comes from the one shared file (protocol/names.json, AGENTS.md rule 21), never typed here.
+PRODUCT = json.load(open(os.path.join(ROOT, "protocol/names.json")))["product"]
+PRODUCT_S = json.load(open(os.path.join(ROOT, "protocol/names.json")))["productPossessive"]
 ENV = dict(os.environ, PATH=os.path.expanduser("~/Library/Python/3.9/bin") + ":" + os.environ.get("PATH", ""))
 NAMES = ("LICENSE", "LICENCE", "COPYING", "NOTICE", "UNLICENSE")
 
@@ -74,13 +77,13 @@ for kind, name, ver, spdx, text in entries:
 
 HEAD = f"""ACKNOWLEDGEMENTS
 
-Companion is built from the open source software below, and ships a small number of programs from others. Each is used
-under its own licence, reproduced here as those licences ask. Companion's own code is not covered by these notices.
+{PRODUCT} is built from the open source software below, and ships a small number of programs from others. Each is used
+under its own licence, reproduced here as those licences ask. {PRODUCT_S} own code is not covered by these notices.
 
-SHIPPED WITH COMPANION
+SHIPPED WITH {PRODUCT.upper()}
 - Claude Code (Anthropic's program, run unmodified): (c) Anthropic PBC. All rights reserved. Used under Anthropic's
   Commercial Terms of Service and legal agreements: https://code.claude.com/docs/en/legal-and-compliance
-- Bun (the JavaScript runtime that runs Companion's engine): MIT licence. https://bun.sh
+- Bun (the JavaScript runtime that runs {PRODUCT_S} engine): MIT licence. https://bun.sh
 - Whisper speech model "ggml-base" (downloaded on first use of hold to talk, runs on this Mac): MIT licence,
   OpenAI Whisper and whisper.cpp by Georgi Gerganov. https://github.com/ggerganov/whisper.cpp
 - The idea of pointing through the Computer Use tool, and of looking at other displays, was prompted by Clicky

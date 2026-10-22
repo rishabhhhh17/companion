@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { shq } from "./exec.ts";
+import { PRODUCT } from "../names.ts";
 
 export type Ecosystem = "go" | "rust" | "maven" | "gradle" | "swift" | "xcode";
 // command: the way that may download packages. offline: the same without any download, or null when there is no way to run
@@ -149,9 +150,9 @@ const NAMES: Record<Tool, { name: string; how: string }> = {
 /** Plain words for a tool that is not on this Mac, with the command to install it (never run by Companion). */
 export function missingTool(tool: Tool, label: string): string {
   const t = NAMES[tool];
-  if (tool === "xcodebuild") return `Xcode is not installed on this Mac, so this ${label} project cannot be built. Companion does not install it. To install it, get Xcode from the App Store, open it once to accept its license, then in Terminal run: sudo ${t.how}`;
-  if (tool === "swift") return `Swift is not installed on this Mac (the command line tools are missing), so this ${label} project cannot be checked. Companion does not install it. To install it, in Terminal, run: ${t.how}`;
-  return `${t.name} is not installed on this Mac, so this ${label} project cannot be checked. Companion does not install it. To install it, in Terminal, run: ${t.how}`;
+  if (tool === "xcodebuild") return `Xcode is not installed on this Mac, so this ${label} project cannot be built. ${PRODUCT} does not install it. To install it, get Xcode from the App Store, open it once to accept its license, then in Terminal run: sudo ${t.how}`;
+  if (tool === "swift") return `Swift is not installed on this Mac (the command line tools are missing), so this ${label} project cannot be checked. ${PRODUCT} does not install it. To install it, in Terminal, run: ${t.how}`;
+  return `${t.name} is not installed on this Mac, so this ${label} project cannot be checked. ${PRODUCT} does not install it. To install it, in Terminal, run: ${t.how}`;
 }
 
 // ---------------------------------------------------------------- the commands
@@ -340,7 +341,7 @@ export function looksNative(dir: string): boolean {
   return KINDS.some((f) => has(dir, f)) || gradleFiles(dir).length > 0 || has(dir, "Package.swift") || names(dir).some((n) => n.endsWith(".xcodeproj") || n.endsWith(".xcworkspace"));
 }
 
-const NOTE = (what: string, how: string, downloads: boolean) => `${what} Companion checks it with ${how}.${downloads ? " A build may download the packages the project needs from the internet. Companion tries without downloading first, and downloads only when your install setting allows it." : ""}`;
+const NOTE = (what: string, how: string, downloads: boolean) => `${what} ${PRODUCT} checks it with ${how}.${downloads ? ` A build may download the packages the project needs from the internet. ${PRODUCT} tries without downloading first, and downloads only when your install setting allows it.` : ""}`;
 
 function goFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDetected {
   const mod = readText(join(dir, "go.mod"));
@@ -409,7 +410,7 @@ function jvmFacts(dir: string, tools: ReturnType<typeof toolCheck>, gradle: bool
   let missing: string | null = null;
   if (!tools.has("java")) missing = missingTool("java", label);
   else if (!wrapper && !system) missing = missingTool(gradle ? "gradle" : "mvn", label);
-  const gaps = android ? ["This is an Android project. Building it needs the Android SDK, which Companion does not use, so it was not built."] : [];
+  const gaps = android ? [`This is an Android project. Building it needs the Android SDK, which ${PRODUCT} does not use, so it was not built.`] : [];
   const stop = !!missing || android;
   const setup: NativeSetup = {
     ecosystem: gradle ? "gradle" : "maven", label, missing, downloads: true, schemes: [], gaps, hints: [], stackNote: spring ? "Spring Boot" : null, ...(wrapper ? { wrapperCached: wrapper.cached } : {}),
@@ -445,12 +446,12 @@ function xcodeFacts(dir: string, tools: ReturnType<typeof toolCheck>): NativeDet
   const buildScheme = macs.find((s) => s.name === base) ?? macs[0] ?? null;
   const testScheme = macs.find((s) => s.tests && !s.hosted && s.name === buildScheme?.name) ?? macs.find((s) => s.tests && !s.hosted) ?? null;
   const gaps: string[] = [];
-  if (!schemes.length) gaps.push("No scheme was found in this Xcode project, so there is nothing for Companion to build. Open it in Xcode once so it makes one.");
-  else if (!buildScheme) gaps.push("This Xcode project builds for iPhone or iPad only. Companion builds only for the Mac and never installs on a simulator or a device, so it was not built.");
+  if (!schemes.length) gaps.push(`No scheme was found in this Xcode project, so there is nothing for ${PRODUCT} to build. Open it in Xcode once so it makes one.`);
+  else if (!buildScheme) gaps.push(`This Xcode project builds for iPhone or iPad only. ${PRODUCT} builds only for the Mac and never installs on a simulator or a device, so it was not built.`);
   const hostedOnly = macs.find((s) => s.tests && s.hosted);
-  if (buildScheme && !testScheme && hostedOnly) gaps.push(`The tests of the scheme ${hostedOnly.name} run inside the app (or take their settings from an .xcconfig file, which may say so), which would open it on this Mac, so Companion did not run them.`);
+  if (buildScheme && !testScheme && hostedOnly) gaps.push(`The tests of the scheme ${hostedOnly.name} run inside the app (or take their settings from an .xcconfig file, which may say so), which would open it on this Mac, so ${PRODUCT} did not run them.`);
   const uiOnly = macs.find((s) => s.uiOnly);
-  if (buildScheme && !testScheme && !hostedOnly && uiOnly) gaps.push(`The only tests of the scheme ${uiOnly.name} are UI tests, which drive the app on screen, so Companion did not run them.`);
+  if (buildScheme && !testScheme && !hostedOnly && uiOnly) gaps.push(`The only tests of the scheme ${uiOnly.name} are UI tests, which drive the app on screen, so ${PRODUCT} did not run them.`);
   const xcodeOk = tools.has("xcodebuild"), alt = !xcodeOk ? tools.xcodeApp : null;
   const missing = !buildScheme || xcodeOk || alt ? null : missingTool("xcodebuild", "Xcode");
   const plan = xcodePlan({ container: { kind: c.kind, name: c.container }, scheme: buildScheme?.name ?? null, testScheme: testScheme?.name ?? null, skipTesting: (testScheme ?? buildScheme)?.skipTesting ?? [], developerDir: alt });
@@ -482,7 +483,7 @@ export function detectNative(dir: string, o: NativeEnv = {}): NativeDetected | n
 /** The install question for a build that needs to download packages starts with this, so the card can say it in its own words. */
 export const DOWNLOAD_ASK = "download: ";
 /** What a wrapper (mvnw, gradlew) run offline says when its build tool is not on this Mac: it would have to download it first. */
-export const WRAPPER_NOT_CACHED = "Companion did not run the project's wrapper: its build tool is not on this Mac yet, and the wrapper would download it first.";
+export const WRAPPER_NOT_CACHED = `${PRODUCT} did not run the project's wrapper: its build tool is not on this Mac yet, and the wrapper would download it first.`;
 export type NetWhy = "noInstall" | "no" | "never";
 
 // An offline try that failed because a package is not on this Mac yet. Only these are retried the other way (when allowed):
@@ -508,16 +509,16 @@ const WHY: Record<NetWhy, string> = {
 function runtimeMissing(output: string, s: NativeSetup): string | null {
   if (/Unable to locate a Java Runtime|No Java runtime present|JAVA_HOME is not set and no 'java'|JAVA_HOME is set to an invalid directory/.test(output)) return missingTool("java", s.label);
   if (/xcode-select: error: tool '\w+' requires Xcode|requires Xcode, but active developer directory/.test(output)) return missingTool("xcodebuild", s.label);
-  if (/You have not agreed to the Xcode license|Xcode license agreements/.test(output)) return `Xcode's license has not been accepted on this Mac, so this ${s.label} project could not be built. Companion cannot accept it for you. To accept it, in Terminal, run: sudo xcodebuild -license`;
-  if (/unable to resolve module dependency: 'XCTest'|no such module 'XCTest'/.test(output)) return "Swift's test framework (XCTest) comes with Xcode, which is not set up on this Mac, so the tests could not run. Companion does not install it. Get Xcode from the App Store, then in Terminal run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer";
+  if (/You have not agreed to the Xcode license|Xcode license agreements/.test(output)) return `Xcode's license has not been accepted on this Mac, so this ${s.label} project could not be built. ${PRODUCT} cannot accept it for you. To accept it, in Terminal, run: sudo xcodebuild -license`;
+  if (/unable to resolve module dependency: 'XCTest'|no such module 'XCTest'/.test(output)) return `Swift's test framework (XCTest) comes with Xcode, which is not set up on this Mac, so the tests could not run. ${PRODUCT} does not install it. Get Xcode from the App Store, then in Terminal run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`;
   if (/xcrun: error: invalid active developer path|xcrun: error: unable to find utility/.test(output)) return missingTool("swift", s.label);
   const tc = /toolchain '([^']+)' is not installed/.exec(output)?.[1];
-  if (tc) return `This project asks for the Rust toolchain ${tc}, which is not installed on this Mac. Companion does not install it. To install it, in Terminal, run: rustup toolchain install ${tc}`;
+  if (tc) return `This project asks for the Rust toolchain ${tc}, which is not installed on this Mac. ${PRODUCT} does not install it. To install it, in Terminal, run: rustup toolchain install ${tc}`;
   if (/no such command: `?clippy`?/.test(output)) return missingTool("clippy", s.label);
   const go = /requires go >= ([\d.]+)/.exec(output)?.[1];
-  if (go) return `This project needs Go ${go} or newer, and this Mac has an older one. Companion does not install it. To update it, in Terminal, run: brew upgrade go`;
-  if (/No matching toolchains? found|Cannot find a Java installation on your machine|invalid (?:source|target) release: \d+|release version \d+ not supported|Unsupported class file major version|compiled by a more recent version of the Java Runtime|requires Java \d+/i.test(output)) return `This project needs a newer or different Java than the one on this Mac. Companion does not install it. To install one, in Terminal, run: ${NAMES.java.how}`;
-  if (/Macro "?\w+"? must be enabled before it can be used|macro .* must be enabled/i.test(output)) return "This project uses a Swift macro that has to be allowed once in Xcode, and Companion cannot allow it for you, so it could not be built.";
+  if (go) return `This project needs Go ${go} or newer, and this Mac has an older one. ${PRODUCT} does not install it. To update it, in Terminal, run: brew upgrade go`;
+  if (/No matching toolchains? found|Cannot find a Java installation on your machine|invalid (?:source|target) release: \d+|release version \d+ not supported|Unsupported class file major version|compiled by a more recent version of the Java Runtime|requires Java \d+/i.test(output)) return `This project needs a newer or different Java than the one on this Mac. ${PRODUCT} does not install it. To install one, in Terminal, run: ${NAMES.java.how}`;
+  if (/Macro "?\w+"? must be enabled before it can be used|macro .* must be enabled/i.test(output)) return `This project uses a Swift macro that has to be allowed once in Xcode, and ${PRODUCT} cannot allow it for you, so it could not be built.`;
   const cmd = /(?:^|\n)(?:sh|bash|zsh): (?:line \d+: )?(go|cargo|mvn|gradle|java|swift|xcodebuild|rustc): (?:command )?not found/.exec(output)?.[1];
   if (cmd) return missingTool(cmd === "rustc" ? "cargo" : (cmd as Tool), s.label);
   return null;
@@ -531,7 +532,7 @@ export function nativeGap(output: string, o: { setup: NativeSetup; allowed: bool
   if (miss) return miss;
   if (!o.allowed) {
     if (!needsDownload(output, o.setup.ecosystem)) return null;
-    const words = `${o.what[0].toUpperCase()}${o.what.slice(1)} needs packages that are not on this Mac yet, and this check was not allowed to download them (${WHY[o.why]}). Companion does not download packages unless your install setting allows it.`;
+    const words = `${o.what[0].toUpperCase()}${o.what.slice(1)} needs packages that are not on this Mac yet, and this check was not allowed to download them (${WHY[o.why]}). ${PRODUCT} does not download packages unless your install setting allows it.`;
     return `${words} To fetch them yourself, in Terminal in the project folder, run: ${o.setup.fetch}`;
   }
   if (UNREACHABLE.test(output)) return `${o.what[0].toUpperCase()}${o.what.slice(1)} needed to download packages, but this Mac could not reach the internet, so it could not run. Try again when you are online.`;

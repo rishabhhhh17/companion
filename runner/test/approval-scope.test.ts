@@ -11,6 +11,7 @@ import { ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolRe
 import { evaluate, taskScopeCovers } from "../src/safety.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -242,7 +243,7 @@ describe("what a yes for the rest of the task may cover", () => {
     expect(taskScopeCovers({ tool: "Edit", input: { file_path: "pricing.txt" } }, rule, true)).toBe(true);
     expect(taskScopeCovers({ tool: "Read", input: { file_path: "pricing.txt" } }, rule, true)).toBe(true);
   });
-  test("not an edit Companion itself asks about, and not a command a house rule asks about", () => {
+  test(`not an edit ${PRODUCT} itself asks about, and not a command a house rule asks about`, () => {
     expect(taskScopeCovers({ tool: "Write", input: { file_path: "pricing.txt" } }, rule, false)).toBe(false);
     expect(taskScopeCovers({ tool: "Bash", input: { command: "npm test" } }, rule, true)).toBe(false);
   });

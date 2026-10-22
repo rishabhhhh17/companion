@@ -4,6 +4,7 @@ import { MemoryStore } from "../src/store.ts";
 import { newToken } from "../src/tokens.ts";
 import { PLANS } from "../src/plans.ts";
 import { costOf } from "../src/usage.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const OUR_KEY = "sk-ant-api03-OUR-SECRET-KEY-0000000000000000";
 const PROMPT_MARK = "PROMPT-MARKER-9f3c", REPLY_MARK = "REPLY-MARKER-77ab";
@@ -65,7 +66,7 @@ describe("who may use it", () => {
 });
 
 describe("what is forwarded", () => {
-  test("Companion's key replaces the user's token; the token, cookies and other headers never reach Anthropic", async () => {
+  test(`${PRODUCT_S} key replaces the user's token; the token, cookies and other headers never reach Anthropic`, async () => {
     const t = rig(); const token = await t.token();
     await t.send({ headers: { cookie: "session=abc", "x-forwarded-for": "1.2.3.4", "anthropic-version": "2023-06-01", "anthropic-beta": "prompt-caching-2024-07-31,foo bar" } });
     const s = t.seen[0];

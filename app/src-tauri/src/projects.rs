@@ -27,7 +27,7 @@ pub fn validate(path: &str, home: &str, data_dir: &Path) -> Result<PathBuf, Stri
     let lib = home_real.join("Library");
     if real.starts_with(&lib) || real == lib { return Err("That is inside your Library folder, which holds app data. Pick one of your projects.".into()); }
     let data = std::fs::canonicalize(data_dir).unwrap_or_else(|_| data_dir.to_path_buf());
-    if real.starts_with(&data) { return Err("That is Companion's own folder. Pick one of your projects.".into()); }
+    if real.starts_with(&data) { return Err(concat!("That is ", crate::product_s!(), " own folder. Pick one of your projects.").into()); }
     for hidden in [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".config", ".claude"] {
         if real.starts_with(home_real.join(hidden)) { return Err("That folder holds private settings. Pick one of your projects.".into()); }
     }
@@ -61,7 +61,7 @@ pub fn load(file: &Path) -> Projects {
 }
 
 /// Asks the Mac's own folder chooser. It runs in another process, so Companion never takes the keyboard.
-pub fn choose_folder() -> Option<String> { choose("Pick the folder of the project Companion should work in") }
+pub fn choose_folder() -> Option<String> { choose(concat!("Pick the folder of the project ", crate::product!(), " should work in")) }
 
 /// Where a project copied from a link should go: the new folder is made inside the one chosen here.
 pub fn choose_parent() -> Option<String> { choose("Pick where to put the project (a new folder is made inside it)") }
@@ -116,8 +116,8 @@ mod tests {
     #[test]
     fn a_folder_can_be_forgotten_from_the_list_and_as_the_current_one() {
         let mut p = Projects::default();
-        p.use_folder("/Users/sam/a"); p.use_folder("/Users/sam/Companion practice signup page");
-        p.forget("/Users/sam/Companion practice signup page");
+        p.use_folder("/Users/sam/a"); p.use_folder(concat!("/Users/sam/", crate::practice_base!(), " signup page"));
+        p.forget(concat!("/Users/sam/", crate::practice_base!(), " signup page"));
         assert_eq!(p, Projects { current: None, recent: vec!["/Users/sam/a".into()] });
         p.forget("/Users/sam/never-there");
         assert_eq!(p.recent, vec!["/Users/sam/a".to_string()]);

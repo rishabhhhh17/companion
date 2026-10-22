@@ -7,12 +7,13 @@ import { MAX_SEARCHES, MODELS, WEB_SEARCH_TOOL, apiShape, estimateUsd, searchesO
 import { DESCRIBE_SYSTEM, FAST_SYSTEM, buildDescribeMessages, buildVisionMessages, parseLastStep, parseTargetsText, visionSystem, wrapUserText, type DescribeReq, type FastLike, type FastOut, type FastReq, type Image, type Located, type LocateReq, type LookReq, type VisionLike } from "./lanes.ts";
 import { outOfReach, reachMessage, stoppedMessage } from "./reach.ts";
 import { clip, redact } from "./redact.ts";
+import { PRODUCT } from "./names.ts";
 
 /** Where a request goes and what it carries: Anthropic with the person's own key, or Companion's usage server with the person's
  *  Companion sign in token (managed usage). */
 export type DirectAuth = { key: string; base: string };
 export type DirectDeps = { auth: () => Promise<DirectAuth | null>; fetchFn?: typeof fetch; model?: string };
-export const NOT_CONNECTED_DIRECT = "Not connected: add your API key, or sign in to Companion.";
+export const NOT_CONNECTED_DIRECT = `Not connected: add your API key, or sign in to ${PRODUCT}.`;
 
 const VERSION = "2023-06-01";
 const MAX_TOKENS = 4096;

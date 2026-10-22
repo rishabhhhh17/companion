@@ -3,6 +3,7 @@
 // A second press while it runs does nothing, and Stop everything (or the app closing) ends it. If the app has to end the
 // engine by force, the installer ends with it (see endWithUs in exec.ts).
 import { browserInstalled, installBrowser, type InstallOutcome, type InstallProgress } from "./browser.ts";
+import { PRODUCT } from "../names.ts";
 
 export type InstallFn = (o: { signal: AbortSignal; onProgress: (p: InstallProgress) => void; timeoutMs?: number }) => Promise<InstallOutcome>;
 type Emit = (e: Record<string, unknown>) => void;
@@ -12,8 +13,8 @@ export function failureWords(r: InstallOutcome): string {
   if (r.timedOut) return "The download took too long and was stopped. Try again on a faster connection.";
   const t = r.detail;
   if (/ENOSPC|no space left/i.test(t)) return "There is not enough free space on your Mac. Free up about 300 MB, then try again.";
-  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|socket hang up|server closed connection|certificate|self.signed|proxy/i.test(t)) return "Companion could not reach the download server. Check your internet connection, then try again.";
-  if (/installer was not found/i.test(t)) return "The browser installer is missing from this copy of Companion. Install Companion again, then try again.";
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|socket hang up|server closed connection|certificate|self.signed|proxy/i.test(t)) return `${PRODUCT} could not reach the download server. Check your internet connection, then try again.`;
+  if (/installer was not found/i.test(t)) return `The browser installer is missing from this copy of ${PRODUCT}. Install ${PRODUCT} again, then try again.`;
   return "The download did not finish. Try again in a moment.";
 }
 

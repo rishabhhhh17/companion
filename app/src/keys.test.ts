@@ -2,13 +2,13 @@
 // words, and filled into every line that names a key. The app keeps and registers the keys (keymap.rs).
 import { afterEach, describe, expect, test } from "bun:test";
 import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keyProblem, keysFrom, keysIn, keysNow, KEYS_START, keysOf, onKeys, setKeysNow, withKeys, type Keys } from "./keys.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const swap = (job: keyof Keys["using"], id: string | null, picked?: string): Keys => ({ using: { ...KEYS_START.using, [job]: id }, picked: { ...KEYS_START.picked, [job]: picked ?? id ?? KEY_DEFAULTS[job] } });
 afterEach(() => setKeysNow(KEYS_START));
 
 describe("the usual keys", () => {
-  test("are the ones Companion always had, one per job", () => {
+  test(`are the ones ${PRODUCT} always had, one per job`, () => {
     expect(JOBS).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"]);
     expect(KEY_DEFAULTS).toEqual({
       card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
@@ -102,9 +102,9 @@ describe("every line that names a key", () => {
     expect(withKeys(S.ehOwnApp, "explain", swap("explain", null))).toContain(S.itsKeys);
   });
   test("lessons and other text that name the usual keys name the keys in use instead", () => {
-    const say = "Press Control, Option, Command and F in Companion to find the same place in your project.";
+    const say = `Press Control, Option, Command and F in ${PRODUCT} to find the same place in your project.`;
     expect(keysIn(say)).toBe(say);
-    expect(keysIn(say, swap("problem", "control-option-command-p"))).toBe("Press Control, Option, Command and P in Companion to find the same place in your project.");
+    expect(keysIn(say, swap("problem", "control-option-command-p"))).toBe(`Press Control, Option, Command and P in ${PRODUCT} to find the same place in your project.`);
     // Each job's own keys only: Command and Space (Spotlight) and a job that kept its keys stay as they are.
     const two = "Press Command and Space, then Control, Option, Command and K, then Control, Option, Command and F.";
     expect(keysIn(two, swap("card", "control-option-command-j"))).toBe("Press Command and Space, then Control, Option, Command and J, then Control, Option, Command and F.");
@@ -115,7 +115,7 @@ describe("every line that names a key", () => {
     expect(keysIn("Control, Option, Command and K or Control, Option, Command and F", both)).toBe("Control, Option, Shift, Command and K or Control, Option, Command and U");
     // A job without keys is named by its job, never by keys that do not work, and the text ends with where to pick others
     // (the same words a hint uses, keyHint), once for each such job however often it is named.
-    expect(keysIn(say, swap("problem", null))).toBe("Press the keys for Point at the problem in Companion to find the same place in your project. Point at the problem: another app is using its keys. Pick other keys in Settings, under Keys to remember.");
+    expect(keysIn(say, swap("problem", null))).toBe(`Press the keys for Point at the problem in ${PRODUCT} to find the same place in your project. Point at the problem: another app is using its keys. Pick other keys in Settings, under Keys to remember.`);
     const twice = keysIn("Press Control, Option, Command and F. Then Control, Option, Command and F again.", swap("problem", null));
     expect(twice).not.toContain("Control, Option, Command and F");
     expect(twice.split(S.keyHintOff.replace("{job}", "Point at the problem")).length).toBe(2);

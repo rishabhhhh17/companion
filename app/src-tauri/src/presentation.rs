@@ -206,7 +206,7 @@ mod tests {
         // Core Audio's list of the apps that use sound: each one's process id and whether its input (a microphone) runs.
         let me = 4242;
         assert!(other_app_listening(&[(me, false), (501, true)], me), "Zoom listening during a share, with another app in front");
-        assert!(!other_app_listening(&[(me, true)], me), "hold to talk is Companion's own: never quiet because of it");
+        assert!(!other_app_listening(&[(me, true)], me), concat!("hold to talk is ", crate::product_s!(), " own: never quiet because of it"));
         assert!(!other_app_listening(&[(me, true), (501, false), (77, false)], me));
         assert!(!other_app_listening(&[], me));
         assert!(!other_app_listening(&[(0, true), (-1, true)], me), "no real process");

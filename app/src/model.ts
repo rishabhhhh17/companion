@@ -4,7 +4,7 @@ import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
 import { gateFinding, isExpected, practiceOf } from "./practice.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { withKeys } from "./keys.ts";
 import { webLink } from "./links.ts";
 import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
@@ -270,7 +270,7 @@ const browserBusy = (b: BrowserSetupState) => b.stage === "asked" || b.stage ===
 // the preview's address on its line, and once that was sent Vercel may finish it anyway, so it is never said that nothing
 // went live then (the engine's own words for a promote cut short, agent.ts shipLive).
 const shipStopped = (f: ShipFlow | null): ShipFlow | null => !f || !["checking_gates", "deploying", "checking_preview"].includes(f.stage) ? f
-  : { ...f, stage: "failed", canGoLive: false, detail: f.stage === "deploying" && f.previewUrl ? "Stopped. Companion could not confirm whether it went live. Check your project on vercel.com." : "Stopped. Nothing went live." };
+  : { ...f, stage: "failed", canGoLive: false, detail: f.stage === "deploying" && f.previewUrl ? `Stopped. ${PRODUCT} could not confirm whether it went live. Check your project on vercel.com.` : "Stopped. Nothing went live." };
 // A new task or another folder: an old offer or an old result goes; a download that is running stays on the card.
 const browserFresh = (b: BrowserSetupState): BrowserSetupState => (browserBusy(b) ? b : { needed: false, stage: "idle", ...(b.installed !== undefined ? { installed: b.installed } : {}) });
 const browserRung = (steps: unknown, test: (s: any) => boolean) => Array.isArray(steps) && steps.some((s: any) => !!s && s.rung === "browser" && test(s));
@@ -517,7 +517,7 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "ui.settle": return withAgents(m, Object.fromEntries(Object.entries(m.agents).map(([a, s]) => [a, s === "done" ? "idle" : s])) as Record<string, CharacterState>);
     case "ui.approvalAnswered": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
-    case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : "The engine stopped. Restart Companion." };
+    case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : `The engine stopped. Restart ${PRODUCT}.` };
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     // The new engine keeps no conversation either: the last task can no longer be followed up or tried again (gone). A check
@@ -851,7 +851,7 @@ function reduceRest(m: Model, e: Ev): Model {
     case "ui.toastClear": return { ...m, toast: null };
     case "memory.agents_ask": return { ...m, agentsAsk: Array.isArray(e.files) ? e.files.map(String) : [] };
     case "ui.agentsAnswered": return { ...m, agentsAsk: null };
-    case "memory.agents_written": return { ...m, notice: `Companion updated ${(e.files ?? []).join(" and ")} with the facts about this project.` };
+    case "memory.agents_written": return { ...m, notice: `${PRODUCT} updated ${(e.files ?? []).join(" and ")} with the facts about this project.` };
     case "ui.memoryClosed": return { ...m, memory: null, memoryNote: null, exported: null };
     // An error while the practice fix runs (busy, daily limit, a failure) must not leave it waiting forever.
     case "protocol.error": if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };

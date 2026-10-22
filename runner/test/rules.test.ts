@@ -8,6 +8,7 @@ import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -99,7 +100,7 @@ describe("the agent can never change the rules", () => {
     expect(applyRules([], edit(".companion/rules.txt"), P)?.decision).toBe("deny");
     expect(applyRules([], run("echo x >> .companion/rules.txt"), P)?.decision).toBe("deny");
   });
-  test("nothing in that folder is the agent's to write, since it also holds Companion's own notes and settings", () => expect(applyRules([], edit(".companion/notes.md"), P)?.decision).toBe("deny"));
+  test(`nothing in that folder is the agent's to write, since it also holds ${PRODUCT_S} own notes and settings`, () => expect(applyRules([], edit(".companion/notes.md"), P)?.decision).toBe("deny"));
 });
 
 describe("in a real task", () => {
@@ -130,7 +131,7 @@ describe("in a real task", () => {
     expect(readFileSync(join(r.project, ".companion/rules.txt"), "utf8")).toBe("never edit pricing.txt");
     expect(readFileSync(join(r.project, "pricing.txt"), "utf8")).toBe("10");
   });
-  test("a rule can never loosen Companion's own safety: an ask rule does not turn a refusal into a question", async () => {
+  test(`a rule can never loosen ${PRODUCT_S} own safety: an ask rule does not turn a refusal into a question`, async () => {
     const r = await go("ask before editing outside.txt", [w("../outside.txt", "x")]);
     expect(r.events.some((e) => e.type === "approval.request")).toBe(false);
     expect(r.events.some((e) => e.type === "agent.tool" && (e as any).outcome === "blocked")).toBe(true);

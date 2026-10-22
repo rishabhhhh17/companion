@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Companion.app: the engine staged, the web pages, the Rust shell, then sign and verify.
+# Build Squibby.app: the engine staged, the web pages, the Rust shell, then sign and verify.
 #  - Development (default): signed with the developer's Apple Development certificate, so macOS keeps remembering
 #    permissions (like Accessibility) across rebuilds.
 #  - Distribution: COMPANION_SIGN_ID="Developer ID Application: Name (TEAM)" signs with that, hardened runtime and a
@@ -11,7 +11,8 @@ sh scripts/stage-engine.sh
 bun run build
 cd src-tauri
 cargo tauri build --bundles app
-APP="target/release/bundle/macos/Companion.app"
+TARGET="${CARGO_TARGET_DIR:-target}"   # cargo puts the bundle under CARGO_TARGET_DIR when it is set
+APP="$TARGET/release/bundle/macos/Squibby.app"
 xattr -cr "$APP"
 CLAUDE="$APP/Contents/Resources/engine/runner/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"
 [ -f "$CLAUDE" ] || { echo "FAIL: the engine did not get into the app"; exit 1; }
@@ -45,4 +46,4 @@ if [ -n "${COMPANION_SIGN_ID:-}" ]; then
   echo "$INFO" | grep -q "^Timestamp=" || { echo "FAIL: the app has no secure timestamp, so Apple would refuse it"; exit 1; }
   echo "ready for notarization: Developer ID, hardened runtime, secure timestamp"
 fi
-echo "built: $PWD/$APP"
+case "$APP" in /*) echo "built: $APP";; *) echo "built: $PWD/$APP";; esac

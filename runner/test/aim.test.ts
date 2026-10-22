@@ -5,6 +5,7 @@
 // Tested against a fake server: no real call is made.
 import { describe, expect, test } from "bun:test";
 import { ComputerUseVision, buildRequest, parseAnswer, withFallback, API_URL } from "../src/aim.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const MODEL = "claude-sonnet-5-5";
 const img = { base64: "AAAA", mediaType: "image/jpeg", w: 1280, h: 800 };
@@ -183,7 +184,7 @@ describe("the lane", () => {
     await expect(lane.locate({ image: img, question: "q", ocr }, ac())).rejects.toThrow(/computer use/i);
     expect(s.calls).toHaveLength(1);   // the second question was not sent at all
   });
-  test("a model Companion knows no toolset for, or a picture larger than the toolset takes, is refused before anything is sent", async () => {
+  test(`a model ${PRODUCT} knows no toolset for, or a picture larger than the toolset takes, is refused before anything is sent`, async () => {
     const s = fake(ok(answer([1, 1])));
     await expect(new ComputerUseVision({ apiKey: async () => "k", fetchFn: s.f, model: "claude-haiku-4-5-20251001" }).locate({ image: img, question: "q", ocr }, ac())).rejects.toThrow();
     await expect(new ComputerUseVision({ apiKey: async () => "k", fetchFn: s.f, model: MODEL }).locate({ image: { ...img, w: 2560, h: 1600 }, question: "q", ocr }, ac())).rejects.toThrow(/large/i);

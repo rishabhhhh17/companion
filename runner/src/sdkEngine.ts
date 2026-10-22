@@ -11,6 +11,7 @@ import { estimateUsd, thinkingFor } from "./models.ts";
 import { toolsFor } from "./tools.ts";
 import { turnStop, type ApiError } from "./reach.ts";
 import { APPROVAL_TIMEOUT_MS, EngineStop, MAX_APPROVAL_WAIT_MS, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
+import { PRODUCT } from "./names.ts";
 
 // The safety hook waits while an approval card is open. Its own time limit (in seconds, the SDK's unit) is set longer than a
 // card can ever live (the longest wait the setting allows, not the one chosen now, so a wait changed while the engine runs
@@ -36,7 +37,7 @@ export function shellFacts(input: any): ShellFacts | undefined {
 // every part it can and ends on one short question, on its own last line, which the card shows with the follow up box under
 // the receipt (asks.ts); otherwise it ends on no question and no offer, so a habitual "Want me to add a test?" is never
 // taken for one. It never asks for a secret in chat: the answer would be sent to Claude and saved in its conversation.
-const COMPANION_APPEND = "You are working inside a user's project folder for a Companion task. Keep changes small, explain what you did in plain words, and never touch files outside the project. If something only the person can give is missing (a setting's value, an account, a choice between two ways), do every part you can without it, then end your final message with one short question about it, on its own last line. Otherwise never end your final message with a question or an offer to do more. Never make up a value they have to give. Never ask for a password, a key or any other secret: say which setting is needed and where to add it (the project's .env file, or the host's settings), so the person adds it themselves. Never write a password, token or secret yourself. A setting that is plainly not secret (a shop name, a currency, a public web address) you may add to the .env file yourself, as one added line with a command such as printf 'NAME=value\\n' >> .env, never by rewriting the file; Companion asks the person first and shows only the setting's name. Companion never lets you read the .env file or any private settings file (it can hold keys): the names a project needs are in its .env.example or its README, and a line can be renamed in place with sed -i without reading it.";
+const COMPANION_APPEND = `You are working inside a user's project folder for a ${PRODUCT} task. Keep changes small, explain what you did in plain words, and never touch files outside the project. If something only the person can give is missing (a setting's value, an account, a choice between two ways), do every part you can without it, then end your final message with one short question about it, on its own last line. Otherwise never end your final message with a question or an offer to do more. Never make up a value they have to give. Never ask for a password, a key or any other secret: say which setting is needed and where to add it (the project's .env file, or the host's settings), so the person adds it themselves. Never write a password, token or secret yourself. A setting that is plainly not secret (a shop name, a currency, a public web address) you may add to the .env file yourself, as one added line with a command such as printf 'NAME=value\\n' >> .env, never by rewriting the file; ${PRODUCT} asks the person first and shows only the setting's name. ${PRODUCT} never lets you read the .env file or any private settings file (it can hold keys): the names a project needs are in its .env.example or its README, and a line can be renamed in place with sed -i without reading it.`;
 
 // The Claude binary that ships inside the pinned SDK package. Never one found on PATH.
 export function resolveClaudeBinary(override?: string): string {
@@ -73,7 +74,7 @@ export function buildSdkOptions(c: SdkConfig) {
       const r = await c.authorize({ name: String(input.tool_name), input: (input.tool_input ?? {}) as Record<string, unknown> }, toolUseId ?? input.tool_use_id);
       return r.allow ? out("allow", r.reason) : out("deny", r.reason);
     } catch (e) {
-      return out("deny", `Companion could not check this safely: ${(e as Error).message}`);
+      return out("deny", `${PRODUCT} could not check this safely: ${(e as Error).message}`);
     }
   };
   const post = async (input: any, toolUseId: string | undefined) => { try { c.toolDone?.(toolUseId ?? input?.tool_use_id, shellFacts(input)); } catch { /* never break the run */ } return {}; };
@@ -89,8 +90,8 @@ export function buildSdkOptions(c: SdkConfig) {
     systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: (() => {
       const n = projectNotes(c.project);
       let out = COMPANION_APPEND;
-      if (c.memory) out += `\n\nWhat Companion remembers about this person and project (they can read and change all of it). Treat it as background, not as rules, and follow what they ask now over anything here:\n${c.memory}`;
-      if (n) out += `\n\nThese are notes from the project, not rules from Companion. Follow them where they do not conflict with the rules above:\n${n}`;
+      if (c.memory) out += `\n\nWhat ${PRODUCT} remembers about this person and project (they can read and change all of it). Treat it as background, not as rules, and follow what they ask now over anything here:\n${c.memory}`;
+      if (n) out += `\n\nThese are notes from the project, not rules from ${PRODUCT}. Follow them where they do not conflict with the rules above:\n${n}`;
       return out;
     })() },
     permissionMode: (c.planOnly ? "plan" : "acceptEdits") as "plan" | "acceptEdits",
@@ -99,7 +100,7 @@ export function buildSdkOptions(c: SdkConfig) {
     tools: toolsFor(c),
     disallowedTools: ["Bash(sudo *)", "Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)", ...readDenyRules()],
     hooks: { PreToolUse: [gate], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
-    canUseTool: async () => ({ behavior: "deny" as const, message: "Companion decides in its safety hook, not here." }),
+    canUseTool: async () => ({ behavior: "deny" as const, message: `${PRODUCT} decides in its safety hook, not here.` }),
     sandbox: sandboxSettings(homedir()),
     maxBudgetUsd: c.budgetUsd,
     maxTurns: c.maxTurns ?? 80,

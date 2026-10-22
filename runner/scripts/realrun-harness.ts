@@ -28,6 +28,7 @@ import { buildChildEnv } from "../src/safety.ts";
 import { resolveClaudeBinary } from "../src/sdkEngine.ts";
 import { canonicalModel, estimateUsd, requestProblems } from "../src/models.ts";
 import { GIVEN_TOOLS } from "../src/tools.ts";
+import { PRODUCT_S } from "../src/names.ts";
 
 export const DEFAULT_KEYCHAIN_SERVICE = "companion-dev";
 type Ev = Record<string, any>;
@@ -541,6 +542,6 @@ export async function runCases(title: string, cases: Case[], args: Args, deps: R
   }
   say("\n================ SUMMARY ================");
   for (const r of rows) say(r);
-  say(`Spent about ${usd(meter.totalSpent)} in all (Companion's estimate, from Claude Code's own cost figures and the token counts).`);
+  say(`Spent about ${usd(meter.totalSpent)} in all (${PRODUCT_S} estimate, from Claude Code's own cost figures and the token counts).`);
   return failed ? 1 : 0;
 }

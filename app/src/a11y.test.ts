@@ -6,7 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { BACK_MS, EMPTY_LINE, backStill, confirmKey, focusLost, focusSpot, liveLine, newsOf, stepTo } from "./a11y.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 import { TEXT_SIZES } from "./textsize.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -498,7 +498,7 @@ describe("where the keyboard goes when its control goes away (part 2)", () => {
     expect(focusLost({ tag: "HTML" }, true)).toBe(true);
     expect(focusLost({ tag: "BUTTON" }, true), "something else has it").toBe(false);
     expect(focusLost({ tag: "INPUT" }, true), "the person is typing").toBe(false);
-    expect(focusLost(null, false), "Companion never takes the keyboard (rule 9)").toBe(false);
+    expect(focusLost(null, false), `${PRODUCT} never takes the keyboard (rule 9)`).toBe(false);
     expect(focusLost({ tag: "BODY" }, false)).toBe(false);
   });
   test("never wider than the rule a question already follows", () => {

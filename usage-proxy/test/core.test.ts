@@ -4,6 +4,7 @@ import { PLANS, planOf, budgetCheck, dayKey, monthKey, nextReset } from "../src/
 import { checkRequest, MAX_BODY_BYTES } from "../src/filter.ts";
 import { UsageSniffer, usageFromJson, costOf } from "../src/usage.ts";
 import { MAX_SEARCHES, WEB_SEARCH_TOOL, WEB_SEARCH_USD } from "../../runner/src/models.ts";
+import { PRODUCT } from "../src/names.ts";
 
 describe("sign in tokens", () => {
   test("a new token is random, prefixed, and only its hash is kept", async () => {
@@ -61,7 +62,7 @@ describe("the request filter", () => {
       const r = checkRequest(m, p, ok()); expect([r.ok, p], `${m} ${p}`).toEqual([false, p]);
     }
   });
-  test("only the models Companion uses, in any dated spelling", () => {
+  test(`only the models ${PRODUCT} uses, in any dated spelling`, () => {
     for (const m of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-haiku-4-5-20251001", "claude-sonnet-5-5[1m]"]) expect(checkRequest("POST", "/v1/messages", ok({ model: m })).ok, m).toBe(true);
     for (const m of ["claude-fable-5-1", "gpt-4", "", "claude-opus-4", "../x", 7]) expect(checkRequest("POST", "/v1/messages", ok({ model: m })).ok, String(m)).toBe(false);
   });

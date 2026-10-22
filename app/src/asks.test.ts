@@ -9,7 +9,7 @@ import { canFollowUp, canRetry, cardWorking, driveWords, historyWords, initial, 
 import { islandLine, need } from "./home.ts";
 import { statusGroup } from "./history.ts";
 import { alsoSayLines } from "./speech.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const P = "/Users/me/site";
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -126,7 +126,7 @@ describe("a task that asks needs you, and is answered in the follow up box", () 
 
 describe("Claude out of reach", () => {
   test("a dropped connection says what happened and what to do, never blaming the project or the key", () => {
-    for (const r of ["no_connection: Companion could not reach Claude (API Error: Connection error.)", "engine error: no_connection: Companion could not reach Claude (fetch failed)"]) {
+    for (const r of [`no_connection: ${PRODUCT} could not reach Claude (API Error: Connection error.)`, `engine error: no_connection: ${PRODUCT} could not reach Claude (fetch failed)`]) {
       const w = plainError(r);
       expect(w).toBe(S.noConnection);
       expect(w).toMatch(/Try again/);
@@ -140,7 +140,7 @@ describe("Claude out of reach", () => {
     expect(w).not.toMatch(/key|project/i);
   });
   test("in a flow with no Try again (planning, Rescue, Research), it says ask again instead", () => {
-    const w = plainError("engine error: no_connection (ask again): Companion could not reach Claude (fetch failed)");
+    const w = plainError(`engine error: no_connection (ask again): ${PRODUCT} could not reach Claude (fetch failed)`);
     expect(w).toBe(S.noConnectionAsk);
     expect(w).toMatch(/ask again/);
     expect(w).not.toMatch(/Try again/);
@@ -148,7 +148,7 @@ describe("Claude out of reach", () => {
     expect(S.claudeBusyAsk).not.toMatch(/Try again/);
   });
   test("the task can be tried again", () => {
-    const m = run([...begin, ev({ type: "protocol.error", agent: AGENT, reason: "no_connection: Companion could not reach Claude (x)" }), receipt(), state("error")]);
+    const m = run([...begin, ev({ type: "protocol.error", agent: AGENT, reason: `no_connection: ${PRODUCT} could not reach Claude (x)` }), receipt(), state("error")]);
     expect(m.error).toBe(S.noConnection);
     expect(canRetry(m, P)).toBe(true);
   });
@@ -201,7 +201,7 @@ describe("a failed request is said in plain words", () => {
 
 describe("Claude out of reach in the lanes and the explainers", () => {
   test("Prompt help says it plainly, with nothing to paste back", () => {
-    const m = run([ev({ type: "app.prompt_help", stage: "thinking", req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: "no_connection (ask again): Companion could not reach Claude (API Error: Connection error.)" })]);
+    const m = run([ev({ type: "app.prompt_help", stage: "thinking", req: "ph_1" }), ev({ type: "assist.error", req: "ph_1", reason: `no_connection (ask again): ${PRODUCT} could not reach Claude (API Error: Connection error.)` })]);
     expect(m.ph).toMatchObject({ stage: "error", message: S.noConnectionAsk });
   });
   test("Show me says it plainly, never that it could not find it", () => {
@@ -209,7 +209,7 @@ describe("Claude out of reach in the lanes and the explainers", () => {
     expect(m.showme).toMatchObject({ stage: "error", message: S.claudeBusyAsk });
   });
   test("the error explainer and Draw it for me say it plainly", () => {
-    const e = run([ev({ type: "app.explain_error", stage: "thinking", req: "eh_1" }), ev({ type: "error.explained", req: "eh_1", ok: false, sentences: [], excerpt: "x", evidence: "x", usdEstimate: 0, reason: "no_connection (ask again): Companion could not reach Claude (x)" })]);
+    const e = run([ev({ type: "app.explain_error", stage: "thinking", req: "eh_1" }), ev({ type: "error.explained", req: "eh_1", ok: false, sentences: [], excerpt: "x", evidence: "x", usdEstimate: 0, reason: `no_connection (ask again): ${PRODUCT} could not reach Claude (x)` })]);
     expect(e.eh?.reason).toBe(S.noConnectionAsk);
     const d = run([ev({ type: "ui.diagramAsked", ask: "d1", project: P }), ev({ type: "diagram.ready", project: P, ask: "d1", made: false, reason: "claude_stopped:authentication_failed (ask again): Claude stopped (Invalid API key)" })]);
     expect(d.diagram?.reason).toBe(plainError("claude_stopped:authentication_failed (ask again): x"));

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { REDUCED, followLessMotion, lessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
+import { PRODUCT } from "./strings.ts";
 
 const here = new URL("./", import.meta.url).pathname;
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -169,7 +170,7 @@ describe("every animation and transition in the stylesheets stops with reduced m
       expect(c.filter((x) => !x.by), JSON.stringify(c)).toEqual([]);
     });
   }
-  test("every capture light (looking at the screen, listening) is still a mark with motion reduced, by the Mac or by Companion", () => {
+  test(`every capture light (looking at the screen, listening) is still a mark with motion reduced, by the Mac or by ${PRODUCT}`, () => {
     // Rule 5: the light for the screen and the microphone must be on screen first. Looking's own light is its scan, which
     // stops with reduced motion, so a still ring must show it then, as listening's ring always does.
     const all = rules(read("./style.css"));
@@ -238,12 +239,12 @@ describe("Motion: Follow my Mac, or Less motion", () => {
     g.matchMedia = (q: string) => ({ matches: q === REDUCED });
     expect(reducedMotion()).toBe(true);
   });
-  test("Less motion means less motion everywhere in Companion, whatever the Mac says", () => {
+  test(`Less motion means less motion everywhere in ${PRODUCT}, whatever the Mac says`, () => {
     snap("less");
     expect(lessMotion()).toBe(true);
     expect(reducedMotion()).toBe(true);
     g.matchMedia = () => ({ matches: false });
-    expect(reducedMotion(), "the rest of the Mac is not changed, and Companion still moves less").toBe(true);
+    expect(reducedMotion(), `the rest of the Mac is not changed, and ${PRODUCT} still moves less`).toBe(true);
     // So the character's state stops moving and decoration does not play.
     expect(playful(true, reducedMotion())).toBe(false);
   });

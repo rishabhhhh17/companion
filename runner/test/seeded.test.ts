@@ -8,6 +8,7 @@ import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -17,7 +18,7 @@ const states = (e: Event[]) => e.filter((x) => x.type === "agent.state").map((x:
 const results = (e: Event[]) => e.filter((x) => x.type === "proof.result") as any[];
 const receipt = (e: Event[]) => e.find((x) => x.type === "receipt") as any;
 
-const GOOD_PAGE = "<!doctype html><h1>Hello from Companion</h1><p>hi</p>";
+const GOOD_PAGE = `<!doctype html><h1>Hello from ${PRODUCT}</h1><p>hi</p>`;
 const BAD_PAGE = "<!doctype html><h1>Hello</h1><script>nothing.here.is.defined()</script>";
 const SERVER = (status: number) => `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("<h1>Hello from the server</h1>", { status: ${status}, headers: { "content-type": "text/html" } }) });`;
 const pkg = (scripts: Record<string, string>) => JSON.stringify({ name: "x", version: "1.0.0", scripts });
@@ -62,7 +63,7 @@ describe("a page with an error in its code (only the browser check sees it)", ()
 });
 
 describe("a page that loads fine but breaks when you press its button (found in the first real run)", () => {
-  const page = (fn: string) => `<!doctype html><h1>Hello from Companion</h1><button onclick="${fn}()">Launch</button><script>function ok(){ document.title = "ok"; }</script>`;
+  const page = (fn: string) => `<!doctype html><h1>Hello from ${PRODUCT}</h1><button onclick="${fn}()">Launch</button><script>function ok(){ document.title = "ok"; }</script>`;
   test("never done while the button calls something that does not exist", async () => {
     const r = await go({ "notes.txt": "x" }, [[write("index.html", page("launchRocket"))], [write("index.html", page("launchRocket"))], [write("index.html", page("launchRocket"))]]);
     notDone(r);

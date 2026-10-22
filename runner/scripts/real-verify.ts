@@ -34,6 +34,7 @@ import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../src/fixfound.ts";
 import { noTableOpen } from "../src/ship/opentables.ts";
 import { hasEvidence } from "../src/proof/ladder.ts";
 import { RunnerDriver, approvalTally, ledgerSpent, parseArgs, runCases, spawnRunner, type ApproveRule, type Case, type CaseCtx, type Proc } from "./realrun-harness.ts";
+import { PRODUCT, PRODUCT_S, NAMES } from "../src/names.ts";
 
 type Ev = Record<string, any>;
 const CHEAP = "claude-haiku-4-5-20251001";
@@ -86,10 +87,10 @@ export function listTree(dir: string, base = dir): string[] {
 /** The folders as the shell leaves them: a home folder, one folder for everything made, the new empty folder, a neighbour project, a file beside it. */
 function shellLayout(kit: Kit, label: string, name: string) {
   const root = kit.scratch(label);
-  const parent = join(root, "Companion makes");
+  const parent = join(root, NAMES.newFolderParent);
   const project = join(parent, name);
   mkdirSync(project, { recursive: true });
-  put(root, { "Companion makes/Someone else's project/index.html": "<h1>not yours</h1>", "notes.txt": "keep me" });
+  put(root, { [`${NAMES.newFolderParent}/Someone else's project/index.html`]: "<h1>not yours</h1>", "notes.txt": "keep me" });
   return { root, parent, project };
 }
 /** Everything outside `project` under `root` (names and contents), to be the same after the run. */
@@ -154,7 +155,7 @@ function practiceCase(e: PracticeEntry): Scenario {
       const dir = kit.scratch(`practice-${e.id}`);
       cpSync(join(import.meta.dir, "../../app/sample", e.folder), dir, { recursive: true });
       mkdirSync(join(dir, ".companion"), { recursive: true });
-      writeFileSync(join(dir, ".companion/rules.txt"), `# Companion added these rules to its practice copy, so the fix cannot pass by changing the check.\n${e.protect.map((f) => `never edit ${f}`).join("\n")}\n`);
+      writeFileSync(join(dir, ".companion/rules.txt"), `# ${PRODUCT} added these rules to its practice copy, so the fix cannot pass by changing the check.\n${e.protect.map((f) => `never edit ${f}`).join("\n")}\n`);
       const kept = e.protect.map((f) => readFileSync(join(dir, f), "utf8"));
       const r = kit.runner(dir); if (!await r.ready()) return false;
       const t0 = Date.now();
@@ -239,7 +240,7 @@ function newFolderBuild(o: { name: string; what: string; request: string; allowQ
       r.send({ v: 1, id: "u", type: "checkpoint.restore", project: dir, checkpoint: cps[0]?.checkpoint });
       const restored = await r.until((e) => e.type === "checkpoint.restored" || e.type === "protocol.error", 20_000, n);
       const after = listTree(dir), left = after.filter((f) => !OWN_FILES(f));
-      note(`after Undo of the first step: ${JSON.stringify(after)} (Companion's own notes are not the person's files)`);
+      note(`after Undo of the first step: ${JSON.stringify(after)} (${PRODUCT_S} own notes are not the person's files)`);
       verdicts["(d) Undo takes the folder back to empty"] = restored?.type === "checkpoint.restored" && left.length === 0 ? "pass" : `FAIL: restored = ${restored?.type}; left behind ${JSON.stringify(left)}`;
       note(`cost of this case: $${r.usd().toFixed(3)}`);
       for (const [k, v] of Object.entries(verdicts)) note(`${k}: ${v}`);
@@ -298,7 +299,7 @@ export const SCENARIOS: Scenario[] = [
     async run(kit, note) {
       const dir = kit.scratch("drive"); put(dir, { "index.html": "<!doctype html><html><head><title>Site</title></head><body><h1>My site</h1></body></html>" });
       const r = kit.runner(dir); if (!await r.ready()) return false;
-      r.send({ v: 1, id: "p", type: "drive.plan", project: dir, agent: "d1", goal: "Add a paragraph that says 'Welcome to my site' under the heading, and then add a footer that says 'Made with Companion'.", model: kit.agentModel, budgetUsd: 1.2 });
+      r.send({ v: 1, id: "p", type: "drive.plan", project: dir, agent: "d1", goal: `Add a paragraph that says 'Welcome to my site' under the heading, and then add a footer that says 'Made with ${PRODUCT}'.`, model: kit.agentModel, budgetUsd: 1.2 });
       const plan = await r.until((e) => e.type === "plan.ready" || e.type === "protocol.error", 180_000);
       if (!plan || plan.type !== "plan.ready") { note(`no plan: ${JSON.stringify(plan)}`); return false; }
       const steps: string[] = plan.steps.map((s: Ev) => s.title);
@@ -312,13 +313,13 @@ export const SCENARIOS: Scenario[] = [
       const proofs = r.of("proof.result").map((e) => e.verdict);
       const cps = r.of("checkpoint.created").map((e) => e.checkpoint);
       note(`drive.done: ${JSON.stringify({ status: done.status, completed: done.completed, total: done.total, cost: done.usdEstimate })}; proofs: ${JSON.stringify(proofs)}; snapshots per step: ${cps.length}`);
-      note(`page has welcome = ${/Welcome to my site/.test(html)}, footer = ${/Made with Companion/.test(html)}`);
+      note(`page has welcome = ${/Welcome to my site/.test(html)}, footer = ${new RegExp(`Made with ${PRODUCT}`).test(html)}`);
       const n = r.events.length;
       r.send({ v: 1, id: "u", type: "checkpoint.restore", project: dir, checkpoint: cps.at(-1) });
       await r.until((e) => e.type === "checkpoint.restored" || e.type === "protocol.error", 20_000, n);
       const after = readFileSync(join(dir, "index.html"), "utf8");
       note(`after undoing the last step the page changed = ${after !== html}`);
-      return done.status === "done" && /Welcome to my site/.test(html) && /Made with Companion/.test(html) && proofs.every((v) => v !== "failed") && after !== html && okPlan;
+      return done.status === "done" && /Welcome to my site/.test(html) && new RegExp(`Made with ${PRODUCT}`).test(html) && proofs.every((v) => v !== "failed") && after !== html && okPlan;
     },
   },
   {

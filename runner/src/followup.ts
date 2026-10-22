@@ -2,6 +2,7 @@
 // Each one runs as a task of its own (see AgentRunner.followUp); this file only holds the words.
 import { clip, redact } from "./redact.ts";
 import { triedLine, type LoopEnd } from "./drive.ts";
+import { PRODUCT } from "./names.ts";
 
 /** A follow up is one line from the card. Anything longer is cut, so a pasted log cannot fill the conversation. */
 export const MAX_FOLLOW_UP_CHARS = 2000;
@@ -27,7 +28,7 @@ export const freshFollowUpPrompt = (goal: string, text: string) =>
 // password is hidden before Claude is sent it, since Claude's conversation is saved, and Claude is told what to do instead.
 const answered = (text: string) => {
   const hidden = redact(text);
-  return hidden === text ? said(text) : `${said(hidden)}\n\n(Companion hid something in the answer that looked like a key or a password. Do not ask for it again: say which setting is needed and where to add it, so the person adds it themselves.)`;
+  return hidden === text ? said(text) : `${said(hidden)}\n\n(${PRODUCT} hid something in the answer that looked like a key or a password. Do not ask for it again: say which setting is needed and where to add it, so the person adds it themselves.)`;
 };
 export const answerPrompt = (text: string) =>
   `The person answered your question:\n${answered(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;

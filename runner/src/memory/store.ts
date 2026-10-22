@@ -7,6 +7,7 @@ import { screenLine } from "./filter.ts";
 import { writeAtomic } from "../atomic.ts";
 import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
 import { EXPLAIN_MODES, type ExplainMode } from "../../../protocol/index.ts";
+import { PRODUCT, PRODUCT_S } from "../names.ts";
 
 export type Scope = "project" | "profile";
 export type Entry = { id: string; text: string; source: string; date: string };
@@ -16,8 +17,8 @@ export type Plain = { ok: true } | { ok: false; reason: string };
 
 const PROFILE_CAP = 200;
 const HEAD: Record<Scope, string> = {
-  project: "# What Companion knows about this project\n\nCompanion keeps this file. You can read it, edit it, or delete any line. Each line says where it came from.\n",
-  profile: "# How you like to work\n\nCompanion keeps this file. You can read it, edit it, or delete any line. Each line says where it came from.\n",
+  project: `# What ${PRODUCT} knows about this project\n\n${PRODUCT} keeps this file. You can read it, edit it, or delete any line. Each line says where it came from.\n`,
+  profile: `# How you like to work\n\n${PRODUCT} keeps this file. You can read it, edit it, or delete any line. Each line says where it came from.\n`,
 };
 const LINE = /^- (.+?) — (.+?), (\d{4}-\d{2}-\d{2})(?: \{(m_[a-z0-9]{6,})\})?\s*$/;
 const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
@@ -74,7 +75,7 @@ export class MemoryStore {
   list(scope: Scope): ListResult {
     const { raw, problem } = this.read(scope);
     this.prefs();
-    const problems = [...(problem ? [problem] : []), ...(this.damagedNote ? ["Companion's memory settings file was damaged, so learning is paused. The old file was kept as memory-settings.damaged.json. Turn learning back on to start it again."] : [])];
+    const problems = [...(problem ? [problem] : []), ...(this.damagedNote ? [`${PRODUCT_S} memory settings file was damaged, so learning is paused. The old file was kept as memory-settings.damaged.json. Turn learning back on to start it again.`] : [])];
     return { entries: raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => r.entry), problems };
   }
 
@@ -118,10 +119,10 @@ export class MemoryStore {
 
   add(scope: Scope, text: string, source: string, now: Date = new Date()): AddResult {
     if (this.isPaused()) return { ok: false, reason: "Learning is paused." };
-    const t = oneLine(text), src = oneLine(source).replace(/[,{}]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Companion";
+    const t = oneLine(text), src = oneLine(source).replace(/[,{}]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || PRODUCT;
     const s = screenLine(t);
     if (!s.ok) return s;
-    if (/ — .+, \d{4}-\d{2}-\d{2}|\{m_[a-z0-9]+\}/.test(t) || t.startsWith("- ")) return { ok: false, reason: "That text has a format Companion uses itself." };
+    if (/ — .+, \d{4}-\d{2}-\d{2}|\{m_[a-z0-9]+\}/.test(t) || t.startsWith("- ")) return { ok: false, reason: `That text has a format ${PRODUCT} uses itself.` };
     const { raw, problem } = this.read(scope);
     if (problem) return { ok: false, reason: problem };
     if ((this.prefs().forgotten[this.key(scope)] ?? []).includes(idFor(t))) return { ok: false, reason: "You asked me to forget that." };
@@ -190,7 +191,7 @@ export class MemoryStore {
       const e = this.list(scope).entries;
       return [`## ${title}`, ...(e.length ? e.map((x) => `- ${x.text} (from ${x.source}${x.date ? `, ${x.date}` : ""})`) : ["- Nothing yet."])].join("\n");
     };
-    return `# Everything Companion remembers\n\n${fmt("About this project", "project")}\n\n${fmt("How you like to work", "profile")}\n`;
+    return `# Everything ${PRODUCT} remembers\n\n${fmt("About this project", "project")}\n\n${fmt("How you like to work", "profile")}\n`;
   }
 }
 

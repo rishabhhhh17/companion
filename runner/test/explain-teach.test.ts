@@ -11,6 +11,7 @@ import { TaskLog } from "../src/tasklog.ts";
 import { RunnerSettings } from "../src/settings.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import { parseEvent, serialize, type Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -191,7 +192,7 @@ describe("your turn: the same change in two places", () => {
     expect(of(t.events, "teach.result").at(-1).reason).toBe("You have not changed that line yet.");
     expect(t.proofCalls.length).toBe(checksBefore);
   });
-  test("two places close together in one file: the place Companion fixed is never taken for the person's change", async () => {
+  test(`two places close together in one file: the place ${PRODUCT} fixed is never taken for the person's change`, async () => {
     const page = (a: string, b: string) => `<div>\n<p>{${a}}</p>\n<hr/>\n<p>{${b}}</p>\n</div>\n`;
     const t = setup({ files: { "src/page.jsx": page("user.name", "user.name") }, rounds: [[write("src/page.jsx", page("user?.name", "user?.name")), say("Made both safe.")]] });
     await t.start();

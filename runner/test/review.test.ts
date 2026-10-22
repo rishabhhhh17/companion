@@ -10,6 +10,7 @@ import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -108,7 +109,7 @@ describe("reading the verdict", () => {
 });
 
 describe("rung 7 in the ladder", () => {
-  async function scenario(review: any, change = (d: string) => writeFileSync(join(d, "index.html"), "<h1>Hello from Companion</h1>")) {
+  async function scenario(review: any, change = (d: string) => writeFileSync(join(d, "index.html"), `<h1>Hello from ${PRODUCT}</h1>`)) {
     const dir = tmp("d"); writeFileSync(join(dir, "notes.txt"), "x");
     const store = new CheckpointStore(tmp("s"), dir);
     const b = await store.snapshot("before"); change(dir); const a = await store.snapshot("after");

@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { findBreakingTask, undoOneTask } from "./commands.ts";
 import { bisectLines, canBisect, initial, reduce, whenWords, type HistoryItem, type Model } from "./model.ts";
+import { PRODUCT } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -57,7 +58,7 @@ describe("the search and its answer", () => {
     const outcomes: Record<string, unknown>[] = [
       { outcome: "not_failing" }, { outcome: "already_failing", earlier: { label: "a", at: "2026-10-14T12:00:00Z" } }, { outcome: "after_last_task", earlier: { label: "b", at: "2026-10-14T12:00:00Z" } },
       { outcome: "outside_change", earlier: { label: "a", at: "x" }, later: { label: "b", at: "x" } }, { outcome: "unsure", earlier: { label: "a", at: "x" }, later: { label: "b", at: "x" } }, { outcome: "unsure" },
-      { outcome: "too_few" }, { outcome: "cannot_check", detail: "This project's packages are not installed, so it cannot be checked yet." }, { outcome: "busy", detail: "Companion is already working on this project." }, { outcome: "failed" },
+      { outcome: "too_few" }, { outcome: "cannot_check", detail: "This project's packages are not installed, so it cannot be checked yet." }, { outcome: "busy", detail: `${PRODUCT} is already working on this project.` }, { outcome: "failed" },
       { ...FOUND, undo: "show_only", why: "Later work changed the same file (src/App.tsx), so undoing this task on its own would lose that work." },
     ];
     for (const o of outcomes) {

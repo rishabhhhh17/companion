@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 import { SMOKE_CASES, boxPicture, conversations, firstRoundNote, pictures } from "../scripts/smoke-real.ts";
 import { canonicalModel, MODEL_CHOICES } from "../src/models.ts";
+import { PRODUCT } from "../src/names.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -45,7 +46,7 @@ describe("the plan", () => {
   });
 });
 
-describe("the size of the first round (leaner tasks: only the tools Companion uses)", () => {
+describe(`the size of the first round (leaner tasks: only the tools ${PRODUCT} uses)`, () => {
   test("the note says what the first round sent, new and read from the cache", () => {
     expect(firstRoundNote({ in: 1200, cacheRead: 18000, out: 40 })).toBe("first round: 19200 input tokens (1200 new, 18000 read from the cache), 40 out");
     expect(firstRoundNote(undefined)).toBe("first round: no token counts");

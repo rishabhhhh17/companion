@@ -22,7 +22,7 @@ export function updateLine(s: UpdateState, current: string, configured: boolean)
     case "checking": return "Looking for a new version…";
     case "none": return `Version ${current}. You have the newest version.`;
     case "found": return `Version ${s.version} is ready. You have ${current}.`;
-    case "installing": return "Downloading and installing. Companion will restart in a moment.";
+    case "installing": return `Downloading and installing. ${PRODUCT} will restart in a moment.`;
     case "failed": return s.reason;
     default: return `Version ${current}.`;
   }
@@ -39,6 +39,7 @@ export function afterInstallFailed(prev: UpdateState | null, reason: string): { 
 export const canInstall = (working: boolean) => !working;
 
 import { waitsForAnswer, type Model } from "./model.ts";
+import { PRODUCT } from "./strings.ts";
 
 type Busy = { character?: string; task?: unknown; receipt?: unknown; agents?: unknown; plan?: unknown; paused?: unknown; agentsAsk?: unknown; drive?: unknown; stuck?: unknown; approvals?: unknown[]; install?: { stage?: string } | null; practice?: { stage?: string } | null; shipFlow?: { stage?: string } | null; diagram?: { stage?: string } | null; point?: { stage?: string } | null };
 

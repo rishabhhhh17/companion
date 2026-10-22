@@ -1,5 +1,6 @@
 // Drive: a plan first, then one step at a time. This file holds the plain, testable parts.
 import { priceRatio } from "./models.ts";
+import { PRODUCT } from "./names.ts";
 
 // The usual most steps in a plan. The person may change it ("Most steps in a plan", drive.maxSteps, 3 to 20), read when a
 // plan is made; Rescue's own plans keep this one, and their own 1 to 7 steps (rescue.ts).
@@ -31,7 +32,7 @@ export const planPrompt = (goal: string, max = MAX_STEPS) =>
 Reply with ONLY a JSON list of short steps in plain words, for example ["Add the prices section", "Add the contact line"].
 - Use as few steps as the goal needs. A small goal is 1 to 3 steps. Never more than ${max}.
 - Each step is one real change that produces something a person could see or check, such as "Add the prices section" or "Make the form send an email".
-- Do not include steps about opening editors, saving files, opening a browser or looking at the result. Companion saves, checks and opens things itself.
+- Do not include steps about opening editors, saving files, opening a browser or looking at the result. ${PRODUCT} saves, checks and opens things itself.
 
 Goal: ${goal}`;
 export const shortenPrompt = (n: number, max = MAX_STEPS) =>

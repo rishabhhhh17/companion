@@ -10,6 +10,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { envNames, inspectProject } from "./proof/intake.ts";
 import { MAX_STEPS, parseLesson, type Lesson } from "./walk.ts";
+import { PRODUCT } from "./names.ts";
 
 export const SETTINGS_LESSON = "from-project-settings";
 export const VERCEL_LESSON = "from-project-vercel";
@@ -119,7 +120,7 @@ export function settingsLesson(n: Needs, shape?: string): Lesson | null {
       ? warning(name)
       : w
         ? fit(200, `${name}: copy it from ${w.from}.${w.note ? ` ${w.note}` : ""} ${line}`, `${name}: copy it from ${w.from}. ${line}`, `Copy ${name} from ${w.from}, and add it to ${file}.`, `${line}`, `Add ${name} to ${file}.`)
-        : fit(200, `${name}: Companion does not know where this value comes from, so look in the project's README or ask whoever made it. ${line}`, `${name}: Companion does not know where it comes from; see the project's README. ${line}`, `Add ${name} to ${file}. Companion does not know where it comes from; see the README.`, `Add ${name} to ${file}.`);
+        : fit(200, `${name}: ${PRODUCT} does not know where this value comes from, so look in the project's README or ask whoever made it. ${line}`, `${name}: ${PRODUCT} does not know where it comes from; see the project's README. ${line}`, `Add ${name} to ${file}. ${PRODUCT} does not know where it comes from; see the README.`, `Add ${name} to ${file}.`);
     return { id: stepId("set", name), say, find: w && !exposedSecret(name) ? w.find : `the ${file} file in your editor`, check: exposedSecret(name) ? { kind: "ask" } : { kind: "env_name", name } };
   });
   const goal = total > names.length
@@ -128,7 +129,7 @@ export function settingsLesson(n: Needs, shape?: string): Lesson | null {
   return made({
     id: SETTINGS_LESSON, title: "Set up the settings this project needs", app: "Your editor", goal, status: "draft", needsProject: true,
     steps: [
-      { id: "file", say: `Make a file named ${file} in your project's top folder if it is not there yet, and open it in your editor. Keys go only in this file, never in Companion or a chat.`, find: `the ${file} file in your project's top folder`, check: { kind: "file_exists", path: file } },
+      { id: "file", say: `Make a file named ${file} in your project's top folder if it is not there yet, and open it in your editor. Keys go only in this file, never in ${PRODUCT} or a chat.`, find: `the ${file} file in your project's top folder`, check: { kind: "file_exists", path: file } },
       ...steps,
       { id: "restart", say: start ? fit(200, `Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then run ${start} again.`,"Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then start it again.") : "Restart your project so it reads the new settings: stop it in its Terminal with Control and C, then start it again.", find: "the Terminal window where your project runs", check: { kind: "ask" } },
     ],
@@ -151,7 +152,7 @@ export function vercelLesson(n: Needs, shape?: string): Lesson | null {
         ? fit(200, `${box} The value is in ${here} on your Mac.`, box, `Add ${name} with its value, then press Save.`)
         : w
           ? fit(200, `${box} Get the value from ${w.from}.`, box, `Add ${name} with its value, then press Save.`)
-          : fit(200, `${box} Companion does not know where the value comes from; see the project's README.`, box, `Add ${name} with its value, then press Save.`);
+          : fit(200, `${box} ${PRODUCT} does not know where the value comes from; see the project's README.`, box, `Add ${name} with its value, then press Save.`);
     return { id: stepId("add", name), say, find: "the Name and Value boxes under Environment Variables", check: { kind: "ask" } };
   });
   const goal = total > names.length

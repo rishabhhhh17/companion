@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { checkBrowser, getBrowser } from "./commands.ts";
 import { browserView, initial, reduce, type Model } from "./model.ts";
-import { S } from "./strings.ts";
+import { S, PRODUCT } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -98,7 +98,7 @@ describe("every stage of the download", () => {
     expect(browserView(reduce(m, { type: "ui.browserClosed" } as never))).toBeNull();
   });
   test("failed: the engine's plain reason and Try again", () => {
-    const v = browserView(run([progress(10), ev({ type: "browser.install", stage: "failed", detail: "Companion could not reach the download server. Check your internet connection, then try again." })], offered()))!;
+    const v = browserView(run([progress(10), ev({ type: "browser.install", stage: "failed", detail: `${PRODUCT} could not reach the download server. Check your internet connection, then try again.` })], offered()))!;
     expect(v.line).toMatch(/could not reach/);
     expect(v.button).toBe(S.browserTryAgain);
     expect(v.busy).toBe(false);
