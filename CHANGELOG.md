@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Answering a question now carries your plan on: 22 Oct 2026
+
+- **A found bug, fixed:** when you ask for something vague ("a one page website for my bakery"), the first step builds the page and then asks a question only you can answer, such as the bakery's name, and the plan stops. Until now, typing the answer finished only that one thing and **the other steps were forgotten**: they never ran.
+- **Now your answer finishes that step and the rest of the plan carries on**, in the same folder, each step with its own undo point, check and receipt, and the answer is used in the later steps. The same rules hold: anything that needs a tap still asks, the plan keeps only the money it had left, and Undo of that step ends the plan.
+- **The words on the card say so:** under the question it now reads that this step finishes with your answer and the rest of the plan carries on, and a plan stopped on a question says it carries on when you give it.
+- **Checked on real Claude, twice, for about $0.20 in all:** the plan did carry on after the answer, with proof and a receipt for each step. Both times Claude then asked a second question (an email address, because the plan's contact step mentions one and the request had none), and the second answer carried it on to the end. Not yet seen on a real Mac screen.
 ## The daily spending limit now covers the small helpers when no project is open: 22 Oct 2026
 
 - **A gap is closed.** The small helpers (Prompt help, Show me how, the error explainer, Second Look, Draw it for me, Explain and pictures you add) used to count against your daily spending limit only when a project was open. With no project open they were not counted, so there was no daily cap on them. Show me how was not counted at all, even with a project open.

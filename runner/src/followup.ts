@@ -35,6 +35,13 @@ export const answerPrompt = (text: string) =>
 export const freshAnswerPrompt = (goal: string, text: string) =>
   `${freshStart(goal)}\n\nYou asked the person a question, and they answered:\n${answered(text)}\n\nCarry on with the task. Keep the change small, and keep what already works.`;
 
+// The question stopped a plan: the answer finishes that step, and the plan's later steps follow it (agent.ts driveSteps).
+export const planAnswerPrompt = (index: number, total: number, title: string, text: string, question?: string) =>
+  `The person answered your question${question ? ` (${clip(question, 200)})` : ""}:\n${answered(text)}\n\nThis is step ${index} of ${total}: ${title}\n\nUse the answer, do only this step, keep the change small, keep what already works, and stop when it is done.`;
+// Off the record the later steps start afresh, so the plan's goal carries the answer for them.
+export const planGoalWithAnswer = (goal: string, question: string | undefined, text: string) =>
+  `${goal}\n\n${question ? `You asked the person: ${clip(question, 200)}\n` : ""}The person answered:\n${answered(text)}`;
+
 /** How the last attempt ended, so Try again never tells Claude something false about it. */
 export type Ending = "failed_check" | "spending_limit" | "error" | "no_connection" | "claude_busy" | "asked" | "stopped" | "unfinished" | "finished";
 /** From the task's status and its check: a check that failed is said first, even if the task then stopped. */

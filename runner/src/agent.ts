@@ -12,7 +12,7 @@ import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
-import { answerPrompt, differentTaskPrompt, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, retryPrompt, type Ending, type Failure } from "./followup.ts";
+import { answerPrompt, differentTaskPrompt, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
@@ -187,7 +187,7 @@ type Stuck = { failure: { label: string; detail: string }; end: LoopEnd };
 // practice: the practice project the task fixes, so a follow up or Try again on it is still that practice's.
 // asked: it ended on a question to the person (asks.ts), so a follow up is their answer; question: that question (secrets
 // hidden, short), which names the task the answer starts, never the answer itself.
-type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean; practice?: string; asked?: boolean; question?: string };
+type LastTask = { project: string; model: string; mode: StartCmd["mode"]; budgetUsd: number; offTheRecord: boolean; sessionId?: string; goal: string; first: string; ending: Ending; failure?: Failure; undone?: boolean; practice?: string; asked?: boolean; question?: string; plan?: PlanRest };
 type Step1 = NonNullable<RunOpts["step"]>;
 
 // "Your turn": a proven fix that made the same small change in two places can be offered to the person (teach.ts). offer: the
@@ -252,6 +252,9 @@ const summary = (c: ToolUse): string => {
 };
 
 // maxSteps: the most steps this plan may run, as it was when the plan was made (drive.maxSteps; Rescue keeps MAX_STEPS).
+// A plan that stopped on a question for the person (a step finished, was proven, and asked): everything the answer needs to
+// carry the plan on from that step. Kept with the last task, so Undo, a new task or an engine restart end it too.
+type PlanRest = { id: string; steps: string[]; from: number; model: string; budgetUsd: number; remaining: number; goal?: string; offTheRecord?: boolean; question?: string };
 type PendingPlan = { project: string; model: string; budgetUsd: number; usd: number; sessionId?: string; offTheRecord?: boolean; goal?: string; maxSteps: number };
 
 export class AgentRunner {
@@ -727,6 +730,15 @@ export class AgentRunner {
     // it before Claude is sent it). The answer is never the task's name or its goal: a pasted value, a key whose shape is not
     // known among them, would otherwise be kept in tasks.db and What I did. The task is named by the question it answers.
     const answering = !retry && !!last.asked;
+    // The question stopped a plan: the answer finishes that step and carries the plan on with the steps that were waiting,
+    // each with its own undo point, check and receipt, in the same project. Nothing else changes: the same safety rules, the
+    // same approval cards and the same budget (what the plan had left).
+    if (answering && last.plan) {
+      const rest = last.plan;
+      const goal = rest.offTheRecord ? planGoalWithAnswer(rest.goal ?? "", rest.question, text) : rest.goal;   // off the record the later steps start afresh, and are told the answer
+      await this.driveSteps({ id: rest.id, agent: cmd.agent, project: last.project, model: rest.model, budgetUsd: rest.budgetUsd, offTheRecord: rest.offTheRecord, goal, steps: rest.steps, from: rest.from, remaining: rest.remaining, spent: 0, session: fresh ? undefined : last.sessionId, answer: { text, question: rest.question } });
+      return;
+    }
     const prompt = retry
       ? (fresh ? freshRetryPrompt(last.first, last.goal, last.ending, last.failure) : retryPrompt(last.goal, last.ending, last.failure))
       : answering ? (off ? freshAnswerPrompt(last.first, text) : answerPrompt(text))
@@ -2024,13 +2036,21 @@ export class AgentRunner {
     const steps = cmd.steps.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, plan.maxSteps);
     if (steps.length === 0) { this.fail("A plan needs at least one step.", cmd.agent); return; }
     this.plans.delete(cmd.agent);
+    await this.driveSteps({ id: cmd.id, agent: cmd.agent, project: plan.project, model: plan.model, budgetUsd: plan.budgetUsd, offTheRecord: plan.offTheRecord, goal: plan.goal, steps, from: 0, remaining: plan.budgetUsd - plan.usd, spent: plan.usd, session: plan.sessionId });
+  }
+
+  // Runs a plan's steps one after another, from step `from` (0 at the start; the step that asked, when an answer carries a
+  // stopped plan on). One drive.done ends it, with what this run spent.
+  private async driveSteps(spec: { id: string; agent: string; project: string; model: string; budgetUsd: number; offTheRecord?: boolean; goal?: string; steps: string[]; from: number; remaining: number; spent: number; session?: string; answer?: { text: string; question?: string } }): Promise<void> {
+    const cmd = { agent: spec.agent, id: spec.id }, steps = spec.steps;
+    const plan = { project: spec.project, model: spec.model, budgetUsd: spec.budgetUsd, offTheRecord: spec.offTheRecord, goal: spec.goal };
     this.driving.add(cmd.agent);
     this.driveStop.delete(cmd.agent);
     // The whole plan is one task to the person: a yes "for the rest of this task" holds for every step, and ends with the plan.
     const taskAllowed = new Set<string>();
     this.planAllowed.set(cmd.agent, taskAllowed);
     const total = steps.length;
-    let remaining = plan.budgetUsd - plan.usd, spent = plan.usd, completed = 0, status = "done", session = plan.sessionId;
+    let remaining = spec.remaining, spent = spec.spent, completed = spec.from, status = "done", session = spec.session;
     // Take the wheel: watch for changes the agent did not make, only while the plan is running.
     // Each file the person changes is written down first, so Undo of an earlier step never replaces it.
     const watcher = new ProjectWatcher(plan.project, (path) => { this.store(plan.project).notePersonEdit(path); this.requestPause(cmd.agent, "files_changed", path); });
@@ -2052,7 +2072,7 @@ export class AgentRunner {
       return choice === "resume" && !this.driveStop.has(cmd.agent);
     };
     try {
-      for (let i = 0; i < total; i++) {
+      for (let i = spec.from; i < total; i++) {
         const index = i + 1, title = steps[i];
         if (this.driveStop.has(cmd.agent)) { status = "interrupted"; break; }
         if (!(await pauseHere())) { status = "interrupted"; break; }
@@ -2065,12 +2085,16 @@ export class AgentRunner {
         // A follow up after the plan carries on from this step: its title (never the step's instructions), the plan's goal,
         // and the plan's whole budget (a step's own budget is only what the plan had left).
         const carry = { goal: title, first: plan.goal?.replace(/\s+/g, " ").trim() || title, followBudgetUsd: plan.budgetUsd };
+        // The step that asked is run again with the person's answer (its own undo point, check and receipt), under the step's
+        // own name: the answer is never the task's name (it may be a value to keep out of the task list).
+        const answering = spec.answer !== undefined && i === spec.from;
+        const answerOpts = answering ? { label: `Step ${index} of ${total}: ${title}`, said: title, asked: stepPrompt(index, total, title) } : {};
         // One run of the step, and of the same step after each pause in it: the first run, and a Try a different approach
         // run after the loop card, are paused and carried on alike.
-        const runStep = async (first: string): Promise<Awaited<ReturnType<AgentRunner["run"]>>> => {
+        const runStep = async (first: string, extra: { label?: string; said?: string; asked?: string } = {}): Promise<Awaited<ReturnType<AgentRunner["run"]>>> => {
           let prompt = first;
           for (;;) {
-            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, step: { index, title } });
+            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, ...extra, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
             // Paused in the middle of the step: wait, then carry on with the same step.
             if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
@@ -2080,7 +2104,7 @@ export class AgentRunner {
             return r;
           }
         };
-        let r = await runStep(stepPrompt(index, total, title));
+        let r = answering ? await runStep(planAnswerPrompt(index, total, title, spec.answer!.text, spec.answer!.question), answerOpts) : await runStep(stepPrompt(index, total, title));
         // The same failure on every check (three, as usual), or with work.askOnAnyFailure any failures: stop and ask, once
         // per step.
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
@@ -2092,6 +2116,12 @@ export class AgentRunner {
         }
         if (r.status === "done") { completed++; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "done" } as never); continue; }
         status = r.status;
+        // A step that asked the person something stops the plan there, and the answer carries it on from this step: the rest
+        // of the plan is kept with the task that asked (never run without the answer, and gone with an Undo or a new task).
+        if (r.status === "needs_you") {
+          const last = this.lastTask.get(cmd.agent);
+          if (last?.asked) this.lastTask.set(cmd.agent, { ...last, plan: { id: cmd.id, steps, from: i, model: plan.model, budgetUsd: plan.budgetUsd, remaining, ...(plan.goal ? { goal: plan.goal } : {}), ...(plan.offTheRecord ? { offTheRecord: true } : {}), ...(last.question ? { question: last.question } : {}) } });
+        }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: r.status === "interrupted" ? "stopped" : r.status === "error_max_budget_usd" ? "over_budget" : "not_done" } as never);
         break;
       }

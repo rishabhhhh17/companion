@@ -24,7 +24,7 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // undone: an undo point in this project was restored after it, so the work it shows is no longer what is in the files.
 // said: the agent's last words (secrets hidden again here); asks: they ask the person something, so the task needs them.
 // gone: the engine restarted after it, and the new one keeps no conversation to carry on, so it cannot be followed up.
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; gone?: boolean };
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean };
 // checkpoint: the undo point it began with (a task that changes files; a read only look has none).
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
@@ -318,7 +318,8 @@ const saidOf = (e: Ev): { said?: string; asks?: boolean } => {
   // Words that ask the person keep their end (the question is the last line); any other keeps its start.
   const chars = Array.from(flat);
   const said = chars.length <= SAID_MAX ? flat : e.asks === true ? `…${chars.slice(chars.length - (SAID_MAX - 1)).join("").trimStart()}` : `${chars.slice(0, SAID_MAX - 1).join("").trimEnd()}…`;
-  return said ? { said, ...(e.asks === true ? { asks: true } : {}) } : {};
+  // inPlan: the question stopped a plan, so the answer carries the plan on (the engine keeps the steps that were waiting).
+  return said ? { said, ...(e.asks === true ? { asks: true, ...(e.inPlan === true ? { inPlan: true } : {}) } : {}) } : {};
 };
 
 // ---- the practice projects (practice.ts has the catalog) ----
@@ -1258,7 +1259,7 @@ export function receiptSaid(m: Model): { lead: string; words: string; help?: str
   const r = m.receipt;
   if (!r?.said) return null;
   if (!r.asks || r.undone || r.gone) return { lead: S.receiptSaid, words: r.said };
-  return { lead: waitsForAnswer(m) ? S.receiptAsks : S.receiptAsksToo, words: r.said, help: S.receiptAnswerHelp };
+  return { lead: waitsForAnswer(m) ? S.receiptAsks : S.receiptAsksToo, words: r.said, help: r.inPlan ? S.receiptAnswerHelpPlan : S.receiptAnswerHelp };
 }
 
 // The receipt's one line about its checks. "Checked and working" only while no place has its old code back from a turn.

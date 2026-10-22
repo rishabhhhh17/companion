@@ -833,10 +833,11 @@ export const S = {
   receiptAsksToo: "It asks",
   receiptGone: "The engine restarted after this task, so it cannot be followed up or tried again. Start a new task to carry on.",
   receiptAnswerHelp: "Type your answer below. It carries on from here, with a new undo point and a new check. A key or a password never goes here: add it to your project's settings yourself.",
+  receiptAnswerHelpPlan: "Type your answer below. This step finishes with it, then the rest of the plan carries on, each step with its own undo point and check. A key or a password never goes here: add it to your project's settings yourself.",
   followUpAnswer: "Your answer (never a key or a password)",
   followUpAnswerLabel: "Your answer",
   historyNeedsYou: "Waiting for your answer",
-  driveNeedsYou: "a step needs your answer",
+  driveNeedsYou: "a step needs your answer, and the plan carries on when you give it",
   // Claude out of reach: what happened and what to do, never blaming the project or the key.
   noConnection: `${PRODUCT} could not reach Claude. Check that your Mac is online, then press Try again.`,
   claudeBusy: "Claude is busy or having trouble right now. This is on Anthropic's side. Wait a minute, then press Try again.",

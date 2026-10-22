@@ -33,6 +33,16 @@ describe("the agent's last words on the receipt", () => {
     expect(w.lead).toBe(S.receiptAsksToo);
     expect(w.help).toBe(S.receiptAnswerHelp);
   });
+  test("a question that stopped a plan says the rest of the plan carries on after the answer", () => {
+    const inPlan = run([...begin, receipt({ said: QUESTION, asks: true, inPlan: true }), state("needsYou")]);
+    const w = receiptSaid(inPlan)!;
+    expect(w.help).toBe(S.receiptAnswerHelpPlan);
+    expect(S.receiptAnswerHelpPlan).toMatch(/rest of the plan carries on/);
+    expect(w.help).not.toBe(receiptSaid(asked)!.help);
+    expect(waitsForAnswer(inPlan)).toBe(true);
+    expect(canFollowUp(inPlan, P)).toBe(true);
+    expect(canRetry(inPlan, P)).toBe(false);
+  });
   test("a plain report is shown as what it said", () => {
     const w = receiptSaid(reported)!;
     expect(w.lead).toBe(S.receiptSaid);
