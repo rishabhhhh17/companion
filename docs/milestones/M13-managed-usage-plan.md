@@ -37,11 +37,11 @@ The limits are real dollars of Anthropic cost, so they stay true when prices cha
 - the plan table and the budget rules (daily, monthly, a reserve so a request cannot overshoot far);
 - the request filter (paths, models, size, `max_tokens`);
 - the usage reader for streaming and non streaming replies;
-- Stripe event handling: verifying the signature, and turning subscription events into plan changes;
+- Payment event handling: verifying the signature, and turning subscription events into plan changes. Stripe first; **Dodo Payments added 23 Oct 2026** (see below);
 - a test that nothing in any log, error or stored record contains a request or reply body.
 
 ## What is not built, and why
-- **Deployment, the Stripe account, the domain and the sign up pages:** need you (accounts, money, names).
+- **Deployment, the Stripe or Dodo account, the domain and the sign up pages:** need you (accounts, money, names).
 - **The app side** (a "managed" route in the runner, the sign up screen, the key screen's new option): the runner change is small and comes next; the screens wait for the look.
 - **Accounts, email verification and abuse limits on sign up:** needs a real database and an email service. Planned after the core.
 - **Privacy policy and terms:** the drafts in `docs/launch/legal/` say "no proxy". They must be rewritten and reviewed by the lawyer before this is on.
@@ -61,3 +61,12 @@ If Anthropic says no, steps 4 to 6 do not happen. The core is not wasted if they
 - A leaked Companion token can spend one user's daily limit, no more.
 - Prompts pass through your server. You can truthfully say the server does not store them, only if the tests keep proving it.
 - Anthropic can change its terms. The own key route stays as the way out.
+
+## Payments through Dodo Payments (23 Oct 2026, founder's choice)
+The founder will charge through Dodo Payments, a merchant of record, instead of Stripe. `usage-proxy/src/dodo.ts` does for Dodo what `stripe.ts` does for Stripe, with the same safety: the signature is checked (Standard Webhooks), a replay window of 300 seconds, each event applied once and in order, the Dodo product to plan table is configuration, an unknown product grants nothing, nothing is logged but short identifiers. `payments.ts` holds one provider setting (`none`, `stripe`, `dodo`; default none) and one webhook path each; with none, no route is served. Set up and behaviour: `usage-proxy/README.md`. Dodo's fees, payout schedule and terms are Dodo's own: check the dashboard and its docs.
+
+**Unproven until a real Dodo test mode webhook is received** (the founder creates the account):
+- [verify] checkout `metadata` reaching the subscription events. Dodo's docs call it metadata "associated with the payment" and do not say it is copied to the subscription. The code also learns the link from `payment.succeeded` (same Dodo customer id).
+- [verify] the subscription webhook payload carries `product_id`, `status`, `customer.customer_id`, `metadata` and `past_due_ends_at`. Dodo's subscription API lists them, but its webhook payload page has no sample.
+- [verify] what `cancelled` means for access timing. We drop to free at once (leans to not granting).
+- [verify] the real request: header names, timestamp unit, the retry on a 503.

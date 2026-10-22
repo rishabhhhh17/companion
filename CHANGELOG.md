@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Getting paid through Dodo Payments is built, and still switched off: 23 Oct 2026
+
+- **The plan:** people will pay for Squibby's included usage through Dodo Payments, which sells the plans and takes the payment, instead of Stripe. The code that listens to Dodo's messages (a person subscribed, renewed, missed a payment, cancelled) is written and tested. It sits next to the Stripe one.
+- **Safe by default:** it checks every message really came from Dodo, ignores old or repeated ones, and applies each only once and in order, so an old message can never undo a newer one. A cancelled, expired, failed or on hold plan drops the person to the free plan straight away. If it is unsure, it grants nothing.
+- **Which plan is which** is a small settings file you fill in with the product ids from your Dodo dashboard, not something written into the code. A product it does not know gets no plan, and it says so in plain words.
+- **Privacy:** it never writes a message body, an email or a name in any log, and the signing secret lives only in the server's settings, never in the repo.
+- **Still off:** no payment address is served at all unless you pick a provider, and included usage itself stays off until Anthropic says yes in writing. Fees, payout timing and terms are Dodo's own: check your Dodo dashboard.
+- **Checked by machine only,** with made up messages and no network. No real Dodo test message has been received yet: that needs your Dodo account. What may differ in real life is listed in the managed usage plan.
+
 ## You can now see what Squibby made and clean it up: 22 Oct 2026
 
 - **A new list in Settings, "What Squibby made".** When you ask Squibby to make something with no project open, it makes a new folder for it. Until now you had no way to see those folders in one place. The list shows each one with when it was made and about how big it is. It sits under Practice, below the setting that says where new folders go.

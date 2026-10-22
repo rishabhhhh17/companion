@@ -25,6 +25,9 @@ Anthropic's terms for products built on Claude Code (which includes the Agent SD
 - Hedges to look at: Claude Managed Agents with self hosted sandboxes [verify], and OpenAI's "Sign in with ChatGPT" (commercial apps on a waitlist).
 - Source: `docs/research/2026-10-22-reality-check.md`, section 5.
 
+## Payments through Dodo Payments (founder's choice, 23 Oct 2026)
+Plans are sold and charged through Dodo Payments (a merchant of record), not Stripe. The gate above is unchanged: choosing a payment provider does not switch managed usage on, and with no provider set the proxy serves no payment route. `usage-proxy/src/dodo.ts` and `payments.ts` are built and tested, off by default; `stripe.ts` stays as the other choice. Fees, payout schedule and terms: Dodo's own docs and dashboard, not stated here. Not yet proven against a real Dodo test mode webhook (see `docs/milestones/M13-managed-usage-plan.md`).
+
 ## What changes in the rules
 `AGENTS.md` rule 1 ("never pay for, resell or route anyone's Claude usage") now reads as true unless managed usage is switched on with Anthropic's written yes. Rule 2 (the key stays in the Keychain) is unchanged: on managed usage there is no user key, only a Companion sign in token, kept in the Keychain the same way, and Companion's own Anthropic key never leaves the server.
 
