@@ -1,6 +1,6 @@
 // Settings (the registry, protocol/settings.json, T16): a search box, then every setting in its section, in the
 // registry's order, each row with its usual value and Reset when it differs; Reset this section and Reset all settings
-// to usual (each naming what changes first, then Undo for ten seconds); then the parts that are not settings (permissions, the key, practice, what
+// to usual (each naming what changes first, then Undo for ten seconds); then the parts that are not settings (permissions, the key, practice, the folders made for you, what
 // Companion keeps with Delete everything, acknowledgements, logs). Every change goes to the shell through settingsStore.ts
 // (settings_set), which checks it, keeps it, applies it and tells every window. Every word is in strings.ts. Keyboard and
 // VoiceOver reach everything: each row is a named group, switches are role switch, choices a radio group with the arrows.
@@ -22,6 +22,7 @@ import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setti
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
 import { GroupsPanel } from "./groupsPanel.tsx";
+import { MadePanel } from "./madePanel.tsx";
 import { buttonShown, permissionNeeded, type Permission } from "./groups.ts";
 import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, neverFrontOp, type Answer, type AppRow } from "./appanswers.ts";
 import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
@@ -833,6 +834,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       )}
       {practiceSaid && <div className="line" role="status">{practiceSaid}</div>}
       </Group>}
+      {fixedShown("made") && <Group title={S.fixedGroups.made.title}><MadePanel busy={practiceBusy} project={project} /></Group>}
       {fixedShown("kept") && <Group title={S.settingsKept}>
       {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
       {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}

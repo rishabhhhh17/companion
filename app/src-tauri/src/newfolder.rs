@@ -136,11 +136,11 @@ fn in_project(p: &Path, known: &[String]) -> Option<String> {
     known.iter().filter(|k| !k.is_empty()).filter_map(|k| fs::canonicalize(k).ok()).find(|k| p.starts_with(k)).map(|k| k.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
-/// Makes the new folder and returns its full real path. `known`: the projects the person chose before (the current one
-/// and the recent list), which a new folder may never be inside. `taken` says yes to anything at a path, and to a path an
-/// old folder's undo history still holds (practice::taken). On a refusal nothing is made, except that the folder for all
-/// of them may stay, empty.
-pub fn make(home: &Path, place: &str, base: &str, data: &Path, known: &[String], taken: impl Fn(&Path) -> bool) -> Result<PathBuf, String> {
+/// The folder for all of them in the place the setting names, and the real home folder it is under: the home folder, then
+/// Documents or the Desktop (each a real folder, never a link or a file), then the folder for all of them by its name. The
+/// last folder may not exist yet. The one place that works this out, for making a folder and for listing what was made
+/// (made.rs), so both always mean the same folder. `place` comes from the setting, never from a page.
+pub fn parent_of(home: &Path, place: &str) -> Result<(PathBuf, PathBuf), String> {
     let settings_hint = "Pick another place for new folders in Settings.";
     if !home.is_absolute() { return Err("Your home folder was not found.".into()); }
     let home_real = fs::canonicalize(home).ok().filter(|h| h.is_dir()).ok_or("Your home folder was not found.")?;
@@ -154,7 +154,16 @@ pub fn make(home: &Path, place: &str, base: &str, data: &Path, known: &[String],
             Err(_) => return Err(format!("Your {d} folder was not found. {settings_hint}")),
         }
     }
-    let parent = at.join(parent_name());
+    Ok((home_real, at.join(parent_name())))
+}
+
+/// Makes the new folder and returns its full real path. `known`: the projects the person chose before (the current one
+/// and the recent list), which a new folder may never be inside. `taken` says yes to anything at a path, and to a path an
+/// old folder's undo history still holds (practice::taken). On a refusal nothing is made, except that the folder for all
+/// of them may stay, empty.
+pub fn make(home: &Path, place: &str, base: &str, data: &Path, known: &[String], taken: impl Fn(&Path) -> bool) -> Result<PathBuf, String> {
+    let settings_hint = "Pick another place for new folders in Settings.";
+    let (home_real, parent) = parent_of(home, place)?;
     // Checked before anything is made, so a refusal leaves nothing behind.
     if let Some(g) = in_git(&parent) { return Err(format!(concat!("{} is inside a git project, so ", crate::product!(), " will not make a new folder there. {settings_hint}"), g.display(), settings_hint = settings_hint)); }
     if let Some(p) = in_project(&parent, known) { return Err(format!(concat!("That place is inside your project {p}, so ", crate::product!(), " will not make a new folder there. {settings_hint}"), p = p, settings_hint = settings_hint)); }

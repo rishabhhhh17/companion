@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## You can now see what Squibby made and clean it up: 22 Oct 2026
+
+- **A new list in Settings, "What Squibby made".** When you ask Squibby to make something with no project open, it makes a new folder for it. Until now you had no way to see those folders in one place. The list shows each one with when it was made and about how big it is. It sits under Practice, below the setting that says where new folders go.
+- **Three buttons on each folder:** Open as project, Show in Finder, and Move to the Trash. Moving to the Trash always asks first, names the folder, and says you can put it back from the Trash. Nothing is ever deleted outright.
+- **What it will not do:** it will not move the project you have open, or any folder while something is working or waiting for you. It only lists real folders sitting directly in that one folder, never a shortcut to somewhere else, and it only looks at names, dates and sizes, never inside your files.
+- **If a folder has git history,** the list says so and asks a second, longer question before moving it. Squibby does not run any git command or touch your git; the folder simply goes to the Trash with its history, and can be put back.
+- **Checked by machine only,** with temporary folders and a stand in for the Trash. Nobody has tried it on a real Mac yet, so the real Trash, and folders kept in iCloud Desktop and Documents, are not yet checked.
 ## A plan for the first demo clip and the launch: 22 Oct 2026
 
 - **A shot list for the first clip** (red to green, with Undo and the one line why, about 25 seconds, on the practice project), two follow up clips, the post words, true answers to the questions a reel like this gets, and a launch order that fits one person: `docs/launch/demo-clip-and-launch-plan.md`.
