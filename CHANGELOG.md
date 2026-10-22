@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Drop a document in and ask about it: 22 Oct 2026
+
+- **You can now drag a PDF, Word, rich text, OpenDocument or Excel file into the ask box** (up to 20 MB), and Squibby reads its words on your Mac, hides anything that looks like a password or key, and sends only the text with your question. Nothing is kept, and the file itself is never sent.
+- **Plain lines instead of failures:** a locked PDF, a scanned page with no text, and a file that cannot be read each get their own short explanation. Old `.xls`, Pages, Numbers and Keynote files are not supported yet.
+- **How much text goes** is a setting (20, 50 or 100 KB; 50 by default), and a long document says in plain words where it was cut.
+- **Quiet while another app uses your microphone** is built but switched off until the Mac session shows it works without surprises.
+
 ## "Make me something" tried on real Claude: 22 Oct 2026
 
 - **The engine behind "make something with no project open" has now run on real Claude, in a brand new empty folder.** A one page bakery site was planned in 3 plain steps, built, checked in a hidden browser and given a receipt for each step. "What should I know before opening a small bakery" came back with 4 cited notes and nothing else written. Undo took the page away again. Nothing was written outside the new folder, no key leaked, nothing touched git. All of it cost about 23 cents.

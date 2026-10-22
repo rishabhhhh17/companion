@@ -134,6 +134,7 @@
     { "key": "drop.quality", "section": "files", "kind": "choice", "default": "medium", "options": ["high", "medium", "small"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "drop.sampleRate", "section": "files", "kind": "choice", "default": "44100", "options": ["16000", "22050", "44100", "48000"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "drop.saveTo", "section": "files", "kind": "choice", "default": "nextTo", "options": ["nextTo", "downloads", "desktop"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "drop.never" },
+    { "key": "attach.docLimit", "section": "files", "kind": "choice", "default": "50", "options": ["20", "50", "100"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
 
     { "key": "sharing.hide", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
