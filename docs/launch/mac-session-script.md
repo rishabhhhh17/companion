@@ -7,12 +7,12 @@ The app has never been opened as an app. Everything before this was tested witho
 Rules for you during the hour:
 - Use the capped API key (the one in the `companion-testing` workspace). Paste it only into the app's own key box. Never into chat.
 - Do not sign in to anything for the test. Use a throwaway project folder (step 3 makes one).
-- If something asks for your Mac password, press Cancel and note it. Companion should never ask for it.
+- If something asks for your Mac password, press Cancel and note it. Squibby should never ask for it.
 
 ## Before you start (5 minutes)
 
 0. **Build the latest app first** (about 5 to 10 minutes, the first one is slower). The app on disk was built before the latest fixes, and the engine inside it is copied at build time. From the `companion` folder in Terminal: `sh app/scripts/build-app.sh`. It prints the path of the finished app.
-1. Quit the app if it is open. Run `open app/src-tauri/target/release/bundle/macos/Companion.app` from the `companion` folder (or double click it in Finder).
+1. Quit the app if it is open. Run `open app/src-tauri/target/release/bundle/macos/Squibby.app` from the `companion` folder (or double click it in Finder).
 2. The Mac will say it cannot check the app, because it is not signed yet. That is expected. Right click the app, choose Open, then Open again. **Note if it does not let you.**
 3. Make a throwaway folder on the Desktop called `test-shop`. Put one file in it: `index.html` with the text `<button onclick="showGallery()">Show gallery</button><script>function show(){}</script>`. This is the broken button the tests used.
 
@@ -22,7 +22,7 @@ Rules for you during the hour:
 |---|---|---|---|
 | 1 | Open the app | No Dock icon. A small shape at the top centre of the screen (the island). A character on a screen edge | It crashes, nothing appears, or a Dock icon shows |
 | 2 | Click the island | A card drops down, centred, with five tabs: Now, What I did, Learn, Memory, Settings | It looks cut off, jumps, or takes your typing focus from another app |
-| 3 | First run: pick the `test-shop` folder | Plain words about what Companion can see. A folder chooser that comes back to the card afterwards | The chooser hides behind something, or the card does not come back |
+| 3 | First run: pick the `test-shop` folder | Plain words about what Squibby can see. A folder chooser that comes back to the card afterwards | The chooser hides behind something, or the card does not come back |
 | 4 | Paste the key when asked | A tick, no scary words. **Quit and reopen the app** | You are asked again after reopening, or a Keychain box asks for a password |
 | 5 | Try the practice (Learn tab) | A practice copy opens in a new folder in your home folder. Fixing it works | It fails, or says "done" when the fix did not work |
 
@@ -55,7 +55,7 @@ Rules for you during the hour:
 | 18 | Look in the menu bar for the mic and screen indicators | They are off when you are not using voice or show me | Either stays on |
 | 19 | Change one hotkey in Settings | It works at once, and a clash is explained in plain words | It silently fails |
 | 20 | Open Home, drag in a PDF with real text (a bank letter or an invoice), then a Word file and an Excel sheet, and ask "what is the total?" with Start | Each shows as a chip with its KB of text; the answer uses what is in them. A scanned PDF says it has no text to read; a long one says only its start goes | A chip is missing, the answer ignores the file, or anything waits more than a few seconds |
-| 21 | Join a test call in Zoom or FaceTime with Hide from screen sharing on, share your screen, and ask Companion something with Speak to me on | Your shared screen shows no character, ring or Home; while the call app is in front Companion does not speak | Any of them shows in the share, or it speaks over the call |
+| 21 | Join a test call in Zoom or FaceTime with Hide from screen sharing on, share your screen, and ask Squibby something with Speak to me on | Your shared screen shows no character, ring or Home; while the call app is in front Squibby does not speak | Any of them shows in the share, or it speaks over the call |
 
 ## Part 5: how it feels (5 minutes)
 

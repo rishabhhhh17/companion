@@ -1,10 +1,10 @@
-# Companion
+# Squibby
 
-*Working name. Every name here will change.*
+*The product is called Squibby (F24, 22 Oct 2026). The repo folder, the bundle identifier and the code names still say companion on purpose, so nobody loses saved data. The names a person reads live in one file, `protocol/names.json`.*
 
-> **Stuck while building with AI? Press the key. Your companion finds the problem on your screen, fixes it with you, and shows you why.**
+> **Stuck while building with AI? Press the key. Squibby finds the problem on your screen, fixes it with you, and shows you why.**
 
-Companion is a Mac app for people who build with AI tools (Lovable, Bolt, Replit, Cursor, Claude Code) and get stuck. It lives on the edge of your screen as a small character. It:
+Squibby is a Mac app for people who build with AI tools (Lovable, Bolt, Replit, Cursor, Claude Code) and get stuck. It lives on the edge of your screen as a small character. It:
 
 - **finds the problem in your own project** (the real failing line or error) and points at it,
 - **fixes it with you** in small steps, with a snapshot before each one so almost everything can be undone,
@@ -21,7 +21,7 @@ Mac first. Downloaded from our website, not an app store. The scope and order of
 ## What we promise
 
 - **Bring your own Claude.** You use your own Anthropic API key or cloud account. Using your Claude plan is planned, once Anthropic confirms it in writing. We never pay for, resell or sit between you and your Claude usage. Powered by Claude.
-- **It never watches you.** Your screen, other apps' text and your microphone are used only when you press a hotkey, with a visible light, and Companion never saves them. (M0 also checks that the Claude engine underneath keeps screenshots off disk.)
+- **It never watches you.** Your screen, other apps' text and your microphone are used only when you press a hotkey, with a visible light, and Squibby never saves them. (M0 also checks that the Claude engine underneath keeps screenshots off disk.)
 - **"Done" means proven.** Builds and tests pass, a real browser opens your app, and only then does it say done.
 - **Everything is undoable** except what it clearly tells you is not (like going live), and those always need your tap.
 - **It's a productivity tool,** not an AI friend.

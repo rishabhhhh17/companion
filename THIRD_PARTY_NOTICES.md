@@ -1,6 +1,6 @@
 # Third party notices
 
-Companion's own code is written for Companion. Where an idea was taken from open source work, it is named here, with the licence text the author asks to travel with it. No third party source file is copied into this repository.
+Squibby's own code is written for Squibby. Where an idea was taken from open source work, it is named here, with the licence text the author asks to travel with it. No third party source file is copied into this repository.
 
 ## Clicky (idea: pointing through the Computer Use tool)
 
