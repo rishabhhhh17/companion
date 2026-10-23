@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useS
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
+import { SharedFilesRow } from "./sharedFilesRow.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
@@ -2044,6 +2045,7 @@ function Card() {
           {m.memoryNote && <div className="line blocked" role="alert">{m.memoryNote}</div>}
           <MemoryList title={S.memoryProject} scope="project" lines={m.memory.projectLines} project={project} />
           <MemoryList title={S.memoryProfile} scope="profile" lines={m.memory.profileLines} project={project} />
+          <SharedFilesRow project={project} refresh={m.notice} send={send} />
           <div className="row">
             <button className="btn" type="button" onClick={() => void changeSetting("memory.paused", !m.memory!.paused)}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
             <button className="btn" type="button" role="switch" aria-checked={fun} onClick={() => void changeSetting("fun.reactions", !fun)}>{S.reactionsSetting}: {fun ? S.on : S.off}</button>

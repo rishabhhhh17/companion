@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A way to say yes to the shared notes in a folder Squibby made: 23 Oct 2026
+
+- **The gap:** in a folder Squibby makes for you ("make me something"), Squibby does not write AGENTS.md and CLAUDE.md, the notes other AI coding tools read, until you say yes. Until now there was no place in the screens to say it.
+- **Now:** open Home, then the Memory tab, in one of those folders. There is one plain row that says what the two files are for, with one button, Add them. Press it and they are added as soon as Squibby has notes about the project. Then the row says Added and does not ask again.
+- **Your own files are safe:** if the folder already has its own AGENTS.md or CLAUDE.md, the row says so and offers nothing. Squibby does not touch them. In any other project the row does not show, and nothing else changed.
+- **To take it out again:** the button at the bottom of the Memory tab that removes Squibby's notes from your shared files still does that.
+- **Checked by machine only:** the check that the open folder is one Squibby made, the four states of the row, and the words. Nobody has seen the row on a Mac yet, and whether the project's Undo also takes the two files out again is not proven.
+
 ## Getting paid through Dodo Payments is built, and still switched off: 23 Oct 2026
 
 - **The plan:** people will pay for Squibby's included usage through Dodo Payments, which sells the plans and takes the payment, instead of Stripe. The code that listens to Dodo's messages (a person subscribed, renewed, missed a payment, cancelled) is written and tested. It sits next to the Stripe one.

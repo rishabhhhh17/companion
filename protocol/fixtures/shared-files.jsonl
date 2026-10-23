@@ -1,0 +1,4 @@
+{"name":"not a made folder","about":"Nothing is open, or the open project is not directly inside the folder for all of them: the row is not drawn.","state":"no"}
+{"name":"a made folder with neither file","about":"The row offers to add the two files.","state":"offer"}
+{"name":"the engine's own block is there","about":"Added: the row says so and offers nothing.","state":"added"}
+{"name":"the person's own AGENTS.md or CLAUDE.md","about":"Own: the row says so and offers nothing. A link or a file that is not plain counts as the person's own.","state":"own"}
