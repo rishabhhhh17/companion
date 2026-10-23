@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The last two real checks held up after the rename: 23 Oct 2026
+
+- **Pointing at the screen:** it still hits the right spot 100% on simple pages, 95% on busy ones and 93% on everyday app windows (128 asks, about 67 cents).
+- **The loop breaker:** every case that could be fixed in one go was, and the two that only a person can decide stopped and asked. The loop card itself was not needed this time. About 21 cents.
+
 ## A way to say yes to the shared notes in a folder Squibby made: 23 Oct 2026
 
 - **The gap:** in a folder Squibby makes for you ("make me something"), Squibby does not write AGENTS.md and CLAUDE.md, the notes other AI coding tools read, until you say yes. Until now there was no place in the screens to say it.

@@ -68,3 +68,8 @@ Found while building it: the safety hook never guarded `.env` at all (T05 said i
 - **Not rerun:** loop breaker and the aim (pointing) eval. The loop breaker real scenario passed in the 21 case check the same day, and the aim eval's prompts did not change.
 - **Total real spend this session (Squibby's count):** about $4.7, of the founder's $30 cap. The Anthropic Console is the true figure.
 
+### Loop breaker and pointing, after the rename (23 Oct 2026, real Claude)
+- **Loop breaker (5 cases):** the right card appeared at the right time on 5 of 5 (none needed it: 3 fixed on the first try, 2 stopped to ask because only the person can decide: an impossible rule and a missing secret). Missed 0, wrong 0, thrashed 0, gamed 0, invented 0. Cost $0.21. **Honest note:** the loop card and "Try a different approach" were not exercised this time, because the model fixed the cases that used to loop on the first try; the real-verify loop breaker scenario passed the same week. Results: `evals/loop-breaker/results/`.
+- **Pointing (the aim eval, 128 asks):** hit rate basic 100%, hard 95%, everyday 93% (unchanged from before the rename), no answer 0, median 2.6 seconds, slowest 13.4 seconds. Cost $0.67. Results: `evals/show-me-how/results/`.
+- **Total real spend this session (Squibby's count):** about $5.6 of the founder's $30 cap.
+
