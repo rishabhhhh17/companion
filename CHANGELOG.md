@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Three small fixes: 23 Oct 2026
+
+- **Squibby no longer asks for details you never gave.** Ask for "a one page website for my bakery with opening hours and a contact section" and the plan used to include a contact step that stopped to ask for an email address you never mentioned, so a vague request asked you twice. Now neither the plan nor any step may ask for an email, a phone number, a price or a logo that the request did not mention. It puts in an obvious placeholder, says in the step that it is a placeholder you can change, and asks only when the work truly cannot go on without something only you know. One real run on the bakery request: it did not ask for an email, and it did not ask anything else either, so it also treated the bakery's name as a placeholder. That is fine for the page but it means the question and answer path was not exercised by that run.
+- **The daily limit message makes sense with no project open.** With no project open, running into the daily spending limit used to say "This project has reached its daily spending limit". It now says "You have reached your daily spending limit." with the same next step. With a project open the words are exactly as before.
+- **The quality checks we run on Squibby itself now say Squibby** instead of the old name in the messages they print. Nothing about how they work changed.
+- **Checked by machine only,** apart from the one real run above (about $0.11).
 ## The last two real checks held up after the rename: 23 Oct 2026
 
 - **Pointing at the screen:** it still hits the right spot 100% on simple pages, 95% on busy ones and 93% on everyday app windows (128 asks, about 67 cents).

@@ -19,7 +19,7 @@ import { isClaudeStop, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS, usualModel } from "./models.ts";
 import { agentModesOf } from "./groups.ts";
-import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, LIMIT_REACHED, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
+import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
@@ -503,7 +503,7 @@ export class AgentRunner {
     this.dailyLimitUsd = c.usd;
     this.spendingState(cmd.project);
   }
-  private dailyLimit(agent: string) { this.fail("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.", agent); }
+  private dailyLimit(agent: string, project?: string) { this.fail(dailyLimitReason(project), agent); }
 
   private now() { return (this.o.now ?? (() => new Date()))(); }
   /** A setting's value in force (settings.apply), read when a task starts. */
@@ -928,7 +928,7 @@ export class AgentRunner {
     const explainHere = this.setting<string>("explain.after", cmd.project) !== "plansOnly" || !!opts.step;
     const yourTurn = this.setting<boolean>("teach.yourTurn", cmd.project) === true;
     const room = this.room(cmd.project) + prior;
-    if (room <= 0) { this.dailyLimit(cmd.agent); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
+    if (room <= 0) { this.dailyLimit(cmd.agent, cmd.project); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
     const store = this.store(cmd.project);
     const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(opts.label ?? cmd.prompt);
@@ -1250,7 +1250,7 @@ export class AgentRunner {
     // A task, a check, an install the person started, a copy or a ship step: Rescue, Research and planning wait for it too.
     if (this.projectInUse(spec.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", spec.agent); return; }
     const room = this.room(spec.project);
-    if (room <= 0) { this.dailyLimit(spec.agent); return; }
+    if (room <= 0) { this.dailyLimit(spec.agent, spec.project); return; }
     const budget = Math.min(spec.budgetUsd, room);
     const maxTurns = this.setting<number>("work.maxTurns", spec.project);
     const abort = new AbortController();
@@ -1841,7 +1841,7 @@ export class AgentRunner {
     const at = where?.kind === "line" ? { where } : {};
     if (!this.o.explainer) { say(false, { ...at, reason: "Explaining needs Claude, which is not connected here. You can still look at where it is, or press Fix it." }); return; }
     // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
-    if (this.roomFor(project) <= 0) { say(false, { ...at, reason: LIMIT_REACHED }); return; }
+    if (this.roomFor(project) <= 0) { say(false, { ...at, reason: limitReached(project) }); return; }
     const ac = new AbortController();
     this.picturing.add(ac); this.owner.set(ac, "voice");   // Stop everything ends it
     let timedOut = false;
@@ -1872,7 +1872,7 @@ export class AgentRunner {
     if (this.setting<boolean>("secondLook.on") === false) { say(false, { reason: "Second Look is off. Turn it on in Settings, under Other apps." }); return; }
     if (!String(cmd.text ?? "").trim()) { say(false, { reason: "Select the answer you want checked, then press the keys again." }); return; }
     if (!this.o.checker) { say(false, { reason: "Second Look needs Claude, which is not connected here." }); return; }
-    if (this.roomFor(project) <= 0) { say(false, { reason: LIMIT_REACHED }); return; }
+    if (this.roomFor(project) <= 0) { say(false, { reason: limitReached(project) }); return; }
     const ac = new AbortController();
     this.picturing.add(ac); this.owner.set(ac, "voice");   // Stop everything ends it, and so does Voice going off
     let timedOut = false;
@@ -1900,7 +1900,7 @@ export class AgentRunner {
     if (!this.o.explainer) { done(false, { reason: "Drawing is not available in this mode." }); return; }
     if (!existsSync(cmd.project)) { done(false, { reason: "That project folder is not there any more." }); return; }
     // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
-    if (this.roomFor(cmd.project) <= 0) { done(false, { reason: LIMIT_REACHED }); return; }
+    if (this.roomFor(cmd.project) <= 0) { done(false, { reason: limitReached(cmd.project) }); return; }
     const ac = new AbortController();
     this.picturing.add(ac); this.owner.set(ac, "flow");
     let timedOut = false;
@@ -2076,7 +2076,7 @@ export class AgentRunner {
         const index = i + 1, title = steps[i];
         if (this.driveStop.has(cmd.agent)) { status = "interrupted"; break; }
         if (!(await pauseHere())) { status = "interrupted"; break; }
-        if (this.room(plan.project) <= 0) { status = "daily_limit"; this.dailyLimit(cmd.agent); this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
+        if (this.room(plan.project) <= 0) { status = "daily_limit"; this.dailyLimit(cmd.agent, plan.project); this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         if (remaining <= 0) { status = "error_max_budget_usd"; this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "over_budget" } as never); break; }
         this.emit({ type: "drive.step", agent: cmd.agent, index, total, title, status: "started" } as never);
         // Off the record nothing of the planning conversation was saved, so each step starts afresh and is told the goal again.

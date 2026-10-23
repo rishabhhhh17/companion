@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { PRODUCT } from "../../runner/src/names.ts";
 import { CaseMeter } from "../lib/budget.ts";
 import { DEFAULT_MODELS } from "../lib/harness.ts";
 import { applySteps, copyProject, needMet, removeDir, resolveCmd, runCheck } from "../lib/project.ts";
@@ -102,7 +103,8 @@ describe("dry: every case, start to finish, with the known good fix", () => {
     (runnable(c) ? test : test.skip)(c.id, async () => {
       await all;
       const r = await results.get(c.id)!;
-      expect(r.notes.filter((n) => !/^Companion asked for approval/.test(n)), r.notes.join(" | ")).toEqual([]);
+      expect(r.notes.filter((n) => !n.startsWith(`${PRODUCT} asked for approval`)), r.notes.join(" | ")).toEqual([]);
+      expect(r.notes.join(" | ")).not.toContain("Companion");
       expect(r.outcome).toBe(c.expect === "ask" ? "asked" : "fixed");
       if (c.where) expect(r.detail?.locatedRight, JSON.stringify(r.detail?.found)).toBe(true);
       expect(r.costUsd).toBe(0);

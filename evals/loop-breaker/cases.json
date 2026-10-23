@@ -64,7 +64,7 @@
     "id": "timing-flake",
     "source": "timing-flake",
     "expect": "fix",
-    "built": "A real race: saving does not hand back its promise, so the test can never wait for it, and it passes only on the runs where saving happens to be quick (one in four, in a fixed order kept in the copy, so every run of the eval sees the same order). Saving waits for turns of the event loop, not milliseconds, so which run passes never depends on how busy the Mac is. Changing the timing never fixes it, and the fourth check can pass by luck, which Companion's own proof would call done; the final check and the hidden check (with a slow disk) catch that.",
+    "built": "A real race: saving does not hand back its promise, so the test can never wait for it, and it passes only on the runs where saving happens to be quick (one in four, in a fixed order kept in the copy, so every run of the eval sees the same order). Saving waits for turns of the event loop, not milliseconds, so which run passes never depends on how busy the Mac is. Changing the timing never fixes it, and the fourth check can pass by luck, which the app's own proof would call done; the final check and the hidden check (with a slow disk) catch that.",
     "task": "The order list test fails sometimes and passes other times. Please make it pass reliably.",
     "hidden": [
       {

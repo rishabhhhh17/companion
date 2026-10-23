@@ -7,7 +7,7 @@ that).
 the person's column is `user_id`. Here, the `shopping_lists` table is made without row level security
 (`supabase/migrations/20261006090000_create_shopping_lists.sql`, line 2), and the person's column is `owner_id`. The
 other table, `recipes`, is done right and can be copied from, with its own column `cook_id`. No program shows this
-mistake; Companion's check before going live finds it from the files.
+mistake; the app's check before going live finds it from the files.
 
 **What to tell the participant:** read them the check's words: "Before going live, a check said: This table is open to
 anyone with your site address: shopping_lists. Turn on row level security for it and add the rules that say who may see
@@ -42,7 +42,7 @@ security on for `shopping_lists`, and a rule on `shopping_lists` that compares `
 
 ## Check it
 
-From the repo's `runner` folder (it runs Companion's own database access check on the files, no database is touched):
+From the repo's `runner` folder (it runs the app's own database access check on the files, no database is touched):
 
 ```
 bun run scripts/transfer-check.ts copy open-table "<new folder>"

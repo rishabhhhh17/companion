@@ -326,6 +326,11 @@ describe("the daily limit in plain words", () => {
   test("the error says what happened and what to do", () => {
     expect(plainError("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.")).toBe("This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.");
   });
+  test("with no project open the error does not say this project", () => {
+    const w = plainError("daily_limit: you have reached your daily limit. New work starts again tomorrow, or you can raise the limit.");
+    expect(w).toBe("You have reached your daily spending limit. New work starts again tomorrow, or you can raise the limit.");
+    expect(w).not.toMatch(/project/i);
+  });
   test("a plan that stopped on it says so", () => {
     expect(driveWords(run([ev({ type: "drive.done", agent: "a", status: "daily_limit", completed: 1, total: 3, usdEstimate: 0 })]))).toBe("Stopped after 1 of 3 steps: the daily limit for this project was reached");
   });

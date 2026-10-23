@@ -11,6 +11,19 @@ export const SPENDING_FILE = "spending.json";
 /** Said by the small answers that spend on the person's key outside a task (Draw it for me, the error explainer, Prompt help)
  *  once a project has reached its limit. */
 export const LIMIT_REACHED = "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit in Settings.";
+/** The same refusal for work that belongs to no project (nothing open, or the stand in project's own day): it must not say
+ *  "this project". */
+export const LIMIT_REACHED_NO_PROJECT = "You have reached your daily spending limit. New work starts again tomorrow, or you can raise the limit in Settings.";
+/** The stand in project's name (the same string as NO_PROJECT in agent.ts, which imports this file, so it is not imported here;
+ *  spending.test.ts checks they agree). */
+const STAND_IN = "no-project";
+/** The refusal words for work in this project: none named, or the stand in, gets the sentence without "this project". */
+export const limitReached = (project?: string): string => (!project || project === STAND_IN ? LIMIT_REACHED_NO_PROJECT : LIMIT_REACHED);
+/** The engine error for a task or plan that cannot start (the page turns the "daily_limit:" start into its own plain words). */
+export const dailyLimitReason = (project?: string): string =>
+  !project || project === STAND_IN
+    ? "daily_limit: you have reached your daily limit. New work starts again tomorrow, or you can raise the limit."
+    : "daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.";
 const OUT_OF_BOUNDS = `The daily limit must be between ${MIN_DAILY_LIMIT_USD} and ${MAX_DAILY_LIMIT_USD} dollars.`;
 
 /** A limit the person asked for: a number of dollars within the bounds, kept to cents. Anything else is refused in plain words. */

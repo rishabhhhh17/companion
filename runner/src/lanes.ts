@@ -12,7 +12,7 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { adapterFor, buildContext, grewTooMuch, handBack, parseAnswer, protect, restore, StreamRestorer, systemPrompt, wordDiff } from "./prompthelp.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
-import { LIMIT_REACHED } from "./spending.ts";
+import { limitReached } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
 import { everydayRequest, goneVerdict, landmarksOf, parseEveryday, sameView, sheetFromTable, tableAgrees, type EverydayAnswer } from "./everyday.ts";
 import { TUTOR_EXAMPLE, tutorFor, tutorLines, type Tutor } from "./tutor.ts";
@@ -486,7 +486,7 @@ export class AssistService {
 
   private async prompt(cmd: Extract<Command, { type: "assist.prompt" }>) {
     if (!cmd.text.trim()) return this.emit({ type: "assist.error", req: cmd.req, reason: "There is no text to improve." });
-    if (this.atLimit(cmd.project)) return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED });
+    if (this.atLimit(cmd.project)) return this.emit({ type: "assist.error", req: cmd.req, reason: limitReached(cmd.project) });
     const book = (usd: number) => this.book(cmd.project, usd);
     const ac = new AbortController();
     this.active.set(cmd.req, ac); this.kind.set(cmd.req, "voice");
@@ -536,7 +536,7 @@ export class AssistService {
     const many = (cmd.screens ?? []).length > 1 ? cmd.screens!.slice(0, 4) : [];
     const dropAll = () => { this.o.images.delete(cmd.image.ref); for (const s of many) this.o.images.delete(s.ref); };
     // It spends on the person's key, so it waits at the daily limit like Prompt help, and the picture is dropped, not kept.
-    if (this.atLimit(cmd.project)) { dropAll(); return this.emit({ type: "assist.error", req: cmd.req, reason: LIMIT_REACHED }); }
+    if (this.atLimit(cmd.project)) { dropAll(); return this.emit({ type: "assist.error", req: cmd.req, reason: limitReached(cmd.project) }); }
     const screens: Screen[] = [];
     for (const [i, s] of many.entries()) {
       const pic = i === 0 && s.ref !== cmd.image.ref ? undefined : this.o.images.get(s.ref);

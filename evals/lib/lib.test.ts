@@ -1,7 +1,7 @@
 // The parts every eval set shares, and above all the spending stops: a dry run spends nothing, a case stops at its cap, and
 // the run stops starting cases at its total. The real run harness itself (what --spend builds) is tested in real.test.ts.
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "../../runner/src/agent.ts";
 import { EngineStop, ScriptedEngine, type Engine, type EngineOptions, type Step, type ToolResult, type Turn } from "../../runner/src/engine.ts";
@@ -266,5 +266,34 @@ describe("a check this Mac had no room to start", () => {
     const r = await runCheck(["sh", "-c", "n=$(cat runs 2>/dev/null || echo 0); echo $((n+1)) > runs; echo 'read EAGAIN' >&2; exit 1"], dir, {}, 10_000, [0, 0]);
     expect(r.pass).toBe(false);
     expect(runs(dir)).toBe(1);
+  });
+});
+
+// The rename (Companion to Squibby) left evals/ alone: its printed notes and case texts still named the old product. The name
+// a person or a model reads comes from the shared names file (runner/src/names.ts PRODUCT), never typed into a message.
+describe("the eval harness uses the product name from the shared names file", () => {
+  const EVALS = join(import.meta.dir, "..");
+  const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
+    const f = join(dir, n);
+    if (n === "node_modules" || n === "results") return [];   // saved results are recorded runs and stay as they were
+    return statSync(f).isDirectory() ? walk(f) : [f];
+  });
+  const files = walk(EVALS).filter((f) => /\.(ts|json)$/.test(f) && !/\.test\.ts$/.test(f));
+  test("no message, prompt or case text in evals/ types the old name", () => {
+    const found: string[] = [];
+    for (const f of files) {
+      readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+        if (!/Companion/.test(line)) return;
+        if (f.endsWith(".ts") && /^\s*(\/\/|\/?\*)/.test(line)) return;   // a code comment is not shown to anyone
+        found.push(`${f.slice(EVALS.length + 1)}:${i + 1}`);
+      });
+    }
+    expect(found).toEqual([]);
+  });
+  test("the printed notes name the product through PRODUCT", () => {
+    for (const f of ["fix-projects/pipeline.ts", "loop-breaker/pipeline.ts", "review-catch/pipeline.ts"]) {
+      const src = readFileSync(join(EVALS, f), "utf8");
+      expect(src, f).toContain("PRODUCT");
+    }
   });
 });

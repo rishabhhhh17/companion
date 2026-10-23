@@ -606,7 +606,7 @@
       {
         "name": "rls-all-tables",
         "kind": "accept",
-        "what": "Companion's own database check finds every table protected and no open rule, and every rule on notes keeps each person to their own notes",
+        "what": "the app's own database check finds every table protected and no open rule, and every rule on notes keeps each person to their own notes",
         "cmd": [
           "bun",
           "$HIDDEN/rls.ts"

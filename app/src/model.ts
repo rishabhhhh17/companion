@@ -295,7 +295,7 @@ export function plainError(reason: string): string {
   const claude = claudeStopWords(reason);
   if (claude) return claude;
   if (/error_max_turns/.test(reason)) return S.turnsStopped(S.set["work.maxTurns"].label);
-  if (/^daily_limit/.test(reason)) return "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit.";
+  if (/^daily_limit/.test(reason)) return /this project/i.test(reason) ? "This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit." : "You have reached your daily spending limit. New work starts again tomorrow, or you can raise the limit.";
   if (/unknown approval/i.test(reason)) return "That question is not waiting for an answer any more.";
   const nc = /Not connected:.*$/.exec(reason);
   if (nc) return nc[0];
