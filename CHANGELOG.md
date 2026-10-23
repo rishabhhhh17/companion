@@ -8,6 +8,18 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **The daily limit message makes sense with no project open.** With no project open, running into the daily spending limit used to say "This project has reached its daily spending limit". It now says "You have reached your daily spending limit." with the same next step. With a project open the words are exactly as before.
 - **The quality checks we run on Squibby itself now say Squibby** instead of the old name in the messages they print. Nothing about how they work changed.
 - **Checked by machine only,** apart from the one real run above (about $0.11).
+## The last two real checks held up after the rename: 23 Oct 2026
+
+- **Pointing at the screen:** it still hits the right spot 100% on simple pages, 95% on busy ones and 93% on everyday app windows (128 asks, about 67 cents).
+- **The loop breaker:** every case that could be fixed in one go was, and the two that only a person can decide stopped and asked. The loop card itself was not needed this time. About 21 cents.
+
+## A way to say yes to the shared notes in a folder Squibby made: 23 Oct 2026
+
+- **The gap:** in a folder Squibby makes for you ("make me something"), Squibby does not write AGENTS.md and CLAUDE.md, the notes other AI coding tools read, until you say yes. Until now there was no place in the screens to say it.
+- **Now:** open Home, then the Memory tab, in one of those folders. There is one plain row that says what the two files are for, with one button, Add them. Press it and they are added as soon as Squibby has notes about the project. Then the row says Added and does not ask again.
+- **Your own files are safe:** if the folder already has its own AGENTS.md or CLAUDE.md, the row says so and offers nothing. Squibby does not touch them. In any other project the row does not show, and nothing else changed.
+- **To take it out again:** the button at the bottom of the Memory tab that removes Squibby's notes from your shared files still does that.
+- **Checked by machine only:** the check that the open folder is one Squibby made, the four states of the row, and the words. Nobody has seen the row on a Mac yet, and whether the project's Undo also takes the two files out again is not proven.
 
 ## Getting paid through Dodo Payments is built, and still switched off: 23 Oct 2026
 

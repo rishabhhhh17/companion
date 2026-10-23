@@ -1,0 +1,3524 @@
+{
+  "format": "companion-eval-results/1",
+  "set": "show-me-how",
+  "mode": "spend",
+  "harness": "real run harness (runner/scripts/realrun-harness.ts; key from the Keychain item \"companion-dev\")",
+  "startedAt": "2026-10-23T10:13:48.060Z",
+  "finishedAt": "2026-10-23T10:22:48.890Z",
+  "models": {
+    "vision": "claude-sonnet-5-5",
+    "lane": "default"
+  },
+  "caps": {
+    "perCaseUsd": 0.05,
+    "totalUsd": 6
+  },
+  "spentUsd": 0.671655,
+  "stopped": null,
+  "cases": [
+    {
+      "id": "dashboard-light:New project",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5382,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light",
+        "target": {
+          "t": "New project",
+          "x": 1151,
+          "y": 34
+        },
+        "hit": {
+          "x": 1205,
+          "y": 52,
+          "text": "New project"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light:Invite",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2892,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light",
+        "target": {
+          "t": "Invite",
+          "x": 1075,
+          "y": 34
+        },
+        "hit": {
+          "x": 1107,
+          "y": 52,
+          "text": "Invite"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light:Billing",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2595,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light",
+        "target": {
+          "t": "Billing",
+          "x": 16,
+          "y": 143
+        },
+        "hit": {
+          "x": 44,
+          "y": 159,
+          "text": "Billing"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light:Delete",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2650,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light",
+        "target": {
+          "t": "Delete",
+          "x": 857,
+          "y": 147
+        },
+        "hit": {
+          "x": 894,
+          "y": 164,
+          "text": "Delete"
+        }
+      }
+    },
+    {
+      "id": "settings-light:Save changes",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2394,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light",
+        "target": {
+          "t": "Save changes",
+          "x": 220,
+          "y": 227
+        },
+        "hit": {
+          "x": 282,
+          "y": 245,
+          "text": "Save changes"
+        }
+      }
+    },
+    {
+      "id": "settings-light:Cancel",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2203,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light",
+        "target": {
+          "t": "Cancel",
+          "x": 355,
+          "y": 227
+        },
+        "hit": {
+          "x": 393,
+          "y": 245,
+          "text": "Cancel"
+        }
+      }
+    },
+    {
+      "id": "settings-light:Change password",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2848,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light",
+        "target": {
+          "t": "Change password",
+          "x": 237,
+          "y": 171
+        },
+        "hit": {
+          "x": 297,
+          "y": 180,
+          "text": "Change password"
+        }
+      }
+    },
+    {
+      "id": "settings-light:Notifications",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2307,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light",
+        "target": {
+          "t": "Notifications",
+          "x": 16,
+          "y": 78
+        },
+        "hit": {
+          "x": 65,
+          "y": 94,
+          "text": "Notifications"
+        }
+      }
+    },
+    {
+      "id": "deploy-light:Deploy",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2547,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light",
+        "target": {
+          "t": "Deploy",
+          "x": 1183,
+          "y": 34
+        },
+        "hit": {
+          "x": 1221,
+          "y": 52,
+          "text": "Deploy"
+        }
+      }
+    },
+    {
+      "id": "deploy-light:Environment variables",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2630,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light",
+        "target": {
+          "t": "Environment variables",
+          "x": 921,
+          "y": 43
+        },
+        "hit": {
+          "x": 994,
+          "y": 52,
+          "text": "Environment variables"
+        }
+      }
+    },
+    {
+      "id": "deploy-light:View logs",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2234,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light",
+        "target": {
+          "t": "View logs",
+          "x": 1079,
+          "y": 34
+        },
+        "hit": {
+          "x": 1125,
+          "y": 52,
+          "text": "View logs"
+        }
+      }
+    },
+    {
+      "id": "deploy-light:Domains",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2834,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light",
+        "target": {
+          "t": "Domains",
+          "x": 852,
+          "y": 43
+        },
+        "hit": {
+          "x": 881,
+          "y": 52,
+          "text": "Domains"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark:New project",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2058,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark",
+        "target": {
+          "t": "New project",
+          "x": 1151,
+          "y": 34
+        },
+        "hit": {
+          "x": 1205,
+          "y": 52,
+          "text": "New project"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark:Invite",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2110,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark",
+        "target": {
+          "t": "Invite",
+          "x": 1075,
+          "y": 34
+        },
+        "hit": {
+          "x": 1107,
+          "y": 52,
+          "text": "Invite"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark:Billing",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2365,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark",
+        "target": {
+          "t": "Billing",
+          "x": 16,
+          "y": 143
+        },
+        "hit": {
+          "x": 44,
+          "y": 159,
+          "text": "Billing"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark:Delete",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2317,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark",
+        "target": {
+          "t": "Delete",
+          "x": 857,
+          "y": 147
+        },
+        "hit": {
+          "x": 894,
+          "y": 165,
+          "text": "Delete"
+        }
+      }
+    },
+    {
+      "id": "settings-dark:Save changes",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2102,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark",
+        "target": {
+          "t": "Save changes",
+          "x": 220,
+          "y": 227
+        },
+        "hit": {
+          "x": 282,
+          "y": 245,
+          "text": "Save changes"
+        }
+      }
+    },
+    {
+      "id": "settings-dark:Cancel",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2587,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark",
+        "target": {
+          "t": "Cancel",
+          "x": 355,
+          "y": 227
+        },
+        "hit": {
+          "x": 393,
+          "y": 245,
+          "text": "Cancel"
+        }
+      }
+    },
+    {
+      "id": "settings-dark:Change password",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2717,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark",
+        "target": {
+          "t": "Change password",
+          "x": 237,
+          "y": 171
+        },
+        "hit": {
+          "x": 297,
+          "y": 180,
+          "text": "Change password"
+        }
+      }
+    },
+    {
+      "id": "settings-dark:Notifications",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2402,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark",
+        "target": {
+          "t": "Notifications",
+          "x": 16,
+          "y": 78
+        },
+        "hit": {
+          "x": 65,
+          "y": 94,
+          "text": "Notifications"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark:Deploy",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2358,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark",
+        "target": {
+          "t": "Deploy",
+          "x": 1183,
+          "y": 34
+        },
+        "hit": {
+          "x": 1221,
+          "y": 52,
+          "text": "Deploy"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark:Environment variables",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3506,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark",
+        "target": {
+          "t": "Environment variables",
+          "x": 921,
+          "y": 43
+        },
+        "hit": {
+          "x": 994,
+          "y": 52,
+          "text": "Environment variables"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark:View logs",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3437,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark",
+        "target": {
+          "t": "View logs",
+          "x": 1079,
+          "y": 34
+        },
+        "hit": {
+          "x": 1126,
+          "y": 52,
+          "text": "View logs"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark:Domains",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2169,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark",
+        "target": {
+          "t": "Domains",
+          "x": 852,
+          "y": 43
+        },
+        "hit": {
+          "x": 881,
+          "y": 52,
+          "text": "Domains"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light-dense:New project",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2049,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light-dense",
+        "target": {
+          "t": "New project",
+          "x": 1179,
+          "y": 34
+        },
+        "hit": {
+          "x": 1219,
+          "y": 45,
+          "text": "New project"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light-dense:Invite",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2435,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light-dense",
+        "target": {
+          "t": "Invite",
+          "x": 1122,
+          "y": 34
+        },
+        "hit": {
+          "x": 1145,
+          "y": 45,
+          "text": "Invite"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light-dense:Billing",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2381,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light-dense",
+        "target": {
+          "t": "Billing",
+          "x": 16,
+          "y": 128
+        },
+        "hit": {
+          "x": 40,
+          "y": 142,
+          "text": "Billing"
+        }
+      }
+    },
+    {
+      "id": "dashboard-light-dense:Delete",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2158,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-light-dense",
+        "target": {
+          "t": "Delete",
+          "x": 868,
+          "y": 118
+        },
+        "hit": {
+          "x": 900,
+          "y": 131,
+          "text": "Delete"
+        }
+      }
+    },
+    {
+      "id": "settings-light-dense:Save changes",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2396,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light-dense",
+        "target": {
+          "t": "Save changes",
+          "x": 220,
+          "y": 213
+        },
+        "hit": {
+          "x": 267,
+          "y": 224,
+          "text": "Save changes"
+        }
+      }
+    },
+    {
+      "id": "settings-light-dense:Cancel",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2891,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light-dense",
+        "target": {
+          "t": "Cancel",
+          "x": 324,
+          "y": 213
+        },
+        "hit": {
+          "x": 351,
+          "y": 224,
+          "text": "Cancel"
+        }
+      }
+    },
+    {
+      "id": "settings-light-dense:Change password",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2073,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light-dense",
+        "target": {
+          "t": "Change password",
+          "x": 237,
+          "y": 160
+        },
+        "hit": {
+          "x": 285,
+          "y": 167,
+          "text": "Change password"
+        }
+      }
+    },
+    {
+      "id": "settings-light-dense:Notifications",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2412,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-light-dense",
+        "target": {
+          "t": "Notifications",
+          "x": 16,
+          "y": 72
+        },
+        "hit": {
+          "x": 56,
+          "y": 86,
+          "text": "Notifications"
+        }
+      }
+    },
+    {
+      "id": "deploy-light-dense:Deploy",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2772,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light-dense",
+        "target": {
+          "t": "Deploy",
+          "x": 1205,
+          "y": 34
+        },
+        "hit": {
+          "x": 1232,
+          "y": 45,
+          "text": "Deploy"
+        }
+      }
+    },
+    {
+      "id": "deploy-light-dense:Environment variables",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 13353,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light-dense",
+        "target": {
+          "t": "Environment variables",
+          "x": 997,
+          "y": 38
+        },
+        "hit": {
+          "x": 1056,
+          "y": 45,
+          "text": "Environment variables"
+        }
+      }
+    },
+    {
+      "id": "deploy-light-dense:View logs",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2687,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light-dense",
+        "target": {
+          "t": "View logs",
+          "x": 1125,
+          "y": 34
+        },
+        "hit": {
+          "x": 1160,
+          "y": 45,
+          "text": "View logs"
+        }
+      }
+    },
+    {
+      "id": "deploy-light-dense:Domains",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2290,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-light-dense",
+        "target": {
+          "t": "Domains",
+          "x": 939,
+          "y": 38
+        },
+        "hit": {
+          "x": 962,
+          "y": 45,
+          "text": "Domains"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark-dense:New project",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2458,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark-dense",
+        "target": {
+          "t": "New project",
+          "x": 1179,
+          "y": 34
+        },
+        "hit": {
+          "x": 1219,
+          "y": 45,
+          "text": "New project"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark-dense:Invite",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2163,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark-dense",
+        "target": {
+          "t": "Invite",
+          "x": 1122,
+          "y": 34
+        },
+        "hit": {
+          "x": 1145,
+          "y": 45,
+          "text": "Invite"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark-dense:Billing",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3011,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark-dense",
+        "target": {
+          "t": "Billing",
+          "x": 16,
+          "y": 128
+        },
+        "hit": {
+          "x": 40,
+          "y": 142,
+          "text": "Billing"
+        }
+      }
+    },
+    {
+      "id": "dashboard-dark-dense:Delete",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2548,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "dashboard-dark-dense",
+        "target": {
+          "t": "Delete",
+          "x": 868,
+          "y": 118
+        },
+        "hit": {
+          "x": 900,
+          "y": 131,
+          "text": "Delete"
+        }
+      }
+    },
+    {
+      "id": "settings-dark-dense:Save changes",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2536,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark-dense",
+        "target": {
+          "t": "Save changes",
+          "x": 220,
+          "y": 213
+        },
+        "hit": {
+          "x": 266,
+          "y": 224,
+          "text": "Save changes"
+        }
+      }
+    },
+    {
+      "id": "settings-dark-dense:Cancel",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2240,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark-dense",
+        "target": {
+          "t": "Cancel",
+          "x": 324,
+          "y": 213
+        },
+        "hit": {
+          "x": 351,
+          "y": 224,
+          "text": "Cancel"
+        }
+      }
+    },
+    {
+      "id": "settings-dark-dense:Change password",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2624,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark-dense",
+        "target": {
+          "t": "Change password",
+          "x": 237,
+          "y": 160
+        },
+        "hit": {
+          "x": 285,
+          "y": 167,
+          "text": "Change password"
+        }
+      }
+    },
+    {
+      "id": "settings-dark-dense:Notifications",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2230,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "settings-dark-dense",
+        "target": {
+          "t": "Notifications",
+          "x": 16,
+          "y": 72
+        },
+        "hit": {
+          "x": 56,
+          "y": 86,
+          "text": "Notifications"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark-dense:Deploy",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2972,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark-dense",
+        "target": {
+          "t": "Deploy",
+          "x": 1205,
+          "y": 34
+        },
+        "hit": {
+          "x": 1232,
+          "y": 45,
+          "text": "Deploy"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark-dense:Environment variables",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2855,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark-dense",
+        "target": {
+          "t": "Environment variables",
+          "x": 997,
+          "y": 38
+        },
+        "hit": {
+          "x": 1056,
+          "y": 45,
+          "text": "Environment variables"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark-dense:View logs",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2279,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark-dense",
+        "target": {
+          "t": "View logs",
+          "x": 1125,
+          "y": 34
+        },
+        "hit": {
+          "x": 1160,
+          "y": 45,
+          "text": "View logs"
+        }
+      }
+    },
+    {
+      "id": "deploy-dark-dense:Domains",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2294,
+      "notes": [],
+      "detail": {
+        "set": "basic",
+        "page": "deploy-dark-dense",
+        "target": {
+          "t": "Domains",
+          "x": 939,
+          "y": 38
+        },
+        "hit": {
+          "x": 962,
+          "y": 45,
+          "text": "Domains"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-light:env-add",
+      "outcome": "missed",
+      "costUsd": 0.005424,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3383,
+      "notes": [
+        "wanted \"Add another\" at (893,185); got (1217,198) \"Save\""
+      ],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-light",
+        "target": {
+          "t": "Add another",
+          "x": 893,
+          "y": 185
+        },
+        "hit": {
+          "x": 1217,
+          "y": 198,
+          "text": "Save"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-light:env-edit-stripe",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2517,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-light",
+        "target": {
+          "t": "Edit",
+          "x": 1099,
+          "y": 368
+        },
+        "hit": {
+          "x": 1121,
+          "y": 382,
+          "text": "Edit"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-light:env-save",
+      "outcome": "snapped",
+      "costUsd": 0.005499,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3320,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-light",
+        "target": {
+          "t": "Save",
+          "x": 1192,
+          "y": 185
+        },
+        "hit": {
+          "x": 1217,
+          "y": 198,
+          "text": "Save"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-light:nav-logs",
+      "outcome": "snapped",
+      "costUsd": 0.005424,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3421,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-light",
+        "target": {
+          "t": "Logs",
+          "x": 542,
+          "y": 2
+        },
+        "hit": {
+          "x": 574,
+          "y": 23,
+          "text": "Logs"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-light:redeploy",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2711,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-light",
+        "target": {
+          "t": "Redeploy",
+          "x": 1168,
+          "y": 73
+        },
+        "hit": {
+          "x": 1205,
+          "y": 86,
+          "text": "Redeploy"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-dark:env-add",
+      "outcome": "missed",
+      "costUsd": 0.005494,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 11242,
+      "notes": [
+        "wanted \"Add another\" at (893,185); got (1217,198) \"Save\""
+      ],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-dark",
+        "target": {
+          "t": "Add another",
+          "x": 893,
+          "y": 185
+        },
+        "hit": {
+          "x": 1217,
+          "y": 198,
+          "text": "Save"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-dark:env-edit-stripe",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4181,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-dark",
+        "target": {
+          "t": "Edit",
+          "x": 1099,
+          "y": 368
+        },
+        "hit": {
+          "x": 1121,
+          "y": 381,
+          "text": "Edit"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-dark:env-save",
+      "outcome": "snapped",
+      "costUsd": 0.005499,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2404,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-dark",
+        "target": {
+          "t": "Save",
+          "x": 1192,
+          "y": 185
+        },
+        "hit": {
+          "x": 1217,
+          "y": 198,
+          "text": "Save"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-dark:nav-logs",
+      "outcome": "snapped",
+      "costUsd": 0.005424,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2191,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-dark",
+        "target": {
+          "t": "Logs",
+          "x": 542,
+          "y": 2
+        },
+        "hit": {
+          "x": 560,
+          "y": 23,
+          "text": "Logs"
+        }
+      }
+    },
+    {
+      "id": "deploy-settings-dark:redeploy",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2100,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "deploy-settings-dark",
+        "target": {
+          "t": "Redeploy",
+          "x": 1168,
+          "y": 73
+        },
+        "hit": {
+          "x": 1205,
+          "y": 86,
+          "text": "Redeploy"
+        }
+      }
+    },
+    {
+      "id": "table-editor-light:insert-row",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2275,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-light",
+        "target": {
+          "t": "Insert row",
+          "x": 345,
+          "y": 121
+        },
+        "hit": {
+          "x": 384,
+          "y": 134,
+          "text": "Insert row"
+        }
+      }
+    },
+    {
+      "id": "table-editor-light:enable-rls",
+      "outcome": "snapped",
+      "costUsd": 0.005489,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2840,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-light",
+        "target": {
+          "t": "Enable RLS",
+          "x": 1155,
+          "y": 73
+        },
+        "hit": {
+          "x": 1200,
+          "y": 86,
+          "text": "Enable RLS"
+        }
+      }
+    },
+    {
+      "id": "table-editor-light:table-notes",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3348,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-light",
+        "target": {
+          "t": "notes",
+          "x": 10,
+          "y": 225
+        },
+        "hit": {
+          "x": 34,
+          "y": 239,
+          "text": "notes"
+        }
+      }
+    },
+    {
+      "id": "table-editor-light:add-column",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2299,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-light",
+        "target": {
+          "t": "+",
+          "x": 1169,
+          "y": 162
+        },
+        "hit": {
+          "x": 482,
+          "y": 134,
+          "text": "Insert column"
+        }
+      }
+    },
+    {
+      "id": "table-editor-light:filter",
+      "outcome": "snapped",
+      "costUsd": 0.005492,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2595,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-light",
+        "target": {
+          "t": "Filter",
+          "x": 232,
+          "y": 121
+        },
+        "hit": {
+          "x": 257,
+          "y": 134,
+          "text": "Filter"
+        }
+      }
+    },
+    {
+      "id": "table-editor-dark:insert-row",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2554,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-dark",
+        "target": {
+          "t": "Insert row",
+          "x": 345,
+          "y": 121
+        },
+        "hit": {
+          "x": 384,
+          "y": 134,
+          "text": "Insert row"
+        }
+      }
+    },
+    {
+      "id": "table-editor-dark:enable-rls",
+      "outcome": "snapped",
+      "costUsd": 0.005489,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3335,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-dark",
+        "target": {
+          "t": "Enable RLS",
+          "x": 1155,
+          "y": 73
+        },
+        "hit": {
+          "x": 1200,
+          "y": 87,
+          "text": "Enable RLS"
+        }
+      }
+    },
+    {
+      "id": "table-editor-dark:table-notes",
+      "outcome": "snapped",
+      "costUsd": 0.005474,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2424,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-dark",
+        "target": {
+          "t": "notes",
+          "x": 10,
+          "y": 225
+        },
+        "hit": {
+          "x": 34,
+          "y": 239,
+          "text": "notes"
+        }
+      }
+    },
+    {
+      "id": "table-editor-dark:add-column",
+      "outcome": "snapped",
+      "costUsd": 0.005479,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2861,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-dark",
+        "target": {
+          "t": "+",
+          "x": 1169,
+          "y": 162
+        },
+        "hit": {
+          "x": 482,
+          "y": 134,
+          "text": "Insert column"
+        }
+      }
+    },
+    {
+      "id": "table-editor-dark:filter",
+      "outcome": "snapped",
+      "costUsd": 0.005492,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2501,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "table-editor-dark",
+        "target": {
+          "t": "Filter",
+          "x": 232,
+          "y": 121
+        },
+        "hit": {
+          "x": 257,
+          "y": 134,
+          "text": "Filter"
+        }
+      }
+    },
+    {
+      "id": "project-settings-light:copy-public",
+      "outcome": "snapped",
+      "costUsd": 0.005499,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3060,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-light",
+        "target": {
+          "t": "Copy",
+          "x": 428,
+          "y": 331
+        },
+        "hit": {
+          "x": 454,
+          "y": 344,
+          "text": "Copy"
+        }
+      }
+    },
+    {
+      "id": "project-settings-light:tab-billing",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 4969,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-light",
+        "target": {
+          "t": "Billing",
+          "x": 170,
+          "y": 65
+        },
+        "hit": {
+          "x": 197,
+          "y": 80,
+          "text": "Billing"
+        }
+      }
+    },
+    {
+      "id": "project-settings-light:rename",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3255,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-light",
+        "target": {
+          "t": "Rename",
+          "x": 473,
+          "y": 148
+        },
+        "hit": {
+          "x": 508,
+          "y": 161,
+          "text": "Rename"
+        }
+      }
+    },
+    {
+      "id": "project-settings-light:invite-member",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2488,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-light",
+        "target": {
+          "t": "Invite member",
+          "x": 838,
+          "y": 460
+        },
+        "hit": {
+          "x": 890,
+          "y": 473,
+          "text": "Invite member"
+        }
+      }
+    },
+    {
+      "id": "project-settings-light:pause",
+      "outcome": "snapped",
+      "costUsd": 0.005492,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2410,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-light",
+        "target": {
+          "t": "Pause project",
+          "x": 841,
+          "y": 550
+        },
+        "hit": {
+          "x": 891,
+          "y": 564,
+          "text": "Pause project"
+        }
+      }
+    },
+    {
+      "id": "project-settings-dark:copy-public",
+      "outcome": "snapped",
+      "costUsd": 0.005499,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3135,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-dark",
+        "target": {
+          "t": "Copy",
+          "x": 428,
+          "y": 331
+        },
+        "hit": {
+          "x": 454,
+          "y": 344,
+          "text": "Copy"
+        }
+      }
+    },
+    {
+      "id": "project-settings-dark:tab-billing",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2301,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-dark",
+        "target": {
+          "t": "Billing",
+          "x": 170,
+          "y": 65
+        },
+        "hit": {
+          "x": 197,
+          "y": 80,
+          "text": "Billing"
+        }
+      }
+    },
+    {
+      "id": "project-settings-dark:rename",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2731,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-dark",
+        "target": {
+          "t": "Rename",
+          "x": 473,
+          "y": 148
+        },
+        "hit": {
+          "x": 508,
+          "y": 161,
+          "text": "Rename"
+        }
+      }
+    },
+    {
+      "id": "project-settings-dark:invite-member",
+      "outcome": "snapped",
+      "costUsd": 0.005487,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2537,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-dark",
+        "target": {
+          "t": "Invite member",
+          "x": 838,
+          "y": 460
+        },
+        "hit": {
+          "x": 890,
+          "y": 473,
+          "text": "Invite member"
+        }
+      }
+    },
+    {
+      "id": "project-settings-dark:pause",
+      "outcome": "snapped",
+      "costUsd": 0.005492,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2989,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "project-settings-dark",
+        "target": {
+          "t": "Pause project",
+          "x": 841,
+          "y": 550
+        },
+        "hit": {
+          "x": 891,
+          "y": 564,
+          "text": "Pause project"
+        }
+      }
+    },
+    {
+      "id": "repo-page-light:code-btn",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2187,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-light",
+        "target": {
+          "t": "Code ▾",
+          "x": 793,
+          "y": 153
+        },
+        "hit": {
+          "x": 825,
+          "y": 167,
+          "text": "Code"
+        }
+      }
+    },
+    {
+      "id": "repo-page-light:tab-actions",
+      "outcome": "snapped",
+      "costUsd": 0.005422,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2645,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-light",
+        "target": {
+          "t": "Actions",
+          "x": 285,
+          "y": 108
+        },
+        "hit": {
+          "x": 316,
+          "y": 123,
+          "text": "Actions"
+        }
+      }
+    },
+    {
+      "id": "repo-page-light:tab-issues",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3102,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-light",
+        "target": {
+          "t": "Issues 12",
+          "x": 76,
+          "y": 108
+        },
+        "hit": {
+          "x": 103,
+          "y": 124,
+          "text": "Issues"
+        }
+      }
+    },
+    {
+      "id": "repo-page-light:add-file",
+      "outcome": "snapped",
+      "costUsd": 0.005484,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2453,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-light",
+        "target": {
+          "t": "Add file ▾",
+          "x": 707,
+          "y": 153
+        },
+        "hit": {
+          "x": 748,
+          "y": 167,
+          "text": "Add file"
+        }
+      }
+    },
+    {
+      "id": "repo-page-light:branch",
+      "outcome": "snapped",
+      "costUsd": 0.005492,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2416,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-light",
+        "target": {
+          "t": "⑂ main ▾",
+          "x": 22,
+          "y": 153
+        },
+        "hit": {
+          "x": 57,
+          "y": 167,
+          "text": "main"
+        }
+      }
+    },
+    {
+      "id": "repo-page-dark:code-btn",
+      "outcome": "snapped",
+      "costUsd": 0.005482,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2561,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-dark",
+        "target": {
+          "t": "Code ▾",
+          "x": 793,
+          "y": 153
+        },
+        "hit": {
+          "x": 825,
+          "y": 167,
+          "text": "Code"
+        }
+      }
+    },
+    {
+      "id": "repo-page-dark:tab-actions",
+      "outcome": "snapped",
+      "costUsd": 0.005422,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3741,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-dark",
+        "target": {
+          "t": "Actions",
+          "x": 285,
+          "y": 108
+        },
+        "hit": {
+          "x": 316,
+          "y": 124,
+          "text": "Actions"
+        }
+      }
+    },
+    {
+      "id": "repo-page-dark:tab-issues",
+      "outcome": "snapped",
+      "costUsd": 0.005477,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2173,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-dark",
+        "target": {
+          "t": "Issues 12",
+          "x": 76,
+          "y": 108
+        },
+        "hit": {
+          "x": 103,
+          "y": 124,
+          "text": "Issues"
+        }
+      }
+    },
+    {
+      "id": "repo-page-dark:add-file",
+      "outcome": "snapped",
+      "costUsd": 0.005414,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2444,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-dark",
+        "target": {
+          "t": "Add file ▾",
+          "x": 707,
+          "y": 153
+        },
+        "hit": {
+          "x": 745,
+          "y": 167,
+          "text": "Add file"
+        }
+      }
+    },
+    {
+      "id": "repo-page-dark:branch",
+      "outcome": "snapped",
+      "costUsd": 0.005492,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3133,
+      "notes": [],
+      "detail": {
+        "set": "hard",
+        "page": "repo-page-dark",
+        "target": {
+          "t": "⑂ main ▾",
+          "x": 22,
+          "y": 153
+        },
+        "hit": {
+          "x": 58,
+          "y": 167,
+          "text": "main"
+        }
+      }
+    },
+    {
+      "id": "everyday-mail:compose",
+      "outcome": "snapped",
+      "costUsd": 0.005774,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2638,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-mail",
+        "target": {
+          "t": "✎",
+          "x": 658,
+          "y": 12
+        },
+        "hit": {
+          "x": 673,
+          "y": 26,
+          "text": "New message (compose icon)"
+        }
+      }
+    },
+    {
+      "id": "everyday-mail:reply-all",
+      "outcome": "snapped",
+      "costUsd": 0.0044573,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2542,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-mail",
+        "target": {
+          "t": "Reply All",
+          "x": 911,
+          "y": 15
+        },
+        "hit": {
+          "x": 941,
+          "y": 26,
+          "text": "Reply All"
+        }
+      }
+    },
+    {
+      "id": "everyday-mail:sent",
+      "outcome": "snapped",
+      "costUsd": 0.0044473,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2533,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-mail",
+        "target": {
+          "t": "Sent",
+          "x": 8,
+          "y": 181
+        },
+        "hit": {
+          "x": 30,
+          "y": 192,
+          "text": "Sent"
+        }
+      }
+    },
+    {
+      "id": "everyday-mail:archive",
+      "outcome": "snapped",
+      "costUsd": 0.0044673000000000004,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3872,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-mail",
+        "target": {
+          "t": "⬇ Archive",
+          "x": 698,
+          "y": 2
+        },
+        "hit": {
+          "x": 725,
+          "y": 28,
+          "text": "Archive"
+        }
+      }
+    },
+    {
+      "id": "everyday-mail:search",
+      "outcome": "missed",
+      "costUsd": 0.00446,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2525,
+      "notes": [
+        "wanted \"\" at (1088,13); got (324,72) \"Priya Nair\""
+      ],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-mail",
+        "target": {
+          "t": "",
+          "x": 1088,
+          "y": 13
+        },
+        "hit": {
+          "x": 324,
+          "y": 72,
+          "text": "Priya Nair"
+        }
+      }
+    },
+    {
+      "id": "everyday-calendar:new-event",
+      "outcome": "snapped",
+      "costUsd": 0.005784,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2466,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-calendar",
+        "target": {
+          "t": "＋",
+          "x": 82,
+          "y": 10
+        },
+        "hit": {
+          "x": 99,
+          "y": 26,
+          "text": "+"
+        }
+      }
+    },
+    {
+      "id": "everyday-calendar:view-month",
+      "outcome": "snapped",
+      "costUsd": 0.0044452,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2317,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-calendar",
+        "target": {
+          "t": "Month",
+          "x": 545,
+          "y": 13
+        },
+        "hit": {
+          "x": 574,
+          "y": 25,
+          "text": "Month"
+        }
+      }
+    },
+    {
+      "id": "everyday-calendar:today",
+      "outcome": "snapped",
+      "costUsd": 0.004463,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2678,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-calendar",
+        "target": {
+          "t": "Today",
+          "x": 1010,
+          "y": 13
+        },
+        "hit": {
+          "x": 1037,
+          "y": 25,
+          "text": "Today"
+        }
+      }
+    },
+    {
+      "id": "everyday-calendar:work-toggle",
+      "outcome": "snapped",
+      "costUsd": 0.0044502,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2613,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-calendar",
+        "target": {
+          "t": "on",
+          "x": 20,
+          "y": 120
+        },
+        "hit": {
+          "x": 27,
+          "y": 126,
+          "text": "Work"
+        }
+      }
+    },
+    {
+      "id": "everyday-settings:appearance-dark",
+      "outcome": "snapped",
+      "costUsd": 0.005782,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 6075,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-settings",
+        "target": {
+          "t": "Dark",
+          "x": 492,
+          "y": 94
+        },
+        "hit": {
+          "x": 547,
+          "y": 129,
+          "text": "Dark"
+        }
+      }
+    },
+    {
+      "id": "everyday-settings:nav-wifi",
+      "outcome": "snapped",
+      "costUsd": 0.004388,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3331,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-settings",
+        "target": {
+          "t": "Wi-Fi",
+          "x": 8,
+          "y": 95
+        },
+        "hit": {
+          "x": 31,
+          "y": 106,
+          "text": "Wi-Fi"
+        }
+      }
+    },
+    {
+      "id": "everyday-settings:nav-sound",
+      "outcome": "snapped",
+      "costUsd": 0.0044551999999999994,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3392,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-settings",
+        "target": {
+          "t": "Sound",
+          "x": 8,
+          "y": 414
+        },
+        "hit": {
+          "x": 35,
+          "y": 425,
+          "text": "Sound"
+        }
+      }
+    },
+    {
+      "id": "everyday-settings:nav-displays",
+      "outcome": "snapped",
+      "costUsd": 0.0043852,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2590,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-settings",
+        "target": {
+          "t": "Displays",
+          "x": 8,
+          "y": 312
+        },
+        "hit": {
+          "x": 40,
+          "y": 323,
+          "text": "Displays"
+        }
+      }
+    },
+    {
+      "id": "everyday-settings:nav-battery",
+      "outcome": "snapped",
+      "costUsd": 0.004453,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2315,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-settings",
+        "target": {
+          "t": "Battery",
+          "x": 8,
+          "y": 164
+        },
+        "hit": {
+          "x": 37,
+          "y": 175,
+          "text": "Battery"
+        }
+      }
+    },
+    {
+      "id": "everyday-files:nav-downloads",
+      "outcome": "snapped",
+      "costUsd": 0.005789,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2365,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-files",
+        "target": {
+          "t": "Downloads",
+          "x": 8,
+          "y": 204
+        },
+        "hit": {
+          "x": 48,
+          "y": 215,
+          "text": "Downloads"
+        }
+      }
+    },
+    {
+      "id": "everyday-files:view-list",
+      "outcome": "snapped",
+      "costUsd": 0.0043873,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2864,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-files",
+        "target": {
+          "t": "☰",
+          "x": 787,
+          "y": 13
+        },
+        "hit": {
+          "x": 802,
+          "y": 26,
+          "text": "List view"
+        }
+      }
+    },
+    {
+      "id": "everyday-files:share",
+      "outcome": "snapped",
+      "costUsd": 0.0043823,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2666,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-files",
+        "target": {
+          "t": "⇪",
+          "x": 979,
+          "y": 13
+        },
+        "hit": {
+          "x": 995,
+          "y": 26,
+          "text": "Share"
+        }
+      }
+    },
+    {
+      "id": "everyday-files:file-april",
+      "outcome": "snapped",
+      "costUsd": 0.00445,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2516,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-files",
+        "target": {
+          "t": "Invoice April.pdf",
+          "x": 208,
+          "y": 115
+        },
+        "hit": {
+          "x": 265,
+          "y": 127,
+          "text": "Invoice April.pdf"
+        }
+      }
+    },
+    {
+      "id": "everyday-files:tags",
+      "outcome": "snapped",
+      "costUsd": 0.0044023000000000005,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3510,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-files",
+        "target": {
+          "t": "◯",
+          "x": 1022,
+          "y": 11
+        },
+        "hit": {
+          "x": 1038,
+          "y": 25,
+          "text": "Tag button"
+        }
+      }
+    },
+    {
+      "id": "everyday-spreadsheet:chart",
+      "outcome": "snapped",
+      "costUsd": 0.005792,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3085,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-spreadsheet",
+        "target": {
+          "t": "▮ Chart",
+          "x": 609,
+          "y": 4
+        },
+        "hit": {
+          "x": 631,
+          "y": 25,
+          "text": "Chart"
+        }
+      }
+    },
+    {
+      "id": "everyday-spreadsheet:add-sheet",
+      "outcome": "snapped",
+      "costUsd": 0.0044452,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2184,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-spreadsheet",
+        "target": {
+          "t": "＋",
+          "x": 223,
+          "y": 58
+        },
+        "hit": {
+          "x": 239,
+          "y": 72,
+          "text": "+"
+        }
+      }
+    },
+    {
+      "id": "everyday-spreadsheet:format",
+      "outcome": "snapped",
+      "costUsd": 0.004383,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2690,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-spreadsheet",
+        "target": {
+          "t": "🖌 Format",
+          "x": 1143,
+          "y": 1
+        },
+        "hit": {
+          "x": 1169,
+          "y": 25,
+          "text": "Format"
+        }
+      }
+    },
+    {
+      "id": "everyday-spreadsheet:collaborate",
+      "outcome": "snapped",
+      "costUsd": 0.0044551999999999994,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2717,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-spreadsheet",
+        "target": {
+          "t": "👥 Collaborate",
+          "x": 1058,
+          "y": 1
+        },
+        "hit": {
+          "x": 1095,
+          "y": 26,
+          "text": "Collaborate"
+        }
+      }
+    },
+    {
+      "id": "everyday-spreadsheet:tab-budget",
+      "outcome": "snapped",
+      "costUsd": 0.004448,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2138,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-spreadsheet",
+        "target": {
+          "t": "Budget",
+          "x": 83,
+          "y": 60
+        },
+        "hit": {
+          "x": 113,
+          "y": 72,
+          "text": "Budget"
+        }
+      }
+    },
+    {
+      "id": "everyday-document:bold",
+      "outcome": "snapped",
+      "costUsd": 0.005792,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3375,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-document",
+        "target": {
+          "t": "B",
+          "x": 1043,
+          "y": 173
+        },
+        "hit": {
+          "x": 1057,
+          "y": 186,
+          "text": "B"
+        }
+      }
+    },
+    {
+      "id": "everyday-document:align-center",
+      "outcome": "snapped",
+      "costUsd": 0.0044073,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 5085,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-document",
+        "target": {
+          "t": "≡",
+          "x": 1076,
+          "y": 210
+        },
+        "hit": {
+          "x": 1089,
+          "y": 222,
+          "text": "center align"
+        }
+      }
+    },
+    {
+      "id": "everyday-document:share",
+      "outcome": "snapped",
+      "costUsd": 0.00445,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2284,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-document",
+        "target": {
+          "t": "⇪ Share",
+          "x": 1079,
+          "y": 5
+        },
+        "hit": {
+          "x": 1102,
+          "y": 26,
+          "text": "Share"
+        }
+      }
+    },
+    {
+      "id": "everyday-document:comment",
+      "outcome": "snapped",
+      "costUsd": 0.0044623,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2737,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-document",
+        "target": {
+          "t": "💬 Comment",
+          "x": 833,
+          "y": 1
+        },
+        "hit": {
+          "x": 866,
+          "y": 25,
+          "text": "Comment"
+        }
+      }
+    },
+    {
+      "id": "everyday-slides:add-slide",
+      "outcome": "snapped",
+      "costUsd": 0.005782,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2708,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-slides",
+        "target": {
+          "t": "＋ Add Slide",
+          "x": 290,
+          "y": 3
+        },
+        "hit": {
+          "x": 322,
+          "y": 26,
+          "text": "Add Slide"
+        }
+      }
+    },
+    {
+      "id": "everyday-slides:play",
+      "outcome": "snapped",
+      "costUsd": 0.0044502,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2082,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-slides",
+        "target": {
+          "t": "▶ Play",
+          "x": 512,
+          "y": 5
+        },
+        "hit": {
+          "x": 531,
+          "y": 19,
+          "text": "Play"
+        }
+      }
+    },
+    {
+      "id": "everyday-slides:animate",
+      "outcome": "snapped",
+      "costUsd": 0.004448,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2750,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-slides",
+        "target": {
+          "t": "◇ Animate",
+          "x": 1131,
+          "y": 5
+        },
+        "hit": {
+          "x": 1159,
+          "y": 24,
+          "text": "Animate"
+        }
+      }
+    },
+    {
+      "id": "everyday-slides:slide-3",
+      "outcome": "snapped",
+      "costUsd": 0.0044502,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3411,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-slides",
+        "target": {
+          "t": "3 · Money",
+          "x": 8,
+          "y": 238
+        },
+        "hit": {
+          "x": 84,
+          "y": 278,
+          "text": "3 · Money"
+        }
+      }
+    },
+    {
+      "id": "everyday-design:tool-rect",
+      "outcome": "missed",
+      "costUsd": 0.005774,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2816,
+      "notes": [
+        "wanted \"▢\" at (153,11); got (615,580) \"\""
+      ],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-design",
+        "target": {
+          "t": "▢",
+          "x": 153,
+          "y": 11
+        },
+        "hit": {
+          "x": 615,
+          "y": 580,
+          "text": ""
+        }
+      }
+    },
+    {
+      "id": "everyday-design:export",
+      "outcome": "snapped",
+      "costUsd": 0.004455,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3177,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-design",
+        "target": {
+          "t": "Export Price tag",
+          "x": 1043,
+          "y": 346
+        },
+        "hit": {
+          "x": 1155,
+          "y": 358,
+          "text": "Export Price tag"
+        }
+      }
+    },
+    {
+      "id": "everyday-design:share",
+      "outcome": "snapped",
+      "costUsd": 0.0044523,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2753,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-design",
+        "target": {
+          "t": "Share",
+          "x": 1214,
+          "y": 13
+        },
+        "hit": {
+          "x": 1240,
+          "y": 25,
+          "text": "Share"
+        }
+      }
+    },
+    {
+      "id": "everyday-design:fill",
+      "outcome": "snapped",
+      "costUsd": 0.0043873,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2718,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-design",
+        "target": {
+          "t": "Fill colour",
+          "x": 1043,
+          "y": 191
+        },
+        "hit": {
+          "x": 1056,
+          "y": 201,
+          "text": "Fill color swatch"
+        }
+      }
+    },
+    {
+      "id": "everyday-photo:tool-crop",
+      "outcome": "missed",
+      "costUsd": 0.005799,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3269,
+      "notes": [
+        "wanted \"⌗\" at (6,171); got (204,25) \"Image\""
+      ],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-photo",
+        "target": {
+          "t": "⌗",
+          "x": 6,
+          "y": 171
+        },
+        "hit": {
+          "x": 204,
+          "y": 25,
+          "text": "Image"
+        }
+      }
+    },
+    {
+      "id": "everyday-photo:tool-heal",
+      "outcome": "snapped",
+      "costUsd": 0.004388100000000001,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 3000,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-photo",
+        "target": {
+          "t": "✚",
+          "x": 6,
+          "y": 223
+        },
+        "hit": {
+          "x": 21,
+          "y": 235,
+          "text": "Spot Healing tool"
+        }
+      }
+    },
+    {
+      "id": "everyday-photo:adj-brightness",
+      "outcome": "snapped",
+      "costUsd": 0.004451,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2738,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-photo",
+        "target": {
+          "t": "Brightness/Contrast",
+          "x": 1033,
+          "y": 85
+        },
+        "hit": {
+          "x": 1101,
+          "y": 97,
+          "text": "Brightness/Contrast"
+        }
+      }
+    },
+    {
+      "id": "everyday-photo:new-layer",
+      "outcome": "snapped",
+      "costUsd": 0.004446,
+      "turns": 1,
+      "tokens": {
+        "in": 0,
+        "cacheRead": 0,
+        "out": 0
+      },
+      "ms": 2326,
+      "notes": [],
+      "detail": {
+        "set": "everyday",
+        "page": "everyday-photo",
+        "target": {
+          "t": "＋",
+          "x": 1148,
+          "y": 292
+        },
+        "hit": {
+          "x": 1164,
+          "y": 306,
+          "text": "+"
+        }
+      }
+    }
+  ],
+  "summary": {
+    "counts": {
+      "snapped": 123,
+      "raw_only": 0,
+      "missed": 5,
+      "no_answer": 0,
+      "rendered": 0,
+      "error": 0,
+      "refused": 0,
+      "stopped": 0,
+      "not_started": 0
+    },
+    "rendered": 128,
+    "asked": 128,
+    "basic": {
+      "asked": 48,
+      "snapped": 48,
+      "raw": 48
+    },
+    "hard": {
+      "asked": 40,
+      "snapped": 38,
+      "raw": 38
+    },
+    "everyday": {
+      "asked": 40,
+      "snapped": 37,
+      "raw": 37
+    },
+    "real": {
+      "asked": 0,
+      "snapped": 0,
+      "raw": 0
+    },
+    "medianMs": 2595,
+    "slowestMs": 13353,
+    "costUsd": 0.671655
+  }
+}

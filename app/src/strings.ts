@@ -765,6 +765,15 @@ export const S = {
   agentsYes: "Yes, add the block",
   agentsNo: "No, leave my files alone",
   agentsRemove: `Remove ${PRODUCT_S} block from my shared files`,
+  // The shared files row in the Memory tab, for a folder made for you (M14; sharedFiles.ts, sharedFilesRow.tsx). The files are
+  // only added when the person presses the button.
+  sharedFiles: {
+    offer: `Other coding tools can read this project's notes. AGENTS.md and CLAUDE.md are notes that other AI coding tools read, so they know about the project. ${PRODUCT} has not put them in this folder.`,
+    add: "Add them",
+    saved: `Okay. They are added as soon as ${PRODUCT} has notes about this project.`,
+    added: `Added. AGENTS.md and CLAUDE.md are in this folder now, with the notes from this list. To take the notes out again, use the button at the bottom of this page.`,
+    own: `This folder already has its own AGENTS.md or CLAUDE.md, so ${PRODUCT} leaves them alone.`,
+  },
   diffRemoved: "removed:",
   waitingForYou: "waiting for you",
   planCostNone: "Rough cost: very little",
