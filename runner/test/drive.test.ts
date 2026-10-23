@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
-import { estimateUsd, MAX_STEPS, parsePlan, planPrompt } from "../src/drive.ts";
+import { estimateUsd, MAX_STEPS, parsePlan, planPrompt, stepPrompt, freshStepPrompt } from "../src/drive.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
 
@@ -200,6 +200,45 @@ describe("what Claude is asked for when planning", () => {
     expect(p).toMatch(/something.*(see|check)/i);
     expect(p).toContain("make a page");
     expect(p).toContain(String(MAX_STEPS));
+  });
+  test("it never plans a step that needs a detail the request did not mention, and says a placeholder can be changed", () => {
+    const p = planPrompt("a one page website for my bakery with opening hours and a contact section");
+    expect(p).toMatch(/do not write a step that needs, and do not ask the person for, a detail the request did not mention/i);
+    expect(p).toMatch(/email address/i);
+    expect(p).toMatch(/phone number/i);
+    expect(p).toMatch(/price/i);
+    expect(p).toMatch(/logo/i);
+    expect(p).toMatch(/placeholder/i);
+    expect(p).toMatch(/placeholder.*(can change|change)/is);
+    expect(p).toMatch(/ask only when the work truly cannot go on without a fact only the person has/i);
+    expect(p).toMatch(/way to contact them is not/i);
+  });
+  test("the old rules stay beside the new one", () => {
+    const p = planPrompt("make a page", 7);
+    expect(p).toMatch(/1 to 3 steps\. Never more than 7/);
+    expect(p).toMatch(/one real change/i);
+    expect(p).toMatch(/opening editors, saving files/i);
+  });
+  test("each step is told the same rule, also when it starts afresh off the record", () => {
+    expect(stepPrompt(1, 3, "Add the contact section")).toMatch(/placeholder/i);
+    expect(stepPrompt(1, 3, "Add the contact section")).toMatch(/do not ask the person for a detail the request did not mention/i);
+    expect(freshStepPrompt("a bakery page", stepPrompt(2, 3, "x"))).toMatch(/placeholder/i);
+    expect(stepPrompt(2, 5, "Add prices")).toContain("Step 2 of 5: Add prices");
+  });
+  test("the plan Claude is really asked for carries the rule (scripted run)", async () => {
+    const r = setup([[plan("Add the contact section with a placeholder email you can change")]]);
+    await r.plan();
+    const sent = r.engine.calls[0].prompt;
+    expect(sent).toMatch(/placeholder/i);
+    expect(sent).toMatch(/do not write a step that needs/i);
+    expect(sent).toContain("build a booking page");
+  });
+  test("the step Claude is really asked to do carries the rule (scripted run)", async () => {
+    const r = setup([[plan("One")], [say("done")]]);
+    await r.plan();
+    await r.approve(["One"]);
+    expect(r.engine.calls[1].prompt).toMatch(/placeholder/i);
+    expect(r.engine.calls[1].prompt).toMatch(/step 1 of 1/i);
   });
   test("the cost shown is an upper limit that grows with the number of steps, never zero", () => {
     expect(estimateUsd(1)).toBeGreaterThan(0);

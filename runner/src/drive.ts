@@ -26,6 +26,11 @@ export function parsePlan(text: string): string[] {
   return lines;
 }
 
+// The plain rule for plans and for steps: do not make the person say what the request never mentioned. A vague request
+// should ask once (the one thing the work cannot go on without), never twice (M14 real run: the bakery's name, then an email).
+export const NO_UNASKED_DETAILS_PLAN = `- Do not write a step that needs, and do not ask the person for, a detail the request did not mention (an email address, a phone number, a price, a logo). Use an obvious placeholder in the work, and say in the step's words that it is a placeholder they can change, such as "Add the contact section with a placeholder email you can change". Ask only when the work truly cannot go on without a fact only the person has: the one name the page is about is such a case, a way to contact them is not.`;
+export const NO_UNASKED_DETAILS_STEP = `Do not ask the person for a detail the request did not mention (an email address, a phone number, a price, a logo). Use an obvious placeholder instead and say in your last words that it is a placeholder they can change. Ask only when the work truly cannot go on without a fact only the person has.`;
+
 export const planPrompt = (goal: string, max = MAX_STEPS) =>
   `Plan this goal for a person who is not an engineer. Look around the project first (read only, change nothing).
 
@@ -33,12 +38,13 @@ Reply with ONLY a JSON list of short steps in plain words, for example ["Add the
 - Use as few steps as the goal needs. A small goal is 1 to 3 steps. Never more than ${max}.
 - Each step is one real change that produces something a person could see or check, such as "Add the prices section" or "Make the form send an email".
 - Do not include steps about opening editors, saving files, opening a browser or looking at the result. ${PRODUCT} saves, checks and opens things itself.
+${NO_UNASKED_DETAILS_PLAN}
 
 Goal: ${goal}`;
 export const shortenPrompt = (n: number, max = MAX_STEPS) =>
   `That plan has ${n} steps. Please reply again with ONLY a JSON list of at most ${max} steps, combining small ones.`;
 export const stepPrompt = (i: number, n: number, title: string) =>
-  `Step ${i} of ${n}: ${title}\n\nDo only this step, keep the change small, and stop when it is done.`;
+  `Step ${i} of ${n}: ${title}\n\nDo only this step, keep the change small, and stop when it is done.\n\n${NO_UNASKED_DETAILS_STEP}`;
 // Off the record, no conversation is saved, so a step or a second try cannot continue the planning conversation. It
 // starts afresh and is told what the whole plan is for.
 export const freshStepPrompt = (goal: string, prompt: string) =>
