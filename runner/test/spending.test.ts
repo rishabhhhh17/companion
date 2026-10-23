@@ -4,8 +4,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD, SpendingStore, startingLimit } from "../src/spending.ts";
-import { AgentRunner } from "../src/agent.ts";
+import { checkDailyLimit, DEFAULT_DAILY_LIMIT_USD, LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD, SpendingStore, startingLimit } from "../src/spending.ts";
+import { AgentRunner, NO_PROJECT } from "../src/agent.ts";
 import { ScriptedEngine } from "../src/engine.ts";
 import { Ledger } from "../src/ledger.ts";
 import { TaskLog } from "../src/tasklog.ts";
@@ -129,6 +129,22 @@ describe("in the runner", () => {
     expect(r.states().at(-1).limitUsd).toBe(10);
     expect(r.states().at(-1).problem).toBe("The new limit could not be saved, so it was not changed. Try again.");
   });
+  test("a task at the limit with a project still says this project in the engine error", async () => {
+    const r = setup({ limit: 1 });
+    r.ledger.add(r.project, 1.5);
+    await r.runner.handle({ v: 1, id: "t1", type: "agent.start", project: r.project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 1 });
+    const err = r.events.find((e) => e.type === "protocol.error" && /daily_limit/.test((e as any).reason)) as any;
+    expect(err.reason).toBe("daily_limit: this project has reached its daily limit. New work starts again tomorrow, or you can raise the limit.");
+  });
+  test("the same refusal for work that belongs to no project does not say this project", async () => {
+    const r = setup({ limit: 1 });
+    r.ledger.add(NO_PROJECT, 1.5);
+    await r.runner.handle({ v: 1, id: "t1", type: "agent.start", project: NO_PROJECT, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 1 });
+    const err = r.events.find((e) => e.type === "protocol.error" && /daily_limit/.test((e as any).reason)) as any;
+    expect(err).toBeTruthy();
+    expect(err.reason).toMatch(/^daily_limit:/);
+    expect(err.reason).not.toMatch(/project/i);
+  });
 });
 
 // The runner program reads the saved limit when it starts, and keeps a new one for next time.
@@ -173,5 +189,22 @@ describe("the runner program", () => {
     expect(a.states()[0].limitUsd).toBe(10);
     await a.close();
     expect(existsSync(join(data, "spending.json"))).toBe(false);
+  });
+});
+
+describe("the daily limit words depend on whether the work belongs to a project", () => {
+  test("a project keeps the sentence it always had, exactly", () => {
+    expect(LIMIT_REACHED).toBe("This project has reached its daily spending limit. New work starts again tomorrow, or you can raise the limit in Settings.");
+    expect(limitReached("/Users/me/site")).toBe(LIMIT_REACHED);
+  });
+  test("with no project open (none named, or the stand in) it does not say this project", () => {
+    for (const p of [undefined, "", NO_PROJECT]) {
+      expect(limitReached(p)).toBe(LIMIT_REACHED_NO_PROJECT);
+    }
+    expect(LIMIT_REACHED_NO_PROJECT).not.toMatch(/project/i);
+    expect(LIMIT_REACHED_NO_PROJECT).toMatch(/daily spending limit/);
+    expect(LIMIT_REACHED_NO_PROJECT).toMatch(/tomorrow/);
+    expect(LIMIT_REACHED_NO_PROJECT).toMatch(/Settings/);
+    expect(LIMIT_REACHED_NO_PROJECT).not.toContain("\u2014");
   });
 });

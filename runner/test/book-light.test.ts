@@ -11,7 +11,7 @@ import { AgentRunner, NO_PROJECT } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { AssistService, ImageStore } from "../src/lanes.ts";
 import { Ledger } from "../src/ledger.ts";
-import { LIMIT_REACHED } from "../src/spending.ts";
+import { LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT } from "../src/spending.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { NAMES } from "../src/names.ts";
 import { toBase64 } from "../src/attach.ts";
@@ -134,7 +134,8 @@ describe("at the limit, a light call with no project open refuses in plain words
       const said = r.events.slice(before);
       expect(said.length).toBe(1);
       const text = (said[0] as any).reason;
-      expect(text).toBe(LIMIT_REACHED);
+      expect(text).toBe(LIMIT_REACHED_NO_PROJECT);
+      expect(text).not.toMatch(/project/i);
       expect(["assist.error", "error.explained", "secondlook.result"]).toContain(said[0].type);
       expect(parseEvent(serialize(said[0])).ok).toBe(true);
     });
@@ -152,7 +153,7 @@ describe("at the limit, a light call with no project open refuses in plain words
     expect(r.asked.explainer).toBe(2);
     await r.features["the error explainer"]();
     expect(r.asked.explainer).toBe(2);
-    expect(of(r.events, "error.explained").at(-1).reason).toBe(LIMIT_REACHED);
+    expect(of(r.events, "error.explained").at(-1).reason).toBe(LIMIT_REACHED_NO_PROJECT);
     expect(r.ledger.spentToday(NO_PROJECT)).toBeCloseTo(1.2, 6);
   });
   test("raising the limit in Settings lets it through again", async () => {
@@ -161,7 +162,7 @@ describe("at the limit, a light call with no project open refuses in plain words
     (r.runner as any).o.saveDailyLimit = (u: number) => saved.push(u);
     r.ledger.add(NO_PROJECT, 1);
     await r.features["Second Look"]();
-    expect(of(r.events, "secondlook.result").at(-1).reason).toBe(LIMIT_REACHED);
+    expect(of(r.events, "secondlook.result").at(-1).reason).toBe(LIMIT_REACHED_NO_PROJECT);
     await r.cmd({ type: "spending.set", project: NO_PROJECT, limitUsd: 5 });
     await r.features["Second Look"]();
     expect(of(r.events, "secondlook.result").at(-1).ok).toBe(true);
@@ -191,7 +192,7 @@ describe("the day is the local day, and the total survives a restart", () => {
     expect((await second.shown(NO_PROJECT)).spentUsd).toBeCloseTo(1.2, 6);
     await second.features["the error explainer"]();
     expect(second.asked.explainer).toBe(0);
-    expect(of(second.events, "error.explained")[0].reason).toBe(LIMIT_REACHED);
+    expect(of(second.events, "error.explained")[0].reason).toBe(LIMIT_REACHED_NO_PROJECT);
   });
   test("a ledger that cannot be written still counts while the engine runs", async () => {
     const r = rig({ limit: 1, price: 0.6 });
@@ -297,6 +298,18 @@ describe("every light feature goes through the one booking function", () => {
     await r.cmd({ type: "diagram.ask", project, question: "why" });
     expect(r.asked.explainer).toBe(0);
     expect(of(r.events, "diagram.ready")[0].reason).toBe(LIMIT_REACHED);
+  });
+  test("Prompt help, the error explainer and Second Look with a project open keep the project sentence", async () => {
+    const project = tmp("proj2"); writeFileSync(join(project, "package.json"), "{}");
+    const r = rig({ limit: 1 });
+    r.ledger.add(project, 1);
+    await r.features["Prompt help"]({ project });
+    await r.features["the error explainer"]({ project });
+    await r.features["Second Look"]({ project });
+    expect(r.calls()).toBe(0);
+    expect(of(r.events, "assist.error").at(-1).reason).toBe(LIMIT_REACHED);
+    expect(of(r.events, "error.explained").at(-1).reason).toBe(LIMIT_REACHED);
+    expect(of(r.events, "secondlook.result").at(-1).reason).toBe(LIMIT_REACHED);
   });
   test("Explain after a task", async () => {
     const project = tmp("proj"); writeFileSync(join(project, "a.txt"), "x\n");
