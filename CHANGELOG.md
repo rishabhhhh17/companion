@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
+
+- **Anthropic's support wrote back on the question about small features.** Building a paid product on their plain API under our own key is "a standard setup", and the server design we described (check the plan, enforce a daily cap, forward under our key, record token counts only) works. That clears the way for a HeyClicky style plan for the guide, Explain, Second Look and Prompt help. It is not switched on yet.
+- **They set one condition:** we are responsible for what our users send through our key, so we need our own acceptable use terms and a way to cut off an offending account. The next steps, and what is still unanswered (shipping the program inside the app, and the agreement for Claude Code usage), are in `docs/outreach/anthropic-support-reply-2-2026-10-23.md` and the F22 record.
+
 ## Three small fixes: 23 Oct 2026
 
 - **Squibby no longer asks for details you never gave.** Ask for "a one page website for my bakery with opening hours and a contact section" and the plan used to include a contact step that stopped to ask for an email address you never mentioned, so a vague request asked you twice. Now neither the plan nor any step may ask for an email, a phone number, a price or a logo that the request did not mention. It puts in an obvious placeholder, says in the step that it is a placeholder you can change, and asks only when the work truly cannot go on without something only you know. One real run on the bakery request: it did not ask for an email, and it did not ask anything else either, so it also treated the bakery's name as a placeholder. That is fine for the page but it means the question and answer path was not exercised by that run.

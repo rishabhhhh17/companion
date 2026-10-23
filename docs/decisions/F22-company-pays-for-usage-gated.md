@@ -28,6 +28,13 @@ Anthropic's terms for products built on Claude Code (which includes the Agent SD
 ## Payments through Dodo Payments (founder's choice, 23 Oct 2026)
 Plans are sold and charged through Dodo Payments (a merchant of record), not Stripe. The gate above is unchanged: choosing a payment provider does not switch managed usage on, and with no provider set the proxy serves no payment route. `usage-proxy/src/dodo.ts` and `payments.ts` are built and tested, off by default; `stripe.ts` stays as the other choice. Fees, payout schedule and terms: Dodo's own docs and dashboard, not stated here. Not yet proven against a real Dodo test mode webhook (see `docs/milestones/M13-managed-usage-plan.md`).
 
+## Anthropic support said yes for the plain API (23 Oct 2026)
+- **What they wrote** (a support email, about 16 hours after the founder's follow up; see `docs/outreach/anthropic-support-reply-2-2026-10-23.md`): building a commercial product on the Messages API under your own organization's key, with that usage covered by a paid plan, "is a standard setup". The server design we described works: check the user's plan, enforce a daily cap, forward the request under your key, and record token counts only.
+- **What it unlocks:** the company paid light features (the guide, Explain, Second Look, Prompt help, picture reading) through `usage-proxy/`. It is still a support email, not a signed agreement: have a lawyer read it before the business depends on its exact words.
+- **What it does not unlock:** Claude Code usage paid by us (the fixing engine on Anthropic's own program). That still needs a written agreement. Points 1 (shipping the program inside the app) and 3 (who to talk to for an agreement) of the follow up are not answered yet.
+- **Condition they stated:** we are responsible for Usage Policy compliance for everything our users send through our key. A rate limit alone does not cover that. We need our own acceptable use terms for users and a process to identify and cut off an offending account.
+- **Not switched on:** the managed route stays off until the conditions below are met. Rule 1 in AGENTS.md is read as: the fixing engine is never company paid without a written agreement; the plain API light features may be company paid behind the switch, now that Anthropic's support has said it is a standard setup.
+
 ## What changes in the rules
 `AGENTS.md` rule 1 ("never pay for, resell or route anyone's Claude usage") now reads as true unless managed usage is switched on with Anthropic's written yes. Rule 2 (the key stays in the Keychain) is unchanged: on managed usage there is no user key, only a Companion sign in token, kept in the Keychain the same way, and Companion's own Anthropic key never leaves the server.
 
