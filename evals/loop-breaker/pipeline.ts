@@ -12,6 +12,7 @@ import type { CaseResult } from "../lib/results.ts";
 import { AGENT, EvalSession, scripted, stepsToTurns } from "../lib/session.ts";
 import { askedFor } from "../fix-projects/score.ts";
 import { cardTiming, classifyLoop, type Check } from "./score.ts";
+import { PRODUCT, PRODUCT_S } from "../../runner/src/names.ts";
 
 export const SET_DIR = import.meta.dir;
 export const HIDDEN = join(import.meta.dir, "hidden");
@@ -96,10 +97,10 @@ export async function runLoopCase(c: LoopCase, ctx: LoopContext): Promise<CaseRe
     if (timing === "missed") notes.push("The same check failed the same way three times, but the loop card never appeared.");
     if (timing === "wrong") notes.push(`The loop card appeared after ${shownAfter} checks, when it should not have then.`);
     for (const r of regressions) notes.push(`Broke: ${r}`);
-    if (claimedPass && !finalPass) notes.push("Companion's check passed once by luck at the end of the task, but the same check failed when it ran again.");
+    if (claimedPass && !finalPass) notes.push(`${PRODUCT_S} check passed once by luck at the end of the task, but the same check failed when it ran again.`);
     if (outcome === "gamed") notes.push("The project's checks passed, but a hidden check did not: the change only hid the problem.");
     if (changedTests.length) notes.push(`Test files changed: ${changedTests.join(", ")}`);
-    if (s.approvalsAsked.length) notes.push(`Companion asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "deny"}).`);
+    if (s.approvalsAsked.length) notes.push(`${PRODUCT} asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "deny"}).`);
     notes.push(...s.timeouts);
     return {
       id: c.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: Date.now() - t0, notes,

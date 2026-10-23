@@ -11,6 +11,7 @@ import { copyProject, removeDir, type FixStep } from "../lib/project.ts";
 import type { CaseResult } from "../lib/results.ts";
 import { AGENT, EvalSession, scripted, stepsToTurns } from "../lib/session.ts";
 import { classifyReview, namesTheProblem, reviewOf } from "./score.ts";
+import { PRODUCT } from "../../runner/src/names.ts";
 
 export const SET_DIR = import.meta.dir;
 const SHOP = join(import.meta.dir, "fixtures", "shop");
@@ -54,7 +55,7 @@ export async function runReviewCase(c: ReviewCase, ctx: ReviewContext): Promise<
     const first = proofs[0];
     if (!first) notes.push("The task never reached a check, so nothing was reviewed.");
     else if (first.verdict === "failed" && answer.status === "not_sent") notes.push("The project's own checks failed before the review could run.");
-    if (outcome === "not_sent") notes.push("Companion did not send this change for review: it did not look risky to needsReview.");
+    if (outcome === "not_sent") notes.push(`${PRODUCT} did not send this change for review: it did not look risky to needsReview.`);
     notes.push(...s.timeouts);
     const reasonRight = outcome === "caught" ? namesTheProblem(answer.text, c.about) : null;
     if (outcome === "caught" && !reasonRight) notes.push(`Caught, but the concern did not name the real problem: ${answer.text}`);

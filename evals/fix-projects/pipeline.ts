@@ -56,6 +56,7 @@ export function loadCases(): LoadedCase[] {
  *  shipped builder (runner/src/fixfound.ts, used by the practice projects and Point at the problem's small fix), so the eval
  *  measures the product's own request. The M11 prompt work changes it there. */
 import { FIX_ASK, fixFoundPrompt as fixPrompt } from "../../runner/src/fixfound.ts";
+import { PRODUCT } from "../../runner/src/names.ts";
 export { FIX_ASK, fixPrompt };
 
 export type Flow = "task" | "rescue";
@@ -139,7 +140,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     const during = s.events.slice(fixFrom);
     const receipts = during.filter((e) => e.type === "receipt");
     const errors = during.filter((e) => e.type === "protocol.error").map((e) => String(e.reason));
-    if (errors.length) notes.push(...errors.slice(0, 3).map((r) => `Companion said: ${r}`));
+    if (errors.length) notes.push(...errors.slice(0, 3).map((r) => `${PRODUCT} said: ${r}`));
     notes.push(...s.timeouts);
     // 3. The project's own checks again, no model.
     const finalFrom = s.events.length;
@@ -173,7 +174,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     for (const r of regressions) notes.push(`Broke: ${r}`);
     for (const a of accept.filter((x) => !x.pass)) notes.push(`Hidden check failed: ${c.hidden.find((h) => h.name === a.name)?.what} (${after.why[a.name] ?? ""})`);
     if (changedTests.length) notes.push(`Test files changed: ${changedTests.join(", ")}`);
-    if (s.approvalsAsked.length) notes.push(`Companion asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "settings"}): ${s.approvalsAsked.slice(0, 2).join("; ")}`);
+    if (s.approvalsAsked.length) notes.push(`${PRODUCT} asked for approval ${s.approvalsAsked.length} times (answered ${ctx.approvals ?? "settings"}): ${s.approvalsAsked.slice(0, 2).join("; ")}`);
     if (c.expect === "ask" && said && !asked) notes.push(`The card showed: ${said.slice(0, 200)}${needsYou ? "" : " (not as a question: the task did not end as needs you)"}`);
     return {
       id: c.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: Date.now() - t0, notes,
