@@ -44,6 +44,8 @@ pub const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_PART: usize = 32 << 20;
 /// What an Excel file may hold once opened, by what its own list says (it is never extracted).
 const SHEET_LIMITS: crate::convert::Limits = crate::convert::Limits { files: 5_000, bytes: 1 << 30 };
+/// The same for a Word (.docx) or OpenDocument (.odt) file, which are zips too: read from the zip's own list before textutil is started.
+const WORD_LIMITS: crate::convert::Limits = SHEET_LIMITS;
 /// The most sheets read from one workbook.
 const MAX_SHEETS: usize = 50;
 
@@ -96,10 +98,14 @@ impl Work {
     pub fn new(root: &Path) -> std::io::Result<Work> {
         use std::os::unix::fs::DirBuilderExt;
         static N: AtomicU64 = AtomicU64::new(0);
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(root)?;
-        // The root must be a real folder of ours, not a link someone put there.
+        // The root must be a real folder of ours, not a link someone put there, and owner only even when it was there before
+        // (a folder somebody else owns is never used; one of ours with wider modes is tightened).
         let m = std::fs::symlink_metadata(root)?;
         if !m.is_dir() { return Err(std::io::Error::other("not a folder")); }
+        if m.uid() != unsafe { libc::geteuid() } { return Err(std::io::Error::other("not our folder")); }
+        if m.permissions().mode() & 0o077 != 0 { std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?; }
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let dir = root.join(format!("{}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst), nanos));
         std::fs::DirBuilder::new().mode(0o700).create(&dir)?;   // fails if anything is there already
@@ -127,6 +133,7 @@ pub fn read(root: &Path, name: &str, bytes: &[u8]) -> Result<Text, Refuse> {
     if secret_name(name) { return Err(Refuse::Kind); }
     if bytes.len() > MAX_INPUT { return Err(Refuse::TooBig); }
     if bytes.is_empty() { return Err(Refuse::NoText); }
+    if doc == Doc::Word && bytes.starts_with(b"PK") && crate::convert::zip_vet_reader(&mut std::io::Cursor::new(bytes), WORD_LIMITS) == Err("tooBig") { return Err(Refuse::TooBig); }
     let work = Work::new(root).map_err(|_| Refuse::Unreadable)?;
     // Companion's copy is never named after the file: only its ending, which the tools go by.
     let input = work.put(&format!("in.{}", ext_of(doc, name)), bytes).map_err(|_| Refuse::Unreadable)?;
@@ -291,7 +298,8 @@ pub fn unescape(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         rest = &rest[i..];
-        let Some(j) = rest[..rest.len().min(12)].find(';') else { out.push('&'); rest = &rest[1..]; continue };
+        // The look ahead is over bytes: a cut at byte 12 can fall inside a letter such as "é", which a text slice would panic on.
+        let Some(j) = rest.as_bytes()[..rest.len().min(12)].iter().position(|b| *b == b';') else { out.push('&'); rest = &rest[1..]; continue };
         let ent = &rest[1..j];
         let ch = match ent {
             "lt" => Some('<'), "gt" => Some('>'), "amp" => Some('&'), "quot" => Some('"'), "apos" => Some('\''),
@@ -342,8 +350,13 @@ fn attr(el: &str, name: &str) -> Option<String> {
 
 /// The text inside an element, through every `<t>` in it (rich text runs), leaving out phonetic guides (`<rPh>`).
 fn t_text(el: &str) -> String {
-    let mut s = el.to_string();
-    while let Some(i) = s.find("<rPh") { match s[i..].find("</rPh>") { Some(j) => s.replace_range(i..i + j + 6, ""), None => break } }
+    // One pass, so a text with a million guides is as quick as one with none (cutting each out of a copy was quadratic).
+    let (mut s, mut rest) = (String::with_capacity(el.len()), el);
+    while let Some(i) = rest.find("<rPh") {
+        s.push_str(&rest[..i]);
+        match rest[i..].find("</rPh>") { Some(j) => rest = &rest[i + j + 6..], None => break }   // cut short: what is left stays as it is
+    }
+    s.push_str(rest);
     elements(&s, "t").iter().map(|t| inner(t)).collect::<Vec<_>>().join("")
 }
 /// An element's own text between its start and end tags, unescaped ("" for `<x/>`).
@@ -382,27 +395,46 @@ const MAX_COLS: usize = 200;
 
 /// A sheet's rows, each cell as its text: shared strings looked up, inline strings, numbers as written, TRUE and FALSE.
 /// Empty cells between filled ones are kept empty so each value stays under its column; empty rows are left out.
+///
+/// At most `MAX_TEXT` bytes of cell text are built in all (a few over, so the caller still sees it was cut), and the rest of
+/// the sheet is not read: a cell that names a shared string is a copy of it, so a sheet of cells that name one big string
+/// would otherwise fill the memory long before the text is cut.
 pub fn sheet_rows(xml: &str, shared: &[String]) -> Vec<Vec<String>> {
     let data = xml.find("<sheetData").map(|i| &xml[i..]).unwrap_or(xml);
-    elements(data, "row").iter().filter_map(|row| {
+    let mut room = MAX_TEXT + 8;
+    let mut rows = Vec::new();
+    for row in elements(data, "row") {
         let mut cells: Vec<String> = Vec::new();
         let body = &row[row.find('>').map(|i| i + 1).unwrap_or(0)..];
         for c in elements(body, "c") {
             let col = attr(c, "r").and_then(|r| col_of(&r)).unwrap_or(cells.len());
             if col >= MAX_COLS { continue; }
             let v = elements(c, "v").first().map(|v| inner(v)).unwrap_or_default();
-            let text = match attr(c, "t").as_deref() {
-                Some("s") => v.trim().parse::<usize>().ok().and_then(|i| shared.get(i).cloned()).unwrap_or_default(),
-                Some("inlineStr") => elements(c, "is").first().map(|i| t_text(i)).unwrap_or_default(),
-                Some("b") => match v.trim() { "1" => "TRUE".into(), "0" => "FALSE".into(), o => o.into() },
-                _ => v,
+            let (text, cut) = match attr(c, "t").as_deref() {
+                Some("s") => v.trim().parse::<usize>().ok().and_then(|i| shared.get(i)).map(|s| clip(s, room)).unwrap_or_default(),
+                Some("inlineStr") => clip(&elements(c, "is").first().map(|i| t_text(i)).unwrap_or_default(), room),
+                Some("b") => (match v.trim() { "1" => "TRUE".into(), "0" => "FALSE".into(), o => o.into() }, false),
+                _ => clip(&v, room),
             };
-            if text.is_empty() { continue; }
-            if cells.len() <= col { cells.resize(col + 1, String::new()); }
-            cells[col] = text;
+            if text.is_empty() && !cut { continue; }
+            room = if cut { 0 } else { room.saturating_sub(text.len()) };
+            if !text.is_empty() {
+                if cells.len() <= col { cells.resize(col + 1, String::new()); }
+                cells[col] = text;
+            }
+            if room == 0 { break; }
         }
-        (!cells.is_empty()).then_some(cells)
-    }).collect()
+        if !cells.is_empty() { rows.push(cells); }
+        if room == 0 { break; }
+    }
+    rows
+}
+/// At most `max` bytes of `s`, cut at a character's start, and whether it was cut.
+fn clip(s: &str, max: usize) -> (String, bool) {
+    if s.len() <= max { return (s.to_string(), false); }
+    let mut at = max;
+    while !s.is_char_boundary(at) { at -= 1; }
+    (s[..at].to_string(), true)
 }
 
 /// One row as a line of comma separated values: a value with a comma, a quote or a line break is put in quotes, its
@@ -645,6 +677,102 @@ mod tests {
         }
         for ok in ["xl/worksheets/sheet1.xml", "xl/_rels/workbook.xml.rels", "xl/sharedStrings.xml"] { assert!(part_ok(ok), "{ok}"); }
         for bad in ["xl/../x.xml", "docProps/app.xml", "xl/a b.xml", "xl/a?.xml", "xl//a.xml", "xl/a.txt"] { assert!(!part_ok(bad), "{bad}"); }
+    }
+
+    // ---------- audit round 3 (shell): found by reading, each with a test that failed first ----------
+
+    /// A zip (made by the Mac's own zip) holding one file named `name`.
+    fn zip_with(root: &Root, name: &str, body: &[u8]) -> Vec<u8> {
+        let d = root.0.with_extension("zip-make");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join(name), body).unwrap();
+        assert!(Command::new("/usr/bin/zip").current_dir(&d).args(["-q", "-X", "made.zip", name]).status().unwrap().success());
+        let b = std::fs::read(d.join("made.zip")).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        b
+    }
+
+    #[test]
+    fn an_ampersand_followed_by_accented_text_never_panics_the_sheet_reader() {
+        // The look ahead for ";" cut the text at byte 12, which can fall inside a letter such as "é" (two bytes). A real
+        // Excel cell "R&D ééé" is stored as "R&amp;D ééé", so the reader panicked and the whole document came back unreadable.
+        assert_eq!(unescape("&amp;D ééé"), "&D ééé");
+        assert_eq!(unescape("R&amp;D ééééé"), "R&D ééééé");
+        assert_eq!(unescape("&ééééééé"), "&ééééééé");
+        assert_eq!(unescape("& 名前 ウェブ サイト &amp; 🎂🎂🎂"), "& 名前 ウェブ サイト & 🎂🎂🎂");
+        for cut in 0..40 { let s = format!("{}&amp;é{}&é", "x".repeat(cut), "é".repeat(8)); let _ = unescape(&s); }
+        let root = Root::new("amp");
+        let book = full_book().into_iter().map(|(n, b)| if n == "xl/sharedStrings.xml" { (n, r#"<sst><si><t>R&amp;D ééé</t></si><si><t>x</t></si><si><t>x</t></si><si><t>x</t></si></sst>"#) } else { (n, b) }).collect::<Vec<_>>();
+        let t = read(&root.0, "budget.xlsx", &xlsx_with(&root, &book)).unwrap();
+        assert!(t.text.contains("R&D ééé,x"), "{:?}", t.text);
+    }
+
+    #[test]
+    fn a_cell_text_with_thousands_of_phonetic_guides_is_read_in_a_moment() {
+        // Each <rPh> was cut out of a copy of the whole text and the text found again from its start, so a few thousand of
+        // them in one string took minutes (a 32 MB part holds a million) and nothing ended it (the tool timeout covers only
+        // the Mac's tools).
+        let mut si = String::from("<si><t>start</t>");
+        for _ in 0..150_000 { si.push_str("<rPh sb=\"0\" eb=\"1\"><t>x</t></rPh>"); }
+        si.push_str("<t>end</t></si>");
+        let t0 = Instant::now();
+        let got = shared_strings(&format!("<sst>{si}</sst>"));
+        assert_eq!(got, vec!["startend".to_string()]);
+        assert!(t0.elapsed() < Duration::from_secs(2), "took {:?}", t0.elapsed());
+    }
+
+    #[test]
+    fn a_big_shared_text_used_by_many_cells_cannot_fill_the_memory() {
+        // Every cell that pointed at a shared string got its own copy, and the whole sheet was built before the text was cut
+        // at MAX_TEXT: 300 cells at a 1 MB string was 300 MB, and a sheet of 32 MB of cells that name one big string was
+        // far more than the Mac has.
+        let big = "x".repeat(1_000_000);
+        let cells: String = (1..=300).map(|i| format!("<c r=\"A{i}\" t=\"s\"><v>0</v></c>")).collect();
+        let xml = format!("<sheetData><row r=\"1\">{cells}</row></sheetData>");
+        let rows = sheet_rows(&xml, &[big]);
+        let held: usize = rows.iter().flatten().map(|c| c.len()).sum();
+        assert!(held <= MAX_TEXT + 16, "{held} bytes were held for text that is cut at {MAX_TEXT}");
+        // And what is read still ends as a cut text, not as a whole one.
+        let rows_many: String = (1..=300).map(|i| format!("<row r=\"{i}\"><c r=\"A{i}\" t=\"s\"><v>0</v></c></row>")).collect();
+        let held: usize = sheet_rows(&format!("<sheetData>{rows_many}</sheetData>"), &["y".repeat(1_000_000)]).iter().flatten().map(|c| c.len()).sum();
+        assert!(held <= MAX_TEXT + 16, "{held}");
+        // The whole read says it was cut, and gives no more than it always did.
+        let root = Root::new("bigshared");
+        let sst = format!("<sst><si><t>{}</t></si></sst>", "z".repeat(1_000_000));
+        let sheet = format!("<worksheet><sheetData>{rows_many}</sheetData></worksheet>");
+        let book = vec![("xl/workbook.xml", WORKBOOK), ("xl/_rels/workbook.xml.rels", RELS), ("xl/sharedStrings.xml", sst.as_str()), ("xl/worksheets/sheet1.xml", sheet.as_str()), ("xl/worksheets/sheet2.xml", "<worksheet><sheetData/></worksheet>")];
+        let t = read(&root.0, "big.xlsx", &xlsx_with(&root, &book)).unwrap();
+        assert!(t.cut && t.text.len() <= MAX_TEXT, "{} {}", t.cut, t.text.len());
+        assert_eq!(root.left(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_word_or_opendocument_file_that_says_it_opens_to_gigabytes_is_refused_before_the_tool_is_started() {
+        // Only Excel files were vetted. A .docx or .odt is a zip too, and a small one can say it holds a document of
+        // gigabytes (textutil would try to load it for up to the time limit).
+        let root = Root::new("wordbomb");
+        let mut z = zip_with(&root, "word.xml", b"<w/>");
+        // The zip's list (central directory) says the file is 1.75 GB once opened.
+        let cd = z.windows(4).rposition(|w| w == [0x50, 0x4b, 0x01, 0x02]).unwrap();
+        z[cd + 24..cd + 28].copy_from_slice(&0x7000_0000u32.to_le_bytes());
+        for n in ["bomb.docx", "bomb.odt"] { assert_eq!(read(&root.0, n, &z), Err(Refuse::TooBig), "{n}"); }
+        assert_eq!(root.left(), Vec::<String>::new());
+        // A fine zip, and a file that is not a zip at all, still go to textutil as before.
+        let ok = word_with(&root, "Hello there", "docx");
+        assert!(read(&root.0, "fine.docx", &ok).unwrap().text.contains("Hello there"));
+    }
+
+    #[test]
+    fn the_folder_reads_are_made_in_is_ours_and_owner_only_even_when_it_was_there_before() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let root = Root::new("oldroot");
+        std::fs::create_dir_all(&root.0).unwrap();
+        std::fs::set_permissions(&root.0, std::fs::Permissions::from_mode(0o777)).unwrap();   // made earlier by something that was not careful
+        let w = Work::new(&root.0).expect("a folder of ours is tightened, not refused");
+        assert_eq!(std::fs::metadata(&root.0).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(std::fs::metadata(&root.0).unwrap().uid(), unsafe { libc::geteuid() });
+        drop(w);
     }
 
     #[test]
