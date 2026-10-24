@@ -36,8 +36,10 @@ const TEXT_NAMES = new Set(["readme", "license", "licence", "changelog", "docker
 // text and OpenDocument text, unzip and a small reader for an Excel sheet. Not .xls, .pages, .numbers or .pptx: nothing on a
 // Mac reads their text without a new dependency.
 const DOC_EXT = new Set(["pdf", "docx", "doc", "rtf", "odt", "xlsx"]);
-// Right to left overrides, zero width spaces, a soft hyphen: they change how a name looks without showing.
-const HIDDEN = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+// Right to left overrides, zero width spaces, a soft hyphen, the Arabic letter mark, line and paragraph separators and the invisible
+// "tag" characters (which show as nothing but a model reads): they change how a name looks, or say something, without showing.
+// Built from text because a line separator written inside a regex literal breaks some JavaScript parsers.
+const HIDDEN = new RegExp("[\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2060-\\u2069\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]", "gu");
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 
@@ -201,10 +203,12 @@ export function checkAttachments(cmd: { files?: unknown; images?: unknown }): { 
       const o = f as Record<string, unknown> | null;
       if (!o || typeof o !== "object" || typeof o.name !== "string" || typeof o.text !== "string") return no;
       if (baseName(o.name) !== o.name || !["text", "document"].includes(kindOf(o.name))) return no;
-      const n = utf8Length(o.text);
+      // Counted as it goes (after its secrets are hidden, which can make it longer), as the page counts it.
+      const clean = redact(o.text);
+      const n = utf8Length(clean);
       if (n > ATTACH.maxTextBytes || o.text.includes("\u0000") || !o.text.trim()) return no;
       total += n;
-      files.push({ name: o.name, text: redact(o.text) });
+      files.push({ name: o.name, text: clean });
     }
     if (total > ATTACH.maxTextTotal) return no;
   }

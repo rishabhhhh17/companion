@@ -1,6 +1,6 @@
 // What the proxy will forward: only the messages paths, only the models Companion uses, a body of limited size, and max_tokens
 // that cannot be raised, and no tools but the one Second Look sends (a web search with a small cap). Everything else is refused
-// here, before anything is sent to Anthropic.
+// here, before anything is sent to Anthropic. It also sets metadata.user_id (the opaque id) on message requests.
 import { KNOWN_MODELS, MAX_SEARCHES, WEB_SEARCH_TOOL, canonicalModel } from "../../runner/src/models.ts";
 import { PRODUCT } from "./names.ts";
 
@@ -25,10 +25,13 @@ function toolsOk(tools: unknown): boolean {
   return keys === "max_uses,name,type" && o.type === WEB_SEARCH_TOOL && o.name === "web_search"
     && Number.isInteger(o.max_uses) && (o.max_uses as number) >= 1 && (o.max_uses as number) <= MAX_SEARCHES;
 }
-/** Other ways of reaching tools that cost money or reach further: never sent by Companion, so never forwarded. */
-const NO_FIELDS = ["mcp_servers", "container", "tool_choice"];
+/** Other ways of reaching tools that cost money or reach further, or of changing the price of a reply (speed, service_tier): the
+ *  price table counts the standard price only. Never sent by Companion, so never forwarded. */
+const NO_FIELDS = ["mcp_servers", "container", "tool_choice", "speed", "service_tier"];
 
-export function checkRequest(method: string, path: string, raw: string): Checked {
+/** `userId` is the opaque id for metadata.user_id (see userid.ts). Whatever `metadata` the client sent is always removed first, so a
+ *  client never chooses its own id or borrows another's. The count_tokens endpoint documents no `metadata` field, so it never gets one. */
+export function checkRequest(method: string, path: string, raw: string, userId?: string): Checked {
   if (method !== "POST" || !PATHS.has(path)) return no(404, `This address is not available through ${PRODUCT}.`);
   if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return no(413, "That request is too big to send.");
   let j: any;
@@ -37,6 +40,8 @@ export function checkRequest(method: string, path: string, raw: string): Checked
   if (typeof j.model !== "string" || !KNOWN_MODELS.includes(canonicalModel(j.model))) return no(400, `That model is not available through ${PRODUCT}.`);
   if (!toolsOk(j.tools) || NO_FIELDS.some((f) => j[f] !== undefined)) return no(400, `That kind of request is not available through ${PRODUCT}.`);
   const free = path === "/v1/messages/count_tokens";
+  delete j.metadata;
+  if (!free && userId) j.metadata = { user_id: userId };
   if (!free) {
     if (!Number.isInteger(j.max_tokens) || j.max_tokens < 1) return no(400, "The request did not say how long the answer may be.");
     if (j.max_tokens > MAX_OUTPUT_TOKENS) j.max_tokens = MAX_OUTPUT_TOKENS;

@@ -14,7 +14,10 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 |---|---|
 | `src/tokens.ts` | Sign in tokens (random, only the hash kept). A real Anthropic key is never accepted as one |
 | `src/plans.ts` | The plan table (Free, Pro, Max) and the daily and monthly limits, in dollars of Anthropic cost |
-| `src/filter.ts` | What may be forwarded: two paths, the models Squibby uses, a size limit, `max_tokens` clamped |
+| `src/filter.ts` | What may be forwarded: two paths, the models Squibby uses, a size limit, `max_tokens` clamped; sets `metadata.user_id` and removes any `metadata` the client sent |
+| `src/userid.ts` | The opaque user id Anthropic sees (keyed hash of the owner id) and the lookup from an id back to an owner |
+| `src/accounts.ts` | Issuing a sign in token; refused for a suspended owner |
+| `src/operator.ts`, `scripts/suspend.ts` | The operator's tool to find, suspend and restore one person (dry run by default) |
 | `src/usage.ts` | Reads token counts from a reply (streaming or not) without keeping any text; prices them with the app's own table |
 | `src/proxy.ts` | The request handler: switch, token, plan, budget, forward, stream back, book the cost |
 | `src/store.ts` | What is kept (users, spend, one small record per request) and an in memory store for tests |
@@ -24,6 +27,7 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 | `dodo-products.example.json` | The shape of the product table the operator fills in (placeholders only) |
 
 ## What is not here (and would be next, after a written yes)
+- Go live steps, in order: `docs/launch/company-paid-go-live-checklist.md`.
 - A real store. The in memory one is not safe across many server instances: two at once could each let a request through. The real one needs one atomic place per user (a Cloudflare Durable Object, or a database transaction), and the same tests must pass against it.
 - The Worker that receives requests and Stripe webhooks, the secrets (Squibby's Anthropic key, the Stripe secret), the domain.
 - Sign up, email checks, abuse limits on new accounts.
@@ -32,8 +36,30 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 ## Promises the tests hold it to
 - No prompt, reply, token or Anthropic key is ever in a log event, a stored record or an error message.
 - Squibby's key never reaches the user, and the user's token never reaches Anthropic.
-- A user cannot run past a limit by more than one request.
+- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
+- The address requests are forwarded to must be https (this machine aside), a redirect from it is never followed (our key would travel with it), and a body is read only up to its size limit.
 - A stream that is cut short is still charged for what was used.
+
+## Telling Anthropic who a request is for, and cutting one person off (24 Oct 2026)
+
+Anthropic's support said (23 Oct 2026) that we are responsible for Usage Policy compliance for everything our users send, so we need our own acceptable use rules and a way to identify and cut off an account (`docs/outreach/anthropic-support-reply-2-2026-10-23.md`). The rules and the runbook are drafts: `docs/legal/acceptable-use-draft.md`, `docs/legal/abuse-process.md`. This is the code side. Still off: nothing here turns the route on.
+
+**The opaque id.** Every forwarded message request carries `metadata: { user_id }`, which Anthropic documents as an opaque identifier for the end user. Ours is HMAC SHA256 of the owner id, keyed with the operator's secret, as 64 hex characters: stable per person, different between people, no email or name, not reversible without the key.
+- The secret is the setting `METADATA_USER_ID_SECRET`, at least 32 characters, in the operator's environment (the proxy gets it as `userIdSecret`). **There is no default.** Missing or short, the proxy forwards nothing and answers 503 with a plain sentence ("not ready yet. Nothing was sent to Claude"). With the switch off, the switch's message still comes first.
+- Whatever `metadata` the client sent is removed and replaced, so no client can choose its own id or use someone else's.
+- `count_tokens`: Anthropic's page for that endpoint (checked 24 Oct 2026) lists no `metadata` body field, so none is sent, and a client's is dropped. Not checked against the live API (no network calls were made): whether it would accept the field anyway is unknown.
+- The id and the secret are never logged or stored, and not in any reply to the user.
+- **Back up the secret apart from the server. Changing it changes every id**, so ids in older Anthropic notices can no longer be matched.
+
+**Cutting one person off.** `Store` has `suspendOwner` (every token of the owner stops at once, and a flag blocks new ones), `restoreOwner` (new tokens allowed again; old ones stay dead), `isSuspended`, `listOwnerIds` and `suspensions` (a log of owner id, date, case id; no text). The flag is separate from a token's status, so a late payment event that writes a plan cannot lift it. `issueToken` refuses a suspended owner. The proxy answers a suspended person with a 403 and "account is paused".
+
+**The operator command**, `scripts/suspend.ts` (Bun). A dry run unless `--apply`:
+```
+bun scripts/suspend.ts --store <module> --user-id <the id Anthropic reported> [--apply] [--case <ref>]
+bun scripts/suspend.ts --store <module> --owner <our owner id> [--apply] [--case <ref>]
+bun scripts/suspend.ts --store <module> --owner <our owner id> --restore [--apply]
+```
+`--user-id` needs `METADATA_USER_ID_SECRET` in the environment: it derives each owner's id again and prints the owner whose id matches. `--case` is a short reference of ours (letters, digits, - and _), never a message. It prints only ids and plain sentences. **The real store does not exist yet**, so the script loads one from a module you name (`--store`, or the `SUSPEND_STORE` setting) whose default export is a `Store` or a function returning one; with none it says so and stops. It is tested against the in memory store only. Any real store must implement the same interface and pass the same tests in `test/abuse.test.ts`, including that a payment update cannot lift a suspension.
 
 ## Payments through Dodo Payments (founder's choice, 23 Oct 2026)
 
