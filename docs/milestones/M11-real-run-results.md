@@ -73,3 +73,7 @@ Found while building it: the safety hook never guarded `.env` at all (T05 said i
 - **Pointing (the aim eval, 128 asks):** hit rate basic 100%, hard 95%, everyday 93% (unchanged from before the rename), no answer 0, median 2.6 seconds, slowest 13.4 seconds. Cost $0.67. Results: `evals/show-me-how/results/`.
 - **Total real spend this session (Squibby's count):** about $5.6 of the founder's $30 cap.
 
+### Second Look after audit round 3 (24 Oct 2026, real Claude)
+- The audit changed how sums are read (a chain such as `30 + 45 + 75 = 150` is no longer cut into false pieces; a whole chain such as `6 + 7 + 8 = 22` is redone from start to finish, and a mixed chain such as `4 + 2 x 3` is left unjudged). Real result on the 30 answers: **caught 100% of the seeded mistakes (5 by the maths check), false alarms 0%, confidently wrong 0.** Cost $0.08. Results: `evals/second-look/results/`.
+- **Honest note:** the free test showed `confidently wrong 1` after the audit's first version (it had left a three term sum unchecked); the whole chain check fixed it before merge. Real spend this session, all runs together: about $5.7 of the founder's $30 cap (Squibby's count).
+
