@@ -9,11 +9,14 @@ import type { Store } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { UsageSniffer, costOf, usageFromJson } from "./usage.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
+import { deriveUserId, secretProblem } from "./userid.ts";
 
 export type SafeEvent = { kind: "refused" | "request" | "upstream_error"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
 export type Deps = {
   store: Store;
   anthropicKey: string;
+  /** The operator's secret for the opaque metadata.user_id (setting METADATA_USER_ID_SECRET). Missing or short: nothing is forwarded. */
+  userIdSecret?: string;
   /** The remote switch. Off means every request is refused with a message pointing to the user's own key. */
   enabled: () => boolean;
   fetch?: typeof fetch;
@@ -50,15 +53,17 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
 
   return async (req) => {
     if (!d.enabled()) return refuse("disabled", error(503, "api_error", `${PRODUCT_S} included usage is not switched on yet. Use your own Claude key in Settings for now.`));
+    if (secretProblem(d.userIdSecret)) return refuse("no_user_id_secret", error(503, "api_error", `${PRODUCT_S} included usage is not ready yet. Nothing was sent to Claude. Try again later, or use your own Claude key in Settings.`));
     const url = new URL(req.url);
     const token = tokenFromHeaders(req.headers);
     if (!token) return refuse("no_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
     const user = await d.store.userByTokenHash(await hashToken(token));
     if (!user) return refuse("unknown_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
+    if (user.status === "suspended") return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), user.id);
     if (user.status === "canceled" || user.status === "revoked") return refuse("inactive", error(403, "permission_error", `Your ${PRODUCT} plan is not active. Choose a plan, or use your own Claude key in Settings.`), user.id);
 
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
-    const checked = checkRequest(req.method, url.pathname, await req.text());
+    const checked = checkRequest(req.method, url.pathname, await req.text(), await deriveUserId(user.id, d.userIdSecret as string));
     if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
 
     const plan = planOf(user.plan);
