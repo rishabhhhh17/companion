@@ -32,7 +32,8 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 ## Promises the tests hold it to
 - No prompt, reply, token or Anthropic key is ever in a log event, a stored record or an error message.
 - Squibby's key never reaches the user, and the user's token never reaches Anthropic.
-- A user cannot run past a limit by more than one request.
+- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
+- The address requests are forwarded to must be https (this machine aside), a redirect from it is never followed (our key would travel with it), and a body is read only up to its size limit.
 - A stream that is cut short is still charged for what was used.
 
 ## Payments through Dodo Payments (founder's choice, 23 Oct 2026)

@@ -25,8 +25,9 @@ function toolsOk(tools: unknown): boolean {
   return keys === "max_uses,name,type" && o.type === WEB_SEARCH_TOOL && o.name === "web_search"
     && Number.isInteger(o.max_uses) && (o.max_uses as number) >= 1 && (o.max_uses as number) <= MAX_SEARCHES;
 }
-/** Other ways of reaching tools that cost money or reach further: never sent by Companion, so never forwarded. */
-const NO_FIELDS = ["mcp_servers", "container", "tool_choice"];
+/** Other ways of reaching tools that cost money or reach further, or of changing the price of a reply (speed, service_tier): the
+ *  price table counts the standard price only. Never sent by Companion, so never forwarded. */
+const NO_FIELDS = ["mcp_servers", "container", "tool_choice", "speed", "service_tier"];
 
 export function checkRequest(method: string, path: string, raw: string): Checked {
   if (method !== "POST" || !PATHS.has(path)) return no(404, `This address is not available through ${PRODUCT}.`);

@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A careful read of the usage server and the new screens: 24 Oct 2026
+
+- **Nothing here is switched on,** and no real Claude was used. This was a hunt for mistakes, each one proven with a failing test before it was fixed.
+- **Things a person could notice:** a file added to the ask box with strange hidden characters in its name now shows and sends a clean name (it could hide words or reverse text), and the notes about a file that could not be read no longer show its full path. A folder in What Squibby made whose size could not be fully counted no longer claims to be about 1 MB.
+- **Things behind the scenes:** the managed usage server now reads a request only up to its size limit, only talks to an https address and never follows a redirect with our key, refuses the speed and priority options, and gives a person's running slot back even if saving the cost fails. The payment webhook keeps one person's events in order even when they arrive together, and its list of handled events no longer grows for ever. The engine now counts a document's size after hiding secrets, the same way the screen does.
+- **Not fixed, written down:** the open questions are in `docs/milestones/M14-guide-agents-and-second-look-plan.md` under "Audit round 3".
+
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 
 - **Anthropic's support wrote back on the question about small features.** Building a paid product on their plain API under our own key is "a standard setup", and the server design we described (check the plan, enforce a daily cap, forward under our key, record token counts only) works. That clears the way for a HeyClicky style plan for the guide, Explain, Second Look and Prompt help. It is not switched on yet.
