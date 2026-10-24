@@ -53,6 +53,21 @@ describe("plans and budgets", () => {
   });
 });
 
+describe("the request filter and metadata", () => {
+  const ok = (over: Record<string, unknown> = {}) => JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 1024, messages: [{ role: "user", content: "hi" }], ...over });
+  const ID = "ab".repeat(32);
+  test("a message request gets metadata.user_id set to the id given, replacing anything the client sent", () => {
+    expect(JSON.parse((checkRequest("POST", "/v1/messages", ok(), ID) as any).body).metadata).toEqual({ user_id: ID });
+    expect(JSON.parse((checkRequest("POST", "/v1/messages", ok({ metadata: { user_id: "me@x.com", other: 1 } }), ID) as any).body).metadata).toEqual({ user_id: ID });
+  });
+  test("with no id given, any metadata from the client is still removed (a client never chooses its own)", () => {
+    expect("metadata" in JSON.parse((checkRequest("POST", "/v1/messages", ok({ metadata: { user_id: "me@x.com" } })) as any).body)).toBe(false);
+  });
+  test("count_tokens never gets metadata (the documented body has no such field)", () => {
+    expect("metadata" in JSON.parse((checkRequest("POST", "/v1/messages/count_tokens", ok({ metadata: { user_id: "x" } }), ID) as any).body)).toBe(false);
+  });
+});
+
 describe("the request filter", () => {
   const ok = (over: Record<string, unknown> = {}) => JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 1024, messages: [{ role: "user", content: "hi" }], ...over });
   test("only POST to the messages paths", () => {

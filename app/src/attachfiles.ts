@@ -53,7 +53,7 @@ export async function addFiles(have: Attached[], files: FileLike[], o: { readDoc
     const doc = kindOf(meta.name, meta.type) === "document";
     if (doc && !o.readDocument) { notes.push(S.attachUnreadable(baseName(meta.name))); continue; }
     let bytes: Uint8Array;
-    try { bytes = new Uint8Array(await f.arrayBuffer()); } catch { notes.push(S.attachUnreadable(meta.name)); continue; }
+    try { bytes = new Uint8Array(await f.arrayBuffer()); } catch { notes.push(S.attachUnreadable(baseName(meta.name) || "That file")); continue; }
     let v: ReturnType<typeof admit>;
     if (doc) {
       const name = baseName(meta.name);
@@ -67,7 +67,7 @@ export async function addFiles(have: Attached[], files: FileLike[], o: { readDoc
     if (v.ok.kind === "text" && v.ok.hidden) notes.push(S.attachHidden(v.ok.name));
     if (v.ok.kind === "text" && v.ok.clipped) notes.push(S.attachClipped(v.ok.name, Math.round(Math.min(Math.max(o.docLimitBytes ?? 0, 1000), ATTACH.maxTextBytes) / 1000)));
   }
-  if (files.length > MAX_PER_DROP) notes.push(S.attachRefused.too_many(String(files[MAX_PER_DROP]?.name ?? "")));
+  if (files.length > MAX_PER_DROP) notes.push(S.attachRefused.too_many(baseName(String(files[MAX_PER_DROP]?.name ?? "")) || "That file"));
   return { have: list, notes };
 }
 

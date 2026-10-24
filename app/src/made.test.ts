@@ -34,7 +34,7 @@ describe("a rough size in plain words", () => {
     expect(sizeWords(999_000_000, false)).toBe("About 999 MB");
     expect(sizeWords(1_500_000_000, false)).toBe("About 1.5 GB");
     expect(sizeWords(734_003_200, true)).toBe("At least about 734 MB");
-    expect(sizeWords(0, true)).toBe("At least about 1 MB");
+    expect(sizeWords(0, true)).toBe("Size not counted");   // audit round 3: a short count that stopped early is not "at least about 1 MB"
     expect(sizeWords(null, true)).toBe("Size not counted");
     expect(sizeWords(null, false)).toBe("Size not counted");
   });
