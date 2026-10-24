@@ -185,9 +185,19 @@ export interface DodoLedger {
   setLastAppliedAt(userId: string, ms: number): Promise<void>;
 }
 export class MemoryDodoLedger implements DodoLedger {
-  #ids = new Set<string>();
+  // id -> when it was taken (ms). An id is only worth keeping while a signed copy of its event could still pass the time window
+  // (the window is DODO_TIMESTAMP_TOLERANCE_SEC either side of the event's own time), so older ones are dropped and the list stays small.
+  #ids = new Map<string, number>();
   #last = new Map<string, number>();
-  async claim(id: string) { if (this.#ids.has(id)) return false; this.#ids.add(id); return true; }
+  constructor(private clock: () => number = Date.now) {}
+  static readonly KEEP_MS = 3 * DODO_TIMESTAMP_TOLERANCE_SEC * 1000;
+  size() { return this.#ids.size; }
+  async claim(id: string) {
+    const at = this.clock();
+    for (const [k, v] of this.#ids) { if (at - v > MemoryDodoLedger.KEEP_MS) this.#ids.delete(k); else break; }   // oldest first
+    if (this.#ids.has(id)) return false;
+    this.#ids.set(id, at); return true;
+  }
   async release(id: string) { this.#ids.delete(id); }
   async lastAppliedAt(userId: string) { return this.#last.get(userId) ?? null; }
   async setLastAppliedAt(userId: string, ms: number) { this.#last.set(userId, Math.max(ms, this.#last.get(userId) ?? 0)); }
@@ -236,6 +246,16 @@ async function readCapped(req: Request): Promise<string | null> {
 /** The webhook for POST /webhooks/dodo. A Worker serves it only when the provider setting is "dodo". */
 export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise<Response> {
   const now = d.now ?? Date.now, log = d.log ?? (() => {});
+  // One person's events are applied one after the other here, so an older event that is slower to save cannot land after a newer one.
+  // (Across several server instances the store must do the same in one atomic step, as the README says.)
+  const queue = new Map<string, Promise<unknown>>();
+  const oneAtATime = async <T>(key: string, job: () => Promise<T>): Promise<T> => {
+    const before = queue.get(key) ?? Promise.resolve();
+    const mine = before.catch(() => {}).then(job);
+    const tail = mine.catch(() => {});
+    queue.set(key, tail);
+    try { return await mine; } finally { if (queue.get(key) === tail) queue.delete(key); }
+  };
   return async (req) => {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { allow: "POST" } });
     const body = await readCapped(req);
@@ -263,9 +283,12 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
       const entitlement = decision.entitlement;
       let outcome: DodoOutcome = "applied";
       if (entitlement) {
-        const last = await d.ledger.lastAppliedAt(entitlement.userId);
-        if (last !== null && at < last) outcome = "stale";
-        else { await d.apply(entitlement); await d.ledger.setLastAppliedAt(entitlement.userId, at); }
+        outcome = await oneAtATime(entitlement.userId, async () => {
+          const last = await d.ledger.lastAppliedAt(entitlement.userId);
+          if (last !== null && at < last) return "stale" as const;
+          await d.apply(entitlement); await d.ledger.setLastAppliedAt(entitlement.userId, at);
+          return "applied" as const;
+        });
         log({ kind: outcome === "stale" ? "stale" : "applied", eventType, webhookId, userId: safeOrUndefined(entitlement.userId), plan: entitlement.plan });
       }
       if (decision.kind === "unknown_product") {
