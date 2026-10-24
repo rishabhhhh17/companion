@@ -42,11 +42,19 @@ describe("installing packages, only when asked", () => {
     const p = tmp("p");
     mkdirSync(join(p, "lib")); writeFileSync(join(p, "lib", "package.json"), JSON.stringify({ name: "lib", version: "1.0.0" }));
     writeFileSync(join(p, "package.json"), JSON.stringify({ name: "x", version: "1.0.0", dependencies: { lib: "file:./lib" } }));
-    const t = runner(); await t.cmd({ type: "project.install", project: p });
-    const stages = of(t.events, "project.install").map((x) => x.stage);
-    expect(stages).toEqual(["installing", "done"]);
-    expect(existsSync(join(p, "node_modules", "lib"))).toBe(true);
-    expect(of(t.events, "project.report")[0].needsInstall).toBe(false);
+    // The package is local, so npm needs no network. Say so, or a slow registry lookup (audit, update check) can stall this test
+    // for minutes on a busy day: it hit its 2 minute limit once in a full run, and passes in about a second alone.
+    const keep = { o: process.env.npm_config_offline, a: process.env.npm_config_audit, f: process.env.npm_config_fund, u: process.env.npm_config_update_notifier };
+    process.env.npm_config_offline = "true"; process.env.npm_config_audit = "false"; process.env.npm_config_fund = "false"; process.env.npm_config_update_notifier = "false";
+    try {
+      const t = runner(); await t.cmd({ type: "project.install", project: p });
+      const stages = of(t.events, "project.install").map((x) => x.stage);
+      expect(stages).toEqual(["installing", "done"]);
+      expect(existsSync(join(p, "node_modules", "lib"))).toBe(true);
+      expect(of(t.events, "project.report")[0].needsInstall).toBe(false);
+    } finally {
+      for (const [k, v] of [["npm_config_offline", keep.o], ["npm_config_audit", keep.a], ["npm_config_fund", keep.f], ["npm_config_update_notifier", keep.u]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
   }, 120000);
   test("nothing to install without a package list", async () => {
     const t = runner(); await t.cmd({ type: "project.install", project: tmp("p") });
