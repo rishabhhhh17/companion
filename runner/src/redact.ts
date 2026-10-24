@@ -16,11 +16,14 @@ const PATTERNS: RegExp[] = [
   /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g,          // SendGrid keys
   /\bsb_secret_[A-Za-z0-9_-]{16,}/g,                       // Supabase secret keys
   /\bre_(?=[A-Za-z0-9_]*[0-9])(?=[A-Za-z0-9_]*[A-Z])[A-Za-z0-9_]{20,}/g,   // Resend keys (a digit and a capital, so names are left alone)
-  /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/]+:[^\s@\/]+@/gi,         // passwords inside addresses (postgres://user:pass@host)
+  /\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s:@\/]+:[^\s@\/]+@/gi,         // passwords inside addresses (postgres://user:pass@host)
 ];
 // "password: hunter2", "API_KEY=abc123": the name tells us the value is a secret.
 // The name may carry more words around the telling one (DB_PASSWORD, STRIPE_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY, auth_token).
-const NAMED = /(?<![A-Za-z0-9])([A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|service[_-]?role|credential|[_-]key)[A-Za-z0-9_.-]*)(["']?\s*[:=]\s*)["']?[^\s"']{4,}/gi;
+// Up to 80 characters each side: unbounded, a long run of dots or dashes sent the matcher over the rest of the text from every
+// start, and the time grew with the square of the length (audit round 3). A longer name still has its value hidden, because
+// the match can start at any dash, dot or underscore inside it.
+const NAMED = /(?<![A-Za-z0-9])([A-Za-z0-9_.-]{0,80}(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|service[_-]?role|credential|[_-]key)[A-Za-z0-9_.-]{0,80})(["']?\s*[:=]\s*)["']?[^\s"']{4,}/gi;
 export function redact(text: string): string {
   let out = text;
   for (const p of PATTERNS) out = out.replace(p, "[secret]");

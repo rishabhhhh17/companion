@@ -70,6 +70,10 @@ import { PRODUCT } from "./names.ts";
 const SAYS_ITSELF_A = new RegExp(`^(That|This|${PRODUCT} needs|Something)`);
 const SAYS_ITSELF_B = new RegExp(`^(That|This|${PRODUCT} needs)`);
 
+/** What an engine says a turn cost, as money that can be added up: a number above zero, else nothing. A cost that is not a number
+ *  (or is below zero) would otherwise turn the task's running total into one that never reaches its limit. */
+const money = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);
+
 const isNeedsGit = (e: unknown): boolean => String((e as Error)?.message ?? e) === NEEDS_GIT;
 
 /** The stand in for "no folder chosen" (the app's NO_PROJECT): the settings for every project (Explain, pausing, the daily
@@ -978,7 +982,7 @@ export class AgentRunner {
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
         toolDone: (id, shell) => { if (id) this.watchers.get(cmd.agent)?.end(id); this.noteShell(session, shell); },
         // A round that ended before Claude Code said what it cost (Stop, a pause) still cost something: the engine's estimate.
-        unbilled: (c) => { usd += c; book(); tellCost(); },
+        unbilled: (c) => { usd += money(c); book(); tellCost(); },
       });
       try {
         let next = await gen.next();
@@ -986,7 +990,7 @@ export class AgentRunner {
           const turn = next.value;
           if (turn.sessionId) sessionId = turn.sessionId;
           // Booked first: a turn that arrives just after Stop was still spent.
-          usd += turn.costUsd; book();
+          usd += money(turn.costUsd); book();
           if (turn.usage) { tokens.in += turn.usage.in; tokens.cacheRead += turn.usage.cacheRead; tokens.out += turn.usage.out; }
           tellCost();
           if (abort.signal.aborted) { status = "interrupted"; return false; }
@@ -1013,7 +1017,7 @@ export class AgentRunner {
         return true;
       } catch (e) {
         // A run that stopped on a limit, or on a result that came as it was being stopped, still cost something.
-        if (e instanceof EngineStop) { usd += e.costUsd; book(); tellCost(); }
+        if (e instanceof EngineStop) { usd += money(e.costUsd); book(); tellCost(); }
         // Real Claude throws when it is stopped, and may report the stop as an error. If a stop was asked for (Stop, Stop
         // everything, a pause), that is a stop, not a crash.
         if (abort.signal.aborted) { status = "interrupted"; return false; }
@@ -1070,7 +1074,7 @@ export class AgentRunner {
       const review = this.o.reviewer && needsReview(changed, afterFiles) ? async () => {
         const [bf, af] = [await store.readFiles(before.id, (p) => paths.has(p)), afterFiles];
         // The reviewer reads what was asked, never the conversation (for a follow up, see followUp).
-        const text = await this.askReviewer(opts.asked ?? cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += c; book(); }, offRecord);
+        const text = await this.askReviewer(opts.asked ?? cmd.prompt, diffText(bf, af, 40_000), Math.max(0, Math.min(1, budget - usd)), abort.signal, (c) => { usd += money(c); book(); }, offRecord);
         return parseReview(text);
       } : undefined;
       try {
@@ -1289,13 +1293,13 @@ export class AgentRunner {
       let text = "";
       // Off the record there is no saved conversation, so nothing is ever continued.
       const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, tools: spec.tools ?? LOOK_TOOLS, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}),
-        unbilled: (c) => { st.usd += c; book(); } });
+        unbilled: (c) => { st.usd += money(c); book(); } });
       try {
         let next = await gen.next();
         while (!next.done) {
           const turn = next.value;
           if (turn.sessionId) st.sessionId = turn.sessionId;
-          st.usd += turn.costUsd; book();   // booked first: a turn that arrives just after Stop was still spent
+          st.usd += money(turn.costUsd); book();   // booked first: a turn that arrives just after Stop was still spent
           if (abort.signal.aborted) break;
           if (st.usd > budget) throw new EngineStop("error_max_budget_usd: the spending limit was reached");
           let result: ToolResult | undefined;
@@ -1313,7 +1317,7 @@ export class AgentRunner {
       await body(ask, st);
     } catch (e) {
       // A stop is not a crash (real Claude throws when it is stopped, and may report the stop as an error).
-      if (e instanceof EngineStop) { st.usd += e.costUsd; book(); }   // a run that stopped on its limit still cost something
+      if (e instanceof EngineStop) { st.usd += money(e.costUsd); book(); }   // a run that stopped on its limit still cost something
       if (abort.signal.aborted) { this.state(spec.agent, "idle"); return; }
       const msg = (e as Error).message;
       // Claude out of reach, or a failed request of a known kind (reach.ts): these flows have no Try again, so the card is

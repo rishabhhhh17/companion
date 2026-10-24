@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Second Look is steadier: 24 Oct 2026
+
+- **It no longer calls a correct sum wrong.** "30 + 45 + 75 = 150", "2 + 3 + 4 = 9" and "4 + 2 × 3 = 10" were cut into pieces and one piece was reported as a mistake. Longer sums, decimal commas ("1,5 + 2,5 = 4") and "from 2020 to 2024" are now left alone. A real slip is still found.
+- **It no longer drops a real problem.** "This code has no error handling" was read as Second Look changing its mind, and the answer could end up marked solid. Real problems now stay.
+- **Odd text can no longer freeze Squibby.** A long run of numbers and commas, or of dots, could keep it busy for many seconds, Stop included. It now answers in a blink.
+- **A folder counts once towards the daily limit,** however it is spelled (with or without a slash at the end, or through a link). Before, each spelling had a limit of its own.
+- **Your key stays with Anthropic (or the usage server).** If a server ever answered with "go to another address", the quick helpers would have followed it and sent the key along. They no longer follow.
+- **Checked by machine only,** with a stand in model: nothing was run on real Claude.
 ## A checking round on the Mac app's own code: 24 Oct 2026
 
 - **Excel files with accents and an ampersand now open.** A cell such as "R&D" followed by accented text ("R&D café") used to make the whole sheet unreadable when you dropped it in the ask box. It is read now.
@@ -22,6 +30,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Cutting someone off:** if Anthropic reports a code, one operator command finds whose it is and, only when told to, pauses that person: their sign ins stop working and they cannot get a new one until we let them back. Without the extra word it only shows what it would do.
 - **Written down, as drafts for a lawyer:** the rules for what people may not send, the steps for handling a report, and the ordered list of things to do before going live (`docs/legal/`, `docs/launch/company-paid-go-live-checklist.md`).
 - **Still off.** Nothing is deployed and no plan is on sale. Checked by machine only: the real store, the real Anthropic notices and a real Dodo webhook have not been seen. Whether Anthropic is happy with this process is not known.
+- **Longer sums are checked whole.** The first version of the fix left a sum with three or more terms unchecked (`6 + 7 + 8 = 22` slipped through in the free test). Now a chain that uses one kind of operator is redone from start to finish, and a mixed one (`4 + 2 x 3`) is left to the model's look, because people write it both ways.
 
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 

@@ -1,7 +1,7 @@
 // The shared AGENTS.md (and a CLAUDE.md that imports it), so any editor or command line tool a person codes with starts
 // from the same project facts. Project facts and house rules only: never the personal profile, never a key or private line.
 // Files the person already has are never changed without a yes, and then only one marked block is added, which can be removed.
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { writeAtomic } from "../atomic.ts";
 import { screenLine } from "./filter.ts";
@@ -18,7 +18,13 @@ const BLOCK = new RegExp(`\\n?<!-- companion:begin[^\\n]*?-->[\\s\\S]*?${END}\\n
 /** True for a folder Squibby made for a request with no project open: it sits directly inside the one folder for all of them
  *  (protocol/names.json newFolderParent; the shell makes it, app/src-tauri/src/newfolder.rs). There the shared files are
  *  written only when the person asks (M14 real run: so that Undo of the first step gives back an empty folder). */
-export function madeBySquibby(project: string): boolean { return basename(dirname(resolve(project))) === NAMES.newFolderParent; }
+export function madeBySquibby(project: string): boolean {
+  const inParent = (p: string) => basename(dirname(p)) === NAMES.newFolderParent;
+  const plain = resolve(project);
+  if (inParent(plain)) return true;
+  // Reached through a link (the make folder, or a folder in it, opened by another path): where it really is decides.
+  try { return inParent(realpathSync.native(plain)); } catch { return false; }
+}
 
 function ruleLines(project: string): string[] {
   const r = readCompanionFile(project, "rules.txt");   // never through a link (companionfile.ts)
