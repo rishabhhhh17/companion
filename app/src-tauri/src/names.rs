@@ -14,6 +14,11 @@ use std::sync::OnceLock;
 
 pub const NAMES_TEXT: &str = include_str!("../../../protocol/names.json");
 
+/// The checks on the file, shared with build.rs (which runs them first, so a file that would fail here stops the build
+/// instead of panicking the first time a name is asked for).
+#[cfg(test)]
+mod check { include!("names_check.rs"); }
+
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 #[allow(dead_code)]
@@ -99,5 +104,59 @@ mod tests {
             let text = std::fs::read_to_string(root.join(reader)).unwrap();
             assert!(text.contains("protocol/names.json\""), "{reader} must import protocol/names.json");
         }
+    }
+
+    /// The file with one change, as text.
+    fn with(change: impl Fn(&mut serde_json::Value)) -> String {
+        let mut v: serde_json::Value = serde_json::from_str(NAMES_TEXT).unwrap();
+        change(&mut v);
+        v.to_string()
+    }
+
+    #[test]
+    fn the_file_in_the_repo_passes_the_build_check() {
+        check::check(NAMES_TEXT).expect("protocol/names.json");
+    }
+
+    #[test]
+    fn a_file_the_shell_could_not_read_stops_the_build_instead_of_panicking_at_run() {
+        // names() needs every key, no others, the right kinds. build.rs used to check only six of the keys, so a file
+        // without "version" or "earlierPracticeCopyBases" built fine and panicked the first time a name was asked for.
+        for key in ["version", "about", "product", "productPossessive", "character", "characterPossessive", "practiceCopyBase", "earlierPracticeCopyBases", "newFolderParent"] {
+            assert!(check::check(&with(|v| { v.as_object_mut().unwrap().remove(key); })).is_err(), "no {key}");
+        }
+        assert!(check::check(&with(|v| { v["extra"] = serde_json::json!("x"); })).is_err(), "an unknown key (names() refuses it)");
+        for (key, bad) in [("version", serde_json::json!("1")), ("version", serde_json::json!(-1)), ("about", serde_json::json!(5)), ("product", serde_json::json!(5)), ("earlierPracticeCopyBases", serde_json::json!("Companion practice")), ("earlierPracticeCopyBases", serde_json::json!([1]))] {
+            assert!(check::check(&with(|v| { v[key] = bad.clone(); })).is_err(), "{key} = {bad}");
+        }
+        for text in ["", "not json", "[]", "null", "{"] { assert!(check::check(text).is_err(), "{text:?}"); }
+    }
+
+    #[test]
+    fn a_name_that_could_break_a_sentence_or_a_path_stops_the_build() {
+        // A name goes into concat!/format! sentences and (the folder ones) into paths under the home folder.
+        let shown = ["product", "character"];
+        for key in shown {
+            for bad in ["", " ", " Squibby", "Squibby ", "Squi\nbby", "Squi\rbby", "Squi\tbby", "Squi\0bby", "Squi{bby", "Squi}bby", "Squi\u{202e}bby", "Squi\u{200b}bby", &"x".repeat(41)] {
+                assert!(check::check(&with(|v| { v[key] = serde_json::json!(bad); })).is_err(), "{key} = {bad:?}");
+            }
+        }
+        // Quotes, percent signs and backslashes are only text to env!() and concat!(): they are allowed.
+        assert!(check::check(&with(|v| { v["product"] = serde_json::json!("Squ\"ibby 100% \\o/"); })).is_ok());
+        for key in ["practiceCopyBase", "newFolderParent"] {
+            for bad in ["", ".", "..", ".hidden", "a/b", "../x", "a\\b", "a:b", "x\ny", " lead", "trail ", &"x".repeat(61)] {
+                assert!(check::check(&with(|v| { v[key] = serde_json::json!(bad); })).is_err(), "{key} = {bad:?}");
+            }
+        }
+        for bad in ["", "..", "a/b", ".x"] { assert!(check::check(&with(|v| { v["earlierPracticeCopyBases"] = serde_json::json!(["Companion practice", bad]); })).is_err(), "earlier = {bad:?}"); }
+        assert!(check::check(&with(|v| { v["earlierPracticeCopyBases"] = serde_json::json!([]); })).is_ok());
+    }
+
+    #[test]
+    fn the_build_runs_that_check_before_it_hands_any_name_to_the_compiler() {
+        let b = include_str!("../build.rs");
+        assert!(b.contains("names_check") && b.contains("src/names_check.rs"));
+        assert!(b.find("names_check::check(").unwrap() < b.find("cargo:rustc-env").unwrap());
+        assert!(b.contains("rerun-if-changed=src/names_check.rs"));
     }
 }
