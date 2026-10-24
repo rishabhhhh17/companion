@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A checking round on the Mac app's own code: 24 Oct 2026
+
+- **Excel files with accents and an ampersand now open.** A cell such as "R&D" followed by accented text ("R&D café") used to make the whole sheet unreadable when you dropped it in the ask box. It is read now.
+- **A hostile spreadsheet or Word file can no longer hang or flood Squibby.** One built to be slow, to copy a huge text into every cell, or to claim a gigabyte of pages is now read in a moment, cut at the usual limit, or refused as too big.
+- **Folders in "What Squibby made" whose names hide invisible or line breaking characters are left out of the list**, so a name can never read like another one in the question before it goes to the Trash. Folders Squibby makes are never affected.
+- **A broken names file now stops the build** instead of crashing the app the first time it needs a name. Nothing changes for people.
+- **Checked by machine only,** on this Mac with made up files. Nobody has dropped a real hostile file or seen these screens on another Mac.
+
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 
 - **Anthropic's support wrote back on the question about small features.** Building a paid product on their plain API under our own key is "a standard setup", and the server design we described (check the plan, enforce a daily cap, forward under our key, record token counts only) works. That clears the way for a HeyClicky style plan for the guide, Explain, Second Look and Prompt help. It is not switched on yet.
