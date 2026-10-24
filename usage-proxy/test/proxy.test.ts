@@ -5,19 +5,21 @@ import { newToken } from "../src/tokens.ts";
 import { PLANS } from "../src/plans.ts";
 import { costOf } from "../src/usage.ts";
 import { PRODUCT_S } from "../src/names.ts";
+import { deriveUserId, USER_ID_SECRET_SETTING } from "../src/userid.ts";
 
 const OUR_KEY = "sk-ant-api03-OUR-SECRET-KEY-0000000000000000";
 const PROMPT_MARK = "PROMPT-MARKER-9f3c", REPLY_MARK = "REPLY-MARKER-77ab";
 const NOW = Date.UTC(2026, 9, 22, 10, 0, 0);
 const enc = new TextEncoder();
+const USER_ID_SECRET = "operator-secret-for-tests-0123456789abcdef";
 
 type Seen = { url: string; headers: Headers; body: string };
-function rig(o: { plan?: string; status?: "active" | "past_due" | "canceled" | "revoked"; enabled?: boolean; maxInFlight?: number; upstream?: (s: Seen) => Promise<Response> | Response } = {}) {
+function rig(o: { plan?: string; status?: "active" | "past_due" | "canceled" | "revoked" | "suspended"; owner?: string; secret?: string | null; enabled?: boolean; maxInFlight?: number; upstream?: (s: Seen) => Promise<Response> | Response } = {}) {
   const store = new MemoryStore();
   const seen: Seen[] = [], events: SafeEvent[] = [];
   const ready = (async () => {
     const t = await newToken();
-    store.addUser(t.hash, { id: "u1", plan: o.plan ?? "pro", status: o.status ?? "active" });
+    store.addUser(t.hash, { id: o.owner ?? "u1", plan: o.plan ?? "pro", status: o.status ?? "active" });
     return t.token;
   })();
   const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -25,7 +27,7 @@ function rig(o: { plan?: string; status?: "active" | "past_due" | "canceled" | "
     seen.push(s);
     return o.upstream ? o.upstream(s) : json({ id: "m", content: [{ type: "text", text: REPLY_MARK }], usage: { input_tokens: 1000, output_tokens: 500 } });
   }) as unknown as typeof fetch;
-  const handle = createProxy({ store, anthropicKey: OUR_KEY, enabled: () => o.enabled ?? true, fetch: fetchFn, now: () => NOW, log: (e) => events.push(e), maxInFlight: o.maxInFlight ?? 4 });
+  const handle = createProxy({ store, anthropicKey: OUR_KEY, userIdSecret: o.secret === null ? undefined : (o.secret ?? USER_ID_SECRET), enabled: () => o.enabled ?? true, fetch: fetchFn, now: () => NOW, log: (e) => events.push(e), maxInFlight: o.maxInFlight ?? 4 });
   const send = async (over: { token?: string | null; path?: string; body?: unknown; headers?: Record<string, string> } = {}) => {
     const token = over.token === undefined ? await ready : over.token;
     const body = over.body === undefined ? { model: "claude-sonnet-5-5", max_tokens: 2000, messages: [{ role: "user", content: PROMPT_MARK }] } : over.body;
@@ -104,6 +106,82 @@ describe("what is forwarded", () => {
     expect(await r.text()).not.toContain(OUR_KEY);
   });
 });
+
+describe("metadata.user_id: who the request is for, without saying who", () => {
+  const sentBody = (t: ReturnType<typeof rig>, i = 0) => JSON.parse(t.seen[i].body);
+  const base = (over: Record<string, unknown> = {}) => ({ model: "claude-sonnet-5-5", max_tokens: 2000, messages: [{ role: "user", content: PROMPT_MARK }], ...over });
+  test("every forwarded message request carries the derived id, plain and streamed", async () => {
+    const t = rig({ upstream: () => sseResponse(STREAM) });
+    await (await t.send({ body: base({ stream: true }) })).text();
+    await (await t.send({ body: base() })).text();
+    expect(t.seen.length).toBe(2);
+    const want = await deriveUserId("u1", USER_ID_SECRET);
+    for (const i of [0, 1]) expect(sentBody(t, i).metadata).toEqual({ user_id: want });
+  });
+  test("whatever the client sent as metadata is replaced: a client can neither choose its id nor borrow someone else's", async () => {
+    const someoneElse = await deriveUserId("u2", USER_ID_SECRET);
+    for (const metadata of [{ user_id: someoneElse }, { user_id: "jane@example.com", extra: "x" }, { user_id: null }, "text", [1], { }]) {
+      const t = rig(); await t.send({ body: base({ metadata }) });
+      expect(sentBody(t).metadata, JSON.stringify(metadata)).toEqual({ user_id: await deriveUserId("u1", USER_ID_SECRET) });
+    }
+  });
+  test("the id is stable for one person and different between people; no email or name is in what is sent", async () => {
+    const a = rig({ owner: "owner-1" }), a2 = rig({ owner: "owner-1" }), b = rig({ owner: "owner-2" }), e = rig({ owner: "jane.doe@example.com" });
+    for (const t of [a, a2, b, e]) await t.send();
+    const id = (t: ReturnType<typeof rig>) => sentBody(t).metadata.user_id as string;
+    expect(id(a)).toBe(id(a2));
+    expect(id(a)).not.toBe(id(b));
+    expect(id(e)).toMatch(/^[0-9a-f]{64}$/);
+    expect(t_has(e.seen[0].body, "jane")).toBe(false);
+    expect(t_has(e.seen[0].body, "example.com")).toBe(false);
+  });
+  test("a different operator secret gives different ids for the same person", async () => {
+    const a = rig(), b = rig({ secret: "another-operator-secret-0123456789abcdefgh" });
+    await a.send(); await b.send();
+    expect(sentBody(a).metadata.user_id).not.toBe(sentBody(b).metadata.user_id);
+  });
+  test("everything else in the request is untouched (max_tokens is still clamped, as before)", async () => {
+    const t = rig(); const original = base({ stream: false, system: "be brief", temperature: 0.2, max_tokens: 900000 });
+    await t.send({ body: original });
+    const { metadata, max_tokens, ...rest } = sentBody(t); const { max_tokens: _m, ...origRest } = original as any;
+    expect(rest).toEqual(origRest); expect(max_tokens).toBe(64000); expect(metadata.user_id).toMatch(/^[0-9a-f]{64}$/);
+  });
+  test("no secret, or a short one: nothing is forwarded, the user gets a plain sentence, and nothing is charged", async () => {
+    for (const secret of [null, "", "short"]) {
+      const t = rig({ secret }); const r = await t.send();
+      expect([String(secret), r.status]).toEqual([String(secret), 503]);
+      const m = (await errBody(r)).error.message;
+      expect(m).toMatch(/not ready/i); expect(m).toMatch(/nothing was sent/i); expect(m).not.toContain(USER_ID_SECRET_SETTING);
+      expect(t.seen.length).toBe(0); expect(t.store.records.length).toBe(0); expect(t.store.inFlight("u1")).toBe(0);
+      expect(t.events.map((e) => e.reason)).toContain("no_user_id_secret");
+    }
+  });
+  test("switched off still comes first: with the switch off the message is the switch's, not the secret's", async () => {
+    const t = rig({ enabled: false, secret: null }); const r = await t.send();
+    expect((await errBody(r)).error.message).toMatch(/own Claude key/i);
+  });
+  test("counting tokens: that endpoint documents no metadata field, so none is sent, even if the client sent one", async () => {
+    const t = rig({ upstream: () => json({ input_tokens: 5 }) });
+    await t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }], metadata: { user_id: "evil" } } });
+    expect(t.seen.length).toBe(1); expect("metadata" in sentBody(t)).toBe(false);
+  });
+  test("the derived id and the secret are never in a log event, a stored record, or anything the user gets back", async () => {
+    const t = rig(); const r = await t.send(); const text = await r.text();
+    const id = await deriveUserId("u1", USER_ID_SECRET);
+    const kept = JSON.stringify({ events: t.events, store: t.store.dump(), text, headers: [...r.headers.entries()] });
+    expect(kept).not.toContain(id); expect(kept).not.toContain(USER_ID_SECRET);
+  });
+  test("a suspended person is refused with a plain message and nothing is forwarded", async () => {
+    const t = rig({ status: "suspended" }); const r = await t.send();
+    expect(r.status).toBe(403); expect((await errBody(r)).error.message).toMatch(/paused|suspended/i);
+    expect(t.seen.length).toBe(0);
+  });
+  test("the body is still never in a log event or stored record (the id adds no text)", async () => {
+    const t = rig(); await t.send({ body: base({ metadata: { user_id: PROMPT_MARK } }) }).then((r) => r.text());
+    expect(JSON.stringify({ events: t.events, store: t.store.dump() })).not.toContain(PROMPT_MARK);
+  });
+});
+const t_has = (body: string, s: string) => body.toLowerCase().includes(s);
 
 describe("money", () => {
   test("a plain reply is charged by its token counts at the app's price table, and the spend adds up", async () => {
