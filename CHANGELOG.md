@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
+
+- **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.
+
 ## Second Look is steadier: 24 Oct 2026
 
 - **It no longer calls a correct sum wrong.** "30 + 45 + 75 = 150", "2 + 3 + 4 = 9" and "4 + 2 × 3 = 10" were cut into pieces and one piece was reported as a mistake. Longer sums, decimal commas ("1,5 + 2,5 = 4") and "from 2020 to 2024" are now left alone. A real slip is still found.
