@@ -371,16 +371,20 @@ fn inner(el: &str) -> String {
 pub fn shared_strings(xml: &str) -> Vec<String> { elements(xml, "si").iter().map(|si| t_text(si)).collect() }
 
 /// The sheets in the workbook's order: each one's name and its part's path, from the workbook and its links. A sheet whose
-/// path is not a plain part of the workbook is left out.
+/// path is not a plain part of the workbook is left out. At most `MAX_SHEETS` + 1 are worked out (the one more says there
+/// were more), and each link is found by its id in one step, so a huge list costs a moment, never hours.
 pub fn sheets(workbook: &str, rels: &str) -> Vec<(String, String)> {
-    let links: Vec<(String, String)> = elements(rels, "Relationship").iter().filter_map(|r| Some((attr(r, "Id")?, attr(r, "Target")?))).collect();
-    elements(workbook, "sheet").iter().filter_map(|s| {
+    let mut links: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for r in elements(rels, "Relationship") {
+        if let (Some(id), Some(target)) = (attr(r, "Id"), attr(r, "Target")) { links.entry(id).or_insert(target); }   // the first with an id, as before
+    }
+    elements(workbook, "sheet").into_iter().filter_map(|s| {
         let name = attr(s, "name")?;
         let id = attr(s, "id")?;
-        let target = links.iter().find(|(i, _)| *i == id)?.1.clone();
+        let target = links.get(&id)?;
         let path = match target.strip_prefix('/') { Some(abs) => abs.to_string(), None => format!("xl/{target}") };
         part_ok(&path).then_some((name, path))
-    }).collect()
+    }).take(MAX_SHEETS + 1).collect()
 }
 
 /// A cell reference's column ("C7" is 2, "AA1" is 26). None when it has no letters.
@@ -773,6 +777,22 @@ mod tests {
         assert_eq!(std::fs::metadata(&root.0).unwrap().permissions().mode() & 0o777, 0o700);
         assert_eq!(std::fs::metadata(&root.0).unwrap().uid(), unsafe { libc::geteuid() });
         drop(w);
+    }
+
+    #[test]
+    fn a_workbook_with_tens_of_thousands_of_sheets_and_links_is_read_in_a_moment() {
+        // Each sheet looked its link up by walking the whole list of links, and every sheet was worked out before the first
+        // fifty were taken: a 32 MB workbook list is hundreds of thousands of each, which is hours of work nothing ended.
+        let n = 40_000;
+        let workbook: String = format!("<workbook><sheets>{}</sheets></workbook>", (0..n).map(|i| format!("<sheet name=\"s{i}\" sheetId=\"{i}\" r:id=\"rId{i}\"/>")).collect::<String>());
+        let rels: String = format!("<Relationships>{}</Relationships>", (0..n).map(|i| format!("<Relationship Id=\"other{i}\" Target=\"worksheets/sheet{i}.xml\"/>")).collect::<String>());
+        let t0 = Instant::now();
+        assert!(sheets(&workbook, &rels).is_empty(), "no link matches");
+        let rels: String = format!("<Relationships>{}</Relationships>", (0..n).rev().map(|i| format!("<Relationship Id=\"rId{i}\" Target=\"worksheets/sheet{i}.xml\"/>")).collect::<String>());
+        let got = sheets(&workbook, &rels);
+        assert_eq!(got.first(), Some(&("s0".to_string(), "xl/worksheets/sheet0.xml".to_string())));
+        assert!(got.len() <= MAX_SHEETS + 1, "only as many as will be read (and one more, to say there were more): {}", got.len());
+        assert!(t0.elapsed() < Duration::from_secs(3), "took {:?}", t0.elapsed());
     }
 
     #[test]

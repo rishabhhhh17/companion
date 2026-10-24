@@ -281,6 +281,8 @@ mod tests {
             assert!(open_path(&parent, n, false).is_err(), "{n:?}");
         }
         assert!(r.seen().is_empty());
+        // A name Squibby itself makes holds letters, digits, spaces and dashes only, so none of it is ever refused here.
+        assert!((0u32..0x110000).filter_map(char::from_u32).filter(|c| invisible(*c)).all(|c| !c.is_alphanumeric()));
         // Letters, accents and the marks of other scripts, spaces and pictures stay fine.
         for ok in ["Cafe\u{301}", "Ünï", "名前 ウェブサイト", "🎂 cake", "नमस्ते दुनिया"] { assert!(plain_name(ok), "{ok:?}"); }
         let _ = fs::remove_dir_all(&home);
