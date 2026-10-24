@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The paid plan can now tell Anthropic who is who, and cut one person off: 24 Oct 2026
+
+- **Why:** Anthropic said we are responsible for what people send through our key, so we need a way to find and stop one account without reading anyone's messages. We do not keep messages, so this works from a code.
+- **What it does:** every request that would go to Claude on a paid plan now carries a code that stands for the person. It is made from our own account number with a secret only we hold. It is not a name or an email, and nobody can work back from it without the secret. If the secret is not set, nothing is sent.
+- **Cutting someone off:** if Anthropic reports a code, one operator command finds whose it is and, only when told to, pauses that person: their sign ins stop working and they cannot get a new one until we let them back. Without the extra word it only shows what it would do.
+- **Written down, as drafts for a lawyer:** the rules for what people may not send, the steps for handling a report, and the ordered list of things to do before going live (`docs/legal/`, `docs/launch/company-paid-go-live-checklist.md`).
+- **Still off.** Nothing is deployed and no plan is on sale. Checked by machine only: the real store, the real Anthropic notices and a real Dodo webhook have not been seen. Whether Anthropic is happy with this process is not known.
+
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 
 - **Anthropic's support wrote back on the question about small features.** Building a paid product on their plain API under our own key is "a standard setup", and the server design we described (check the plan, enforce a daily cap, forward under our key, record token counts only) works. That clears the way for a HeyClicky style plan for the guide, Explain, Second Look and Prompt help. It is not switched on yet.
