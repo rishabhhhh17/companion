@@ -122,6 +122,8 @@ An adversarial bug and security read of the Mac shell code added or changed on 2
 
 ### Checked and held (no bug found)
 
+By reading the code unless a run is named.
+
 - **Injection through names.** The document's name is used only for its ending (`doc_of`, `ext_of`); Squibby's copy is always `in.<pdf|xlsx|docx|doc|rtf|odt>`. The PDF script is one constant; the two paths arrive as `argv` after `--`; unzip is only asked for names `part_ok` allows (under `xl/`, no pattern characters, no `..`, no dash first). `textutil` and `osascript` get argument lists, never a shell string, with `env_clear` and `PATH=/usr/bin:/bin`. A name with spaces, quotes, newlines, a leading dash, `..`, unicode tricks or 10,000 characters reaches none of them.
 - **Local file inclusion through a document.** On this Mac a `.docx` with an external `altChunk` and an `INCLUDETEXT` field, an `.rtf` with `INCLUDETEXT`, and an HTML `.doc` with an iframe and an object all pointing at a local file gave none of that file's text, with and without `-noload`.
 - **Temp folder.** Created 0700 under a per-read name, copy opened with `create_new` 0600, removed on drop (also on a timeout and an unwinding panic), a root that is a link is refused, the launch sweep only removes a real folder of that one name and never follows a link. The vet and the read are both on Squibby's own copy in that private folder, so there is no swap between them.
