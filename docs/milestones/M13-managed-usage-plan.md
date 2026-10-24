@@ -70,3 +70,11 @@ The founder will charge through Dodo Payments, a merchant of record, instead of 
 - [verify] the subscription webhook payload carries `product_id`, `status`, `customer.customer_id`, `metadata` and `past_due_ends_at`. Dodo's subscription API lists them, but its webhook payload page has no sample.
 - [verify] what `cancelled` means for access timing. We drop to free at once (leans to not granting).
 - [verify] the real request: header names, timestamp unit, the retry on a 503.
+
+## Anthropic's condition, and what answers it so far (24 Oct 2026)
+Anthropic's support said on 23 Oct 2026 that the plain API under our own key, with usage covered by a paid plan, is a standard setup, and that we are responsible for Usage Policy compliance for everything users send: we need our own acceptable use terms and a way to identify and cut off offending accounts (`docs/outreach/anthropic-support-reply-2-2026-10-23.md`).
+- **Built (tested, off):** every forwarded message request carries an opaque `metadata.user_id` (a keyed hash of the owner id; secret `METADATA_USER_ID_SECRET`, no default, no secret means no forwarding; a client's own `metadata` is removed; count_tokens gets none). A person can be found from that id and suspended or restored with `usage-proxy/scripts/suspend.ts` (dry run by default). A suspended owner cannot be issued a new token and a payment event cannot lift the block. Details: `usage-proxy/README.md`.
+- **Drafted (a lawyer decides the words):** `docs/legal/acceptable-use-draft.md`, `docs/legal/abuse-process.md`.
+- **Listed:** `docs/launch/company-paid-go-live-checklist.md`, with the real plan numbers and the $500 a month cap of Anthropic's Start tier.
+- **Unproven:** how Anthropic will contact us about misuse and whether its notices carry our `user_id`; whether `count_tokens` ignores or rejects an extra `metadata` field (we do not send one, based on its documented body); the suspend command against a real store (only the in memory one exists); that Anthropic is satisfied with this process (no one has said so).
+- **Still open and not blocking the plain API light features:** shipping the binary inside the app, and an agreement for Claude Code usage.

@@ -17,7 +17,7 @@ async function rig(store: MemoryStore, upstream: (url: string, init?: RequestIni
   store.addUser(t.hash, { id: "u1", plan: "pro", status: "active" });
   const calls: { url: string; init?: RequestInit }[] = [], events: SafeEvent[] = [];
   const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => { calls.push({ url: String(url), init }); return upstream(String(url), init); }) as unknown as typeof fetch;
-  const handle = createProxy({ store, anthropicKey: "sk-ant-api03-OUR-KEY-0000000000000000", enabled: () => true, fetch: fetchFn, now: () => NOW, log: (e) => events.push(e), ...(opts.upstreamBase ? { upstream: opts.upstreamBase } : {}) });
+  const handle = createProxy({ store, anthropicKey: "sk-ant-api03-OUR-KEY-0000000000000000", userIdSecret: "audit3-test-secret-audit3-test-secret-0123456789", enabled: () => true, fetch: fetchFn, now: () => NOW, log: (e) => events.push(e), ...(opts.upstreamBase ? { upstream: opts.upstreamBase } : {}) });
   return { handle, calls, events, token: t.token };
 }
 const STREAM = [
