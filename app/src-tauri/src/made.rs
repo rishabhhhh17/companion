@@ -48,11 +48,18 @@ pub fn where_words(home_real: &Path, parent: &Path) -> String {
 /// Newest first, then by name; a folder with no date goes last.
 fn newest_first(a: &Row, b: &Row) -> std::cmp::Ordering { b.made_ms.cmp(&a.made_ms).then_with(|| a.name.cmp(&b.name)) }
 
-/// One plain folder name: not empty, not hidden, not . or .., no slash, no control or text direction characters (a name that
-/// could look like another), and short enough for the Mac. A name the page sends is held to this first.
+/// Characters that draw nothing or change how the text around them is laid out: the text direction marks and isolates, the
+/// Arabic letter mark, the line and paragraph separators, zero width and joining marks, the word joiner, the soft hyphen, the
+/// byte order mark, the old Mongolian vowel separator, the other invisible format characters and the tag characters. A name
+/// holding one can read the same as another name, or break the sentence that asks for the person's confirm.
+fn invisible(c: char) -> bool {
+    matches!(c, '\u{00ad}' | '\u{0600}'..='\u{0605}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}' | '\u{180e}' | '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}' | '\u{feff}' | '\u{fff9}'..='\u{fffb}' | '\u{110bd}' | '\u{1d173}'..='\u{1d17a}' | '\u{e0001}' | '\u{e0020}'..='\u{e007f}')
+}
+/// One plain folder name: not empty, not hidden, not . or .., no slash, no control, invisible or text direction characters (a
+/// name that could look like another), and short enough for the Mac. A name the page sends is held to this first.
 fn plain_name(name: &str) -> bool {
-    const DIRECTION: [char; 11] = ['\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}'];
-    !name.is_empty() && name.len() <= NAME_MAX_BYTES && !name.starts_with('.') && !name.chars().any(|c| c == '/' || c.is_control() || DIRECTION.contains(&c))
+    !name.is_empty() && name.len() <= NAME_MAX_BYTES && !name.starts_with('.') && !name.chars().any(|c| c == '/' || c.is_control() || invisible(c))
 }
 
 /// The folder for all of them, as a real folder (never a link or a file), or the reason it is not.
@@ -252,6 +259,32 @@ mod tests {
         }
         assert!(r.seen().is_empty());
         assert!(home.join("outside/keep.txt").is_file() && parent.join("Website/inner").is_dir());
+        let _ = fs::remove_dir_all(&home);
+    }
+    #[test]
+    fn names_with_invisible_or_line_breaking_characters_are_not_listed_and_are_refused() {
+        // plain_name promises "no control or text direction characters (a name that could look like another)", and the
+        // confirm shows the name in a sentence. These were not in its list: the Arabic letter mark (a text direction mark
+        // like the others), the line and paragraph separators (they break the confirm's sentence into lines), the zero
+        // width and joining marks, the word joiner and the byte order mark (a name that reads the same as another one's),
+        // the soft hyphen, the old Mongolian vowel separator, and the tag characters (invisible text).
+        let odd = ["Web\u{200b}site", "Web\u{200c}site", "Web\u{200d}site", "Web\u{2060}site", "\u{feff}Website", "Web\u{00ad}site", "Web\u{061c}site", "Web\u{2028}site", "Web\u{2029}site",
+            "Web\u{180e}site", "Web\u{e0041}site", "Web\u{206a}site", "Web\u{fff9}site"];
+        let (home, parent) = world("invisible", &["Website"]);
+        for n in odd { fs::create_dir_all(parent.join(n)).unwrap(); }
+        let l = list(&parent, "", false).unwrap();
+        assert_eq!(names(&l), ["Website"], "only the plain name is listed");
+        let r = Rec::new();
+        for n in odd {
+            assert!(shown(&parent, n).is_err(), "{n:?} must not be in the list");
+            assert!(trash(&parent, n, "", false, true, r.it()).is_err(), "{n:?} must be refused");
+            assert!(open_path(&parent, n, false).is_err(), "{n:?}");
+        }
+        assert!(r.seen().is_empty());
+        // A name Squibby itself makes holds letters, digits, spaces and dashes only, so none of it is ever refused here.
+        assert!((0u32..0x110000).filter_map(char::from_u32).filter(|c| invisible(*c)).all(|c| !c.is_alphanumeric()));
+        // Letters, accents and the marks of other scripts, spaces and pictures stay fine.
+        for ok in ["Cafe\u{301}", "Ünï", "名前 ウェブサイト", "🎂 cake", "नमस्ते दुनिया"] { assert!(plain_name(ok), "{ok:?}"); }
         let _ = fs::remove_dir_all(&home);
     }
     #[test]

@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A checking round on the Mac app's own code: 24 Oct 2026
+
+- **Excel files with accents and an ampersand now open.** A cell such as "R&D" followed by accented text ("R&D café") used to make the whole sheet unreadable when you dropped it in the ask box. It is read now.
+- **A hostile spreadsheet or Word file can no longer hang or flood Squibby.** One built to be slow, to copy a huge text into every cell, or to claim a gigabyte of pages is now read in a moment, cut at the usual limit, or refused as too big.
+- **Folders in "What Squibby made" whose names hide invisible or line breaking characters are left out of the list**, so a name can never read like another one in the question before it goes to the Trash. Folders Squibby makes are never affected.
+- **A broken names file now stops the build** instead of crashing the app the first time it needs a name. Nothing changes for people.
+- **Checked by machine only,** on this Mac with made up files. Nobody has dropped a real hostile file or seen these screens on another Mac.
 ## A careful read of the usage server and the new screens: 24 Oct 2026
 
 - **Nothing here is switched on,** and no real Claude was used. This was a hunt for mistakes, each one proven with a failing test before it was fixed.
