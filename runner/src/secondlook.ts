@@ -5,6 +5,7 @@
 // page is shown only when that search really returned it. On the Claude Code lane, or with searching off, it does not
 // search, its instructions say so, and the answer says so (search). Secrets are hidden before anything is sent. The shell
 // reads the selection on the hotkey with the light first (seclook.rs); agent.ts runs this and books what it cost.
+import { randomBytes } from "node:crypto";
 import type { FastLike } from "./lanes.ts";
 import { MAX_SEARCHES } from "./models.ts";
 import { clip, redact } from "./redact.ts";
@@ -56,7 +57,10 @@ export function secondLookSystem(max: number): string {
 
 // ---------- the maths, redone by code ----------
 const CUR = "[$€£₹]?";
-const NUM = `${CUR}\\d[\\d,]*(?:\\.\\d+)?`;
+// A number as people write it: groups of three after a comma are thousands ("1,200"), anything else with a comma is not one
+// number ("1,5" is a decimal comma, or two numbers). Every part is bounded, so no string, however long, sends the matcher in
+// circles: these run synchronously, and a slow one freezes the whole engine, Stop everything with it (audit round 3).
+const NUM = `${CUR}(?:\\d{1,3}(?:,\\d{3})+|\\d{1,30})(?:\\.\\d{1,12})?`;
 const num = (s: string): number => Number(s.replace(/[$€£₹,*\s]/g, ""));
 const fmt = (n: number): string => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
 const close = (got: number, want: number, statedIsWhole: boolean): boolean => {
@@ -65,8 +69,12 @@ const close = (got: number, want: number, statedIsWhole: boolean): boolean => {
 };
 const OPS: Record<string, (a: number, b: number) => number> = { "+": (a, b) => a + b, "-": (a, b) => a - b, "×": (a, b) => a * b, x: (a, b) => a * b, "*": (a, b) => a * b, "/": (a, b) => a / b, "÷": (a, b) => a / b };
 // "-" and "x" need spaces around them, so a phone number (555-1234), a score (3-2) or a size (2x4) is not read as a sum.
-const SUM = new RegExp(`(?<![\\w.])(${NUM})(?:\\s*([+×*/÷])\\s*|\\s+([-x])\\s+)(${NUM})\\s*=\\s*(${NUM})(?![\\w.,]*\\w)`, "g");
-const CHANGE = new RegExp(`from\\s+(${NUM})\\s+to\\s+(${NUM})[^.%\\n]{0,40}?(\\d+(?:\\.\\d+)?)\\s*%\\s*(increase|decrease|growth|drop|rise|fall|gain|decline|jump|cut)`, "gi");
+// Only a plain "a op b = c" is judged. A longer chain ("2 + 3 + 4 = 9", "4 + 2 × 3 = 10", "10 - 4 = 2 x 3") is not cut into pieces
+// that were never written as a sum: nothing may start right after another operator, and nothing may carry on after the answer.
+const SUM = new RegExp(`(?<![\\w.,])(?<!\\d[ \\t]{0,3}[+\\-×*/÷][ \\t]{0,3})(?<!\\d[ \\t]{1,3}x[ \\t]{1,3})(${NUM})(?:\\s{0,20}([+×*/÷])\\s{0,20}|\\s{1,20}([-x])\\s{1,20})(${NUM})\\s{0,20}=\\s{0,20}(${NUM})(?![.,]{0,3}\\w)(?![ \\t]{0,3}(?:[+×*/÷]|-|x[ \\t])[ \\t]{0,3}[$€£₹]?\\d)`, "g");
+const CHANGE = new RegExp(`from\\s{1,20}(${NUM})\\s{1,20}to\\s{1,20}(${NUM})[^.%\\n]{0,40}?(\\d{1,9}(?:\\.\\d{1,6})?)\\s*%\\s*(increase|decrease|growth|drop|rise|fall|gain|decline|jump|cut)`, "gi");
+// Two years ("from 2020 to 2024, the company reported 12% growth") are not a quantity that rose.
+const YEAR = /^(?:19|20)\d\d$/;
 const UP = /increase|growth|rise|gain|jump/i;
 
 function tables(text: string): string[][][] {
@@ -97,7 +105,7 @@ export function recompute(text: string): SecondLookItem[] {
   }
   for (const m of text.matchAll(CHANGE)) {
     const a = num(m[1]), b = num(m[2]), said = Number(m[3]);
-    if (!a) continue;
+    if (!a || (YEAR.test(m[1]) && YEAR.test(m[2]))) continue;
     const pct = (Math.abs(b - a) / a) * 100, up = UP.test(m[4]);
     const wrongWay = up ? b < a : b > a;
     if (!wrongWay && Math.abs(pct - said) <= Math.max(1, pct * 0.05)) continue;
@@ -111,7 +119,7 @@ export function recompute(text: string): SecondLookItem[] {
     const data = rows.slice(1, at), total = rows[at];
     for (let col = 1; col < total.length; col++) {
       const cells = data.map((r) => r[col] ?? "");
-      if (!/\d/.test(total[col] ?? "") || cells.some((c) => !/^\**\s*[$€£₹]?-?\d[\d,]*(?:\.\d+)?\s*\**$/.test(c))) continue;
+      if (!/\d/.test(total[col] ?? "") || cells.some((c) => !/^\**\s*[$€£₹]?-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*\**$/.test(c))) continue;
       const sum = cells.reduce((s, c) => s + num(c), 0), stated = num(total[col]);
       if (close(stated, sum, true)) continue;
       out.push(item(`Total ${header[col] ?? ""}: ${total[col].replace(/\*/g, "")}`.replace(/\s+/g, " "), `The rows add up to ${fmt(sum)}, not ${fmt(stated)}.`));
@@ -126,8 +134,11 @@ type ModelItem = SecondLookItem & { said?: string };
 // A finding that says in its own words that the claim holds is the model changing its mind in the middle of the sentence
 // (the real run: "the sum is wrong ... is correct, so on recheck the addition holds"). It is not a finding. Kept when it
 // also says something is wrong ("the sum is correct but the percentage is wrong") unless it says it rechecked.
-const HOLDS = /\b(no (error|mistake|problem|issue)s?\b|nothing (is )?wrong|checks? out|(add|adds) up\b|(total|sum|answer) matches|(is|are) (correct|right|fine|accurate)\b|(it|addition|sum|claim|calculation|total|maths?) holds\b)/i;
-const NEGATIVE = /\b(not|wrong|incorrect|should be|instead|actually|but)\b|n't/i;
+// "no error" only says the claim holds when it ends there, or goes on to say where ("no error found", "no problem with the sum"):
+// "no error handling" is a finding about code, and was once dropped as a retraction.
+const HOLDS = /\b(no (error|mistake|problem|issue)s?(?=\s*(?:[.,;:!)]|$)|\s+(?:found|here|there|in|with|after|on|at|so|and|since|because)\b)|nothing (is )?wrong|checks? out|(add|adds) up\b|(total|sum|answer) matches|(is|are) (correct|right|fine|accurate)\b|(it|addition|sum|claim|calculation|total|maths?) holds\b)/i;
+// Words that mean something is still wrong: with any of them the finding stays, unless it says it rechecked.
+const NEGATIVE = /\b(not|wrong|incorrect|should be|instead|actually|but|however|yet|although|though|except|never|cannot|fabricat\w*|invalid|outdated|out of date|missing|misleading|false|fake|unsafe|unverif\w*|unsupported|inaccura\w*|exaggerat\w*|overstat\w*|no longer|lacks?|bug|crash\w*|vulnerab\w*|nonexist\w*|unreliable|risky|dangerous|mistaken)\b|n't/i;
 const RECHECKED = /\bon (a )?(re-?check|second look)\b|\bre-?checked?\b/i;
 const retracts = (issue: string): boolean => HOLDS.test(issue) && (!NEGATIVE.test(issue) || RECHECKED.test(issue));
 function parse(raw: string): { verdict: string; items: ModelItem[]; checked: string[]; cantTell: string[] } | null {
@@ -150,19 +161,27 @@ function parse(raw: string): { verdict: string; items: ModelItem[]; checked: str
  *  (secondLook.searches; 0 or missing: none). Throws in plain words (a SecondLookError, with what it cost) when nothing at
  *  all could be checked; returns what the maths found when only the model's look failed. */
 export async function secondLook(text: string, fast: FastLike, signal: AbortSignal, o: { maxSearches?: number } = {}): Promise<SecondLook> {
-  const plain = redact(String(text ?? "")).trim();
+  // Hidden of secrets first, whatever its length is (the shell sends at most a little over what is checked; a longer text is
+  // cut here before anything is run on it), then cut between whole characters.
+  const raw = String(text ?? ""), rawCut = raw.length > MAX_CHECKED_CHARS * 4;
+  const plain = redact(rawCut ? raw.slice(0, MAX_CHECKED_CHARS * 4) : raw).trim();
   if (!plain) throw new SecondLookError("Select an answer to check first.", 0);
   const allowed = Math.max(0, Math.min(MAX_SEARCHES, Math.floor(Number(o.maxSearches ?? 0)) || 0));
   const can = allowed > 0 && fast.canSearch === true;
-  const cut = plain.length > MAX_CHECKED_CHARS;
-  const answer = cut ? plain.slice(0, MAX_CHECKED_CHARS) : plain;
+  const chars = plain.length > MAX_CHECKED_CHARS ? Array.from(plain) : null;
+  const cut = rawCut || (chars !== null && chars.length > MAX_CHECKED_CHARS);
+  const answer = chars !== null && chars.length > MAX_CHECKED_CHARS ? chars.slice(0, MAX_CHECKED_CHARS).join("") : plain;
   const local = recompute(answer);
   const note = local.length ? `\n\nThese calculations were already redone by code and are wrong (do not repeat them): ${local.map((i) => i.claim).join("; ")}` : "";
   const cutNote = cut ? ["Only the first part of a long answer was checked."] : [];
+  // A new line to fence the answer with every time, which the answer itself does not contain: text written ahead of time cannot
+  // close it and carry on as if it were the instructions.
+  let fence = "";
+  do { fence = `[[answer-${randomBytes(8).toString("hex")}]]`; } while (answer.includes(fence));
   let look: ReturnType<typeof parse> = null, cost = 0, searches = 0;
   let found: { url: string; title: string }[] = [];
   try {
-    const r = await fast.run({ text: `The answer to check:\n<<<\n${answer}\n>>>${note}`, system: can ? secondLookSystem(allowed) : SECOND_LOOK_SYSTEM, raw: true, ...(can ? { search: { maxUses: allowed } } : {}) }, () => {}, signal);
+    const r = await fast.run({ text: `The answer to check is everything between the two lines that say ${fence}.\n${fence}\n${answer}\n${fence}${note}`, system: can ? secondLookSystem(allowed) : SECOND_LOOK_SYSTEM, raw: true, ...(can ? { search: { maxUses: allowed } } : {}) }, () => {}, signal);
     cost = r.costUsd;
     if (can) { searches = Math.max(0, Math.floor(Number(r.searches ?? 0)) || 0); found = Array.isArray(r.sources) ? r.sources : []; }
     look = parse(r.text);

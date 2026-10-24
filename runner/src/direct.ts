@@ -17,6 +17,8 @@ export const NOT_CONNECTED_DIRECT = `Not connected: add your API key, or sign in
 
 const VERSION = "2023-06-01";
 const MAX_TOKENS = 4096;
+/** The longest single line of a streamed reply we keep waiting for: a real event line is a few hundred characters. */
+const MAX_LINE = 4 * 1024 * 1024;
 // The API's error types, as the Claude Code lanes name them (reach.ts), so the card says the same thing either way.
 const KIND: Record<string, string> = {
   authentication_error: "authentication_failed", permission_error: "authentication_failed", billing_error: "billing_error", rate_limit_error: "rate_limit",
@@ -62,6 +64,9 @@ async function send(d: DirectDeps, model: string, body: Record<string, unknown>,
       headers: { "content-type": "application/json", "x-api-key": auth.key, "anthropic-version": VERSION },
       body: JSON.stringify({ model, max_tokens: MAX_TOKENS, ...apiShape(model, "quick"), ...body, ...(stream ? { stream: true } : {}) }),
       signal,
+      // Never followed: a redirect to another address would carry the key (or the sign in token) there with it, because the
+      // headers that fetch drops on its own do not include this one.
+      redirect: "manual",
     }), signal);
   } catch (e) {
     if (signal.aborted) throw stopped();
@@ -113,6 +118,7 @@ async function send(d: DirectDeps, model: string, body: Record<string, unknown>,
       buf += dec.decode(value, { stream: true });
       let i: number;
       while ((i = buf.indexOf("\n")) >= 0) { line(buf.slice(0, i).trimEnd()); buf = buf.slice(i + 1); }
+      if (buf.length > MAX_LINE) throw failure(502, "api_error", "the reply had a line that never ended", auth.key);
     }
     if (buf) line(buf.trimEnd());
   } catch (e) { void reader.cancel().catch(() => {}); throw e; }

@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Second Look is steadier: 24 Oct 2026
+
+- **It no longer calls a correct sum wrong.** "30 + 45 + 75 = 150", "2 + 3 + 4 = 9" and "4 + 2 × 3 = 10" were cut into pieces and one piece was reported as a mistake. Longer sums, decimal commas ("1,5 + 2,5 = 4") and "from 2020 to 2024" are now left alone. A real slip is still found.
+- **It no longer drops a real problem.** "This code has no error handling" was read as Second Look changing its mind, and the answer could end up marked solid. Real problems now stay.
+- **Odd text can no longer freeze Squibby.** A long run of numbers and commas, or of dots, could keep it busy for many seconds, Stop included. It now answers in a blink.
+- **A folder counts once towards the daily limit,** however it is spelled (with or without a slash at the end, or through a link). Before, each spelling had a limit of its own.
+- **Your key stays with Anthropic (or the usage server).** If a server ever answered with "go to another address", the quick helpers would have followed it and sent the key along. They no longer follow.
+- **Checked by machine only,** with a stand in model: nothing was run on real Claude.
+
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 
 - **Anthropic's support wrote back on the question about small features.** Building a paid product on their plain API under our own key is "a standard setup", and the server design we described (check the plan, enforce a daily cap, forward under our key, record token counts only) works. That clears the way for a HeyClicky style plan for the guide, Explain, Second Look and Prompt help. It is not switched on yet.
