@@ -29,7 +29,7 @@ const MB = 1_000_000, GB = 1_000_000_000;
 export function sizeWords(bytes: number | null, rough: boolean): string {
   if (bytes === null) return S.made.sizeUnknown;
   if (bytes === 0 && !rough) return S.made.sizeEmpty;
-  if (bytes < MB && !rough) return S.made.sizeUnder;
+  if (bytes < MB) return rough ? S.made.sizeUnknown : S.made.sizeUnder;   // a short count that stopped early is not "about a megabyte"
   const n = bytes >= GB ? `${(Math.round(bytes / GB * 10) / 10).toString()} GB` : `${Math.max(1, Math.round(bytes / MB))} MB`;
   return S.made.size(n, rough);
 }

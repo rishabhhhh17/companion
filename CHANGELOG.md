@@ -6,6 +6,27 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.
 
+## Second Look is steadier: 24 Oct 2026
+
+- **It no longer calls a correct sum wrong.** "30 + 45 + 75 = 150", "2 + 3 + 4 = 9" and "4 + 2 × 3 = 10" were cut into pieces and one piece was reported as a mistake. Longer sums, decimal commas ("1,5 + 2,5 = 4") and "from 2020 to 2024" are now left alone. A real slip is still found.
+- **It no longer drops a real problem.** "This code has no error handling" was read as Second Look changing its mind, and the answer could end up marked solid. Real problems now stay.
+- **Odd text can no longer freeze Squibby.** A long run of numbers and commas, or of dots, could keep it busy for many seconds, Stop included. It now answers in a blink.
+- **A folder counts once towards the daily limit,** however it is spelled (with or without a slash at the end, or through a link). Before, each spelling had a limit of its own.
+- **Your key stays with Anthropic (or the usage server).** If a server ever answered with "go to another address", the quick helpers would have followed it and sent the key along. They no longer follow.
+- **Checked by machine only,** with a stand in model: nothing was run on real Claude.
+## A checking round on the Mac app's own code: 24 Oct 2026
+
+- **Excel files with accents and an ampersand now open.** A cell such as "R&D" followed by accented text ("R&D café") used to make the whole sheet unreadable when you dropped it in the ask box. It is read now.
+- **A hostile spreadsheet or Word file can no longer hang or flood Squibby.** One built to be slow, to copy a huge text into every cell, or to claim a gigabyte of pages is now read in a moment, cut at the usual limit, or refused as too big.
+- **Folders in "What Squibby made" whose names hide invisible or line breaking characters are left out of the list**, so a name can never read like another one in the question before it goes to the Trash. Folders Squibby makes are never affected.
+- **A broken names file now stops the build** instead of crashing the app the first time it needs a name. Nothing changes for people.
+- **Checked by machine only,** on this Mac with made up files. Nobody has dropped a real hostile file or seen these screens on another Mac.
+## A careful read of the usage server and the new screens: 24 Oct 2026
+
+- **Nothing here is switched on,** and no real Claude was used. This was a hunt for mistakes, each one proven with a failing test before it was fixed.
+- **Things a person could notice:** a file added to the ask box with strange hidden characters in its name now shows and sends a clean name (it could hide words or reverse text), and the notes about a file that could not be read no longer show its full path. A folder in What Squibby made whose size could not be fully counted no longer claims to be about 1 MB.
+- **Things behind the scenes:** the managed usage server now reads a request only up to its size limit, only talks to an https address and never follows a redirect with our key, refuses the speed and priority options, and gives a person's running slot back even if saving the cost fails. The payment webhook keeps one person's events in order even when they arrive together, and its list of handled events no longer grows for ever. The engine now counts a document's size after hiding secrets, the same way the screen does.
+- **Not fixed, written down:** the open questions are in `docs/milestones/M14-guide-agents-and-second-look-plan.md` under "Audit round 3".
 ## The paid plan can now tell Anthropic who is who, and cut one person off: 24 Oct 2026
 
 - **Why:** Anthropic said we are responsible for what people send through our key, so we need a way to find and stop one account without reading anyone's messages. We do not keep messages, so this works from a code.
@@ -13,6 +34,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Cutting someone off:** if Anthropic reports a code, one operator command finds whose it is and, only when told to, pauses that person: their sign ins stop working and they cannot get a new one until we let them back. Without the extra word it only shows what it would do.
 - **Written down, as drafts for a lawyer:** the rules for what people may not send, the steps for handling a report, and the ordered list of things to do before going live (`docs/legal/`, `docs/launch/company-paid-go-live-checklist.md`).
 - **Still off.** Nothing is deployed and no plan is on sale. Checked by machine only: the real store, the real Anthropic notices and a real Dodo webhook have not been seen. Whether Anthropic is happy with this process is not known.
+- **Longer sums are checked whole.** The first version of the fix left a sum with three or more terms unchecked (`6 + 7 + 8 = 22` slipped through in the free test). Now a chain that uses one kind of operator is redone from start to finish, and a mixed one (`4 + 2 x 3`) is left to the model's look, because people write it both ways.
 
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 

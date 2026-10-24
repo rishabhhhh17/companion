@@ -121,6 +121,7 @@ export class ComputerUseVision implements VisionLike {
           method: "POST", signal: ac.signal,
           headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
           body: JSON.stringify(body),
+          redirect: "manual",   // never followed: the key would go with it
         });
         // The body is never repeated: it could echo the key.
         if (!res.ok) {

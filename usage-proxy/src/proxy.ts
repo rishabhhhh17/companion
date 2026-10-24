@@ -30,6 +30,31 @@ const error = (status: number, type: string, message: string, headers: Record<st
   new Response(JSON.stringify({ type: "error", error: { type, message } }), { status, headers: { "content-type": "application/json", ...headers } });
 const PASS_BACK = ["content-type", "request-id", "retry-after", "cache-control"];
 
+/** The body as text, read only up to the cap: a body with no length that never ends is refused, not read to the end. Null when over. */
+async function readCapped(req: Request): Promise<string | null> {
+  if (!req.body) return "";
+  const reader = req.body.getReader(), chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) { await reader.cancel().catch(() => {}); return null; }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total); let o = 0;
+  for (const c of chunks) { all.set(c, o); o += c.byteLength; }
+  return new TextDecoder().decode(all);
+}
+/** Only an https address (or this machine, for a test) may be the place requests go: our key travels there. */
+function checkUpstream(base: string): string {
+  let u: URL;
+  try { u = new URL(base); } catch { throw new Error("The upstream address is not a web address."); }
+  const here = u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]";
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && here)) throw new Error("The upstream address must start with https://.");
+  return base;
+}
+
 /** A reply stream passed through unchanged while its usage is read. The cost is booked when it ends, or when the client goes away. */
 function metered(body: ReadableStream<Uint8Array>, sniffer: UsageSniffer, finish: () => Promise<void>): ReadableStream<Uint8Array> {
   const reader = body.getReader();
@@ -48,7 +73,7 @@ function metered(body: ReadableStream<Uint8Array>, sniffer: UsageSniffer, finish
 }
 
 export function createProxy(d: Deps): (req: Request) => Promise<Response> {
-  const doFetch = d.fetch ?? fetch, upstream = d.upstream ?? "https://api.anthropic.com", now = d.now ?? Date.now, log = d.log ?? (() => {}), maxInFlight = d.maxInFlight ?? 4;
+  const doFetch = d.fetch ?? fetch, upstream = checkUpstream(d.upstream ?? "https://api.anthropic.com"), now = d.now ?? Date.now, log = d.log ?? (() => {}), maxInFlight = d.maxInFlight ?? 4;
   const refuse = (reason: string, res: Response, userId?: string) => { log({ kind: "refused", reason, status: res.status, ...(userId ? { userId } : {}) }); return res; };
 
   return async (req) => {
@@ -63,7 +88,9 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     if (user.status === "canceled" || user.status === "revoked") return refuse("inactive", error(403, "permission_error", `Your ${PRODUCT} plan is not active. Choose a plan, or use your own Claude key in Settings.`), user.id);
 
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
-    const checked = checkRequest(req.method, url.pathname, await req.text(), await deriveUserId(user.id, d.userIdSecret as string));
+    const raw = await readCapped(req);
+    if (raw === null) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
+    const checked = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string));
     if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
 
     const plan = planOf(user.plan);
@@ -85,7 +112,7 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       const headers = new Headers({ "content-type": "application/json", "x-api-key": d.anthropicKey, "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
       if (beta && /^[A-Za-z0-9._,-]+$/.test(beta)) headers.set("anthropic-beta", beta);
       const target = `${upstream}${url.pathname}${url.searchParams.get("beta") === "true" ? "?beta=true" : ""}`;
-      const res = await doFetch(target, { method: "POST", headers, body: checked.body });
+      const res = await doFetch(target, { method: "POST", headers, body: checked.body, redirect: "manual" });
       const back = new Headers();
       for (const h of PASS_BACK) { const v = res.headers.get(h); if (v) back.set(h, v); }
 
@@ -103,7 +130,7 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       if (checked.free) { const text = await res.text(); await release(); return new Response(text, { status: res.status, headers: back }); }
       if (res.body && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
         const sniffer = new UsageSniffer();
-        return new Response(metered(res.body, sniffer, async () => { await book(sniffer.usage(), sniffer.complete()); await release(); }), { status: res.status, headers: back });
+        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete()); } finally { await release(); } }), { status: res.status, headers: back });
       }
       const text = await res.text();
       await book(usageFromJson(text), true);
