@@ -126,7 +126,7 @@ mod tests {
             assert!(check::check(&with(|v| { v.as_object_mut().unwrap().remove(key); })).is_err(), "no {key}");
         }
         assert!(check::check(&with(|v| { v["extra"] = serde_json::json!("x"); })).is_err(), "an unknown key (names() refuses it)");
-        for (key, bad) in [("version", serde_json::json!("1")), ("version", serde_json::json!(-1)), ("about", serde_json::json!(5)), ("product", serde_json::json!(5)), ("earlierPracticeCopyBases", serde_json::json!("Companion practice")), ("earlierPracticeCopyBases", serde_json::json!([1]))] {
+        for (key, bad) in [("version", serde_json::json!("1")), ("version", serde_json::json!(-1)), ("about", serde_json::json!(5)), ("product", serde_json::json!(5)), ("earlierPracticeCopyBases", serde_json::json!("Earlier practice copy")), ("earlierPracticeCopyBases", serde_json::json!([1]))] {
             assert!(check::check(&with(|v| { v[key] = bad.clone(); })).is_err(), "{key} = {bad}");
         }
         for text in ["", "not json", "[]", "null", "{"] { assert!(check::check(text).is_err(), "{text:?}"); }
@@ -148,7 +148,7 @@ mod tests {
                 assert!(check::check(&with(|v| { v[key] = serde_json::json!(bad); })).is_err(), "{key} = {bad:?}");
             }
         }
-        for bad in ["", "..", "a/b", ".x"] { assert!(check::check(&with(|v| { v["earlierPracticeCopyBases"] = serde_json::json!(["Companion practice", bad]); })).is_err(), "earlier = {bad:?}"); }
+        for bad in ["", "..", "a/b", ".x"] { assert!(check::check(&with(|v| { v["earlierPracticeCopyBases"] = serde_json::json!(["Earlier practice copy", bad]); })).is_err(), "earlier = {bad:?}"); }
         assert!(check::check(&with(|v| { v["earlierPracticeCopyBases"] = serde_json::json!([]); })).is_ok());
     }
 
