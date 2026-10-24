@@ -71,7 +71,13 @@ const OPS: Record<string, (a: number, b: number) => number> = { "+": (a, b) => a
 // "-" and "x" need spaces around them, so a phone number (555-1234), a score (3-2) or a size (2x4) is not read as a sum.
 // Only a plain "a op b = c" is judged. A longer chain ("2 + 3 + 4 = 9", "4 + 2 × 3 = 10", "10 - 4 = 2 x 3") is not cut into pieces
 // that were never written as a sum: nothing may start right after another operator, and nothing may carry on after the answer.
-const SUM = new RegExp(`(?<![\\w.,])(?<!\\d[ \\t]{0,3}[+\\-×*/÷][ \\t]{0,3})(?<!\\d[ \\t]{1,3}x[ \\t]{1,3})(${NUM})(?:\\s{0,20}([+×*/÷])\\s{0,20}|\\s{1,20}([-x])\\s{1,20})(${NUM})\\s{0,20}=\\s{0,20}(${NUM})(?![.,]{0,3}\\w)(?![ \\t]{0,3}(?:[+×*/÷]|-|x[ \\t])[ \\t]{0,3}[$€£₹]?\\d)`, "g");
+const SUM = new RegExp(`(?<![\\w.,])(?<!\\d[ \\t]{0,3}[+\\-×*/÷][ \\t]{0,3}[$€£₹]?)(?<!\\d[ \\t]{1,3}x[ \\t]{1,3}[$€£₹]?)(${NUM})(?:\\s{0,20}([+×*/÷])\\s{0,20}|\\s{1,20}([-x])\\s{1,20})(${NUM})\\s{0,20}=\\s{0,20}(${NUM})(?![.,]{0,3}\\w)(?![ \\t]{0,3}(?:[+×*/÷]|-|x[ \\t])[ \\t]{0,3}[$€£₹]?\\d)`, "g");
+// A chain of three to seven terms ("6 + 7 + 8 = 22") is judged as a whole, never cut into pieces: it must start where no other number or
+// operator comes just before, and nothing may carry on after the answer. Only a chain with one kind of operator is judged (all plus and
+// minus, or all times and divide): a mixed one ("4 + 2 x 3 = 10") is written both ways by people, so it is left unjudged.
+const OPTERM = `(?:\\s{0,20}[+×*/÷]\\s{0,20}|\\s{1,20}[-x]\\s{1,20})${NUM}`;
+const CHAIN = new RegExp(`(?<![\\w.,])(?<!\\d[ \\t]{0,3}[+\\-×*/÷][ \\t]{0,3}[$€£₹]?)(?<!\\d[ \\t]{1,3}x[ \\t]{1,3}[$€£₹]?)(${NUM})((?:${OPTERM}){2,6})\\s{0,20}=\\s{0,20}(${NUM})(?![.,]{0,3}\\w)(?![ \\t]{0,3}(?:[+×*/÷]|-|x[ \\t])[ \\t]{0,3}[$€£₹]?\\d)`, "g");
+const OPTERM_PARTS = new RegExp(`(\\s{0,20}[+×*/÷]\\s{0,20}|\\s{1,20}[-x]\\s{1,20})(${NUM})`, "g");
 const CHANGE = new RegExp(`from\\s{1,20}(${NUM})\\s{1,20}to\\s{1,20}(${NUM})[^.%\\n]{0,40}?(\\d{1,9}(?:\\.\\d{1,6})?)\\s*%\\s*(increase|decrease|growth|drop|rise|fall|gain|decline|jump|cut)`, "gi");
 // Two years ("from 2020 to 2024, the company reported 12% growth") are not a quantity that rose.
 const YEAR = /^(?:19|20)\d\d$/;
@@ -102,6 +108,18 @@ export function recompute(text: string): SecondLookItem[] {
     const want = OPS[op](a, b);
     if (!Number.isFinite(want) || close(c, want, Number.isInteger(c))) continue;
     out.push(item(m[0], `${m[1].replace(/[$€£₹]/, "")} ${op} ${m[4].replace(/[$€£₹]/, "")} is ${fmt(want)}, not ${fmt(c)}.`));
+  }
+  for (const m of text.matchAll(CHAIN)) {
+    const ops: string[] = [], terms: number[] = [num(m[1])];
+    for (const p of m[2].matchAll(OPTERM_PARTS)) { ops.push(p[1].trim()); terms.push(num(p[2])); }
+    const additive = ops.every((o) => o === "+" || o === "-"), multiplicative = ops.every((o) => o === "×" || o === "x" || o === "*" || o === "/" || o === "÷");
+    if (!additive && !multiplicative) continue;
+    let want = terms[0], dead = false;
+    ops.forEach((o, i) => { if ((o === "/" || o === "÷") && terms[i + 1] === 0) dead = true; want = OPS[o](want, terms[i + 1]); });
+    const c = num(m[3]);
+    if (dead || !Number.isFinite(want) || close(c, want, Number.isInteger(c))) continue;
+    const shown = terms.map((t, i) => `${i ? ops[i - 1] + " " : ""}${fmt(t)}`).join(" ");
+    out.push(item(m[0], `${shown} is ${fmt(want)}, not ${fmt(c)}.`));
   }
   for (const m of text.matchAll(CHANGE)) {
     const a = num(m[1]), b = num(m[2]), said = Number(m[3]);

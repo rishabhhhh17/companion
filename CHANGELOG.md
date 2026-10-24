@@ -30,6 +30,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Cutting someone off:** if Anthropic reports a code, one operator command finds whose it is and, only when told to, pauses that person: their sign ins stop working and they cannot get a new one until we let them back. Without the extra word it only shows what it would do.
 - **Written down, as drafts for a lawyer:** the rules for what people may not send, the steps for handling a report, and the ordered list of things to do before going live (`docs/legal/`, `docs/launch/company-paid-go-live-checklist.md`).
 - **Still off.** Nothing is deployed and no plan is on sale. Checked by machine only: the real store, the real Anthropic notices and a real Dodo webhook have not been seen. Whether Anthropic is happy with this process is not known.
+- **Longer sums are checked whole.** The first version of the fix left a sum with three or more terms unchecked (`6 + 7 + 8 = 22` slipped through in the free test). Now a chain that uses one kind of operator is redone from start to finish, and a mixed one (`4 + 2 x 3`) is left to the model's look, because people write it both ways.
 
 ## Anthropic says the company paid plan is a standard setup: 23 Oct 2026
 
