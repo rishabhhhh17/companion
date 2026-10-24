@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
+
+- **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.
+
 ## The paid plan can now tell Anthropic who is who, and cut one person off: 24 Oct 2026
 
 - **Why:** Anthropic said we are responsible for what people send through our key, so we need a way to find and stop one account without reading anyone's messages. We do not keep messages, so this works from a code.

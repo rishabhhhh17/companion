@@ -56,6 +56,26 @@ describe("the lanes each route gets", () => {
     expect(typeof lanes.describe).toBe("function");
     expect(typeof lanes.look).toBe("function");
   });
+  test("managed usage never sends a person's own Claude key to the server: only a sign in token goes", async () => {
+    // The default key lookup reads the Keychain item for the person's own key. On the managed route that value must never
+    // leave the Mac for our server (found in audit round 3, 24 Oct 2026).
+    const s = spy();
+    const managed = { COMPANION_ROUTE: "managed", COMPANION_MANAGED_BASE: "https://usage.example.com" };
+    for (const wrong of [KEY, "sk-ant-api03-" + "x".repeat(40), "sk-ant-oat01-" + "y".repeat(40), "cmp_short", " ", "Bearer cmp_" + "a".repeat(30)]) {
+      const lanes = createLanes(readSettings(managed), { fetchFn: s.fetchFn, keyFn: async () => wrong });
+      await expect(lanes.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/Not connected/);
+    }
+    expect(s.seen.length).toBe(0);
+    const ok = createLanes(readSettings(managed), { fetchFn: s.fetchFn, keyFn: async () => "cmp_" + "a".repeat(40) });
+    await ok.fast.run({ text: "x" }, () => {}, sig());
+    expect(s.seen.length).toBe(1);
+  });
+  test("the person's own key still goes straight to Anthropic on the direct route (a token shaped value does not)", async () => {
+    const s = spy();
+    const lanes = createLanes(readSettings({ COMPANION_LANES: "direct" }), { fetchFn: s.fetchFn, keyFn: async () => "cmp_" + "a".repeat(40) });
+    await expect(lanes.fast.run({ text: "x", raw: true }, () => {}, sig())).rejects.toThrow(/Not connected/);
+    expect(s.seen.length).toBe(0);
+  });
   test("managed usage with no server address, or no sign in: not connected, nothing sent", async () => {
     const s = spy();
     const noBase = createLanes(readSettings({ COMPANION_ROUTE: "managed" }), { fetchFn: s.fetchFn, keyFn: async () => TOKEN });
@@ -83,3 +103,15 @@ describe("the fix engine on managed usage", () => {
     expect(MANAGED_NEEDS_OWN_CLAUDE).toMatch(/your own Claude/);
   });
 });
+
+describe("the sign in token shape", () => {
+  test("is the same rule in the engine and in the usage server (one cannot drift from the other)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const eng = readFileSync(new URL("../src/engines.ts", import.meta.url), "utf8");
+    const srv = readFileSync(new URL("../../usage-proxy/src/tokens.ts", import.meta.url), "utf8");
+    const rule = "/^cmp_[A-Za-z0-9_-]{20,}$/";
+    expect(eng).toContain(rule);
+    expect(srv).toContain(rule);
+  });
+});
+

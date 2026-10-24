@@ -140,12 +140,22 @@ export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?
 
 /** The light lanes straight on the Messages API: with the person's own key to Anthropic, or on managed usage with the Companion
  *  sign in token to Companion's own server. Looked up per request, like the others. */
+/** The shape of a sign in token for managed usage (the same rule as usage-proxy/src/tokens.ts). */
+const MANAGED_TOKEN = /^cmp_[A-Za-z0-9_-]{20,}$/;
+
 function directLanes(s: Settings, deps: EngineDeps, o: { quickModel?: () => string }): { fast: FastLike; vision: VisionLike; describe: Describe; look?: Look } {
   const key = deps.keyFn ?? (async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; });
   const auth = async (): Promise<DirectAuth | null> => {
     if (s.route === "managed" && !s.managedBase) return null;
     const k = await key();
-    return k ? { key: k, base: s.route === "managed" ? s.managedBase! : "https://api.anthropic.com" } : null;
+    if (!k) return null;
+    // The two credentials never cross: a sign in token goes only to our own server, and the person's own Claude key goes only to
+    // Anthropic. The default lookup reads the Keychain item for the person's own key, so without this check a person who has one
+    // stored would send it to our server on the managed route (found in audit round 3, 24 Oct 2026; the sign in token has its
+    // own prefix, usage-proxy/src/tokens.ts).
+    const isToken = MANAGED_TOKEN.test(k);
+    if (s.route === "managed") return isToken ? { key: k, base: s.managedBase! } : null;
+    return isToken ? null : { key: k, base: "https://api.anthropic.com" };
   };
   const d = { auth, ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) };
   const vision = new DirectVisionLane({ ...d, model: s.visionModel ?? MODELS.vision });
