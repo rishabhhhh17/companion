@@ -18,7 +18,7 @@ It is **not a fluid simulation.** It is a handful of springs driving a shaded sp
 | `shaders.ts`, `body.ts`, `renderer.ts` | three.js: the water shader, the procedural body, the eyes, the droplets | yes |
 | `controller.ts` | Loop, pointer, size, pixel ratio, visibility, clean up | yes |
 | `view.tsx` | The React canvas the dock uses | yes |
-| `preview.ts` + `app/flowflow-preview.html` | The dev preview | yes |
+| `preview.ts` + `app/dev/flowflow-preview.html` | The dev preview | yes |
 
 The dock loads the drawing on demand (`React.lazy`), so with the setting off none of it, and none of three.js, is fetched.
 
@@ -26,7 +26,7 @@ The dock loads the drawing on demand (`React.lazy`), so with the setting off non
 ```bash
 cd app && bun --bun vite --port 5199
 ```
-Then open `http://localhost:5199/flowflow-preview.html`. It shows the character three times (large, the dock's size, and a size where the body is about 48 pixels tall), with:
+Then open `http://localhost:5199/dev/flowflow-preview.html`. It shows the character three times (large, the dock's size, and a size where the body is about 48 pixels tall), with:
 - **State buttons.** Idle, Curious, Working, Sleeping, Success, Error. Success and error only play when you press them.
 - **Poke, Land, Shake.** One off events for the soft body. Click the body itself to touch it.
 - **Five dials.** Stiffness, Damping, Speed, Ripples, Clarity. Copy values prints them as JSON.
