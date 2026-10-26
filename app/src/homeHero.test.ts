@@ -80,8 +80,10 @@ describe("the gear opens Settings in its own window, with a way back if it canno
 });
 
 describe("the top says the job in big words", () => {
-  test("idle: the plain state, and the folder it works in", () => {
-    expect(heroWords(initial(), P)).toEqual({ headline: "Ready", line: S.look.inFolder("test-shop"), tone: "idle" });
+  test("idle: an open question, never Ready (the founder, 27 Oct 2026), and the folder it works in", () => {
+    expect(heroWords(initial(), P)).toEqual({ headline: S.look.idleHeadline, line: S.look.inFolder("test-shop"), tone: "idle" });
+    expect(heroWords(initial(), P).headline).toBe("What are we fixing?");
+    expect(heroWords(initial(), P).headline).not.toMatch(/ready/i);
     expect(heroWords(initial(), "").line).toBe(S.look.noFolder);
   });
   test("working: what was asked, and what it cost so far", () => {

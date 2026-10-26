@@ -67,6 +67,8 @@ export const S = {
     chipShowMe: "Show me",
     chipsLabel: "Quick actions",
     placesLabel: "Places",
+    // Home's big words with nothing going on: an open question about the work, never "Ready" (the founder, 27 Oct 2026).
+    idleHeadline: "What are we fixing?",
     inFolder: (name: string) => `In ${name}`,
     noFolder: "Pick a project folder to start",
     below: "Your answer goes just below.",

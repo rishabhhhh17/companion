@@ -37,7 +37,7 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
     const failed = m.receipt.proof === "failed";
     return { headline: m.task.label || characterWords(m), line: S.look.doneLine(receiptProofWords(m), formatUsd(m.receipt.usdEstimate)), tone: failed ? "notDone" : "done" };
   }
-  return { headline: characterWords(m), line: folderLine(project), tone: "idle" };
+  return { headline: S.look.idleHeadline, line: folderLine(project), tone: "idle" };
 }
 
 /** Undo shows only when the last task changed files, nothing is being undone or was undone, and a folder is open: the same
