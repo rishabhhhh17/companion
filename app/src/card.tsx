@@ -1345,7 +1345,7 @@ function Card() {
       </>}
       <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
       {show("folder") && <>
-      <div className="row" role="group" aria-label={S.folderLabel}>
+      <div className="row folder" role="group" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
         {recent.length > 1 && (
@@ -1357,7 +1357,7 @@ function Card() {
       </div>
       {awayFolder(m) && <div className="line muted" role="status">{S.awayWorking(awayFolder(m)!)}</div>}
       {copying && <div className="line muted" role="status">{S.copying}</div>}
-      {!linkOpen ? !copying && <div className="row"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
+      {!linkOpen ? !copying && <div className="row folder"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
         <div className="row">
           <input ref={focusIfLost} aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); focusBack(linkId); } }} />
           <button className="btn primary" type="button" onClick={openLink}>{S.openLinkGo}</button>
@@ -1505,71 +1505,13 @@ function Card() {
           <div className="row"><CopyButton text={aboutCopy(m.about)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
-      {show("watch") && project && groups.on("watch") && <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />}
-      {home.tab === "now" && <DropList drop={drop} />}
-      {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
-      <div hidden={!show("ask")}>
-      {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
-      <div className="ask">
-        <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
-          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
-          onFocus={() => warmSoon()}
-          onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
-          onKeyDown={(e) => {
-            if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
-            e.preventDefault();
-            if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
-          }} />
-        {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
-      </div>
-      <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
-      {(() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
-      {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
-      {dragging && <div className="line" role="status">{S.attachDrop}</div>}
-      {attached.length > 0 && (
-        <div className="chips" role="list" aria-label={S.attachTitle}>
-          {attached.map((a, i) => (
-            <span className="chip" role="listitem" key={`${i}:${a.name}`}>
-              <span className="line">{chipLabel(a)}</span>
-              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</button>
-            </span>
-          ))}
-        </div>
-      )}
-      {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
-      {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
-      <div className="sr" role="status">{attachSaid}</div>
-      {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
-      {!working && buttonShown("start") && (
-        <div className="row"><button className="btn primary" type="button" onClick={submit}>{S.start}</button></div>
-      )}
-      {/* The other ways to ask, and the options, are kept out of the way until wanted. A ticked option is said on the summary. */}
-      {!working && (
-        <details className="more">
-          <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
-          <div className="row">
-            {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
-            {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
-            {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
-            {buttonShown("shipCheck") && <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>}
-            {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
-            {buttonShown("showMe") && <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>}
-            {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
-          </div>
-          {buttonShown("autoSend") && (
-            <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
-          )}
-          <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
-          {project && (
-            <label className="check"><input type="checkbox" checked={newFolder} onChange={(e) => setNewFolder(e.target.checked)} /> {S.newFolder.tick}</label>
-          )}
-          {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
+      {show("watch") && project && groups.on("watch") && (
+        <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>
+          <summary>{S.watch.title}</summary>
+          <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />
         </details>
       )}
-      {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
-      {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
-      </div>
-
+      {home.tab === "now" && <DropList drop={drop} />}
       {show("urgent") && <div ref={urgent}>
       {m.agentsAsk && (
         <section className="panel amber" aria-label={S.agentsTitle}>
@@ -2055,6 +1997,69 @@ function Card() {
           </div>
         </section>
       )}
+
+      {/* The ask box comes after what the card is showing (the job, its answer, the receipt), so the job is the first thing you see.
+          Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
+      <div hidden={!show("ask")}>
+      {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
+      <div className="ask">
+        <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
+          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
+          onFocus={() => warmSoon()}
+          onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
+          onKeyDown={(e) => {
+            if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
+            e.preventDefault();
+            if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
+          }} />
+      </div>
+      {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
+      {dragging && <div className="line" role="status">{S.attachDrop}</div>}
+      {attached.length > 0 && (
+        <div className="chips" role="list" aria-label={S.attachTitle}>
+          {attached.map((a, i) => (
+            <span className="chip" role="listitem" key={`${i}:${a.name}`}>
+              <span className="line">{chipLabel(a)}</span>
+              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
+      {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
+      <div className="sr" role="status">{attachSaid}</div>
+      {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
+      {!working && buttonShown("start") && (
+        <div className="row"><button className="btn primary" type="button" onClick={submit}>{S.start}</button></div>
+      )}
+      {/* The other ways to ask, and the options, are kept out of the way until wanted. A ticked option is said on the summary. */}
+      {!working && (
+        <details className="more">
+          <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
+          <div className="row">
+            {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
+            {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
+            {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
+            {buttonShown("shipCheck") && <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>}
+            {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
+            {buttonShown("showMe") && <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>}
+            {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
+          </div>
+          {buttonShown("autoSend") && (
+            <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
+          )}
+          <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
+          {project && (
+            <label className="check"><input type="checkbox" checked={newFolder} onChange={(e) => setNewFolder(e.target.checked)} /> {S.newFolder.tick}</label>
+          )}
+          {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
+        </details>
+      )}
+      <div className="muted" id="ask-keys">{S.askKeysHint}</div>
+      {(() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
+      {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
+      {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
+      </div>
 
       {show("memory") && !project && <div className="line muted">{S.homeMemoryNoProject}</div>}
       {show("memory") && project && !m.memory && m.runnerUp && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}

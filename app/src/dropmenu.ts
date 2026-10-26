@@ -192,6 +192,10 @@ export function arcSpots(n: number, r: number, span = 300): { x: number; y: numb
   });
 }
 
+/** A format conversion (toJpeg, toPng, toWav...): the format's own name is the only thing that tells it from the next one, so
+ *  its target shows that name in small type where the others show a drawing. Every other choice is a drawing. */
+export const showsWord = (id: string): boolean => /^to[A-Z]/.test(id);
+
 /** Which small drawing a choice gets (icons.tsx). Every action the page has words for has one of its own kind; an unknown id
  *  gets the plain file. */
 export type ActionIcon = "image" | "pdf" | "doc" | "audio" | "video" | "archive" | "resize" | "squeeze" | "trim" | "rotate" | "flip" | "gray" | "clean" | "grid" | "merge" | "split" | "text" | "mono" | "file";

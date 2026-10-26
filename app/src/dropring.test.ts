@@ -2,7 +2,7 @@
 // real space between them on an arc, the word outside the target, drawings in place of letters and no emoji.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { RADIUS, RING_MAX, TARGET, WINDOW, actionIcon, arcSpots, ringChoices } from "./dropmenu.ts";
+import { RADIUS, RING_MAX, TARGET, WINDOW, actionIcon, arcSpots, ringChoices, showsWord } from "./dropmenu.ts";
 import { S } from "./strings.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -67,16 +67,23 @@ describe("every choice has a drawing", () => {
   test("an action it does not know gets the plain file", () => {
     expect(actionIcon("somethingNew")).toBe("file");
   });
+  test("a format conversion shows its format's name, since a drawing could not tell JPEG from PNG; the rest are drawings", () => {
+    for (const id of ["toPng", "toJpeg", "toHeic", "toWebp", "toWav", "toMp4", "toPdf"]) expect(showsWord(id), id).toBe(true);
+    for (const id of ["resize", "compress", "grayscale", "trim", "merge", "zip", "stripInfo"]) expect(showsWord(id), id).toBe(false);
+    // Every conversion has a short name to show, and it is short enough for a 44 point target.
+    for (const [id, w] of Object.entries(S.drop.actions)) if (showsWord(id)) expect(w.short.length, id).toBeLessThanOrEqual(6);
+  });
 });
 
 describe("the ring on the page", () => {
   const ring = read("./dropRing.tsx"), css = read("./style.css"), icons = read("./icons.tsx");
-  test("no emoji and no letters in the targets: the drawing is inline SVG, the word is outside", () => {
+  test("no emoji: a drawing is inline SVG, and the word for a drawing shows in the middle, outside its target", () => {
     expect(icons).toContain("<svg");
     // Any pictograph or dingbat used as a picture would show here.
     expect(ring + icons).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
     expect(ring).toContain("actionIcon(");
     expect(ring).toContain("drop-caption");
+    expect(ring).toContain("showsWord(a)");
   });
   test("a target is at least 44 points and shows the word beside it, not inside it", () => {
     expect(css).toMatch(/\.drop-item \{[^}]*min-width: 44px/);
