@@ -41,6 +41,7 @@
     { "key": "character.linger", "section": "home", "kind": "number", "default": 1.5, "min": 0.5, "max": 10, "step": 0.5, "unit": "seconds", "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "character.motion", "section": "home", "kind": "choice", "default": "followMac", "options": ["followMac", "less"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "character.overFullScreen", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "character.live", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "fun.reactions", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.reactions", "map": "notOff" } } },
 

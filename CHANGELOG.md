@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow can be drawn live, as moving water: 24 Oct 2026
+
+- **A new way to draw the character, off until you choose it** (Settings, "Draw Squibby live"). Instead of a picture, Flowflow is drawn live on your Mac's graphics chip as a droplet of water that stretches the way it moves, squashes and rebounds when it stops, wobbles and settles, with two eyes that follow your pointer and tiny drops that leave and come back.
+- **It only reflects what really happened:** it brightens and sends out a ripple when work is proven, turns cloudy and darker on an error, closes its eyes when asleep, and squishes where you touch it. If your Mac cannot draw it, the pictures stay.
+- **A preview page with sliders** for how stiff, how damped, how fast, how rippled and how clear it is: `docs/flowflow-live.md` says how to open it. It is a first pass at the look and has not been seen in the real app yet; nothing is claimed about speed beyond what was measured in the preview.
+
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.

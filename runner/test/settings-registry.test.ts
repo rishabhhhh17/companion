@@ -44,7 +44,7 @@ describe("the shipped list of settings", () => {
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
-      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false,
+      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": false,
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,

@@ -1,3 +1,6 @@
+{"key": "character.live", "value": true, "ok": true, "normalized": true}
+{"key": "character.live", "value": false, "ok": true, "normalized": false}
+{"key": "character.live", "value": "on", "ok": false, "reason": "notSwitch"}
 {"key": "fun.reactions", "value": true, "ok": true, "normalized": true}
 {"key": "fun.reactions", "value": false, "ok": true, "normalized": false}
 {"key": "fun.reactions", "value": "on", "ok": false, "reason": "notSwitch"}

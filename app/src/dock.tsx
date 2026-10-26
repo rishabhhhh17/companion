@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
@@ -14,6 +14,9 @@ import { DropRing, useDrop } from "./dropRing.tsx";
 import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import "./style.css";
+
+// The live drawing (and the three.js it needs) is loaded only when asked for: with character.live off, nothing of it is fetched.
+const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((m) => ({ default: m.FlowflowView })));
 
 function Dock() {
   const [m] = useModel();
@@ -81,6 +84,10 @@ function Dock() {
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
   };
   const pose = poseFor(state, { roam: roam.phase, react: react?.r });
+  // Drawn live (character.live, off unless chosen): water drawn on the GPU in place of the picture. If it cannot start, or the GPU
+  // context is lost, the pictures stay (the fallback), and nothing else about the character changes.
+  const liveOn = useSetting("character.live") === true;
+  const [liveFailed, setLiveFailed] = useState(false);
   return (
     <main className="dock">
       <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
@@ -88,7 +95,9 @@ function Dock() {
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        <img className="pose" src={poseUrl(pose)} alt="" draggable={false} />
+        {liveOn && !liveFailed
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} onFallback={() => setLiveFailed(true)} /></Suspense>
+          : <img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
       <div className="muted" role="status" aria-live="polite">{label}</div>
