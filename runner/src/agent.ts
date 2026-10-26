@@ -48,7 +48,8 @@ import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings }
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
-import { withStaleCheck } from "./staleerror.ts";
+import { withStaleCheck, isFixItRequest } from "./staleerror.ts";
+import { appDisplayName, errorFixLabel, OFF_RECORD_LABEL, taskLabel } from "./labels.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { secondLook, SecondLookError } from "./secondlook.ts";
 import type { FastLike } from "./lanes.ts";
@@ -936,7 +937,9 @@ export class AgentRunner {
     if (room <= 0) { this.dailyLimit(cmd.agent, cmd.project); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
     const store = this.store(cmd.project);
-    const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(opts.label ?? cmd.prompt);
+    // Off the record, nothing of the request is kept in the label. A fix for an error the person selected in another app says
+    // which app (its display name only, never the selected text); every other label has none of the engine's own words.
+    const lbl = cmd.offTheRecord ? (isFixItRequest(cmd.prompt) ? errorFixLabel(this.errorApps.get(cmd.project) ?? this.errorApps.get("")) : OFF_RECORD_LABEL) : taskLabel(opts.label ?? cmd.prompt);
     const recalled = this.learnAndRecall(cmd.project, opts.said ?? cmd.prompt, cmd.offTheRecord);
     const goal = opts.goal ?? cmd.prompt, first = opts.first ?? goal;
     const abort = new AbortController();
@@ -1836,9 +1839,12 @@ export class AgentRunner {
 
   // Text the person selected in another app and sent with the hotkey. Secrets are hidden first, before it is used for anything;
   // then where it lives in the project is looked up (no model), and the fast model says what it means in two plain sentences.
+  private errorApps = new Map<string, string>();
   private async errorExplain(cmd: Extract<Command, { type: "error.explain" }>): Promise<void> {
     const text = cleanSelection(cmd.text);
     const project = cmd.project && existsSync(cmd.project) ? cmd.project : undefined;
+    // Only the app's display name is remembered, so a fix started from this error can be named (labels.ts). Never the text.
+    if (text) this.errorApps.set(cmd.project ?? "", appDisplayName(cmd.app));
     const say = (ok: boolean, extra: Record<string, unknown>) => this.emit({ type: "error.explained", req: cmd.req, ...(cmd.project ? { project: cmd.project } : {}), ok, sentences: [], excerpt: excerptOf(text), evidence: clip(text, 3000), usdEstimate: 0, ...extra } as never);
     if (!text) { say(false, { reason: "There was no text to explain. Select the error first, then press the keys again." }); return; }
     let where: Problem | null = null;
@@ -2099,7 +2105,7 @@ export class AgentRunner {
         const runStep = async (first: string, extra: { label?: string; said?: string; asked?: string } = {}): Promise<Awaited<ReturnType<AgentRunner["run"]>>> => {
           let prompt = first;
           for (;;) {
-            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, ...extra, step: { index, title } });
+            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, label: `Step ${index} of ${total}: ${title}`, ...extra, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
             // Paused in the middle of the step: wait, then carry on with the same step.
             if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {

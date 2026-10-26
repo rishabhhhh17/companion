@@ -4,10 +4,10 @@
 // (the task log already holds only a label saying so), and what it was is never shown.
 import { recapLines } from "./recap.ts";
 import type { TaskRow } from "./tasklog.ts";
+import { isOffRecordLabel } from "./labels.ts";
 import { clip, redact } from "./redact.ts";
 import { hostOf } from "./watchname.ts";
 
-const OFF = "Off the record task";
 const FAILED_STATUS = new Set(["not_done", "error"]);
 const STOPPED = new Set(["interrupted", "error_max_budget_usd", "error_max_turns", "no_connection", "claude_busy", "daily_limit"]);
 
@@ -54,7 +54,7 @@ const plainReason = (s: string) => clip(redact(s).replace(/\s+/g, " ").trim(), 1
 
 export function whereWasI(i: WhereInput): { lines: string[]; next: Next } {
   const lines: string[] = [];
-  const visible = i.rows.filter((r) => r.label !== OFF).sort((a, b) => b.id - a.id);
+  const visible = i.rows.filter((r) => !isOffRecordLabel(r.label)).sort((a, b) => b.id - a.id);
   const last = visible[0];
 
   // 1. what you were doing

@@ -7,6 +7,9 @@ import { FOUND_INTRO } from "./fixfound.ts";
 /** Where the page puts the error in a Fix it request (app/src/commands.ts fixError). */
 const FIX_IT_MARKER = "The error, as I saw it:";
 
+/** Is this the request Fix it sends for an error the person selected in another app? */
+export const isFixItRequest = (prompt: string): boolean => String(prompt ?? "").includes(FIX_IT_MARKER);
+
 export const STALE_ERROR_RULE = `Before you change anything, check that the error still applies. Read the file and line it names, look at whether the thing it names is still missing or wrong, and where it is cheap run the project's own check. If the error no longer applies (for example the function it says is not defined is defined now), change nothing: do not edit, move or rename anything. Say in plain words that it looks already fixed and why, such as "This error looks already fixed: showGallery is defined now." Never make up a cause for an error you cannot find in the project.`;
 
 // What reads as pasted error text: the Fix it request, an error line of the usual kinds, a Python traceback, a TypeScript
@@ -23,7 +26,7 @@ const ERROR_SHAPES = [
 
 export function carriesPastedError(prompt: string): boolean {
   const p = String(prompt ?? "");
-  if (p.includes(FIX_IT_MARKER)) return true;
+  if (isFixItRequest(p)) return true;
   // A check Squibby ran itself a moment ago is fresh, and its measured fixes stay as they were.
   if (p.startsWith(FOUND_INTRO)) return false;
   return ERROR_SHAPES.some((r) => r.test(p));

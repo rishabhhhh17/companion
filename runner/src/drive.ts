@@ -47,8 +47,10 @@ ${NO_UNASKED_DETAILS_PLAN}${carriesPastedError(goal) ? `\n${STALE_ERROR_PLAN}` :
 Goal: ${goal}`;
 export const shortenPrompt = (n: number, max = MAX_STEPS) =>
   `That plan has ${n} steps. Please reply again with ONLY a JSON list of at most ${max} steps, combining small ones.`;
+// What the model is told about doing a step. It is never part of the step's label (labels.ts).
+export const STEP_INSTRUCTION = "Do only this step, keep the change small, and stop when it is done.";
 export const stepPrompt = (i: number, n: number, title: string) =>
-  `Step ${i} of ${n}: ${title}\n\nDo only this step, keep the change small, and stop when it is done.\n\n${NO_UNASKED_DETAILS_STEP}`;
+  `Step ${i} of ${n}: ${title}\n\n${STEP_INSTRUCTION}\n\n${NO_UNASKED_DETAILS_STEP}`;
 // Off the record, no conversation is saved, so a step or a second try cannot continue the planning conversation. It
 // starts afresh and is told what the whole plan is for.
 export const freshStepPrompt = (goal: string, prompt: string) =>
