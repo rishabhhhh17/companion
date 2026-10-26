@@ -221,7 +221,13 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(helper).toContain("if secs.is_none() { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } }");
     // Every motion passed to it comes from island.rs with the one reader of reduced motion; Home's resize is at once.
     const calls = [...main.matchAll(/set_frame_moving\(([^;]*)\)/g)].map((m) => m[1]).filter((c) => !c.startsWith("p: &NSPanel"));
-    expect(calls.length).toBe(3);
+    // The island, Home's resize and Home's drop; and since peeking (27 Oct 2026) the character's own window: at once for its
+    // place and its trips, and a peek's motion only as peek.rs decides it, with the one reader of reduced motion.
+    const dock = calls.filter((c) => c.includes("&DOCK_MOVES")).map((c) => c.replace(/\)$/, ""));
+    expect(calls.length - dock.length).toBe(3);
+    expect(dock.sort()).toEqual(["d, to_appkit(f, ph), None, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(r, ph), None, None, &DOCK_MOVES"]);
+    expect(main).toContain("let secs = peek::motion(was, pose, calm, light);");
+    expect(main).toContain("let calm = reduce_motion();");
     expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
     expect(main).toContain("island::retract_ms(from, f, reduce_motion())");
     expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");

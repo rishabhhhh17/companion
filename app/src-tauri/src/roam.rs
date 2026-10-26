@@ -830,7 +830,7 @@ mod tests {
         // Kept in dock.json, changed only through the registry (settings_set, card only, T16); off sends it home.
         let set = body(MAIN, "fn come_to_set(");
         assert!(set.contains("save_prefs()") && set.contains("if !on { roam_end(app); }"));
-        assert!(body(MAIN, "fn settings_set(").contains("settings::only_card(window.label())?"));
+        assert!(body(MAIN, "fn settings_set(").contains("settings::card_or_settings(window.label())?"), "Home or the Settings window");
         assert!(body(MAIN, "fn setting_change(").contains("come_to_set(app, next.come_to)"));
         for c in ["settings_get", "settings_set", "settings_reset"] { assert!(MAIN.contains(&format!(", {c},")) || MAIN.contains(&format!(", {c}]")), "{c} is not a command"); }
         for c in ["dock_settings", "set_come_to"] { assert!(!MAIN.contains(&format!(", {c},")) && !MAIN.contains(&format!(", {c}]")), "{c} is still a command"); }

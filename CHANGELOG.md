@@ -12,6 +12,17 @@ The founder said the island "looks ass and complicated" and "does not always hav
 - **Rest the pointer on the wings** to see one short line of what is happening, like "Working on fix the gallery page" or "Needs you: install a package".
 - Everything moves on springs, and simply appears with Reduce motion or Less motion. Clicking still opens Home. VoiceOver still hears what is going on, in words.
 
+## Settings in its own window, and the character peeks in from the edge: 27 Oct 2026
+
+The founder: "this needs to be fun", and "our guys can always be outside of the screen, it might take a sneak peek to see what is already happening".
+
+- **Settings can open in its own window.** A normal Mac window with a title, close and minimise, which you can resize. It has the same side list of sections and the same rows and switches as Settings in Home, and follows your Mac's light and dark. Changes reach Home, the island and the character at once. (The button to open it from Home and the island comes with their redesign.)
+- **The character rests just past the edge of the screen.** About three quarters of it is out of sight, with a sliver showing. It peeks in about half way when a task starts or finishes, comes all the way in when you point at it, and slips back out a few seconds after you move away. While something needs you, it stays in view until you answer.
+- **It always comes fully into view before it listens or looks at your screen**, at once, so you can see it first.
+- **Now and then it takes a curious peek**, never more often than every 3 minutes, never with Reduce motion or Less motion, and never during a presentation or a call.
+- It never hides behind the menu bar, the notch or the Dock, or onto another display; on those edges it just stays in view.
+- Two new switches in Settings, Home and the character: "Rest past the edge of the screen" and "Take a curious peek now and then". Both are on; turn the first off to keep the character fully in view as before.
+
 ## Home is wider, with a side list, and Settings reads like a Mac app: 27 Oct 2026
 
 The founder found the card under the notch "too narrow". Taking the lead from how HeyClicky lays out its own Home:

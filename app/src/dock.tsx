@@ -7,6 +7,7 @@ import { characterShows } from "./home.ts";
 import { poseFor, poseUrl } from "./characters.ts";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
+import { usePeek } from "./peek.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
 import { startSettings, useSetting } from "./settingsStore.ts";
@@ -52,6 +53,8 @@ function Dock() {
   // ring of what can be done with it around the character.
   const drop = useDrop();
   const dropMark = drop.s.hover ? "over" : drop.s.menu?.at === "dock" ? "menu" : undefined;
+  // Peeking from past the edge (peek.ts): only a lean toward the screen, as data.
+  const peek = usePeek();
   const [roam, setRoam] = useState<Roam>({ phase: "home", toward: null });
   useEffect(() => {
     const off = listen("roam", (e) => setRoam(roamFrom(e.payload)));
@@ -123,7 +126,7 @@ function Dock() {
   return (
     <main className="dock" data-drop={dropMark}>
       <button ref={button} className="character" type="button" style={skinVars(SKIN) as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
-        data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark}
+        data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>

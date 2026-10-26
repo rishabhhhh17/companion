@@ -72,7 +72,7 @@ describe("files that cannot read the file are checked against it", () => {
     expect(/<key>NSMicrophoneUsageDescription<\/key>\s*<string>([^<]*)<\/string>/.exec(read("app/src-tauri/Info.plist"))![1].startsWith(`${names.product} listens only`)).toBe(true);
   });
   test("each page's title names the product", () => {
-    for (const f of readdirSync(join(ROOT, "app")).filter((n) => n.endsWith(".html"))) expect(/<title>([^<]*)<\/title>/.exec(read(`app/${f}`))![1], f).toMatch(new RegExp(`^${names.product}( pointer)?$`));
+    for (const f of readdirSync(join(ROOT, "app")).filter((n) => n.endsWith(".html"))) expect(/<title>([^<]*)<\/title>/.exec(read(`app/${f}`))![1], f).toMatch(new RegExp(`^${names.product}( pointer| Settings)?$`));
   });
   test("every script that opens or packs the built app uses the product's bundle name", () => {
     const scripts = [...walk("app/scripts"), ...walk("scripts")].filter((f) => /\.(sh|py)$/.test(f));

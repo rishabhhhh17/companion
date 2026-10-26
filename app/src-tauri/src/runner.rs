@@ -332,6 +332,7 @@ impl Runner {
         crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         crate::updates::note_running(&v);     // what runs now, so an update never restarts under a task (ids only)
         if let Some((ev, extra)) = approval_line(&v, &mut lock(&APPROVALS_SEEN)) { crate::log(ev, extra); }   // asked and answered, never the words
+        crate::peek_heard(app, &v);           // the character peeks, stays in view, or comes in for a light (peek.rs; type, state and ids only)
         let _ = app.emit("runner-event", v);
     }
 

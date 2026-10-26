@@ -15,6 +15,7 @@ use serde_json::Value;
 pub const KEYS: &[&str] = &[
     "island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
     "home.closeOnClickAway", "home.size", "character.linger", "character.motion", "character.overFullScreen",
+    "character.peek", "character.peekIdle",
 ];
 
 /// What the shell does about Home, the island and the character, as the settings say now.
@@ -38,13 +39,17 @@ pub struct HomeSet {
     pub less_motion: bool,
     /// character.overFullScreen: Companion stays on screen over a full screen app.
     pub over_full_screen: bool,
+    /// character.peek: the character rests mostly past the edge of the screen and peeks in (peek.rs).
+    pub peek: bool,
+    /// character.peekIdle: while nothing happens it may take a short curious peek every few minutes.
+    pub peek_idle: bool,
 }
 
 impl HomeSet {
-    /// Today's behaviour: the constants these settings replaced.
+    /// Today's behaviour: the constants these settings replaced. Peeking is new (27 Oct 2026) and on, as the founder asked.
     pub const USUAL: HomeSet = HomeSet {
         island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
-        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false,
+        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, peek_idle: true,
     };
 }
 
@@ -67,6 +72,8 @@ pub fn read(r: &Registry, f: &File) -> HomeSet {
         linger_ms: ms(&v("character.linger"), u.linger_ms),
         less_motion: word("character.motion") == "less",
         over_full_screen: on("character.overFullScreen", u.over_full_screen),
+        peek: on("character.peek", u.peek),
+        peek_idle: on("character.peekIdle", u.peek_idle),
     }
 }
 
@@ -82,6 +89,7 @@ mod tests {
         let u = HomeSet::USUAL;
         assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (400, 300, true, 3000, 1500));
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::STANDARD, false, false));
+        assert_eq!((u.peek, u.peek_idle), (true, true), "peeking is on unless turned off");
     }
     #[test]
     fn each_one_is_read_from_settings_json_at_both_ends_of_its_range() {
@@ -94,6 +102,8 @@ mod tests {
         let flipped = with(&[("island.show", json!(false)), ("island.peekOnHover", json!(false)), ("home.closeOnClickAway", json!(false)), ("character.overFullScreen", json!(true)), ("character.motion", json!("less")), ("home.size", json!("large"))]);
         assert!(!flipped.island_show && !flipped.hover.peek && !flipped.click_away && flipped.over_full_screen && flipped.less_motion);
         assert_eq!(flipped.size, HomeSize::LARGE);
+        let still = with(&[("character.peek", json!(false)), ("character.peekIdle", json!(false))]);
+        assert!(!still.peek && !still.peek_idle);
         assert_eq!(with(&[("island.display", json!("builtIn"))]).display, Where::BuiltIn);
         assert_eq!(with(&[("island.display", json!("main"))]).display, Where::Main);
         // A value the file holds wrongly falls back to the usual one (and is listed by parse_file).

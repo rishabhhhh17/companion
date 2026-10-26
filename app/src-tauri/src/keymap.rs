@@ -956,7 +956,8 @@ mod tests {
             let at = main.find(c).unwrap();
             assert!(main[..at].trim_end().ends_with("#[tauri::command]"), "{c} must be a plain sync command");
             let b = body(c);
-            let check = b.find("window.label() != \"card\"").or_else(|| b.find("settings::only_card(window.label())?")).unwrap_or_else(|| panic!("{c} checks no window"));
+            // Home or the Settings window (settings.rs card_or_settings), never another.
+            let check = b.find("settings::card_or_settings(window.label())").unwrap_or_else(|| panic!("{c} checks no window"));
             let work = ["KEYS_SWITCH.lock()", "keys_to_usual(", "setting_change("].iter().filter_map(|w| b.find(w)).min().unwrap_or_else(|| panic!("{c}"));
             assert!(check < work, "{c}");
         }

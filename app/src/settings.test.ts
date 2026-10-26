@@ -286,18 +286,19 @@ describe("the Keys section in Settings", () => {
     expect(fn("SettingRow")).toContain("<KeysSection keys={keys} />");
     expect(panel).toContain('invoke("key_map")');
   });
-  test("the app has the commands, only the card may try or change keys, and one change or check at a time", () => {
+  test("the app has the commands, only Home or the Settings window may try or change keys, and one change or check at a time", () => {
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
     for (const c of ["key_map", "key_choices", "set_key", "reset_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
     for (const c of ["talk_keys", "set_talk_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
     const body = (name: string) => main.slice(main.indexOf(`fn ${name}(`), main.indexOf("\n}\n", main.indexOf(`fn ${name}(`)));
     for (const c of ["key_choices", "set_key", "reset_keys"]) {
       const b = body(c);
-      expect(b, c).toContain('if window.label() != "card" { return Err("not_card".into()); }');
+      // Home, or the Settings window that shows the same Keys section (27 Oct 2026), never another window.
+      expect(b, c).toContain('if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }');
       // Reset goes through keys_to_usual, which the registry's Reset uses too (T16); it takes the same lock.
       const work = c === "reset_keys" ? b.indexOf("keys_to_usual(") : b.indexOf("KEYS_SWITCH.lock()");
       expect(work, c).toBeGreaterThan(-1);
-      expect(b.indexOf('window.label() != "card"'), c).toBeLessThan(work);
+      expect(b.indexOf("card_or_settings(window.label())"), c).toBeLessThan(work);
     }
     expect(body("keys_to_usual")).toContain("KEYS_SWITCH.lock()");
     expect(body("key_choices")).toContain("keymap::free(a,");
