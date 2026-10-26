@@ -49,6 +49,7 @@ import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } fro
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
 import { withStaleCheck, isFixItRequest } from "./staleerror.ts";
+import { claudeFolderExists, removeEmptyClaudeFolder } from "./litter.ts";
 import { appDisplayName, errorFixLabel, OFF_RECORD_LABEL, taskLabel } from "./labels.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { secondLook, SecondLookError } from "./secondlook.ts";
@@ -911,8 +912,12 @@ export class AgentRunner {
     // Our work ends however the task ends: if anything threw before the usual place, the baseline must still move on, or Undo would
     // take the task's own changes for the person's.
     const started: { store: CheckpointStore | null; ended: boolean } = { store: null, ended: false };
+    const hadClaudeFolder = claudeFolderExists(cmd.project);
     try { return await this.runInnerBody(cmd, opts, started); }
-    finally { if (started.store && !started.ended) await started.store.noteAgentEnd().catch(() => undefined); }
+    finally {
+      if (started.store && !started.ended) await started.store.noteAgentEnd().catch(() => undefined);
+      removeEmptyClaudeFolder(cmd.project, hadClaudeFolder);   // the empty one Claude Code leaves behind (litter.ts)
+    }
   }
   private async runInnerBody(cmd: StartCmd, opts: RunOpts, started: { store: CheckpointStore | null; ended: boolean }): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const prior = opts.priorUsd ?? 0;
@@ -1269,6 +1274,7 @@ export class AgentRunner {
     this.driveStop.delete(spec.agent);
     this.plans.delete(spec.agent);
     this.state(spec.agent, "thinking");
+    const hadClaudeFolder = claudeFolderExists(spec.project);
     const st = { usd: 0, sessionId: undefined as string | undefined, abort };
     let booked = 0;
     const book = () => { this.ledger.add(spec.project, st.usd - booked); booked = st.usd; };
@@ -1330,6 +1336,7 @@ export class AgentRunner {
       this.state(spec.agent, "error");
     } finally {
       book();
+      removeEmptyClaudeFolder(spec.project, hadClaudeFolder);   // the empty one Claude Code leaves behind (litter.ts)
       this.sessions.delete(spec.agent);
       this.driving.delete(spec.agent);
     }
