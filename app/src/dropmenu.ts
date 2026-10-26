@@ -178,8 +178,8 @@ export function ringChoices(actions: readonly string[]): { shown: string[]; more
   return { shown: actions.slice(0, RING_MAX - 1), more: true };
 }
 
-/** Where each of `n` targets goes on an arc round the middle: the first at the upper left and the last at the lower right,
- *  going clockwise over the top, with the bottom left clear for the character's own caption. Radius `r`, the arc `span`
+/** Where each of `n` targets goes on an arc round the middle: the first at the lower left and the last at the lower right,
+ *  going clockwise over the top, with the bottom middle clear for the word of the target in aim. Radius `r`, the arc `span`
  *  degrees wide. */
 export function arcSpots(n: number, r: number, span = 300): { x: number; y: number }[] {
   const round = (v: number) => Math.round(v * 1000) / 1000 + 0;

@@ -41,7 +41,7 @@ describe("the arc has real space", () => {
       expect(Math.abs(p.y) + TARGET / 2).toBeLessThanOrEqual(WINDOW / 2 - 2);
     }
   });
-  test("it goes clockwise from the upper left over the top and leaves the bottom clear", () => {
+  test("it goes clockwise from the lower left over the top to the lower right and leaves the bottom middle clear", () => {
     const s = arcSpots(5, RADIUS);
     expect(s[0].x).toBeLessThan(0);
     expect(s[4].x).toBeGreaterThan(0);

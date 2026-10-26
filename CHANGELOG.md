@@ -2,6 +2,19 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A calmer look, and Flowflow that moves like water: 26 Oct 2026
+
+After the first time you used it on your Mac, you said it looked bad, the card was complicated, replies were in a small box and Flowflow was a photo in a square. This is the first round of fixing that. It is checked by machine and in a browser only: nobody has seen it on a Mac yet.
+
+- **The square box is gone.** Flowflow now floats on your desktop with nothing behind it. What it says sits in a small see through pill that stays readable on any wallpaper.
+- **Flowflow is water.** It breathes and wobbles when idle, its top lags behind when you drag it, it squashes and sends out a ripple when you click it, it melts from one pose into the next, it has a soft shimmer, and it throws a few droplets when a task is done. With less motion (your Mac's setting or ours) it only fades between poses.
+- **No more orange.** The app is black and white and follows your Mac's light and dark. Only small marks keep a colour: green for checked, amber for waiting for your yes, red for a refusal. Flowflow's own glow is a cool blue, on the character only.
+- **Home is one calm column.** The job comes first and the ask box after it. The places (Now, What I did, Learn, Memory, Settings) are a small row of drawings at the top. One filled button; the other ways to ask, the options and the watches are behind one quiet line. Undo and Stop are always at the bottom.
+- **Replies are easy to read.** Larger type, a comfortable line length, no small box. What was checked shows as ticks, with what it cost and how many files changed.
+- **The ring when you drop a file is bigger and calmer.** Round targets of 44 points with space between them, small drawings instead of letters (a format shows its own name), and a More that opens the whole list in Home.
+- **Under the hood:** a character is now a "skin" in one place, so a new character brings its own pictures, its own one colour and its own motion without touching the rest of the app. The rules are in `docs/design/look.md`.
+- **Not decided:** the founder has not chosen a visual direction. This round is neutral on purpose.
+
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.
