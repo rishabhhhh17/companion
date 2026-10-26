@@ -306,7 +306,7 @@ describe("the Keys section in Settings", () => {
     // Every reason the app can give is a code the page puts into words.
     const rs = readFileSync(new URL("../src-tauri/src/keymap.rs", import.meta.url), "utf8");
     const codes = new Set([...rs.matchAll(/NotChanged::\w+ => "([a-z_]+)"/g), ...["key_choices", "set_key", "reset_keys"].flatMap((c) => [...body(c).matchAll(/Err\("([a-z_]+)"\.into\(\)\)/g)])].map((m) => m[1]));
-    expect([...codes].sort()).toEqual(["in_use", "not_card", "not_saved", "taken", "unknown"]);
+    expect([...codes].sort()).toEqual(["in_use", "not_card", "not_enough", "not_saved", "reserved", "taken", "unknown"]);
   });
   test("the first run names the keys in use and the apps that may share hold to talk's", () => {
     const ob = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");

@@ -51,7 +51,8 @@ describe("the keys main.rs registers", () => {
     expect(setup.indexOf("start_keys(app.handle())")).toBeLessThan(setup.indexOf("keymap::launch_notice(&launch.started, launch.damaged)"));
     expect(body(main, "fn start_keys(")).toContain("keymap::start_held(&picked, &held,");
     expect(main).not.toMatch(/Code::Key[A-Z]/);
-    expect(main + shipped(keymapRs)).not.toContain("Code::KeyV");
+    // V is a key like any other now that any key may be picked (keymap.rs KEYS); it is on no job's list or usual keys (keymap.rs tests).
+    expect(main).not.toContain("Code::KeyV");
   });
   test("the handler sends each job's keys to that job, and only the keys in use now reach it", () => {
     const handler = body(main, ".with_handler(", ".build(),");
