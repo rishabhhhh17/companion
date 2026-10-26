@@ -294,7 +294,7 @@ impl Roamer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // The card's real size (one definition, island.rs): 380 wide, at most 640 tall.
+    // The card's real size (one definition, island.rs): 600 wide, at most 640 tall.
     use crate::island::{CARD, CARD_MAX_H};
 
     const PHASES: [Phase; 6] = [Phase::Home, Phase::Surface, Phase::Travel, Phase::Settle, Phase::Visiting, Phase::Return];

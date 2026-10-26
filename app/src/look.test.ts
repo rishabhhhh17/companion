@@ -48,10 +48,10 @@ describe("the character floats on the desktop", () => {
 });
 
 describe("Home is one calm column", () => {
-  test("the places are a small row of drawings, each with its words for VoiceOver and a tooltip", () => {
+  test("the places are a list down the side, each a drawing and its word, shown (the wide Home of 27 Oct 2026)", () => {
     expect(card).toContain('<Icon name={t} />');
-    expect(card).toContain('<span className="sr">{tabName(t)}</span>');
-    expect(card).toContain("title={tabName(t)}");
+    expect(card).toContain('<span className="tab-word">{tabName(t)}</span>');
+    expect(card).toContain('aria-orientation="vertical"');
     // The tab list is still a tab list, with every tab reachable by the arrows.
     expect(card).toContain('role="tablist"');
     expect(card).toMatch(/onKeyDown=\{\(e\) => \{ const n = tabKey\(t, e\.key\);/);

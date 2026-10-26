@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Home is wider, with a side list, and Settings reads like a Mac app: 27 Oct 2026
+
+The founder found the card under the notch "too narrow". Taking the lead from how HeyClicky lays out its own Home:
+
+- **Home is 600 points wide** (680 with Large), up from 380. It is never shorter than its list of places, so it does not jump around.
+- **A side list of places, with their words.** Now, What I did, Learn, Memory and Settings sit down the left, each with its drawing and its name, instead of a row of tiny drawings. The open one has a bar on its edge. Up and Down move between them.
+- **Every place has a title and a close button** at the top, so you always know where you are and how to get out.
+- **Settings shows one section at a time.** Opening it turns the side list into Back and the list of sections. Each section is one rounded group of rows: a name, a short line of what it does, and the control on the right. On and off settings are real switches. What a setting usually is, and Reset, show only once you changed it. Search still looks through everything.
+
 ## Squibby checks first, quotes a fair price and speaks plainly: 26 Oct 2026
 
 Found in the first hands on session on a Mac, the engine side.

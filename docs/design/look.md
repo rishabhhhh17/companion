@@ -21,7 +21,9 @@ Written after the first hands on Mac session (26 Oct 2026), where the founder sa
 
 - The island and Home are black like the notch. Home is one calm column: the current job is the whole screen.
 - One headline in plain words, one short paragraph, one primary button, one quiet secondary text button. Everything else is out of the way: other ways to ask and the options are behind one quiet line, watches too (they open by themselves when one is failing).
-- The places (Now, What I did, Learn, Memory, Settings) are a small row of drawings at the top, each with its words for VoiceOver and as a tooltip.
+- Home is 600 points wide (680 with Large, island.rs `HomeSize`), and never shorter than its side list (27 Oct 2026; 380 was too narrow). Large stops at 680 so the character, 160 plus its margin, still fits beside Home on a 1024 wide display.
+- The places (Now, What I did, Learn, Memory, Settings) are a list down the side, each a drawing and its word, shown. The open one has a fill and a solid bar on its edge (the bar meets 3 to 1). Up and Down move between them. What is open has its title at the top and a close button beside it.
+- Settings shows one section at a time: the side list becomes Back and Settings' sections. A section is a small capitals label over one rounded group of rows; a row is its name and a short line on the left and its control on the right; an on or off setting is a switch. What it usually is, and Reset, show only once it was changed. Search looks through everything.
 - Undo and Stop are always in a quiet strip at the bottom, whatever the card shows.
 - The job comes first and the ask box after it, so the first thing you see is what is happening or what happened.
 

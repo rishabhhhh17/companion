@@ -645,7 +645,8 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(row).toContain('<div role="group" aria-labelledby={labelId} className="setting">');
     expect(row).toContain('<span className="line" id={labelId}><b>{r.label}</b></span>');
     const sec = page.slice(page.indexOf("function SettingsSection("), page.indexOf("\n}\n", page.indexOf("function SettingsSection(")));
-    expect(sec).toMatch(/<section aria-labelledby=\{headId\}[^>]*>\s*<h3 id=\{headId\}>\{title\}<\/h3>/);
+    // (Shown alone in the side list's Settings, the heading is kept for VoiceOver only: className "sr".)
+    expect(sec).toMatch(/<section aria-labelledby=\{headId\}[^>]*>\s*(\{\/\*[^]*?\*\/\}\s*)?<h3 id=\{headId\}( className=\{alone \? "sr" : undefined\})?>\{title\}<\/h3>/);
     const settings = page.slice(page.indexOf("export function SettingsPage("));
     expect(settings.match(/<Group title=\{S\.[\w.]+\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(5);
     const g = page.slice(page.indexOf("function Group"), page.indexOf("\n}\n", page.indexOf("function Group")));
@@ -777,7 +778,9 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       expect(ratio(c(colourIn(one(".ask input, .row input[type=\"text\"]")!.decl.border)!), bg), "a text box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".ask textarea")!.decl.border)!), bg), "the ask box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one('.row input[type="search"]')!.decl.border)!), bg), "the search box's edge").toBeGreaterThanOrEqual(3);
-      expect(ratio(c(one('.tab[aria-selected="true"]')!.decl["border-bottom-color"]), bg), "the open tab's line").toBeGreaterThanOrEqual(3);
+      // The places are a list down the side: the open one has a solid bar on its edge (its fill alone is too faint).
+      expect(ratio(c(one('.tab[aria-selected="true"]')!.decl["border-left-color"]), bg), "the open place's bar").toBeGreaterThanOrEqual(3);
+      expect(ratio(c(one('.side-item[aria-current="page"]')!.decl["border-left-color"]), bg), "the open settings section's bar").toBeGreaterThanOrEqual(3);
     });
     test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {
       // For sighted people the dot is the only sign another tab needs them (VoiceOver hears the words beside it).
@@ -799,7 +802,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
 describe("Home stays usable with bigger text (part 4)", () => {
   const css = rules(read("./style.css"));
   // Fixed heights only on things that hold no words, or whose size the shell sets to the point (the island's own window).
-  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page"];
+  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", '.setting button[role="switch"]::after'];
   test("nothing that holds words has a fixed height that would cut it off", () => {
     for (const r of css) {
       const h = r.decl.height ?? "";
@@ -814,7 +817,8 @@ describe("Home stays usable with bigger text (part 4)", () => {
       expect(r.decl["white-space"] ?? "", r.sel).not.toMatch(/nowrap/);
     }
     const rows = css.filter((r) => [".row", ".tabs"].includes(r.sel));
-    for (const r of rows) expect(r.decl["flex-wrap"], `${r.sel} wraps to a new line`).toBe("wrap");
+    // A row wraps to a new line; the places are a column down the side, where each word wraps inside its own place.
+    for (const r of rows) if (r.decl["flex-direction"] !== "column") expect(r.decl["flex-wrap"], `${r.sel} wraps to a new line`).toBe("wrap");
   });
   test("no page sets a height or a font size inline, out of reach of the stylesheet", () => {
     for (const f of PAGES) expect(read(`./${f}`), f).not.toMatch(/style=\{\{[^}]*(height|fontSize)/);

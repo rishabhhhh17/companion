@@ -227,7 +227,7 @@ pub fn signature(list: &[Screen]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // The card's real size (one definition, island.rs): 380 wide, at most 640 tall.
+    // The card's real size (one definition, island.rs): 600 wide, at most 640 tall.
     use crate::island::{CARD, CARD_MAX_H};
     const WORK: Rect = [0.0, 33.0, 1512.0, 949.0];
     fn screen(id: &str, frame: Rect, work: Rect, primary: bool) -> Screen { Screen { id: id.into(), frame, work, primary, notch: None } }
@@ -414,10 +414,11 @@ mod tests {
         let s = mac();
         assert_eq!(snap_on(&s, SIZE, 30.0, 500.0, STD).0, Edge::Left);
         assert_eq!(snap_on(&s, SIZE, 1490.0, 500.0, STD).0, Edge::Right);
-        assert_eq!(snap_on(&s, SIZE, 400.0, 50.0, STD).0, Edge::Top);
+        // Along the top, away from Home's place under the notch (600 wide in the middle).
+        assert_eq!(snap_on(&s, SIZE, 250.0, 50.0, STD).0, Edge::Top);
         assert_eq!(snap_on(&s, SIZE, 900.0, 960.0, STD).0, Edge::Bottom);
-        let (e, p) = snap_on(&s, SIZE, 400.0, 50.0, STD);
-        assert!((place(&s, SIZE, e, p, STD)[0] - (400.0 - 80.0)).abs() < 0.5, "it follows the pointer along the top");
+        let (e, p) = snap_on(&s, SIZE, 250.0, 50.0, STD);
+        assert!((place(&s, SIZE, e, p, STD)[0] - (250.0 - 80.0)).abs() < 0.5, "it follows the pointer along the top");
         let (e, p) = snap_on(&s, SIZE, 900.0, 960.0, STD);
         assert!((place(&s, SIZE, e, p, STD)[0] - (900.0 - 80.0)).abs() < 0.5, "and along the bottom");
         let (e, p) = snap_on(&s, SIZE, 20.0, 600.0, STD);
@@ -631,7 +632,7 @@ mod tests {
         }
         // The usual size keeps every place exactly where it was.
         let s = &island_screens()[0];
-        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (380.0, 640.0)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
+        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (island::CARD.0, 640.0)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
     }
     #[test]
     fn same_place_on_every_display_fills_only_displays_with_no_place_yet() {

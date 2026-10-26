@@ -54,6 +54,10 @@ export const S = {
     stopKeys: "Stop everything: {keys}",
     factsLabel: "About this task",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+    // The side list and the top of what is open (the wide Home of 27 Oct 2026).
+    back: "Back",
+    close: `Close ${PRODUCT}`,
+    settingsPlaces: "Settings sections",
   },
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
   cardHint: "{keys} opens this box. Esc closes it.",

@@ -16,10 +16,12 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HomeSize { pub w: f64, pub min_h: f64, pub max_h: f64 }
 impl HomeSize {
-    /// The usual size: 380 wide, 150 to 640 tall (today's).
-    pub const STANDARD: HomeSize = HomeSize { w: 380.0, min_h: 150.0, max_h: 640.0 };
-    /// Large: 460 wide, up to 760 tall, for larger text.
-    pub const LARGE: HomeSize = HomeSize { w: 460.0, min_h: 150.0, max_h: 760.0 };
+    /// The usual size: 600 wide, 420 to 640 tall. Wide enough for a side list of places beside what is open (the founder's
+    /// session of 26 Oct 2026: 380 was "too narrow"), and never shorter than that list.
+    pub const STANDARD: HomeSize = HomeSize { w: 600.0, min_h: 420.0, max_h: 640.0 };
+    /// Large: 680 wide, 460 to 760 tall, for larger text. No wider: on the smallest display we place on (1024 wide) the
+    /// character, 160 plus its margin, must still fit beside Home (docking.rs, never under it).
+    pub const LARGE: HomeSize = HomeSize { w: 680.0, min_h: 460.0, max_h: 760.0 };
     /// The size a home.size word names; anything else is the usual one.
     pub fn of(word: &str) -> HomeSize { if word == "large" { HomeSize::LARGE } else { HomeSize::STANDARD } }
 }
@@ -511,7 +513,7 @@ mod tests {
         assert!(inside(l, mac.work), "{l:?}");
         assert_eq!(card_spot(None, home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), None, "no display at all: nowhere");
         assert_eq!(card_spot(Some(&mac), home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), Some(home_frame(&mac, (CARD.0, 300.0))));
-        assert_eq!((CARD, CARD_MAX_H), ((380.0, 150.0), 640.0), "Home is 380 wide for its tabs and grows to 640");
+        assert_eq!((CARD, CARD_MAX_H), ((600.0, 420.0), 640.0), "Home is 600 wide for its side list and grows to 640");
     }
     fn main_body(name: &str) -> String {
         let main = include_str!("main.rs");
@@ -730,9 +732,9 @@ mod tests {
 
     // ---- M11 area 4: the settings for Home, the island and the character (protocol/settings.json) ----
     #[test]
-    fn home_is_380_by_up_to_640_as_today_and_large_is_460_by_up_to_760() {
-        assert_eq!(HomeSize::STANDARD, HomeSize { w: 380.0, min_h: 150.0, max_h: 640.0 });
-        assert_eq!(HomeSize::LARGE, HomeSize { w: 460.0, min_h: 150.0, max_h: 760.0 });
+    fn home_is_600_by_420_to_640_and_large_is_680_by_460_to_760() {
+        assert_eq!(HomeSize::STANDARD, HomeSize { w: 600.0, min_h: 420.0, max_h: 640.0 });
+        assert_eq!(HomeSize::LARGE, HomeSize { w: 680.0, min_h: 460.0, max_h: 760.0 });
         assert_eq!((CARD, CARD_MAX_H), ((HomeSize::STANDARD.w, HomeSize::STANDARD.min_h), HomeSize::STANDARD.max_h), "the usual size is today's");
         assert_eq!(HomeSize::of("standard"), HomeSize::STANDARD);
         assert_eq!(HomeSize::of("large"), HomeSize::LARGE);
@@ -747,14 +749,14 @@ mod tests {
         for h in [l.min_h, 420.0, l.max_h] {
             let spot = card_spot(Some(&mac), home, &both, |_: &str| Edge::Right, (l.w, h)).unwrap();
             assert_eq!(spot, home_frame(&mac, (l.w, h)));
-            assert_eq!((spot[2], spot[3]), (460.0, h));
+            assert_eq!((spot[2], spot[3]), (680.0, h));
             assert!(inside(spot, mac.work) && !crate::docking::overlaps(spot, home), "{spot:?}");
             let beside = card_spot(None, home, &both, |_: &str| Edge::Right, (l.w, h)).unwrap();
             assert_eq!(beside, card_frame(home, (l.w, h), mac.work, Edge::Right));
             assert!(beside[0] + beside[2] <= home[0], "{beside:?}");
         }
         // The usual size gives exactly today's places.
-        assert_eq!(card_spot(Some(&mac), home, &both, |_: &str| Edge::Right, (CARD.0, 420.0)), Some(home_frame(&mac, (380.0, 420.0))));
+        assert_eq!(card_spot(Some(&mac), home, &both, |_: &str| Edge::Right, (CARD.0, 420.0)), Some(home_frame(&mac, (CARD.0, 420.0))));
     }
     #[test]
     fn the_waits_before_the_status_opens_and_closes_follow_the_setting_at_both_ends() {

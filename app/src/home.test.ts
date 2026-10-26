@@ -230,7 +230,10 @@ describe("the tabs from the keyboard", () => {
     expect(tabKey("learn", "ArrowLeft")).toBe("did");
     expect(tabKey("learn", "Home")).toBe("now");
     expect(tabKey("learn", "End")).toBe("settings");
-    for (const k of ["Enter", " ", "Tab", "a", "ArrowDown"]) expect(tabKey("learn", k)).toBeNull();
+    // The places are a list down the side (a vertical tab list), so Up and Down move too, the same way.
+    expect(tabKey("now", "ArrowDown")).toBe("did");
+    expect(tabKey("now", "ArrowUp")).toBe("settings");
+    for (const k of ["Enter", " ", "Tab", "a"]) expect(tabKey("learn", k)).toBeNull();
   });
   test("the tab list follows the tabs pattern: one tab in the Tab order, arrows for the rest, the chosen one marked", () => {
     expect(card).toContain('role="tablist"');

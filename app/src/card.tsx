@@ -32,7 +32,7 @@ import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.t
 import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
-import { SettingsPage } from "./settingsPage.tsx";
+import { SettingsPage, settingsPlaces } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
@@ -344,6 +344,11 @@ function Card() {
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
   useEffect(() => { takeIfLost(() => document.getElementById(tabId(home.tab))); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
+  // What is open is measured, not the column it sits in (that column is as tall as the window, so it could never shrink).
+  const inner = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  // Which part of Settings is open in the side list ("" is the first).
+  const [setPlace, setSetPlace] = useState("");
   const box = useRef<HTMLTextAreaElement>(null);
   // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
   // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
@@ -856,10 +861,12 @@ function Card() {
   }, []);
   // Tell the app how tall the content is, so the panel fits it.
   useEffect(() => {
-    const el = root.current;
+    const el = inner.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => void invoke("resize_card", { height: el.scrollHeight }));
+    const tell = () => void invoke("resize_card", { height: el.offsetHeight + (strip.current?.offsetHeight ?? 0) });
+    const ro = new ResizeObserver(tell);
     ro.observe(el);
+    if (strip.current) ro.observe(strip.current);
     return () => ro.disconnect();
   }, []);
 
@@ -1320,7 +1327,7 @@ function Card() {
   };
 
   return (
-    <main className={`card${dragging ? " dropping" : ""}`} ref={root}
+    <main className={`card${onboarded ? " has-side" : ""}${dragging ? " dropping" : ""}`} ref={root}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
@@ -1328,25 +1335,47 @@ function Card() {
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       {/* Read when VoiceOver reaches it, not said by itself: the cost changes on every turn, and what needs the person is
           said once on the live line below. */}
-      <div className="head">
-        <span className="state">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span>
-        {onboarded && (
-          <div className="tabs" role="tablist" aria-label={S.homeLabel}>
+      {/* The side list (like a Mac app's sidebar): the places, each with its drawing and its word. In Settings it becomes
+          Back and Settings' own sections, so one section shows at a time. What is happening and what it cost sit at its top. */}
+      {onboarded && (
+        <nav className="side" aria-label={S.homeLabel}>
+          <div className="brand">
+            <span className="brand-name">{S.product}</span>
+            <span className="state">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span>
+          </div>
+          {home.tab === "settings" && (<>
+            <button className="side-back" type="button" onClick={() => pickTab("now")}><Icon name="back" size={16} />{S.look.back}</button>
+            <ul className="side-list" aria-label={S.look.settingsPlaces}>
+              {settingsPlaces().map((p) => {
+                const on = (setPlace || settingsPlaces()[0]?.id) === p.id;
+                return <li key={p.id}><button className="side-item" type="button" aria-current={on ? "page" : undefined} onClick={() => { setSetPlace(p.id); inner.current?.parentElement?.scrollTo({ top: 0 }); }}>{p.title}</button></li>;
+              })}
+            </ul>
+          </>)}
+          <div className="tabs" role="tablist" aria-orientation="vertical" aria-label={S.homeLabel} hidden={home.tab === "settings"}>
             {TABS.map((t) => {
               const waits = needNow?.tab === t && t !== home.tab;
               return (
-                <button key={t} id={tabId(t)} className="tab" type="button" role="tab" aria-selected={t === home.tab} aria-controls={tabPanelId(t)} tabIndex={t === home.tab ? 0 : -1} title={tabName(t)}
+                <button key={t} id={tabId(t)} className="tab" type="button" role="tab" aria-selected={t === home.tab} aria-controls={tabPanelId(t)} tabIndex={t === home.tab ? 0 : -1}
                   onClick={() => pickTab(t)}
                   onKeyDown={(e) => { const n = tabKey(t, e.key); if (!n) return; e.preventDefault(); pickTab(n); document.getElementById(tabId(n))?.focus(); }}>
                   <Icon name={t} />
-                  <span className="sr">{tabName(t)}</span>
+                  <span className="tab-word">{tabName(t)}</span>
                   {waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
                 </button>
               );
             })}
           </div>
-        )}
-      </div>
+        </nav>
+      )}
+      <div className="content">
+      <div className="inner" ref={inner}>
+      {onboarded && (
+        <header className="top">
+          <h1 id="home-title">{home.tab === "settings" ? (settingsPlaces().find((p) => p.id === setPlace)?.title ?? settingsPlaces()[0]?.title ?? tabName("settings")) : tabName(home.tab)}</h1>
+          <button className="close" type="button" aria-label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={16} /></button>
+        </header>
+      )}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} pickPractice={() => homeDispatch({ type: "pick", tab: "learn" })} onDone={finishOnboarding} />}
@@ -1364,7 +1393,7 @@ function Card() {
       )}
       {m.error && <div className="error">{m.error}</div>}
       </>}
-      <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
+      <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={home.tab === "settings" ? "home-title" : tabId(home.tab)}>
       {show("folder") && <>
       <div className="row folder" role="group" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
@@ -1400,7 +1429,7 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
-      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} />}
+      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} place={setPlace || settingsPlaces()[0]?.id || ""} />}
       {groups.groupOn("guide") && show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
         const pr = m.practice!, entry = practiceOf(pr.kind)!;
         return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}
@@ -2106,15 +2135,19 @@ function Card() {
       )}
       {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} />}
       </div>
+      </>)}
+      </div>
+      {onboarded && (<>
       {/* Undo and Stop are always here, quietly, whatever the card is showing. Undo is the same flow as before (the receipt asks
           "are you sure" and keeps the choices); it is pressable when the last task changed something and nothing is undone. */}
-      <div className="strip" role="group" aria-label={S.look.stripLabel}>
+      <div className="strip" ref={strip} role="group" aria-label={S.look.stripLabel}>
         <button id={undoId} className="btn" type="button" aria-label={S.undo} disabled={!(m.receipt && m.receipt.changed.length > 0 && !m.undo && project)}
           onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={16} />{S.look.undoShort}</button>
         <button className="btn" type="button" disabled={!working} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</button>
         <span className="muted grow" role="note">{keyHint("stop", S.look.stopKeys, keys)}</span>
       </div>
       </>)}
+      </div>
     </main>
   );
 }

@@ -144,12 +144,13 @@ export function phArmable(m: Model, tab: Tab, shown: boolean): boolean {
   return shown && m.ph?.stage === "ready" && !!m.ph.text && shownOn("promptHelp", tab, m);
 }
 
-/** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. */
+/** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. The places are a list down the side,
+ *  so Up and Down move as Left and Right do. */
 export function tabKey(t: Tab, key: string): Tab | null {
   const i = TABS.indexOf(t), n = TABS.length;
   switch (key) {
-    case "ArrowRight": return TABS[(i + 1) % n];
-    case "ArrowLeft": return TABS[(i - 1 + n) % n];
+    case "ArrowRight": case "ArrowDown": return TABS[(i + 1) % n];
+    case "ArrowLeft": case "ArrowUp": return TABS[(i - 1 + n) % n];
     case "Home": return TABS[0];
     case "End": return TABS[n - 1];
     default: return null;
