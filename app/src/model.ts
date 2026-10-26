@@ -1262,6 +1262,11 @@ export function receiptSaid(m: Model): { lead: string; words: string; help?: str
   return { lead: waitsForAnswer(m) ? S.receiptAsks : S.receiptAsksToo, words: r.said, help: r.inPlan ? S.receiptAnswerHelpPlan : S.receiptAnswerHelp };
 }
 
+/** The receipt block's heading: Answer when the task changed no files and only answered, else What changed. */
+export function receiptHeading(r: Receipt | null | undefined): string {
+  return r && r.changed.length === 0 && !!r.said ? S.answerTitle : S.receiptTitle;
+}
+
 // The receipt's one line about its checks. "Checked and working" only while no place has its old code back from a turn.
 export function receiptProofWords(m: Model): string {
   const r = m.receipt;

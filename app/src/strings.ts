@@ -68,6 +68,7 @@ export const S = {
   undoRecovered: "Files you had changed were saved aside first.",
   undoLarge: "Some very large files were left as they are.",
   receiptTitle: "What changed",
+  answerTitle: "Answer",
   isLive: "is live",
   savePicture: "Save picture",
   copyLink: "Copy link",
