@@ -36,7 +36,7 @@ import { SettingsPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
-import { DRAFT_KEY, askKey, draftToKeep, heardGoesTo, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
+import { DRAFT_KEY, askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
@@ -998,7 +998,7 @@ function Card() {
   const askModeRef = useRef(askMode); askModeRef.current = askMode;
   const showMeRef = useRef<(q: string, g: string, s: string[]) => void>(() => {});
   useEffect(() => {
-    const off = listen("showme-mode", () => { setAskMode("showme"); setTimeout(() => box.current?.focus(), 30); });
+    const off = listen("showme-mode", (e) => { setAskMode("showme"); if (boxTakesKeyboard(e.payload)) setTimeout(() => box.current?.focus(), 30); });
     // Stop everything ends the Show me key's question too: words heard after it are never a question about the screen.
     const offStop = listen("runner-event", (e) => { if ((e.payload as { type?: string } | null)?.type === "app.stop_everything") setAskMode("task"); });
     return () => { off.then((f) => f()); offStop.then((f) => f()); };

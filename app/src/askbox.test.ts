@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { askKey, draftToKeep, heardGoesTo, heardKind, MAX_DRAFT, putBack, sendsItself, sentOutcome, type FollowAim, type Sent } from "./askbox.ts";
+import { askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardKind, MAX_DRAFT, putBack, sendsItself, sentOutcome, type FollowAim, type Sent } from "./askbox.ts";
 import { AGENT } from "./commands.ts";
 
 const k = (key: string, o: { shift?: boolean; composing?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean } = {}) =>
@@ -238,5 +238,19 @@ describe("where spoken words go", () => {
   test("never into a follow up box that has gone by the time the words come back, and never without a start", () => {
     expect(to(down(), false)).toBe("box");
     expect(to(null)).toBe("box");
+  });
+});
+describe("the Show me key (finding M)", () => {
+  test("pressed to listen, the box does not take the keyboard: the app in front stays in front", () => {
+    expect(boxTakesKeyboard(true)).toBe(true);          // the box opened instead (voice off, no model, no microphone permission)
+    expect(boxTakesKeyboard("listening")).toBe(false);  // listening has started
+    expect(card).toContain("boxTakesKeyboard(");
+  });
+  test("its hint says to ask out loud and press again, and the box is the way when voice is not ready", async () => {
+    const { S } = await import("./strings.ts");
+    expect(S.showMeKeyHint).toContain("out loud");
+    expect(S.showMeKeyHint).toContain("press it again");
+    expect(S.showMeKeyHint).toContain("{keys}");
+    expect(S.showMeKeyHint).not.toContain("—");
   });
 });

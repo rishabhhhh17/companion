@@ -126,6 +126,8 @@
 {"key": "point.yourTurnSeconds", "value": 100, "ok": true, "normalized": 105}
 {"key": "point.yourTurnSeconds", "value": 15, "ok": false, "reason": "tooLow"}
 {"key": "point.yourTurnSeconds", "value": 301, "ok": false, "reason": "tooHigh"}
+{"key": "showme.listen", "value": false, "ok": true, "normalized": false}
+{"key": "showme.listen", "value": "yes", "ok": false, "reason": "notSwitch"}
 {"key": "talk.maxHold", "value": "120", "ok": true, "normalized": "120"}
 {"key": "talk.maxHold", "value": 120, "ok": false, "reason": "notChoice"}
 {"key": "talk.maxHold", "value": "0", "ok": false, "reason": "notChoice"}
