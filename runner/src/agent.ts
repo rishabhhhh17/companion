@@ -48,6 +48,7 @@ import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings }
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
+import { withStaleCheck } from "./staleerror.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { secondLook, SecondLookError } from "./secondlook.ts";
 import type { FastLike } from "./lanes.ts";
@@ -1044,7 +1045,7 @@ export class AgentRunner {
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
-    let ok = await round(cmd.prompt, opts.resumeSession);
+    let ok = await round(withStaleCheck(cmd.prompt), opts.resumeSession);
     // Did the round that just ended stop to ask the person something (asks.ts: an offer of more work or a check in is not
     // asking)? Then the task needs them: no fix round is started over the question (it would bury it, and spend the
     // person's money on a guess). After checks that failed, only a question that names something only the person has (their

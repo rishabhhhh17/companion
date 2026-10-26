@@ -124,6 +124,14 @@ const checks = {
     ok(JSON.stringify(pageOf(orders, 3)) === JSON.stringify(['Order 11', 'Order 12']), 'page 3 must be the last two orders');
   },
   'page-count': () => { ok(fresh('src/paginate.js').pageCount(Array.from({ length: 12 })) === 3, 'twelve orders must make three pages'); },
+  // The stale error case: the project already works, so this is a guard. Nothing about the page or its script may have moved or changed.
+  'gallery-intact': () => {
+    const html = read('index.html');
+    const button = html.indexOf('onclick="showGallery()"'), script = html.indexOf('<script src="app.js"></script>');
+    ok(button >= 0 && script > button, 'the button must still call showGallery() and the script tag must still come after it, where it was');
+    ok(/function showGallery\(\) \{\s*document\.getElementById\('gallery'\)\.hidden = false;\s*\}/.test(read('app.js')), 'app.js must still define showGallery as it did');
+    ok(runs(run('node', ['--test'])), 'the project\'s own tests must still pass');
+  },
   // The Next.js rules again, from a copy kept here (the project's own build check could be edited).
   'next-rules': () => {
     const r = run('node', [new URL('./next-rules.mjs', import.meta.url).pathname]);
