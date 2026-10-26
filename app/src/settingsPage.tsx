@@ -12,7 +12,7 @@ import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundL
 import { inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
-import { canPick, choicesFrom, chordLabel, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys, type Ticked } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
@@ -164,8 +164,34 @@ function KeyPicker({ job, keys, onDone }: { job: Job; keys: Keys; onDone: (chang
       </div>
       {pickerLines(c, keys).map((l) => <div className="line muted" key={l}>{l}</div>)}
       {c.choices.map((id) => talkCost(id) && <div className="line muted" id={`key-cost-${id}`} key={id}>{talkCost(id)}</div>)}
+      <AnyKeys busy={busy} pick={pick} />
     </>)}
     {problem && <div className="error" role="alert">{problem}</div>}
+  </div>);
+}
+
+// Any keys, not only the short list (finding L): tick Control, Option, Shift and Command and choose the key from a list. Nothing
+// here listens to the keyboard (rule 8): the page builds the chord's id, says in plain words why one is not enough, and the
+// app checks it again and tries it like any other (taken by another app, used by another job). The preset buttons stay as they are.
+function AnyKeys({ busy, pick }: { busy: boolean; pick: (id: string) => void }) {
+  const [t, setT] = useState<Ticked>({ control: false, option: false, shift: false, command: false });
+  const [key, setKey] = useState("");
+  const built = key ? customChord(t, key) : null;
+  const id = built && "id" in built ? built.id : "";
+  const why = built && "problem" in built ? (built.problem === "reserved" ? S.keysReserved : built.problem === "not_enough" ? S.keysNotEnough : "") : "";
+  return (<div role="group" aria-label={S.keysCustomTitle}>
+    <div className="line"><b>{S.keysCustomTitle}</b></div>
+    <div className="line muted">{S.keysCustomHelp}</div>
+    <div className="row">
+      {(["control", "option", "shift", "command"] as const).map((mod) => <label key={mod} className="check"><input type="checkbox" checked={t[mod]} disabled={busy} onChange={(e) => setT({ ...t, [mod]: e.target.checked })} /> {S.keyWords[mod]}</label>)}
+      <select aria-label={S.keysCustomKey} value={key} disabled={busy} onChange={(e) => setKey(e.target.value)}>
+        <option value="">{S.keysCustomKey}</option>
+        {CUSTOM_KEYS.map((k) => <option key={k} value={k}>{k.length === 1 ? k.toUpperCase() : S.keyWords.space}</option>)}
+      </select>
+      <button className="btn" type="button" disabled={busy || !id} onClick={() => { if (id) pick(id); }}>{S.keysCustomUse}</button>
+    </div>
+    {id && <div className="line muted" role="status">{chordLabel(id)}</div>}
+    {why && <div className="line" role="status">{why}</div>}
   </div>);
 }
 

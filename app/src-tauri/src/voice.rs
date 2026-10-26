@@ -146,9 +146,73 @@ pub fn clean_transcript(raw: &str) -> String {
 pub fn word_count(s: &str) -> usize { s.split_whitespace().count() }
 pub fn should_auto_send(enabled: bool, transcript: &str) -> bool { enabled && word_count(transcript) >= AUTO_SEND_MIN_WORDS }
 
+/// What the Show me key (Control, Option, Command and S) does the moment it is pressed (finding M). Hold to talk is a chord
+/// that is held, so its keys coming up end the listening. The Show me chord has four keys and is pressed and let go in
+/// a moment (a tap under a third of a second is dropped as no talk at all), so it works as a switch instead: the first press
+/// starts listening, with the light first, and a second press, Stop everything, or the cap ends it. A pause does not end it:
+/// the recorder does not report sound levels, and a guess at a pause could cut the person off or keep the microphone open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShowMeKey {
+    /// Open the card and start listening (the usual hold to talk path, so the same light, permission and cap checks apply).
+    Listen,
+    /// A second press: stop listening and understand what was said.
+    Finish,
+    /// Open the question box focused, as before.
+    Box,
+}
+/// Everything the choice depends on, read when the key is pressed.
+#[derive(Debug, Clone, Copy)]
+pub struct ShowMeKeyState {
+    /// `showme.listen`.
+    pub setting_on: bool,
+    /// `voice.on` (the group switch).
+    pub voice_on: bool,
+    pub model_ready: bool,
+    pub mic_allowed: bool,
+    /// Companion is hidden, so the light could not be seen (rule 5).
+    pub hidden: bool,
+    /// The microphone is open right now, for whoever opened it.
+    pub listening: bool,
+    /// The last listening was started by this key.
+    pub started_by_key: bool,
+}
+pub fn show_me_key(s: &ShowMeKeyState) -> ShowMeKey {
+    if s.listening { return if s.started_by_key { ShowMeKey::Finish } else { ShowMeKey::Box }; }
+    if s.setting_on && s.voice_on && s.model_ready && s.mic_allowed && !s.hidden { ShowMeKey::Listen } else { ShowMeKey::Box }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ---- finding M: the Show me key starts listening at once ----
+    fn can() -> ShowMeKeyState { ShowMeKeyState { setting_on: true, voice_on: true, model_ready: true, mic_allowed: true, hidden: false, listening: false, started_by_key: false } }
+    #[test]
+    fn the_show_me_key_listens_at_once_when_everything_is_ready() {
+        assert_eq!(show_me_key(&can()), ShowMeKey::Listen);
+    }
+    #[test]
+    fn a_second_press_ends_the_listening_it_started() {
+        assert_eq!(show_me_key(&ShowMeKeyState { listening: true, started_by_key: true, ..can() }), ShowMeKey::Finish);
+        // Even if the setting was switched off or Companion was hidden meanwhile: the microphone is closed, never kept open.
+        assert_eq!(show_me_key(&ShowMeKeyState { listening: true, started_by_key: true, setting_on: false, hidden: true, ..can() }), ShowMeKey::Finish);
+    }
+    #[test]
+    fn a_stale_note_that_the_key_started_listening_starts_nothing_and_ends_nothing() {
+        // The listening ended some other way (the cap, Stop everything): the note is old, so this press is a new one.
+        assert_eq!(show_me_key(&ShowMeKeyState { listening: false, started_by_key: true, ..can() }), ShowMeKey::Listen);
+        // Someone is holding the talk keys: the key never ends or restarts that listening, it only opens the box.
+        assert_eq!(show_me_key(&ShowMeKeyState { listening: true, started_by_key: false, ..can() }), ShowMeKey::Box);
+    }
+    #[test]
+    fn anything_missing_falls_back_to_the_box() {
+        for s in [
+            ShowMeKeyState { setting_on: false, ..can() },
+            ShowMeKeyState { voice_on: false, ..can() },
+            ShowMeKeyState { model_ready: false, ..can() },
+            ShowMeKeyState { mic_allowed: false, ..can() },
+            ShowMeKeyState { hidden: true, ..can() },
+        ] { assert_eq!(show_me_key(&s), ShowMeKey::Box, "{s:?}"); }
+    }
     #[test]
     fn hold_to_talk_always_has_a_cap_and_it_is_a_minute_unless_changed() {
         // talk.maxHold: 30, 60 or 120 seconds, usual 60 (today). There is always a cap: anything else is a minute.

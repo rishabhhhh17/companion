@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { initial, reduce, type Model } from "./model.ts";
+import { initial, receiptHeading, reduce, type Model } from "./model.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, MAX_COPY, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { S } from "./strings.ts";
 
@@ -30,6 +30,20 @@ describe("Copy on replies and receipts", () => {
     const m = run([{ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "skipped", usdEstimate: 0 }]);
     expect(receiptCopy(m, "/p").split("\n")[1]).toBe(S.nothingChanged);
     expect(receiptCopy(initial(), "/p")).toBe("");
+  });
+  test("a plain question is answered under Answer, a task that changed files under What changed (finding N)", () => {
+    const rec = (o: Record<string, unknown>) => run([{ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "skipped", usdEstimate: 0, ...o }]);
+    const answered = rec({ said: "It is a button that opens the menu." });
+    expect(receiptHeading(answered.receipt)).toBe(S.answerTitle);
+    expect(S.answerTitle).toBe("Answer");
+    expect(receiptCopy(answered, "/p").split("\n")[0]).toBe("Answer");
+    const changed = rec({ said: "Done.", changed: [{ file: "src/page.js", kind: "added" }] });
+    expect(receiptHeading(changed.receipt)).toBe(S.receiptTitle);
+    expect(receiptCopy(changed, "/p").split("\n")[0]).toBe("What changed");
+    // Nothing changed and nothing was said (a stopped or failed task): there is no answer, so the usual heading stays.
+    expect(receiptHeading(rec({}).receipt)).toBe(S.receiptTitle);
+    expect(receiptHeading(null)).toBe(S.receiptTitle);
+    expect(card).toContain("receiptHeading(m.receipt)");
   });
   test("a research answer copies with its notes and where each came from", () => {
     const t = researchCopy({ title: "Taking payments", answer: "Use Stripe Checkout.", notes: [{ text: "Checkout hosts the page.", source: "https://docs.stripe.com/checkout" }], file: "notes/payments.md" });

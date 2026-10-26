@@ -104,3 +104,7 @@ export function heardGoesTo(o: { showme: boolean; atKeysDown: FollowAim | null; 
   const d = o.atKeysDown;
   return d && d.byPointing && d.homeShown && d.followUpShown && d.overReceipt && o.followUpShownNow ? "followUp" : "box";
 }
+
+/** The page is told the Show me key was pressed with `true` (the box opened) or `"listening"` (listening began at once, the
+ *  shell's show_me_key). Only the box takes the keyboard; while listening nothing should pull it from the app in front. */
+export const boxTakesKeyboard = (payload: unknown): boolean => payload !== "listening";

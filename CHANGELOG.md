@@ -14,6 +14,15 @@ Found in the first hands on session on a Mac, the engine side.
 - **Support can see that an approval happened.** The activity log now records that a question was asked (the kind of risk and which tool) and how it was answered (yes, no, expired or stopped), never the question's words.
 - **Checked by machine, plus one real run** of the new test project only. Nobody has seen these changes on screen.
 
+## Fixes from the first hands on session, the way it behaves: 26 Oct 2026
+
+- **The explain key always answers.** Before, pressing it with nothing selected in Cursor showed nothing at all. Now every press ends in a plain line on the card: nothing was selected, Accessibility is off, the field is private, Squibby itself is in front, no app could be found, or the app could not be read in five seconds. Apps like Cursor and VS Code that hide their text boxes until told a screen reader is near are now woken for that one press and put back to sleep after.
+- **The Show me key listens at once.** Press it, say what you want to find, press it again. The light comes on first. If voice is off, the speech model is not downloaded or the microphone is not allowed yet, it opens the question box as before. There is a new switch in Settings, "Show me key listens at once", on by default.
+- **Undo where you look.** What I did now has an Undo button on the newest task that changed files, with the same question as before. Older tasks say why they have none: undoing an older task would also take back the work done after it.
+- **Answers are called Answer.** A plain question is answered under "Answer". "What changed" stays for tasks that changed files.
+- **Pick any hotkey.** Under Keys to remember, tick Control, Option, Shift or Command and choose the key from a list. It needs two ticks, one of them Control or Command, and it refuses the Mac's own shortcuts and keys another job already has. Nothing reads what you type.
+- **Not seen on a real Mac yet.** All of this was checked by tests on a Mac with no one at the screen. The explain key in Cursor, the Show me key listening and the new hotkey picker need your eyes.
+
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.

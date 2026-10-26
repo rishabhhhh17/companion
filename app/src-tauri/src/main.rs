@@ -2984,6 +2984,49 @@ fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
     failed
 }
 
+
+// ---------- The Show me key ----------
+
+/// The Show me key started the listening that is open now (voice::show_me_key). Only trusted while the microphone is open.
+static SHOWME_LISTENING: AtomicBool = AtomicBool::new(false);
+/// The Show me key (finding M). With voice on and the microphone allowed it starts listening at once, the same way hold to talk
+/// does (the worker checks the speech model, the permission, that Companion is not hidden, and lights the character and
+/// the card before the microphone opens); a second press ends it. Otherwise it opens the question box as it always did.
+/// Nothing on the screen is captured until the question is sent, under the light (showme_start).
+fn show_me_key(app: &AppHandle) {
+    let state = voice::ShowMeKeyState {
+        setting_on: setting_now("showme.listen").as_bool().unwrap_or(true),
+        voice_on: setting_now("voice.on").as_bool().unwrap_or(true),
+        model_ready: voice_mac::model_ready(&data_dir()),
+        mic_allowed: voice_mac::mic_status() == voice_mac::Mic::Allowed,
+        hidden: companion_hidden(),
+        listening: listening_now(),
+        started_by_key: SHOWME_LISTENING.load(Ordering::SeqCst),
+    };
+    let plan = voice::show_me_key(&state);
+    log("showme_key", json!({ "plan": format!("{plan:?}").to_lowercase() }));
+    match plan {
+        voice::ShowMeKey::Box => {
+            // Open the box ready for a question about the screen; nothing is captured until the question is sent.
+            open_card(app, "hotkey", true);
+            let _ = app.emit("showme-mode", true);
+        }
+        voice::ShowMeKey::Listen => {
+            // The card shows the light and its line; it does not take the keyboard, so the app in front stays in front.
+            open_card(app, "hotkey", false);
+            let _ = app.emit("showme-mode", "listening");
+            SHOWME_LISTENING.store(true, Ordering::SeqCst);
+            // As hold to talk starts: nothing talks over the person, a Show me answer still playing ends.
+            speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ());
+            voice_send(app, VoiceMsg::Down(now() as u64));
+        }
+        voice::ShowMeKey::Finish => {
+            SHOWME_LISTENING.store(false, Ordering::SeqCst);
+            voice_send(app, VoiceMsg::Up(now() as u64));
+        }
+    }
+}
+
 // ---------- Hold to talk ----------
 
 /// Hidden: Companion was just hidden (a full screen app came forward, or Hide from the menu bar). It only wakes the worker,
@@ -3534,7 +3577,7 @@ fn main() {
                         log("hotkey", json!({ "id": "talk", "down": down }));
                         // Never talk over the person: what is being said stops, a Show me answer still playing ends (no
                         // later step is drawn or said), and the page drops any line still waiting to be said.
-                        if down { speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ()); }
+                        if down { SHOWME_LISTENING.store(false, Ordering::SeqCst); speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ()); }
                         voice_send(app, if down { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
                         return;
                     }
@@ -3543,11 +3586,7 @@ fn main() {
                     let Some(job) = key_action(s) else { return };
                     if job != keymap::Action::Stop { log("hotkey", json!({ "id": job.id() })); }
                     match job {
-                        keymap::Action::ShowMe => {
-                            // Open the box ready for a question about the screen; nothing is captured until the question is sent.
-                            open_card(app, "hotkey", true);
-                            let _ = app.emit("showme-mode", true);
-                        }
+                        keymap::Action::ShowMe => show_me_key(app),
                         keymap::Action::Problem => {
                             // Stuck? Check the project as it is, then point at where it fails; with no project, or another
                             // kind of app in front, the page looks at the screen instead (everyday.rs). Only the kind of app
