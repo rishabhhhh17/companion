@@ -165,11 +165,13 @@ describe("metadata.user_id: who the request is for, without saying who", () => {
     await t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }], metadata: { user_id: "evil" } } });
     expect(t.seen.length).toBe(1); expect("metadata" in sentBody(t)).toBe(false);
   });
-  test("the derived id and the secret are never in a log event, a stored record, or anything the user gets back", async () => {
+  test("the secret is never kept; the derived id is in neither a log event nor anything the user gets back, and only the stored request record holds it (our own log for an abuse investigation)", async () => {
     const t = rig(); const r = await t.send(); const text = await r.text();
     const id = await deriveUserId("u1", USER_ID_SECRET);
-    const kept = JSON.stringify({ events: t.events, store: t.store.dump(), text, headers: [...r.headers.entries()] });
-    expect(kept).not.toContain(id); expect(kept).not.toContain(USER_ID_SECRET);
+    const away = JSON.stringify({ events: t.events, text, headers: [...r.headers.entries()] });
+    expect(away).not.toContain(id);
+    expect(JSON.stringify(t.store.dump())).not.toContain(USER_ID_SECRET); expect(away).not.toContain(USER_ID_SECRET);
+    expect(t.store.records.every((rec) => rec.metadataUserId === id)).toBe(true);
   });
   test("a suspended person is refused with a plain message and nothing is forwarded", async () => {
     const t = rig({ status: "suspended" }); const r = await t.send();

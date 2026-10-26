@@ -18,6 +18,7 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 | `src/userid.ts` | The opaque user id Anthropic sees (keyed hash of the owner id) and the lookup from an id back to an owner |
 | `src/accounts.ts` | Issuing a sign in token; refused for a suspended owner |
 | `src/operator.ts`, `scripts/suspend.ts` | The operator's tool to find, suspend and restore one person (dry run by default) |
+| `src/signals.ts`, `scripts/signals.ts` | Counts only check for owners worth a look beyond the daily cap: near the limit on several days, a burst, a jump against their own week. Thresholds in one `LIMITS` table |
 | `src/usage.ts` | Reads token counts from a reply (streaming or not) without keeping any text; prices them with the app's own table |
 | `src/proxy.ts` | The request handler: switch, token, plan, budget, forward, stream back, book the cost |
 | `src/store.ts` | What is kept (users, spend, one small record per request) and an in memory store for tests |
@@ -52,6 +53,8 @@ Anthropic's support said (23 Oct 2026) that we are responsible for Usage Policy 
 - **Back up the secret apart from the server. Changing it changes every id**, so ids in older Anthropic notices can no longer be matched.
 
 **Cutting one person off.** `Store` has `suspendOwner` (every token of the owner stops at once, and a flag blocks new ones), `restoreOwner` (new tokens allowed again; old ones stay dead), `isSuspended`, `listOwnerIds` and `suspensions` (a log of owner id, date, case id; no text). The flag is separate from a token's status, so a late payment event that writes a plan cannot lift it. `issueToken` refuses a suspended owner. The proxy answers a suspended person with a 403 and "account is paused".
+
+**Our own request log.** Anthropic cannot report usage per user, so each request record (`UsageRecord`) holds the owner id, the opaque id Anthropic saw (`metadataUserId`), Anthropic's `request-id`, the plan, the time, the model, the counts and the cost, never text. The real store must keep the same fields and implement `recordsSince`. Run `bun scripts/signals.ts --store <module>` once a day.
 
 **The operator command**, `scripts/suspend.ts` (Bun). A dry run unless `--apply`:
 ```

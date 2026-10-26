@@ -90,7 +90,8 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
     const raw = await readCapped(req);
     if (raw === null) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
-    const checked = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string));
+    const opaqueId = await deriveUserId(user.id, d.userIdSecret as string);
+    const checked = checkRequest(req.method, url.pathname, raw, opaqueId);
     if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
 
     const plan = planOf(user.plan);
@@ -118,7 +119,8 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
 
       const book = async (usage: ReturnType<typeof usageFromJson>, complete: boolean) => {
         const usd = costOf(checked.model, usage);
-        if (usd > 0) await d.store.record({ userId: user.id, model: checked.model, usage, usd, at: now(), complete });
+        const rid = res.headers.get("request-id");
+        if (usd > 0) await d.store.record({ userId: user.id, model: checked.model, usage, usd, at: now(), complete, plan: planOf(user.plan).name, metadataUserId: opaqueId, ...(rid && /^[A-Za-z0-9_-]{1,100}$/.test(rid) ? { requestId: rid } : {}) });
         log({ kind: "request", userId: user.id, model: checked.model, usd, status: res.status, complete });
       };
       if (!res.ok) {

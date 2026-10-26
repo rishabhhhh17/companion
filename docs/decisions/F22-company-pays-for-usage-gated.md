@@ -35,6 +35,9 @@ Plans are sold and charged through Dodo Payments (a merchant of record), not Str
 - **Condition they stated:** we are responsible for Usage Policy compliance for everything our users send through our key. A rate limit alone does not cover that. We need our own acceptable use terms for users and a process to identify and cut off an offending account.
 - **Not switched on:** the managed route stays off until the conditions below are met. Rule 1 in AGENTS.md is read as: the fixing engine is never company paid without a written agreement; the plain API light features may be company paid behind the switch, now that Anthropic's support has said it is a standard setup.
 
+## Anthropic support, third reply (27 Oct 2026)
+Scope confirmed: calls under our own organization key, billed inside the user's plan. Not Claude Code. `metadata.user_id` stays opaque and free of personal data. Anthropic gives no per user usage report, so **our own request log is the system of record** for any abuse case. Notices go to the org's owner, admin and billing roles (no security contact field). The abuse process must also include detection beyond a daily cap. Details and what we built: `docs/outreach/anthropic-support-reply-3-2026-10-27.md`. Still a support email, not a signed agreement.
+
 ## What changes in the rules
 `AGENTS.md` rule 1 ("never pay for, resell or route anyone's Claude usage") now reads as true unless managed usage is switched on with Anthropic's written yes. Rule 2 (the key stays in the Keychain) is unchanged: on managed usage there is no user key, only a Companion sign in token, kept in the Keychain the same way, and Companion's own Anthropic key never leaves the server.
 
