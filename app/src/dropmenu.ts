@@ -157,3 +157,62 @@ export const namesLine = (m: Menu): string => (m.names.length === 1 ? m.names[0]
 
 /** A true word of warning for a kind of file, said before an action is chosen: what the Mac's own tools leave out. */
 export const kindNote = (kind: Kind | null): string | null => (kind === "document" ? S.drop.noPictures : kind === "image" ? S.drop.imageNote : kind === "archive" ? S.drop.zipNote : null);
+
+// ---- The ring around the character (F19, redrawn in M14: bigger, calmer, real spacing) ----
+// The character's window is 160 points square and never changes size, so the ring has room for six round targets of 44
+// points on an arc around it. A drop that can be done many ways shows the first few, then More, which opens the whole list
+// in Home (where the keyboard works). Labels are not inside the targets: the word for the one under the pointer or the
+// keyboard shows in the middle of the ring.
+
+/** The least size of a target on the ring, in points. */
+export const TARGET = 44;
+/** The window the ring has to fit in (the character's window, main.rs DOCK), and the ring's radius to the middle of a target. */
+export const WINDOW = 160;
+export const RADIUS = 54;
+/** How many choices show before More takes the rest. With a close button and More this is at most six targets. */
+export const RING_MAX = 5;
+
+/** The choices the ring shows, and whether the rest are behind More. Five or fewer all show. */
+export function ringChoices(actions: readonly string[]): { shown: string[]; more: boolean } {
+  if (actions.length <= RING_MAX) return { shown: [...actions], more: false };
+  return { shown: actions.slice(0, RING_MAX - 1), more: true };
+}
+
+/** Where each of `n` targets goes on an arc round the middle: the first at the upper left and the last at the lower right,
+ *  going clockwise over the top, with the bottom left clear for the character's own caption. Radius `r`, the arc `span`
+ *  degrees wide. */
+export function arcSpots(n: number, r: number, span = 300): { x: number; y: number }[] {
+  const round = (v: number) => Math.round(v * 1000) / 1000 + 0;
+  if (n <= 0) return [];
+  if (n === 1) return [{ x: 0, y: round(-r) }];
+  return Array.from({ length: n }, (_, i) => {
+    const deg = -span / 2 + (i * span) / (n - 1);
+    const a = (deg * Math.PI) / 180;
+    return { x: round(r * Math.sin(a)), y: round(-r * Math.cos(a)) };
+  });
+}
+
+/** Which small drawing a choice gets (icons.tsx). Every action the page has words for has one of its own kind; an unknown id
+ *  gets the plain file. */
+export type ActionIcon = "image" | "pdf" | "doc" | "audio" | "video" | "archive" | "resize" | "squeeze" | "trim" | "rotate" | "flip" | "gray" | "clean" | "grid" | "merge" | "split" | "text" | "mono" | "file";
+export function actionIcon(id: string): ActionIcon {
+  if (/^(toPng|toJpeg|toHeic|toTiff|toWebp|toGif|toBmp|toJp2|toTga|toAvif|toIcns|toIco|pagesToImages|stillStart|stillMiddle)$/.test(id)) return "image";
+  if (id === "resize") return "resize";
+  if (id === "compress" || id === "pdfCompress") return "squeeze";
+  if (id === "merge" || id === "imagesToPdf" || id === "zipTogether") return "merge";
+  if (id === "split" || id === "dropFirstPage" || id === "dropLastPage" || id === "keepFirstPage") return "split";
+  if (/^(toPdf|imageToPdf)$/.test(id)) return "pdf";
+  if (/^(toText|pdfText)$/.test(id)) return "text";
+  if (/^(toDocx|toRtf|toHtml|toDoc|toOdt|toWordml)$/.test(id)) return "doc";
+  if (/^(toM4a|toWav|toAiff|toAlac|toCaf|toFlac|toAac|soundOnly|sampleRate)$/.test(id)) return "audio";
+  if (id === "mono" || id === "stereo") return "mono";
+  if (/^(toMp4|toMov|toM4v|toHevc|video480|video720|video1080)$/.test(id)) return "video";
+  if (id === "trim") return "trim";
+  if (/^(turnRight|turnLeft|turnAround)$/.test(id)) return "rotate";
+  if (id === "flipHorizontal" || id === "flipVertical") return "flip";
+  if (id === "grayscale") return "gray";
+  if (id === "stripInfo") return "clean";
+  if (id === "thumbnails") return "grid";
+  if (id === "zip" || id === "unzip") return "archive";
+  return "file";
+}

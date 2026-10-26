@@ -3604,6 +3604,9 @@ fn main() {
                 // drop handler, which would keep the file from the page, is off for Home only. The page stops a drop from
                 // ever opening the file in its place. Nothing is read here and no path reaches the shell.
                 let b = if label == "card" { b.disable_drag_drop_handler() } else { b };
+                // The character floats on the desktop with nothing behind it (the dock page paints no background either,
+                // style.css `.dock-page`); Home is an ordinary opaque window.
+                let b = if label == "dock" { b.transparent(true) } else { b };
                 b.build()
             };
             let dock_w = mk("dock", "dock.html", DOCK)?;
@@ -3618,6 +3621,10 @@ fn main() {
             let dock_ns: &NSWindow = unsafe { &*(dock_w.ns_window()? as *const NSWindow) };
             let card_ns: &NSWindow = unsafe { &*(card_w.ns_window()? as *const NSWindow) };
             let dock = make_panel(mtm, dock_ns, false, dock_frame);
+            // See through, like the island and the pointer's panel: make_panel paints every panel white, which showed as a square.
+            dock.setOpaque(false);
+            dock.setHasShadow(false);
+            dock.setBackgroundColor(Some(&NSColor::clearColor()));
             let card = make_panel(mtm, card_ns, true, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(CARD.0, CARD.1)));
             // Native witness: every mouse down macOS delivers to our panels, independent of the page.
             let block = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent {

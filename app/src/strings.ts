@@ -46,6 +46,15 @@ export const S = {
   },
   start: "Start",
   stop: "Stop",
+  // The look (docs/design/look.md): the words the calm layout adds. Plain, no cute talk (rule 16).
+  look: {
+    more: "More ways to ask",
+    stripLabel: "Undo and Stop",
+    undoShort: "Undo",
+    stopKeys: "Stop everything: {keys}",
+    factsLabel: "About this task",
+    files: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+  },
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
   cardHint: "{keys} opens this box. Esc closes it.",
   allow: "Allow",
@@ -1349,6 +1358,9 @@ export const S = {
   // F19, drop a file on the companion (dropmenu.ts, dropRing.tsx). Short words fit a small round button; the label is
   // what VoiceOver says and what Home's list shows.
   drop: {
+    // The ring around the character shows a few choices; More opens the whole list in Home.
+    more: "More ways to use this file",
+    moreShort: "More",
     actions: {
       toPng: { short: "PNG", label: "Convert to PNG" },
       toJpeg: { short: "JPEG", label: "Convert to JPEG" },

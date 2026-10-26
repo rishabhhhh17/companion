@@ -11,6 +11,8 @@ import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./
 import { S } from "./strings.ts";
 import { startSettings, useSetting } from "./settingsStore.ts";
 import { DropRing, useDrop } from "./dropRing.tsx";
+import { SKIN, skinVars } from "./skins.ts";
+import { useFlow } from "./flow/useFlow.ts";
 import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import "./style.css";
@@ -65,33 +67,72 @@ function Dock() {
   const look = groupLook(m, activeGroup(m, running(drop.s)) ?? (groupOn("flow") && (m.receipt || m.character === "error") ? "flow" : null), running(drop.s));
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
-  // A click opens or closes the card; dragging moves the character to any edge or corner of the screen.
-  const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
-  const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false }; (e.target as HTMLElement).setPointerCapture(e.pointerId); void invoke("char_click"); };
+  // Flowflow (src/flow/): a soft body of water drawn in WebGL over the pose pictures, with the plain picture as the fallback.
+  // The page only tells it what happens (a touch, how fast the window moves, a big moment); how it looks is physics.ts.
+  const pose = poseFor(state, { roam: roam.phase, react: react?.r });
+  const flow = useFlow({ pose, state, calm: reduced });
+  const button = useRef<HTMLButtonElement>(null);
+  const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
+  // A click opens or closes the card; dragging moves the character to any edge or corner of the screen. The window moves
+  // under the pointer, so the screen position gives how fast: the top of the body trails behind it.
+  const press = useRef<{ x: number; y: number; dragging: boolean; at: number } | null>(null);
+  const still = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false, at: e.timeStamp }; (e.target as HTMLElement).setPointerCapture(e.pointerId); flow.api.poke(e.clientX, e.clientY); void invoke("char_click"); };
   const move = (e: React.PointerEvent) => {
     const p = press.current;
     if (!p) return;
     if (!p.dragging && Math.hypot(e.screenX - p.x, e.screenY - p.y) > 5) p.dragging = true;
-    if (p.dragging) void invoke("drag_dock", { x: e.screenX, y: e.screenY });
+    if (p.dragging) {
+      void invoke("drag_dock", { x: e.screenX, y: e.screenY });
+      const dt = (e.timeStamp - p.at) / 1000;
+      if (dt > 0.004) flow.api.velocity((e.screenX - p.x) / dt, (e.screenY - p.y) / dt);
+      p.x = e.screenX; p.y = e.screenY; p.at = e.timeStamp;
+      clearTimeout(still.current);
+      still.current = setTimeout(() => flow.api.velocity(0, 0), 90);   // the pointer stopped, so the window did
+    }
   };
   const up = () => {
     const p = press.current;
     press.current = null;
+    clearTimeout(still.current);
+    flow.api.velocity(0, 0);
     if (!p) return;
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
   };
-  const pose = poseFor(state, { roam: roam.phase, react: react?.r });
+  // A trip across the screen leans the body the way it goes; surfacing and settling are a soft touch.
+  useEffect(() => {
+    const lean = 320, dir = { left: [-lean, 0], right: [lean, 0], up: [0, -lean], down: [0, lean] } as const;
+    if (roam.phase === "travel" || roam.phase === "return") { const [vx, vy] = dir[roam.toward ?? "left"]; flow.api.velocity(vx, vy); return; }
+    flow.api.velocity(0, 0);
+    if (roam.phase === "surface") flow.api.touchAt(0.5, 0.9, 0.5);
+    if (roam.phase === "settle") flow.api.touchAt(0.5, 0.7, 0.8);
+  }, [roam.phase, roam.toward]);
+  // A reaction is a small push; the big one, and finishing a task, add ripples and droplets. None with reactions off or less motion.
+  useEffect(() => {
+    if (!react) return;
+    if (react.r === "nod") flow.api.touchAt(0.5, 0.35, 0.4);
+    else if (react.r === "wince") flow.api.touchAt(0.5, 0.5, 1.1);
+    else if (react.r === "cheer") flow.api.touchAt(0.5, 0.6, 0.8);
+    else { const c = centre(); flow.api.big(c.x, c.y); }
+  }, [react?.id]);
+  const wasDone = useRef(false);
+  useEffect(() => {
+    if (state === "done" && !wasDone.current && playful(reactionsOn(), reducedMotion())) { const c = centre(); flow.api.big(c.x, c.y); }
+    wasDone.current = state === "done";
+  }, [state]);
   return (
-    <main className="dock">
-      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
+    <main className="dock" data-drop={dropMark}>
+      <button ref={button} className="character" type="button" style={skinVars(SKIN) as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        <img className="pose" src={poseUrl(pose)} alt="" draggable={false} />
+        {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
+        <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
-      <div className="muted" role="status" aria-live="polite">{label}</div>
+      <div className="dock-label" role="status" aria-live="polite">{label}</div>
+      {!flow.failed && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
       {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
       <DropRing drop={drop} />
     </main>
