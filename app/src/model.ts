@@ -1119,7 +1119,7 @@ export function ehLines(m: Model): string[] {
   if (!h) return [];
   const app = h.app || S.thisApp;
   const where = h.where && h.where.kind === "line" ? [S.ehWhere(h.where.file, h.where.line)] : [];
-  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: withKeys(S.ehOwnApp, "explain"), no_engine: S.ehNoEngine };
+  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: withKeys(S.ehOwnApp, "explain"), no_engine: S.ehNoEngine, no_front: withKeys(S.ehNoFront, "explain"), unreadable: withKeys(S.ehUnreadable, "explain") };
   switch (h.stage) {
     case "reading": return [S.ehReading(app)];
     case "thinking": return [S.ehThinking];

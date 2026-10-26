@@ -803,6 +803,8 @@ export const S = {
   ehNeverApp: "I never read this kind of app.",
   ehRefusedByYou: "You told me not to read in this app.",
   ehOwnApp: "Select the error in the app where you see it, then press {keys}.",
+  ehNoFront: "I could not tell which app is in front. Click the app with the error, select the text, then press {keys}.",
+  ehUnreadable: "I could not read that app. Select the text and try again with {keys}.",
   ehNoEngine: `${PRODUCT_S} engine is not running, so I could not look at it. Try again in a moment.`,
   ehError: "Something went wrong while reading it. Try again.",
   ehWhere: (file: string, line: number) => `It is in ${file}, line ${line}.`,

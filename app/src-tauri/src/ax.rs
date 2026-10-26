@@ -142,6 +142,23 @@ pub fn focused(pid: i32) -> Option<Focused> {
     Some(Focused { element, role, subrole })
 }
 
+/// The focused box, for the error explainer. Many Electron apps (Cursor, VS Code, Slack) show no focused box at all until they
+/// are told a screen reader is near, so when there is none this wakes the app in front (`AXManualAccessibility`, then Chrome's
+/// `AXEnhancedUserInterface`) and looks again a few times, about three seconds at most. Only called at the key press, for the
+/// app in front; whatever it switched on is switched off by `let_apps_sleep` (errhelp.rs does that on every way out).
+pub fn focused_waking(pid: i32, front_is_own: bool) -> Option<Focused> {
+    if let Some(f) = focused(pid) { return Some(f); }
+    if !crate::errorsel::should_wake(false, front_is_own) { return None; }
+    let app = Cf::new(unsafe { AXUIElementCreateApplication(pid) })?;
+    let _ = text_attr(&app, "AXRole");                       // asking for the role wakes the basic tree
+    for _ in 0..2 { std::thread::sleep(Duration::from_millis(300)); if let Some(f) = focused(pid) { return Some(f); } }
+    wake(&app, pid, "AXManualAccessibility");                 // Electron
+    for _ in 0..3 { std::thread::sleep(Duration::from_millis(400)); if let Some(f) = focused(pid) { return Some(f); } }
+    wake(&app, pid, "AXEnhancedUserInterface");               // Chrome
+    for _ in 0..2 { std::thread::sleep(Duration::from_millis(400)); if let Some(f) = focused(pid) { return Some(f); } }
+    None
+}
+
 // Waking another app's accessibility tree (Chrome, Electron) changes how that app behaves until it is told to stop (Chrome's
 // "enhanced user interface" switches off window animations and confuses window snapping tools). What was switched on is
 // remembered here and switched off again when Prompt help is finished with the text, never left on.
