@@ -61,6 +61,21 @@ Space: `--space-1` to `--space-6` are 4, 8, 12, 16, 24, 32 px. Radius: `--radius
 - Every control is reachable by the keyboard and has a name VoiceOver reads. Colours meet WCAG AA in light and dark (`a11y.test.ts` computes each pair from the tokens).
 - The character is see through and floats on the desktop; what it says sits in a small blurred pill that reads on any wallpaper.
 
+## 8. Settings window
+
+- Settings also opens in its own normal Mac window, the way notch apps (NotchNook, Alcove) keep their settings out of the notch. It has a title bar with the product's name and "Settings", close and minimise, is 760 by 560 points, can be resized down to 640 by 460, and follows the Mac's light and dark through the same tokens.
+- The same layout as Settings in Home: the side list of Settings' sections on the left (the open one has a fill and a bar), one section at a time on the right, search across everything, grouped rows and real switches. The rules are the same ones in `style.css` (`.side-item`, `.group`, `.setting`, the switches); only the window's grid is its own (`.settings-window`).
+- It is the one window that takes the keyboard when it opens, because the person asked for it. There is only ever one: asking again brings it forward. Home and the island open it (`app/src/openSettings.ts`, the shell's `open_settings_window`); nothing opens it by itself.
+
+## 9. Peeking
+
+- With "Rest past the edge of the screen" on (the usual), the character waits mostly out of sight: about three quarters of its body is past the edge it lives on, and at least 10 points of it always show, so the sliver can be pointed at and clicked.
+- It peeks about half way in, with a small spring and a lean toward the screen, when something happens: a task starts, finishes or fails, a check runs. It comes all the way in when the pointer reaches it or its sliver, and goes back out a few seconds after the pointer leaves. While something needs the person it stays fully in view until answered.
+- The light shows first (rule 5): before it listens or looks at the screen it is fully in view, at once, with no motion.
+- Every few minutes while nothing happens it may take a short curious peek ("Take a curious peek now and then", on), never more often than every 3 minutes, never with Reduce motion or Less motion, never during a presentation or a call. With Reduce motion or Less motion every move is a jump.
+- It never hides over the menu bar, the notch or the Dock, and never onto another display: on an edge where that would happen (the top, under the menu bar; an edge with the Dock; an edge next to another display) it simply stays in view.
+- The geometry and the timing are `app/src-tauri/src/peek.rs` (tested); the page only gets the pose as data (`data-peek`, `data-peek-edge`).
+
 ## What is not decided
 
 The founder has not chosen a visual direction. When one is chosen it goes into the tokens and the skin, not into the logic. Until then: neutral, calm, simple.

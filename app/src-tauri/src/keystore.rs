@@ -128,9 +128,10 @@ pub fn removal_result(still_there: bool) -> Result<(), String> {
     if still_there { Err("The Keychain did not let me remove the key. Try again, or remove it in the Keychain Access app.".into()) } else { Ok(()) }
 }
 
-/// May this call remove the key? Only from the card (where Settings lives), and only with the exact words, so a stray
-/// call from another window or a slip of the page removes nothing.
-pub fn may_remove(window_label: &str, confirm: &str) -> bool { window_label == "card" && confirm == REMOVE_PHRASE }
+/// May this call remove the key? Only from Home or the Settings window (where Settings lives, settings.rs
+/// `card_or_settings`), and only with the exact words, so a stray call from another window or a slip of the page removes
+/// nothing.
+pub fn may_remove(window_label: &str, confirm: &str) -> bool { crate::settings::card_or_settings(window_label).is_ok() && confirm == REMOVE_PHRASE }
 
 /// The whole removal: the gate first (an unconfirmed call never reaches the Keychain), then `delete`, then `still_there`
 /// looks again, and the key counts as gone only when the Keychain no longer has it.
@@ -249,7 +250,8 @@ mod tests {
     #[test]
     fn only_the_card_with_the_exact_words_may_remove_the_key() {
         assert!(may_remove("card", REMOVE_PHRASE));
-        for (window, words) in [("dock", REMOVE_PHRASE), ("card", "remove the key "), ("card", "Remove the key"), ("card", ""), ("", REMOVE_PHRASE), ("cardx", REMOVE_PHRASE)] {
+        assert!(may_remove("settings", REMOVE_PHRASE), "the Settings window shows the same key section");
+        for (window, words) in [("dock", REMOVE_PHRASE), ("island", REMOVE_PHRASE), ("overlay", REMOVE_PHRASE), ("settings", "remove"), ("card", "remove the key "), ("card", "Remove the key"), ("card", ""), ("", REMOVE_PHRASE), ("cardx", REMOVE_PHRASE)] {
             assert!(!may_remove(window, words), "{window:?} {words:?}");
         }
     }

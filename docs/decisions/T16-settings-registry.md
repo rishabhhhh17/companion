@@ -96,3 +96,7 @@ Settings need to sync between Macs (then the file format needs an owner and a me
 - `recap.after` is now `where.after` ("Show Where was I after a break of"; the old name is in `renamedFrom`, so a value the person chose carries over). Same choices (off, 30min, 2h, nextDay), same usual value.
 - Watches themselves are not settings: they are a list the engine keeps in `watch.json` (F21), listed in Delete everything under Settings.
 
+
+## Added with peeking and the Settings window (27 Oct 2026)
+- `character.peek` ("Rest past the edge of the screen") and `character.peekIdle` ("Take a curious peek now and then"), home section, switches, shell only, kept in `settings.json`, read each tick (`homeset.rs`, `peek.rs`). Both usual values are on because the founder asked for peeking; this is the one place where the usual value is not the behaviour from before the setting. Off, `character.peek` gives exactly the old behaviour (fully in view). No new stored file.
+- The Settings window (`settingswin.rs`) changes settings through the same commands. `settings_set`, `settings_reset` and the other commands the Settings page calls accept Home or that window (`settings.rs` `card_or_settings`); `settings_migrate` stays Home's (`only_card`). The shell is still the only writer.

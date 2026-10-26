@@ -319,3 +319,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .character[data-flow][data-pose][data-motion="breathe"], .character[data-flow][data-pose][data-motion="swirl"], .character[data-flow][data-pose][data-motion="busy"],
 .character[data-flow][data-pose][data-motion="scan"], .character[data-flow][data-pose][data-motion="droop"], .character[data-flow][data-pose][data-react] { animation: none; }
 @media (forced-colors: active) { .character[data-pose] { border: 0; } .character .pose { forced-color-adjust: none; } }
+
+/* The Settings window (settingswin.rs, 27 Oct 2026): a normal Mac window with the same side list, groups, rows and switches as
+   Settings in Home (the rules above), the side list on the left and one section at a time on the right. */
+.settings-window { display: grid; grid-template-columns: calc(196rem / 14) minmax(0, 1fr); height: 100vh; }
+.settings-window .side { height: 100vh; box-sizing: border-box; }
+.settings-window .inner { max-width: 640px; }

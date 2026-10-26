@@ -1,10 +1,12 @@
 //! Companion shell. Tauri's web pages inside NSPanels that we create ourselves,
 //! non activating from the start (T01: no tauri-nspanel, no convert after creation).
 //! Rule 9: never steal keyboard focus. Nothing here calls show(), set_focus() or
-//! makeKeyAndOrderFront on a panel.
+//! makeKeyAndOrderFront on a panel. The one window that takes the keyboard is the Settings window, a normal window the
+//! person opens on purpose (settingswin.rs).
 
 mod docking;
 mod peek;
+mod settingswin;
 mod island;
 mod roam;
 mod fullscreen;
@@ -1090,7 +1092,7 @@ fn settings_get() -> Value { settings_snapshot(&[]) }
 /// Changes one setting. Only from the card. The error is a code the page puts in words; nothing changed then.
 #[tauri::command]
 fn settings_set(app: AppHandle, window: tauri::WebviewWindow, key: String, value: Value, project: Option<String>) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     let changed = setting_change(&app, &key, &value, project.as_deref()).map_err(|c| { log("setting_not_changed", json!({ "key": key, "why": c })); c.to_string() })?;
     log("setting_changed", json!({ "key": key }));
     settings_told(&app, &changed);
@@ -1264,7 +1266,7 @@ fn tried_mark(app: AppHandle, window: tauri::WebviewWindow, tool: String) -> Res
 /// one it has not heard is left as it is. Only from the card.
 #[tauri::command]
 fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>, project: Option<String>) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     // `project`: the folder the page showed this reset for; another folder in Home by now means nothing is reset.
     settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;
     let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
@@ -1334,7 +1336,7 @@ fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, 
 /// id and name are read, never anything in it (rule 7). Companion itself is refused. Only from the card.
 #[tauri::command]
 fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     let id = front_id();
     if id.is_empty() || id.starts_with("dev.companion") { return Err("ownApp".into()); }
     Ok(json!({ "id": id, "name": front() }))
@@ -1344,7 +1346,7 @@ fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
 /// Only from the card.
 #[tauri::command]
 fn app_names(window: tauri::WebviewWindow, ids: Vec<String>) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     let ws = NSWorkspace::sharedWorkspace();
     let mut out = serde_json::Map::new();
     for id in ids.into_iter().take(64) {
@@ -1499,6 +1501,45 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
 #[tauri::command]
 fn open_card_cmd(app: AppHandle) {
     open_card(&app, "button", true);
+}
+
+/// Opens the Settings window (settingswin.rs), from Home or the island, on the person's press. The one window a click
+/// gives the keyboard to: the person asked for it (rule 9 is about never taking it unasked). A second call brings the open
+/// one to the front.
+#[tauri::command]
+fn open_settings_window(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    settingswin::may_open(window.label())?;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || settings_window_now(&a));
+    Ok(())
+}
+
+/// Makes the Settings window, or shows the one already open. Main thread.
+fn settings_window_now(app: &AppHandle) {
+    let open = app.get_webview_window(settingswin::LABEL);
+    match settingswin::open(open.is_some()) {
+        settingswin::Open::Focus => { if let Some(w) = open { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); } }
+        settingswin::Open::Make => {
+            let made = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App(settingswin::PAGE.into()))
+                .title(settingswin::TITLE)
+                .inner_size(settingswin::SIZE.0, settingswin::SIZE.1)
+                .min_inner_size(settingswin::MIN.0, settingswin::MIN.1)
+                .resizable(true)
+                .decorations(true)
+                .center()
+                .focused(true)
+                .build();
+            match made { Ok(w) => { let _ = w.set_focus(); log("settings_window_opened", json!({})); } Err(e) => log("settings_window_failed", json!({ "why": e.to_string() })) }
+        }
+    }
+}
+
+/// The Settings page's own Close button.
+#[tauri::command]
+fn close_settings_window(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    settingswin::may_close(window.label())?;
+    if let Some(w) = app.get_webview_window(settingswin::LABEL) { let _ = w.close(); }
+    Ok(())
 }
 
 /// Clicking the character shows or hides Home, and never takes the keyboard.
@@ -1666,7 +1707,7 @@ fn made_parent() -> Result<(PathBuf, PathBuf), String> {
 /// thread, since a big folder takes a moment.
 #[tauri::command]
 async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (home, parent) = made_parent()?;
     let (current, busy) = (current_project(), busy || updates::running_now());
     tauri::async_runtime::spawn_blocking(move || {
@@ -1677,7 +1718,7 @@ async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, St
 /// Open as project: a folder from the list becomes the project (checked like any folder: projects::validate).
 #[tauri::command]
 fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: bool) -> Result<String, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (_, parent) = made_parent()?;
     let path = made::open_path(&parent, &name, busy || updates::running_now())?;
     use_project_inner(app, path.to_string_lossy().to_string())
@@ -1685,7 +1726,7 @@ fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: b
 /// Show in Finder: a folder from the list, selected in its place.
 #[tauri::command]
 fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (_, parent) = made_parent()?;
     let path = made::open_path(&parent, &name, false)?;
     std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).spawn().map(|_| ()).map_err(|_| "Finder could not be opened.".to_string())
@@ -1695,7 +1736,7 @@ fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String>
 /// it can be put back; nothing is deleted. Then it leaves the recent folders. Its undo points stay in Companion's own folder.
 #[tauri::command]
 fn trash_made(window: tauri::WebviewWindow, app: AppHandle, name: String, git: bool, busy: bool) -> Result<String, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let moved = {
         let _g = NEW_FOLDER.lock().unwrap_or_else(|x| x.into_inner());   // never while a new folder is being made
         let (_, parent) = made_parent()?;
@@ -2146,7 +2187,7 @@ fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse
 #[tauri::command]
 async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
     use tauri_plugin_updater::UpdaterExt;
-    if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
     let cfg = updates::parse_config(include_str!("../updater.json")).ok_or("Updates are not set up in this build yet.")?;
     let url = tauri::Url::parse(&cfg.endpoint).map_err(|_| "Updates are not set up in this build yet.".to_string())?;
     let upd = app.updater_builder().pubkey(cfg.pubkey).timeout(Duration::from_secs(20)).endpoints(vec![url]).map_err(|e| updates::failure_words(&e.to_string()).to_string())?
@@ -2174,7 +2215,7 @@ async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Va
 /// Downloads the update found by check_update, checks its signature, installs it and restarts. Only on a press.
 #[tauri::command]
 async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
-    if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
@@ -2244,7 +2285,7 @@ static SOUND_NOTE: Mutex<voiceset::SoundNote> = Mutex::new(voiceset::SoundNote::
 /// then nothing is said, the words stay on the card, and the page is told once so it can say so.
 #[tauri::command]
 fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Option<bool>, rest: Option<String>) -> Result<Value, String> {
-    if window.label() != "card" { return Err("Speaking can only be started from the card.".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("Speaking can only be started from the card.".into()); }
     let line = if whole == Some(true) { speak::prepare_reply(&text, rest.as_deref().unwrap_or("")) } else { speak::prepare(&text) };
     let Some(line) = line else { return Ok(json!({ "said": false, "why": "nothing" })) };
     // The person is talking: the line is dropped, its words stay on the card.
@@ -2299,7 +2340,7 @@ fn voice_state(set: &voiceset::Saved, voices: &[voiceset::VoiceInfo]) -> Value {
 /// card. A sync command, so it runs on the main thread, where the voice list is read. Reads names only; nothing listens.
 #[tauri::command]
 fn voice_settings(window: tauri::WebviewWindow) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     Ok(voice_state(&voice_now(), &speak::mac::voices()))
 }
 
@@ -2315,7 +2356,7 @@ fn voice_speed(window: tauri::WebviewWindow) -> Result<f64, String> {
 /// was already picked), saved in voice.json in Companion's folder. The error is a code the page turns into words.
 #[tauri::command]
 fn set_voice_settings(app: AppHandle, window: tauri::WebviewWindow, voice: Option<String>, speed: f64, mic: Option<String>, language: String) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let voices = speak::mac::voices();
     let (inputs, _) = inputs_now();
     let before = voice_now();
@@ -2399,7 +2440,7 @@ fn cmd_out(c: &str, a: &[&str]) -> String { std::process::Command::new(c).args(a
 /// person's press. Nothing is sent: the person attaches the file and sends it themselves. Returns the saved file's name.
 #[tauri::command]
 async fn report_problem(window: tauri::WebviewWindow, subject: String, body: String) -> Result<String, String> {
-    if window.label() != "card" { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
     let cfg = report::parse_config(include_str!("../report.json"));
     // The words are checked before anything is written, so a refusal leaves nothing behind.
     report::address(&cfg, &subject, &body, "0", "0")?;
@@ -2579,7 +2620,7 @@ fn remove_practice(window: tauri::WebviewWindow, app: AppHandle, which: String, 
 /// Returns how many went and the names of any that stayed.
 #[tauri::command]
 fn remove_all_practices(window: tauri::WebviewWindow, app: AppHandle, busy: bool) -> Result<Value, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (moved, kept) = trash_practice_copies(&current_project(), busy);
     for p in &moved { forget_folder(&app, p); }
     log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() }));
@@ -3020,7 +3061,7 @@ fn key_map() -> Value { keymap::state_json(&keys_using(), &keys_picked()) }
 /// change or check at a time. A sync command, so it runs on the main thread.
 #[tauri::command]
 fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let Some(a) = keymap::Action::from_id(&action) else { return Err("unknown".into()) };
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
@@ -3035,7 +3076,7 @@ fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> 
 /// The error is a code the page puts in words.
 #[tauri::command]
 fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: String) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let (Some(a), Some(wanted)) = (keymap::Action::from_id(&action), keymap::from_id(&id)) else { return Err("unknown".into()) };
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let (picked, before, was) = (keys_picked(), key_registered(a), key_using(a));
@@ -3063,7 +3104,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
 /// has, and the answer names it. Only from the card.
 #[tauri::command]
 fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let v = keys_to_usual(&app).map_err(str::to_string)?;
     settings_told(&app, &["keys.hotkeys".to_string()]);
     Ok(v)
@@ -3760,7 +3801,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
