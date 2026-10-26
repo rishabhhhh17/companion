@@ -41,6 +41,7 @@ import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCop
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, historyUndo, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
+import { Icon } from "./icons.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
@@ -95,7 +96,7 @@ function ExplainBox({ e, title = S.explainTitle, note = S.explainCost, open = fa
   return (
     <details className="explain" open={open}>
       <summary>{title} <span className="muted">· {note}</span></summary>
-      <ul>{e.bullets.map((b, i) => <li className="line" key={i}>{b}</li>)}</ul>
+      <ul>{e.bullets.map((b, i) => <li className="line answer" key={i}>{b}</li>)}</ul>
       <div className="row"><CopyButton text={explainCopy(e)} label={S.copyAnswer} /></div>
       {e.question && (
         <div>
@@ -452,6 +453,8 @@ function Card() {
   const homeShown = useRef(false), keysDown = useRef<FollowAim | null>(null);
   // The same as state, for what must follow Home on and off screen (the Prompt help result's keys).
   const [homeOpen, setHomeOpen] = useState(false);
+  // More on the ring around the character opens Home: the whole list is on Now.
+  useEffect(() => { if (homeOpen && dropMenu?.at === "dock") homeDispatch({ type: "pick", tab: "now" }); }, [homeOpen, dropMenu?.id]);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
   const [historyQ, setHistoryQ] = useState<HistoryQuery>(NO_FILTER);
   useEffect(() => { setHistoryQ(NO_FILTER); }, [project]);
@@ -1325,23 +1328,29 @@ function Card() {
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       {/* Read when VoiceOver reaches it, not said by itself: the cost changes on every turn, and what needs the person is
           said once on the live line below. */}
-      <div className="row between"><b>{S.characterName}</b><span className="muted">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span></div>
+      <div className="head">
+        <span className="state">{characterWords(m)}{m.task ? ` · ${formatUsd(m.task.costUsd)}` : ""}</span>
+        {onboarded && (
+          <div className="tabs" role="tablist" aria-label={S.homeLabel}>
+            {TABS.map((t) => {
+              const waits = needNow?.tab === t && t !== home.tab;
+              return (
+                <button key={t} id={tabId(t)} className="tab" type="button" role="tab" aria-selected={t === home.tab} aria-controls={tabPanelId(t)} tabIndex={t === home.tab ? 0 : -1} title={tabName(t)}
+                  onClick={() => pickTab(t)}
+                  onKeyDown={(e) => { const n = tabKey(t, e.key); if (!n) return; e.preventDefault(); pickTab(n); document.getElementById(tabId(n))?.focus(); }}>
+                  <Icon name={t} />
+                  <span className="sr">{tabName(t)}</span>
+                  {waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} pickPractice={() => homeDispatch({ type: "pick", tab: "learn" })} onDone={finishOnboarding} />}
       {onboarded && (<>
-      <div className="tabs" role="tablist" aria-label={S.homeLabel}>
-        {TABS.map((t) => {
-          const waits = needNow?.tab === t && t !== home.tab;
-          return (
-            <button key={t} id={tabId(t)} className="tab" type="button" role="tab" aria-selected={t === home.tab} aria-controls={tabPanelId(t)} tabIndex={t === home.tab ? 0 : -1}
-              onClick={() => pickTab(t)}
-              onKeyDown={(e) => { const n = tabKey(t, e.key); if (!n) return; e.preventDefault(); pickTab(n); document.getElementById(tabId(n))?.focus(); }}>
-              {tabName(t)}{waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
-            </button>
-          );
-        })}
-      </div>
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any tab): on every tab. */}
       {show("notes") && <>
       {m.notice && <div className="notice" role="status">{m.notice}</div>}
@@ -1357,7 +1366,7 @@ function Card() {
       </>}
       <div role="tabpanel" id={tabPanelId(home.tab)} aria-labelledby={tabId(home.tab)}>
       {show("folder") && <>
-      <div className="row" role="group" aria-label={S.folderLabel}>
+      <div className="row folder" role="group" aria-label={S.folderLabel}>
         <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
         {recent.length > 1 && (
@@ -1369,7 +1378,7 @@ function Card() {
       </div>
       {awayFolder(m) && <div className="line muted" role="status">{S.awayWorking(awayFolder(m)!)}</div>}
       {copying && <div className="line muted" role="status">{S.copying}</div>}
-      {!linkOpen ? !copying && <div className="row"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
+      {!linkOpen ? !copying && <div className="row folder"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
         <div className="row">
           <input ref={focusIfLost} aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); focusBack(linkId); } }} />
           <button className="btn primary" type="button" onClick={openLink}>{S.openLinkGo}</button>
@@ -1501,7 +1510,7 @@ function Card() {
       {show("about") && m.about && m.about.project === project && (
         <section className="panel" aria-label={S.aboutTitle}>
           <h2>{S.aboutTitle}</h2>
-          <div className="line">{m.about.about}</div>
+          <div className="answer">{m.about.about}</div>
           {m.about.notes.map((n, i) => <div className="line" key={i}>{n}</div>)}
           {m.about.needsInstall && !(m.install?.project === project && m.install.stage === "done") && (
             <div className="row">
@@ -1517,67 +1526,13 @@ function Card() {
           <div className="row"><CopyButton text={aboutCopy(m.about)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.aboutClosed" })}>{S.onlineClose}</button></div>
         </section>
       )}
-      {show("watch") && project && groups.on("watch") && <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />}
+      {show("watch") && project && groups.on("watch") && (
+        <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>
+          <summary>{S.watch.title}</summary>
+          <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />
+        </details>
+      )}
       {home.tab === "now" && <DropList drop={drop} />}
-      {/* Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
-      <div hidden={!show("ask")}>
-      {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
-      <div className="ask">
-        <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
-          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
-          onFocus={() => warmSoon()}
-          onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
-          onKeyDown={(e) => {
-            if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
-            e.preventDefault();
-            if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
-          }} />
-        {working && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
-      </div>
-      <div className="line muted" id="ask-keys">{S.askKeysHint}</div>
-      {(() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
-      {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
-      {dragging && <div className="line" role="status">{S.attachDrop}</div>}
-      {attached.length > 0 && (
-        <div className="chips" role="list" aria-label={S.attachTitle}>
-          {attached.map((a, i) => (
-            <span className="chip" role="listitem" key={`${i}:${a.name}`}>
-              <span className="line">{chipLabel(a)}</span>
-              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</button>
-            </span>
-          ))}
-        </div>
-      )}
-      {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
-      {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
-      <div className="sr" role="status">{attachSaid}</div>
-      {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
-      {attached.length === 0 && <div className="line muted">{S.attachHint}</div>}
-      {!working && (
-        <div className="row">
-          {buttonShown("start") && <button className="btn primary" type="button" onClick={submit}>{S.start}</button>}
-          {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
-          {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
-          {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
-          {buttonShown("shipCheck") && <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>}
-          {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
-          {buttonShown("showMe") && <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>}
-          {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
-        </div>
-      )}
-      {!working && buttonShown("autoSend") && (
-        <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
-      )}
-      {!working && (
-        <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
-      )}
-      {!working && project && (
-        <label className="check"><input type="checkbox" checked={newFolder} onChange={(e) => setNewFolder(e.target.checked)} /> {S.newFolder.tick}</label>
-      )}
-      {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
-      {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
-      </div>
-
       {show("urgent") && <div ref={urgent}>
       {m.agentsAsk && (
         <section className="panel amber" aria-label={S.agentsTitle}>
@@ -1662,7 +1617,7 @@ function Card() {
           {(m.ph.stage === "reading" || m.ph.stage === "thinking") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.planCancel}</button></div>}
           {m.ph.stage === "ready" && (
             <>
-              <div className="line">{m.ph.diff.map(([op, t], i) => op === "+" ? <ins key={i} className="added"><span className="sr">{S.diffAdded} </span>{t}</ins> : op === "-" ? <del key={i} className="removed"><span className="sr">{S.diffRemoved} </span>{t}</del> : <span key={i}>{t}</span>)}</div>
+              <div className="answer">{m.ph.diff.map(([op, t], i) => op === "+" ? <ins key={i} className="added"><span className="sr">{S.diffAdded} </span>{t}</ins> : op === "-" ? <del key={i} className="removed"><span className="sr">{S.diffRemoved} </span>{t}</del> : <span key={i}>{t}</span>)}</div>
               {m.ph.handback === "copy" && <div className="line muted">{S.phCopyHint}</div>}
               {m.ph.question && (
                 <>
@@ -1719,7 +1674,7 @@ function Card() {
       {show("research") && m.research && (
         <section className="panel" aria-label={m.research.title}>
           <h2>{m.research.title}</h2>
-          <div className="line">{m.research.answer}</div>
+          <div className="answer">{m.research.answer}</div>
           <div className="line muted"><b>{S.researchNotes}:</b></div>
           {m.research.notes.map((n, i) => <ResearchNote key={i} text={n.text} source={n.source} />)}
           <div className="line muted">{m.research.file ? `${S.researchFiled} ${m.research.file}` : S.researchNotFiled}</div>
@@ -1730,7 +1685,7 @@ function Card() {
       {show("rescue") && m.rescue && (
         <section className="panel" aria-label={S.rescueTitle}>
           <h2>{S.rescueTitle}</h2>
-          <div className="line">{m.rescue.summary}</div>
+          <div className="answer">{m.rescue.summary}</div>
           {m.rescue.works.length > 0 && <div className="line"><b>{S.rescueWorks}:</b> {m.rescue.works.join("; ")}</div>}
           <div className="line"><b>{S.rescueBroken}:</b> {m.rescue.broken}</div>
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
@@ -1755,9 +1710,12 @@ function Card() {
         <section className={`panel ${notDoneReason(m) ? "amber" : ""}`} aria-label={S.checkingTitle}>
           <h2>{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
           {m.task.proof.steps.map((s) => (
-            <div className={`line ${s.status === "failed" ? "blocked" : ""}`} key={s.rung}>
-              {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
-              {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
+            <div className={`proof ${s.status === "passed" ? "ok" : s.status === "failed" ? "bad" : "wait"}`} key={s.rung}>
+              <Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />
+              <span>
+                {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
+                {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
+              </span>
             </div>
           ))}
           {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
@@ -1770,7 +1728,7 @@ function Card() {
         <section className="panel" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           <h2>{receiptHeading(m.receipt)}</h2>
           {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
-            <div className="line" role={w.help ? "status" : undefined}>
+            <div className="answer" role={w.help ? "status" : undefined}>
               <div><b>{w.lead}:</b> {plainPath(w.words, project)}</div>
               {w.help && <div className="muted">{w.help}</div>}
             </div>
@@ -1778,7 +1736,12 @@ function Card() {
           {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> :
             m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          {m.receipt.changed.length > 0 && <div className="line muted">{receiptProofWords(m)}</div>}
+          {m.receipt.changed.length > 0 && (
+            <div className={`proof ${m.receipt.proof === "passed" ? "ok" : m.receipt.proof === "failed" ? "bad" : "wait"}`}>
+              <Icon name={m.receipt.proof === "passed" ? "tick" : m.receipt.proof === "failed" ? "cross" : "wait"} size={16} />
+              <span>{receiptProofWords(m)}</span>
+            </div>
+          )}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
@@ -1787,7 +1750,11 @@ function Card() {
           )}
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
-          <div className="line muted">{m.receipt.commands} {S.commands} · {S.cost}: {formatUsd(m.receipt.usdEstimate)}</div>
+          <ul className="facts" aria-label={S.look.factsLabel}>
+            {m.receipt.changed.length > 0 && <li>{S.look.files(m.receipt.changed.length)}</li>}
+            <li>{S.cost}: {formatUsd(m.receipt.usdEstimate)}</li>
+            <li>{m.receipt.commands} {S.commands}</li>
+          </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
@@ -1798,9 +1765,6 @@ function Card() {
               <div className="line muted">{S.teachOfferHelp}</div>
               <div className="row"><button className="btn" type="button" onClick={() => tryTheNextOne(m.receipt!.checkpoint)}>{S.teachOffer}</button></div>
             </div>
-          )}
-          {m.receipt.changed.length > 0 && !m.undo && project && (
-            <div className="row"><button id={undoId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: m.receipt!.checkpoint })}>{S.undo}</button></div>
           )}
           {m.undo?.stage === "confirm" && project && (
             <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
@@ -1975,7 +1939,7 @@ function Card() {
         <section className={`panel ${["refused", "error", "needs_accessibility", "nothing_selected", "consent"].includes(m.eh.stage) ? "amber" : ""}`} role="status" aria-live="polite" aria-label={S.ehTitle}>
           <h2>{S.ehTitle}</h2>
           {["ready", "unexplained"].includes(m.eh.stage) && m.eh.excerpt && <div className="line muted">{m.eh.excerpt}</div>}
-          {ehLines(m).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {ehLines(m).map((l, i) => <div className="answer" key={i}>{l}</div>)}
           {m.eh.stage === "consent" && (
             <div className="row">
               <button className="btn primary" type="button" onClick={() => void invoke("eh_consent", { choice: "always" })}>{S.phAlways}</button>
@@ -1995,7 +1959,7 @@ function Card() {
       {show("secondLook") && m.sl && (
         <section className={`panel ${["refused", "error", "needs_accessibility", "nothing_selected", "consent", "failed", "off"].includes(m.sl.stage) || m.sl.verdict === "check" ? "amber" : ""}`} role="status" aria-live="polite" aria-label={S.slTitle}>
           <h2>{S.slTitle}</h2>
-          {slLines(m).map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {slLines(m).map((l, i) => <div className="answer" key={i}>{l}</div>)}
           {m.sl.stage === "consent" && (
             <div className="row">
               <button className="btn primary" type="button" onClick={() => void invoke("sl_consent", { choice: "always" })}>{S.phAlways}</button>
@@ -2038,7 +2002,7 @@ function Card() {
       {show("recap") && m.recap && (
         <section className="panel" role="status" aria-label={S.recapTitle}>
           <h2>{S.recapTitle}</h2>
-          {m.recap.lines.map((l, i) => <div className="line" key={i}>{l}</div>)}
+          {m.recap.lines.map((l, i) => <div className="answer" key={i}>{l}</div>)}
           <div className="line muted">{S.recapSource}</div>
           <div className="row">{m.recap.next && m.recap.next.action !== "none" && <button className="btn primary" type="button" onClick={whereNext}>{S.recapNext[m.recap.next.action]}</button>}<CopyButton text={recapCopy(m.recap)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
         </section>
@@ -2054,6 +2018,69 @@ function Card() {
           </div>
         </section>
       )}
+
+      {/* The ask box comes after what the card is showing (the job, its answer, the receipt), so the job is the first thing you see.
+          Only hidden on the other tabs, never taken away: a draft, and the words from hold to talk, stay in the box. */}
+      <div hidden={!show("ask")}>
+      {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
+      <div className="ask">
+        <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.askPlaceholder} aria-label={S.askPlaceholder} aria-describedby="ask-keys"
+          onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
+          onFocus={() => warmSoon()}
+          onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
+          onKeyDown={(e) => {
+            if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
+            e.preventDefault();
+            if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
+          }} />
+      </div>
+      {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
+      {dragging && <div className="line" role="status">{S.attachDrop}</div>}
+      {attached.length > 0 && (
+        <div className="chips" role="list" aria-label={S.attachTitle}>
+          {attached.map((a, i) => (
+            <span className="chip" role="listitem" key={`${i}:${a.name}`}>
+              <span className="line">{chipLabel(a)}</span>
+              <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {attached.some((a) => a.kind === "image") && <div className="line muted">{S.attachPictureNote}</div>}
+      {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
+      <div className="sr" role="status">{attachSaid}</div>
+      {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
+      {!working && buttonShown("start") && (
+        <div className="row"><button className="btn primary" type="button" onClick={submit}>{S.start}</button></div>
+      )}
+      {/* The other ways to ask, and the options, are kept out of the way until wanted. A ticked option is said on the summary. */}
+      {!working && (
+        <details className="more">
+          <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
+          <div className="row">
+            {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
+            {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
+            {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
+            {buttonShown("shipCheck") && <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>}
+            {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
+            {buttonShown("showMe") && <button className="btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}>{S.showMe}</button>}
+            {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
+          </div>
+          {buttonShown("autoSend") && (
+            <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
+          )}
+          <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
+          {project && (
+            <label className="check"><input type="checkbox" checked={newFolder} onChange={(e) => setNewFolder(e.target.checked)} /> {S.newFolder.tick}</label>
+          )}
+          {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
+        </details>
+      )}
+      <div className="muted" id="ask-keys">{S.askKeysHint}</div>
+      {(() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
+      {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
+      {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
+      </div>
 
       {show("memory") && !project && <div className="line muted">{S.homeMemoryNoProject}</div>}
       {show("memory") && project && !m.memory && m.runnerUp && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
@@ -2078,6 +2105,14 @@ function Card() {
         </section>
       )}
       {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} />}
+      </div>
+      {/* Undo and Stop are always here, quietly, whatever the card is showing. Undo is the same flow as before (the receipt asks
+          "are you sure" and keeps the choices); it is pressable when the last task changed something and nothing is undone. */}
+      <div className="strip" role="group" aria-label={S.look.stripLabel}>
+        <button id={undoId} className="btn" type="button" aria-label={S.undo} disabled={!(m.receipt && m.receipt.changed.length > 0 && !m.undo && project)}
+          onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={16} />{S.look.undoShort}</button>
+        <button className="btn" type="button" disabled={!working} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</button>
+        <span className="muted grow" role="note">{keyHint("stop", S.look.stopKeys, keys)}</span>
       </div>
       </>)}
     </main>

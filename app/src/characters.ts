@@ -1,6 +1,7 @@
 // The character's pictures: the water creature, one picture per pose (public/characters/water). This file only chooses
 // which pose shows. The name shown to people is in strings.ts; art and path ids stay out of the words.
 import type { CharacterState } from "./model.ts";
+import { SKIN, poseFile } from "./skins.ts";
 
 export const POSES = ["look", "glance", "wave", "splash", "idea", "laptop", "magnify", "sleep", "swim", "peek", "worry"] as const;
 export type Pose = (typeof POSES)[number];
@@ -28,4 +29,4 @@ export function poseFor(state: CharacterState, ctx: { roam?: string; react?: str
 }
 
 /** Where the page finds a pose (a relative address, so the built app finds it next to the page). */
-export const poseUrl = (p: Pose): string => `./characters/water/${p}.png`;
+export const poseUrl = (p: Pose): string => poseFile(SKIN, p);

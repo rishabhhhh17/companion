@@ -108,6 +108,7 @@ docs/
   research/          source of truth: product_research.md, technical_research.md
   decisions/         one record per fixed decision (F = founder, T = technical); F17 is the source of truth for scope and order
   architecture.md    every feature on the map -> the modules that own it
+  design/            look.md: the look rules every screen and character follows (black and white base, skins, one primary action, type and space tokens, motion)
   milestones/        one plan per milestone (M0-spikes.md first; M11 is current: M11-match-and-beat.md, with M11-customize-plan.md, M11-wave3-plan.md, M11-wave4-plan.md and M11-real-run-checklist.md)
   outreach/          drafts the founder sends by hand
   alpha/             INSTALL.md and PRIVACY.md, drafts the founder reviews before sending to friends

@@ -1,0 +1,64 @@
+# The look (rules for every screen and every character)
+
+Written after the first hands on Mac session (26 Oct 2026), where the founder said the app looked bad, the card was complicated, replies were in a small box, and Flowflow was "a photo in a square box". These are the rules the real app follows now. They are not a brand: no colour, font or shape has been chosen. The founder has not picked a visual direction, so the app is calm, neutral and simple, and the motion carries the personality. Everything here is in `app/src/style.css` as tokens, `app/src/skins.ts` and `app/src/flow/`.
+
+## 1. Black and white base
+
+- The chrome is black and white and follows the Mac's own light and dark. Light: white page, near black words. Dark: black page, near white words. The greys are neutral (no hue at all). `skins.test.ts` checks the tokens are grey.
+- Never blue, never orange, never one colour everywhere. The old orange accent is gone from the stylesheet (`look` tests and `skins.test.ts` check).
+- Three semantic colours stay, only as small marks: green for checked, amber for waiting for your yes, red for a refusal. Never a coloured box or a coloured edge. A waiting job gets a small amber dot before its headline, a tab that needs you gets a dot, nothing more.
+- The one filled button is black on white (or white on black). It is the one thing to do next.
+- System font only (`-apple-system, "SF Pro Text"`). No new fonts, no web fonts, nothing from the network.
+
+## 2. A character is a skin
+
+- A skin is one entry in `app/src/skins.ts`: its id, its folder of poses, its one cool hue and the numbers of its motion.
+- Flowflow (water): its own motion and one cool hue (a blue), only on or around the character: the glow ring while it listens or when a file is over it, and the droplets.
+- The chrome never reads a skin. Home, the island, Settings, the first run and the pointer do not import `skins.ts`. The glow rules take the hue from `--skin-glow`, set on the character's button only.
+- A new character is a folder of poses (same size, see through, premultiplied), a skin entry and its motion numbers. Nothing else changes.
+
+## 3. Everything lives in the notch island, one thing at a time
+
+- The island and Home are black like the notch. Home is one calm column: the current job is the whole screen.
+- One headline in plain words, one short paragraph, one primary button, one quiet secondary text button. Everything else is out of the way: other ways to ask and the options are behind one quiet line, watches too (they open by themselves when one is failing).
+- The places (Now, What I did, Learn, Memory, Settings) are a small row of drawings at the top, each with its words for VoiceOver and as a tooltip.
+- Undo and Stop are always in a quiet strip at the bottom, whatever the card shows.
+- The job comes first and the ask box after it, so the first thing you see is what is happening or what happened.
+
+## 4. Replies are read, not squinted at
+
+- A reply (an answer, a result, an explanation) is 16 px at the usual size, line height 1.5, in a line of about 45 to 70 characters (`.answer`, `max-width: 68ch`). Never in a small box.
+- A job has no box: room and a hairline between two jobs. The receipt is one block: what changed, a tick for what was checked, then what it cost and how many files in three small facts.
+
+## 5. Type and space as tokens (`style.css`, `:root`)
+
+Type is in rem, so the text size choice in Settings reaches every word. At the usual 14 px root:
+
+| Token | Size | Used for |
+|---|---|---|
+| `--t-caption` | 12 | tiny facts, the pill under the character, a word in the ring |
+| `--t-small` | 13 | muted notes, the folder line, the summary of a quiet section |
+| `--t-body` | 15 | every line, every button |
+| `--t-answer` | 16 | a reply, the ask box |
+| `--t-title` | 19 | a headline (`h2`) |
+
+Space: `--space-1` to `--space-6` are 4, 8, 12, 16, 24, 32 px. Radius: `--radius` 10, `--radius-pill` for pills and the main button. Targets: a button is at least 32 points high; a target on the drop ring is 44 points.
+
+## 6. Motion principles
+
+- Spring physics, not eased tweens, for the body: the character is a damped spring. Underdamped (it overshoots once and settles), never jelly that never stops. Numbers in the skin; tests in `app/src/flow/physics.test.ts`.
+- Ease out for everything the interface does (`--ease: cubic-bezier(.2, .8, .2, 1)`), 150 to 300 ms (`--dur-fast` 150, `--dur` 220, `--dur-slow` 300). The liquid dissolve between poses is about half a second because it is the character, not a control.
+- Interruptible: a new pose during a dissolve waits and only the newest is kept; a touch during a wobble adds to it; nothing blocks a click.
+- Quiet when still: breathing is drawn at 30 frames a second, a touch or a drag at 60, nothing at all with less motion once the picture is drawn. The loop stops while the window is hidden.
+- Reduced motion (the Mac's, or `character.motion` Less motion, through `motion.ts`): no wobble, no squash, no ripple, no droplets, no dissolve, only a quick plain crossfade. Every stylesheet rule that moves stops with it. The lights that show first (listening, looking at the screen) stay.
+- The water must be water: breathing and wobble when idle, jelly lag when dragged or travelling, a squash and a ripple on a click, a dissolve between poses, a soft shimmer, droplets and ripples on a big moment (done).
+
+## 7. What a person can always count on
+
+- Plain words. A productivity tool, never an AI friend (rule 16): no affection, no streaks, no mood.
+- Every control is reachable by the keyboard and has a name VoiceOver reads. Colours meet WCAG AA in light and dark (`a11y.test.ts` computes each pair from the tokens).
+- The character is see through and floats on the desktop; what it says sits in a small blurred pill that reads on any wallpaper.
+
+## What is not decided
+
+The founder has not chosen a visual direction. When one is chosen it goes into the tokens and the skin, not into the logic. Until then: neutral, calm, simple.
