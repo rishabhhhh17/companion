@@ -197,6 +197,8 @@ describe("the runner program", () => {
     proc.stdin.end(); await proc.exited; await reader;
     const got = lines.map((l) => JSON.parse(l)).find((e) => e.type === "settings.applied");
     expect(got).toMatchObject({ accepted: ["work.maxTurns"], refused: ["fun.reactions"] });
-    expect(JSON.stringify(got)).not.toContain("120");
+    // The values are never echoed. The event's own time is left out of the check: it can end in .120 by chance.
+    const { ts: _ts, ...rest } = got;
+    expect(JSON.stringify(rest)).not.toContain("120");
   });
 });
