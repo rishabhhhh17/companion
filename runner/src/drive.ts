@@ -1,5 +1,5 @@
 // Drive: a plan first, then one step at a time. This file holds the plain, testable parts.
-import { priceRatio } from "./models.ts";
+import { MODELS, priceRatio } from "./models.ts";
 import { PRODUCT } from "./names.ts";
 import { carriesPastedError, STALE_ERROR_RULE } from "./staleerror.ts";
 
@@ -66,7 +66,7 @@ export const freshShortenPrompt = (goal: string, n: number, max = MAX_STEPS) =>
 // as much, as its words say).
 export const MEASURED_STEP_USD = 0.04;
 export const STEP_SAFETY = 1.5;
-const MEASURED_ON = "claude-sonnet-5-5";
+const MEASURED_ON = MODELS.agent;   // Sonnet 5.5 today: the usual model for a Drive plan, which the figure above was measured on
 export const estimateUsd = (steps: number, model?: string) =>
   steps <= 0 ? 0 : Math.max(0.01, Math.round(steps * MEASURED_STEP_USD * STEP_SAFETY * (model ? priceRatio(model, MEASURED_ON) : 1) * 100) / 100);
 
