@@ -3644,8 +3644,9 @@ fn main() {
                 // ever opening the file in its place. Nothing is read here and no path reaches the shell.
                 let b = if label == "card" { b.disable_drag_drop_handler() } else { b };
                 // The character floats on the desktop with nothing behind it (the dock page paints no background either,
-                // style.css `.dock-page`); Home is an ordinary opaque window.
-                let b = if label == "dock" { b.transparent(true) } else { b };
+                // style.css `.dock-page`). Home is see through too: its page paints one black shape that hangs from the
+                // notch, square at the top and round at the bottom (style.css `.home-page`), and nothing around it.
+                let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };
                 b.build()
             };
             let dock_w = mk("dock", "dock.html", DOCK)?;
@@ -3665,6 +3666,11 @@ fn main() {
             dock.setHasShadow(false);
             dock.setBackgroundColor(Some(&NSColor::clearColor()));
             let card = make_panel(mtm, card_ns, true, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(CARD.0, CARD.1)));
+            // See through, as the character's is: make_panel paints every panel white, which would show as a white square
+            // around Home's rounded black shape. No window shadow either: it would follow the square, not the shape.
+            card.setOpaque(false);
+            card.setHasShadow(false);
+            card.setBackgroundColor(Some(&NSColor::clearColor()));
             // Native witness: every mouse down macOS delivers to our panels, independent of the page.
             let block = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent {
                 let ev = unsafe { e.as_ref() };

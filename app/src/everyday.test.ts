@@ -174,7 +174,7 @@ describe("the main button", () => {
 
 describe("the numbers count each press once", () => {
   test("the key counts the press and an anywhere use; the everyday look and its looks again count nothing more", () => {
-    const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+    const key = card.slice(card.indexOf("latest.current.find = (payload: unknown) => {"), card.indexOf("const findFromHome ="))   // the key and the chip share it;
     expect(key).toContain('if (route === "screen") { count("hero_press"); count("anywhere_use"); latest.current.lookEveryday(); return; }');
     const look = card.slice(card.indexOf("const lookEveryday = "), card.indexOf("const checkEveryday = "));
     expect(look).not.toContain("count(");
@@ -203,9 +203,9 @@ describe("show you why", () => {
 });
 
 describe("the card", () => {
-  const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+  const key = card.slice(card.indexOf("latest.current.find = (payload: unknown) => {"), card.indexOf("const findFromHome ="))   // the key and the chip share it;
   test("the key chooses with heroRoute and the setting, before anything is checked or looked at", () => {
-    expect(key).toContain('heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current })');
+    expect(key).toContain('heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(payload), practice: nowModel.current.practice?.project === projectRef.current })');
     expect(key.indexOf("heroRoute(")).toBeLessThan(key.indexOf("sendOrExplain(findProblem("));
     expect(key).toContain("lookEveryday()");
   });

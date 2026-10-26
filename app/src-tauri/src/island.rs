@@ -16,12 +16,13 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HomeSize { pub w: f64, pub min_h: f64, pub max_h: f64 }
 impl HomeSize {
-    /// The usual size: 600 wide, 420 to 640 tall. Wide enough for a side list of places beside what is open (the founder's
-    /// session of 26 Oct 2026: 380 was "too narrow"), and never shorter than that list.
-    pub const STANDARD: HomeSize = HomeSize { w: 600.0, min_h: 420.0, max_h: 640.0 };
-    /// Large: 680 wide, 460 to 760 tall, for larger text. No wider: on the smallest display we place on (1024 wide) the
-    /// character, 160 plus its margin, must still fit beside Home (docking.rs, never under it).
-    pub const LARGE: HomeSize = HomeSize { w: 680.0, min_h: 460.0, max_h: 760.0 };
+    /// The usual size: 640 wide, 300 to 640 tall. Home is one black panel that hangs from the notch (27 Oct 2026: the founder
+    /// asked for the notch apps' look, "this needs to be fun"): the character on the left, the job and the ask box beside it.
+    /// It is as tall as what it shows, from 300.
+    pub const STANDARD: HomeSize = HomeSize { w: 640.0, min_h: 300.0, max_h: 640.0 };
+    /// Large: 680 wide, 320 to 760 tall, for larger text. No wider: on the smallest display we place on (1024 wide) the
+    /// character, 160 plus its margin, must still fit beside Home (docking.rs, never under it); 720 failed that (27 Oct 2026).
+    pub const LARGE: HomeSize = HomeSize { w: 680.0, min_h: 320.0, max_h: 760.0 };
     /// The size a home.size word names; anything else is the usual one.
     pub fn of(word: &str) -> HomeSize { if word == "large" { HomeSize::LARGE } else { HomeSize::STANDARD } }
 }
@@ -513,7 +514,7 @@ mod tests {
         assert!(inside(l, mac.work), "{l:?}");
         assert_eq!(card_spot(None, home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), None, "no display at all: nowhere");
         assert_eq!(card_spot(Some(&mac), home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), Some(home_frame(&mac, (CARD.0, 300.0))));
-        assert_eq!((CARD, CARD_MAX_H), ((600.0, 420.0), 640.0), "Home is 600 wide for its side list and grows to 640");
+        assert_eq!((CARD, CARD_MAX_H), ((640.0, 300.0), 640.0), "Home is 640 wide, from 300 tall, and grows to 640");
     }
     fn main_body(name: &str) -> String {
         let main = include_str!("main.rs");
@@ -733,8 +734,8 @@ mod tests {
     // ---- M11 area 4: the settings for Home, the island and the character (protocol/settings.json) ----
     #[test]
     fn home_is_600_by_420_to_640_and_large_is_680_by_460_to_760() {
-        assert_eq!(HomeSize::STANDARD, HomeSize { w: 600.0, min_h: 420.0, max_h: 640.0 });
-        assert_eq!(HomeSize::LARGE, HomeSize { w: 680.0, min_h: 460.0, max_h: 760.0 });
+        assert_eq!(HomeSize::STANDARD, HomeSize { w: 640.0, min_h: 300.0, max_h: 640.0 });
+        assert_eq!(HomeSize::LARGE, HomeSize { w: 680.0, min_h: 320.0, max_h: 760.0 });
         assert_eq!((CARD, CARD_MAX_H), ((HomeSize::STANDARD.w, HomeSize::STANDARD.min_h), HomeSize::STANDARD.max_h), "the usual size is today's");
         assert_eq!(HomeSize::of("standard"), HomeSize::STANDARD);
         assert_eq!(HomeSize::of("large"), HomeSize::LARGE);
@@ -849,6 +850,18 @@ mod tests {
         let r = island_frame(&a, Mode::Rest);
         assert!(!grows_down(r, [r[0] + 10.0, r[1], r[2], r[3] + 40.0]));
         assert!(!grows_down(r, [r[0], r[1], r[2] + 10.0, r[3] + 40.0]));
+    }
+    /// Home is one black shape hanging from the notch (27 Oct 2026): its window and panel paint nothing, so the shape's round
+    /// bottom corners float on the desktop instead of sitting in a white square, and no square shadow is drawn around it.
+    #[test]
+    fn home_floats_as_its_own_shape_on_a_see_through_panel() {
+        let main = include_str!("main.rs");
+        assert!(main.contains(r#"let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };"#), "the web view paints nothing");
+        let at = main.find("let card = make_panel(mtm, card_ns, true,").expect("Home's panel");
+        let after = &main[at..at + 500];
+        for want in ["card.setOpaque(false);", "card.setHasShadow(false);", "card.setBackgroundColor(Some(&NSColor::clearColor()));"] {
+            assert!(after.contains(want), "{want}");
+        }
     }
     #[test]
     fn home_drops_open_from_just_under_the_island_only_when_it_opens_never_on_a_resize() {

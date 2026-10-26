@@ -5,15 +5,24 @@ import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
+type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer";
+
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
-const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait", ReactElement> = {
+const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | HomeIcon, ReactElement> = {
   // The tabs
   now: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></>,
   did: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
   learn: <><path d="M3 9l9-4.5L21 9l-9 4.5z" /><path d="M7 11.5V16c0 1.4 2.2 2.6 5 2.6s5-1.2 5-2.6v-4.5" /></>,
   memory: <><path d="M6 4h12v16l-6-4-6 4z" /></>,
   settings: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
+  // Home's round buttons, the ask box and its quick actions (27 Oct 2026)
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4L18 18M6 18l1.6-1.6M16.4 7.6L18 6" /></>,
+  mic: <><rect x="9" y="3.5" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v2.5" /></>,
+  send: <><path d="M12 19V5.5" /><path d="M6.5 11L12 5.5 17.5 11" /></>,
+  find: <><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15l5 5" /></>,
+  explain: <><path d="M5 5.5h14a1.5 1.5 0 011.5 1.5v8a1.5 1.5 0 01-1.5 1.5H11l-4.5 3.5V16.5H5A1.5 1.5 0 013.5 15V7A1.5 1.5 0 015 5.5z" /><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.5-1.5 1-1.5 1.8" /><circle cx="12" cy="14.6" r=".6" fill="currentColor" stroke="none" /></>,
+  pointer: <path d="M6 3.5l12 7.5-5.3 1.4 3.3 6.1-2.3 1.2-3.3-6.1L6.5 17.5z" />,
   // The proof marks
   tick: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   cross: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,

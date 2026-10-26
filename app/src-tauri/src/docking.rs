@@ -347,8 +347,9 @@ mod tests {
         let s = mac();
         assert_eq!(place(&s, SIZE, Edge::Left, 0.5, STD)[0], 0.0);
         let r = place(&s, SIZE, Edge::Right, 0.5, STD); assert_eq!(r[0] + r[2], 1512.0);
-        let t = place(&s, SIZE, Edge::Top, 0.2, STD); assert_eq!(t[1], 33.0, "the top edge is just below the menu bar");
-        assert_eq!(t[0], 0.2 * (1512.0 - 160.0));
+        // At a tenth of the way along: clear of the 640 wide Home in the middle of the top (further along it keeps clear of it).
+        let t = place(&s, SIZE, Edge::Top, 0.1, STD); assert_eq!(t[1], 33.0, "the top edge is just below the menu bar");
+        assert_eq!(t[0], 0.1 * (1512.0 - 160.0));
         let b = place(&s, SIZE, Edge::Bottom, 0.7, STD); assert_eq!(b[1] + b[3], 982.0);
         assert_eq!(b[0], 0.7 * (1512.0 - 160.0));
         let bd = place(&dock_bottom(), SIZE, Edge::Bottom, 0.5, STD); assert_eq!(bd[1] + bd[3], 33.0 + 879.0, "the bottom edge stops above the Dock");
