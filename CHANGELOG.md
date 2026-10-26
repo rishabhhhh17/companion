@@ -2,6 +2,18 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby checks first, quotes a fair price and speaks plainly: 26 Oct 2026
+
+Found in the first hands on session on a Mac, the engine side.
+
+- **A fix from an error now checks the error is still real.** Before, "Fix it" on an error that was already fixed made up a cause and moved a line for no reason. Now it reads the file and line, looks at whether the thing it names still fails, and if not says "This error looks already fixed" and changes nothing. A new test project, `stale-error`, measures this. One real run: it said so and changed nothing, for 3.7 cents.
+- **The cost shown before Start is about what it really costs.** It said about 25 cents for a task that cost 3 cents. It is now what steps really cost (about 4 cents on the usual model) with a margin of one half, so one step shows about 6 cents. What a task may spend at most did not change.
+- **What I did reads plainly.** A step of a plan is named by the step, not by Squibby's own instructions ("Do only this step..."). A fix started from an error you selected says which app it came from ("Fix for an error you selected in TextEdit"), and never keeps the error itself.
+- **Squibby no longer talks like its own code.** Claude was told to say "the hook is blocking me". It is now told never to say hook, sandbox or permission mode, and when something is not allowed to say "Squibby does not let tasks...", with what you can do. The reasons it is given are in everyday words too.
+- **No empty hidden folder left in your project.** Claude Code leaves an empty `.claude` folder in the project folder. Squibby now removes it after a task, but only when it was not there before and is empty. A `.claude` folder of your own is never touched.
+- **Support can see that an approval happened.** The activity log now records that a question was asked (the kind of risk and which tool) and how it was answered (yes, no, expired or stopped), never the question's words.
+- **Checked by machine, plus one real run** of the new test project only. Nobody has seen these changes on screen.
+
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.
